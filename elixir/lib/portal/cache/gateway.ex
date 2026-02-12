@@ -246,7 +246,7 @@ defmodule Portal.Cache.Gateway do
         from(c in Portal.Client, as: :clients)
         |> where([clients: c], c.account_id == ^account_id and c.id == ^id)
         |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.one()
 
       if client do
         {:ok, client}
@@ -260,7 +260,7 @@ defmodule Portal.Cache.Gateway do
         from(g in Portal.Gateway, as: :gateways)
         |> where([gateways: g], g.account_id == ^account_id and g.id == ^id)
         |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.one()
 
       if result do
         {:ok, result}
@@ -277,7 +277,7 @@ defmodule Portal.Cache.Gateway do
           where: t.expires_at > ^DateTime.utc_now()
         )
         |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.one()
 
       if result do
         {:ok, result}
@@ -313,7 +313,7 @@ defmodule Portal.Cache.Gateway do
              ag.account_id == a.account_id)
       )
       |> preload(resource: :site)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 
@@ -403,7 +403,7 @@ defmodule Portal.Cache.Gateway do
           limit: 1
         )
         |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.one()
 
       if result, do: {:ok, result}, else: {:error, :not_found}
     end
@@ -432,7 +432,7 @@ defmodule Portal.Cache.Gateway do
             g.name == "Everyone"
       )
       |> Safe.unscoped(:replica)
-      |> Safe.exists?(fallback_to_primary: true)
+      |> Safe.exists?()
     end
 
     defp fetch_membership_id_or_nil_for_everyone(account_id, actor_id, group_id) do

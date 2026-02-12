@@ -522,7 +522,7 @@ defmodule Portal.Authentication do
         where: a.allow_email_otp_sign_in == true,
         preload: [actor: a]
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
@@ -572,7 +572,7 @@ defmodule Portal.Authentication do
         where: ps.auth_provider_id in subquery(enabled_provider_ids),
         preload: [actor: a]
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}

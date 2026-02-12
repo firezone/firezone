@@ -116,6 +116,7 @@ config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
 config :portal, Portal.ClientSession.Buffer, enabled: false
+config :portal, Portal.GatewaySession.Buffer, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,

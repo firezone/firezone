@@ -88,10 +88,10 @@ defmodule PortalWeb.Live.Gateways.ShowTest do
     assert table["site"] =~ gateway.site.name
     assert table["name"] =~ gateway.name
     assert table["last started"]
-    assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
+    assert table["last seen remote ip"] =~ "100.64.0.1"
     assert table["status"] =~ "Offline"
-    assert table["version"] =~ gateway.last_seen_version
-    assert table["user agent"] =~ gateway.last_seen_user_agent
+    assert table["version"] =~ gateway.latest_session.version
+    assert table["user agent"] =~ gateway.latest_session.user_agent
     assert table["tunnel interface ipv4 address"] =~ to_string(gateway.ipv4_address.address)
     assert table["tunnel interface ipv6 address"] =~ to_string(gateway.ipv6_address.address)
   end

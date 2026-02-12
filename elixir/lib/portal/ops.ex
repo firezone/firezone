@@ -86,7 +86,7 @@ defmodule Portal.Ops do
         where: a.id == ^id,
         where: not is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one!()
     end
 

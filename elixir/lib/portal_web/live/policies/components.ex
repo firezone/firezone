@@ -887,8 +887,8 @@ defmodule PortalWeb.Policies.Components do
             directory_type: d.type
           }
         )
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       {:ok, group_option(group)}
     end
@@ -1037,7 +1037,7 @@ defmodule PortalWeb.Policies.Components do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.scoped(subject, :replica)
       |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end

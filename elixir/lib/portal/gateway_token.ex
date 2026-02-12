@@ -12,6 +12,8 @@ defmodule Portal.GatewayToken do
 
     belongs_to :site, Portal.Site
 
+    has_many :gateway_sessions, Portal.GatewaySession, references: :id
+
     field :secret_hash, :string, redact: true
     field :secret_salt, :string, redact: true
 

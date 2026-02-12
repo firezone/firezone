@@ -86,7 +86,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       else
         where(Account, [a], a.slug == ^id_or_slug)
       end
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one()
     end
 
@@ -106,7 +106,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
           where: p.account_id == ^account_id and p.is_default == true and p.is_disabled == false,
           limit: 1
         )
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.one()
       end)
     end

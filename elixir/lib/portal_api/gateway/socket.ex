@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Authentication
-  alias Portal.{Gateway, Version}
+  alias Portal.{Gateway, GatewaySession, Version}
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -35,13 +35,17 @@ defmodule PortalAPI.Gateway.Socket do
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
-         changeset = upsert_changeset(site, attrs, context),
+         changeset = upsert_changeset(site, attrs),
          {:ok, gateway} <- Database.upsert_gateway(changeset, site) do
+      version = derive_version(context.user_agent)
+      session = build_session(gateway, gateway_token.id, context, version)
+      GatewaySession.Buffer.insert(session)
+
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
         gateway_id: gateway.id,
         account_id: gateway.account_id,
-        version: gateway.last_seen_version
+        version: version
       })
 
       socket =
@@ -49,6 +53,7 @@ defmodule PortalAPI.Gateway.Socket do
         |> assign(:token_id, gateway_token.id)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
+        |> assign(:session, session)
         |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
         |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
@@ -62,14 +67,8 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
-  defp upsert_changeset(site, attrs, context) do
-    upsert_fields = ~w[external_id name public_key
-                      last_seen_user_agent
-                      last_seen_remote_ip
-                      last_seen_remote_ip_location_region
-                      last_seen_remote_ip_location_city
-                      last_seen_remote_ip_location_lat
-                      last_seen_remote_ip_location_lon]a
+  defp upsert_changeset(site, attrs) do
+    upsert_fields = ~w[external_id name public_key]a
     required_fields = ~w[external_id name public_key]a
 
     %Gateway{}
@@ -81,28 +80,29 @@ defmodule PortalAPI.Gateway.Socket do
     |> validate_required(required_fields)
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: 44)
-    |> put_change(:last_seen_at, DateTime.utc_now())
-    |> put_change(:last_seen_user_agent, context.user_agent)
-    |> put_change(:last_seen_remote_ip, context.remote_ip)
-    |> put_change(:last_seen_remote_ip_location_region, context.remote_ip_location_region)
-    |> put_change(:last_seen_remote_ip_location_city, context.remote_ip_location_city)
-    |> put_change(:last_seen_remote_ip_location_lat, context.remote_ip_location_lat)
-    |> put_change(:last_seen_remote_ip_location_lon, context.remote_ip_location_lon)
-    |> put_gateway_version()
     |> put_change(:account_id, site.account_id)
     |> put_change(:site_id, site.id)
   end
 
-  defp put_gateway_version(changeset) do
-    import Ecto.Changeset
+  defp build_session(gateway, token_id, context, version) do
+    %GatewaySession{
+      gateway_id: gateway.id,
+      account_id: gateway.account_id,
+      gateway_token_id: token_id,
+      user_agent: context.user_agent,
+      remote_ip: context.remote_ip,
+      remote_ip_location_region: context.remote_ip_location_region,
+      remote_ip_location_city: context.remote_ip_location_city,
+      remote_ip_location_lat: context.remote_ip_location_lat,
+      remote_ip_location_lon: context.remote_ip_location_lon,
+      version: version
+    }
+  end
 
-    with {_data_or_changes, user_agent} when not is_nil(user_agent) <-
-           Ecto.Changeset.fetch_field(changeset, :last_seen_user_agent),
-         {:ok, version} <- Version.fetch_version(user_agent) do
-      put_change(changeset, :last_seen_version, version)
-    else
-      {:error, :invalid_user_agent} -> add_error(changeset, :last_seen_user_agent, "is invalid")
-      _ -> changeset
+  defp derive_version(user_agent) do
+    case Version.fetch_version(user_agent) do
+      {:ok, version} -> version
+      _ -> nil
     end
   end
 
@@ -147,8 +147,8 @@ defmodule PortalAPI.Gateway.Socket do
               where: g.external_id == ^external_id,
               preload: [:ipv4_address, :ipv6_address]
             )
-            |> Safe.unscoped()
-            |> Safe.one()
+            |> Safe.unscoped(:replica)
+            |> Safe.one(fallback_to_primary: true)
           end
 
         {:ok, existing}
@@ -193,14 +193,6 @@ defmodule PortalAPI.Gateway.Socket do
     defp upsert_on_conflict do
       conflict_replace_fields = ~w[name
                                   public_key
-                                  last_seen_user_agent
-                                  last_seen_remote_ip
-                                  last_seen_remote_ip_location_region
-                                  last_seen_remote_ip_location_city
-                                  last_seen_remote_ip_location_lat
-                                  last_seen_remote_ip_location_lon
-                                  last_seen_version
-                                  last_seen_at
                                   updated_at]a
       {:replace, conflict_replace_fields}
     end

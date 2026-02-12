@@ -120,7 +120,7 @@ defmodule Portal.Workers.OutdatedGateways do
               a.config
             )
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 
@@ -129,7 +129,7 @@ defmodule Portal.Workers.OutdatedGateways do
       |> where([actors: a], is_nil(a.disabled_at))
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 
@@ -170,23 +170,46 @@ defmodule Portal.Workers.OutdatedGateways do
         as: :actor
       )
       |> where([actor: a], is_nil(a.disabled_at))
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
     def all_gateways_for_account!(account) do
-      from(g in Portal.Gateway,
-        where: g.account_id == ^account.id
-      )
-      |> Safe.unscoped()
-      |> Safe.all()
+      gateways =
+        from(g in Portal.Gateway,
+          where: g.account_id == ^account.id
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.all()
+
+      preload_latest_sessions(gateways)
+    end
+
+    defp preload_latest_sessions(gateways) do
+      account_ids = gateways |> Enum.map(& &1.account_id) |> Enum.uniq()
+      gateway_ids = Enum.map(gateways, & &1.id)
+
+      sessions_by_gateway_id =
+        from(s in Portal.GatewaySession,
+          where: s.account_id in ^account_ids,
+          where: s.gateway_id in ^gateway_ids,
+          distinct: s.gateway_id,
+          order_by: [asc: s.gateway_id, desc: s.inserted_at]
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.all()
+        |> Map.new(&{&1.gateway_id, &1})
+
+      Enum.map(gateways, fn gateway ->
+        %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}
+      end)
     end
 
     def all_sites_for_account!(account) do
       from(g in Portal.Site,
         where: g.account_id == ^account.id
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 

@@ -348,13 +348,13 @@ defmodule PortalWeb.Resources.Components do
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def list_resources(subject, opts \\ []) do
       from(r in Resource, as: :resources)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.list(Database.ListQuery, opts)
     end
   end

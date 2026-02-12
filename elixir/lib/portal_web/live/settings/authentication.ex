@@ -1418,8 +1418,8 @@ defmodule PortalWeb.Settings.Authentication do
       # Delete the parent auth_provider, which will CASCADE delete the child and tokens
       parent =
         from(p in AuthProvider, where: p.id == ^provider.id)
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       parent |> Safe.scoped(subject) |> Safe.delete()
     end

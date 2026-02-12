@@ -1673,8 +1673,8 @@ defmodule PortalWeb.Settings.DirectorySync do
       # Delete the parent Portal.Directory, which will CASCADE delete the child
       parent =
         from(d in Portal.Directory, where: d.id == ^directory.id)
-        |> Safe.scoped(subject)
-        |> Safe.one!()
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       parent |> Safe.scoped(subject) |> Safe.delete()
     end
@@ -1728,7 +1728,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       from(d in schema, where: d.id == ^directory.id)
       |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.one()
     end
 
     defp enrich_with_job_status(directories) do
