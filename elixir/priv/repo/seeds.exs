@@ -11,6 +11,7 @@ defmodule Portal.Repo.Seeds do
     Account,
     Actor,
     Client,
+    ClientSession,
     Crypto,
     EmailOTP,
     Entra,
@@ -165,7 +166,7 @@ defmodule Portal.Repo.Seeds do
   end
 
   # Helper function to create client directly without context module
-  defp create_client(attrs, subject, user_agent) do
+  defp create_client(attrs, subject, client_token_id, user_agent) do
     # Extract version from user agent (e.g., "iOS/12.7 (iPhone) connlib/0.7.412" -> "0.7.412")
     version =
       user_agent |> String.split(" connlib/") |> List.last() |> String.split(" ") |> List.first()
@@ -173,22 +174,30 @@ defmodule Portal.Repo.Seeds do
     external_id = attrs["external_id"] || attrs[:external_id]
 
     # First create the client
+    public_key = attrs["public_key"] || attrs[:public_key]
+
     client =
       %Client{
         account_id: subject.account.id,
         actor_id: subject.actor.id,
         name: attrs["name"] || attrs[:name],
         external_id: external_id,
-        public_key: attrs["public_key"] || attrs[:public_key],
         identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
         device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
-        device_serial: attrs["device_serial"] || attrs[:device_serial],
-        last_seen_user_agent: user_agent,
-        last_seen_remote_ip: subject.context.remote_ip,
-        last_seen_version: version,
-        last_seen_at: DateTime.utc_now()
+        device_serial: attrs["device_serial"] || attrs[:device_serial]
       }
       |> Repo.insert!()
+
+    # Create a client session to record last_seen data
+    Repo.insert!(%ClientSession{
+      account_id: subject.account.id,
+      client_id: client.id,
+      client_token_id: client_token_id,
+      public_key: public_key,
+      user_agent: user_agent,
+      remote_ip: subject.context.remote_ip,
+      version: version
+    })
 
     # Then create tunnel IP addresses with client FK
     create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
@@ -551,14 +560,20 @@ defmodule Portal.Repo.Seeds do
             actor_id: subject.actor.id,
             name: "My #{client_name} #{i}",
             external_id: external_id,
-            public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-            identifier_for_vendor: Ecto.UUID.generate(),
-            last_seen_user_agent: user_agent,
-            last_seen_remote_ip: subject.context.remote_ip,
-            last_seen_version: version,
-            last_seen_at: DateTime.utc_now()
+            identifier_for_vendor: Ecto.UUID.generate()
           }
           |> Repo.insert!()
+
+        # Create a client session to record last_seen data
+        Repo.insert!(%ClientSession{
+          account_id: subject.account.id,
+          client_id: client.id,
+          client_token_id: token.id,
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          user_agent: user_agent,
+          remote_ip: subject.context.remote_ip,
+          version: version
+        })
 
         # Then create tunnel IP addresses with client FK
         create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
@@ -614,6 +629,19 @@ defmodule Portal.Repo.Seeds do
         auth_provider_id: userpass_provider.id,
         account_id: account.id,
         actor_id: unprivileged_actor.id,
+        secret_nonce: Ecto.UUID.generate(),
+        secret_fragment: Ecto.UUID.generate(),
+        secret_salt: Ecto.UUID.generate(),
+        secret_hash: Ecto.UUID.generate(),
+        expires_at: DateTime.utc_now() |> DateTime.add(7, :day)
+      })
+
+    # Create client token for admin actor so we can create client sessions
+    {:ok, admin_client_token} =
+      Repo.insert(%ClientToken{
+        auth_provider_id: userpass_provider.id,
+        account_id: account.id,
+        actor_id: admin_actor.id,
         secret_nonce: Ecto.UUID.generate(),
         secret_fragment: Ecto.UUID.generate(),
         secret_salt: Ecto.UUID.generate(),
@@ -689,6 +717,7 @@ defmodule Portal.Repo.Seeds do
           identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
         },
         unprivileged_subject,
+        unprivileged_client_token.id,
         "iOS/12.7 (iPhone) connlib/0.7.412"
       )
 
@@ -701,6 +730,7 @@ defmodule Portal.Repo.Seeds do
           identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}"
         },
         unprivileged_subject,
+        unprivileged_client_token.id,
         "Android/14 connlib/0.7.412"
       )
 
@@ -713,6 +743,7 @@ defmodule Portal.Repo.Seeds do
           device_uuid: "WIN-#{Ecto.UUID.generate()}"
         },
         unprivileged_subject,
+        unprivileged_client_token.id,
         "Windows/10.0.22631 connlib/0.7.412"
       )
 
@@ -725,6 +756,7 @@ defmodule Portal.Repo.Seeds do
           device_uuid: "UB-#{Ecto.UUID.generate()}"
         },
         unprivileged_subject,
+        unprivileged_client_token.id,
         "Ubuntu/22.4.0 connlib/0.7.412"
       )
 
@@ -738,6 +770,7 @@ defmodule Portal.Repo.Seeds do
           device_uuid: "#{Ecto.UUID.generate()}"
         },
         admin_subject,
+        admin_client_token.id,
         "Mac OS/14.5 connlib/0.7.412"
       )
 

@@ -451,17 +451,31 @@ defmodule Portal.Authentication do
       end
     end
 
+    def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do
+      now = DateTime.utc_now()
+
+      from(tokens in ClientToken, as: :tokens)
+      |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
+      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor), as: :actor)
+      |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
+      |> where([tokens: tokens], tokens.id == ^token_id)
+      |> where([tokens: tokens], tokens.account_id == ^account_id)
+      |> where([account: account], is_nil(account.disabled_at))
+      |> where([actor: actor], is_nil(actor.disabled_at))
+      |> select([tokens: tokens], tokens)
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
+      |> case do
+        nil -> {:error, :not_found}
+        token -> {:ok, token}
+      end
+    end
+
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{} = context) do
       now = DateTime.utc_now()
       remote_ip = %Postgrex.INET{address: context.remote_ip}
 
-      schema =
-        case context.type do
-          :api_client -> Portal.APIToken
-          :client -> ClientToken
-        end
-
-      from(tokens in schema, as: :tokens)
+      from(tokens in Portal.APIToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
       |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor), as: :actor)
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))

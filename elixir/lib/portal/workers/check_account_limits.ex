@@ -309,7 +309,11 @@ defmodule Portal.Workers.CheckAccountLimits do
           on: acc.id == c.account_id and is_nil(acc.disabled_at),
           as: :account
         )
-        |> where([clients: c], c.last_seen_at > ago(1, "month"))
+        |> join(:inner, [clients: c], s in Portal.ClientSession,
+          on: s.client_id == c.id and s.account_id == c.account_id,
+          as: :session
+        )
+        |> where([session: s], s.inserted_at > ago(1, "month"))
         |> join(:inner, [clients: c], a in Actor,
           on: c.actor_id == a.id and c.account_id == a.account_id,
           as: :actor

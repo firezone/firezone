@@ -77,14 +77,13 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
-
       # Health check server (always enabled)
       Portal.Health,
 
       # Web and API apps are always started to allow VerifiedRoutes to work
       PortalWeb.Endpoint,
       PortalAPI.Endpoint
-    ] ++ rate_limit() ++ telemetry() ++ oban() ++ replication()
+    ] ++ client_session_buffer() ++ rate_limit() ++ telemetry() ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -117,6 +116,16 @@ defmodule Portal.Application do
       "warn" -> :warn
       "debug" -> :debug
       _ -> :info
+    end
+  end
+
+  defp client_session_buffer do
+    config = Portal.Config.get_env(:portal, Portal.ClientSession.Buffer, [])
+
+    if Keyword.get(config, :enabled, true) do
+      [Portal.ClientSession.Buffer]
+    else
+      []
     end
   end
 

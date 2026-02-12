@@ -40,113 +40,70 @@ defmodule Portal.VersionTest do
     end
   end
 
-  describe "resource_cannot_change_sites_on_client?/1" do
-    test "apple client below version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.7",
-        last_seen_user_agent: "Mac OS X"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+  describe "resource_cannot_change_sites_on_client?/1 with ClientSession" do
+    test "apple session below version cannot change sites" do
+      session = %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
     end
 
-    test "apple client at version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.8",
-        last_seen_user_agent: "Mac OS X"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    test "apple session at version cannot change sites" do
+      session = %Portal.ClientSession{version: "1.5.8", user_agent: "Mac OS X"}
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
     end
 
-    test "apple client above version can change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.9",
-        last_seen_user_agent: "Mac OS X"
-      }
+    test "apple session above version can change sites" do
+      session = %Portal.ClientSession{version: "1.5.9", user_agent: "Mac OS X"}
+      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
 
+    test "android session below version cannot change sites" do
+      session = %Portal.ClientSession{version: "1.5.3", user_agent: "Android"}
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "android session at version cannot change sites" do
+      session = %Portal.ClientSession{version: "1.5.4", user_agent: "Android"}
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "android session above version can change sites" do
+      session = %Portal.ClientSession{version: "1.5.5", user_agent: "Android"}
+      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "gui session below version cannot change sites" do
+      session = %Portal.ClientSession{version: "1.5.7", user_agent: "Windows"}
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "gui session at version cannot change sites" do
+      session = %Portal.ClientSession{version: "1.5.8", user_agent: "Windows"}
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "gui session above version can change sites" do
+      session = %Portal.ClientSession{version: "1.5.9", user_agent: "Windows"}
+      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "nil version returns false" do
+      session = %Portal.ClientSession{version: nil}
+      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+  end
+
+  describe "resource_cannot_change_sites_on_client?/1 with Client" do
+    test "client with nil latest_session returns false" do
+      client = %Portal.Client{latest_session: nil}
       refute Portal.Version.resource_cannot_change_sites_on_client?(client)
     end
 
-    test "android client below version cannot change sites" do
+    test "client delegates to session" do
       client = %Portal.Client{
-        last_seen_version: "1.5.3",
-        last_seen_user_agent: "Android"
+        latest_session: %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}
       }
 
       assert Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "android client at version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.4",
-        last_seen_user_agent: "Android"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "android client above version can change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.5",
-        last_seen_user_agent: "Android"
-      }
-
-      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "headless client below version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.3",
-        actor: %Portal.Actor{type: :service_account}
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "headless client at version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.4",
-        actor: %Portal.Actor{type: :service_account}
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "headless client above version can change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.5",
-        actor: %Portal.Actor{type: :service_account}
-      }
-
-      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "gui client below version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.7",
-        last_seen_user_agent: "Windows"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "gui client at version cannot change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.8",
-        last_seen_user_agent: "Windows"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "gui client above version can change sites" do
-      client = %Portal.Client{
-        last_seen_version: "1.5.9",
-        last_seen_user_agent: "Windows"
-      }
-
-      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
     end
   end
 end

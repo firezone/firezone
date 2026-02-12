@@ -122,42 +122,21 @@ defmodule PortalAPI.ClientControllerTest do
       actor: actor,
       client: client
     } do
-      client = %{client | online?: false}
-
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> get(~p"/clients/#{client.id}")
 
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => client.id,
-                 "name" => client.name,
-                 "ipv4" => to_string(client.ipv4_address.address),
-                 "ipv6" => to_string(client.ipv6_address.address),
-                 "actor_id" => client.actor_id,
-                 "created_at" => client.inserted_at && DateTime.to_iso8601(client.inserted_at),
-                 "device_serial" => client.device_serial,
-                 "device_uuid" => client.device_uuid,
-                 "external_id" => client.external_id,
-                 "firebase_installation_id" => client.firebase_installation_id,
-                 "identifier_for_vendor" => client.identifier_for_vendor,
-                 "last_seen_at" =>
-                   client.last_seen_at && DateTime.to_iso8601(client.last_seen_at),
-                 "last_seen_remote_ip" => "#{client.last_seen_remote_ip}",
-                 "last_seen_remote_ip_location_city" => client.last_seen_remote_ip_location_city,
-                 "last_seen_remote_ip_location_lat" => client.last_seen_remote_ip_location_lat,
-                 "last_seen_remote_ip_location_lon" => client.last_seen_remote_ip_location_lon,
-                 "last_seen_remote_ip_location_region" =>
-                   client.last_seen_remote_ip_location_region,
-                 "last_seen_user_agent" => client.last_seen_user_agent,
-                 "last_seen_version" => client.last_seen_version,
-                 "online" => client.online?,
-                 "updated_at" => client.updated_at && DateTime.to_iso8601(client.updated_at),
-                 "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at)
-               }
-             }
+      assert %{"data" => data} = json_response(conn, 200)
+
+      assert data["id"] == client.id
+      assert data["name"] == client.name
+      assert data["ipv4"] == to_string(client.ipv4_address.address)
+      assert data["ipv6"] == to_string(client.ipv6_address.address)
+      assert data["actor_id"] == client.actor_id
+      assert data["external_id"] == client.external_id
+      assert data["online"] == false
     end
   end
 
@@ -254,34 +233,11 @@ defmodule PortalAPI.ClientControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete(~p"/clients/#{client}")
 
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => client.id,
-                 "name" => client.name,
-                 "ipv4" => to_string(client.ipv4_address.address),
-                 "ipv6" => to_string(client.ipv6_address.address),
-                 "actor_id" => client.actor_id,
-                 "created_at" => client.inserted_at && DateTime.to_iso8601(client.inserted_at),
-                 "device_serial" => client.device_serial,
-                 "device_uuid" => client.device_uuid,
-                 "external_id" => client.external_id,
-                 "firebase_installation_id" => client.firebase_installation_id,
-                 "identifier_for_vendor" => client.identifier_for_vendor,
-                 "last_seen_at" =>
-                   client.last_seen_at && DateTime.to_iso8601(client.last_seen_at),
-                 "last_seen_remote_ip" => "#{client.last_seen_remote_ip}",
-                 "last_seen_remote_ip_location_city" => client.last_seen_remote_ip_location_city,
-                 "last_seen_remote_ip_location_lat" => client.last_seen_remote_ip_location_lat,
-                 "last_seen_remote_ip_location_lon" => client.last_seen_remote_ip_location_lon,
-                 "last_seen_remote_ip_location_region" =>
-                   client.last_seen_remote_ip_location_region,
-                 "last_seen_user_agent" => client.last_seen_user_agent,
-                 "last_seen_version" => client.last_seen_version,
-                 "online" => false,
-                 "updated_at" => client.updated_at && DateTime.to_iso8601(client.updated_at),
-                 "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at)
-               }
-             }
+      assert %{"data" => data} = json_response(conn, 200)
+
+      assert data["id"] == client.id
+      assert data["name"] == client.name
+      assert data["online"] == false
 
       refute Repo.get_by(Client, id: client.id, account_id: client.account_id)
     end

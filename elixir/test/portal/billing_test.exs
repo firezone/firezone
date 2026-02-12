@@ -6,6 +6,7 @@ defmodule Portal.BillingTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
+  import Portal.ClientSessionFixtures
   import Portal.SiteFixtures
   import Portal.TokenFixtures
 
@@ -83,10 +84,12 @@ defmodule Portal.BillingTest do
       account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
 
       actor1 = actor_fixture(type: :account_admin_user, account: account)
-      client_fixture(account: account, actor: actor1)
+      client1 = client_fixture(account: account, actor: actor1)
+      client_session_fixture(account: account, client: client1)
 
       actor2 = actor_fixture(type: :account_user, account: account)
-      client_fixture(account: account, actor: actor2)
+      client2 = client_fixture(account: account, actor: actor2)
+      client_session_fixture(account: account, client: client2)
 
       assert can_create_users?(account) == true
     end
@@ -95,10 +98,12 @@ defmodule Portal.BillingTest do
       account = update_account(account, %{limits: %{monthly_active_users_count: 1}})
 
       actor1 = actor_fixture(type: :account_admin_user, account: account)
-      client_fixture(account: account, actor: actor1)
+      client1 = client_fixture(account: account, actor: actor1)
+      client_session_fixture(account: account, client: client1)
 
       actor2 = actor_fixture(type: :account_user, account: account)
-      client_fixture(account: account, actor: actor2)
+      client2 = client_fixture(account: account, actor: actor2)
+      client_session_fixture(account: account, client: client2)
 
       assert can_create_users?(account) == false
     end
@@ -877,9 +882,11 @@ defmodule Portal.BillingTest do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_admin_user, account: account)
 
-      # Create clients seen within last month
-      client_fixture(account: account, actor: actor1)
-      client_fixture(account: account, actor: actor2)
+      # Create clients with recent sessions
+      client1 = client_fixture(account: account, actor: actor1)
+      client2 = client_fixture(account: account, actor: actor2)
+      client_session_fixture(account: account, actor: actor1, client: client1)
+      client_session_fixture(account: account, actor: actor2, client: client2)
 
       assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 2
     end
@@ -888,8 +895,10 @@ defmodule Portal.BillingTest do
       actor = actor_fixture(type: :account_user, account: account)
 
       # Same actor with multiple clients
-      client_fixture(account: account, actor: actor)
-      client_fixture(account: account, actor: actor)
+      client1 = client_fixture(account: account, actor: actor)
+      client2 = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client1)
+      client_session_fixture(account: account, actor: actor, client: client2)
 
       assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
     end
@@ -899,15 +908,24 @@ defmodule Portal.BillingTest do
       actor2 = actor_fixture(type: :account_user, account: account)
 
       # Actor1 seen recently
-      client_fixture(account: account, actor: actor1)
+      client1 = client_fixture(account: account, actor: actor1)
+      client_session_fixture(account: account, actor: actor1, client: client1)
 
       # Actor2 seen more than a month ago
-      client =
-        client_fixture(account: account, actor: actor2)
+      client2 = client_fixture(account: account, actor: actor2)
 
-      client
-      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
-      |> Portal.Repo.update!()
+      session =
+        client_session_fixture(
+          account: account,
+          actor: actor2,
+          client: client2
+        )
+
+      # Backdate the session to more than a month ago
+      Repo.query!("UPDATE client_sessions SET inserted_at = $1 WHERE id = $2", [
+        DateTime.add(DateTime.utc_now(), -35, :day),
+        Ecto.UUID.dump!(session.id)
+      ])
 
       assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
     end
@@ -916,8 +934,10 @@ defmodule Portal.BillingTest do
       actor = actor_fixture(type: :account_user, account: account)
       disabled_actor = disabled_actor_fixture(type: :account_user, account: account)
 
-      client_fixture(account: account, actor: actor)
-      client_fixture(account: account, actor: disabled_actor)
+      client1 = client_fixture(account: account, actor: actor)
+      client2 = client_fixture(account: account, actor: disabled_actor)
+      client_session_fixture(account: account, actor: actor, client: client1)
+      client_session_fixture(account: account, actor: disabled_actor, client: client2)
 
       assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
     end
@@ -926,8 +946,10 @@ defmodule Portal.BillingTest do
       user = actor_fixture(type: :account_user, account: account)
       service_account = actor_fixture(type: :service_account, account: account)
 
-      client_fixture(account: account, actor: user)
-      client_fixture(account: account, actor: service_account)
+      client1 = client_fixture(account: account, actor: user)
+      client2 = client_fixture(account: account, actor: service_account)
+      client_session_fixture(account: account, actor: user, client: client1)
+      client_session_fixture(account: account, actor: service_account, client: client2)
 
       # Only the user should be counted, not the service account
       assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1

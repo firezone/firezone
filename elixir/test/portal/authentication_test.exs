@@ -304,7 +304,7 @@ defmodule Portal.AuthenticationTest do
       assert subject.account.id == account.id
     end
 
-    test "updates last seen fields for token on success" do
+    test "does not update last_seen fields on client token (moved to client_sessions)" do
       encoded = encode_token(client_token_fixture())
 
       context =
@@ -320,38 +320,9 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, subject} = authenticate(encoded, context)
 
+      # Client tokens no longer track last_seen_* — session data is stored in ClientSession
       updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
-      assert updated_token.last_seen_remote_ip.address == context.remote_ip
-
-      assert updated_token.last_seen_remote_ip_location_region ==
-               context.remote_ip_location_region
-
-      assert updated_token.last_seen_remote_ip_location_city == context.remote_ip_location_city
-      assert updated_token.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
-      assert updated_token.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
-      assert updated_token.last_seen_user_agent == context.user_agent
-    end
-
-    test "updates last_seen_at timestamp on each use" do
-      token = client_token_fixture()
-      encoded = encode_token(token)
-      context = build_context(type: :client)
-
-      # First use
-      assert {:ok, _} = authenticate(encoded, context)
-      token_after_first = Repo.get_by(ClientToken, id: token.id)
-
-      # Small delay to ensure timestamp difference
-      Process.sleep(10)
-
-      # Second use
-      assert {:ok, _} = authenticate(encoded, context)
-      token_after_second = Repo.get_by(ClientToken, id: token.id)
-
-      assert DateTime.compare(token_after_second.last_seen_at, token_after_first.last_seen_at) in [
-               :gt,
-               :eq
-             ]
+      assert is_nil(updated_token.latest_session)
     end
 
     test "returns error when actor is deleted" do
@@ -448,14 +419,12 @@ defmodule Portal.AuthenticationTest do
         )
 
       assert {:ok, subject} = authenticate(encoded, context)
-      updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
-      assert updated_token.last_seen_remote_ip.address == {0, 0, 0, 0, 0, 0, 0, 1}
+      assert subject.context.remote_ip == {0, 0, 0, 0, 0, 0, 0, 1}
     end
 
     test "handles various user agent strings" do
       encoded = encode_token(client_token_fixture())
 
-      # DB has 255 char limit for user_agent
       user_agent = String.duplicate("M", 255)
 
       context =
@@ -465,8 +434,7 @@ defmodule Portal.AuthenticationTest do
         )
 
       assert {:ok, subject} = authenticate(encoded, context)
-      updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
-      assert updated_token.last_seen_user_agent == user_agent
+      assert subject.context.user_agent == user_agent
     end
 
     test "subject contains auth_provider_id when present on token" do
@@ -894,7 +862,7 @@ defmodule Portal.AuthenticationTest do
       assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
-    test "updates last_seen fields on token" do
+    test "does not update last_seen fields on client token (moved to client_sessions)" do
       token = client_token_fixture()
       encoded = encode_token(token)
 
@@ -907,33 +875,9 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _used_token} = use_token(encoded, context)
 
+      # Client tokens no longer track last_seen_* — session data is stored in ClientSession
       updated_token = Repo.get_by(ClientToken, id: token.id)
-      assert updated_token.last_seen_remote_ip.address == {10, 0, 0, 1}
-      assert updated_token.last_seen_user_agent == "TestAgent/1.0"
-    end
-
-    test "updates all location fields" do
-      token = client_token_fixture()
-      encoded = encode_token(token)
-
-      context =
-        build_context(
-          type: :client,
-          remote_ip: {192, 168, 1, 1},
-          remote_ip_location_region: "US",
-          remote_ip_location_city: "New York",
-          remote_ip_location_lat: 40.7128,
-          remote_ip_location_lon: -74.0060,
-          user_agent: "Test/1.0"
-        )
-
-      assert {:ok, _} = use_token(encoded, context)
-
-      updated_token = Repo.get_by(ClientToken, id: token.id)
-      assert updated_token.last_seen_remote_ip_location_region == "US"
-      assert updated_token.last_seen_remote_ip_location_city == "New York"
-      assert updated_token.last_seen_remote_ip_location_lat == 40.7128
-      assert updated_token.last_seen_remote_ip_location_lon == -74.0060
+      assert is_nil(updated_token.latest_session)
     end
 
     test "can use token multiple times" do

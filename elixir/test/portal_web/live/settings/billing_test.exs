@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.BillingTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
+  import Portal.ClientSessionFixtures
   alias PortalWeb.Settings.Billing.Database
   alias Portal.Billing.Stripe.APIClient
 
@@ -151,8 +152,9 @@ defmodule PortalWeb.Settings.BillingTest do
       actor: actor,
       conn: conn
     } do
-      # Create a client with recent activity
-      _client = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
+      # Create a client with recent session
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
 
       {:ok, lv, _html} =
         conn
@@ -578,17 +580,31 @@ defmodule PortalWeb.Settings.BillingTest do
 
   describe "Database.count_1m_active_users_for_account/1" do
     test "counts users with recent client activity", %{account: account, actor: actor} do
-      # Create a client with recent activity
-      _client = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
+      # Create a client with recent session
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
 
       count = Database.count_1m_active_users_for_account(account)
       assert count == 1
     end
 
     test "excludes users with old client activity", %{account: account, actor: actor} do
-      # Create a client with old activity (more than 1 month ago)
+      # Create a client with old session (more than 1 month ago)
       two_months_ago = DateTime.utc_now() |> DateTime.add(-60, :day)
-      _old_client = client_fixture(account: account, actor: actor, last_seen_at: two_months_ago)
+      client = client_fixture(account: account, actor: actor)
+
+      session =
+        client_session_fixture(
+          account: account,
+          actor: actor,
+          client: client
+        )
+
+      # Backdate the session to more than a month ago
+      Portal.Repo.query!("UPDATE client_sessions SET inserted_at = $1 WHERE id = $2", [
+        two_months_ago,
+        Ecto.UUID.dump!(session.id)
+      ])
 
       count = Database.count_1m_active_users_for_account(account)
       assert count == 0
@@ -598,9 +614,11 @@ defmodule PortalWeb.Settings.BillingTest do
       account: account,
       actor: actor
     } do
-      # Create multiple clients for the same actor
-      _client1 = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
-      _client2 = client_fixture(account: account, actor: actor, last_seen_at: DateTime.utc_now())
+      # Create multiple clients for the same actor with sessions
+      client1 = client_fixture(account: account, actor: actor)
+      client2 = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client1)
+      client_session_fixture(account: account, actor: actor, client: client2)
 
       count = Database.count_1m_active_users_for_account(account)
       assert count == 1
@@ -609,8 +627,8 @@ defmodule PortalWeb.Settings.BillingTest do
     test "excludes disabled actors", %{account: account} do
       disabled_actor = disabled_actor_fixture(account: account, type: :account_user)
 
-      _client =
-        client_fixture(account: account, actor: disabled_actor, last_seen_at: DateTime.utc_now())
+      client = client_fixture(account: account, actor: disabled_actor)
+      client_session_fixture(account: account, actor: disabled_actor, client: client)
 
       count = Database.count_1m_active_users_for_account(account)
       assert count == 0

@@ -52,13 +52,6 @@ defmodule Portal.TokenFixtures do
         :secret_fragment,
         :secret_salt,
         :secret_hash,
-        :last_seen_user_agent,
-        :last_seen_remote_ip,
-        :last_seen_remote_ip_location_region,
-        :last_seen_remote_ip_location_city,
-        :last_seen_remote_ip_location_lat,
-        :last_seen_remote_ip_location_lon,
-        :last_seen_at,
         :expires_at
       ])
       |> Ecto.Changeset.put_assoc(:account, account)

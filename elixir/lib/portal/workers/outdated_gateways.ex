@@ -105,6 +105,7 @@ defmodule Portal.Workers.OutdatedGateways do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Client
+    alias Portal.ClientSession
 
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
@@ -143,12 +144,26 @@ defmodule Portal.Workers.OutdatedGateways do
 
       from(c in Client, as: :clients)
       |> where([clients: c], c.account_id == ^account.id)
-      |> where([clients: c], c.last_seen_at > ago(1, "week"))
-      |> where(
+      |> join(
+        :inner_lateral,
         [clients: c],
-        fragment("split_part(?, '.', 1)::int", c.last_seen_version) < ^g_major or
-          (fragment("split_part(?, '.', 1)::int", c.last_seen_version) == ^g_major and
-             fragment("split_part(?, '.', 2)::int", c.last_seen_version) <= ^(g_minor - 2))
+        s in subquery(
+          from(s in ClientSession,
+            where: s.client_id == parent_as(:clients).id,
+            where: s.account_id == parent_as(:clients).account_id,
+            order_by: [desc: s.inserted_at],
+            limit: 1
+          )
+        ),
+        on: true,
+        as: :latest_session
+      )
+      |> where([latest_session: s], s.inserted_at > ago(1, "week"))
+      |> where(
+        [latest_session: s],
+        fragment("split_part(?, '.', 1)::int", s.version) < ^g_major or
+          (fragment("split_part(?, '.', 1)::int", s.version) == ^g_major and
+             fragment("split_part(?, '.', 2)::int", s.version) <= ^(g_minor - 2))
       )
       |> join(:inner, [clients: c], a in Portal.Actor,
         on: c.actor_id == a.id and c.account_id == a.account_id,

@@ -1038,15 +1038,25 @@ defmodule PortalWeb.CoreComponents do
   def connection_status(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
+    last_seen_at =
+      if Map.has_key?(assigns.schema, :latest_session) do
+        session = Map.get(assigns.schema, :latest_session)
+        session && session.inserted_at
+      else
+        assigns.schema.last_seen_at
+      end
+
+    assigns = assign(assigns, :display_last_seen_at, last_seen_at)
+
     ~H"""
     <span class={["flex items-center", @class]}>
       <.ping_icon color={if @schema.online?, do: "success", else: "danger"} />
       <span
         class="ml-2.5"
         title={
-          if @schema.last_seen_at,
+          if @display_last_seen_at,
             do:
-              "Last started #{PortalWeb.Format.relative_datetime(@schema.last_seen_at, @relative_to)}",
+              "Last started #{PortalWeb.Format.relative_datetime(@display_last_seen_at, @relative_to)}",
             else: "Never connected"
         }
       >
@@ -1243,31 +1253,57 @@ defmodule PortalWeb.CoreComponents do
   attr :schema, :any, required: true
 
   def last_seen(assigns) do
-    ~H"""
-    <span class="inline-block">
-      {@schema.last_seen_remote_ip}
-    </span>
-    <span class="inline-block">
-      {[
-        @schema.last_seen_remote_ip_location_city,
-        Portal.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region)
-      ]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.join(", ")}
+    assigns = assign_last_seen_fields(assigns)
 
-      <a
-        :if={
-          not is_nil(@schema.last_seen_remote_ip_location_lat) and
-            not is_nil(@schema.last_seen_remote_ip_location_lon)
-        }
-        class="text-accent-800"
-        target="_blank"
-        href={"http://www.google.com/maps/place/#{@schema.last_seen_remote_ip_location_lat},#{@schema.last_seen_remote_ip_location_lon}"}
-      >
-        <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
-      </a>
-    </span>
+    ~H"""
+    <%= if @schema do %>
+      <span class="inline-block">
+        {@display_remote_ip}
+      </span>
+      <span class="inline-block">
+        {[
+          @display_remote_ip_location_city,
+          Portal.Geo.country_common_name!(@display_remote_ip_location_region)
+        ]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.join(", ")}
+
+        <a
+          :if={
+            not is_nil(@display_remote_ip_location_lat) and
+              not is_nil(@display_remote_ip_location_lon)
+          }
+          class="text-accent-800"
+          target="_blank"
+          href={"http://www.google.com/maps/place/#{@display_remote_ip_location_lat},#{@display_remote_ip_location_lon}"}
+        >
+          <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
+        </a>
+      </span>
+    <% else %>
+      <span class="inline-block">-</span>
+    <% end %>
     """
+  end
+
+  defp assign_last_seen_fields(%{schema: nil} = assigns), do: assigns
+
+  defp assign_last_seen_fields(%{schema: %Portal.ClientSession{} = s} = assigns) do
+    assigns
+    |> assign(:display_remote_ip, s.remote_ip)
+    |> assign(:display_remote_ip_location_city, s.remote_ip_location_city)
+    |> assign(:display_remote_ip_location_region, s.remote_ip_location_region)
+    |> assign(:display_remote_ip_location_lat, s.remote_ip_location_lat)
+    |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
+  end
+
+  defp assign_last_seen_fields(%{schema: s} = assigns) do
+    assigns
+    |> assign(:display_remote_ip, s.last_seen_remote_ip)
+    |> assign(:display_remote_ip_location_city, s.last_seen_remote_ip_location_city)
+    |> assign(:display_remote_ip_location_region, s.last_seen_remote_ip_location_region)
+    |> assign(:display_remote_ip_location_lat, s.last_seen_remote_ip_location_lat)
+    |> assign(:display_remote_ip_location_lon, s.last_seen_remote_ip_location_lon)
   end
 
   @doc """

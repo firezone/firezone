@@ -11,21 +11,11 @@ defmodule Portal.Client do
           id: Ecto.UUID.t(),
           external_id: String.t(),
           name: String.t(),
-          public_key: String.t(),
           psk_base: binary(),
           ipv4_address: Portal.IPv4Address.t(),
           ipv6_address: Portal.IPv6Address.t(),
-
-          # TODO: Remove fields redundant with Subject.Context
-          last_seen_user_agent: String.t(),
-          last_seen_remote_ip: Portal.Types.IP.t(),
-          last_seen_remote_ip_location_region: String.t(),
-          last_seen_remote_ip_location_city: String.t(),
-          last_seen_remote_ip_location_lat: float(),
-          last_seen_remote_ip_location_lon: float(),
-          last_seen_version: String.t(),
-          last_seen_at: DateTime.t(),
           online?: boolean(),
+          latest_session: Portal.ClientSession.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t(),
           device_serial: String.t() | nil,
@@ -41,28 +31,20 @@ defmodule Portal.Client do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
+    # TODO: remove last_seen_* fields in migration
+
     field :external_id, :string
-
     field :name, :string
-
-    field :public_key, :string
     field :psk_base, :binary, read_after_writes: true
-
-    field :last_seen_user_agent, :string
-    field :last_seen_remote_ip, Portal.Types.IP
-    field :last_seen_remote_ip_location_region, :string
-    field :last_seen_remote_ip_location_city, :string
-    field :last_seen_remote_ip_location_lat, :float
-    field :last_seen_remote_ip_location_lon, :float
-    field :last_seen_version, :string
-    field :last_seen_at, :utc_datetime_usec
-
+    field :latest_session, :any, virtual: true
     field :online?, :boolean, virtual: true
 
     belongs_to :actor, Portal.Actor
 
     has_one :ipv4_address, Portal.IPv4Address, references: :id
     has_one :ipv6_address, Portal.IPv6Address, references: :id
+
+    has_many :client_sessions, Portal.ClientSession, references: :id
 
     # Hardware Identifiers
     field :device_serial, :string
@@ -82,9 +64,6 @@ defmodule Portal.Client do
     |> validate_length(:name, min: 1, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
-    |> unique_constraint([:actor_id, :public_key],
-      name: :clients_account_id_actor_id_public_key_index
-    )
     |> unique_constraint([:actor_id, :external_id],
       name: :clients_account_id_actor_id_external_id_index
     )

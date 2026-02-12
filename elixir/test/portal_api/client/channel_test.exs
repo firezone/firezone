@@ -18,12 +18,36 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
-  defp join_channel(client, subject) do
+  defp join_channel(client, subject, opts \\ []) do
+    client_version =
+      Keyword.get_lazy(opts, :client_version, fn ->
+        case Portal.Version.fetch_version(subject.context.user_agent) do
+          {:ok, version} -> version
+          _ -> nil
+        end
+      end)
+
+    # Build a ClientSession struct to match what Socket.connect does
+    session = %Portal.ClientSession{
+      client_id: client.id,
+      account_id: client.account_id,
+      public_key: Portal.ClientFixtures.generate_public_key(),
+      user_agent: subject.context.user_agent,
+      remote_ip: subject.context.remote_ip,
+      remote_ip_location_region: subject.context.remote_ip_location_region,
+      remote_ip_location_city: subject.context.remote_ip_location_city,
+      remote_ip_location_lat: subject.context.remote_ip_location_lat,
+      remote_ip_location_lon: subject.context.remote_ip_location_lon,
+      version: client_version
+    }
+
     {:ok, _reply, socket} =
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
-        subject: subject
+        session: session,
+        subject: subject,
+        client_version: client_version
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -56,7 +80,15 @@ defmodule PortalAPI.Client.ChannelTest do
       membership_fixture(account: account, actor: actor, group: group)
 
     identity = identity_fixture(actor: actor, account: account)
-    subject = subject_fixture(account: account, actor: actor, type: :client)
+
+    subject =
+      subject_fixture(
+        account: account,
+        actor: actor,
+        type: :client,
+        user_agent: "Linux/24.04 connlib/1.3.0"
+      )
+
     client = client_fixture(account: account, actor: actor)
 
     site = site_fixture(account: account)
@@ -151,7 +183,7 @@ defmodule PortalAPI.Client.ChannelTest do
         %{
           property: :remote_ip_location_region,
           operator: :is_not_in,
-          values: [client.last_seen_remote_ip_location_region]
+          values: [subject.context.remote_ip_location_region]
         }
       ]
     )
@@ -241,7 +273,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: nil
+          },
+          subject: subject,
+          client_version: nil
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -259,7 +304,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: nil
+          },
+          subject: subject,
+          client_version: nil
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -420,7 +478,20 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
-        subject: subject
+        session: %Portal.ClientSession{
+          client_id: client.id,
+          account_id: client.account_id,
+          public_key: Portal.ClientFixtures.generate_public_key(),
+          user_agent: subject.context.user_agent,
+          remote_ip: subject.context.remote_ip,
+          remote_ip_location_region: subject.context.remote_ip_location_region,
+          remote_ip_location_city: subject.context.remote_ip_location_city,
+          remote_ip_location_lat: subject.context.remote_ip_location_lat,
+          remote_ip_location_lon: subject.context.remote_ip_location_lon,
+          version: nil
+        },
+        subject: subject,
+        client_version: nil
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -435,8 +506,6 @@ defmodule PortalAPI.Client.ChannelTest do
       site: site,
       group: group
     } do
-      client = %{client | last_seen_version: "1.1.55"}
-
       star_mapped_resource =
         dns_resource_fixture(
           address: "**.glob-example.com",
@@ -489,7 +558,20 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
-        subject: subject
+        session: %Portal.ClientSession{
+          client_id: client.id,
+          account_id: client.account_id,
+          public_key: Portal.ClientFixtures.generate_public_key(),
+          user_agent: subject.context.user_agent,
+          remote_ip: subject.context.remote_ip,
+          remote_ip_location_region: subject.context.remote_ip_location_region,
+          remote_ip_location_city: subject.context.remote_ip_location_city,
+          remote_ip_location_lat: subject.context.remote_ip_location_lat,
+          remote_ip_location_lon: subject.context.remote_ip_location_lon,
+          version: "1.1.55"
+        },
+        subject: subject,
+        client_version: "1.1.55"
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -522,7 +604,20 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
-        subject: subject
+        session: %Portal.ClientSession{
+          client_id: client.id,
+          account_id: client.account_id,
+          public_key: Portal.ClientFixtures.generate_public_key(),
+          user_agent: subject.context.user_agent,
+          remote_ip: subject.context.remote_ip,
+          remote_ip_location_region: subject.context.remote_ip_location_region,
+          remote_ip_location_city: subject.context.remote_ip_location_city,
+          remote_ip_location_lat: subject.context.remote_ip_location_lat,
+          remote_ip_location_lon: subject.context.remote_ip_location_lon,
+          version: nil
+        },
+        subject: subject,
+        client_version: nil
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -606,7 +701,20 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: client,
-        subject: subject
+        session: %Portal.ClientSession{
+          client_id: client.id,
+          account_id: client.account_id,
+          public_key: Portal.ClientFixtures.generate_public_key(),
+          user_agent: subject.context.user_agent,
+          remote_ip: subject.context.remote_ip,
+          remote_ip_location_region: subject.context.remote_ip_location_region,
+          remote_ip_location_city: subject.context.remote_ip_location_city,
+          remote_ip_location_lat: subject.context.remote_ip_location_lat,
+          remote_ip_location_lon: subject.context.remote_ip_location_lon,
+          version: nil
+        },
+        subject: subject,
+        client_version: nil
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -908,14 +1016,17 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor,
       subject: subject
     } do
-      # Create client in Texas (Houston area)
-      client =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_seen_remote_ip_location_lat: 29.69,
-          last_seen_remote_ip_location_lon: -95.90
-        )
+      # Set client location in Texas (Houston area) via subject context
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: 29.69,
+              remote_ip_location_lon: -95.90
+          }
+      }
+
+      client = client_fixture(account: account, actor: actor)
 
       # Create relays at different distances from Texas
       # Kansas (~930km from Houston)
@@ -942,13 +1053,16 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor,
       subject: subject
     } do
-      client =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_seen_remote_ip_location_lat: 29.69,
-          last_seen_remote_ip_location_lon: -95.90
-        )
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: 29.69,
+              remote_ip_location_lon: -95.90
+          }
+      }
+
+      client = client_fixture(account: account, actor: actor)
 
       # 2 relays in Kansas at the SAME coordinates (~930km from Houston)
       relay_kansas_1 = connect_relay(%{lat: 38.0, lon: -97.0})
@@ -990,14 +1104,17 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor,
       subject: subject
     } do
-      # Create client in Texas (Houston area)
-      client =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_seen_remote_ip_location_lat: 29.69,
-          last_seen_remote_ip_location_lon: -95.90
-        )
+      # Set client location in Texas (Houston area) via subject context
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: 29.69,
+              remote_ip_location_lon: -95.90
+          }
+      }
+
+      client = client_fixture(account: account, actor: actor)
 
       # Create relays with location
       relay_with_location_1 = connect_relay(%{lat: 38.0, lon: -97.0})
@@ -1023,14 +1140,17 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor,
       subject: subject
     } do
-      # Create client without location
-      client =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_seen_remote_ip_location_lat: nil,
-          last_seen_remote_ip_location_lon: nil
-        )
+      # Set no location on subject context
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: nil,
+              remote_ip_location_lon: nil
+          }
+      }
+
+      client = client_fixture(account: account, actor: actor)
 
       _relay1 = connect_relay(%{lat: 37.7749, lon: -122.4194})
       _relay2 = connect_relay(%{lat: 37.7749, lon: -122.4194})
@@ -2229,7 +2349,7 @@ defmodule PortalAPI.Client.ChannelTest do
             %{
               property: :remote_ip_location_region,
               operator: :is_not_in,
-              values: [client.last_seen_remote_ip_location_region]
+              values: [subject.context.remote_ip_location_region]
             }
           ]
         )
@@ -2528,7 +2648,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: nil
+          },
+          subject: subject,
+          client_version: nil
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -2581,7 +2714,7 @@ defmodule PortalAPI.Client.ChannelTest do
         Portal.Presence.Relays.connect(global_relay)
 
       # Use an older client version for this test
-      client = %{client | last_seen_version: "1.4.55"}
+      client_version = "1.4.55"
 
       gateway =
         gateway_fixture(
@@ -2601,7 +2734,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: client_version
+          },
+          subject: subject,
+          client_version: client_version
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -3171,7 +3317,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: nil
+          },
+          subject: subject,
+          client_version: nil
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -3200,7 +3359,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok =
         Portal.Presence.Relays.connect(global_relay)
 
-      client = %{client | last_seen_version: "1.2.55"}
+      client_version = "1.2.55"
 
       gateway =
         gateway_fixture(
@@ -3218,7 +3377,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: client_version
+          },
+          subject: subject,
+          client_version: client_version
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -3332,7 +3504,7 @@ defmodule PortalAPI.Client.ChannelTest do
             %{
               property: :remote_ip_location_region,
               operator: :is_not_in,
-              values: [client.last_seen_remote_ip_location_region]
+              values: [subject.context.remote_ip_location_region]
             }
           ]
         )
@@ -3515,7 +3687,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: nil
+          },
+          subject: subject,
+          client_version: nil
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
@@ -3672,7 +3857,7 @@ defmodule PortalAPI.Client.ChannelTest do
             %{
               property: :remote_ip_location_region,
               operator: :is_not_in,
-              values: [client.last_seen_remote_ip_location_region]
+              values: [subject.context.remote_ip_location_region]
             }
           ]
         )
@@ -3810,7 +3995,20 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject
+          session: %Portal.ClientSession{
+            client_id: client.id,
+            account_id: client.account_id,
+            public_key: Portal.ClientFixtures.generate_public_key(),
+            user_agent: subject.context.user_agent,
+            remote_ip: subject.context.remote_ip,
+            remote_ip_location_region: subject.context.remote_ip_location_region,
+            remote_ip_location_city: subject.context.remote_ip_location_city,
+            remote_ip_location_lat: subject.context.remote_ip_location_lat,
+            remote_ip_location_lon: subject.context.remote_ip_location_lon,
+            version: nil
+          },
+          subject: subject,
+          client_version: nil
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 

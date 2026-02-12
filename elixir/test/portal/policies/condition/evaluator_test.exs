@@ -228,9 +228,10 @@ defmodule Portal.Policies.EvaluatorTest do
   #  end
   # end
 
-  describe "fetch_conformation_expiration/3 with remote_ip_location_region" do
+  describe "fetch_conformation_expiration/4 with remote_ip_location_region" do
     test "returns error when region is nil regardless of operator" do
-      client = %Portal.Client{last_seen_remote_ip_location_region: nil}
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip_location_region: nil}
 
       is_in_condition = %{
         property: :remote_ip_location_region,
@@ -245,12 +246,13 @@ defmodule Portal.Policies.EvaluatorTest do
       }
 
       # Both should fail when region is unknown - conservative approach
-      assert fetch_conformation_expiration(is_in_condition, client, nil) == :error
-      assert fetch_conformation_expiration(is_not_in_condition, client, nil) == :error
+      assert fetch_conformation_expiration(is_in_condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(is_not_in_condition, client, session, nil) == :error
     end
 
     test "returns ok when region matches is_in values" do
-      client = %Portal.Client{last_seen_remote_ip_location_region: "US"}
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip_location_region: "US"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -258,11 +260,12 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
     end
 
     test "returns error when region does not match is_in values" do
-      client = %Portal.Client{last_seen_remote_ip_location_region: "GB"}
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip_location_region: "GB"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -270,11 +273,12 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, nil) == :error
+      assert fetch_conformation_expiration(condition, client, session, nil) == :error
     end
 
     test "returns ok when region does not match is_not_in values" do
-      client = %Portal.Client{last_seen_remote_ip_location_region: "GB"}
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip_location_region: "GB"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -282,11 +286,12 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
     end
 
     test "returns error when region matches is_not_in values" do
-      client = %Portal.Client{last_seen_remote_ip_location_region: "US"}
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip_location_region: "US"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -294,7 +299,7 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, nil) == :error
+      assert fetch_conformation_expiration(condition, client, session, nil) == :error
     end
   end
 

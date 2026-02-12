@@ -11,6 +11,9 @@ defmodule Portal.ClientToken do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     belongs_to :actor, Portal.Actor
+
+    has_many :client_sessions, Portal.ClientSession, references: :id
+
     belongs_to :auth_provider, Portal.AuthProvider
 
     # we store just hash(nonce+fragment+salt)
@@ -19,13 +22,7 @@ defmodule Portal.ClientToken do
     field :secret_salt, :string, redact: true
     field :secret_hash, :string, redact: true
 
-    field :last_seen_user_agent, :string
-    field :last_seen_remote_ip, Portal.Types.IP
-    field :last_seen_remote_ip_location_region, :string
-    field :last_seen_remote_ip_location_city, :string
-    field :last_seen_remote_ip_location_lat, :float
-    field :last_seen_remote_ip_location_lon, :float
-    field :last_seen_at, :utc_datetime_usec
+    field :latest_session, :any, virtual: true
 
     field :expires_at, :utc_datetime_usec
 
