@@ -116,7 +116,7 @@ defmodule PortalWeb.Clients.Show do
             <:label>Version</:label>
             <:value>
               <.version
-                current={@client.last_seen_version}
+                current={@client.latest_session && @client.latest_session.version}
                 latest={ComponentVersions.client_version(@client)}
               />
             </:value>
@@ -124,7 +124,7 @@ defmodule PortalWeb.Clients.Show do
           <.vertical_table_row>
             <:label>User agent</:label>
             <:value>
-              {@client.last_seen_user_agent}
+              {@client.latest_session && @client.latest_session.user_agent}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -144,7 +144,9 @@ defmodule PortalWeb.Clients.Show do
           <.vertical_table_row>
             <:label>Last started</:label>
             <:value>
-              <.relative_datetime datetime={@client.last_seen_at} />
+              <.relative_datetime datetime={
+                @client.latest_session && @client.latest_session.inserted_at
+              } />
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -238,7 +240,7 @@ defmodule PortalWeb.Clients.Show do
           <.vertical_table_row>
             <:label>Last seen remote IP</:label>
             <:value>
-              <.last_seen schema={@client} />
+              <.last_seen schema={@client.latest_session} />
             </:value>
           </.vertical_table_row>
 
@@ -370,17 +372,22 @@ defmodule PortalWeb.Clients.Show do
     end)
   end
 
-  defp hardware_id_title(%{last_seen_user_agent: "Mac OS/" <> _}, :device_serial),
+  defp hardware_id_title(%{latest_session: %{user_agent: "Mac OS/" <> _}}, :device_serial),
     do: {"Device Serial", nil}
 
-  defp hardware_id_title(%{last_seen_user_agent: "Mac OS/" <> _}, :device_uuid),
+  defp hardware_id_title(%{latest_session: %{user_agent: "Mac OS/" <> _}}, :device_uuid),
     do: {"Device UUID", nil}
 
-  defp hardware_id_title(%{last_seen_user_agent: "iOS/" <> _}, :identifier_for_vendor),
+  defp hardware_id_title(%{latest_session: %{user_agent: "iOS/" <> _}}, :identifier_for_vendor),
     do: {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
 
-  defp hardware_id_title(%{last_seen_user_agent: "Android/" <> _}, :firebase_installation_id),
-    do: {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
+  defp hardware_id_title(
+         %{latest_session: %{user_agent: "Android/" <> _}},
+         :firebase_installation_id
+       ),
+       do:
+         {"App installation ID",
+          "This value is reset if the Firezone application is reinstalled."}
 
   defp hardware_id_title(_client, :device_serial),
     do: {"Device Serial", nil}
@@ -471,15 +478,28 @@ defmodule PortalWeb.Clients.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Clients, ClientSession, Safe}
     alias Portal.Client
 
     def get_client!(id, subject) do
-      from(c in Client, as: :clients)
-      |> where([clients: c], c.id == ^id)
-      |> preload([:actor, :ipv4_address, :ipv6_address])
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      client =
+        from(c in Client, as: :clients)
+        |> where([clients: c], c.id == ^id)
+        |> preload([:actor, :ipv4_address, :ipv6_address])
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one!(fallback_to_primary: true)
+
+      session =
+        from(s in ClientSession,
+          where: s.account_id == ^client.account_id,
+          where: s.client_id == ^client.id,
+          order_by: [desc: s.inserted_at],
+          limit: 1
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      %{client | latest_session: session}
     end
 
     def verify_client(changeset, subject) do

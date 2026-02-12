@@ -1,6 +1,6 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Portal.{Authentication, Version}
+  alias Portal.{Authentication, ClientSession, Version}
   alias Portal.Client
   alias __MODULE__.Database
   require Logger
@@ -27,48 +27,115 @@ defmodule PortalAPI.Client.Socket do
   end
 
   @impl true
-
   def id(socket) do
     Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
   end
 
-  defp upsert_changeset(actor, subject, attrs) do
-    required_fields = ~w[external_id name public_key]a
+  ## Private functions
+
+  defp do_connect(token, attrs, socket, connect_info) do
+    context = PortalAPI.Sockets.auth_context(connect_info, :client)
+
+    with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
+           Authentication.authenticate(token, context),
+         false <- Portal.Billing.client_connect_restricted?(subject.account),
+         {:ok, public_key} <- validate_public_key(attrs),
+         changeset = insert_changeset(subject.actor, subject, attrs),
+         {:ok, client} <- Database.find_or_create_client(changeset, attrs) do
+      version = derive_version(subject.context.user_agent)
+      session = build_session(client, token_id, public_key, subject, version)
+      Portal.ClientSession.Buffer.insert(session)
+      set_connect_attributes(token_id, client, subject, version)
+      {:ok, assign_connect(socket, subject, client, session, version)}
+    else
+      {:error, :unauthorized} ->
+        OpenTelemetry.Tracer.set_status(:error, "unauthorized")
+        {:error, :invalid_token}
+
+      true ->
+        OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
+        {:error, :limits_exceeded}
+
+      {:error, reason} ->
+        OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+        Logger.debug("Error connecting client websocket: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp build_session(client, token_id, public_key, subject, version) do
+    %ClientSession{
+      client_id: client.id,
+      account_id: client.account_id,
+      client_token_id: token_id,
+      public_key: public_key,
+      user_agent: subject.context.user_agent,
+      remote_ip: subject.context.remote_ip,
+      remote_ip_location_region: subject.context.remote_ip_location_region,
+      remote_ip_location_city: subject.context.remote_ip_location_city,
+      remote_ip_location_lat: subject.context.remote_ip_location_lat,
+      remote_ip_location_lon: subject.context.remote_ip_location_lon,
+      version: version
+    }
+  end
+
+  defp set_connect_attributes(token_id, client, subject, version) do
+    OpenTelemetry.Tracer.set_attributes(%{
+      token_id: token_id,
+      client_id: client.id,
+      lat: subject.context.remote_ip_location_lat,
+      lon: subject.context.remote_ip_location_lon,
+      version: version,
+      account_id: subject.account.id
+    })
+  end
+
+  defp assign_connect(socket, subject, client, session, version) do
+    socket
+    |> assign(:subject, subject)
+    |> assign(:client, client)
+    |> assign(:session, session)
+    |> assign(:client_version, version)
+    |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
+    |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
+  end
+
+  defp insert_changeset(actor, subject, attrs) do
+    required_fields = ~w[external_id name]a
 
     hardware_identifiers =
       ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
 
-    upsert_fields = required_fields ++ hardware_identifiers
+    insert_fields = required_fields ++ hardware_identifiers
 
     %Client{}
-    |> cast(attrs, upsert_fields)
+    |> cast(attrs, insert_fields)
     |> put_default_value(:name, &generate_name/0)
     |> put_change(:actor_id, actor.id)
     |> put_change(:account_id, actor.account_id)
-    |> put_change(:last_seen_user_agent, subject.context.user_agent)
-    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: subject.context.remote_ip})
-    |> put_change(:last_seen_remote_ip_location_region, subject.context.remote_ip_location_region)
-    |> put_change(:last_seen_remote_ip_location_city, subject.context.remote_ip_location_city)
-    |> put_change(:last_seen_remote_ip_location_lat, subject.context.remote_ip_location_lat)
-    |> put_change(:last_seen_remote_ip_location_lon, subject.context.remote_ip_location_lon)
     |> validate_required(required_fields)
     |> Portal.Client.changeset()
-    |> validate_base64(:public_key)
-    |> validate_length(:public_key, is: 44)
-    |> put_change(:last_seen_at, DateTime.utc_now())
-    |> put_client_version()
+    |> validate_user_agent(subject.context.user_agent)
   end
 
-  defp put_client_version(changeset) do
-    import Ecto.Changeset
+  defp validate_public_key(attrs) do
+    changeset =
+      {%{}, %{public_key: :string}}
+      |> cast(attrs, [:public_key])
+      |> validate_required([:public_key])
+      |> validate_base64(:public_key)
+      |> validate_length(:public_key, is: 44)
 
-    with {_data_or_changes, user_agent} when not is_nil(user_agent) <-
-           Ecto.Changeset.fetch_field(changeset, :last_seen_user_agent),
-         {:ok, version} <- Version.fetch_version(user_agent) do
-      put_change(changeset, :last_seen_version, version)
-    else
-      {:error, :invalid_user_agent} -> add_error(changeset, :last_seen_user_agent, "is invalid")
-      _ -> changeset
+    case apply_action(changeset, :validate) do
+      {:ok, %{public_key: public_key}} -> {:ok, public_key}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp validate_user_agent(changeset, user_agent) do
+    case Version.fetch_version(user_agent) do
+      {:ok, _version} -> changeset
+      {:error, :invalid_user_agent} -> add_error(changeset, :user_agent, "is invalid")
     end
   end
 
@@ -88,46 +155,16 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  defp do_connect(token, attrs, socket, connect_info) do
-    context = PortalAPI.Sockets.auth_context(connect_info, :client)
-
-    with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
-           Authentication.authenticate(token, context),
-         false <- Portal.Billing.client_connect_restricted?(subject.account),
-         changeset = upsert_changeset(subject.actor, subject, attrs),
-         {:ok, client} <- Database.upsert_client(changeset, subject) do
-      OpenTelemetry.Tracer.set_attributes(%{
-        token_id: token_id,
-        client_id: client.id,
-        lat: client.last_seen_remote_ip_location_lat,
-        lon: client.last_seen_remote_ip_location_lon,
-        version: client.last_seen_version,
-        account_id: subject.account.id
-      })
-
-      socket =
-        socket
-        |> assign(:subject, subject)
-        |> assign(:client, client)
-        |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
-        |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
-
-      {:ok, socket}
-    else
-      {:error, :unauthorized} ->
-        OpenTelemetry.Tracer.set_status(:error, "unauthorized")
-        {:error, :invalid_token}
-
-      true ->
-        OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
-        {:error, :limits_exceeded}
-
-      {:error, reason} ->
-        OpenTelemetry.Tracer.set_status(:error, inspect(reason))
-        Logger.debug("Error connecting client websocket: #{inspect(reason)}")
-        {:error, reason}
+  defp derive_version(user_agent) when is_binary(user_agent) do
+    case Version.fetch_version(user_agent) do
+      {:ok, version} -> version
+      _ -> nil
     end
   end
+
+  defp derive_version(_), do: nil
+
+  ## Database
 
   defmodule Database do
     import Ecto.Query
@@ -135,50 +172,44 @@ defmodule PortalAPI.Client.Socket do
     alias Portal.IPv4Address
     alias Portal.IPv6Address
     alias Portal.Safe
+    require Logger
 
-    # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
-    @dialyzer {:no_opaque, upsert_client: 2}
-    def upsert_client(changeset, _subject) do
+    @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
+
+    @dialyzer {:no_opaque, [find_or_create_client: 2, insert_new_client: 2]}
+    def find_or_create_client(changeset, attrs) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
       external_id = Ecto.Changeset.get_field(changeset, :external_id)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.run(:existing_client, fn _repo, _changes ->
-        existing =
-          if external_id do
-            from(c in Client,
-              where: c.account_id == ^account_id,
-              where: c.actor_id == ^actor_id,
-              where: c.external_id == ^external_id,
-              preload: [:ipv4_address, :ipv6_address]
-            )
-            |> Safe.unscoped()
-            |> Safe.one()
-          end
+      existing =
+        if external_id do
+          from(c in Client,
+            where: c.account_id == ^account_id,
+            where: c.actor_id == ^actor_id,
+            where: c.external_id == ^external_id,
+            preload: [:ipv4_address, :ipv6_address]
+          )
+          |> Safe.unscoped(:replica)
+          |> Safe.one(fallback_to_primary: true)
+        end
 
+      if existing do
+        check_hardware_id_mismatch(existing, attrs)
         {:ok, existing}
+      else
+        insert_new_client(changeset, account_id)
+      end
+    end
+
+    defp insert_new_client(changeset, account_id) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:client, changeset)
+      |> Ecto.Multi.run(:ipv4_address, fn _repo, %{client: client} ->
+        IPv4Address.allocate_next_available_address(account_id, client_id: client.id)
       end)
-      |> Ecto.Multi.insert(
-        :client,
-        changeset,
-        conflict_target: upsert_conflict_target(),
-        on_conflict: upsert_on_conflict(),
-        returning: true
-      )
-      |> Ecto.Multi.run(:ipv4_address, fn _repo, %{existing_client: existing, client: client} ->
-        if existing do
-          {:ok, existing.ipv4_address}
-        else
-          IPv4Address.allocate_next_available_address(account_id, client_id: client.id)
-        end
-      end)
-      |> Ecto.Multi.run(:ipv6_address, fn _repo, %{existing_client: existing, client: client} ->
-        if existing do
-          {:ok, existing.ipv6_address}
-        else
-          IPv6Address.allocate_next_available_address(account_id, client_id: client.id)
-        end
+      |> Ecto.Multi.run(:ipv6_address, fn _repo, %{client: client} ->
+        IPv6Address.allocate_next_available_address(account_id, client_id: client.id)
       end)
       |> Safe.transact()
       |> case do
@@ -190,53 +221,29 @@ defmodule PortalAPI.Client.Socket do
       end
     end
 
-    defp upsert_conflict_target do
-      {:unsafe_fragment, ~s/(account_id, actor_id, external_id)/}
-    end
+    defp check_hardware_id_mismatch(existing_client, attrs) do
+      mismatched =
+        Enum.filter(@hardware_id_fields, fn field ->
+          existing_value = Map.get(existing_client, field)
+          new_value = Map.get(attrs, to_string(field))
 
-    defp upsert_on_conflict do
-      from(c in Client, as: :clients)
-      |> update([clients: clients],
-        set: [
-          public_key: fragment("EXCLUDED.public_key"),
-          last_seen_user_agent: fragment("EXCLUDED.last_seen_user_agent"),
-          last_seen_remote_ip: fragment("EXCLUDED.last_seen_remote_ip"),
-          last_seen_remote_ip_location_region:
-            fragment("EXCLUDED.last_seen_remote_ip_location_region"),
-          last_seen_remote_ip_location_city:
-            fragment("EXCLUDED.last_seen_remote_ip_location_city"),
-          last_seen_remote_ip_location_lat: fragment("EXCLUDED.last_seen_remote_ip_location_lat"),
-          last_seen_remote_ip_location_lon: fragment("EXCLUDED.last_seen_remote_ip_location_lon"),
-          last_seen_version: fragment("EXCLUDED.last_seen_version"),
-          last_seen_at: fragment("EXCLUDED.last_seen_at"),
-          device_serial: fragment("EXCLUDED.device_serial"),
-          device_uuid: fragment("EXCLUDED.device_uuid"),
-          identifier_for_vendor: fragment("EXCLUDED.identifier_for_vendor"),
-          firebase_installation_id: fragment("EXCLUDED.firebase_installation_id"),
-          updated_at: fragment("timezone('UTC', NOW())"),
-          verified_at:
-            fragment(
-              """
-              CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
-                    AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
-                    AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
-                    AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
-                   THEN ?
-                   ELSE NULL
-              END
-              """,
-              clients,
-              clients,
-              clients,
-              clients,
-              clients,
-              clients,
-              clients,
-              clients,
-              clients.verified_at
-            )
-        ]
-      )
+          not is_nil(existing_value) and not is_nil(new_value) and existing_value != new_value
+        end)
+
+      if mismatched != [] do
+        details =
+          Enum.flat_map(mismatched, fn field ->
+            existing_value = Map.get(existing_client, field)
+            new_value = Map.get(attrs, to_string(field))
+
+            [{field, %{existing: existing_value, new: new_value}}]
+          end)
+
+        Logger.warning(
+          "Hardware ID mismatch for client",
+          [client_id: existing_client.id] ++ details
+        )
+      end
     end
   end
 end

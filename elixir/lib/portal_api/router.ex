@@ -41,6 +41,8 @@ defmodule PortalAPI.Router do
     put "/clients/:id/verify", ClientController, :verify
     put "/clients/:id/unverify", ClientController, :unverify
 
+    resources "/client_sessions", ClientSessionController, only: [:index, :show]
+
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 

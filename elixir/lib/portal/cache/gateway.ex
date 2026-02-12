@@ -226,8 +226,6 @@ defmodule Portal.Cache.Gateway do
 
     @infinity ~U[9999-12-31 23:59:59.999999Z]
 
-    defp repo, do: Portal.Config.fetch_env!(:portal, :replica_repo)
-
     def all_gateway_policy_authorizations_for_cache!(%Portal.Gateway{} = gateway) do
       now = DateTime.utc_now()
 
@@ -239,23 +237,30 @@ defmodule Portal.Cache.Gateway do
         [policy_authorizations: f],
         {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
       )
-      |> Safe.unscoped(repo())
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 
-    def fetch_client_by_id!(id, _opts \\ []) do
-      from(c in Portal.Client, as: :clients)
-      |> where([clients: c], c.id == ^id)
-      |> Safe.unscoped()
-      |> Safe.one()
+    def fetch_client_by_id(account_id, id) do
+      client =
+        from(c in Portal.Client, as: :clients)
+        |> where([clients: c], c.account_id == ^account_id and c.id == ^id)
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      if client do
+        {:ok, client}
+      else
+        {:error, :not_found}
+      end
     end
 
-    def fetch_gateway_by_id(id) do
+    def fetch_gateway_by_id(account_id, id) do
       result =
         from(g in Portal.Gateway, as: :gateways)
-        |> where([gateways: g], g.id == ^id)
-        |> Safe.unscoped()
-        |> Safe.one()
+        |> where([gateways: g], g.account_id == ^account_id and g.id == ^id)
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
 
       if result do
         {:ok, result}
@@ -264,59 +269,20 @@ defmodule Portal.Cache.Gateway do
       end
     end
 
-    def fetch_client_token_by_id(id) do
+    def fetch_client_token_by_id(account_id, id) do
       result =
         from(t in Portal.ClientToken,
+          where: t.account_id == ^account_id,
           where: t.id == ^id,
           where: t.expires_at > ^DateTime.utc_now()
         )
-        |> Safe.unscoped()
-        |> Safe.one()
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
 
       if result do
         {:ok, result}
       else
         {:error, :not_found}
-      end
-    end
-
-    def fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
-      from(m in Portal.Membership,
-        where: m.actor_id == ^actor_id,
-        where: m.group_id == ^group_id
-      )
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        membership -> {:ok, membership}
-      end
-    end
-
-    def everyone_group?(group_id, account_id) do
-      from(g in Portal.Group,
-        where:
-          g.id == ^group_id and
-            g.type == :managed and
-            is_nil(g.idp_id) and
-            g.name == "Everyone" and
-            g.account_id == ^account_id
-      )
-      |> Safe.unscoped()
-      |> Safe.exists?()
-    end
-
-    def fetch_membership_id_or_nil_for_everyone(actor_id, group_id, account_id) do
-      case fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
-        {:ok, membership} ->
-          {:ok, membership.id}
-
-        {:error, :not_found} ->
-          if everyone_group?(group_id, account_id) do
-            {:ok, nil}
-          else
-            {:error, :membership_not_found}
-          end
       end
     end
 
@@ -358,9 +324,20 @@ defmodule Portal.Cache.Gateway do
     end
 
     def reauthorize_policy_authorization(%Portal.PolicyAuthorization{} = policy_authorization) do
-      with client when not is_nil(client) <- fetch_client_by_id!(policy_authorization.client_id),
-           {:ok, token} <- fetch_client_token_by_id(policy_authorization.token_id),
-           {:ok, gateway} <- fetch_gateway_by_id(policy_authorization.gateway_id),
+      with {:ok, client} <-
+             fetch_client_by_id(policy_authorization.account_id, policy_authorization.client_id),
+           {:ok, session} <-
+             fetch_latest_session_for_client(
+               policy_authorization.account_id,
+               policy_authorization.client_id
+             ),
+           {:ok, token} <-
+             fetch_client_token_by_id(
+               policy_authorization.account_id,
+               policy_authorization.token_id
+             ),
+           {:ok, gateway} <-
+             fetch_gateway_by_id(policy_authorization.account_id, policy_authorization.gateway_id),
            # We only want to reauthorize the resource for this gateway if the resource is still connected to its
            # site.
            policies when policies != [] <-
@@ -374,6 +351,7 @@ defmodule Portal.Cache.Gateway do
              longest_conforming_policy_for_client(
                policies,
                client,
+               session,
                token,
                policy_authorization.expires_at
              ),
@@ -393,8 +371,8 @@ defmodule Portal.Cache.Gateway do
                resource_id: policy_authorization.resource_id,
                membership_id: membership_id,
                account_id: policy_authorization.account_id,
-               client_remote_ip: client.last_seen_remote_ip,
-               client_user_agent: client.last_seen_user_agent,
+               client_remote_ip: session.remote_ip,
+               client_user_agent: session.user_agent,
                gateway_remote_ip: policy_authorization.gateway_remote_ip,
                expires_at: expires_at
              })
@@ -417,10 +395,70 @@ defmodule Portal.Cache.Gateway do
       end
     end
 
-    defp longest_conforming_policy_for_client(policies, client, auth_provider_id, expires_at) do
+    defp fetch_latest_session_for_client(account_id, client_id) do
+      result =
+        from(s in Portal.ClientSession,
+          where: s.account_id == ^account_id and s.client_id == ^client_id,
+          order_by: [desc: s.inserted_at],
+          limit: 1
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      if result, do: {:ok, result}, else: {:error, :not_found}
+    end
+
+    defp fetch_membership_by_actor_id_and_group_id(account_id, actor_id, group_id) do
+      from(m in Portal.Membership,
+        where: m.account_id == ^account_id,
+        where: m.actor_id == ^actor_id,
+        where: m.group_id == ^group_id
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_prmary: true)
+      |> case do
+        nil -> {:error, :not_found}
+        membership -> {:ok, membership}
+      end
+    end
+
+    defp everyone_group?(account_id, group_id) do
+      from(g in Portal.Group,
+        where:
+          g.account_id == ^account_id and
+            g.id == ^group_id and
+            g.type == :managed and
+            is_nil(g.idp_id) and
+            g.name == "Everyone"
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?(fallback_to_primary: true)
+    end
+
+    defp fetch_membership_id_or_nil_for_everyone(account_id, actor_id, group_id) do
+      case fetch_membership_by_actor_id_and_group_id(account_id, actor_id, group_id) do
+        {:ok, membership} ->
+          {:ok, membership.id}
+
+        {:error, :not_found} ->
+          if everyone_group?(account_id, group_id) do
+            {:ok, nil}
+          else
+            {:error, :membership_not_found}
+          end
+      end
+    end
+
+    defp longest_conforming_policy_for_client(
+           policies,
+           client,
+           session,
+           auth_provider_id,
+           expires_at
+         ) do
       policies
       |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
-        case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
+        case ensure_client_conforms_policy_conditions(policy, client, session, auth_provider_id) do
           {:ok, expires_at} ->
             %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
 
@@ -443,11 +481,13 @@ defmodule Portal.Cache.Gateway do
     defp ensure_client_conforms_policy_conditions(
            %Portal.Policy{} = policy,
            %Portal.Client{} = client,
+           %Portal.ClientSession{} = session,
            auth_provider_id
          ) do
       ensure_client_conforms_policy_conditions(
         Portal.Cache.Cacheable.to_cache(policy),
         client,
+        session,
         auth_provider_id
       )
     end
@@ -455,9 +495,15 @@ defmodule Portal.Cache.Gateway do
     defp ensure_client_conforms_policy_conditions(
            %Portal.Cache.Cacheable.Policy{} = policy,
            %Portal.Client{} = client,
+           %Portal.ClientSession{} = session,
            auth_provider_id
          ) do
-      case Portal.Policies.Evaluator.ensure_conforms(policy.conditions, client, auth_provider_id) do
+      case Portal.Policies.Evaluator.ensure_conforms(
+             policy.conditions,
+             client,
+             session,
+             auth_provider_id
+           ) do
         {:ok, expires_at} ->
           {:ok, expires_at}
 

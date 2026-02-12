@@ -21,7 +21,7 @@ defmodule Portal.Actor do
     field :name, :string
 
     has_many :identities, Portal.ExternalIdentity, references: :id
-    has_many :clients, Portal.Client, preload_order: [desc: :last_seen_at], references: :id
+    has_many :clients, Portal.Client, preload_order: [desc: :inserted_at], references: :id
     has_many :client_tokens, Portal.ClientToken, references: :id
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id

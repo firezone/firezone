@@ -51,15 +51,17 @@ defmodule Portal.ComponentVersions do
     end
   end
 
-  def get_component_type(%Client{last_seen_user_agent: "Mac OS" <> _rest}), do: :apple
-  def get_component_type(%Client{last_seen_user_agent: "iOS" <> _rest}), do: :apple
-
-  def get_component_type(%Client{last_seen_user_agent: "Android" <> _rest}),
-    do: :android
-
   def get_component_type(%Client{actor: %Portal.Actor{type: :service_account}}), do: :headless
 
-  def get_component_type(_), do: :gui
+  def get_component_type(%Client{latest_session: %{user_agent: ua}}) when is_binary(ua),
+    do: get_component_type_from_user_agent(ua)
+
+  def get_component_type(%Client{}), do: :gui
+
+  def get_component_type_from_user_agent("Mac OS" <> _rest), do: :apple
+  def get_component_type_from_user_agent("iOS" <> _rest), do: :apple
+  def get_component_type_from_user_agent("Android" <> _rest), do: :android
+  def get_component_type_from_user_agent(_), do: :gui
 
   defp fetch_config! do
     Portal.Config.fetch_env!(:portal, __MODULE__)

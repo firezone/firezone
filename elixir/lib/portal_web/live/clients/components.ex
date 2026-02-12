@@ -45,29 +45,42 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
+  defp client_user_agent(client) do
+    case client.latest_session do
+      %{user_agent: ua} -> ua
+      _ -> nil
+    end
+  end
+
   def client_os(assigns) do
+    assigns = assign(assigns, :user_agent, client_user_agent(assigns.client))
+
     ~H"""
     <div class="flex items-center">
       <span class="mr-1 mb-1"><.client_os_icon client={@client} /></span>
-      {get_client_os_name_and_version(@client.last_seen_user_agent)}
+      {get_client_os_name_and_version(@user_agent)}
     </div>
     """
   end
 
   def client_os_icon(assigns) do
+    assigns = assign(assigns, :user_agent, client_user_agent(assigns.client))
+
     ~H"""
     <.icon
-      name={client_os_icon_name(@client.last_seen_user_agent)}
-      title={get_client_os_name_and_version(@client.last_seen_user_agent)}
+      name={client_os_icon_name(@user_agent)}
+      title={get_client_os_name_and_version(@user_agent)}
       class="w-5 h-5"
     />
     """
   end
 
   def client_os_name_and_version(assigns) do
+    assigns = assign(assigns, :user_agent, client_user_agent(assigns.client))
+
     ~H"""
     <span>
-      {get_client_os_name_and_version(@client.last_seen_user_agent)}
+      {get_client_os_name_and_version(@user_agent)}
     </span>
     """
   end
@@ -93,7 +106,10 @@ defmodule PortalWeb.Clients.Components do
         </div>
         <div>
           <span>Last started:</span>
-          <.relative_datetime datetime={@client.last_seen_at} popover={false} />
+          <.relative_datetime
+            datetime={@client.latest_session && @client.latest_session.inserted_at}
+            popover={false}
+          />
         </div>
         <div>
           <.connection_status schema={@client} />
@@ -166,6 +182,8 @@ defmodule PortalWeb.Clients.Components do
 
   # This is more complex than it needs to be, but
   # connlib can send "Mac OS" (with a space) violating the User-Agent spec
+  defp get_client_os_name_and_version(nil), do: ""
+
   defp get_client_os_name_and_version(user_agent) do
     String.split(user_agent, " ")
     |> Enum.reduce_while("", fn component, acc ->

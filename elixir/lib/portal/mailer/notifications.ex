@@ -12,7 +12,7 @@ defmodule Portal.Mailer.Notifications do
   embed_templates "notifications/*.text", suffix: "_text"
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, email) do
-    params = %{clients_order_by: "clients:asc:last_seen_version"}
+    params = %{clients_order_by: "latest_session:asc:version"}
     outdated_clients_url = url(~p"/#{account.id}/clients?#{params}")
 
     default_email()

@@ -1,20 +1,26 @@
 defmodule Portal.Policies.Evaluator do
   alias Portal.Client
+  alias Portal.ClientSession
 
   @days_of_week ~w[M T W R F S U]
 
-  def ensure_conforms([], %Client{}, _auth_provider_id) do
+  def ensure_conforms([], %Client{}, %ClientSession{}, _auth_provider_id) do
     {:ok, nil}
   end
 
-  def ensure_conforms(conditions, %Client{} = client, auth_provider_id)
+  def ensure_conforms(
+        conditions,
+        %Client{} = client,
+        %ClientSession{} = session,
+        auth_provider_id
+      )
       when is_list(conditions) do
     conditions
     |> Enum.reduce({[], nil}, fn condition, {violated_properties, min_expires_at} ->
       if condition.property in violated_properties do
         {violated_properties, min_expires_at}
       else
-        case fetch_conformation_expiration(condition, client, auth_provider_id) do
+        case fetch_conformation_expiration(condition, client, session, auth_provider_id) do
           {:ok, expires_at} ->
             {violated_properties, min_expires_at(expires_at, min_expires_at)}
 
@@ -37,7 +43,8 @@ defmodule Portal.Policies.Evaluator do
   # When region is unknown (nil), geo-based policies should fail conservatively
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region},
-        %Client{last_seen_remote_ip_location_region: nil},
+        %Client{},
+        %ClientSession{remote_ip_location_region: nil},
         _auth_provider_id
       ) do
     :error
@@ -45,10 +52,11 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_in, values: values},
-        %Client{} = client,
+        %Client{},
+        %ClientSession{} = session,
         _auth_provider_id
       ) do
-    if client.last_seen_remote_ip_location_region in values do
+    if session.remote_ip_location_region in values do
       {:ok, nil}
     else
       :error
@@ -57,10 +65,11 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip_location_region, operator: :is_not_in, values: values},
-        %Client{} = client,
+        %Client{},
+        %ClientSession{} = session,
         _auth_provider_id
       ) do
-    if client.last_seen_remote_ip_location_region in values do
+    if session.remote_ip_location_region in values do
       :error
     else
       {:ok, nil}
@@ -69,14 +78,15 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip, operator: :is_in_cidr, values: values},
-        %Client{} = client,
+        %Client{},
+        %ClientSession{} = session,
         _auth_provider_id
       ) do
     Enum.reduce_while(values, :error, fn cidr, :error ->
       {:ok, inet} = Portal.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Portal.Types.CIDR.max_netmask(inet)}
 
-      if Portal.Types.CIDR.contains?(cidr, client.last_seen_remote_ip) do
+      if Portal.Types.CIDR.contains?(cidr, session.remote_ip) do
         {:halt, {:ok, nil}}
       else
         {:cont, :error}
@@ -86,14 +96,15 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{property: :remote_ip, operator: :is_not_in_cidr, values: values},
-        %Client{} = client,
+        %Client{},
+        %ClientSession{} = session,
         _auth_provider_id
       ) do
     Enum.reduce_while(values, {:ok, nil}, fn cidr, {:ok, nil} ->
       {:ok, inet} = Portal.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Portal.Types.CIDR.max_netmask(inet)}
 
-      if Portal.Types.CIDR.contains?(cidr, client.last_seen_remote_ip) do
+      if Portal.Types.CIDR.contains?(cidr, session.remote_ip) do
         {:halt, :error}
       else
         {:cont, {:ok, nil}}
@@ -104,6 +115,7 @@ defmodule Portal.Policies.Evaluator do
   def fetch_conformation_expiration(
         %{property: :auth_provider_id, operator: :is_in, values: values},
         %Client{},
+        %ClientSession{},
         auth_provider_id
       ) do
     if auth_provider_id in values do
@@ -116,6 +128,7 @@ defmodule Portal.Policies.Evaluator do
   def fetch_conformation_expiration(
         %{property: :auth_provider_id, operator: :is_not_in, values: values},
         %Client{},
+        %ClientSession{},
         auth_provider_id
       ) do
     if auth_provider_id in values do
@@ -132,6 +145,7 @@ defmodule Portal.Policies.Evaluator do
           values: ["true"]
         },
         %Client{verified_at: verified_at},
+        %ClientSession{},
         _auth_provider_id
       ) do
     if is_nil(verified_at) do
@@ -148,6 +162,7 @@ defmodule Portal.Policies.Evaluator do
           values: _other
         },
         %Client{},
+        %ClientSession{},
         _auth_provider_id
       ) do
     {:ok, nil}
@@ -160,6 +175,7 @@ defmodule Portal.Policies.Evaluator do
           values: values
         },
         %Client{},
+        %ClientSession{},
         _auth_provider_id
       ) do
     case find_day_of_the_week_time_range(values, DateTime.utc_now()) do

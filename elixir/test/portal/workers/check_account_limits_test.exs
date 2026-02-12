@@ -5,6 +5,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
 
   alias Portal.Workers.CheckAccountLimits
 
@@ -329,12 +330,9 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       account = provisioned_account_fixture()
       admin = admin_actor_fixture(account: account)
 
-      # Create a client with recent activity to count as active user
+      # Create a client with recent session to count as active user
       client = Portal.ClientFixtures.client_fixture(account: account, actor: admin)
-
-      client
-      |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now())
-      |> Repo.update!()
+      client_session_fixture(account: account, actor: admin, client: client)
 
       # Set a low monthly_active_users_count limit
       update_account(account, %{
@@ -360,12 +358,9 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       account = provisioned_account_fixture()
       admin = admin_actor_fixture(account: account)
 
-      # Create a client with recent activity
+      # Create a client with recent session
       client = Portal.ClientFixtures.client_fixture(account: account, actor: admin)
-
-      client
-      |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now())
-      |> Repo.update!()
+      client_session_fixture(account: account, actor: admin, client: client)
 
       # Set the flag as already exceeded
       update_account(account, %{

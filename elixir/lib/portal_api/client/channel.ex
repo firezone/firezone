@@ -50,6 +50,7 @@ defmodule PortalAPI.Client.Channel do
       Cache.Client.recompute_connectable_resources(
         nil,
         socket.assigns.client,
+        socket.assigns.session,
         socket.assigns.subject
       )
 
@@ -72,7 +73,7 @@ defmodule PortalAPI.Client.Channel do
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.client.public_key,
+          socket.assigns.session.public_key,
           socket.assigns.subject.expires_at
         ),
       interface:
@@ -123,6 +124,7 @@ defmodule PortalAPI.Client.Channel do
       Cache.Client.recompute_connectable_resources(
         socket.assigns.cache,
         socket.assigns.client,
+        socket.assigns.session,
         socket.assigns.subject
       )
 
@@ -212,8 +214,8 @@ defmodule PortalAPI.Client.Channel do
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
         location = {
-          socket.assigns.client.last_seen_remote_ip_location_lat,
-          socket.assigns.client.last_seen_remote_ip_location_lon
+          socket.assigns.subject.context.remote_ip_location_lat,
+          socket.assigns.subject.context.remote_ip_location_lon
         }
 
         relays = load_balance_relays(location, all_online_relays)
@@ -224,7 +226,7 @@ defmodule PortalAPI.Client.Channel do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.client.public_key,
+              socket.assigns.session.public_key,
               socket.assigns.subject.expires_at
             )
         })
@@ -350,18 +352,19 @@ defmodule PortalAPI.Client.Channel do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
+             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
            Database.all_compatible_gateways_for_client_and_resource(
-             socket.assigns.client,
+             socket.assigns.client_version,
              resource,
              socket.assigns.subject
            ) do
       location = {
-        socket.assigns.client.last_seen_remote_ip_location_lat,
-        socket.assigns.client.last_seen_remote_ip_location_lon
+        socket.assigns.subject.context.remote_ip_location_lat,
+        socket.assigns.subject.context.remote_ip_location_lon
       }
 
       gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
@@ -379,13 +382,26 @@ defmodule PortalAPI.Client.Channel do
           expires_at
         )
 
-      preshared_key = generate_preshared_key(socket.assigns.client, gateway)
-      ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
+      preshared_key =
+        generate_preshared_key(socket.assigns.client, socket.assigns.session.public_key, gateway)
+
+      ice_credentials =
+        generate_ice_credentials(
+          socket.assigns.session.public_key,
+          socket.assigns.client,
+          gateway
+        )
 
       message =
         {:authorize_policy, {self(), socket_ref(socket)},
          %{
-           client: PortalAPI.Gateway.Views.Client.render(socket.assigns.client, preshared_key),
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               socket.assigns.client,
+               socket.assigns.session.public_key,
+               preshared_key,
+               socket.assigns.subject.context.user_agent
+             ),
            subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
            resource: PortalAPI.Gateway.Views.Resource.render(resource),
            policy_authorization_id: policy_authorization.id,
@@ -463,18 +479,19 @@ defmodule PortalAPI.Client.Channel do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
+             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
            Database.all_compatible_gateways_for_client_and_resource(
-             socket.assigns.client,
+             socket.assigns.client_version,
              resource,
              socket.assigns.subject
            ) do
       location = {
-        socket.assigns.client.last_seen_remote_ip_location_lat,
-        socket.assigns.client.last_seen_remote_ip_location_lon
+        socket.assigns.subject.context.remote_ip_location_lat,
+        socket.assigns.subject.context.remote_ip_location_lon
       }
 
       gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
@@ -521,6 +538,7 @@ defmodule PortalAPI.Client.Channel do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
+             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
@@ -597,6 +615,7 @@ defmodule PortalAPI.Client.Channel do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
+             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
@@ -628,8 +647,9 @@ defmodule PortalAPI.Client.Channel do
              {:request_connection, {self(), socket_ref(socket)},
               %{
                 client:
-                  PortalAPI.Gateway.Views.Client.render(
+                  PortalAPI.Gateway.Views.Client.render_legacy(
                     socket.assigns.client,
+                    socket.assigns.session.public_key,
                     client_payload,
                     preshared_key
                   ),
@@ -699,8 +719,8 @@ defmodule PortalAPI.Client.Channel do
     {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
 
     location = {
-      socket.assigns.client.last_seen_remote_ip_location_lat,
-      socket.assigns.client.last_seen_remote_ip_location_lon
+      socket.assigns.subject.context.remote_ip_location_lat,
+      socket.assigns.subject.context.remote_ip_location_lon
     }
 
     relays = load_balance_relays(location, relays)
@@ -713,18 +733,18 @@ defmodule PortalAPI.Client.Channel do
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
-  defp generate_preshared_key(client, gateway) do
-    Portal.Crypto.psk(client, gateway)
+  defp generate_preshared_key(client, client_public_key, gateway) do
+    Portal.Crypto.psk(client, client_public_key, gateway)
   end
 
   # Ice credentials must stay the same for all connections between client and gateway as long as they
   # do not loose their state, so we can leverage public_key which is reset on each restart of the client
   # or gateway.
-  defp generate_ice_credentials(client, gateway) do
+  defp generate_ice_credentials(client_public_key, client, gateway) do
     ice_credential_seed =
       [
         client.id,
-        client.public_key,
+        client_public_key,
         gateway.id,
         gateway.public_key
       ]
@@ -795,6 +815,7 @@ defmodule PortalAPI.Client.Channel do
     Cache.Client.add_membership(
       socket.assigns.cache,
       socket.assigns.client,
+      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -812,6 +833,7 @@ defmodule PortalAPI.Client.Channel do
       socket.assigns.cache,
       membership,
       socket.assigns.client,
+      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -844,6 +866,7 @@ defmodule PortalAPI.Client.Channel do
       Cache.Client.recompute_connectable_resources(
         socket.assigns.cache,
         socket.assigns.client,
+        socket.assigns.session,
         socket.assigns.subject
       )
       |> push_resource_updates(socket)
@@ -877,6 +900,7 @@ defmodule PortalAPI.Client.Channel do
       socket.assigns.cache,
       site,
       socket.assigns.client,
+      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -892,6 +916,7 @@ defmodule PortalAPI.Client.Channel do
       socket.assigns.cache,
       policy,
       socket.assigns.client,
+      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -952,6 +977,7 @@ defmodule PortalAPI.Client.Channel do
       socket.assigns.cache,
       policy,
       socket.assigns.client,
+      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -971,6 +997,7 @@ defmodule PortalAPI.Client.Channel do
       socket.assigns.cache,
       resource,
       socket.assigns.client,
+      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -1013,7 +1040,7 @@ defmodule PortalAPI.Client.Channel do
     end
 
     def all_compatible_gateways_for_client_and_resource(
-          %Portal.Client{} = client,
+          client_version,
           resource,
           subject
         ) do
@@ -1034,7 +1061,7 @@ defmodule PortalAPI.Client.Channel do
         end
 
       compatible_gateways =
-        filter_compatible_gateways(online_gateways, resource, client.last_seen_version)
+        filter_compatible_gateways(online_gateways, resource, client_version)
 
       cond do
         compatible_gateways != [] ->
@@ -1051,6 +1078,8 @@ defmodule PortalAPI.Client.Channel do
     end
 
     # Filters gateways by the resource type, gateway version, and client version.
+    defp filter_compatible_gateways(gateways, _resource, nil), do: gateways
+
     defp filter_compatible_gateways(gateways, resource, client_version) do
       case Version.parse(client_version) do
         {:ok, version} ->

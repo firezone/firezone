@@ -7,9 +7,9 @@ defmodule Portal.Crypto do
   def psk(
         %Client{
           id: client_id,
-          public_key: client_pubkey,
           psk_base: client_psk_base
         },
+        client_pubkey,
         %Gateway{
           id: gateway_id,
           public_key: gateway_pubkey,

@@ -51,4 +51,60 @@ defmodule Portal.ComponentVersionsTest do
       assert fetch_versions() == {:ok, Enum.into(versions, [])}
     end
   end
+
+  describe "get_component_type/1" do
+    test "returns :headless for service_account actors" do
+      client = %Portal.Client{
+        actor: %Portal.Actor{type: :service_account},
+        latest_session: nil
+      }
+
+      assert get_component_type(client) == :headless
+    end
+
+    test "returns :apple for Mac OS user agent" do
+      client = %Portal.Client{
+        actor: %Portal.Actor{type: :account_user},
+        latest_session: %{user_agent: "Mac OS/14.0"}
+      }
+
+      assert get_component_type(client) == :apple
+    end
+
+    test "returns :apple for iOS user agent" do
+      client = %Portal.Client{
+        actor: %Portal.Actor{type: :account_user},
+        latest_session: %{user_agent: "iOS/17.0"}
+      }
+
+      assert get_component_type(client) == :apple
+    end
+
+    test "returns :android for Android user agent" do
+      client = %Portal.Client{
+        actor: %Portal.Actor{type: :account_user},
+        latest_session: %{user_agent: "Android/14"}
+      }
+
+      assert get_component_type(client) == :android
+    end
+
+    test "returns :gui for other user agents" do
+      client = %Portal.Client{
+        actor: %Portal.Actor{type: :account_user},
+        latest_session: %{user_agent: "Windows/10"}
+      }
+
+      assert get_component_type(client) == :gui
+    end
+
+    test "returns :gui when latest_session is nil" do
+      client = %Portal.Client{
+        actor: %Portal.Actor{type: :account_user},
+        latest_session: nil
+      }
+
+      assert get_component_type(client) == :gui
+    end
+  end
 end

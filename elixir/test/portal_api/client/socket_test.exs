@@ -13,6 +13,15 @@ defmodule PortalAPI.Client.SocketTest do
   @client_remote_ip {189, 172, 73, 153}
 
   describe "connect/3" do
+    setup do
+      buffer =
+        start_supervised!(
+          {Portal.ClientSession.Buffer, name: Portal.ClientSession.Buffer, callers: [self()]}
+        )
+
+      %{buffer: buffer}
+    end
+
     test "returns error when token is missing" do
       connect_info = build_connect_info()
       assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
@@ -25,7 +34,8 @@ defmodule PortalAPI.Client.SocketTest do
       # Attrs without token param, but with other required fields
       attrs =
         valid_client_attrs()
-        |> Map.take([:external_id, :public_key])
+        |> Map.take([:external_id])
+        |> Map.put(:public_key, Portal.ClientFixtures.generate_public_key())
         |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
 
       connect_info = build_connect_info(token: encoded_token)
@@ -58,7 +68,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
-    test "renders error on invalid attrs" do
+    test "renders error when public_key is missing" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
 
@@ -69,6 +79,22 @@ defmodule PortalAPI.Client.SocketTest do
 
       errors = Portal.Changeset.errors_to_string(changeset)
       assert errors =~ "public_key: can't be blank"
+    end
+
+    test "renders error when external_id is missing" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+
+      attrs = %{
+        "token" => encoded_token,
+        "public_key" => Portal.ClientFixtures.generate_public_key()
+      }
+
+      connect_info = build_connect_info()
+
+      assert {:error, changeset} = connect(Socket, attrs, connect_info: connect_info)
+
+      errors = Portal.Changeset.errors_to_string(changeset)
       assert errors =~ "external_id: can't be blank"
     end
 
@@ -94,14 +120,21 @@ defmodule PortalAPI.Client.SocketTest do
       assert client = Map.fetch!(socket.assigns, :client)
 
       assert client.external_id == attrs["external_id"]
-      assert client.public_key == attrs["public_key"]
-      assert client.last_seen_user_agent == connect_info.user_agent
-      assert client.last_seen_remote_ip.address == @client_remote_ip
-      assert client.last_seen_remote_ip_location_region == "Ukraine"
-      assert client.last_seen_remote_ip_location_city == "Kyiv"
-      assert client.last_seen_remote_ip_location_lat == 50.4333
-      assert client.last_seen_remote_ip_location_lon == 30.5167
-      assert client.last_seen_version == "1.3.0"
+      assert socket.assigns.session.public_key == attrs["public_key"]
+      assert socket.assigns.client_version == "1.3.0"
+
+      Portal.ClientSession.Buffer.flush()
+
+      # Verify session was created with session data
+      [session] = Repo.all(Portal.ClientSession)
+      assert session.client_id == client.id
+      assert session.user_agent == connect_info.user_agent
+      assert session.remote_ip.address == @client_remote_ip
+      assert session.remote_ip_location_region == "Ukraine"
+      assert session.remote_ip_location_city == "Kyiv"
+      assert session.remote_ip_location_lat == 50.4333
+      assert session.remote_ip_location_lon == 30.5167
+      assert session.version == "1.3.0"
     end
 
     test "creates a new client for service account identity" do
@@ -127,14 +160,21 @@ defmodule PortalAPI.Client.SocketTest do
       assert client = Map.fetch!(socket.assigns, :client)
 
       assert client.external_id == attrs["external_id"]
-      assert client.public_key == attrs["public_key"]
-      assert client.last_seen_user_agent == connect_info.user_agent
-      assert client.last_seen_remote_ip.address == @client_remote_ip
-      assert client.last_seen_remote_ip_location_region == "Ukraine"
-      assert client.last_seen_remote_ip_location_city == "Kyiv"
-      assert client.last_seen_remote_ip_location_lat == 50.4333
-      assert client.last_seen_remote_ip_location_lon == 30.5167
-      assert client.last_seen_version == "1.3.0"
+      assert socket.assigns.session.public_key == attrs["public_key"]
+      assert socket.assigns.client_version == "1.3.0"
+
+      Portal.ClientSession.Buffer.flush()
+
+      # Verify session was created with session data
+      [session] = Repo.all(Portal.ClientSession)
+      assert session.client_id == client.id
+      assert session.user_agent == connect_info.user_agent
+      assert session.remote_ip.address == @client_remote_ip
+      assert session.remote_ip_location_region == "Ukraine"
+      assert session.remote_ip_location_city == "Kyiv"
+      assert session.remote_ip_location_lat == 50.4333
+      assert session.remote_ip_location_lon == 30.5167
+      assert session.version == "1.3.0"
     end
 
     test "propagates trace context" do
@@ -157,7 +197,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert span_ctx != OpenTelemetry.Tracer.current_span_ctx()
     end
 
-    test "updates existing client" do
+    test "reuses existing client on reconnect" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
@@ -172,12 +212,17 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = build_connect_info()
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
-      assert client = Repo.one(Portal.Client)
-      assert client.id == socket.assigns.client.id
-      assert client.last_seen_remote_ip_location_region == "Ukraine"
-      assert client.last_seen_remote_ip_location_city == "Kyiv"
-      assert client.last_seen_remote_ip_location_lat == 50.4333
-      assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert socket.assigns.client.id == existing_client.id
+
+      Portal.ClientSession.Buffer.flush()
+
+      # Verify session was created with location data
+      [session] = Repo.all(Portal.ClientSession)
+      assert session.client_id == existing_client.id
+      assert session.remote_ip_location_region == "Ukraine"
+      assert session.remote_ip_location_city == "Kyiv"
+      assert session.remote_ip_location_lat == 50.4333
+      assert session.remote_ip_location_lon == 30.5167
     end
 
     test "preserves ipv4 and ipv6 addresses on reconnection" do
@@ -221,12 +266,16 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = build_connect_info(ip: ip, x_headers: [{"x-geo-location-region", "UA"}])
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
-      assert client = Repo.one(Portal.Client)
-      assert client.id == socket.assigns.client.id
-      assert client.last_seen_remote_ip_location_region == "UA"
-      assert client.last_seen_remote_ip_location_city == nil
-      assert client.last_seen_remote_ip_location_lat == 49.0
-      assert client.last_seen_remote_ip_location_lon == 32.0
+      assert socket.assigns.client.id == existing_client.id
+
+      Portal.ClientSession.Buffer.flush()
+
+      # Verify session was created with region-derived coordinates
+      [session] = Repo.all(Portal.ClientSession)
+      assert session.remote_ip_location_region == "UA"
+      assert session.remote_ip_location_city == nil
+      assert session.remote_ip_location_lat == 49.0
+      assert session.remote_ip_location_lon == 32.0
     end
 
     test "rate limits repeated connection attempts from same IP and token" do
@@ -359,6 +408,67 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
+
+    test "creates a client_session on successful connect" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: @client_remote_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      client = socket.assigns.client
+
+      Portal.ClientSession.Buffer.flush()
+
+      sessions = Repo.all(Portal.ClientSession)
+      assert length(sessions) == 1
+      session = hd(sessions)
+      assert session.client_id == client.id
+      assert session.client_token_id == token.id
+      assert session.account_id == client.account_id
+      assert session.user_agent == connect_info.user_agent
+      assert session.remote_ip.address == @client_remote_ip
+      assert session.remote_ip_location_region == "Ukraine"
+      assert session.remote_ip_location_city == "Kyiv"
+    end
+
+    test "logs warning when hardware identifiers mismatch" do
+      import ExUnit.CaptureLog
+
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+
+      existing_client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          device_serial: "OLD_SERIAL",
+          device_uuid: "OLD_UUID"
+        )
+
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs =
+        connect_attrs(
+          token: encoded_token,
+          external_id: existing_client.external_id,
+          device_serial: "NEW_SERIAL",
+          device_uuid: "NEW_UUID"
+        )
+
+      connect_info = build_connect_info()
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+        end)
+
+      assert log =~ "Hardware ID mismatch"
+      assert log =~ "device_serial"
+      assert log =~ "device_uuid"
+    end
   end
 
   describe "id/1" do
@@ -372,7 +482,8 @@ defmodule PortalAPI.Client.SocketTest do
 
   defp connect_attrs(attrs) do
     valid_client_attrs()
-    |> Map.take([:external_id, :public_key])
+    |> Map.take([:external_id])
+    |> Map.put(:public_key, Portal.ClientFixtures.generate_public_key())
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end

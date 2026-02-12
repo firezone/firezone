@@ -1167,14 +1167,18 @@ defmodule PortalWeb.Actors do
                         title={if token.online?, do: "Online", else: "Offline"}
                       />
                       <.icon
-                        name={client_os_icon_name(token.last_seen_user_agent)}
+                        name={
+                          client_os_icon_name(token.latest_session && token.latest_session.user_agent)
+                        }
                         class="w-6 h-6 flex-shrink-0"
                       />
                       <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
                         <div class="w-28">
                           <span class="text-xs uppercase text-neutral-500">Last connected</span>
                           <div class="text-neutral-900">
-                            <.relative_datetime datetime={token.last_seen_at} />
+                            <.relative_datetime datetime={
+                              token.latest_session && token.latest_session.inserted_at
+                            } />
                           </div>
                         </div>
                         <div class="w-20">
@@ -1186,10 +1190,10 @@ defmodule PortalWeb.Actors do
                         <div>
                           <span class="text-xs uppercase text-neutral-500">Location</span>
                           <div class="text-neutral-900">
-                            <%= if token_location(token) || token.last_seen_remote_ip do %>
+                            <%= if token_location(token) || (token.latest_session && token.latest_session.remote_ip) do %>
                               <div :if={token_location(token)}>{token_location(token)}</div>
-                              <div :if={token.last_seen_remote_ip}>
-                                {token.last_seen_remote_ip}
+                              <div :if={token.latest_session && token.latest_session.remote_ip}>
+                                {token.latest_session.remote_ip}
                               </div>
                             <% else %>
                               -
@@ -1228,14 +1232,18 @@ defmodule PortalWeb.Actors do
                         title={if token.online?, do: "Online", else: "Offline"}
                       />
                       <.icon
-                        name={client_os_icon_name(token.last_seen_user_agent)}
+                        name={
+                          client_os_icon_name(token.latest_session && token.latest_session.user_agent)
+                        }
                         class="w-6 h-6 flex-shrink-0"
                       />
                       <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
                         <div class="w-28">
                           <span class="text-xs uppercase text-neutral-500">Last used</span>
                           <div class="text-neutral-900">
-                            <.relative_datetime datetime={token.last_seen_at} />
+                            <.relative_datetime datetime={
+                              token.latest_session && token.latest_session.inserted_at
+                            } />
                           </div>
                         </div>
                         <div class="w-20">
@@ -1247,10 +1255,10 @@ defmodule PortalWeb.Actors do
                         <div>
                           <span class="text-xs uppercase text-neutral-500">Location</span>
                           <div class="text-neutral-900">
-                            <%= if token_location(token) || token.last_seen_remote_ip do %>
+                            <%= if token_location(token) || (token.latest_session && token.latest_session.remote_ip) do %>
                               <div :if={token_location(token)}>{token_location(token)}</div>
-                              <div :if={token.last_seen_remote_ip}>
-                                {token.last_seen_remote_ip}
+                              <div :if={token.latest_session && token.latest_session.remote_ip}>
+                                {token.latest_session.remote_ip}
                               </div>
                             <% else %>
                               -
@@ -1703,13 +1711,15 @@ defmodule PortalWeb.Actors do
     end
   end
 
-  defp token_location(token) do
-    cond do
-      token.last_seen_remote_ip_location_city && token.last_seen_remote_ip_location_region ->
-        "#{token.last_seen_remote_ip_location_city}, #{token.last_seen_remote_ip_location_region}"
+  defp token_location(%{latest_session: nil}), do: nil
 
-      token.last_seen_remote_ip_location_region ->
-        token.last_seen_remote_ip_location_region
+  defp token_location(%{latest_session: session}) do
+    cond do
+      session.remote_ip_location_city && session.remote_ip_location_region ->
+        "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
+
+      session.remote_ip_location_region ->
+        session.remote_ip_location_region
 
       true ->
         nil
@@ -1751,6 +1761,7 @@ defmodule PortalWeb.Actors do
     import Portal.Repo.Query
     alias Portal.ExternalIdentity
     alias Portal.Actor
+    alias Portal.ClientSession
     alias Portal.Presence
     alias Portal.Safe
     alias Portal.Directory
@@ -1949,12 +1960,36 @@ defmodule PortalWeb.Actors do
     end
 
     def get_client_tokens_for_actor(actor_id, subject) do
-      from(c in ClientToken, as: :client_tokens)
-      |> where([client_tokens: c], c.actor_id == ^actor_id)
-      |> order_by([client_tokens: c], desc: c.inserted_at)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.all()
+      tokens =
+        from(c in ClientToken, as: :client_tokens)
+        |> where([client_tokens: c], c.actor_id == ^actor_id)
+        |> order_by([client_tokens: c], desc: c.inserted_at)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+
+      tokens
+      |> preload_latest_sessions_for_tokens()
       |> Presence.Clients.preload_client_tokens_presence()
+    end
+
+    defp preload_latest_sessions_for_tokens(tokens) do
+      account_ids = tokens |> Enum.map(& &1.account_id) |> Enum.uniq()
+      token_ids = Enum.map(tokens, & &1.id)
+
+      sessions_by_token_id =
+        from(s in ClientSession,
+          where: s.account_id in ^account_ids,
+          where: s.client_token_id in ^token_ids,
+          distinct: s.client_token_id,
+          order_by: [asc: s.client_token_id, desc: s.inserted_at]
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.all()
+        |> Map.new(&{&1.client_token_id, &1})
+
+      Enum.map(tokens, fn token ->
+        %{token | latest_session: Map.get(sessions_by_token_id, token.id)}
+      end)
     end
 
     def get_identity_by_id(identity_id, subject) do
