@@ -9,7 +9,6 @@ db_ssl =
   case System.get_env("DATABASE_SSL", "false") do
     "true" -> true
     "false" -> false
-    json -> json |> JSON.decode!() |> Portal.Config.Dumper.dump_ssl_opts()
   end
 
 db_opts = [
