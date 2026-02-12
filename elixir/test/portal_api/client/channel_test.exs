@@ -54,6 +54,22 @@ defmodule PortalAPI.Client.ChannelTest do
     socket
   end
 
+  defp connect_gateway_presence(gateway, token_id) do
+    session = gateway.latest_session
+
+    session_meta = %{
+      site_id: gateway.site_id,
+      public_key: gateway.public_key,
+      psk_base: gateway.psk_base,
+      version: session && session.version,
+      remote_ip: session && session.remote_ip,
+      remote_ip_location_lat: session && session.remote_ip_location_lat,
+      remote_ip_location_lon: session && session.remote_ip_location_lon
+    }
+
+    Presence.Gateways.connect(gateway, token_id, session_meta)
+  end
+
   setup do
     account =
       account_fixture(
@@ -2296,7 +2312,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2367,7 +2383,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       push(socket, "create_flow", attrs)
 
@@ -2388,7 +2404,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2417,7 +2433,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
 
       :ok = Channels.register_gateway(gateway.id)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       # Prime cache
@@ -2484,7 +2500,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       send(socket.channel_pid, %Changes.Change{
@@ -2558,7 +2574,7 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: membership
       })
 
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       push(socket, "create_flow", %{
@@ -2574,6 +2590,8 @@ defmodule PortalAPI.Client.ChannelTest do
                ice_credentials: ice_credentials,
                preshared_key: preshared_key
              } = payload
+
+      Process.sleep(100)
 
       assert policy_authorization =
                Repo.get_by(Portal.PolicyAuthorization,
@@ -2669,7 +2687,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = Channels.register_gateway(gateway.id)
@@ -2726,7 +2744,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       :ok = Channels.register_gateway(gateway.id)
 
@@ -2773,7 +2791,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = Channels.register_gateway(gateway.id)
 
       push(socket, "create_flow", %{
@@ -2807,7 +2825,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway1.site)
 
-      :ok = Presence.Gateways.connect(gateway1, gateway_token.id)
+      :ok = connect_gateway_presence(gateway1, gateway_token.id)
 
       gateway2 =
         gateway_fixture(
@@ -2815,7 +2833,7 @@ defmodule PortalAPI.Client.ChannelTest do
           site: site
         )
 
-      :ok = Presence.Gateways.connect(gateway2, gateway_token.id)
+      :ok = connect_gateway_presence(gateway2, gateway_token.id)
 
       :ok = Channels.register_gateway(gateway1.id)
       :ok = Channels.register_gateway(gateway2.id)
@@ -2844,6 +2862,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
+      Process.sleep(100)
 
       assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
@@ -2857,6 +2876,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
+      Process.sleep(100)
 
       assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
@@ -2880,7 +2900,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2927,7 +2947,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2987,7 +3007,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3075,7 +3095,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id
@@ -3095,7 +3115,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -3115,7 +3135,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -3127,7 +3147,8 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       assert gateway_id == gateway.id
-      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
+      assert %Postgrex.INET{address: address} = gateway_last_seen_remote_ip
+      assert address == {100, 64, 0, 1}
     end
 
     test "does not return gateways that do not support the resource", %{
@@ -3141,7 +3162,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => dns_resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -3188,7 +3209,7 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -3205,7 +3226,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3235,7 +3256,8 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       assert gateway_id == gateway.id
-      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
+      assert %Postgrex.INET{address: address} = gateway_last_seen_remote_ip
+      assert address == {100, 64, 0, 1}
     end
 
     test "returns gateway that support Internet resources", %{
@@ -3268,7 +3290,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -3285,7 +3307,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -3296,7 +3318,8 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       assert gateway_id == gateway.id
-      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
+      assert %Postgrex.INET{address: address} = gateway_last_seen_remote_ip
+      assert address == {100, 64, 0, 1}
     end
 
     test "works with service accounts", %{
@@ -3341,7 +3364,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -3371,7 +3394,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
@@ -3410,7 +3433,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> Repo.preload(:site)
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -3452,7 +3475,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, %{reason: :not_found}
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns offline when gateway is not connected to resource", %{
@@ -3465,7 +3488,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3517,7 +3540,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3560,7 +3583,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3608,7 +3631,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = Channels.register_gateway(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3708,7 +3731,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = Channels.register_gateway(gateway.id)
@@ -3780,7 +3803,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, %{reason: :not_found}
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "returns offline when gateway is not connected to resource", %{
@@ -3793,7 +3816,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3817,7 +3840,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -3871,7 +3894,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       :ok = Channels.register_gateway(gateway.id)
 
@@ -3937,7 +3960,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = Channels.register_gateway(gateway.id)
@@ -4016,7 +4039,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = Channels.register_gateway(gateway.id)
@@ -4067,7 +4090,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
       :ok = Channels.register_gateway(gateway.id)
@@ -4114,7 +4137,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
-      :ok = Presence.Gateways.connect(gateway, gateway_token.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
       :ok = Channels.register_gateway(gateway.id)
 

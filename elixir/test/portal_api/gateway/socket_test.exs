@@ -67,12 +67,14 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert gateway.external_id == attrs["external_id"]
       assert gateway.public_key == attrs["public_key"]
-      assert gateway.last_seen_user_agent == connect_info.user_agent
-      assert gateway.last_seen_remote_ip_location_region == "Ukraine"
-      assert gateway.last_seen_remote_ip_location_city == "Kyiv"
-      assert gateway.last_seen_remote_ip_location_lat == 50.4333
-      assert gateway.last_seen_remote_ip_location_lon == 30.5167
-      assert gateway.last_seen_version == @connlib_version
+
+      assert session = Map.fetch!(socket.assigns, :session)
+      assert session.user_agent == connect_info.user_agent
+      assert session.remote_ip_location_region == "Ukraine"
+      assert session.remote_ip_location_city == "Kyiv"
+      assert session.remote_ip_location_lat == 50.4333
+      assert session.remote_ip_location_lon == 30.5167
+      assert session.version == @connlib_version
     end
 
     test "uses region code to put default coordinates" do
@@ -83,11 +85,12 @@ defmodule PortalAPI.Gateway.SocketTest do
       connect_info = build_connect_info(x_headers: [{"x-geo-location-region", "UA"}])
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
-      assert gateway = Map.fetch!(socket.assigns, :gateway)
-      assert gateway.last_seen_remote_ip_location_region == "UA"
-      assert gateway.last_seen_remote_ip_location_city == nil
-      assert gateway.last_seen_remote_ip_location_lat == 49.0
-      assert gateway.last_seen_remote_ip_location_lon == 32.0
+      assert Map.fetch!(socket.assigns, :gateway)
+      assert session = Map.fetch!(socket.assigns, :session)
+      assert session.remote_ip_location_region == "UA"
+      assert session.remote_ip_location_city == nil
+      assert session.remote_ip_location_lat == 49.0
+      assert session.remote_ip_location_lon == 32.0
     end
 
     test "propagates trace context" do

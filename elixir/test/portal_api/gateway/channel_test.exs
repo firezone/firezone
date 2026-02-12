@@ -21,18 +21,40 @@ defmodule PortalAPI.Gateway.ChannelTest do
   import Portal.TokenFixtures
 
   defp join_channel(gateway, site, token) do
+    session = build_gateway_session(gateway, token)
+
     {:ok, _reply, socket} =
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
         site: site,
+        session: session,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
     socket
+  end
+
+  defp build_gateway_session(gateway, token) do
+    %Portal.GatewaySession{
+      gateway_id: gateway.id,
+      account_id: gateway.account_id,
+      gateway_token_id: token.id,
+      user_agent: "Firezone-Gateway/1.3.0",
+      remote_ip: gateway.latest_session && gateway.latest_session.remote_ip,
+      remote_ip_location_region:
+        gateway.latest_session && gateway.latest_session.remote_ip_location_region,
+      remote_ip_location_city:
+        gateway.latest_session && gateway.latest_session.remote_ip_location_city,
+      remote_ip_location_lat:
+        gateway.latest_session && gateway.latest_session.remote_ip_location_lat,
+      remote_ip_location_lon:
+        gateway.latest_session && gateway.latest_session.remote_ip_location_lon,
+      version: (gateway.latest_session && gateway.latest_session.version) || "1.3.0"
+    }
   end
 
   setup do
@@ -1220,12 +1242,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      # Create a new socket with the gateway set to an old version (< 1.2.0)
+      # Create a new socket with the session set to an old version (< 1.2.0)
+      session = %{build_gateway_session(gateway, token) | version: "1.1.0"}
+
       {:ok, _, _socket} =
         PortalAPI.Gateway.Socket
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
-          gateway: Map.put(gateway, :last_seen_version, "1.1.0"),
+          gateway: gateway,
+          session: session,
           site: site,
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -1277,7 +1302,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.gateway.last_seen_version, "1.1.0")
+        put_in(state.assigns.session.version, "1.1.0")
       end)
 
       # Create a DNS resource with an address that can't be adapted
@@ -1319,7 +1344,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.gateway.last_seen_version, "1.1.0")
+        put_in(state.assigns.session.version, "1.1.0")
       end)
 
       # Create a DNS resource with an address that needs adaptation for old versions
@@ -1373,10 +1398,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
       :ok = Portal.Presence.Relays.connect(relay2)
 
+      session = build_gateway_session(gateway, token)
+
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
+        session: session,
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -1419,10 +1447,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
     } do
       relay = relay_fixture(%{lat: 37.0, lon: -120.0})
 
+      session = build_gateway_session(gateway, token)
+
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
+        session: session,
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2159,10 +2190,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
+      session = build_gateway_session(gateway, token)
+
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
+        session: session,
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2196,10 +2230,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
+      session = build_gateway_session(gateway, token)
+
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
+        session: session,
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2246,10 +2283,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
+      session = build_gateway_session(gateway, token)
+
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
+        session: session,
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2293,10 +2333,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay)
 
+      session = build_gateway_session(gateway, token)
+
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
+        session: session,
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")

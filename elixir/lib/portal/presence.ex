@@ -184,12 +184,50 @@ defmodule Portal.Presence do
   end
 
   defmodule Gateways do
-    def connect(%Gateway{} = gateway, token_id) do
+    def connect(%Gateway{} = gateway, token_id, session_meta \\ %{}) do
       with {:ok, _} <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id),
-           {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id) do
+           {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id, session_meta) do
         :ok
       end
     end
+
+    def fetch_gateway(account_id, gateway_id) do
+      case __MODULE__.Account.get(account_id, gateway_id) do
+        %{metas: [meta | _]} ->
+          {:ok, gateway_from_presence_meta(gateway_id, account_id, meta)}
+
+        [] ->
+          {:error, :offline}
+      end
+    end
+
+    def all_connected_gateways(account_id) do
+      __MODULE__.Account.list(account_id)
+      |> Enum.map(fn {gateway_id, %{metas: [meta | _]}} ->
+        gateway_from_presence_meta(gateway_id, account_id, meta)
+      end)
+    end
+
+    defp gateway_from_presence_meta(gateway_id, account_id, meta) do
+      %Gateway{
+        id: gateway_id,
+        account_id: account_id,
+        site_id: meta.site_id,
+        public_key: meta.public_key,
+        psk_base: meta.psk_base,
+        online?: true,
+        latest_session: %{
+          version: meta.version,
+          remote_ip: normalize_ip(meta.remote_ip),
+          remote_ip_location_lat: meta.remote_ip_location_lat,
+          remote_ip_location_lon: meta.remote_ip_location_lon
+        }
+      }
+    end
+
+    defp normalize_ip(%Postgrex.INET{} = inet), do: inet
+    defp normalize_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}
+    defp normalize_ip(nil), do: nil
 
     @doc false
     def preload_gateways_presence([gateway]) do
@@ -219,12 +257,12 @@ defmodule Portal.Presence do
     end
 
     defmodule Account do
-      def track(account_id, gateway_id) do
+      def track(account_id, gateway_id, session_meta \\ %{}) do
         Portal.Presence.track(
           self(),
           topic(account_id),
           gateway_id,
-          %{online_at: System.system_time(:second)}
+          Map.merge(session_meta, %{online_at: System.system_time(:second)})
         )
       end
 

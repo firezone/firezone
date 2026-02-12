@@ -339,8 +339,8 @@ defmodule PortalWeb.Settings.ApiClients.Show do
           where: t.id == ^token_id,
           where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
         )
-        |> Safe.scoped(subject)
-        |> Safe.one()
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one(fallback_to_primary: true)
 
       case result do
         nil -> {:error, :not_found}

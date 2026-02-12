@@ -567,7 +567,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -577,7 +577,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -587,7 +587,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -607,7 +607,7 @@ defmodule Portal.Billing do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -616,7 +616,7 @@ defmodule Portal.Billing do
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -626,7 +626,7 @@ defmodule Portal.Billing do
         where: is_nil(a.disabled_at),
         where: a.type == :api_client
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -635,7 +635,7 @@ defmodule Portal.Billing do
         where: t.actor_id == ^actor.id,
         where: t.account_id == ^actor.account_id
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end
 
@@ -646,7 +646,7 @@ defmodule Portal.Billing do
           where: s.name == "Internet",
           where: s.managed_by == :system
         )
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.one()
 
       case result do
@@ -671,7 +671,7 @@ defmodule Portal.Billing do
           where: r.account_id == ^account.id,
           where: r.type == :internet
         )
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.one()
 
       case result do

@@ -175,8 +175,8 @@ defmodule Portal.Entra.ErrorHandler do
 
     def get_directory(directory_id) do
       from(d in Entra.Directory, where: d.id == ^directory_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def update_directory(directory, attrs) do

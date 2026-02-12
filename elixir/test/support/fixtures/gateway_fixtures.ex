@@ -7,6 +7,7 @@ defmodule Portal.GatewayFixtures do
   import Portal.SiteFixtures
   import Portal.IPv4AddressFixtures
   import Portal.IPv6AddressFixtures
+  import Portal.TokenFixtures
 
   @doc """
   Generate valid gateway attributes with sensible defaults.
@@ -17,12 +18,7 @@ defmodule Portal.GatewayFixtures do
     Enum.into(attrs, %{
       name: "Gateway #{unique_num}",
       external_id: "gateway_#{unique_num}",
-      public_key: generate_public_key(),
-      last_seen_user_agent: "Firezone-Gateway/1.3.0",
-      last_seen_remote_ip: {100, 64, 0, 1},
-      # Version 1.3.0+ is required for internet resources
-      last_seen_version: "1.3.0",
-      last_seen_at: DateTime.utc_now()
+      public_key: generate_public_key()
     })
   end
 
@@ -47,18 +43,9 @@ defmodule Portal.GatewayFixtures do
     # Get or create site
     site = Map.get(attrs, :site) || site_fixture(account: account)
 
-    # Build gateway attrs
-    gateway_attrs =
-      attrs
-      |> Map.drop([:account, :site, :ipv4_address, :ipv6_address])
-      |> valid_gateway_attrs()
-
-    {:ok, gateway} =
-      %Portal.Gateway{}
-      |> Ecto.Changeset.cast(gateway_attrs, [
-        :name,
-        :external_id,
-        :public_key,
+    # Extract session-related attrs
+    session_attrs =
+      Map.take(attrs, [
         :last_seen_user_agent,
         :last_seen_remote_ip,
         :last_seen_remote_ip_location_region,
@@ -67,6 +54,33 @@ defmodule Portal.GatewayFixtures do
         :last_seen_remote_ip_location_lon,
         :last_seen_version,
         :last_seen_at
+      ])
+
+    # Build gateway attrs (without session fields)
+    gateway_attrs =
+      attrs
+      |> Map.drop([
+        :account,
+        :site,
+        :ipv4_address,
+        :ipv6_address,
+        :last_seen_user_agent,
+        :last_seen_remote_ip,
+        :last_seen_remote_ip_location_region,
+        :last_seen_remote_ip_location_city,
+        :last_seen_remote_ip_location_lat,
+        :last_seen_remote_ip_location_lon,
+        :last_seen_version,
+        :last_seen_at
+      ])
+      |> valid_gateway_attrs()
+
+    {:ok, gateway} =
+      %Portal.Gateway{}
+      |> Ecto.Changeset.cast(gateway_attrs, [
+        :name,
+        :external_id,
+        :public_key
       ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:site, site)
@@ -77,8 +91,28 @@ defmodule Portal.GatewayFixtures do
     Map.get_lazy(attrs, :ipv4_address, fn -> ipv4_address_fixture(gateway: gateway) end)
     Map.get_lazy(attrs, :ipv6_address, fn -> ipv6_address_fixture(gateway: gateway) end)
 
-    # Return gateway with addresses preloaded
-    Portal.Repo.preload(gateway, [:ipv4_address, :ipv6_address])
+    # Always create a gateway session (gateways always have sessions in practice)
+    token = gateway_token_fixture(account: account, site: site)
+
+    session =
+      %Portal.GatewaySession{
+        account_id: account.id,
+        gateway_id: gateway.id,
+        gateway_token_id: token.id,
+        user_agent: Map.get(session_attrs, :last_seen_user_agent, "Firezone-Gateway/1.3.0"),
+        remote_ip: Map.get(session_attrs, :last_seen_remote_ip, {100, 64, 0, 1}),
+        remote_ip_location_region: Map.get(session_attrs, :last_seen_remote_ip_location_region),
+        remote_ip_location_city: Map.get(session_attrs, :last_seen_remote_ip_location_city),
+        remote_ip_location_lat: Map.get(session_attrs, :last_seen_remote_ip_location_lat),
+        remote_ip_location_lon: Map.get(session_attrs, :last_seen_remote_ip_location_lon),
+        version: Map.get(session_attrs, :last_seen_version, "1.3.0")
+      }
+      |> Portal.Repo.insert!()
+
+    # Return gateway with addresses preloaded and latest session set
+    gateway
+    |> Portal.Repo.preload([:ipv4_address, :ipv6_address])
+    |> Map.put(:latest_session, session)
   end
 
   @doc """
@@ -101,6 +135,10 @@ defmodule Portal.GatewayFixtures do
   def gateway_with_location_fixture(attrs \\ %{}) do
     attrs =
       attrs
+      |> Map.put_new(:last_seen_at, DateTime.utc_now())
+      |> Map.put_new(:last_seen_user_agent, "Firezone-Gateway/1.3.0")
+      |> Map.put_new(:last_seen_version, "1.3.0")
+      |> Map.put_new(:last_seen_remote_ip, {100, 64, 0, 1})
       |> Map.put_new(:last_seen_remote_ip_location_region, "US-CA")
       |> Map.put_new(:last_seen_remote_ip_location_city, "San Francisco")
       |> Map.put_new(:last_seen_remote_ip_location_lat, 37.7749)

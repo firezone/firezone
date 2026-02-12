@@ -1297,6 +1297,15 @@ defmodule PortalWeb.CoreComponents do
     |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
   end
 
+  defp assign_last_seen_fields(%{schema: %Portal.GatewaySession{} = s} = assigns) do
+    assigns
+    |> assign(:display_remote_ip, s.remote_ip)
+    |> assign(:display_remote_ip_location_city, s.remote_ip_location_city)
+    |> assign(:display_remote_ip_location_region, s.remote_ip_location_region)
+    |> assign(:display_remote_ip_location_lat, s.remote_ip_location_lat)
+    |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
+  end
+
   defp assign_last_seen_fields(%{schema: s} = assigns) do
     assigns
     |> assign(:display_remote_ip, s.last_seen_remote_ip)

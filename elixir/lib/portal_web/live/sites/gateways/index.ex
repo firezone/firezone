@@ -21,8 +21,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
           {:site_id, site.id}
         ],
         sortable_fields: [
-          {:gateways, :name},
-          {:gateways, :last_seen_at}
+          {:gateways, :name}
         ],
         callback: &handle_gateways_update!/2
       )
@@ -88,11 +87,11 @@ defmodule PortalWeb.Sites.Gateways.Index do
           </:col>
           <:col :let={gateway} label="remote ip">
             <code>
-              {gateway.last_seen_remote_ip}
+              {gateway.latest_session && gateway.latest_session.remote_ip}
             </code>
           </:col>
           <:col :let={gateway} label="version">
-            {gateway.last_seen_version}
+            {gateway.latest_session && gateway.latest_session.version}
           </:col>
           <:col :let={gateway} label="status">
             <.connection_status schema={gateway} />
@@ -139,7 +138,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Gateway}
+    alias Portal.{Safe, Gateway, GatewaySession}
 
     def get_site!(id, subject) do
       from(s in Portal.Site, as: :sites)
@@ -157,15 +156,35 @@ defmodule PortalWeb.Sites.Gateways.Index do
     def cursor_fields do
       [
         {:gateways, :asc, :name},
-        {:gateways, :asc, :last_seen_at},
         {:gateways, :asc, :id}
       ]
     end
 
     def preloads do
       [
-        online?: &Portal.Presence.Gateways.preload_gateways_presence/1
+        online?: &Portal.Presence.Gateways.preload_gateways_presence/1,
+        last_seen: &preload_latest_sessions/1
       ]
+    end
+
+    defp preload_latest_sessions(gateways) do
+      account_ids = gateways |> Enum.map(& &1.account_id) |> Enum.uniq()
+      gateway_ids = Enum.map(gateways, & &1.id)
+
+      sessions_by_gateway_id =
+        from(s in GatewaySession,
+          where: s.account_id in ^account_ids,
+          where: s.gateway_id in ^gateway_ids,
+          distinct: s.gateway_id,
+          order_by: [asc: s.gateway_id, desc: s.inserted_at]
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.all()
+        |> Map.new(&{&1.gateway_id, &1})
+
+      Enum.map(gateways, fn gateway ->
+        %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}
+      end)
     end
 
     def filters do

@@ -557,8 +557,8 @@ defmodule Portal.Okta.Sync do
         where: d.is_disabled == false,
         where: is_nil(a.disabled_at)
       )
-      |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def update_directory(changeset) do
@@ -577,8 +577,8 @@ defmodule Portal.Okta.Sync do
           where: i.directory_id == ^directory_id,
           select: count(i.id)
         )
-        |> Safe.unscoped()
-        |> Safe.one!()
+        |> Safe.unscoped(:replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       to_delete =
         from(i in Portal.ExternalIdentity,
@@ -587,8 +587,8 @@ defmodule Portal.Okta.Sync do
           where: i.last_synced_at < ^synced_at or is_nil(i.last_synced_at),
           select: count(i.id)
         )
-        |> Safe.unscoped()
-        |> Safe.one!()
+        |> Safe.unscoped(:replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       %{total: total, to_delete: to_delete}
     end
@@ -604,8 +604,8 @@ defmodule Portal.Okta.Sync do
           where: g.directory_id == ^directory_id,
           select: count(g.id)
         )
-        |> Safe.unscoped()
-        |> Safe.one!()
+        |> Safe.unscoped(:replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       to_delete =
         from(g in Portal.Group,
@@ -614,8 +614,8 @@ defmodule Portal.Okta.Sync do
           where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at),
           select: count(g.id)
         )
-        |> Safe.unscoped()
-        |> Safe.one!()
+        |> Safe.unscoped(:replica)
+        |> Safe.one!(fallback_to_primary: true)
 
       %{total: total, to_delete: to_delete}
     end
@@ -628,7 +628,7 @@ defmodule Portal.Okta.Sync do
         where: not is_nil(g.idp_id),
         select: g.idp_id
       )
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 

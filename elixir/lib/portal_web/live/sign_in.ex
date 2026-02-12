@@ -310,18 +310,18 @@ defmodule PortalWeb.SignIn do
           do: from(a in Account, where: a.id == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one!()
+      query |> Safe.unscoped(:replica) |> Safe.one!()
     end
 
     def get_auth_provider(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.one()
     end
 
     def list_auth_providers(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.all()
     end
   end

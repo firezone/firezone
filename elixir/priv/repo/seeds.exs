@@ -3,6 +3,7 @@ defmodule Portal.Repo.Seeds do
   Seeds the database with initial data.
   """
   import Ecto.Changeset
+  import Ecto.Query
 
   alias Portal.{
     Repo,
@@ -18,6 +19,7 @@ defmodule Portal.Repo.Seeds do
     ExternalIdentity,
     PolicyAuthorization,
     Gateway,
+    GatewaySession,
     Google,
     Group,
     Membership,
@@ -151,16 +153,37 @@ defmodule Portal.Repo.Seeds do
         account_id: site.account_id,
         name: attrs["name"] || attrs[:name],
         external_id: external_id,
-        public_key: attrs["public_key"] || attrs[:public_key],
-        last_seen_user_agent: context.user_agent,
-        last_seen_remote_ip: context.remote_ip,
-        last_seen_version: version,
-        last_seen_at: DateTime.utc_now()
+        public_key: attrs["public_key"] || attrs[:public_key]
       }
       |> Repo.insert!()
 
     # Then create tunnel IP addresses with gateway FK
     create_tunnel_ip_addresses(site.account_id, gateway_id: gateway.id)
+
+    # Find the latest gateway token for the site
+    gateway_token =
+      Repo.one!(
+        from(t in Portal.GatewayToken,
+          where: t.site_id == ^site_id and t.account_id == ^site.account_id,
+          order_by: [desc: t.inserted_at],
+          limit: 1
+        )
+      )
+
+    # Create a gateway session
+    %GatewaySession{
+      account_id: site.account_id,
+      gateway_id: gateway.id,
+      gateway_token_id: gateway_token.id,
+      user_agent: context.user_agent,
+      remote_ip: context.remote_ip,
+      remote_ip_location_region: "US-CA",
+      remote_ip_location_city: "San Francisco",
+      remote_ip_location_lat: 37.7749,
+      remote_ip_location_lon: -122.4194,
+      version: version
+    }
+    |> Repo.insert!()
 
     {:ok, Repo.preload(gateway, [:ipv4_address, :ipv6_address])}
   end

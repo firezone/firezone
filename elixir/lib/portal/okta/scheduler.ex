@@ -26,7 +26,7 @@ defmodule Portal.Okta.Scheduler do
           where: is_nil(a.disabled_at),
           where: fragment("(?)->>'idp_sync' = 'true'", a.features)
         )
-        |> Safe.unscoped()
+        |> Safe.unscoped(:replica)
         |> Safe.stream()
         |> Stream.each(fn directory ->
           args = %{directory_id: directory.id}

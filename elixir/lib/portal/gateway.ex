@@ -51,9 +51,11 @@ defmodule Portal.Gateway do
     field :last_seen_at, :utc_datetime_usec
 
     field :online?, :boolean, virtual: true
+    field :latest_session, :any, virtual: true
 
     belongs_to :site, Portal.Site
 
+    has_many :gateway_sessions, Portal.GatewaySession, references: :id
     has_one :ipv4_address, Portal.IPv4Address, references: :id
     has_one :ipv6_address, Portal.IPv6Address, references: :id
 
@@ -86,7 +88,8 @@ defmodule Portal.Gateway do
     gateways
     # Group gateways by their geographical location
     |> Enum.group_by(fn gateway ->
-      {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
+      session = gateway.latest_session
+      {session && session.remote_ip_location_lat, session && session.remote_ip_location_lon}
     end)
     # Replace the location with the approximate distance to the client
     |> Enum.map(fn
@@ -103,7 +106,10 @@ defmodule Portal.Gateway do
     |> List.first()
     |> elem(1)
     # Group nearest gateways by their version and only leave the one running the greatest one
-    |> Enum.group_by(fn gateway -> gateway.last_seen_version end)
+    |> Enum.group_by(fn gateway ->
+      session = gateway.latest_session
+      session && session.version
+    end)
     |> Enum.sort_by(&elem(&1, 0), :desc)
     |> Enum.at(0)
     |> elem(1)
@@ -122,10 +128,15 @@ defmodule Portal.Gateway do
 
   def gateway_outdated?(gateway) do
     latest_release = Portal.ComponentVersions.gateway_version()
+    version = gateway.latest_session && gateway.latest_session.version
 
-    case Version.compare(gateway.last_seen_version, latest_release) do
-      :lt -> true
-      _ -> false
+    if version do
+      case Version.compare(version, latest_release) do
+        :lt -> true
+        _ -> false
+      end
+    else
+      false
     end
   end
 end
