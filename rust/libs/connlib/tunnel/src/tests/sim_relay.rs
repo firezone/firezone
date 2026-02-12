@@ -201,8 +201,15 @@ impl SimRelay {
 pub(crate) fn ref_relay_host() -> impl Strategy<Value = Host<u64>> {
     host(
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
-        Just(3478),
+        relay_port(),
         any::<u64>(),
         latency(50), // We assume our relays have a good Internet connection.
     )
+}
+
+fn relay_port() -> impl Strategy<Value = u16> {
+    prop_oneof![
+        10 => Just(3478),
+        1 => any::<u16>()
+    ]
 }

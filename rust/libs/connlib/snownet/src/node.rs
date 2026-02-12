@@ -786,25 +786,6 @@ where
         packet: &'p [u8],
         now: Instant,
     ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
-        if from.port() != 3478 {
-            // Relays always send & receive from port 3478.
-            //
-            // Some NATs may remap our p2p listening port (i.e. 52625 or another ephemeral one) to a port
-            // in the non-ephemeral range. If this happens, there is a chance that a peer is sending
-            // traffic originating from port 3478.
-            //
-            // The above check would wrongly classify a STUN request from such a peer as relay traffic and
-            // fail to process it because we don't have an `Allocation` for the peer's IP.
-            //
-            // At the same time, we may still receive packets on port 3478 for an allocation that we have discarded.
-            //
-            // To correctly handle these packets, we need to handle them differently, depending on whether we
-            // previously had an allocation on a certain relay:
-            // 1. If we previously had an allocation, we need to stop processing the packet.
-            // 2. If we don't recognize the IP, continue processing the packet (as it may be p2p traffic).
-            return ControlFlow::Continue((from, packet, None));
-        }
-
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
