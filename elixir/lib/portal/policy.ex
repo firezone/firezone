@@ -46,7 +46,7 @@ defmodule Portal.Policy do
     )
     |> assoc_constraint(:account)
     |> assoc_constraint(:resource)
-    |> maybe_validate_group()
+    |> assoc_constraint(:group)
     |> unique_constraint(
       :base,
       name: :policies_group_id_fkey,
@@ -57,13 +57,5 @@ defmodule Portal.Policy do
       name: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
-  end
-
-  defp maybe_validate_group(changeset) do
-    if get_change(changeset, :group_id) do
-      assoc_constraint(changeset, :group)
-    else
-      changeset
-    end
   end
 end
