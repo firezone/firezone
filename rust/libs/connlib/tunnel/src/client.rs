@@ -690,14 +690,8 @@ impl ClientState {
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
-            snownet::Credentials {
-                username: client_ice.username,
-                password: client_ice.password,
-            },
-            snownet::Credentials {
-                username: gateway_ice.username,
-                password: gateway_ice.password,
-            },
+            client_ice.into(),
+            gateway_ice.into(),
             snownet::IceRole::Controlling,
             now,
         ) {
@@ -786,7 +780,7 @@ impl ClientState {
         preshared_key: SecretKey,
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
-        _ice_role: IceRole,
+        ice_role: IceRole,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let pending_device_access = self.pending_device_access.remove(&client_tun.v4);
@@ -795,14 +789,9 @@ impl ClientState {
             ClientOrGatewayId::Client(cid),
             client_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
-            snownet::Credentials {
-                username: local_client_ice.username,
-                password: local_client_ice.password,
-            },
-            snownet::Credentials {
-                username: remote_client_ice.username,
-                password: remote_client_ice.password,
-            },
+            local_client_ice.into(),
+            remote_client_ice.into(),
+            ice_role.into(),
             now,
         )?;
 

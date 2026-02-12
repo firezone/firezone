@@ -62,11 +62,29 @@ pub struct IceCredentials {
     pub password: String,
 }
 
+impl From<IceCredentials> for snownet::Credentials {
+    fn from(value: IceCredentials) -> Self {
+        snownet::Credentials {
+            username: value.username,
+            password: value.password,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum IceRole {
     Controlling,
     Controlled,
+}
+
+impl From<IceRole> for snownet::IceRole {
+    fn from(value: IceRole) -> snownet::IceRole {
+        match value {
+            IceRole::Controlling => snownet::IceRole::Controlling,
+            IceRole::Controlled => snownet::IceRole::Controlled,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
