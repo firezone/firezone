@@ -14,8 +14,7 @@ mod utils;
 
 pub use allocation::RelaySocket;
 pub use node::{
-    Client, ClientNode, Credentials, Event, NoTurnServers, Node, Server, ServerNode, Transmit,
-    UnknownConnection,
+    Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, Transmit, UnknownConnection,
 };
 pub use stats::{ConnectionStats, NodeStats};
 

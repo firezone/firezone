@@ -13,7 +13,9 @@ use str0m::ice::IceAgent;
 
 use crate::{
     ConnectionStats, Event,
-    node::{Connection, ConnectionState, allocations::Allocations, new_ice_candidate_event},
+    node::{
+        Connection, ConnectionState, IceConfig, allocations::Allocations, new_ice_candidate_event,
+    },
 };
 
 pub struct Connections<TId, RId> {
@@ -87,6 +89,7 @@ where
         &mut self,
         allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
+        default_ice_config: IceConfig,
         rng: &mut impl Rng,
         now: Instant,
     ) {
@@ -115,7 +118,8 @@ where
                 pending_events.push_back(new_ice_candidate_event(cid, candidate));
             }
 
-            c.state.on_candidate(cid, &mut c.agent, now);
+            c.state
+                .on_candidate(cid, &mut c.agent, default_ice_config, now);
         }
     }
 
@@ -495,6 +499,8 @@ mod tests {
             first_handshake_completed_at: None,
             buffer: Default::default(),
             buffer_pool: BufferPool::new(0, "test"),
+            default_ice_config: IceConfig::client_default(),
+            idle_ice_config: IceConfig::client_idle(),
         }
     }
 

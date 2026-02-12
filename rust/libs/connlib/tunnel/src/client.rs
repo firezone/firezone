@@ -39,7 +39,7 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 
 use crate::ClientEvent;
-use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
+use snownet::{NoTurnServers, Node, RelaySocket, Transmit};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -84,12 +84,12 @@ const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
 /// A sans-IO implementation of a Client's functionality.
 ///
-/// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
+/// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
 /// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
 /// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
 pub struct ClientState {
     /// Manages wireguard tunnels to gateways.
-    node: ClientNode<GatewayId, RelayId>,
+    node: Node<GatewayId, RelayId>,
     /// All gateways we are connected to and the associated, connection-specific state.
     gateways: PeerStore<GatewayId, GatewayOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
@@ -157,7 +157,13 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(seed, now, unix_ts),
+            node: Node::new(
+                seed,
+                now,
+                unix_ts,
+                snownet::IceConfig::client_default(),
+                snownet::IceConfig::client_idle(),
+            ),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
             stub_resolver: StubResolver::new(records),
@@ -624,6 +630,7 @@ impl ClientState {
                 username: gateway_ice.username,
                 password: gateway_ice.password,
             },
+            snownet::IceRole::Controlling,
             now,
         ) {
             Ok(()) => {}
@@ -1783,7 +1790,7 @@ fn encapsulate_and_buffer(
     packet: IpPacket,
     gid: GatewayId,
     now: Instant,
-    node: &mut ClientNode<GatewayId, RelayId>,
+    node: &mut Node<GatewayId, RelayId>,
     buffered_transmits: &mut VecDeque<Transmit>,
 ) {
     let Some(transmit) = node
