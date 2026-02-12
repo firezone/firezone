@@ -1155,13 +1155,13 @@ defmodule PortalWeb.CoreComponents do
   def group_badge(%{group: nil} = assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center rounded border border-amber-300 bg-amber-50 overflow-hidden mr-1",
+      "inline-flex items-center rounded border border-primary-300 bg-primary-50 overflow-hidden mr-1",
       @class
     ]}>
-      <span class="inline-flex items-center justify-center py-0.5 px-1.5 text-amber-600 bg-amber-100 border-r border-amber-300">
+      <span class="inline-flex items-center justify-center py-0.5 px-1.5 text-primary-600 bg-primary-100 border-r border-primary-300">
         <.icon name="hero-exclamation-triangle-mini" class="h-3.5 w-3.5" />
       </span>
-      <span class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-amber-700">
+      <span class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-primary-700">
         Group deleted
       </span>
     </span>
