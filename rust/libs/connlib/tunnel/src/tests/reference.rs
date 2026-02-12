@@ -4,7 +4,7 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::proptest::domain_label;
+use crate::proptest::{domain_label, host_v4, host_v6};
 use crate::{client, dns};
 use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -262,15 +262,7 @@ impl ReferenceState {
             .with_if_not_empty(1, state.all_resource_ids(), |resource_ids| {
                 sample::select(resource_ids).prop_map(Transition::RemoveResource)
             })
-            .with_if_not_empty(1, state.all_client_ids(), |client_ids| {
-                (sample::select(client_ids), roam_client()).prop_map(|(client_id, (ip4, ip6))| {
-                    Transition::RoamClient {
-                        client_id,
-                        ip4,
-                        ip6,
-                    }
-                })
-            })
+            .with(1, roam_client(sample::select(state.all_client_ids())))
             .with(1, relays(relay_id()).prop_map(Transition::DeployNewRelays))
             .with(1, Just(Transition::PartitionRelaysFromPortal))
             .with(
@@ -305,16 +297,8 @@ impl ReferenceState {
                     let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
                     prop_oneof![
-                        icmp_packet(
-                            client_id,
-                            Just(tunnel_ip4),
-                            select_host_v4(&[ipv4_resource])
-                        ),
-                        udp_packet(
-                            client_id,
-                            Just(tunnel_ip4),
-                            select_host_v4(&[ipv4_resource])
-                        ),
+                        icmp_packet(client_id, Just(tunnel_ip4), host_v4(ipv4_resource)),
+                        udp_packet(client_id, Just(tunnel_ip4), host_v4(ipv4_resource)),
                     ]
                 })
             })
@@ -325,16 +309,8 @@ impl ReferenceState {
                     let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
                     prop_oneof![
-                        icmp_packet(
-                            client_id,
-                            Just(tunnel_ip6),
-                            select_host_v6(&[ipv6_resource])
-                        ),
-                        udp_packet(
-                            client_id,
-                            Just(tunnel_ip6),
-                            select_host_v6(&[ipv6_resource])
-                        ),
+                        icmp_packet(client_id, Just(tunnel_ip6), host_v6(ipv6_resource)),
+                        udp_packet(client_id, Just(tunnel_ip6), host_v6(ipv6_resource)),
                     ]
                 })
             })
@@ -523,8 +499,8 @@ impl ReferenceState {
                     let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
                     prop_oneof![
-                        icmp_packet(client_id, Just(tunnel_ip4), select_host_v4(&[gateway_ip])),
-                        udp_packet(client_id, Just(tunnel_ip4), select_host_v4(&[gateway_ip])),
+                        icmp_packet(client_id, Just(tunnel_ip4), host_v4(gateway_ip)),
+                        udp_packet(client_id, Just(tunnel_ip4), host_v4(gateway_ip)),
                     ]
                 })
             })
@@ -535,8 +511,8 @@ impl ReferenceState {
                     let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
                     prop_oneof![
-                        icmp_packet(client_id, Just(tunnel_ip6), select_host_v6(&[gateway_ip])),
-                        udp_packet(client_id, Just(tunnel_ip6), select_host_v6(&[gateway_ip])),
+                        icmp_packet(client_id, Just(tunnel_ip6), host_v6(gateway_ip)),
+                        udp_packet(client_id, Just(tunnel_ip6), host_v6(gateway_ip)),
                     ]
                 })
             })
@@ -1448,14 +1424,6 @@ impl ReferenceState {
             debug_assert!(self.network.add_host(*rid, new_relay));
         }
     }
-}
-
-fn select_host_v4(hosts: &[Ipv4Network]) -> impl Strategy<Value = Ipv4Addr> + use<> {
-    sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v4)
-}
-
-fn select_host_v6(hosts: &[Ipv6Network]) -> impl Strategy<Value = Ipv6Addr> + use<> {
-    sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v6)
 }
 
 pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {

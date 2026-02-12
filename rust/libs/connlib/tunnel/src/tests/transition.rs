@@ -466,7 +466,12 @@ pub(crate) fn maybe_available_response_rtypes(
     }
 }
 
-pub(crate) fn roam_client() -> impl Strategy<Value = (Option<Ipv4Addr>, Option<Ipv6Addr>)> {
-    (any_ip_stack())
-        .prop_map(move |ip_stack| (ip_stack.as_v4().copied(), ip_stack.as_v6().copied()))
+pub(crate) fn roam_client(
+    client_id: impl Strategy<Value = ClientId>,
+) -> impl Strategy<Value = Transition> {
+    (any_ip_stack(), client_id).prop_map(|(ip_stack, client_id)| Transition::RoamClient {
+        client_id,
+        ip4: ip_stack.as_v4().copied(),
+        ip6: ip_stack.as_v6().copied(),
+    })
 }
