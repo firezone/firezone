@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="RemoveOldFirezoneService" Guid="2cfa312f-9a0a-4a3c-bfe8-c7304f69a467">
@@ -47,6 +48,15 @@
 
         <ServiceControl Id="FirezoneClientTunnelServiceControl" Start="install" Stop="both"
           Remove="both" Name="FirezoneClientTunnelService" Wait="yes" />
+
+        <!-- Configure service to restart automatically on failure -->
+        <util:ServiceConfig
+          ServiceName="FirezoneClientTunnelService"
+          FirstFailureActionType="restart"
+          SecondFailureActionType="restart"
+          ThirdFailureActionType="restart"
+          RestartServiceDelayInSeconds="5"
+          ResetPeriodInDays="1" />
       </Component>
     </DirectoryRef>
   </Fragment>
