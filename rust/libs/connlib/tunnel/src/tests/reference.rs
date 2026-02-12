@@ -215,7 +215,8 @@ impl ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                system_dns_servers().prop_map(Transition::UpdateSystemDnsServers),
+                system_dns_servers()
+                    .prop_map(|servers| Transition::UpdateSystemDnsServers { servers }),
             )
             .with(
                 1,
@@ -273,10 +274,13 @@ impl ReferenceState {
             )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
-            .with(1, private_key().prop_map(Transition::RestartClient))
             .with(
                 1,
-                any::<bool>().prop_map(Transition::SetInternetResourceState),
+                private_key().prop_map(|key| Transition::RestartClient { key }),
+            )
+            .with(
+                1,
+                any::<bool>().prop_map(|active| Transition::SetInternetResourceState { active }),
             )
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::select(resources_id)
@@ -519,7 +523,7 @@ impl ReferenceState {
                         }
                     })
             }
-            Transition::SetInternetResourceState(active) => state.client.exec_mut(|client| {
+            Transition::SetInternetResourceState { active } => state.client.exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
             Transition::SendDnsQueries(queries) => {
@@ -573,7 +577,7 @@ impl ReferenceState {
             } => state.client.exec_mut(|client| {
                 client.on_connect_tcp(*src, dst.clone(), *sport, *dport);
             }),
-            Transition::UpdateSystemDnsServers(servers) => {
+            Transition::UpdateSystemDnsServers { servers } => {
                 state
                     .client
                     .exec_mut(|client| client.set_system_dns_resolvers(servers));
@@ -621,7 +625,7 @@ impl ReferenceState {
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => state
                 .client
                 .exec_mut(|client| client.remove_resource(resource)),
-            Transition::RestartClient(key) => state.client.exec_mut(|c| {
+            Transition::RestartClient { key } => state.client.exec_mut(|c| {
                 c.restart(*key);
             }),
             Transition::UpdateDnsRecords { domain, records } => {
@@ -654,7 +658,7 @@ impl ReferenceState {
                 resource.sites() != BTreeSet::from([new_site])
                     && state.client.inner().has_resource(resource.id())
             }
-            Transition::SetInternetResourceState(_) => true,
+            Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket {
                 src,
                 dst: Destination::DomainName { name, .. },
@@ -725,7 +729,7 @@ impl ReferenceState {
                 state.is_valid_dst_ip(*dst_ip)
                     && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
             }
-            Transition::UpdateSystemDnsServers(servers) => {
+            Transition::UpdateSystemDnsServers { servers } => {
                 if servers.is_empty() {
                     return true; // Clearing is allowed.
                 }
@@ -814,7 +818,7 @@ impl ReferenceState {
                 !route_overlap
             }
             Transition::Idle => true,
-            Transition::RestartClient(_) => true,
+            Transition::RestartClient { key: _ } => true,
             Transition::PartitionRelaysFromPortal => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(r) => {
                 let has_resource = state.client.inner().has_resource(*r);

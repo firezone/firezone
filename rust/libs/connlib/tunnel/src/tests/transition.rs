@@ -36,7 +36,7 @@ pub(crate) enum Transition {
     MoveResourceToNewSite { resource: Resource, new_site: Site },
 
     /// Toggle the Internet Resource on / off
-    SetInternetResourceState(bool),
+    SetInternetResourceState { active: bool },
 
     /// Send an ICMP packet to destination (IP resource, DNS resource or IP non-resource).
     SendIcmpPacket {
@@ -66,7 +66,7 @@ pub(crate) enum Transition {
     SendDnsQueries(Vec<DnsQuery>),
 
     /// The system's DNS servers changed.
-    UpdateSystemDnsServers(Vec<IpAddr>),
+    UpdateSystemDnsServers { servers: Vec<IpAddr> },
     /// The upstream Do53 servers changed.
     UpdateUpstreamDo53Servers(Vec<UpstreamDo53>),
     /// The upstream DoH servers changed.
@@ -84,7 +84,7 @@ pub(crate) enum Transition {
     ReconnectPortal,
 
     /// Restart the client.
-    RestartClient(PrivateKey),
+    RestartClient { key: PrivateKey },
 
     /// Simulate deployment of new relays.
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),

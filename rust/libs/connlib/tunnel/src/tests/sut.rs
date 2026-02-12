@@ -213,7 +213,7 @@ impl TunnelTest {
                     gateway.exec_mut(|g| g.sut.remove_access(&state.client.inner().id, &rid, now));
                 }
             }
-            Transition::SetInternetResourceState(active) => state
+            Transition::SetInternetResourceState { active } => state
                 .client
                 .exec_mut(|c| c.sut.set_internet_resource_state(active, now)),
             Transition::SendIcmpPacket {
@@ -289,7 +289,7 @@ impl TunnelTest {
                     buffered_transmits.push_from(transmit, &state.client, now);
                 }
             }
-            Transition::UpdateSystemDnsServers(servers) => {
+            Transition::UpdateSystemDnsServers { servers } => {
                 state
                     .client
                     .exec_mut(|c| c.sut.update_system_resolvers(servers));
@@ -450,7 +450,7 @@ impl TunnelTest {
                     tracing::error!(%rid, "No gateway for resource");
                 }
             }
-            Transition::RestartClient(key) => {
+            Transition::RestartClient { key } => {
                 // Copy current state that will be preserved.
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
