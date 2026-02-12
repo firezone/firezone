@@ -92,7 +92,7 @@
                   <%= for gateway <- @gateways do %>
                     <tr style="border-bottom-width: 1px; background-color: #ffffff">
                       <th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d"><%= gateway.name %></th>
-                      <td style="padding: 4px 24px"><%= gateway.last_seen_version %></td>
+                      <td style="padding: 4px 24px"><%= gateway.latest_session && gateway.latest_session.version %></td>
                     </tr>
                   <% end %>
                   </table>

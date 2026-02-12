@@ -360,7 +360,7 @@ defmodule PortalAPI.Client.Channel do
            Database.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client_version,
              resource,
-             socket.assigns.subject
+             socket.assigns.subject.account.id
            ) do
       location = {
         socket.assigns.subject.context.remote_ip_location_lat,
@@ -369,18 +369,7 @@ defmodule PortalAPI.Client.Channel do
 
       gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
 
-      # TODO: Optimization
-      # Move this to a Task.start that completes after broadcasting authorize_flow
-      {:ok, policy_authorization} =
-        create_policy_authorization(
-          socket.assigns.client,
-          gateway,
-          resource_id,
-          policy_id,
-          membership_id,
-          socket.assigns.subject,
-          expires_at
-        )
+      policy_authorization_id = Ecto.UUID.generate()
 
       preshared_key =
         generate_preshared_key(socket.assigns.client, socket.assigns.session.public_key, gateway)
@@ -404,11 +393,22 @@ defmodule PortalAPI.Client.Channel do
              ),
            subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
            resource: PortalAPI.Gateway.Views.Resource.render(resource),
-           policy_authorization_id: policy_authorization.id,
+           policy_authorization_id: policy_authorization_id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
          }}
+
+      async_create_policy_authorization(
+        policy_authorization_id,
+        socket.assigns.client,
+        gateway,
+        resource_id,
+        policy_id,
+        membership_id,
+        socket.assigns.subject,
+        expires_at
+      )
 
       case Channels.send_to_gateway(gateway.id, message) do
         :ok ->
@@ -473,8 +473,6 @@ defmodule PortalAPI.Client.Channel do
   def handle_in("prepare_connection", %{"resource_id" => resource_id} = attrs, socket) do
     connected_gateway_ids = Map.get(attrs, "connected_gateway_ids", [])
 
-    # TODO: Optimization
-    # Gateway selection and flow authorization shouldn't need to hit the DB
     with {:ok, resource, _membership_id, _policy_id, _expires_at} <-
            Cache.Client.authorize_resource(
              socket.assigns.cache,
@@ -487,7 +485,7 @@ defmodule PortalAPI.Client.Channel do
            Database.all_compatible_gateways_for_client_and_resource(
              socket.assigns.client_version,
              resource,
-             socket.assigns.subject
+             socket.assigns.subject.account.id
            ) do
       location = {
         socket.assigns.subject.context.remote_ip_location_lat,
@@ -502,7 +500,7 @@ defmodule PortalAPI.Client.Channel do
            resource_id: resource_id,
            site_id: gateway.site_id,
            gateway_id: gateway.id,
-           gateway_remote_ip: gateway.last_seen_remote_ip
+           gateway_remote_ip: gateway.latest_session && gateway.latest_session.remote_ip
          }}
 
       {:reply, reply, socket}
@@ -543,27 +541,20 @@ defmodule PortalAPI.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Database.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
-           |> then(fn
-             {:ok, gw} ->
-               {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
+           Presence.Gateways.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
+         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
+      policy_authorization_id = Ecto.UUID.generate()
 
-             error ->
-               error
-           end),
-         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id),
-         true <- gateway.online? do
-      # TODO: Optimization
-      {:ok, policy_authorization} =
-        create_policy_authorization(
-          socket.assigns.client,
-          gateway,
-          resource_id,
-          policy_id,
-          membership_id,
-          socket.assigns.subject,
-          expires_at
-        )
+      async_create_policy_authorization(
+        policy_authorization_id,
+        socket.assigns.client,
+        gateway,
+        resource_id,
+        policy_id,
+        membership_id,
+        socket.assigns.subject,
+        expires_at
+      )
 
       case Channels.send_to_gateway(
              gateway.id,
@@ -573,7 +564,7 @@ defmodule PortalAPI.Client.Channel do
                 client_ipv4: socket.assigns.client.ipv4_address.address,
                 client_ipv6: socket.assigns.client.ipv6_address.address,
                 resource: resource,
-                policy_authorization_id: policy_authorization.id,
+                policy_authorization_id: policy_authorization_id,
                 authorization_expires_at: expires_at,
                 client_payload: payload
               }}
@@ -587,6 +578,9 @@ defmodule PortalAPI.Client.Channel do
     else
       {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
+
+      {:error, :offline} ->
+        {:reply, {:error, %{reason: :offline}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
@@ -620,27 +614,20 @@ defmodule PortalAPI.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Database.fetch_gateway_by_id(gateway_id, socket.assigns.subject)
-           |> then(fn
-             {:ok, gw} ->
-               {:ok, Presence.Gateways.preload_gateways_presence([gw]) |> List.first()}
+           Presence.Gateways.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
+         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
+      policy_authorization_id = Ecto.UUID.generate()
 
-             error ->
-               error
-           end),
-         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id),
-         true <- gateway.online? do
-      # TODO: Optimization
-      {:ok, policy_authorization} =
-        create_policy_authorization(
-          socket.assigns.client,
-          gateway,
-          resource_id,
-          policy_id,
-          membership_id,
-          socket.assigns.subject,
-          expires_at
-        )
+      async_create_policy_authorization(
+        policy_authorization_id,
+        socket.assigns.client,
+        gateway,
+        resource_id,
+        policy_id,
+        membership_id,
+        socket.assigns.subject,
+        expires_at
+      )
 
       case Channels.send_to_gateway(
              gateway.id,
@@ -654,7 +641,7 @@ defmodule PortalAPI.Client.Channel do
                     preshared_key
                   ),
                 resource: resource,
-                policy_authorization_id: policy_authorization.id,
+                policy_authorization_id: policy_authorization_id,
                 authorization_expires_at: expires_at
               }}
            ) do
@@ -667,6 +654,9 @@ defmodule PortalAPI.Client.Channel do
     else
       {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
+
+      {:error, :offline} ->
+        {:reply, {:error, %{reason: :offline}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
@@ -1022,57 +1012,28 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defmodule Database do
-    import Ecto.Query
-    alias Portal.{Safe, Gateway}
-
-    def fetch_gateway_by_id(id, subject) do
-      result =
-        from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.id == ^id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
-      end
-    end
-
     def all_compatible_gateways_for_client_and_resource(
           client_version,
           resource,
-          subject
+          account_id
         ) do
       resource_site_id = site_id_from_resource(resource)
 
-      connected_gateway_ids =
-        Presence.Gateways.Account.list(subject.account.id)
-        |> Map.keys()
-
-      online_gateways =
-        from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.id in ^connected_gateway_ids and g.site_id == ^resource_site_id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.all()
-        |> case do
-          {:error, :unauthorized} -> []
-          gateways -> gateways
-        end
+      site_gateways =
+        Presence.Gateways.all_connected_gateways(account_id)
+        |> Enum.filter(&(&1.site_id == resource_site_id))
 
       compatible_gateways =
-        filter_compatible_gateways(online_gateways, resource, client_version)
+        filter_compatible_gateways(site_gateways, resource, client_version)
 
       cond do
         compatible_gateways != [] ->
           {:ok, compatible_gateways}
 
-        online_gateways != [] ->
-          # Gateways are online but all were filtered out due to version incompatibility
+        site_gateways != [] ->
           {:error, :version_mismatch}
 
         true ->
-          # No gateways online at all
           {:ok, []}
       end
     end
@@ -1085,14 +1046,16 @@ defmodule PortalAPI.Client.Channel do
         {:ok, version} ->
           gateways
           |> Enum.filter(fn gateway ->
-            case Version.parse(gateway.last_seen_version) do
+            gateway_version_str = gateway.latest_session && gateway.latest_session.version
+
+            case gateway_version_str && Version.parse(gateway_version_str) do
               {:ok, gateway_version} ->
                 Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
                   Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
                   not is_nil(
                     Portal.Resource.adapt_resource_for_version(
                       resource,
-                      gateway.last_seen_version
+                      gateway_version_str
                     )
                   )
 
@@ -1137,9 +1100,8 @@ defmodule PortalAPI.Client.Channel do
   defp nils_last(_, nil), do: true
   defp nils_last(a, b), do: a <= b
 
-  # Inline functions from Portal.PolicyAuthorizations
-
-  defp create_policy_authorization(
+  defp async_create_policy_authorization(
+         policy_authorization_id,
          %Portal.Client{
            id: client_id,
            account_id: account_id,
@@ -1147,9 +1109,8 @@ defmodule PortalAPI.Client.Channel do
          },
          %Portal.Gateway{
            id: gateway_id,
-           last_seen_remote_ip: gateway_remote_ip,
            account_id: account_id
-         },
+         } = gateway,
          resource_id,
          policy_id,
          membership_id,
@@ -1164,29 +1125,55 @@ defmodule PortalAPI.Client.Channel do
          } = subject,
          expires_at
        ) do
-    changeset =
-      create_policy_authorization_changeset(%{
-        token_id: token_id,
-        policy_id: policy_id,
-        client_id: client_id,
-        gateway_id: gateway_id,
-        resource_id: resource_id,
-        membership_id: membership_id,
-        account_id: account_id,
-        client_remote_ip: client_remote_ip,
-        client_user_agent: client_user_agent,
-        gateway_remote_ip: gateway_remote_ip,
-        expires_at: expires_at
-      })
+    gateway_remote_ip = gateway.latest_session && gateway.latest_session.remote_ip
 
-    Portal.Safe.scoped(changeset, subject)
-    |> Portal.Safe.insert()
+    attrs = %{
+      id: policy_authorization_id,
+      token_id: token_id,
+      policy_id: policy_id,
+      client_id: client_id,
+      gateway_id: gateway_id,
+      resource_id: resource_id,
+      membership_id: membership_id,
+      account_id: account_id,
+      client_remote_ip: client_remote_ip,
+      client_user_agent: client_user_agent,
+      gateway_remote_ip: gateway_remote_ip,
+      expires_at: expires_at
+    }
+
+    do_insert = fn ->
+      try do
+        changeset = create_policy_authorization_changeset(attrs)
+
+        Portal.Safe.scoped(changeset, subject)
+        |> Portal.Safe.insert()
+        |> case do
+          {:ok, _} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error("Failed to create policy authorization",
+              policy_authorization_id: policy_authorization_id,
+              reason: inspect(reason)
+            )
+        end
+      rescue
+        exception ->
+          Logger.error("Failed to create policy authorization",
+            policy_authorization_id: policy_authorization_id,
+            reason: inspect(exception)
+          )
+      end
+    end
+
+    Task.start(do_insert)
   end
 
   defp create_policy_authorization_changeset(attrs) do
     import Ecto.Changeset
 
-    fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
+    fields = ~w[id token_id policy_id client_id gateway_id resource_id membership_id
                 account_id
                 expires_at
                 client_remote_ip client_user_agent

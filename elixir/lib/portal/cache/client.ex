@@ -673,7 +673,7 @@ defmodule Portal.Cache.Client do
                 g.account_id == ^subject.account.id
           )
           |> Safe.scoped(subject, :replica)
-          |> Safe.one(fallback_to_primary: true)
+          |> Safe.one()
 
         # Append a synthetic membership for the Everyone group
         case everyone_group do
@@ -695,7 +695,7 @@ defmodule Portal.Cache.Client do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
         |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -715,7 +715,7 @@ defmodule Portal.Cache.Client do
 
       from(s in Portal.Site, where: s.id == ^id)
       |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.one()
     end
 
     def get_site_by_id(site_id, subject) when is_binary(site_id) do
@@ -723,7 +723,7 @@ defmodule Portal.Cache.Client do
 
       from(s in Portal.Site, where: s.id == ^id)
       |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.one()
     end
   end
 end

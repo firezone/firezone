@@ -83,7 +83,9 @@ defmodule Portal.Application do
       # Web and API apps are always started to allow VerifiedRoutes to work
       PortalWeb.Endpoint,
       PortalAPI.Endpoint
-    ] ++ client_session_buffer() ++ rate_limit() ++ telemetry() ++ oban() ++ replication()
+    ] ++
+      client_session_buffer() ++
+      gateway_session_buffer() ++ rate_limit() ++ telemetry() ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -124,6 +126,16 @@ defmodule Portal.Application do
 
     if Keyword.get(config, :enabled, true) do
       [Portal.ClientSession.Buffer]
+    else
+      []
+    end
+  end
+
+  defp gateway_session_buffer do
+    config = Portal.Config.get_env(:portal, Portal.GatewaySession.Buffer, [])
+
+    if Keyword.get(config, :enabled, true) do
+      [Portal.GatewaySession.Buffer]
     else
       []
     end

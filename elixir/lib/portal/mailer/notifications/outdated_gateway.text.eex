@@ -6,7 +6,7 @@ See what's changed: https://www.firezone.dev/changelog?tab=gateway
 
 The following list of Gateways in your Firezone Account can be upgraded:
 <%= for gateway <- @gateways do %>
-<%= "- #{gateway.name} -> #{gateway.last_seen_version}" %>
+<%= "- #{gateway.name} -> #{gateway.latest_session && gateway.latest_session.version}" %>
 <% end %>
 
 <%= if @incompatible_client_count > 0 do %>

@@ -50,7 +50,19 @@ defmodule PortalAPI.Gateway.Channel do
       token_id: socket.assigns.token_id
     )
 
-    :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id)
+    session = socket.assigns.session
+
+    session_meta = %{
+      site_id: gateway.site_id,
+      public_key: gateway.public_key,
+      psk_base: gateway.psk_base,
+      version: session.version,
+      remote_ip: session.remote_ip,
+      remote_ip_location_lat: session.remote_ip_location_lat,
+      remote_ip_location_lon: session.remote_ip_location_lon
+    }
+
+    :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
 
     # Register for targeted messages from client channels
     :ok = Channels.register_gateway(socket.assigns.gateway.id)
@@ -172,8 +184,8 @@ defmodule PortalAPI.Gateway.Channel do
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
         location = {
-          socket.assigns.gateway.last_seen_remote_ip_location_lat,
-          socket.assigns.gateway.last_seen_remote_ip_location_lon
+          socket.assigns.session.remote_ip_location_lat,
+          socket.assigns.session.remote_ip_location_lon
         }
 
         relays = load_balance_relays(location, all_online_relays)
@@ -276,7 +288,7 @@ defmodule PortalAPI.Gateway.Channel do
       client_payload: payload
     } = attrs
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
       nil ->
         {:noreply, socket}
 
@@ -319,7 +331,7 @@ defmodule PortalAPI.Gateway.Channel do
       authorization_expires_at: authorization_expires_at
     } = attrs
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
       nil ->
         {:noreply, socket}
 
@@ -490,8 +502,8 @@ defmodule PortalAPI.Gateway.Channel do
       Presence.Relays.all_connected_relays(except_ids)
 
     location = {
-      socket.assigns.gateway.last_seen_remote_ip_location_lat,
-      socket.assigns.gateway.last_seen_remote_ip_location_lon
+      socket.assigns.session.remote_ip_location_lat,
+      socket.assigns.session.remote_ip_location_lon
     }
 
     relays = load_balance_relays(location, relays)
@@ -671,7 +683,7 @@ defmodule PortalAPI.Gateway.Channel do
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
       nil ->
         {:noreply, socket}
 
