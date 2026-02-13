@@ -81,7 +81,7 @@ pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
 pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
     collection::btree_set(site(), 2..=4)
         .prop_flat_map(|sites| {
-            let clients = collection::btree_set(client_id(), 1);
+            let clients = collection::btree_set(client_id(), 2);
 
             let (internet_site, regular_sites) = create_internet_site(sites);
 
