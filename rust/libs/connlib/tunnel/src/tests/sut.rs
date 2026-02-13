@@ -55,7 +55,15 @@ impl TunnelTest {
     pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map(
-            |ref_client, _, _| ref_client.init(flux_capacitor.now(), flux_capacitor.now()),
+            |ref_client, _, _| {
+                ref_client.init(
+                    ref_state.portal.upstream_do53().to_vec(),
+                    ref_state.portal.upstream_doh().to_vec(),
+                    ref_state.portal.search_domain(),
+                    flux_capacitor.now(),
+                    flux_capacitor.now(),
+                )
+            },
             debug_span!("client"),
         );
 
@@ -277,9 +285,9 @@ impl TunnelTest {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                         upstream_dns: vec![],
-                        upstream_do53,
-                        search_domain: ref_state.client.inner().search_domain.clone(),
-                        upstream_doh: ref_state.client.inner().upstream_doh_resolvers(),
+                        upstream_do53: upstream_do53.clone(),
+                        search_domain: ref_state.portal.search_domain(),
+                        upstream_doh: ref_state.portal.upstream_doh().to_vec(),
                     })
                 });
             }
@@ -289,8 +297,8 @@ impl TunnelTest {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                         upstream_dns: vec![],
-                        upstream_do53: ref_state.client.inner().upstream_do53_resolvers(),
-                        search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_do53: ref_state.portal.upstream_do53().to_vec(),
+                        search_domain: ref_state.portal.search_domain(),
                         upstream_doh,
                     })
                 });
@@ -301,8 +309,8 @@ impl TunnelTest {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                         upstream_dns: vec![],
-                        upstream_do53: ref_state.client.inner().upstream_do53_resolvers(),
-                        upstream_doh: ref_state.client.inner().upstream_doh_resolvers(),
+                        upstream_do53: ref_state.portal.upstream_do53().to_vec(),
+                        upstream_doh: ref_state.portal.upstream_doh().to_vec(),
                         search_domain,
                     })
                 });
@@ -328,8 +336,6 @@ impl TunnelTest {
             Transition::ReconnectPortal => {
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
-                let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
-                let upstream_doh = ref_state.client.inner().upstream_doh_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -338,9 +344,9 @@ impl TunnelTest {
                         ipv4,
                         ipv6,
                         upstream_dns: Vec::new(),
-                        upstream_do53,
-                        upstream_doh,
-                        search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_do53: ref_state.portal.upstream_do53().to_vec(),
+                        upstream_doh: ref_state.portal.upstream_doh().to_vec(),
+                        search_domain: ref_state.portal.search_domain(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(all_resources, now);
@@ -423,8 +429,6 @@ impl TunnelTest {
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let system_dns = ref_state.client.inner().system_dns_resolvers();
-                let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
-                let upstream_doh = ref_state.client.inner().upstream_doh_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
                 let internet_resource_state = ref_state.client.inner().internet_resource_active;
 
@@ -436,9 +440,9 @@ impl TunnelTest {
                         ipv4,
                         ipv6,
                         upstream_dns: Vec::new(),
-                        upstream_do53,
-                        upstream_doh,
-                        search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_do53: ref_state.portal.upstream_do53().to_vec(),
+                        upstream_doh: ref_state.portal.upstream_doh().to_vec(),
+                        search_domain: ref_state.portal.search_domain(),
                     });
                     c.sut.update_system_resolvers(system_dns);
                     c.sut.set_resources(all_resources, now);
@@ -479,8 +483,8 @@ impl TunnelTest {
         assert_tcp_connections(ref_client, sim_client);
         assert_udp_dns_packets_properties(ref_client, sim_client);
         assert_tcp_dns(ref_client, sim_client);
-        assert_dns_servers_are_valid(ref_client, sim_client);
-        assert_search_domain_is_valid(ref_client, sim_client);
+        assert_dns_servers_are_valid(ref_client, sim_client, &ref_state.portal);
+        assert_search_domain_is_valid(&ref_state.portal, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
         assert_resource_status(ref_client, sim_client);
     }

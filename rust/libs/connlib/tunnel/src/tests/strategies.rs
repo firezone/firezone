@@ -106,21 +106,51 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
 
             let gateway_selector = any::<sample::Selector>();
 
+            let upstream_do53_servers = upstream_do53_servers();
+            let upstream_doh_servers = upstream_doh_servers();
+
             (
                 gateways_by_site,
                 cidr_resources,
                 dns_resources,
                 internet_resource,
                 gateway_selector,
+                upstream_do53_servers,
+                upstream_doh_servers,
             )
         })
-        .prop_map(
+        .prop_flat_map(
             |(
                 gateways_by_site,
                 cidr_resources,
                 dns_resources,
                 internet_resource,
                 gateway_selector,
+                upstream_do53_servers,
+                upstream_doh_servers,
+            )| {
+                (
+                    Just(gateways_by_site),
+                    Just(cidr_resources),
+                    search_domain(dns_resources.clone()),
+                    Just(dns_resources),
+                    Just(internet_resource),
+                    Just(gateway_selector),
+                    Just(upstream_do53_servers),
+                    Just(upstream_doh_servers),
+                )
+            },
+        )
+        .prop_map(
+            |(
+                gateways_by_site,
+                cidr_resources,
+                search_domain,
+                dns_resources,
+                internet_resource,
+                gateway_selector,
+                upstream_do53_servers,
+                upstream_doh_servers,
             )| {
                 StubPortal::new(
                     gateways_by_site,
@@ -128,6 +158,9 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     cidr_resources,
                     dns_resources,
                     internet_resource,
+                    search_domain,
+                    upstream_do53_servers,
+                    upstream_doh_servers,
                 )
             },
         )
@@ -174,6 +207,25 @@ pub(crate) fn tcp_resources(
             })
             .collect()
     })
+}
+
+pub(crate) fn search_domain(
+    dns_resources: impl IntoIterator<Item = DnsResource>,
+) -> impl Strategy<Value = Option<DomainName>> {
+    let possible_search_domains = dns_resources
+        .into_iter()
+        .map(|r| {
+            // For `*.example.com`, we want to extract `example.com`.
+            // For `**.example.com`, we want to extract `example.com`.
+            // For `app.example.com`, we want to extract `example.com`.
+            // Therefore, we can always split by the first dot.
+            let (_, search_domain) = r.address.split_once(".").unwrap();
+
+            DomainName::vec_from_str(search_domain).unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    proptest::option::of(sample::select(possible_search_domains))
 }
 
 fn create_internet_site(mut sites: BTreeSet<Site>) -> (Site, BTreeSet<Site>) {
