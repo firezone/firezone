@@ -27,6 +27,7 @@ use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
 use std::collections::BTreeSet;
 use std::iter;
+use std::net::SocketAddr;
 use std::{
     collections::BTreeMap,
     net::IpAddr,
@@ -107,6 +108,20 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             gateway
                 .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+        }
+
+        let upstream_do53_servers = ref_state
+            .portal
+            .upstream_do53()
+            .iter()
+            .map(|u| SocketAddr::new(u.ip, 53))
+            .collect::<Vec<_>>();
+
+        for gateway in gateways.values_mut() {
+            let upstream_do53_servers = upstream_do53_servers.clone();
+
+            gateway
+                .exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, flux_capacitor.now()))
         }
 
         let mut this = Self {
@@ -290,6 +305,17 @@ impl TunnelTest {
                         upstream_doh: ref_state.portal.upstream_doh().to_vec(),
                     })
                 });
+
+                let upstream_do53_servers = upstream_do53
+                    .into_iter()
+                    .map(|u| SocketAddr::new(u.ip, 53))
+                    .collect::<Vec<_>>();
+
+                for gateway in state.gateways.values_mut() {
+                    let upstream_do53_servers = upstream_do53_servers.clone();
+
+                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, now))
+                }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
                 state.client.exec_mut(|c| {
@@ -938,23 +964,6 @@ impl TunnelTest {
                     tracing::error!(
                         "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
                     );
-                }
-
-                for gateway in self.gateways.values_mut() {
-                    gateway.exec_mut(|g| {
-                        // If DoH servers are configured, we never route them through the tunnel.
-                        // Therefore, we also don't need to "deploy" any DNS servers here.
-                        let upstream_do53_servers = config
-                            .dns_by_sentinel
-                            .upstream_servers()
-                            .into_iter()
-                            .filter_map(|u| match u {
-                                dns::Upstream::Do53 { server } => Some(server),
-                                dns::Upstream::DoH { .. } => None,
-                            });
-
-                        g.deploy_new_dns_servers(upstream_do53_servers, now)
-                    })
                 }
 
                 self.client.exec_mut(|c| {
