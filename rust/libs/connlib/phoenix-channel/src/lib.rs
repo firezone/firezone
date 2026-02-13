@@ -42,6 +42,9 @@ const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are
 const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
 const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Overall timeout for a single connection attempt (TCP + TLS + WebSocket handshake).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
 pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
     waker: Option<Waker>,
@@ -96,8 +99,16 @@ impl State {
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(
-            create_and_connect_websocket(url, addresses, host, user_agent, token, socket_factory)
-                .boxed(),
+            create_and_connect_websocket(
+                url,
+                addresses,
+                host,
+                user_agent,
+                token,
+                socket_factory,
+                CONNECT_TIMEOUT,
+            )
+            .boxed(),
         )
     }
 }
@@ -109,26 +120,31 @@ async fn create_and_connect_websocket(
     user_agent: String,
     token: SecretString,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    connect_timeout: Duration,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
-    let duration = Duration::from_secs(5);
-    let socket = tokio::time::timeout(duration, connect(addresses.clone(), &*socket_factory))
-        .await
-        .map_err(|_| {
-            InternalError::SocketConnection(
-                addresses
-                    .into_iter()
-                    .map(|addr| (addr, io::Error::from(io::ErrorKind::TimedOut)))
-                    .collect(),
-            )
-        })??;
+    tokio::time::timeout(connect_timeout, async move {
+        let duration = Duration::from_secs(5);
+        let socket = tokio::time::timeout(duration, connect(addresses.clone(), &*socket_factory))
+            .await
+            .map_err(|_| {
+                InternalError::SocketConnection(
+                    addresses
+                        .into_iter()
+                        .map(|addr| (addr, io::Error::from(io::ErrorKind::TimedOut)))
+                        .collect(),
+                )
+            })??;
 
-    let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
-        .await
-        .map_err(InternalError::WebSocket)?;
+        let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
+            .await
+            .map_err(InternalError::WebSocket)?;
 
-    Ok(stream)
+        Ok(stream)
+    })
+    .await
+    .unwrap_or_else(|_| Err(InternalError::ConnectTimeout))
 }
 
 async fn connect(
@@ -196,6 +212,7 @@ enum InternalError {
     RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, io::Error)>),
     NoAddresses,
+    ConnectTimeout,
 }
 
 impl InternalError {
@@ -275,6 +292,7 @@ impl fmt::Display for InternalError {
             }
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
             InternalError::NoAddresses => write!(f, "no IP addresses available"),
+            InternalError::ConnectTimeout => write!(f, "connection to portal timed out"),
         }
     }
 }
@@ -290,6 +308,7 @@ impl std::error::Error for InternalError {
             InternalError::StreamClosed => None,
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
+            InternalError::ConnectTimeout => None,
         }
     }
 }
@@ -522,6 +541,7 @@ where
                             user_agent,
                             token,
                             socket_factory,
+                            CONNECT_TIMEOUT,
                         )
                         .await
                     }));
@@ -1262,5 +1282,34 @@ mod tests {
         assert_eq!(parse_retry_after_value(""), None);
         assert_eq!(parse_retry_after_value("-1"), None);
         assert_eq!(parse_retry_after_value("12.5"), None);
+    }
+
+    #[tokio::test]
+    async fn connect_times_out_when_handshake_hangs() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // Accept the connection but never respond, simulating a hung TLS/WS handshake.
+        tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        });
+
+        let url = Url::parse(&format!("ws://127.0.0.1:{}/websocket", addr.port())).unwrap();
+        let result = create_and_connect_websocket(
+            url,
+            vec![addr],
+            "127.0.0.1".to_string(),
+            "test-agent".to_string(),
+            SecretString::from("test-token".to_string()),
+            Arc::new(socket_factory::tcp),
+            Duration::from_secs(2),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(InternalError::ConnectTimeout)),
+            "Expected ConnectTimeout"
+        );
     }
 }
