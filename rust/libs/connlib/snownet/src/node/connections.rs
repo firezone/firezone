@@ -115,7 +115,7 @@ where
                 .current_relay_candidates()
                 .filter_map(|candidate| c.agent.add_local_candidate(candidate).cloned())
             {
-                pending_events.push_back(new_ice_candidate_event(cid, candidate));
+                pending_events.extend(new_ice_candidate_event(cid, candidate));
             }
 
             c.state

@@ -300,7 +300,7 @@ where
                 std::iter::empty()
                     .chain(current_candidates)
                     .chain(new_candidates)
-                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
+                    .filter_map(|candidate| new_ice_candidate_event(cid, candidate)),
             );
 
             // Initiate a new WG session.
@@ -337,7 +337,7 @@ where
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
                     let candidate = agent.add_local_candidate(candidate)?;
-                    let event = new_ice_candidate_event(cid, candidate.clone());
+                    let event = new_ice_candidate_event(cid, candidate.clone())?;
 
                     Some(event)
                 }),
@@ -1016,7 +1016,7 @@ where
                             agent.add_local_candidate(candidate.clone()).cloned()
                         {
                             self.pending_events
-                                .push_back(new_ice_candidate_event(cid, candidate));
+                                .extend(new_ice_candidate_event(cid, candidate));
                         }
 
                         state.on_candidate(cid, agent, self.default_ice_config, now);
@@ -1120,13 +1120,17 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
     }
 }
 
-fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Event<TId> {
+fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Option<Event<TId>> {
+    if format!("{candidate:?}").contains("discarded") {
+        return None;
+    }
+
     tracing::debug!(?candidate, "Signalling candidate to remote");
 
-    Event::NewIceCandidate {
+    Some(Event::NewIceCandidate {
         connection: id,
         candidate,
-    }
+    })
 }
 
 fn invalidate_allocation_candidates<TId, RId>(
