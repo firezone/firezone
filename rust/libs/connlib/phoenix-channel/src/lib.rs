@@ -43,7 +43,10 @@ const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
 const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
 
 // Overall timeout for a single connection attempt (TCP + TLS + WebSocket handshake).
+#[cfg(not(test))]
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
@@ -99,16 +102,8 @@ impl State {
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(
-            create_and_connect_websocket(
-                url,
-                addresses,
-                host,
-                user_agent,
-                token,
-                socket_factory,
-                CONNECT_TIMEOUT,
-            )
-            .boxed(),
+            create_and_connect_websocket(url, addresses, host, user_agent, token, socket_factory)
+                .boxed(),
         )
     }
 }
@@ -120,11 +115,10 @@ async fn create_and_connect_websocket(
     user_agent: String,
     token: SecretString,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    connect_timeout: Duration,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
-    tokio::time::timeout(connect_timeout, async move {
+    tokio::time::timeout(CONNECT_TIMEOUT, async move {
         let duration = Duration::from_secs(5);
         let socket = tokio::time::timeout(duration, connect(addresses.clone(), &*socket_factory))
             .await
@@ -144,7 +138,7 @@ async fn create_and_connect_websocket(
         Ok(stream)
     })
     .await
-    .unwrap_or_else(|_| Err(InternalError::ConnectTimeout))
+    .map_err(|_| InternalError::ConnectTimeout)?
 }
 
 async fn connect(
@@ -541,7 +535,6 @@ where
                             user_agent,
                             token,
                             socket_factory,
-                            CONNECT_TIMEOUT,
                         )
                         .await
                     }));
@@ -1303,7 +1296,6 @@ mod tests {
             "test-agent".to_string(),
             SecretString::from("test-token".to_string()),
             Arc::new(socket_factory::tcp),
-            Duration::from_secs(2),
         )
         .await;
 
