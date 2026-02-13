@@ -1507,6 +1507,31 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   100
     end
 
+    test "relay credentials are stable across reconnects", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay)
+
+      Process.flag(:trap_exit, true)
+
+      socket1 = join_channel(gateway, site, token)
+      assert_push "init", %{relays: relays1}
+
+      Process.exit(socket1.channel_pid, :shutdown)
+      assert_receive {:EXIT, _, :shutdown}
+
+      socket2 = join_channel(gateway, site, token)
+      assert_push "init", %{relays: relays2}
+
+      Process.exit(socket2.channel_pid, :shutdown)
+      assert_receive {:EXIT, _, :shutdown}
+
+      assert relays1 == relays2
+    end
+
     test "pushes ice_candidates message", %{
       client: client,
       gateway: gateway,

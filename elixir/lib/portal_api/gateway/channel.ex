@@ -17,9 +17,10 @@ defmodule PortalAPI.Gateway.Channel do
   # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
 
-  # All relayed connections are dropped when this expires, so use
-  # a long expiration time to avoid frequent disconnections.
-  @relay_credentials_expire_in_hours 90 * 24
+  # Relay credentials must be stable across reconnects so that gateways
+  # don't see credential changes on every websocket connect. We use a fixed
+  # far-future date rather than a dynamic offset from now.
+  @relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -191,15 +192,13 @@ defmodule PortalAPI.Gateway.Channel do
         relays = load_balance_relays(location, all_online_relays)
         socket = cache_relays(socket, relays)
 
-        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
-
         push(socket, "relays_presence", %{
           disconnected_ids: disconnected_ids,
           connected:
             Views.Relay.render_many(
               relays,
               socket.assigns.gateway.public_key,
-              relay_credentials_expire_at
+              @relay_credentials_expire_at
             )
         })
 
@@ -517,9 +516,6 @@ defmodule PortalAPI.Gateway.Channel do
   end
 
   defp init(socket, account, relays) do
-    relay_credentials_expire_at =
-      DateTime.utc_now() |> DateTime.add(@relay_credentials_expire_in_hours, :hour)
-
     push(socket, "init", %{
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
@@ -528,7 +524,7 @@ defmodule PortalAPI.Gateway.Channel do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          relay_credentials_expire_at
+          @relay_credentials_expire_at
         ),
       # These aren't used but needed for API compatibility
       config: %{

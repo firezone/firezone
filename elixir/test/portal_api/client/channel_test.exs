@@ -666,6 +666,56 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay_view2.id == relay2.id
     end
 
+    test "relay credentials are stable across reconnects", %{client: client, subject: subject} do
+      _relay = connect_relay(%{lat: 37.0, lon: -120.0})
+
+      public_key = Portal.ClientFixtures.generate_public_key()
+
+      session = %Portal.ClientSession{
+        client_id: client.id,
+        account_id: client.account_id,
+        public_key: public_key,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip,
+        remote_ip_location_region: subject.context.remote_ip_location_region,
+        remote_ip_location_city: subject.context.remote_ip_location_city,
+        remote_ip_location_lat: subject.context.remote_ip_location_lat,
+        remote_ip_location_lon: subject.context.remote_ip_location_lon,
+        version: nil
+      }
+
+      assigns = %{
+        client: client,
+        session: session,
+        subject: subject,
+        client_version: nil
+      }
+
+      Process.flag(:trap_exit, true)
+
+      {:ok, _reply, socket1} =
+        PortalAPI.Client.Socket
+        |> socket("client:#{client.id}", assigns)
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+
+      assert_push "init", %{relays: relays1}
+
+      Process.exit(socket1.channel_pid, :shutdown)
+      assert_receive {:EXIT, _, :shutdown}
+
+      {:ok, _reply, socket2} =
+        PortalAPI.Client.Socket
+        |> socket("client:#{client.id}", assigns)
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+
+      assert_push "init", %{relays: relays2}
+
+      Process.exit(socket2.channel_pid, :shutdown)
+      assert_receive {:EXIT, _, :shutdown}
+
+      assert relays1 == relays2
+    end
+
     test "subscribes for account relays presence if there were no relays online", %{
       client: client,
       subject: subject
