@@ -59,7 +59,7 @@ defmodule Portal.Google.Sync do
     delete_unsynced(directory, synced_at)
 
     # Reconnect orphaned policies after sync (groups may have been recreated)
-    reconnected = Portal.Policies.Reconnect.reconnect_orphaned_policies(directory.account_id)
+    reconnected = Portal.Policy.reconnect_orphaned_policies(directory.account_id)
 
     if reconnected > 0 do
       Logger.info("Reconnected #{reconnected} orphaned policies after sync",
