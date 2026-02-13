@@ -587,6 +587,8 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
+                let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
+                portal.update_ips(ips);
             }
             Either::Right((Ok(phoenix_channel::Event::NoAddresses), _)) => {
                 let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;

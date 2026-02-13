@@ -800,6 +800,7 @@ async fn phoenix_channel_event_loop(
             }) => {
                 is_connected.store(false, Ordering::Relaxed);
                 tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}");
+                update_portal_host_ips(&mut portal).await;
             }
             Err(e) => {
                 is_connected.store(false, Ordering::Relaxed);
