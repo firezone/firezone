@@ -2269,6 +2269,40 @@ mod tests {
     }
 
     #[test]
+    fn skips_invalidated_candidates() {
+        let candidate1 = Candidate::host(
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625)),
+            "udp",
+        )
+        .unwrap();
+        let candidate2 = Candidate::host(
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 1), 52625)),
+            "udp",
+        )
+        .unwrap();
+
+        let mut agent = new_agent(IceRole::Controlled);
+        let candidate1 = agent.add_local_candidate(candidate1).unwrap().clone();
+        let candidate2 = agent.add_local_candidate(candidate2).unwrap().clone();
+
+        agent.invalidate_candidate(&candidate1);
+
+        let new_candidates = agent
+            .local_candidates()
+            .iter()
+            .filter_map(|c| new_ice_candidate_event(1, c.clone()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            new_candidates,
+            vec![Event::NewIceCandidate {
+                connection: 1,
+                candidate: candidate2
+            }]
+        );
+    }
+
+    #[test]
     fn generates_correct_optimistic_candidates() {
         let base = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
         let addr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
