@@ -42,7 +42,7 @@ const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are
 const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
 const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Overall timeout for a single connection attempt (TCP + TLS + WebSocket handshake).
+// Overall timeout for a single connection attempt (TCP + TLS + WebSocket handshake).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
