@@ -581,6 +581,7 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
+                update_portal_host_ips(&mut portal, &resolver).await;
             }
             Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
                 update_portal_host_ips(&mut portal, &resolver).await
