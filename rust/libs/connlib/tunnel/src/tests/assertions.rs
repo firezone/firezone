@@ -1,9 +1,8 @@
-use crate::tests::stub_portal::StubPortal;
-
 use super::{
     dns_records::DnsRecords,
     sim_client::{RefClient, SimClient},
     sim_gateway::SimGateway,
+    stub_portal::StubPortal,
     transition::{Destination, ReplyTo},
 };
 use connlib_model::GatewayId;
