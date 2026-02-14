@@ -904,6 +904,10 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
+      # Use a non-zero debounce to prevent race condition where the 0ms debounce
+      # timer fires before the test process has called connect() after disconnect()
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
+
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
@@ -925,7 +929,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     disconnected_ids: [^relay_id]
                   },
-                  100
+                  200
     end
 
     test "sends disconnect when relay reconnects with a different id", %{
