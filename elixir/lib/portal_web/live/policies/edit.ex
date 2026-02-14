@@ -263,14 +263,36 @@ defmodule PortalWeb.Policies.Edit do
     def get_policy!(id, %Authentication.Subject{} = subject) do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
-      |> preload([:group, :resource])
+      |> preload(group: [:directory], resource: [])
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_policy(changeset, %Authentication.Subject{} = subject) do
+      # Update group_idp_id if group_id changed
+      changeset = populate_group_idp_id(changeset, subject)
+
       Safe.scoped(changeset, subject)
       |> Safe.update()
+    end
+
+    defp populate_group_idp_id(changeset, subject) do
+      case Ecto.Changeset.get_change(changeset, :group_id) do
+        nil ->
+          changeset
+
+        group_id ->
+          case get_group_idp_id(group_id, subject) do
+            nil -> Ecto.Changeset.put_change(changeset, :group_idp_id, nil)
+            idp_id -> Ecto.Changeset.put_change(changeset, :group_idp_id, idp_id)
+          end
+      end
+    end
+
+    defp get_group_idp_id(group_id, subject) do
+      from(g in Group, where: g.id == ^group_id, select: g.idp_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def all_active_providers_for_account(_account, subject) do

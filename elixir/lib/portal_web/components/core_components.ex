@@ -1154,11 +1154,29 @@ defmodule PortalWeb.CoreComponents do
   @doc """
   Renders a group as a badge with optional directory icon.
   Used in contexts like policies list where we need a compact badge representation.
+
+  When group is nil (orphaned policy), displays a warning badge indicating the group is unavailable.
   """
   attr :account, :any, required: true
-  attr :group, :any, required: true
+  attr :group, :any, default: nil
   attr :class, :string, default: nil
   attr :return_to, :string, default: nil
+
+  def group_badge(%{group: nil} = assigns) do
+    ~H"""
+    <span class={[
+      "inline-flex items-center rounded border border-primary-300 bg-primary-50 overflow-hidden mr-1",
+      @class
+    ]}>
+      <span class="inline-flex items-center justify-center py-0.5 px-1.5 text-primary-600 bg-primary-100 border-r border-primary-300">
+        <.icon name="hero-exclamation-triangle-mini" class="h-3.5 w-3.5" />
+      </span>
+      <span class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-primary-700">
+        Group deleted
+      </span>
+    </span>
+    """
+  end
 
   def group_badge(assigns) do
     # Build the navigate URL with return_to if provided
@@ -1473,6 +1491,10 @@ defmodule PortalWeb.CoreComponents do
   If the group has idp_id but no directory_type, it's synced but we can't determine the provider.
   """
   def provider_type_from_group(%{directory_type: type}) when not is_nil(type), do: to_string(type)
+
+  def provider_type_from_group(%{directory: %{type: type}}) when not is_nil(type),
+    do: to_string(type)
+
   def provider_type_from_group(%{idp_id: idp_id}) when not is_nil(idp_id), do: "unknown"
   def provider_type_from_group(_), do: "firezone"
 

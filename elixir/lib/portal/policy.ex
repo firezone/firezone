@@ -1,6 +1,7 @@
 defmodule Portal.Policy do
   use Ecto.Schema
   import Ecto.Changeset
+  alias __MODULE__.Database
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -10,7 +11,8 @@ defmodule Portal.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Portal.Policies.Condition.t()],
-          group_id: Ecto.UUID.t(),
+          group_id: Ecto.UUID.t() | nil,
+          group_idp_id: String.t() | nil,
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           disabled_at: DateTime.t() | nil,
@@ -27,6 +29,7 @@ defmodule Portal.Policy do
     embeds_many :conditions, Portal.Policies.Condition, on_replace: :delete
 
     belongs_to :group, Portal.Group, foreign_key: :group_id
+    field :group_idp_id, :string
     belongs_to :resource, Portal.Resource
 
     field :disabled_at, :utc_datetime_usec
@@ -55,5 +58,36 @@ defmodule Portal.Policy do
       name: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
+  end
+
+  @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()
+  def reconnect_orphaned_policies(account_id) do
+    Database.reconnect_orphaned_policies(account_id)
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Group
+    alias Portal.Policy
+    alias Portal.Safe
+
+    @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()
+    def reconnect_orphaned_policies(account_id) do
+      now = DateTime.utc_now()
+
+      {count, _} =
+        from(p in Policy,
+          join: g in Group,
+          on: g.account_id == p.account_id and g.idp_id == p.group_idp_id,
+          where: p.account_id == ^account_id,
+          where: is_nil(p.group_id),
+          where: not is_nil(p.group_idp_id),
+          update: [set: [group_id: g.id, updated_at: ^now]]
+        )
+        |> Safe.unscoped()
+        |> Safe.update_all([])
+
+      count
+    end
   end
 end

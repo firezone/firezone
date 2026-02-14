@@ -290,8 +290,30 @@ defmodule PortalWeb.Policies.New do
     alias Portal.Authentication
 
     def insert_policy(changeset, %Authentication.Subject{} = subject) do
+      # Fetch the group's idp_id to store on the policy for reconnection after sync
+      changeset = populate_group_idp_id(changeset, subject)
+
       Safe.scoped(changeset, subject)
       |> Safe.insert()
+    end
+
+    defp populate_group_idp_id(changeset, subject) do
+      case Ecto.Changeset.get_field(changeset, :group_id) do
+        nil ->
+          changeset
+
+        group_id ->
+          case get_group_idp_id(group_id, subject) do
+            nil -> changeset
+            idp_id -> Ecto.Changeset.put_change(changeset, :group_idp_id, idp_id)
+          end
+      end
+    end
+
+    defp get_group_idp_id(group_id, subject) do
+      from(g in Group, where: g.id == ^group_id, select: g.idp_id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
     end
 
     def all_active_providers_for_account(_account, subject) do
