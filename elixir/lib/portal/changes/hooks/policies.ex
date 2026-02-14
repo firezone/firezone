@@ -31,6 +31,18 @@ defmodule Portal.Changes.Hooks.Policies do
     on_insert(lsn, data)
   end
 
+  # Group was deleted - process as delete
+  def on_update(lsn, %{"group_id" => group_id} = old_data, %{"group_id" => nil} = _data)
+      when not is_nil(group_id) do
+    on_delete(lsn, old_data)
+  end
+
+  # Group was reconnected - process as insert
+  def on_update(lsn, %{"group_id" => nil} = _old_data, %{"group_id" => group_id} = data)
+      when not is_nil(group_id) do
+    on_insert(lsn, data)
+  end
+
   # Regular update
   def on_update(lsn, old_data, data) do
     old_policy = struct_from_params(Policy, old_data)

@@ -55,7 +55,7 @@ defmodule PortalWeb.Policies.Index do
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, group: [], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, group: [:directory], resource: [])
 
     with {:ok, policies, metadata} <- Database.list_policies(socket.assigns.subject, list_opts) do
       {:ok,
@@ -116,7 +116,11 @@ defmodule PortalWeb.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="group" class="w-3/12">
-            <.group_badge account={@account} group={policy.group} return_to={@return_to} />
+            <.group_badge
+              account={@account}
+              group={policy.group}
+              return_to={@return_to}
+            />
           </:col>
           <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
@@ -297,7 +301,7 @@ defmodule PortalWeb.Policies.Index do
       if has_named_binding?(queryable, :group) do
         queryable
       else
-        join(queryable, :inner, [policies: p], g in assoc(p, :group), as: :group)
+        join(queryable, :left, [policies: p], g in assoc(p, :group), as: :group)
       end
     end
 
