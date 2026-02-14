@@ -35,6 +35,9 @@ defmodule Portal.Client do
     field :name, :string
     field :psk_base, :binary, read_after_writes: true
     field :latest_session, :any, virtual: true
+    field :latest_session_inserted_at, :utc_datetime_usec, virtual: true
+    field :latest_session_version, :string, virtual: true
+    field :latest_session_user_agent, :string, virtual: true
     field :online?, :boolean, virtual: true
 
     belongs_to :actor, Portal.Actor

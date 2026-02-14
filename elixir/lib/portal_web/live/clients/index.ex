@@ -152,7 +152,7 @@ defmodule PortalWeb.Clients.Index do
       base_query =
         from(c in Client, as: :clients)
         |> join(
-          :left_lateral,
+          :inner_lateral,
           [clients: c],
           s in subquery(
             from(s in ClientSession,
@@ -165,6 +165,11 @@ defmodule PortalWeb.Clients.Index do
           on: true,
           as: :latest_session
         )
+        |> select_merge([latest_session: s], %{
+          latest_session_inserted_at: s.inserted_at,
+          latest_session_version: s.version,
+          latest_session_user_agent: s.user_agent
+        })
 
       # Check if we need to prefilter by presence
       base_query =
