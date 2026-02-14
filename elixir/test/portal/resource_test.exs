@@ -2,6 +2,7 @@ defmodule Portal.ResourceTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
+  import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
   alias Portal.Resource
@@ -129,6 +130,16 @@ defmodule Portal.ResourceTest do
     test "accepts valid address_description length" do
       changeset = build_changeset(%{address_description: "A valid description"})
       refute Map.has_key?(errors_on(changeset), :address_description)
+    end
+
+    test "inserts name at maximum length" do
+      resource = resource_fixture(name: String.duplicate("a", 255))
+      assert String.length(resource.name) == 255
+    end
+
+    test "inserts address_description at maximum length" do
+      resource = resource_fixture(address_description: String.duplicate("a", 255))
+      assert String.length(resource.address_description) == 255
     end
 
     test "sets default ip_stack to :dual for DNS type" do

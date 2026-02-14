@@ -40,7 +40,7 @@ defmodule Portal.Actor do
     changeset
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name email]a)
-    |> validate_length(:name, max: 512)
+    |> validate_length(:name, max: 255)
     |> normalize_email(:email)
     |> validate_email(:email)
     |> assoc_constraint(:account)

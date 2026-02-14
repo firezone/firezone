@@ -2,6 +2,7 @@ defmodule Portal.Google.AuthProviderTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
+  import Portal.AuthProviderFixtures
 
   alias Portal.Google.AuthProvider
 
@@ -80,6 +81,16 @@ defmodule Portal.Google.AuthProviderTest do
 
       refute changeset.valid?
       assert "should be at most 2000 character(s)" in errors_on(changeset).issuer
+    end
+
+    test "inserts issuer at maximum length", %{account: account} do
+      provider =
+        google_provider_fixture(
+          account: account,
+          issuer: String.duplicate("a", 2000)
+        )
+
+      assert String.length(provider.issuer) == 2000
     end
 
     test "validates portal_session_lifetime_secs range", %{account: account} do
