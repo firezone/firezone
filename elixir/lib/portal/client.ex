@@ -31,8 +31,6 @@ defmodule Portal.Client do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
-    # TODO: remove last_seen_* fields in migration
-
     field :external_id, :string
     field :name, :string
     field :psk_base, :binary, read_after_writes: true

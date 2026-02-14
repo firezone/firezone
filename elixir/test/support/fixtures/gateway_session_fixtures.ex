@@ -19,6 +19,10 @@ defmodule Portal.GatewaySessionFixtures do
     session_attrs =
       attrs
       |> Map.drop([:account, :site, :gateway, :token])
+      |> Map.put_new(
+        :public_key,
+        (gateway.latest_session && gateway.latest_session.public_key) || generate_public_key()
+      )
       |> Map.put_new(:user_agent, "Linux/6.1.0 connlib/1.3.0 (x86_64)")
       |> Map.put_new(:remote_ip, {100, 64, 0, 1})
       |> Map.put_new(:remote_ip_location_region, "US")
@@ -27,6 +31,7 @@ defmodule Portal.GatewaySessionFixtures do
     {:ok, session} =
       %Portal.GatewaySession{}
       |> Ecto.Changeset.cast(session_attrs, [
+        :public_key,
         :user_agent,
         :remote_ip,
         :remote_ip_location_region,
@@ -42,5 +47,9 @@ defmodule Portal.GatewaySessionFixtures do
       |> Portal.Repo.insert()
 
     session
+  end
+
+  defp generate_public_key do
+    :crypto.strong_rand_bytes(32) |> Base.encode64()
   end
 end

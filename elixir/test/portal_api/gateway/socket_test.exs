@@ -66,9 +66,9 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
       assert gateway.external_id == attrs["external_id"]
-      assert gateway.public_key == attrs["public_key"]
 
       assert session = Map.fetch!(socket.assigns, :session)
+      assert session.public_key == attrs["public_key"]
       assert session.user_agent == connect_info.user_agent
       assert session.remote_ip_location_region == "Ukraine"
       assert session.remote_ip_location_city == "Kyiv"

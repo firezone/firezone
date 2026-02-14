@@ -146,14 +146,15 @@ defmodule Portal.Repo.Seeds do
     site = Repo.get_by!(Site, id: site_id)
     external_id = attrs["external_id"] || attrs[:external_id]
 
+    public_key = attrs["public_key"] || attrs[:public_key]
+
     # First create the gateway
     gateway =
       %Gateway{
         site_id: site_id,
         account_id: site.account_id,
         name: attrs["name"] || attrs[:name],
-        external_id: external_id,
-        public_key: attrs["public_key"] || attrs[:public_key]
+        external_id: external_id
       }
       |> Repo.insert!()
 
@@ -175,6 +176,7 @@ defmodule Portal.Repo.Seeds do
       account_id: site.account_id,
       gateway_id: gateway.id,
       gateway_token_id: gateway_token.id,
+      public_key: public_key,
       user_agent: context.user_agent,
       remote_ip: context.remote_ip,
       remote_ip_location_region: "US-CA",
@@ -211,7 +213,7 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    # Create a client session to record last_seen data
+    # Create a client session
     Repo.insert!(%ClientSession{
       account_id: subject.account.id,
       client_id: client.id,
@@ -587,7 +589,7 @@ defmodule Portal.Repo.Seeds do
           }
           |> Repo.insert!()
 
-        # Create a client session to record last_seen data
+        # Create a client session
         Repo.insert!(%ClientSession{
           account_id: subject.account.id,
           client_id: client.id,
@@ -1094,14 +1096,12 @@ defmodule Portal.Repo.Seeds do
     gateway_name = "#{site.name}-#{gateway1.name}"
     IO.puts("  #{gateway_name}:")
     IO.puts("    External UUID: #{gateway1.external_id}")
-    IO.puts("    Public Key: #{gateway1.public_key}")
     IO.puts("    IPv4: #{gateway1.ipv4_address.address} IPv6: #{gateway1.ipv6_address.address}")
     IO.puts("")
 
     gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
-    IO.puts("    External UUID: #{gateway1.external_id}")
-    IO.puts("    Public Key: #{gateway2.public_key}")
+    IO.puts("    External UUID: #{gateway2.external_id}")
     IO.puts("    IPv4: #{gateway2.ipv4_address.address} IPv6: #{gateway2.ipv6_address.address}")
     IO.puts("")
 

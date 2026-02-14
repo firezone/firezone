@@ -59,7 +59,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
     session_meta = %{
       site_id: gateway.site_id,
-      public_key: gateway.public_key,
+      public_key: gateway.latest_session.public_key,
       psk_base: gateway.psk_base,
       version: session && session.version,
       remote_ip: session && session.remote_ip,
@@ -2662,14 +2662,14 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id, gateway.public_key,
-         gateway.ipv4_address.address, gateway.ipv6_address.address, preshared_key,
-         ice_credentials}
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4_address.address,
+         gateway.ipv6_address.address, preshared_key, ice_credentials}
       )
 
       gateway_group_id = gateway.site_id
       gateway_id = gateway.id
-      gateway_public_key = gateway.public_key
+      gateway_public_key = gateway.latest_session.public_key
       gateway_ipv4 = gateway.ipv4_address.address
       gateway_ipv6 = gateway.ipv6_address.address
 
@@ -3035,9 +3035,9 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id, gateway.public_key,
-         gateway.ipv4_address.address, gateway.ipv6_address.address, payload.preshared_key,
-         payload.ice_credentials}
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4_address.address,
+         gateway.ipv6_address.address, payload.preshared_key, payload.ice_credentials}
       )
 
       # The late connect should be ignored — no "flow_created" push
@@ -3089,9 +3089,9 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id, gateway.public_key,
-         gateway.ipv4_address.address, gateway.ipv6_address.address, payload.preshared_key,
-         payload.ice_credentials}
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4_address.address,
+         gateway.ipv6_address.address, payload.preshared_key, payload.ice_credentials}
       )
 
       assert_push "flow_created", %{resource_id: resource_id}
@@ -3675,7 +3675,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       assert_push "init", %{resources: _, relays: _, interface: _}
-      public_key = gateway.public_key
+      public_key = gateway.latest_session.public_key
       resource_id = resource.id
       client_id = client.id
 
@@ -3730,7 +3730,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.public_key, "DNS_RPL"}
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.latest_session.public_key,
+         "DNS_RPL"}
       )
 
       assert_reply ref, :ok, %{
@@ -4005,7 +4006,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       assert_push "init", %{resources: _, relays: _, interface: _}
-      public_key = gateway.public_key
+      public_key = gateway.latest_session.public_key
       resource_id = resource.id
 
       gateway = Repo.preload(gateway, :site)
@@ -4040,7 +4041,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.public_key, "FULL_RTC_SD"}
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.latest_session.public_key,
+         "FULL_RTC_SD"}
       )
 
       assert_reply ref, :ok, %{

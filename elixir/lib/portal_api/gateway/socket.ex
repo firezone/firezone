@@ -31,14 +31,14 @@ defmodule PortalAPI.Gateway.Socket do
 
   defp do_connect(encoded_token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
-    attrs = Map.take(attrs, ~w[external_id name public_key])
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
+         {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
          changeset = upsert_changeset(site, attrs),
          {:ok, gateway} <- Database.upsert_gateway(changeset, site) do
       version = derive_version(context.user_agent)
-      session = build_session(gateway, gateway_token.id, context, version)
+      session = build_session(gateway, gateway_token.id, public_key, context, version)
       GatewaySession.Buffer.insert(session)
 
       OpenTelemetry.Tracer.set_attributes(%{
@@ -68,8 +68,8 @@ defmodule PortalAPI.Gateway.Socket do
   end
 
   defp upsert_changeset(site, attrs) do
-    upsert_fields = ~w[external_id name public_key]a
-    required_fields = ~w[external_id name public_key]a
+    upsert_fields = ~w[external_id name]a
+    required_fields = ~w[external_id name]a
 
     %Gateway{}
     |> cast(attrs, upsert_fields)
@@ -78,17 +78,16 @@ defmodule PortalAPI.Gateway.Socket do
     end)
     |> Portal.Gateway.changeset()
     |> validate_required(required_fields)
-    |> validate_base64(:public_key)
-    |> validate_length(:public_key, is: 44)
     |> put_change(:account_id, site.account_id)
     |> put_change(:site_id, site.id)
   end
 
-  defp build_session(gateway, token_id, context, version) do
+  defp build_session(gateway, token_id, public_key, context, version) do
     %GatewaySession{
       gateway_id: gateway.id,
       account_id: gateway.account_id,
       gateway_token_id: token_id,
+      public_key: public_key,
       user_agent: context.user_agent,
       remote_ip: context.remote_ip,
       remote_ip_location_region: context.remote_ip_location_region,
@@ -97,6 +96,20 @@ defmodule PortalAPI.Gateway.Socket do
       remote_ip_location_lon: context.remote_ip_location_lon,
       version: version
     }
+  end
+
+  defp validate_public_key(attrs) do
+    changeset =
+      {%{}, %{public_key: :string}}
+      |> cast(attrs, [:public_key])
+      |> validate_required([:public_key])
+      |> validate_base64(:public_key)
+      |> validate_length(:public_key, is: 44)
+
+    case apply_action(changeset, :validate) do
+      {:ok, %{public_key: public_key}} -> {:ok, public_key}
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   defp derive_version(user_agent) do
@@ -191,9 +204,7 @@ defmodule PortalAPI.Gateway.Socket do
     end
 
     defp upsert_on_conflict do
-      conflict_replace_fields = ~w[name
-                                  public_key
-                                  updated_at]a
+      conflict_replace_fields = ~w[name updated_at]a
       {:replace, conflict_replace_fields}
     end
   end

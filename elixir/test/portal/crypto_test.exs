@@ -5,22 +5,30 @@ defmodule Portal.CryptoTest do
   import Portal.ClientFixtures
   import Portal.GatewayFixtures
 
-  describe "psk/3" do
+  describe "psk/4" do
     setup do
       account = account_fixture()
       client = client_fixture(account: account)
       client_public_key = Portal.ClientFixtures.generate_public_key()
       gateway = gateway_fixture(account: account)
+      gateway_public_key = gateway.latest_session.public_key
 
-      %{account: account, client: client, client_public_key: client_public_key, gateway: gateway}
+      %{
+        account: account,
+        client: client,
+        client_public_key: client_public_key,
+        gateway: gateway,
+        gateway_public_key: gateway_public_key
+      }
     end
 
     test "returns a base64 encoded string of proper length", %{
       client: client,
       client_public_key: client_public_key,
-      gateway: gateway
+      gateway: gateway,
+      gateway_public_key: gateway_public_key
     } do
-      psk = psk(client, client_public_key, gateway)
+      psk = psk(client, client_public_key, gateway, gateway_public_key)
       assert is_binary(psk)
       # 32 bytes base64 encoded = 44 characters
       assert 44 == String.length(psk)
@@ -29,9 +37,10 @@ defmodule Portal.CryptoTest do
     test "returned value is valid base64", %{
       client: client,
       client_public_key: client_public_key,
-      gateway: gateway
+      gateway: gateway,
+      gateway_public_key: gateway_public_key
     } do
-      psk = psk(client, client_public_key, gateway)
+      psk = psk(client, client_public_key, gateway, gateway_public_key)
       assert {:ok, decoded} = Base.decode64(psk)
       assert byte_size(decoded) == 32
     end
@@ -40,18 +49,20 @@ defmodule Portal.CryptoTest do
       account: account,
       client: client,
       client_public_key: client_public_key,
-      gateway: gateway
+      gateway: gateway,
+      gateway_public_key: gateway_public_key
     } do
-      psk1 = psk(client, client_public_key, gateway)
+      psk1 = psk(client, client_public_key, gateway, gateway_public_key)
 
       other_client = client_fixture(account: account)
       other_public_key = Portal.ClientFixtures.generate_public_key()
-      other_psk = psk(other_client, other_public_key, gateway)
+      other_psk = psk(other_client, other_public_key, gateway, gateway_public_key)
 
       assert other_psk != psk1
 
       other_gateway = gateway_fixture(account: account)
-      other_psk = psk(client, client_public_key, other_gateway)
+      other_gateway_public_key = other_gateway.latest_session.public_key
+      other_psk = psk(client, client_public_key, other_gateway, other_gateway_public_key)
 
       assert other_psk != psk1
     end
@@ -59,26 +70,28 @@ defmodule Portal.CryptoTest do
     test "remains consistent across calls", %{
       client: client,
       client_public_key: client_public_key,
-      gateway: gateway
+      gateway: gateway,
+      gateway_public_key: gateway_public_key
     } do
-      psk1 = psk(client, client_public_key, gateway)
-      psk2 = psk(client, client_public_key, gateway)
+      psk1 = psk(client, client_public_key, gateway, gateway_public_key)
+      psk2 = psk(client, client_public_key, gateway, gateway_public_key)
       assert psk1 == psk2
     end
 
     test "uses PBKDF2-HMAC-SHA256 with proper salt structure", %{
       client: client,
       client_public_key: client_public_key,
-      gateway: gateway
+      gateway: gateway,
+      gateway_public_key: gateway_public_key
     } do
       # Generate PSK
-      result = psk(client, client_public_key, gateway)
+      result = psk(client, client_public_key, gateway, gateway_public_key)
 
       # Manually compute expected result to verify algorithm
       secret_bytes = client.psk_base <> gateway.psk_base
 
       salt =
-        "WG_PSK|C_ID:#{client.id}|G_ID:#{gateway.id}|C_PK:#{client_public_key}|G_PK:#{gateway.public_key}"
+        "WG_PSK|C_ID:#{client.id}|G_ID:#{gateway.id}|C_PK:#{client_public_key}|G_PK:#{gateway_public_key}"
 
       expected_psk_bytes = :crypto.pbkdf2_hmac(:sha256, secret_bytes, salt, 1, 32)
       expected = Base.encode64(expected_psk_bytes)
@@ -88,15 +101,16 @@ defmodule Portal.CryptoTest do
 
     test "different client IDs produce different PSKs even with same keys", %{
       account: account,
-      gateway: gateway
+      gateway: gateway,
+      gateway_public_key: gateway_public_key
     } do
       # Create two clients with potentially similar data
       client1 = client_fixture(account: account)
       client2 = client_fixture(account: account)
       public_key = Portal.ClientFixtures.generate_public_key()
 
-      psk1 = psk(client1, public_key, gateway)
-      psk2 = psk(client2, public_key, gateway)
+      psk1 = psk(client1, public_key, gateway, gateway_public_key)
+      psk2 = psk(client2, public_key, gateway, gateway_public_key)
 
       # Different client IDs should produce different PSKs
       refute psk1 == psk2
@@ -110,8 +124,8 @@ defmodule Portal.CryptoTest do
       gateway1 = gateway_fixture(account: account)
       gateway2 = gateway_fixture(account: account)
 
-      psk1 = psk(client, client_public_key, gateway1)
-      psk2 = psk(client, client_public_key, gateway2)
+      psk1 = psk(client, client_public_key, gateway1, gateway1.latest_session.public_key)
+      psk2 = psk(client, client_public_key, gateway2, gateway2.latest_session.public_key)
 
       refute psk1 == psk2
     end
