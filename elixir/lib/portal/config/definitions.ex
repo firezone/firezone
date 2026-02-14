@@ -335,18 +335,6 @@ defmodule Portal.Config.Definitions do
   )
 
   ##############################################
-  ## Platform
-  ##############################################
-
-  @doc """
-  Azure Front Door ID (GUID format) for validating the X-Azure-FDID header.
-
-  When set, requests without a matching X-Azure-FDID header will be rejected with 502.
-  This prevents other Azure Front Door instances from sending traffic to this application.
-  """
-  defconfig(:azure_front_door_id, :string, default: nil)
-
-  ##############################################
   ## Erlang Cluster
   ##############################################
 

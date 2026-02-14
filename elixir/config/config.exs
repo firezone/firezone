@@ -235,9 +235,6 @@ config :portal, Portal.Billing,
   # Adhoc Device
   adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
 
-config :portal,
-  azure_front_door_id: nil
-
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
   fetch_from_url: true,
