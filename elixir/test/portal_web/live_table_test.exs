@@ -681,12 +681,23 @@ defmodule PortalWeb.LiveTableTest do
     test "updates query parameters with new filter and resets the cursor", %{socket: socket} do
       assert handle_live_table_event(
                "filter",
-               %{"table_id" => "table-id", "table-id" => %{"name" => "foo"}},
+               %{"table_id" => "table-id", "table-id" => %{"name" => "foo", "email" => "bar"}},
                socket
              )
              |> fetch_patched_query_params!() == %{
                "table-id_filter[email]" => "bar",
                "table-id_filter[name]" => "foo",
+               "table-id_order_by" => "actors:asc:name"
+             }
+    end
+
+    test "clears all filter parameters when filter is empty", %{socket: socket} do
+      assert handle_live_table_event(
+               "filter",
+               %{"table_id" => "table-id"},
+               socket
+             )
+             |> fetch_patched_query_params!() == %{
                "table-id_order_by" => "actors:asc:name"
              }
     end

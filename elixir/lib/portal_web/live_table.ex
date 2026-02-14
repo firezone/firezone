@@ -853,10 +853,9 @@ defmodule PortalWeb.LiveTable do
 
   defp put_filter_to_params(params, id, filter) do
     filter_params = flatten_filter(filter, "#{id}_filter", %{})
-    filter_keys = Map.keys(filter) |> Enum.map(&"#{id}_filter[#{&1}]")
 
     params
-    |> Map.drop(filter_keys)
+    |> Map.reject(fn {key, _} -> String.starts_with?(key, "#{id}_filter[") end)
     |> Map.merge(filter_params)
   end
 
