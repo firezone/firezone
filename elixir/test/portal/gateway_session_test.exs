@@ -56,9 +56,10 @@ defmodule Portal.GatewaySessionTest do
                  %{
                    account_id: Ecto.UUID.generate(),
                    gateway_id: gateway.id,
-                   gateway_token_id: token.id
+                   gateway_token_id: token.id,
+                   public_key: gateway.latest_session.public_key
                  },
-                 [:account_id, :gateway_id, :gateway_token_id]
+                 [:account_id, :gateway_id, :gateway_token_id, :public_key]
                )
                |> GatewaySession.changeset()
                |> Repo.insert()
@@ -77,9 +78,10 @@ defmodule Portal.GatewaySessionTest do
                  %{
                    account_id: account.id,
                    gateway_id: Ecto.UUID.generate(),
-                   gateway_token_id: token.id
+                   gateway_token_id: token.id,
+                   public_key: "dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXl0ZXN0cHU="
                  },
-                 [:account_id, :gateway_id, :gateway_token_id]
+                 [:account_id, :gateway_id, :gateway_token_id, :public_key]
                )
                |> GatewaySession.changeset()
                |> Repo.insert()
@@ -98,9 +100,10 @@ defmodule Portal.GatewaySessionTest do
                  %{
                    account_id: account.id,
                    gateway_id: gateway.id,
-                   gateway_token_id: Ecto.UUID.generate()
+                   gateway_token_id: Ecto.UUID.generate(),
+                   public_key: gateway.latest_session.public_key
                  },
-                 [:account_id, :gateway_id, :gateway_token_id]
+                 [:account_id, :gateway_id, :gateway_token_id, :public_key]
                )
                |> GatewaySession.changeset()
                |> Repo.insert()

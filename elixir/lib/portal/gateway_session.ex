@@ -7,6 +7,7 @@ defmodule Portal.GatewaySession do
           account_id: Ecto.UUID.t(),
           gateway_id: Ecto.UUID.t(),
           gateway_token_id: Ecto.UUID.t(),
+          public_key: String.t(),
           user_agent: String.t() | nil,
           remote_ip: :inet.ip_address() | nil,
           remote_ip_location_region: String.t() | nil,
@@ -28,6 +29,7 @@ defmodule Portal.GatewaySession do
     belongs_to :gateway, Portal.Gateway, references: :id
     belongs_to :gateway_token, Portal.GatewayToken, references: :id
 
+    field :public_key, :string
     field :user_agent, :string
     field :remote_ip, Portal.Types.IP
     field :remote_ip_location_region, :string

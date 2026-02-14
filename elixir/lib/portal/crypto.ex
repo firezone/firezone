@@ -12,9 +12,9 @@ defmodule Portal.Crypto do
         client_pubkey,
         %Gateway{
           id: gateway_id,
-          public_key: gateway_pubkey,
           psk_base: gateway_psk_base
-        }
+        },
+        gateway_pubkey
       )
       when not (is_nil(client_id) or is_nil(client_pubkey) or is_nil(client_psk_base) or
                   is_nil(gateway_id) or is_nil(gateway_pubkey) or is_nil(gateway_psk_base)) do

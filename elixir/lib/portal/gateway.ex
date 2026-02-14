@@ -11,18 +11,9 @@ defmodule Portal.Gateway do
           id: Ecto.UUID.t(),
           external_id: String.t(),
           name: String.t(),
-          public_key: String.t(),
           psk_base: binary(),
           ipv4_address: Portal.IPv4Address.t(),
           ipv6_address: Portal.IPv6Address.t(),
-          last_seen_user_agent: String.t(),
-          last_seen_remote_ip: Portal.Types.IP.t(),
-          last_seen_remote_ip_location_region: String.t(),
-          last_seen_remote_ip_location_city: String.t(),
-          last_seen_remote_ip_location_lat: float(),
-          last_seen_remote_ip_location_lon: float(),
-          last_seen_version: String.t(),
-          last_seen_at: DateTime.t(),
           online?: boolean(),
           account_id: Ecto.UUID.t(),
           site_id: Ecto.UUID.t(),
@@ -38,17 +29,7 @@ defmodule Portal.Gateway do
 
     field :name, :string
 
-    field :public_key, :string
     field :psk_base, :binary, read_after_writes: true
-
-    field :last_seen_user_agent, :string
-    field :last_seen_remote_ip, Portal.Types.IP
-    field :last_seen_remote_ip_location_region, :string
-    field :last_seen_remote_ip_location_city, :string
-    field :last_seen_remote_ip_location_lat, :float
-    field :last_seen_remote_ip_location_lon, :float
-    field :last_seen_version, :string
-    field :last_seen_at, :utc_datetime_usec
 
     field :online?, :boolean, virtual: true
     field :latest_session, :any, virtual: true
@@ -67,9 +48,7 @@ defmodule Portal.Gateway do
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint(:name, name: :gateways_site_id_name_index)
-    |> unique_constraint([:public_key])
     |> unique_constraint(:external_id)
-    |> unique_constraint(:public_key, name: :gateways_account_id_public_key_index)
     |> assoc_constraint(:account)
     |> assoc_constraint(:site)
   end
