@@ -35,8 +35,8 @@ defmodule PortalAPI.Gateway.Socket do
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
-         changeset = upsert_changeset(site, attrs),
-         {:ok, gateway} <- Database.upsert_gateway(changeset, site) do
+         changeset = insert_changeset(site, attrs),
+         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
       version = derive_version(context.user_agent)
       session = build_session(gateway, gateway_token.id, public_key, context, version)
       GatewaySession.Buffer.insert(session)
@@ -67,12 +67,12 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
-  defp upsert_changeset(site, attrs) do
-    upsert_fields = ~w[external_id name]a
+  defp insert_changeset(site, attrs) do
+    insert_fields = ~w[external_id name]a
     required_fields = ~w[external_id name]a
 
     %Gateway{}
-    |> cast(attrs, upsert_fields)
+    |> cast(attrs, insert_fields)
     |> put_default_value(:name, fn ->
       Portal.Crypto.random_token(5, encoder: :user_friendly)
     end)
@@ -143,51 +143,39 @@ defmodule PortalAPI.Gateway.Socket do
       end
     end
 
-    # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
-    @dialyzer {:no_opaque, upsert_gateway: 2}
-    def upsert_gateway(changeset, _site) do
+    @dialyzer {:no_opaque, [find_or_create_gateway: 1, insert_new_gateway: 2]}
+    def find_or_create_gateway(changeset) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       site_id = Ecto.Changeset.get_field(changeset, :site_id)
       external_id = Ecto.Changeset.get_field(changeset, :external_id)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.run(:existing_gateway, fn _repo, _changes ->
-        existing =
-          if external_id do
-            from(g in Gateway,
-              where: g.account_id == ^account_id,
-              where: g.site_id == ^site_id,
-              where: g.external_id == ^external_id,
-              preload: [:ipv4_address, :ipv6_address]
-            )
-            |> Safe.unscoped(:replica)
-            |> Safe.one(fallback_to_primary: true)
-          end
+      existing =
+        if external_id do
+          from(g in Gateway,
+            where: g.account_id == ^account_id,
+            where: g.site_id == ^site_id,
+            where: g.external_id == ^external_id,
+            preload: [:ipv4_address, :ipv6_address]
+          )
+          |> Safe.unscoped(:replica)
+          |> Safe.one(fallback_to_primary: true)
+        end
 
+      if existing do
         {:ok, existing}
+      else
+        insert_new_gateway(changeset, account_id)
+      end
+    end
+
+    defp insert_new_gateway(changeset, account_id) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:gateway, changeset)
+      |> Ecto.Multi.run(:ipv4_address, fn _repo, %{gateway: gateway} ->
+        IPv4Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
       end)
-      |> Ecto.Multi.insert(
-        :gateway,
-        changeset,
-        conflict_target: upsert_conflict_target(),
-        on_conflict: upsert_on_conflict(),
-        returning: true
-      )
-      |> Ecto.Multi.run(:ipv4_address, fn _repo,
-                                          %{existing_gateway: existing, gateway: gateway} ->
-        if existing do
-          {:ok, existing.ipv4_address}
-        else
-          IPv4Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
-        end
-      end)
-      |> Ecto.Multi.run(:ipv6_address, fn _repo,
-                                          %{existing_gateway: existing, gateway: gateway} ->
-        if existing do
-          {:ok, existing.ipv6_address}
-        else
-          IPv6Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
-        end
+      |> Ecto.Multi.run(:ipv6_address, fn _repo, %{gateway: gateway} ->
+        IPv6Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
       end)
       |> Safe.transact()
       |> case do
@@ -197,15 +185,6 @@ defmodule PortalAPI.Gateway.Socket do
         {:error, :gateway, changeset, _effects_so_far} ->
           {:error, changeset}
       end
-    end
-
-    defp upsert_conflict_target do
-      {:unsafe_fragment, ~s/(account_id, site_id, external_id)/}
-    end
-
-    defp upsert_on_conflict do
-      conflict_replace_fields = ~w[name updated_at]a
-      {:replace, conflict_replace_fields}
     end
   end
 end
