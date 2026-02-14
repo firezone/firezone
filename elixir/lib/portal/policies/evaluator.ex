@@ -82,11 +82,13 @@ defmodule Portal.Policies.Evaluator do
         %ClientSession{} = session,
         _auth_provider_id
       ) do
+    remote_ip = normalize_remote_ip(session.remote_ip)
+
     Enum.reduce_while(values, :error, fn cidr, :error ->
       {:ok, inet} = Portal.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Portal.Types.CIDR.max_netmask(inet)}
 
-      if Portal.Types.CIDR.contains?(cidr, session.remote_ip) do
+      if Portal.Types.CIDR.contains?(cidr, remote_ip) do
         {:halt, {:ok, nil}}
       else
         {:cont, :error}
@@ -100,11 +102,13 @@ defmodule Portal.Policies.Evaluator do
         %ClientSession{} = session,
         _auth_provider_id
       ) do
+    remote_ip = normalize_remote_ip(session.remote_ip)
+
     Enum.reduce_while(values, {:ok, nil}, fn cidr, {:ok, nil} ->
       {:ok, inet} = Portal.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Portal.Types.CIDR.max_netmask(inet)}
 
-      if Portal.Types.CIDR.contains?(cidr, session.remote_ip) do
+      if Portal.Types.CIDR.contains?(cidr, remote_ip) do
         {:halt, :error}
       else
         {:cont, {:ok, nil}}
@@ -368,4 +372,7 @@ defmodule Portal.Policies.Evaluator do
 
   defp pad2(str_int) when byte_size(str_int) == 1, do: "0#{str_int}"
   defp pad2(str_int), do: str_int
+
+  defp normalize_remote_ip(%Postgrex.INET{} = inet), do: inet
+  defp normalize_remote_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}
 end

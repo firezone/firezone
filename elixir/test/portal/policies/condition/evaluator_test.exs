@@ -303,6 +303,125 @@ defmodule Portal.Policies.EvaluatorTest do
     end
   end
 
+  describe "fetch_conformation_expiration/4 with remote_ip" do
+    test "is_in_cidr matches when remote_ip is a raw tuple inside the CIDR" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {192, 168, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_in_cidr,
+        values: ["192.168.0.0/24"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+    end
+
+    test "is_in_cidr matches when remote_ip is a %Postgrex.INET{} inside the CIDR" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_in_cidr,
+        values: ["192.168.0.0/24"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+    end
+
+    test "is_in_cidr does not match when remote_ip is outside the CIDR" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_in_cidr,
+        values: ["192.168.0.0/24"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+    end
+
+    test "is_in_cidr matches when remote_ip matches a single IP value" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {192, 168, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_in_cidr,
+        values: ["192.168.0.1"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+    end
+
+    test "is_not_in_cidr returns ok when remote_ip is a raw tuple outside the CIDR" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_not_in_cidr,
+        values: ["192.168.0.0/24"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+    end
+
+    test "is_not_in_cidr returns ok when remote_ip is a %Postgrex.INET{} outside the CIDR" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: %Postgrex.INET{address: {10, 0, 0, 1}}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_not_in_cidr,
+        values: ["192.168.0.0/24"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+    end
+
+    test "is_not_in_cidr returns error when remote_ip is inside the CIDR" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {192, 168, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_not_in_cidr,
+        values: ["192.168.0.0/24"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+    end
+
+    test "is_in_cidr matches any of multiple CIDR values" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_in_cidr,
+        values: ["192.168.0.0/24", "10.0.0.0/8"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+    end
+
+    test "is_not_in_cidr returns error if remote_ip is in any of multiple CIDR values" do
+      client = %Portal.Client{}
+      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+
+      condition = %{
+        property: :remote_ip,
+        operator: :is_not_in_cidr,
+        values: ["192.168.0.0/24", "10.0.0.0/8"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+    end
+  end
+
   describe "find_day_of_the_week_time_range/2" do
     test "returns true when datetime is in the day of the week time ranges" do
       # Friday
