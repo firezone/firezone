@@ -122,8 +122,8 @@ defmodule Portal.ResourceTest do
     end
 
     test "validates address_description length maximum" do
-      changeset = build_changeset(%{address_description: String.duplicate("a", 513)})
-      assert %{address_description: ["should be at most 512 character(s)"]} = errors_on(changeset)
+      changeset = build_changeset(%{address_description: String.duplicate("a", 256)})
+      assert %{address_description: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
 
     test "accepts valid address_description length" do
