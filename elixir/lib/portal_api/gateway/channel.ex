@@ -55,7 +55,7 @@ defmodule PortalAPI.Gateway.Channel do
 
     session_meta = %{
       site_id: gateway.site_id,
-      public_key: gateway.public_key,
+      public_key: session.public_key,
       psk_base: gateway.psk_base,
       version: session.version,
       remote_ip: session.remote_ip,
@@ -197,7 +197,7 @@ defmodule PortalAPI.Gateway.Channel do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.gateway.public_key,
+              socket.assigns.session.public_key,
               @relay_credentials_expire_at
             )
         })
@@ -388,7 +388,7 @@ defmodule PortalAPI.Gateway.Channel do
             resource_id,
             socket.assigns.gateway.site_id,
             socket.assigns.gateway.id,
-            socket.assigns.gateway.public_key,
+            socket.assigns.session.public_key,
             socket.assigns.gateway.ipv4_address.address,
             socket.assigns.gateway.ipv6_address.address,
             preshared_key,
@@ -418,7 +418,7 @@ defmodule PortalAPI.Gateway.Channel do
       {:ok, {channel_pid, socket_ref, rid_bytes}} ->
         send(
           channel_pid,
-          {:connect, socket_ref, rid_bytes, socket.assigns.gateway.public_key, payload}
+          {:connect, socket_ref, rid_bytes, socket.assigns.session.public_key, payload}
         )
 
         {:reply, :ok, socket}
@@ -523,7 +523,7 @@ defmodule PortalAPI.Gateway.Channel do
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.gateway.public_key,
+          socket.assigns.session.public_key,
           @relay_credentials_expire_at
         ),
       # These aren't used but needed for API compatibility

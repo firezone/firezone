@@ -213,10 +213,10 @@ defmodule Portal.Presence do
         id: gateway_id,
         account_id: account_id,
         site_id: meta.site_id,
-        public_key: meta.public_key,
         psk_base: meta.psk_base,
         online?: true,
         latest_session: %{
+          public_key: meta.public_key,
           version: meta.version,
           remote_ip: normalize_ip(meta.remote_ip),
           remote_ip_location_lat: meta.remote_ip_location_lat,

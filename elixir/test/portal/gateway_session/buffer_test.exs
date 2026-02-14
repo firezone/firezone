@@ -31,6 +31,7 @@ defmodule Portal.GatewaySession.BufferTest do
       account_id: ctx.account.id,
       gateway_id: ctx.gateway.id,
       gateway_token_id: ctx.token.id,
+      public_key: ctx.gateway.latest_session.public_key,
       user_agent: "Linux/6.1.0 connlib/1.3.0 (x86_64)",
       remote_ip: {100, 64, 0, 1},
       remote_ip_location_region: "US",

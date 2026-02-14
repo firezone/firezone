@@ -368,17 +368,24 @@ defmodule PortalAPI.Client.Channel do
       }
 
       gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway_public_key = gateway.latest_session.public_key
 
       policy_authorization_id = Ecto.UUID.generate()
 
       preshared_key =
-        generate_preshared_key(socket.assigns.client, socket.assigns.session.public_key, gateway)
+        generate_preshared_key(
+          socket.assigns.client,
+          socket.assigns.session.public_key,
+          gateway,
+          gateway_public_key
+        )
 
       ice_credentials =
         generate_ice_credentials(
           socket.assigns.session.public_key,
           socket.assigns.client,
-          gateway
+          gateway,
+          gateway_public_key
         )
 
       message =
@@ -723,20 +730,20 @@ defmodule PortalAPI.Client.Channel do
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
-  defp generate_preshared_key(client, client_public_key, gateway) do
-    Portal.Crypto.psk(client, client_public_key, gateway)
+  defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
+    Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
   end
 
   # Ice credentials must stay the same for all connections between client and gateway as long as they
   # do not loose their state, so we can leverage public_key which is reset on each restart of the client
   # or gateway.
-  defp generate_ice_credentials(client_public_key, client, gateway) do
+  defp generate_ice_credentials(client_public_key, client, gateway, gateway_public_key) do
     ice_credential_seed =
       [
         client.id,
         client_public_key,
         gateway.id,
-        gateway.public_key
+        gateway_public_key
       ]
       |> Enum.join(":")
 

@@ -79,8 +79,7 @@ defmodule Portal.GatewayFixtures do
       %Portal.Gateway{}
       |> Ecto.Changeset.cast(gateway_attrs, [
         :name,
-        :external_id,
-        :public_key
+        :external_id
       ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:site, site)
@@ -94,11 +93,14 @@ defmodule Portal.GatewayFixtures do
     # Always create a gateway session (gateways always have sessions in practice)
     token = gateway_token_fixture(account: account, site: site)
 
+    public_key = Map.get(gateway_attrs, :public_key, generate_public_key())
+
     session =
       %Portal.GatewaySession{
         account_id: account.id,
         gateway_id: gateway.id,
         gateway_token_id: token.id,
+        public_key: public_key,
         user_agent: Map.get(session_attrs, :last_seen_user_agent, "Firezone-Gateway/1.3.0"),
         remote_ip: Map.get(session_attrs, :last_seen_remote_ip, {100, 64, 0, 1}),
         remote_ip_location_region: Map.get(session_attrs, :last_seen_remote_ip_location_region),

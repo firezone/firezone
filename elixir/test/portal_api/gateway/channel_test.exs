@@ -43,6 +43,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       gateway_id: gateway.id,
       account_id: gateway.account_id,
       gateway_token_id: token.id,
+      public_key: gateway.latest_session && gateway.latest_session.public_key,
       user_agent: "Firezone-Gateway/1.3.0",
       remote_ip: gateway.latest_session && gateway.latest_session.remote_ip,
       remote_ip_location_region:
@@ -1949,7 +1950,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       public_key = Portal.ClientFixtures.generate_public_key()
       site_id = gateway.site_id
       gateway_id = gateway.id
-      gateway_public_key = gateway.public_key
+      gateway_public_key = gateway.latest_session.public_key
       gateway_ipv4 = gateway.ipv4_address.address
       gateway_ipv6 = gateway.ipv6_address.address
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -2043,7 +2044,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       public_key = Portal.ClientFixtures.generate_public_key()
-      gateway_public_key = gateway.public_key
+      gateway_public_key = gateway.latest_session.public_key
       payload = "RTC_SD"
 
       :ok = Portal.Presence.Relays.connect(relay)
