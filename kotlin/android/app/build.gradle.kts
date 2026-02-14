@@ -231,6 +231,9 @@ dependencies {
 
     // UniFFI
     implementation("net.java.dev.jna:jna:5.18.1@aar")
+
+    // Sentry
+    implementation("io.sentry:sentry-android:8.14.0")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
