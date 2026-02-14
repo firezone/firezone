@@ -271,8 +271,10 @@ defmodule Portal.Repo.Paginator do
   end
 
   defp compress_cursor(schema, cursor_fields) do
-    Enum.map(cursor_fields, fn {_binding, _order, field} ->
-      case Map.fetch!(schema, field) do
+    Enum.map(cursor_fields, fn {binding, _order, field} ->
+      value = fetch_cursor_value(schema, binding, field)
+
+      case value do
         %DateTime{} = dt -> {DateTime, DateTime.to_unix(dt, :nanosecond)}
         %NaiveDateTime{} = ndt -> {NaiveDateTime, NaiveDateTime.to_iso8601(ndt)}
         %Date{} = date -> {Date, Date.to_iso8601(date)}
@@ -281,6 +283,15 @@ defmodule Portal.Repo.Paginator do
         other -> {:t, other}
       end
     end)
+  end
+
+  defp fetch_cursor_value(schema, binding, field) do
+    namespaced = "#{binding}_#{field}"
+
+    case Enum.find(Map.keys(schema), &(Atom.to_string(&1) == namespaced)) do
+      nil -> Map.fetch!(schema, field)
+      key -> Map.fetch!(schema, key)
+    end
   end
 
   defp decode_cursor(encoded) do
