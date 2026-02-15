@@ -179,7 +179,7 @@ socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.2" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-str0m = { version = "0.16.1", default-features = false }
+str0m = { version = "0.16.2", default-features = false }
 strum = { version = "0.27.2", features = ["derive"] }
 stun_codec = "0.4.0"
 subprocess = "0.2.15"
@@ -253,6 +253,7 @@ large_enum_variant = "allow" # Don't care.
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
+str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 dimpl = { git = "https://github.com/algesten/dimpl", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.

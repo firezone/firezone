@@ -289,7 +289,7 @@ where
                 .on_upsert(cid, &mut c.agent, self.default_ice_config, now);
 
             // Take all current candidates.
-            let current_candidates = c.agent.local_candidates().to_vec();
+            let current_candidates = c.agent.local_candidates().collect::<Vec<_>>();
 
             // Re-seed connection with all candidates.
             let new_candidates =
@@ -300,7 +300,7 @@ where
                 std::iter::empty()
                     .chain(current_candidates)
                     .chain(new_candidates)
-                    .filter_map(|candidate| new_ice_candidate_event(cid, candidate)),
+                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
             );
 
             // Initiate a new WG session.
@@ -337,7 +337,7 @@ where
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
                     let candidate = agent.add_local_candidate(candidate)?;
-                    let event = new_ice_candidate_event(cid, candidate.clone())?;
+                    let event = new_ice_candidate_event(cid, candidate.clone());
 
                     Some(event)
                 }),
@@ -1016,7 +1016,7 @@ where
                             agent.add_local_candidate(candidate.clone()).cloned()
                         {
                             self.pending_events
-                                .extend(new_ice_candidate_event(cid, candidate));
+                                .push_back(new_ice_candidate_event(cid, candidate));
                         }
 
                         state.on_candidate(cid, agent, self.default_ice_config, now);
@@ -1087,14 +1087,12 @@ where
 ///
 /// In both cases, a direct connection will be established and we don't need to fall back to a relay.
 fn generate_optimistic_candidates(agent: &mut IceAgent) {
-    let remote_candidates = agent.remote_candidates();
-
-    let public_ips = remote_candidates
-        .iter()
+    let public_ips = agent
+        .remote_candidates()
         .filter_map(|c| (c.kind() == CandidateKind::ServerReflexive).then_some(c.addr().ip()));
 
-    let host_candidates = remote_candidates
-        .iter()
+    let host_candidates = agent
+        .remote_candidates()
         .filter_map(|c| (c.kind() == CandidateKind::Host).then_some(c.addr()));
 
     let optimistic_candidates = public_ips
@@ -1109,7 +1107,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
                 )
                 .ok()
         })
-        .filter(|c| !remote_candidates.contains(c))
+        .filter(|c| !agent.remote_candidates().contains(c))
         .take(2)
         .collect::<Vec<_>>();
 
@@ -1120,17 +1118,13 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
     }
 }
 
-fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Option<Event<TId>> {
-    if format!("{candidate:?}").contains("discarded") {
-        return None;
-    }
-
+fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Event<TId> {
     tracing::debug!(?candidate, "Signalling candidate to remote");
 
-    Some(Event::NewIceCandidate {
+    Event::NewIceCandidate {
         connection: id,
         candidate,
-    })
+    }
 }
 
 fn invalidate_allocation_candidates<TId, RId>(
@@ -1608,7 +1602,7 @@ where
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
-        if !self.agent.remote_candidates().is_empty() {
+        if self.agent.remote_candidates().count() > 0 {
             return None;
         }
 
@@ -1704,7 +1698,6 @@ where
                     let dest_is_relay = self
                         .agent
                         .remote_candidates()
-                        .iter()
                         .any(|c| c.addr() == destination && c.kind() == CandidateKind::Relayed);
 
                     let remote_socket = match (source_relay, dest_is_relay) {
@@ -2266,40 +2259,6 @@ mod tests {
         IceConfig::server_idle().apply(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
-    }
-
-    #[test]
-    fn skips_invalidated_candidates() {
-        let candidate1 = Candidate::host(
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625)),
-            "udp",
-        )
-        .unwrap();
-        let candidate2 = Candidate::host(
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 0, 1), 52625)),
-            "udp",
-        )
-        .unwrap();
-
-        let mut agent = new_agent(IceRole::Controlled);
-        let candidate1 = agent.add_local_candidate(candidate1).unwrap().clone();
-        let candidate2 = agent.add_local_candidate(candidate2).unwrap().clone();
-
-        agent.invalidate_candidate(&candidate1);
-
-        let new_candidates = agent
-            .local_candidates()
-            .iter()
-            .filter_map(|c| new_ice_candidate_event(1, c.clone()))
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            new_candidates,
-            vec![Event::NewIceCandidate {
-                connection: 1,
-                candidate: candidate2
-            }]
-        );
     }
 
     #[test]
