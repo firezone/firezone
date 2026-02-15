@@ -335,13 +335,15 @@ impl TunnelTest {
                     });
                 }
 
-                let upstream_do53 = upstream_do53
-                    .iter()
+                let upstream_do53_servers = upstream_do53
+                    .into_iter()
                     .map(|u| SocketAddr::new(u.ip, 53))
                     .collect::<Vec<_>>();
 
                 for gateway in state.gateways.values_mut() {
-                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53.clone(), now))
+                    let upstream_do53_servers = upstream_do53_servers.clone();
+
+                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, now))
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
