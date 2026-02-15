@@ -27,6 +27,11 @@ These three components are split into multiple threads and connected via bounded
 - 1 thread for handling IPv6 UDP traffic with 1 task each for sending / receiving
 - 1 task on the "main" thread that holds the state and reads / writes from and to the channels connecting to the IO threads
 
+## Coding guidelines
+
+For guidelines on generating or reviewing specific parts of the codebase, check for an `AGENT.md` file in the corresponding sub-directory.
+For example, for Rust code, checking `rust/AGENT.md`, for Elixir code, check `elixir/AGENT.md`, etc.
+
 ## Code review guidelines
 
 - Assume that code compiles and is syntactically correct.
