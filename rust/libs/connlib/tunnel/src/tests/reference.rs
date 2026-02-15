@@ -60,11 +60,7 @@ impl ReferenceState {
             .prop_flat_map(move |portal| {
                 let gateways = portal.gateways(start);
                 let dns_resource_records = portal.dns_resource_records(start);
-                let client = portal.client(
-                    system_dns_servers(),
-                    upstream_do53_servers(),
-                    upstream_doh_servers(),
-                );
+                let client = portal.client(system_dns_servers());
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(start); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
@@ -231,9 +227,7 @@ impl ReferenceState {
             )
             .with(
                 1,
-                state
-                    .portal
-                    .search_domain()
+                search_domain(state.portal.dns_resources())
                     .prop_map(Transition::UpdateUpstreamSearchDomain),
             )
             .with_if_not_empty(
@@ -529,9 +523,11 @@ impl ReferenceState {
                 client.set_internet_resource_state(*active);
             }),
             Transition::SendDnsQueries(queries) => {
+                let upstream_do53 = state.portal.upstream_do53();
+
                 for query in queries {
                     state.client.exec_mut(|client| {
-                        client.on_dns_query(query);
+                        client.on_dns_query(query, upstream_do53);
                     });
                 }
             }
@@ -583,19 +579,13 @@ impl ReferenceState {
                     .exec_mut(|client| client.set_system_dns_resolvers(servers));
             }
             Transition::UpdateUpstreamDo53Servers(servers) => {
-                state
-                    .client
-                    .exec_mut(|client| client.set_upstream_do53_resolvers(servers));
+                state.portal.set_upstream_do53(servers.clone());
             }
             Transition::UpdateUpstreamDoHServers(servers) => {
-                state
-                    .client
-                    .exec_mut(|client| client.set_upstream_doh_resolvers(servers));
+                state.portal.set_upstream_doh(servers.clone());
             }
             Transition::UpdateUpstreamSearchDomain(domain) => {
-                state
-                    .client
-                    .exec_mut(|client| client.set_upstream_search_domain(domain.as_ref()));
+                state.portal.set_search_domain(domain.clone());
             }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);
@@ -762,23 +752,28 @@ impl ReferenceState {
                     }
                     crate::dns::Upstream::DoH { .. } => true,
                 };
+                let upstream_do53 = state.portal.upstream_do53();
+                let upstream_doh = state.portal.upstream_doh();
 
                 let has_dns_server = state
                     .client
                     .inner()
-                    .expected_dns_servers()
+                    .expected_dns_servers(upstream_do53, upstream_doh)
                     .contains(&query.dns_server);
-                let gateway_is_present_in_case_dns_server_is_cidr_resource =
-                    match state.client.inner().dns_query_via_resource(query) {
-                        Some(r) => {
-                            let Some(gateway) = state.portal.gateway_for_resource(r) else {
-                                return false;
-                            };
+                let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
+                    .client
+                    .inner()
+                    .dns_query_via_resource(query, upstream_do53)
+                {
+                    Some(r) => {
+                        let Some(gateway) = state.portal.gateway_for_resource(r) else {
+                            return false;
+                        };
 
-                            state.gateways.contains_key(gateway)
-                        }
-                        None => true,
-                    };
+                        state.gateways.contains_key(gateway)
+                    }
+                    None => true,
+                };
 
                 has_socket_for_server
                     && has_dns_server
@@ -924,7 +919,7 @@ impl ReferenceState {
     fn reachable_dns_servers(&self) -> Vec<dns::Upstream> {
         self.client
             .inner()
-            .expected_dns_servers()
+            .expected_dns_servers(self.portal.upstream_do53(), self.portal.upstream_doh())
             .into_iter()
             .filter(|s| match s {
                 crate::dns::Upstream::Do53 {
