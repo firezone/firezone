@@ -26,7 +26,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/edge-config": "^1.4.3",
     "asciinema-player": "^3.14.0",
-    "fast-xml-parser": "^5.3.4",
+    "fast-xml-parser": "^5.3.5",
     "flowbite-react": "^0.12.16",
     "framer-motion": "^12.29.3",
     "highlight.js": "^11.11.1",
