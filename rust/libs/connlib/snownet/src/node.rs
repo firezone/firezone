@@ -289,7 +289,7 @@ where
                 .on_upsert(cid, &mut c.agent, self.default_ice_config, now);
 
             // Take all current candidates.
-            let current_candidates = c.agent.local_candidates().to_vec();
+            let current_candidates = c.agent.local_candidates().collect::<Vec<_>>();
 
             // Re-seed connection with all candidates.
             let new_candidates =
@@ -1087,14 +1087,12 @@ where
 ///
 /// In both cases, a direct connection will be established and we don't need to fall back to a relay.
 fn generate_optimistic_candidates(agent: &mut IceAgent) {
-    let remote_candidates = agent.remote_candidates();
-
-    let public_ips = remote_candidates
-        .iter()
+    let public_ips = agent
+        .remote_candidates()
         .filter_map(|c| (c.kind() == CandidateKind::ServerReflexive).then_some(c.addr().ip()));
 
-    let host_candidates = remote_candidates
-        .iter()
+    let host_candidates = agent
+        .remote_candidates()
         .filter_map(|c| (c.kind() == CandidateKind::Host).then_some(c.addr()));
 
     let optimistic_candidates = public_ips
@@ -1109,7 +1107,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
                 )
                 .ok()
         })
-        .filter(|c| !remote_candidates.contains(c))
+        .filter(|c| !agent.remote_candidates().contains(c))
         .take(2)
         .collect::<Vec<_>>();
 
@@ -1604,7 +1602,7 @@ where
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
-        if !self.agent.remote_candidates().is_empty() {
+        if self.agent.remote_candidates().count() > 0 {
             return None;
         }
 
@@ -1700,7 +1698,6 @@ where
                     let dest_is_relay = self
                         .agent
                         .remote_candidates()
-                        .iter()
                         .any(|c| c.addr() == destination && c.kind() == CandidateKind::Relayed);
 
                     let remote_socket = match (source_relay, dest_is_relay) {
