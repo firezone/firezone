@@ -56,7 +56,7 @@ jobs:
       # PRs & non-main branches: read-only cache
       - name: Build and push control plane images (read-only cache)
         if: ${{ github.ref != 'refs/heads/main' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
@@ -75,7 +75,7 @@ jobs:
       # main: read/write cache
       - name: Build and push control plane images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
