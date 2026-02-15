@@ -25,6 +25,15 @@ pub struct DeviceId {
     pub source: Source,
 }
 
+impl DeviceId {
+    pub fn test() -> Self {
+        Self {
+            id: String::new(),
+            source: Source::HardwareId,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Source {
     Disk,
