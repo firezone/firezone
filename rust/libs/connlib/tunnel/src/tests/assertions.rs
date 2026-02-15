@@ -2,6 +2,7 @@ use super::{
     dns_records::DnsRecords,
     sim_client::{RefClient, SimClient},
     sim_gateway::SimGateway,
+    stub_portal::StubPortal,
     transition::{Destination, ReplyTo},
 };
 use connlib_model::GatewayId;
@@ -295,8 +296,12 @@ fn assert_packets_properties<T, U>(
     }
 }
 
-pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
-    let expected = ref_client.expected_dns_servers();
+pub(crate) fn assert_dns_servers_are_valid(
+    ref_client: &RefClient,
+    sim_client: &SimClient,
+    portal: &StubPortal,
+) {
+    let expected = ref_client.expected_dns_servers(portal.upstream_do53(), portal.upstream_doh());
     let actual = sim_client.effective_dns_servers();
 
     if actual != expected {
@@ -304,8 +309,8 @@ pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &
     }
 }
 
-pub(crate) fn assert_search_domain_is_valid(ref_client: &RefClient, sim_client: &SimClient) {
-    let expected = ref_client.expected_search_domain();
+pub(crate) fn assert_search_domain_is_valid(portal: &StubPortal, sim_client: &SimClient) {
+    let expected = portal.search_domain();
     let actual = sim_client.effective_search_domain();
 
     if actual != expected {
