@@ -119,7 +119,7 @@ l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.180"
-libfuzzer-sys = "0.4.10"
+libfuzzer-sys = "0.4.12"
 log = "0.4.29"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
