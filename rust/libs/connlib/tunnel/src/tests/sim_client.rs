@@ -63,10 +63,10 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) sent_icmp_requests: HashMap<(Seq, Identifier), IpPacket>,
+    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), IpPacket>,
     pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
 
-    pub(crate) sent_udp_requests: HashMap<(SPort, DPort), IpPacket>,
+    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), IpPacket>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
@@ -1286,13 +1286,7 @@ fn ref_client(
         private_key(),
     )
         .prop_map(
-            move |(
-                tunnel_ip4,
-                tunnel_ip6,
-                system_dns_resolvers,
-                internet_resource_active,
-                key,
-            )| {
+            move |(tunnel_ip4, tunnel_ip6, system_dns_resolvers, internet_resource_active, key)| {
                 RefClient {
                     key,
                     tunnel_ip4,

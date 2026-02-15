@@ -527,29 +527,42 @@ impl TunnelTest {
 
     // Assert against the reference state machine.
     pub(crate) fn check_invariants(state: &Self, ref_state: &ReferenceState) {
-        // Check invariants for each client
+        // Aggregate all clients for system-wide assertions
+        let all_ref_clients = ref_state
+            .clients
+            .iter()
+            .map(|(id, host)| (*id, host.inner()))
+            .collect();
+        let all_sim_clients = state
+            .clients
+            .iter()
+            .map(|(id, host)| (*id, host.inner()))
+            .collect();
+        let sim_gateways = state
+            .gateways
+            .iter()
+            .map(|(id, g)| (*id, g.inner()))
+            .collect();
+
+        // System-wide packet assertions
+        assert_icmp_packets_properties(
+            &all_ref_clients,
+            &all_sim_clients,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_udp_packets_properties(
+            &all_ref_clients,
+            &all_sim_clients,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+
+        // Per-client assertions for client-specific state
         for (client_id, ref_client_host) in &ref_state.clients {
             let ref_client = ref_client_host.inner();
             let sut_client = state.clients.get(client_id).unwrap().inner();
-            let sim_gateways = state
-                .gateways
-                .iter()
-                .map(|(id, g)| (*id, g.inner()))
-                .collect();
 
-            // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-            assert_icmp_packets_properties(
-                ref_client,
-                sut_client,
-                &sim_gateways,
-                &ref_state.global_dns_records,
-            );
-            assert_udp_packets_properties(
-                ref_client,
-                sut_client,
-                &sim_gateways,
-                &ref_state.global_dns_records,
-            );
             assert_tcp_connections(ref_client, sut_client);
             assert_udp_dns_packets_properties(ref_client, sut_client);
             assert_tcp_dns(ref_client, sut_client);
