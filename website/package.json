@@ -21,7 +21,7 @@
     "@tailwindcss/postcss": "^4.1.17",
     "@types/mdx": "^2.0.13",
     "@types/node": "25.2.0",
-    "@types/react": "19.2.13",
+    "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/edge-config": "^1.4.3",
