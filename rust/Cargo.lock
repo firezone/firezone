@@ -7308,9 +7308,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "125b7a32aab44af55205b5055794fc34ce4841b309ccb65b8883d5eb16e65a00"
+version = "0.16.2"
+source = "git+https://github.com/algesten/str0m?branch=main#29000b1c6452ab8009f24171ba737f7428348d08"
 dependencies = [
  "arrayvec",
  "combine",
@@ -7327,8 +7326,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "132cc3c4a8197f7d514887dc6cf5341447d3cbe290773641081b9fa04126c994"
+source = "git+https://github.com/algesten/str0m?branch=main#29000b1c6452ab8009f24171ba737f7428348d08"
 dependencies = [
  "base64ct",
  "dimpl",

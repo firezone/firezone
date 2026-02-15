@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="12134">
+          Fixes an issue where outdated and thus irrelevant candidates were sent
+          to Clients, causing connectivity issues in rare situations.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.0" date={new Date("2026-02-02")}>
         <ChangeItem pull="11771">
           BREAKING: Remove support for Firezone 1.3.x Clients and lower.
