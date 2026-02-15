@@ -180,22 +180,22 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.58")
+    implementation("com.google.dagger:hilt-android:2.59.1")
     implementation("androidx.browser:browser:1.9.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
     kapt("androidx.hilt:hilt-compiler:1.3.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.58")
+    kapt("com.google.dagger:hilt-android-compiler:2.59.1")
     // Instrumented Tests
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.58")
-    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.58")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.59.1")
+    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.59.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     // Unit Tests
-    testImplementation("com.google.dagger:hilt-android-testing:2.58")
+    testImplementation("com.google.dagger:hilt-android-testing:2.59.1")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
