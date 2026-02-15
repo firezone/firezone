@@ -109,7 +109,7 @@ defmodule Portal.MixProject do
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
-      {:hammer, "~> 7.1.0"},
+      {:hammer, "~> 7.2.0"},
 
       # Observability
       {:telemetry, "~> 1.0"},
