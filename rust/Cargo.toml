@@ -215,7 +215,7 @@ tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
-tracing-opentelemetry = "0.31.0"
+tracing-opentelemetry = "0.32.1"
 tracing-stackdriver = "0.12.0"
 tracing-subscriber = { version = "0.3.22", features = ["parking_lot"] }
 trackable = "1.3.0"
