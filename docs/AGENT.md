@@ -30,7 +30,7 @@ These three components are split into multiple threads and connected via bounded
 ## Coding guidelines
 
 For guidelines on generating or reviewing specific parts of the codebase, check for an `AGENT.md` file in the corresponding sub-directory.
-For example, for Rust code, checking `rust/AGENT.md`, for Elixir code, check `elixir/AGENT.md`, etc.
+For example, for Rust code, check `rust/AGENT.md`; for Elixir code, check `elixir/AGENT.md`, etc.
 
 ## Code review guidelines
 

@@ -4,4 +4,4 @@
 
 - Do not generate excessive comments
 - Prefer a functional style (i.e. Iterators) over imperative code
-- Prefer turbo-fish over explicit type-hints
+- Prefer turbofish over explicit type-hints
