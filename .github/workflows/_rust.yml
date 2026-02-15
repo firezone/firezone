@@ -158,19 +158,12 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-rust-stable
-        id: setup-rust
       - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
-          tool: ripgrep,cargo-llvm-cov
-      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: bpf-linker
+          install_args: --cd rust
+      # This is purposely not a mise task because we want to run coverage here and also include `transitions_and_state_are_deterministic`
       - name: Tunnel proptest
         shell: bash
         run: cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic
@@ -180,44 +173,7 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
       - name: Check coverage
         shell: bash
-        run: |
-          # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
-          patterns=(
-            "SendIcmpPacket"
-            "SendUdpPacket"
-            "ConnectTcp"
-            "SendDnsQueries"
-            "Packet for DNS resource"
-            "Packet for CIDR resource"
-            "Packet for Internet resource"
-            "Truncating DNS response"
-            "ICMP Error error=V4Unreachable"
-            "ICMP Error error=V6Unreachable"
-            "ICMP Error error=V4TimeExceeded"
-            "ICMP Error error=V6TimeExceeded"
-            "Forwarding query for DNS resource to corresponding site"
-            "Revoking resource authorization"
-            "Re-seeding records for DNS resources"
-            "Resource is known but its addressability changed"
-            "No A / AAAA records for domain"
-            "State change \(got new possible\): Disconnected -> Checking"
-          )
-
-          missing_patterns=$(
-            for pattern in "${patterns[@]}"; do
-              if ! rg --quiet --no-ignore "$pattern" "$TESTCASES_DIR"; then
-                echo "$pattern"
-              fi
-            done
-          )
-
-          if [ -n "$missing_patterns" ]; then
-            echo "Error: Some required patterns were not found in test logs:"
-            echo "$missing_patterns"
-            exit 1
-          fi
-        env:
-          TESTCASES_DIR: "libs/connlib/tunnel/testcases"
+        run: mise run //rust:tunnel-log-coverage
 
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
