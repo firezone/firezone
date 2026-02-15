@@ -17,7 +17,7 @@ use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
 use bufferpool::BufferPool;
-use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
@@ -822,7 +822,7 @@ impl TunnelTest {
         match event {
             ClientEvent::AddedIceCandidates {
                 candidates,
-                conn_id,
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -836,7 +836,7 @@ impl TunnelTest {
             }
             ClientEvent::RemovedIceCandidates {
                 candidates,
-                conn_id,
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -848,7 +848,19 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::AddedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(_),
+                ..
+            } => {
+                todo!()
+            }
+            ClientEvent::RemovedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(_),
+                ..
+            } => {
+                todo!()
+            }
+            ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
             } => {
@@ -895,7 +907,7 @@ impl TunnelTest {
                     .map_err(AuthorizeFlowError::Gateway)?;
                 self.client
                     .exec_mut(|c| {
-                        c.sut.handle_flow_created(
+                        c.sut.handle_resource_access_authorized(
                             resource_id,
                             gateway_id,
                             gateway_key,
@@ -916,6 +928,7 @@ impl TunnelTest {
 
                 Ok(())
             }
+            ClientEvent::DeviceConnectionIntent { .. } => Ok(()),
             ClientEvent::ResourcesChanged { resources } => {
                 self.client.exec_mut(|c| {
                     c.resource_status = resources

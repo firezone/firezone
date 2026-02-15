@@ -7,7 +7,7 @@ use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 
-use crate::client::GatewayOnClient;
+use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
@@ -100,7 +100,6 @@ where
         self.peer_by_id.get_mut(id)
     }
 
-    #[cfg(test)]
     pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<&P> {
         let (_, id) = self.id_by_ip.longest_match(ip)?;
         self.peer_by_id.get(id)
@@ -140,6 +139,14 @@ impl Peer for GatewayOnClient {
 
     fn id(&self) -> Self::Id {
         GatewayOnClient::id(self)
+    }
+}
+
+impl Peer for ClientOnClient {
+    type Id = ClientId;
+
+    fn id(&self) -> Self::Id {
+        ClientOnClient::id(self)
     }
 }
 

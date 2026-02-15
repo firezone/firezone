@@ -1,13 +1,10 @@
 //! Client related messages that are needed within connlib
 
-use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
-use connlib_model::{GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
+use crate::messages::{IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey};
+use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeSet,
-    net::{Ipv4Addr, Ipv6Addr},
-};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -113,6 +110,26 @@ pub struct FlowCreationFailed {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct ClientDeviceAccessAuthorized {
+    pub client_id: ClientId,
+    pub client_public_key: Key,
+    pub client_ipv4: Ipv4Addr,
+    pub client_ipv6: Ipv6Addr,
+    pub preshared_key: SecretKey,
+    pub local_ice_credentials: IceCredentials,
+    pub remote_ice_credentials: IceCredentials,
+    pub ice_role: IceRole,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientDeviceAccessDenied {
+    pub client_id: ClientId,
+    pub client_ipv4: Ipv4Addr,
+    pub client_ipv6: Ipv6Addr,
+    pub reason: FailReason,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum FailReason {
     NotFound,
@@ -146,8 +163,15 @@ pub enum IngressMessages {
     ResourceCreatedOrUpdated(ResourceDescription),
     ResourceDeleted(ResourceId),
 
-    IceCandidates(GatewayIceCandidates),
-    InvalidateIceCandidates(GatewayIceCandidates),
+    // Backwards compatibility prior to client <> client feature.
+    #[serde(alias = "ice_candidates")]
+    GatewayIceCandidates(GatewayIceCandidates),
+    // Backwards compatibility prior to client <> client feature.
+    #[serde(alias = "invalidate_ice_candidates")]
+    InvalidateGatewayIceCandidates(GatewayIceCandidates),
+
+    ClientIceCandidates(ClientIceCandidates),
+    InvalidateClientIceCandidates(ClientIceCandidates),
 
     ConfigChanged(ConfigUpdate),
 
@@ -155,21 +179,26 @@ pub enum IngressMessages {
 
     FlowCreated(FlowCreated),
     FlowCreationFailed(FlowCreationFailed),
-}
 
-#[derive(Debug, Serialize, PartialEq)]
-pub struct GatewaysIceCandidates {
-    /// The list of gateway IDs these candidates will be broadcast to.
-    pub gateway_ids: Vec<GatewayId>,
-    /// Actual RTC ice candidates
-    pub candidates: BTreeSet<IceCandidate>,
+    ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized),
+    ClientDeviceAccessDenied(ClientDeviceAccessDenied),
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct GatewayIceCandidates {
-    /// Gateway's id the ice candidates are from
+    /// Gateway's id the ice candidates are sent to / received from
     pub gateway_id: GatewayId,
+    /// Actual RTC ice candidates
+    #[serde_as(as = "serde_with::VecSkipError<_>")]
+    pub candidates: Vec<IceCandidate>,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct ClientIceCandidates {
+    /// Client's id the ice candidates are sent to / received from
+    pub client_id: ClientId,
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,
@@ -185,10 +214,13 @@ pub enum EgressMessages {
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
     },
-    /// Candidates that can be used by the addressed gateways.
-    BroadcastIceCandidates(GatewaysIceCandidates),
-    /// Candidates that should no longer be used by the addressed gateways.
-    BroadcastInvalidatedIceCandidates(GatewaysIceCandidates),
+    RequestDeviceAccess {
+        ipv4: Ipv4Addr,
+    },
+    NewGatewayIceCandidates(GatewayIceCandidates),
+    InvalidateGatewayIceCandidates(GatewayIceCandidates),
+    NewClientIceCandidates(ClientIceCandidates),
+    InvalidateClientIceCandidates(ClientIceCandidates),
 }
 
 #[cfg(test)]
@@ -272,7 +304,7 @@ mod tests {
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(message, IngressMessages::IceCandidates(_)));
+        assert!(matches!(message, IngressMessages::GatewayIceCandidates(_)));
     }
 
     #[test]
@@ -283,7 +315,7 @@ mod tests {
 
         assert!(matches!(
             message,
-            IngressMessages::InvalidateIceCandidates(_)
+            IngressMessages::InvalidateGatewayIceCandidates(_)
         ));
     }
 

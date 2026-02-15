@@ -1,6 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use connlib_model::{PublicKey, ResourceId, ResourceView};
+use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
 use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
@@ -20,8 +20,8 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
-    GatewaysIceCandidates, IngressMessages, InitClient,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates, EgressMessages,
+    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -253,38 +253,70 @@ impl Eventloop {
     async fn handle_tunnel_event(&mut self, event: ClientEvent) -> Result<()> {
         match event {
             ClientEvent::AddedIceCandidates {
-                conn_id: gid,
+                conn_id: ClientOrGatewayId::Gateway(gid),
                 candidates,
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
-                        GatewaysIceCandidates {
-                            gateway_ids: vec![gid],
-                            candidates,
-                        },
-                    )))
+                    .send(PortalCommand::Send(
+                        EgressMessages::NewGatewayIceCandidates(GatewayIceCandidates {
+                            gateway_id: gid,
+                            candidates: Vec::from_iter(candidates),
+                        }),
+                    ))
                     .await
                     .context("Failed to send message to portal")?;
             }
             ClientEvent::RemovedIceCandidates {
-                conn_id: gid,
+                conn_id: ClientOrGatewayId::Gateway(gid),
                 candidates,
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
-                        EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
-                            gateway_ids: vec![gid],
-                            candidates,
+                        EgressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
+                            gateway_id: gid,
+                            candidates: Vec::from_iter(candidates),
                         }),
                     ))
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::AddedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(cid),
+                candidates,
+            } => {
+                tracing::debug!(%cid, ?candidates, "Sending new ICE candidates to client");
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NewClientIceCandidates(
+                        ClientIceCandidates {
+                            client_id: cid,
+                            candidates: Vec::from_iter(candidates),
+                        },
+                    )))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::RemovedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(cid),
+                candidates,
+            } => {
+                tracing::debug!(%cid, ?candidates, "Sending invalidated ICE candidates to client");
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(
+                        EgressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
+                            client_id: cid,
+                            candidates: Vec::from_iter(candidates),
+                        }),
+                    ))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
             } => {
@@ -292,6 +324,14 @@ impl Eventloop {
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         preferred_gateways,
+                    }))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::DeviceConnectionIntent { ipv4 } => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
+                        ipv4,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -363,7 +403,7 @@ impl Eventloop {
             IngressMessages::ConfigChanged(config) => {
                 tunnel.state_mut().update_interface_config(config.interface)
             }
-            IngressMessages::IceCandidates(GatewayIceCandidates {
+            IngressMessages::GatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
@@ -371,6 +411,16 @@ impl Eventloop {
                     tunnel
                         .state_mut()
                         .add_ice_candidate(gateway_id, candidate, Instant::now())
+                }
+            }
+            IngressMessages::ClientIceCandidates(ClientIceCandidates {
+                client_id,
+                candidates,
+            }) => {
+                for candidate in candidates {
+                    tunnel
+                        .state_mut()
+                        .add_ice_candidate(client_id, candidate, Instant::now())
                 }
             }
             IngressMessages::Init(InitClient {
@@ -398,7 +448,7 @@ impl Eventloop {
                 tunnel::turn(&connected),
                 Instant::now(),
             ),
-            IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
+            IngressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
@@ -406,6 +456,16 @@ impl Eventloop {
                     tunnel
                         .state_mut()
                         .remove_ice_candidate(gateway_id, candidate, Instant::now())
+                }
+            }
+            IngressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
+                client_id,
+                candidates,
+            }) => {
+                for candidate in candidates {
+                    tunnel
+                        .state_mut()
+                        .remove_ice_candidate(client_id, candidate, Instant::now())
                 }
             }
             IngressMessages::FlowCreated(FlowCreated {
@@ -419,7 +479,7 @@ impl Eventloop {
                 client_ice_credentials,
                 gateway_ice_credentials,
             }) => {
-                match tunnel.state_mut().handle_flow_created(
+                match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
                     gateway_id,
                     PublicKey::from(gateway_public_key.0),
@@ -473,6 +533,61 @@ impl Eventloop {
                             .await;
                     }
                     FailReason::NotFound | FailReason::Forbidden | FailReason::Unknown => {}
+                }
+            }
+            IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
+                client_id,
+                client_public_key,
+                client_ipv4,
+                client_ipv6,
+                preshared_key,
+                local_ice_credentials,
+                remote_ice_credentials,
+                ice_role,
+            }) => {
+                match tunnel.state_mut().handle_client_device_access_authorized(
+                    client_id,
+                    PublicKey::from(client_public_key.0),
+                    IpConfig {
+                        v4: client_ipv4,
+                        v6: client_ipv6,
+                    },
+                    preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role,
+                    Instant::now(),
+                ) {
+                    Ok(()) => {}
+                    Err(e @ snownet::NoTurnServers {}) => {
+                        tracing::debug!("Failed to handle client device access authorization: {e}");
+
+                        // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                        self.portal_cmd_tx
+                            .send(PortalCommand::Connect(PublicKeyParam(
+                                tunnel.public_key().to_bytes(),
+                            )))
+                            .await
+                            .context("Failed to connect phoenix-channel")?;
+                    }
+                };
+            }
+            IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
+                client_id,
+                client_ipv4,
+                reason,
+                ..
+            }) => {
+                tracing::debug!(%client_id, %client_ipv4, "Failed to access device: {reason:?}");
+
+                match reason {
+                    FailReason::Offline => tunnel
+                        .state_mut()
+                        .set_client_offline(client_id, client_ipv4),
+                    FailReason::NotFound => {}
+                    FailReason::VersionMismatch => {}
+                    FailReason::Forbidden => {}
+                    FailReason::Unknown => {}
                 }
             }
         }

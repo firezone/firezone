@@ -1479,6 +1479,7 @@ name = "connlib-model"
 version = "0.1.0"
 dependencies = [
  "boringtun",
+ "derive_more 2.1.1",
  "ip_network",
  "itertools",
  "serde",
