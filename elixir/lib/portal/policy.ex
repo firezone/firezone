@@ -39,7 +39,7 @@ defmodule Portal.Policy do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_length(:description, min: 1, max: 1024)
+    |> validate_length(:description, min: 1, max: 255)
     |> unique_constraint(
       :base,
       name: :policies_account_id_resource_id_group_id_index,

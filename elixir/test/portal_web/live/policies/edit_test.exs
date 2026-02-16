@@ -143,9 +143,9 @@ defmodule PortalWeb.Live.Policies.EditTest do
 
     lv
     |> form("form[phx-submit=submit]", policy: attrs)
-    |> validate_change(%{policy: %{description: String.duplicate("a", 1025)}}, fn form, _html ->
+    |> validate_change(%{policy: %{description: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "policy[description]" => ["should be at most 1024 character(s)"]
+               "policy[description]" => ["should be at most 255 character(s)"]
              }
     end)
   end
@@ -156,7 +156,7 @@ defmodule PortalWeb.Live.Policies.EditTest do
     policy: policy,
     conn: conn
   } do
-    attrs = %{description: String.duplicate("a", 1025)}
+    attrs = %{description: String.duplicate("a", 256)}
 
     {:ok, lv, _html} =
       conn
@@ -169,7 +169,7 @@ defmodule PortalWeb.Live.Policies.EditTest do
       |> render_submit()
       |> form_validation_errors()
 
-    assert "should be at most 1024 character(s)" in errors["policy[description]"]
+    assert "should be at most 255 character(s)" in errors["policy[description]"]
   end
 
   test "updates a policy on valid attrs", %{

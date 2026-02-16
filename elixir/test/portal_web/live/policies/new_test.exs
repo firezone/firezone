@@ -248,9 +248,9 @@ defmodule PortalWeb.Live.Policies.NewTest do
 
     lv
     |> form("form[phx-submit=submit]", policy: attrs)
-    |> validate_change(%{policy: %{description: String.duplicate("a", 1025)}}, fn form, _html ->
+    |> validate_change(%{policy: %{description: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "policy[description]" => ["should be at most 1024 character(s)"]
+               "policy[description]" => ["should be at most 255 character(s)"]
              }
     end)
   end
@@ -261,7 +261,7 @@ defmodule PortalWeb.Live.Policies.NewTest do
     conn: conn
   } do
     other_policy = policy_fixture(account: account)
-    attrs = %{description: String.duplicate("a", 1025)}
+    attrs = %{description: String.duplicate("a", 256)}
 
     {:ok, lv, _html} =
       conn
@@ -274,7 +274,7 @@ defmodule PortalWeb.Live.Policies.NewTest do
       |> render_submit()
       |> form_validation_errors()
 
-    assert "should be at most 1024 character(s)" in errors["policy[description]"]
+    assert "should be at most 255 character(s)" in errors["policy[description]"]
     assert "can't be blank" in errors["policy[group_id]_name"]
     assert "can't be blank" in errors["policy[resource_id]_name"]
 

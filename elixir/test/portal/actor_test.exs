@@ -3,9 +3,28 @@ defmodule Portal.ActorTest do
 
   import Ecto.Changeset
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
   import Portal.DirectoryFixtures
 
   alias Portal.Actor
+
+  defp build_changeset(attrs) do
+    %Actor{}
+    |> cast(attrs, [:name, :type, :email])
+    |> Actor.changeset()
+  end
+
+  describe "changeset/1 basic validations" do
+    test "inserts name at maximum length" do
+      actor = actor_fixture(name: String.duplicate("a", 255))
+      assert String.length(actor.name) == 255
+    end
+
+    test "rejects name exceeding maximum length" do
+      changeset = build_changeset(%{name: String.duplicate("a", 256)})
+      assert %{name: ["should be at most 255 character(s)"]} = errors_on(changeset)
+    end
+  end
 
   describe "changeset/1 association constraints" do
     test "enforces account association constraint" do

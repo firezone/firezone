@@ -17,8 +17,8 @@ defmodule Portal.PolicyTest do
 
   describe "changeset/1 description validation" do
     test "validates description length maximum" do
-      changeset = build_changeset(%{description: String.duplicate("a", 1025)})
-      assert %{description: ["should be at most 1024 character(s)"]} = errors_on(changeset)
+      changeset = build_changeset(%{description: String.duplicate("a", 256)})
+      assert %{description: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
 
     test "allows empty description" do
@@ -37,9 +37,9 @@ defmodule Portal.PolicyTest do
       refute Map.has_key?(errors_on(changeset), :description)
     end
 
-    test "accepts description at maximum length" do
-      changeset = build_changeset(%{description: String.duplicate("a", 1024)})
-      refute Map.has_key?(errors_on(changeset), :description)
+    test "inserts description at maximum length" do
+      policy = policy_fixture(description: String.duplicate("a", 255))
+      assert String.length(policy.description) == 255
     end
   end
 
