@@ -5,8 +5,7 @@ use super::{
     stub_portal::StubPortal,
     transition::{Destination, ReplyTo},
 };
-use connlib_model::GatewayId;
-use dns_types::DomainName;
+use connlib_model::{ClientId, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
@@ -27,29 +26,21 @@ use tracing_subscriber::Layer;
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
 pub(crate) fn assert_icmp_packets_properties(
-    ref_client: &RefClient,
-    sim_client: &SimClient,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    sim_clients: &BTreeMap<ClientId, &SimClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
 ) {
-    let received_icmp_requests = sim_gateways
-        .iter()
-        .map(|(g, s)| (*g, &s.received_icmp_requests))
-        .collect();
-    let dns_query_timestamps = sim_gateways
-        .iter()
-        .map(|(g, s)| (*g, &s.dns_query_timestamps))
-        .collect();
-
     assert_packets_properties(
-        ref_client,
-        &sim_client.sent_icmp_requests,
-        &dns_query_timestamps,
-        &received_icmp_requests,
-        &ref_client.expected_icmp_handshakes,
-        &sim_client.received_icmp_replies,
-        "ICMP",
+        ref_clients,
+        sim_clients,
+        sim_gateways,
         global_dns_records,
+        |sim_client| &sim_client.sent_icmp_requests,
+        |ref_client| &ref_client.expected_icmp_handshakes,
+        |sim_client| &sim_client.received_icmp_replies,
+        |sim_gateway| &sim_gateway.received_icmp_requests,
+        "ICMP",
         |seq, identifier| tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier),
     );
 }
@@ -61,31 +52,205 @@ pub(crate) fn assert_icmp_packets_properties(
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
 pub(crate) fn assert_udp_packets_properties(
-    ref_client: &RefClient,
-    sim_client: &SimClient,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    sim_clients: &BTreeMap<ClientId, &SimClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
 ) {
-    let received_udp_requests = sim_gateways
+    assert_packets_properties(
+        ref_clients,
+        sim_clients,
+        sim_gateways,
+        global_dns_records,
+        |sim_client| &sim_client.sent_udp_requests,
+        |ref_client| &ref_client.expected_udp_handshakes,
+        |sim_client| &sim_client.received_udp_replies,
+        |sim_gateway| &sim_gateway.received_udp_requests,
+        "UDP",
+        |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
+    );
+}
+
+fn assert_packets_properties<T, U>(
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    sim_clients: &BTreeMap<ClientId, &SimClient>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+    global_dns_records: &DnsRecords,
+    get_sent_requests: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
+    get_expected_handshakes: impl Fn(
+        &RefClient,
+    ) -> &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
+    get_received_replies: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
+    get_received_requests: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
+    packet_protocol: &str,
+    make_span: impl Fn(T, U) -> Span,
+) where
+    T: Copy + std::fmt::Debug,
+    U: Copy + std::fmt::Debug,
+    (T, U): ReplyTo + Hash + Eq + Ord,
+{
+    let all_sent_requests = sim_clients
         .iter()
-        .map(|(g, s)| (*g, &s.received_udp_requests))
-        .collect();
+        .flat_map(|(cid, sim_client)| {
+            get_sent_requests(sim_client)
+                .iter()
+                .map(move |(key, packet)| ((*cid, *key), packet.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let all_expected_handshakes = ref_clients
+        .iter()
+        .flat_map(|(cid, ref_client)| {
+            get_expected_handshakes(ref_client)
+                .iter()
+                .flat_map(move |(gateway_id, handshakes)| {
+                    handshakes
+                        .iter()
+                        .map(move |(payload, (destination, t, u))| {
+                            (*gateway_id, *payload, (*cid, destination.clone(), *t, *u))
+                        })
+                })
+        })
+        .fold(
+            BTreeMap::<_, BTreeMap<_, _>>::new(),
+            |mut acc, (gateway_id, payload, value)| {
+                acc.entry(gateway_id).or_default().insert(payload, value);
+                acc
+            },
+        );
+
+    let all_received_replies = sim_clients
+        .iter()
+        .flat_map(|(cid, sim_client)| {
+            get_received_replies(sim_client)
+                .iter()
+                .map(move |(key, packet)| ((*cid, *key), packet.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let received_requests = sim_gateways
+        .iter()
+        .map(|(g, s)| (*g, get_received_requests(s)))
+        .collect::<BTreeMap<_, _>>();
     let dns_query_timestamps = sim_gateways
         .iter()
         .map(|(g, s)| (*g, &s.dns_query_timestamps))
-        .collect();
+        .collect::<BTreeMap<_, _>>();
 
-    assert_packets_properties(
-        ref_client,
-        &sim_client.sent_udp_requests,
-        &dns_query_timestamps,
-        &received_udp_requests,
-        &ref_client.expected_udp_handshakes,
-        &sim_client.received_udp_replies,
-        "UDP",
-        global_dns_records,
-        |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
+    let unexpected_replies = find_unexpected_entries(
+        &all_expected_handshakes.values().flatten().collect(),
+        &all_received_replies,
+        |(_, (_, _, t_a, u_a)), (_, b)| (*t_a, *u_a) == b.reply_to(),
     );
+
+    if !unexpected_replies.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_replies, ?all_expected_handshakes, ?all_received_replies, "❌ Unexpected {packet_protocol} replies on client");
+    }
+
+    let mut mappings = HashMap::new();
+
+    // Assert properties of the individual handshakes per gateway.
+    // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
+    // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
+    for (gateway, expected_handshakes) in &all_expected_handshakes {
+        let received_requests_for_gateway = received_requests.get(gateway).unwrap();
+        let dns_query_timestamps_for_gateway = dns_query_timestamps.get(gateway).unwrap();
+
+        let mut num_expected_handshakes = expected_handshakes.len();
+
+        for (payload, (cid, resource_dst, t, u)) in expected_handshakes {
+            let _guard = make_span(*t, *u).entered();
+
+            let ref_client = ref_clients.get(cid).unwrap();
+
+            let Some(client_sent_request) = all_sent_requests.get(&(*cid, (*t, *u))) else {
+                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
+                continue;
+            };
+            let Some(client_received_reply) =
+                all_received_replies.get(&(*cid, (*t, *u).reply_to()))
+            else {
+                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} reply on client");
+                continue;
+            };
+            assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+
+            let Some((packet_sent_at, gateway_received_request)) =
+                received_requests_for_gateway.get(payload)
+            else {
+                if client_received_reply
+                    .icmp_error()
+                    .ok()
+                    .is_some_and(|icmp| icmp.is_some())
+                {
+                    // If the received reply is an ICMP unreachable error, it is ok to have a missing request.
+                    num_expected_handshakes -= 1;
+                    continue;
+                }
+
+                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on gateway");
+                continue;
+            };
+
+            {
+                let expected = ref_client.tunnel_ip_for(gateway_received_request.source());
+                let actual = gateway_received_request.source();
+
+                if expected != actual {
+                    tracing::error!(target: "assertions", %cid, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
+                }
+            }
+
+            match resource_dst {
+                Destination::IpAddr(resource_dst) => {
+                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
+                }
+                Destination::DomainName { name, .. } => {
+                    let Some(query_timestamps) = dns_query_timestamps_for_gateway.get(name) else {
+                        tracing::error!(%cid, %name, "Should have resolved domain at least once");
+                        continue;
+                    };
+
+                    // To correct assert whether the packet was routed to the correct IP, we need to find the timestamp of the DNS query closest to the packet timestamp.
+                    // In other words: Packets should always use the IPs that were most recently resolved when they were sent.
+                    let Some(dns_record_snapshot) = query_timestamps
+                        .iter()
+                        .filter(|query_timestamp| *query_timestamp <= packet_sent_at)
+                        .max()
+                    else {
+                        tracing::error!(%cid, %name, "Should have a relevant query timestamp");
+                        continue;
+                    };
+
+                    // Split the proxy IP mapping by DNS record snapshot.
+                    //
+                    // When we re-resolve DNS, the mapping is allowed to change.
+                    let mapping = mappings.entry(dns_record_snapshot).or_default();
+
+                    assert_destination_is_dns_resource(
+                        gateway_received_request,
+                        global_dns_records,
+                        name,
+                        *dns_record_snapshot,
+                    );
+
+                    assert_proxy_ip_mapping_is_stable(
+                        client_sent_request,
+                        gateway_received_request,
+                        mapping,
+                    )
+                }
+            }
+        }
+
+        let num_actual_handshakes = received_requests_for_gateway.len();
+
+        if num_expected_handshakes != num_actual_handshakes {
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gateway, "❌ Unexpected {packet_protocol} requests");
+        } else {
+            tracing::info!(target: "assertions", %num_expected_handshakes, %gateway, "✅ Performed the expected {packet_protocol} handshakes");
+        }
+    }
 }
 
 pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
@@ -166,132 +331,6 @@ pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimCli
             if expected_status_map.get(resource).is_none() {
                 tracing::error!(target: "assertions", %actual_status, %resource, "Unexpected resource status");
             }
-        }
-    }
-}
-
-fn assert_packets_properties<T, U>(
-    ref_client: &RefClient,
-    sent_requests: &HashMap<(T, U), IpPacket>,
-    dns_query_timestamps: &BTreeMap<GatewayId, &BTreeMap<DomainName, Vec<Instant>>>,
-    received_requests: &BTreeMap<GatewayId, &BTreeMap<u64, (Instant, IpPacket)>>,
-    expected_handshakes: &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
-    received_replies: &BTreeMap<(T, U), IpPacket>,
-    packet_protocol: &str,
-    global_dns_records: &DnsRecords,
-    make_span: impl Fn(T, U) -> Span,
-) where
-    T: Copy + std::fmt::Debug,
-    U: Copy + std::fmt::Debug,
-    (T, U): ReplyTo + Hash + Eq + Ord,
-{
-    let unexpected_replies = find_unexpected_entries(
-        &expected_handshakes.values().flatten().collect(),
-        received_replies,
-        |(_, (_, t_a, u_a)), b| (*t_a, *u_a) == b.reply_to(),
-    );
-
-    if !unexpected_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_replies, ?expected_handshakes, ?received_replies, "❌ Unexpected {packet_protocol} replies on client");
-    }
-
-    let mut mappings = HashMap::new();
-
-    // Assert properties of the individual handshakes per gateway.
-    // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
-    // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
-    for (gateway, expected_handshakes) in expected_handshakes {
-        let received_requests = received_requests.get(gateway).unwrap();
-        let dns_query_timestamps = dns_query_timestamps.get(gateway).unwrap();
-
-        let mut num_expected_handshakes = expected_handshakes.len();
-
-        for (payload, (resource_dst, t, u)) in expected_handshakes {
-            let _guard = make_span(*t, *u).entered();
-
-            let Some(client_sent_request) = sent_requests.get(&(*t, *u)) else {
-                tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on client");
-                continue;
-            };
-            let Some(client_received_reply) = received_replies.get(&(*t, *u).reply_to()) else {
-                tracing::error!(target: "assertions", "❌ Missing {packet_protocol} reply on client");
-                continue;
-            };
-            assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
-
-            let Some((packet_sent_at, gateway_received_request)) = received_requests.get(payload)
-            else {
-                if client_received_reply
-                    .icmp_error()
-                    .ok()
-                    .is_some_and(|icmp| icmp.is_some())
-                {
-                    // If the received reply is an ICMP unreachable error, it is ok to have a missing request.
-                    num_expected_handshakes -= 1;
-                    continue;
-                }
-
-                tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on gateway");
-                continue;
-            };
-
-            {
-                let expected = ref_client.tunnel_ip_for(gateway_received_request.source());
-                let actual = gateway_received_request.source();
-
-                if expected != actual {
-                    tracing::error!(target: "assertions", %expected, %actual, "❌ Unexpected {packet_protocol} request source");
-                }
-            }
-
-            match resource_dst {
-                Destination::IpAddr(resource_dst) => {
-                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
-                }
-                Destination::DomainName { name, .. } => {
-                    let Some(query_timestamps) = dns_query_timestamps.get(name) else {
-                        tracing::error!(%name, "Should have resolved domain at least once");
-                        continue;
-                    };
-
-                    // To correct assert whether the packet was routed to the correct IP, we need to find the timestamp of the DNS query closest to the packet timestamp.
-                    // In other words: Packets should always use the IPs that were most recently resolved when they were sent.
-                    let Some(dns_record_snapshot) = query_timestamps
-                        .iter()
-                        .filter(|query_timestamp| *query_timestamp <= packet_sent_at)
-                        .max()
-                    else {
-                        tracing::error!(%name, "Should have a relevant query timestamp");
-                        continue;
-                    };
-
-                    // Split the proxy IP mapping by DNS record snapshot.
-                    //
-                    // When we re-resolve DNS, the mapping is allowed to change.
-                    let mapping = mappings.entry(dns_record_snapshot).or_default();
-
-                    assert_destination_is_dns_resource(
-                        gateway_received_request,
-                        global_dns_records,
-                        name,
-                        *dns_record_snapshot,
-                    );
-
-                    assert_proxy_ip_mapping_is_stable(
-                        client_sent_request,
-                        gateway_received_request,
-                        mapping,
-                    )
-                }
-            }
-        }
-
-        let num_actual_handshakes = received_requests.len();
-
-        if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gateway, "❌ Unexpected {packet_protocol} requests");
-        } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %gateway, "✅ Performed the expected {packet_protocol} handshakes");
         }
     }
 }
