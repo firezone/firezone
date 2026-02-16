@@ -27,9 +27,15 @@ pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
-/// How many times we at most try to re-send a packet if we encounter ENOBUFS.
-#[cfg(any(target_os = "macos", target_os = "ios", test))]
+/// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
+
+/// The Windows equivalent of ENOBUFS.
+///
+/// "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
+#[cfg(target_os = "windows")]
+const WINDOWS_ENOBUFS: i32 = 10055;
 
 impl<F, S> SocketFactory<S> for F
 where
@@ -509,15 +515,6 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
     }
 }
 
-#[cfg_attr(
-    not(any(
-        target_os = "linux",
-        target_os = "android",
-        target_os = "macos",
-        target_os = "ios"
-    )),
-    expect(unused_variables, reason = "No backoff strategy for other platforms")
-)]
 fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
     let raw_os_error = e.any_downcast_ref::<io::Error>()?.raw_os_error()?;
 
@@ -538,10 +535,19 @@ fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
         return Some(exp_delay(attempts));
     }
 
+    // On Windows, we may sometimes encounter error 10055.
+    //
+    // Ideally, we would be able to suspend here but it is unclear how to achieve that.
+    // Thus, we do the next best thing and retry.
+    #[cfg(target_os = "windows")]
+    if raw_os_error == WINDOWS_ENOBUFS && attempts < MAX_ENOBUFS_RETRIES {
+        return Some(exp_delay(attempts));
+    }
+
     None
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios", test))]
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
 fn exp_delay(attempts: u32) -> Duration {
     Duration::from_nanos(2_u64.pow(attempts))
 }
@@ -786,5 +792,16 @@ mod tests {
 
         assert!(backoff(&err, 23).is_some());
         assert!(backoff(&err, 24).is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn windows_10055_error() {
+        let err = anyhow::Error::new(io::Error::from_raw_os_error(WINDOWS_ENOBUFS));
+
+        assert_eq!(
+            err.to_string(),
+            "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
+        );
     }
 }
