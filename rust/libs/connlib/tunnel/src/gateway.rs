@@ -174,6 +174,10 @@ impl GatewayState {
             return Ok(None);
         };
 
+        if packet.destination().is_multicast() {
+            return Ok(None);
+        }
+
         flow_tracker::inbound_wg::record_decrypted_packet(&packet);
 
         let peer = self
