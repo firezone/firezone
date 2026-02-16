@@ -18,7 +18,7 @@ export default function SupportOptions() {
         </p>
         <ul>
           <li>
-            <Link href="https://discourse.firez.one/?utm_source=docs.firezone.dev">
+            <Link href="https://www.github.com/firezone/firezone/discussions">
               Discussion forums
             </Link>
             : Ask questions, report bugs, and suggest features.
