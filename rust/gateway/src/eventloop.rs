@@ -1,4 +1,4 @@
-use anyhow::{Context as _, ErrorExt as _, Result};
+use anyhow::{Context as _, ErrorExt, Result};
 use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
 use telemetry::{Telemetry, analytics};
@@ -281,6 +281,13 @@ impl Eventloop {
 
             if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
+                continue;
+            }
+
+            // Newer clients already filter out fragmented IP packets but older ones may still send them.
+            // We can't handle those so log on DEBUG to reduce Sentry noise.
+            if e.any_is::<tunnel::FailedToDecapsulate>() && e.any_is::<ip_packet::Fragmented>() {
+                tracing::debug!("{e:#}");
                 continue;
             }
 
