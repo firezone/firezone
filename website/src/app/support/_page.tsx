@@ -284,7 +284,7 @@ export default function _Page() {
                 </th>
                 <td className="px-6 py-4" colSpan={3}>
                   <Link
-                    href="https://www.github.com/firezone/firezone/discussions"
+                    href="https://github.com/firezone/firezone/discussions"
                     className="text-accent-500 hover:underline"
                   >
                     https://github.com/firezone/firezone/discussions
