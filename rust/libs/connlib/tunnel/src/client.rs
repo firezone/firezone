@@ -358,7 +358,7 @@ impl ClientState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
-        if is_definitely_not_a_resource(packet.destination()) {
+        if packet.destination().is_multicast() {
             return None;
         }
 
@@ -1816,30 +1816,6 @@ fn peer_by_resource_mut<'p>(
     Some(peer)
 }
 
-/// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
-fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
-    /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
-    const IPV4_IGMP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 22);
-
-    /// Source: <https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv6_multicast_addresses>
-    const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0002);
-
-    match ip {
-        IpAddr::V4(ip4) => {
-            if ip4 == IPV4_IGMP_MULTICAST {
-                return true;
-            }
-        }
-        IpAddr::V6(ip6) => {
-            if ip6 == IPV6_MULTICAST_ALL_ROUTERS {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
 fn into_udp_dns_packet(
     from: SocketAddr,
     dst: SocketAddr,
@@ -1925,16 +1901,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ignores_ip4_igmp_multicast() {
-        assert!(is_definitely_not_a_resource(ip("224.0.0.22")))
-    }
-
-    #[test]
-    fn ignores_ip6_multicast_all_routers() {
-        assert!(is_definitely_not_a_resource(ip("ff02::2")))
-    }
-
-    #[test]
     fn prefers_already_connected_gateways() {
         let mut state = ClientState::for_test();
         state.gateways_by_site.insert(
@@ -2000,10 +1966,6 @@ mod tests {
                 Duration::ZERO,
             )
         }
-    }
-
-    fn ip(addr: &str) -> IpAddr {
-        addr.parse().unwrap()
     }
 
     fn peer(id: GatewayId) -> GatewayOnClient {
