@@ -37,6 +37,11 @@ defmodule Portal.PolicyTest do
       refute Map.has_key?(errors_on(changeset), :description)
     end
 
+    test "accepts description at maximum length" do
+      changeset = build_changeset(%{description: String.duplicate("a", 1024)})
+      refute Map.has_key?(errors_on(changeset), :description)
+    end
+
     test "inserts description at maximum length" do
       policy = policy_fixture(description: String.duplicate("a", 1024))
       assert String.length(policy.description) == 1024
