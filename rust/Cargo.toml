@@ -248,6 +248,7 @@ unwrap_in_result = "warn"
 unwrap_used = "warn"
 too_many_arguments = "allow" # Don't care.
 large_enum_variant = "allow" # Don't care.
+type_complexity = "allow" # Don't care.
 
 [workspace.lints.rustdoc]
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.

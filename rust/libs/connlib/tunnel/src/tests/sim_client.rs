@@ -10,14 +10,13 @@ use super::{
 use crate::{
     ClientState, DnsMapping, DnsResourceRecord, dns,
     messages::{UpstreamDo53, UpstreamDoH},
-    proptest::*,
 };
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::Interface,
 };
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
+use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -35,8 +34,6 @@ use std::{
 
 /// Simulation state for a particular client.
 pub(crate) struct SimClient {
-    pub(crate) id: ClientId,
-
     pub(crate) sut: ClientState,
 
     /// The DNS records created on the client as a result of received DNS responses.
@@ -66,10 +63,10 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) sent_icmp_requests: HashMap<(Seq, Identifier), IpPacket>,
+    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), IpPacket>,
     pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
 
-    pub(crate) sent_udp_requests: HashMap<(SPort, DPort), IpPacket>,
+    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), IpPacket>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
@@ -80,9 +77,8 @@ pub(crate) struct SimClient {
 }
 
 impl SimClient {
-    pub(crate) fn new(id: ClientId, sut: ClientState, now: Instant) -> Self {
+    pub(crate) fn new(sut: ClientState, now: Instant) -> Self {
         Self {
-            id,
             sut,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -416,7 +412,6 @@ impl SimClient {
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
 #[derive(Clone, derive_more::Debug)]
 pub struct RefClient {
-    pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
@@ -514,9 +509,9 @@ impl RefClient {
             upstream_doh,
             search_domain,
         });
-        client_state.update_system_resolvers(self.system_dns_resolvers.clone());
+        client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(self.id, client_state, now)
+        SimClient::new(client_state, now)
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -1288,20 +1283,11 @@ fn ref_client(
         tunnel_ip6s,
         system_dns,
         any::<bool>(),
-        client_id(),
         private_key(),
     )
         .prop_map(
-            move |(
-                tunnel_ip4,
-                tunnel_ip6,
-                system_dns_resolvers,
-                internet_resource_active,
-                id,
-                key,
-            )| {
+            move |(tunnel_ip4, tunnel_ip6, system_dns_resolvers, internet_resource_active, key)| {
                 RefClient {
-                    id,
                     key,
                     tunnel_ip4,
                     tunnel_ip6,

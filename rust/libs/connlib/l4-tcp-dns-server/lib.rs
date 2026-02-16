@@ -27,7 +27,6 @@ pub struct Server {
     tcp_streams_by_remote: HashMap<SocketAddr, TcpStream>,
 
     /// A set of futures that read DNS queries from TCP streams.
-    #[expect(clippy::type_complexity, reason = "We don't care.")]
     reading_tcp_queries: FuturesUnordered<
         BoxFuture<'static, Result<Option<(SocketAddr, dns_types::Query, TcpStream)>>>,
     >,
