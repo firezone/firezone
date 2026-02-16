@@ -193,7 +193,7 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="https://discourse.firez.one"
+                    href="https://github.com/firezone/firezone/discussions"
                     className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Forums
