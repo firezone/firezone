@@ -167,7 +167,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: bpf-linker
+          tool: bpf-linker,cargo-llvm-cov
       # This is purposely not a mise task because we want to run coverage here and also include `transitions_and_state_are_deterministic`
       - name: Tunnel proptest
         shell: bash
