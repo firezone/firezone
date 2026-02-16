@@ -93,6 +93,3 @@ depends = ["fmt-check", "clippy", "doc", "deny"]
 [tasks.check-all]
 description = "Run all CI static analysis checks including udeps (requires nightly)"
 depends = ["fmt-check", "clippy", "doc", "udeps", "deny"]
-
-[tools]
-"cargo:bpf-linker" = { version = "0.10.1", os = ["linux"] }
