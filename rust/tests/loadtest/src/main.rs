@@ -253,17 +253,17 @@ impl TestSelector {
         let address = config
             .addresses
             .choose(&mut self.rng)
-            .expect("should have at least one address");
-        let address = Url::parse(address).expect("URL validated during config load");
-        let http_version = config.http_version[self.rng.gen_range(0..config.http_version.len())];
-        let users = self.rng.gen_range(config.users);
-        let run_time = Duration::from_secs(self.rng.gen_range(config.run_time_secs));
+            .expect("should have at least one address")
+            .clone();
+        let http_version = config
+            .http_version
+            .choose(&mut self.rng)
+            .expect("should have at least one HTTP version");
 
         http::TestConfig {
             address,
-            http_version,
-            users,
-            run_time,
+            http_version: *http_version,
+            max_connections: config.max_connections,
         }
     }
 
