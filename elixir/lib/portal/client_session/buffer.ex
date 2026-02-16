@@ -71,9 +71,16 @@ defmodule Portal.ClientSession.Buffer do
         |> Map.put(:inserted_at, now)
       end)
 
-    Database.insert_all(entries)
+    {inserted, _} = Database.insert_all(entries)
+    skipped = count - inserted
 
-    Logger.info("Flushed #{count} client sessions")
+    if skipped > 0 do
+      Logger.warning(
+        "Skipped #{skipped} client sessions due to deleted associations (tokens/accounts/clients)"
+      )
+    end
+
+    Logger.info("Flushed #{inserted} client sessions")
 
     %{buffer: [], count: 0}
   end
@@ -85,10 +92,71 @@ defmodule Portal.ClientSession.Buffer do
   defmodule Database do
     alias Portal.ClientSession
     alias Portal.Safe
+    import Ecto.Query
+
+    def insert_all([]), do: {0, nil}
 
     def insert_all(entries) do
       Safe.unscoped()
       |> Safe.insert_all(ClientSession, entries)
+    rescue
+      error in [Postgrex.Error] ->
+        case error.postgres do
+          %{code: :foreign_key_violation, constraint: constraint} ->
+            entries
+            |> filter_existing(constraint)
+            |> insert_all()
+
+          _ ->
+            reraise error, __STACKTRACE__
+        end
+    end
+
+    defp filter_existing(entries, "client_sessions_account_id_fkey") do
+      filter_by_existing(entries, :account_id, Portal.Account)
+    end
+
+    defp filter_existing(entries, "client_sessions_client_id_fkey") do
+      filter_by_composite(entries, :client_id, Portal.Client)
+    end
+
+    defp filter_existing(entries, "client_sessions_client_token_id_fkey") do
+      filter_by_composite(entries, :client_token_id, Portal.ClientToken)
+    end
+
+    defp filter_existing(_entries, _constraint), do: []
+
+    defp filter_by_existing(entries, key, schema) do
+      ids = entries |> Enum.map(& &1[key]) |> Enum.uniq()
+
+      existing_ids =
+        from(t in schema, where: t.id in ^ids, select: t.id)
+        |> Safe.unscoped()
+        |> Safe.all()
+        |> MapSet.new()
+
+      Enum.filter(entries, fn entry ->
+        MapSet.member?(existing_ids, entry[key])
+      end)
+    end
+
+    defp filter_by_composite(entries, key, schema) do
+      pairs = entries |> Enum.map(fn e -> {e[:account_id], e[key]} end) |> Enum.uniq()
+
+      conditions =
+        Enum.reduce(pairs, dynamic(false), fn {account_id, id}, acc ->
+          dynamic([t], ^acc or (t.account_id == ^account_id and t.id == ^id))
+        end)
+
+      existing_pairs =
+        from(t in schema, where: ^conditions, select: {t.account_id, t.id})
+        |> Safe.unscoped()
+        |> Safe.all()
+        |> MapSet.new()
+
+      Enum.filter(entries, fn entry ->
+        MapSet.member?(existing_pairs, {entry[:account_id], entry[key]})
+      end)
     end
   end
 end
