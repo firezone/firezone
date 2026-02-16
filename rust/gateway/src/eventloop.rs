@@ -273,12 +273,6 @@ impl Eventloop {
                 continue;
             }
 
-            if e.any_is::<ip_packet::ImpossibleTranslation>() {
-                // Some IP packets cannot be translated and should be dropped "silently".
-                // Do so by ignoring the error here.
-                continue;
-            }
-
             if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
                 tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
