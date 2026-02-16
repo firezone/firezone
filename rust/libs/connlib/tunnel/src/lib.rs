@@ -695,7 +695,7 @@ pub(crate) struct NotAllowedResource(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to decapsulate '{0}' packet")]
-pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
+pub struct FailedToDecapsulate(packet_kind::Kind);
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
