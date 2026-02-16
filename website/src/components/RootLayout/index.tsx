@@ -69,7 +69,7 @@ export default function RootLayout({
           id="hs-script-loader"
           async
           defer
-          src="//js.hs-scripts.com/23723443.js"
+          src="//js-na2.hs-scripts.com/23723443.js"
         />
         <Analytics />
       </body>
