@@ -160,9 +160,6 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
-        with:
-          install_args: --cd rust
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
