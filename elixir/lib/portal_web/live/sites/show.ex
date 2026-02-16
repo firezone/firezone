@@ -81,7 +81,7 @@ defmodule PortalWeb.Sites.Show do
 
     list_opts =
       list_opts
-      |> Keyword.put(:preload, [:online?])
+      |> Keyword.put(:preload, [:online?, :last_seen])
       |> Keyword.update(:filter, [], fn filter ->
         filter ++ [{:ids, online_ids}]
       end)

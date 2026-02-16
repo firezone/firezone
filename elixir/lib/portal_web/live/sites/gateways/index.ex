@@ -35,7 +35,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
   end
 
   def handle_gateways_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:online?])
+    list_opts = Keyword.put(list_opts, :preload, [:online?, :last_seen])
 
     with {:ok, gateways, metadata} <- Database.list_gateways(socket.assigns.subject, list_opts) do
       {:ok,
