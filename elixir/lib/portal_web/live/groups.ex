@@ -276,7 +276,7 @@ defmodule PortalWeb.Groups do
               {group.name}
               <span
                 :if={group.entity_type == :org_unit}
-                class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600"
+                class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-neutral-100 text-neutral-600"
                 title="Organizational Unit"
               >
                 OU
@@ -334,7 +334,7 @@ defmodule PortalWeb.Groups do
                 Members ({length(@members_to_add)})
               </h3>
 
-              <div class="border border-neutral-200 rounded-lg overflow-hidden">
+              <div class="border border-neutral-200 rounded-md overflow-hidden">
                 <.member_search_input form={@form} member_search_results={@member_search_results} />
 
                 <.member_list members={@members_to_add}>
@@ -347,7 +347,7 @@ defmodule PortalWeb.Groups do
                         type="button"
                         phx-click="remove_member"
                         phx-value-actor_id={actor.id}
-                        class="flex-shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
+                        class="shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
                       >
                         <.icon name="hero-user-minus" class="w-5 h-5" />
                       </button>
@@ -375,7 +375,7 @@ defmodule PortalWeb.Groups do
         <div class="flex items-center gap-3">
           <.provider_icon
             type={provider_type_from_group(@group)}
-            class="w-8 h-8 flex-shrink-0"
+            class="w-8 h-8 shrink-0"
           />
           <span>{@group.name}</span>
         </div>
@@ -390,7 +390,7 @@ defmodule PortalWeb.Groups do
                 <:target>
                   <button
                     type="button"
-                    class="text-neutral-500 hover:text-neutral-700 focus:outline-none"
+                    class="text-neutral-500 hover:text-neutral-700 focus:outline-hidden"
                   >
                     <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
                   </button>
@@ -400,13 +400,13 @@ defmodule PortalWeb.Groups do
                     <.link
                       :if={editable_group?(@group)}
                       navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{@query_params}"}
-                      class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
+                      class="px-3 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                     </.link>
                     <div
                       :if={not editable_group?(@group)}
-                      class="px-3 py-2 text-sm text-neutral-400 rounded-lg flex items-center gap-2 whitespace-nowrap cursor-not-allowed"
+                      class="px-3 py-2 text-sm text-neutral-400 rounded-md flex items-center gap-2 whitespace-nowrap cursor-not-allowed"
                       title="Synced groups cannot be edited"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
@@ -415,7 +415,7 @@ defmodule PortalWeb.Groups do
                       type="button"
                       phx-click="delete"
                       phx-value-id={@group.id}
-                      class="w-full px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                      class="w-full px-3 py-2 text-sm text-red-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
                       data-confirm="Are you sure you want to delete this group?"
                     >
                       <.icon name="hero-trash" class="w-4 h-4" /> Delete
@@ -481,7 +481,7 @@ defmodule PortalWeb.Groups do
 
             <% filtered_actors = filter_members(@group.actors, @show_member_filter) %>
 
-            <div class="border border-neutral-200 rounded-lg overflow-hidden">
+            <div class="border border-neutral-200 rounded-md overflow-hidden">
               <.member_filter_input show_member_filter={@show_member_filter} />
 
               <.member_list members={filtered_actors} item_class="p-3 hover:bg-neutral-50 group">
@@ -514,7 +514,7 @@ defmodule PortalWeb.Groups do
         <div class="flex items-center gap-3">
           <.provider_icon
             type={provider_type_from_group(@group)}
-            class="w-8 h-8 flex-shrink-0"
+            class="w-8 h-8 shrink-0"
           />
           <span>Edit {@group.name}</span>
         </div>
@@ -540,7 +540,7 @@ defmodule PortalWeb.Groups do
                 Members ({get_member_count(all_members, @members_to_remove)})
               </h3>
 
-              <div class="border border-neutral-200 rounded-lg overflow-hidden">
+              <div class="border border-neutral-200 rounded-md overflow-hidden">
                 <.member_search_input form={@form} member_search_results={@member_search_results} />
 
                 <.member_list members={all_members}>
@@ -565,7 +565,7 @@ defmodule PortalWeb.Groups do
                         type="button"
                         phx-click="remove_member"
                         phx-value-actor_id={actor.id}
-                        class="flex-shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
+                        class="shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
                       >
                         <.icon name="hero-user-minus" class="w-5 h-5" />
                       </button>
@@ -591,7 +591,7 @@ defmodule PortalWeb.Groups do
 
     ~H"""
     <div class={[
-      "inline-flex items-center justify-center rounded-full flex-shrink-0",
+      "inline-flex items-center justify-center rounded-full shrink-0",
       @class,
       actor_type_icon_bg_color(@actor.type)
     ]}>
@@ -632,12 +632,12 @@ defmodule PortalWeb.Groups do
         phx-focus="focus_search"
         autocomplete="off"
         data-1p-ignore
-        class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
+        class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
       />
 
       <div
         :if={@member_search_results != nil}
-        class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+        class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-md shadow-md max-h-48 overflow-y-auto"
       >
         <button
           :for={actor <- @member_search_results}
@@ -678,7 +678,7 @@ defmodule PortalWeb.Groups do
         name="filter"
         autocomplete="off"
         data-1p-ignore
-        class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
+        class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
       />
     </form>
     """

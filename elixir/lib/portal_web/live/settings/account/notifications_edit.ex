@@ -48,7 +48,7 @@ defmodule PortalWeb.Settings.Account.Notifications.Edit do
                       </tr>
                     </thead>
                     <tbody>
-                      <tr class="bg-white border-b">
+                      <tr class="bg-white border-b border-neutral-200">
                         <.inputs_for :let={outdated_gateway} field={notifications[:outdated_gateway]}>
                           <td scope="row" class="px-6 py-4 whitespace-nowrap">
                             Outdated Gateways

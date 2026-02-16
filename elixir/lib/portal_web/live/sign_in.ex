@@ -41,7 +41,7 @@ defmodule PortalWeb.SignIn do
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.hero_logo text={@account.name} />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />

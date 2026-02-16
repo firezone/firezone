@@ -165,7 +165,7 @@ defmodule PortalWeb.FormComponents do
           checked={@checked}
           class={[
             "bg-neutral-50",
-            "border border-neutral-300 text-neutral-900 rounded",
+            "border border-neutral-300 text-neutral-900 rounded-sm",
             "checked:bg-accent-500 checked:hover:bg-accent-500",
             @class
           ]}
@@ -195,7 +195,7 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         class={[
           "text-sm bg-neutral-50",
-          "border border-neutral-300 text-neutral-900 rounded",
+          "border border-neutral-300 text-neutral-900 rounded-sm",
           "block p-2",
           !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
@@ -237,7 +237,7 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         class={[
           "text-sm bg-neutral-50",
-          "border border-neutral-300 text-neutral-900 rounded",
+          "border border-neutral-300 text-neutral-900 rounded-sm",
           "block",
           !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
@@ -263,9 +263,9 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "block rounded sm:text-sm sm:leading-6",
+          "block rounded-sm sm:text-sm sm:leading-6",
           "bg-neutral-50",
-          "border border-neutral-300 rounded",
+          "border border-neutral-300 rounded-sm",
           "min-h-[6rem]",
           !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400",
@@ -296,7 +296,7 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div>
       <.label :if={@label}>{@label}</.label>
-      <div class="border border-solid rounded p-2 text-sm text-neutral-500">
+      <div class="border border-neutral-200 border-solid rounded-sm p-2 text-sm text-neutral-500">
         {assigns.value}
       </div>
       <input
@@ -326,7 +326,7 @@ defmodule PortalWeb.FormComponents do
         class={[
           "block",
           !@inline_errors && "w-full",
-          "p-2.5 rounded",
+          "p-2.5 rounded-sm",
           "bg-neutral-50 text-neutral-900 text-sm",
           "border border-neutral-300",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
@@ -420,10 +420,13 @@ defmodule PortalWeb.FormComponents do
       phx-on-close={@on_close}
     >
       <div class="flex items-center justify-center">
-        <div class="relative bg-white rounded-lg shadow w-full max-w-2xl" phx-click-away={@on_close}>
+        <div
+          class="relative bg-white rounded-md shadow-sm w-full max-w-2xl"
+          phx-click-away={@on_close}
+        >
           <div
             :if={@title != []}
-            class="flex items-center justify-between p-4 md:p-5 border-b rounded-t"
+            class="flex items-center justify-between p-4 md:p-5 border-b border-neutral-200 rounded-t"
           >
             <h3 class="text-xl font-semibold text-neutral-900 flex items-center gap-3">
               <.provider_icon
@@ -448,7 +451,7 @@ defmodule PortalWeb.FormComponents do
           </div>
           <div
             :if={@footer != [] or @back_button != [] or @confirm_button != []}
-            class="flex items-center justify-between p-4 md:p-5 border-t border-gray-200 rounded-b gap-3"
+            class="flex items-center justify-between p-4 md:p-5 border-t border-neutral-200 rounded-b gap-3"
           >
             <%= if @footer != [] do %>
               {render_slot(@footer)}
@@ -516,8 +519,8 @@ defmodule PortalWeb.FormComponents do
       ]}
     >
       <form method="dialog" class="flex items-center justify-center">
-        <div class="relative bg-white rounded-lg shadow max-w-2xl">
-          <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+        <div class="relative bg-white rounded-md shadow-sm max-w-2xl">
+          <div class="flex items-center justify-between p-4 md:p-5 border-b border-neutral-200 rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">
               {render_slot(@dialog_title)}
             </h3>
@@ -533,7 +536,7 @@ defmodule PortalWeb.FormComponents do
           <div class="p-4 md:p-5 text-neutral-500 text-base">
             {render_slot(@dialog_content)}
           </div>
-          <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b">
+          <div class="flex items-center justify-end p-4 md:p-5 border-t border-neutral-200 rounded-b">
             <.button
               data-dialog-action="cancel"
               type="submit"

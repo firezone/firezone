@@ -399,9 +399,9 @@ defmodule PortalWeb.Settings.DirectorySync do
         <:content>
           <div class="relative">
             <!-- Blurred preview content -->
-            <div class="blur-sm pointer-events-none select-none opacity-60">
+            <div class="blur-xs pointer-events-none select-none opacity-60">
               <div class="flex flex-wrap gap-4">
-                <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
+                <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center flex-1 min-w-0">
                       <.provider_icon type="google" class="w-7 h-7 mr-2 shrink-0" />
@@ -411,7 +411,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       </div>
                     </div>
                   </div>
-                  <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
+                  <div class="mt-auto bg-white rounded-md p-3 space-y-3 text-sm text-neutral-600">
                     <div class="flex items-center gap-2">
                       <.icon name="hero-user-group" class="w-5 h-5 shrink-0" />
                       <span class="font-medium">42 users synced</span>
@@ -422,7 +422,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     </div>
                   </div>
                 </div>
-                <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
+                <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center flex-1 min-w-0">
                       <.provider_icon type="entra" class="w-7 h-7 mr-2 shrink-0" />
@@ -432,7 +432,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       </div>
                     </div>
                   </div>
-                  <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
+                  <div class="mt-auto bg-white rounded-md p-3 space-y-3 text-sm text-neutral-600">
                     <div class="flex items-center gap-2">
                       <.icon name="hero-user-group" class="w-5 h-5 shrink-0" />
                       <span class="font-medium">128 users synced</span>
@@ -447,7 +447,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             </div>
             <!-- Marketing overlay -->
             <div class="absolute inset-0 flex items-center justify-center">
-              <div class="bg-white rounded-xl shadow-lg p-6 max-w-md text-center border border-neutral-200">
+              <div class="bg-white rounded-lg shadow-md p-6 max-w-md text-center border border-neutral-200">
                 <div class="mb-4">
                   <.icon name="hero-arrow-path" class="w-10 h-10 text-accent-500 mx-auto" />
                 </div>
@@ -610,7 +610,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     assigns = assign(assigns, :toggle_disabled, toggle_disabled)
 
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
+    <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 shrink-0" />
@@ -660,7 +660,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             <:target>
               <button
                 type="button"
-                class="p-1 text-neutral-500 hover:text-neutral-700 rounded"
+                class="p-1 text-neutral-500 hover:text-neutral-700 rounded-sm"
               >
                 <.icon name="hero-ellipsis-horizontal" class="text-neutral-800 w-5 h-5" />
               </button>
@@ -669,7 +669,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               <div class="flex flex-col py-1">
                 <.link
                   patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
-                  class="px-4 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2"
+                  class="px-4 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2"
                 >
                   <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                 </.link>
@@ -677,7 +677,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   id={"delete-directory-#{@directory.id}"}
                   on_confirm="delete_directory"
                   on_confirm_id={@directory.id}
-                  class="w-full px-4 py-2 text-sm text-red-600 rounded-lg flex items-center gap-2 text-left border-0 bg-transparent"
+                  class="w-full px-4 py-2 text-sm text-red-600 rounded-md flex items-center gap-2 text-left border-0 bg-transparent"
                 >
                   <.icon name="hero-trash" class="w-4 h-4" /> Delete
                   <:dialog_title>Delete Directory</:dialog_title>
@@ -693,7 +693,7 @@ defmodule PortalWeb.Settings.DirectorySync do
         </div>
       </div>
 
-      <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
+      <div class="mt-auto bg-white rounded-md p-3 space-y-3 text-sm text-neutral-600">
         <%= if @directory.is_disabled and @directory.disabled_reason == "Sync error" do %>
           <.flash kind={:error_inline}>
             <p class="font-semibold">Sync has been disabled due to an error</p>
@@ -942,7 +942,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           <% sync_all_groups = get_field(@form.source, :sync_all_groups) %>
           <div class="grid gap-4 md:grid-cols-2">
             <label class={[
-              "flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all",
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
               if(sync_all_groups == false,
                 do: "border-accent-500 bg-accent-50",
                 else: "border-neutral-200 hover:border-neutral-300"
@@ -969,7 +969,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             </label>
 
             <label class={[
-              "flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all",
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
               if(sync_all_groups == true,
                 do: "border-accent-500 bg-accent-50",
                 else: "border-neutral-200 hover:border-neutral-300"
@@ -1039,7 +1039,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           </p>
         </div>
 
-        <div :if={@type == "okta"} class="p-4 border-2 border-neutral-200 bg-neutral-50 rounded-lg">
+        <div :if={@type == "okta"} class="p-4 border-2 border-neutral-200 bg-neutral-50 rounded-md">
           <div class="flex items-center justify-between mb-4">
             <div class="flex-1">
               <h3 class="text-base font-semibold text-neutral-900">Public Key (JWK)</h3>
@@ -1066,7 +1066,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               <div id={"okta-public-jwk-wrapper-#{kid}"} phx-hook="FormatJSON">
                 <.code_block
                   id="okta-public-jwk"
-                  class="text-xs rounded-lg [&_code]:h-72 [&_code]:overflow-y-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
+                  class="text-xs rounded-md [&_code]:h-72 [&_code]:overflow-y-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
                 >
                   {JSON.encode!(@public_jwk)}
                 </.code_block>
@@ -1084,7 +1084,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
         <div
           :if={@type in ["google", "entra", "okta"]}
-          class="p-4 border-2 border-accent-200 bg-accent-50 rounded-lg"
+          class="p-4 border-2 border-accent-200 bg-accent-50 rounded-md"
         >
           <.flash :if={@verification_error} kind={:error}>
             {@verification_error}
@@ -1144,7 +1144,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     ~H"""
     <div
       :if={verified?(@form)}
-      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-md"
+      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
     >
       <.icon name="hero-check-circle" class="h-5 w-5 mr-2" />
       <span class="font-medium">Verified</span>
@@ -1240,9 +1240,9 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp select_type_classes do
     ~w[
-      component bg-white rounded-lg p-4 flex items-center cursor-pointer
+      component bg-white rounded-md p-4 flex items-center cursor-pointer
       border-2 transition-all duration-150
-      border-neutral-200 hover:border-accent-300 hover:bg-neutral-50 hover:shadow-sm
+      border-neutral-200 hover:border-accent-300 hover:bg-neutral-50 hover:shadow-xs
     ]
   end
 

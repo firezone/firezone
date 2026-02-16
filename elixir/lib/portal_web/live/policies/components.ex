@@ -374,7 +374,7 @@ defmodule PortalWeb.Policies.Components do
           <span class="flex items-center">
             <.icon name="hero-map-pin" class="w-5 h-5 mr-2" /> Client location
           </span>
-          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_remote_ip_location_region_chevron"
               name="hero-chevron-down"
@@ -461,7 +461,7 @@ defmodule PortalWeb.Policies.Components do
           <span class="flex items-center">
             <.icon name="hero-globe-alt" class="w-5 h-5 mr-2" /> IP address
           </span>
-          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
           </span>
         </legend>
@@ -544,7 +544,7 @@ defmodule PortalWeb.Policies.Components do
           <span class="flex items-center">
             <.icon name="hero-identification" class="w-5 h-5 mr-2" /> Authentication provider
           </span>
-          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_auth_provider_id_chevron"
               name="hero-chevron-down"
@@ -639,7 +639,7 @@ defmodule PortalWeb.Policies.Components do
           <span class="flex items-center">
             <.icon name="hero-shield-check" class="w-5 h-5 mr-2" /> Client verification
           </span>
-          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_client_verified_chevron"
               name="hero-chevron-down"
@@ -717,7 +717,7 @@ defmodule PortalWeb.Policies.Components do
           <span class="flex items-center">
             <.icon name="hero-clock" class="w-5 h-5 mr-2" /> Current time
           </span>
-          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_current_utc_datetime_chevron"
               name="hero-chevron-down"

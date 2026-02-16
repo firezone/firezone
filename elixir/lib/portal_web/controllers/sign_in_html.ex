@@ -38,7 +38,7 @@ defmodule PortalWeb.SignInHTML do
             <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
               <.hero_logo text={@account.name} />
 
-              <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
+              <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
                 <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
                   <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
                     <span>
@@ -63,7 +63,7 @@ defmodule PortalWeb.SignInHTML do
         <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
           <.hero_logo text={@account.name} />
 
-          <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
+          <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
             <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
               <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
                 <span>
@@ -140,7 +140,7 @@ defmodule PortalWeb.SignInHTML do
             <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
               <.hero_logo text={@account.name} />
 
-              <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-2xl xl:p-0">
+              <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-2xl xl:p-0">
                 <div class="p-6 space-y-5 sm:p-8">
                   <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
                     Sign in successful
@@ -171,7 +171,7 @@ defmodule PortalWeb.SignInHTML do
                     <label class="block text-sm font-medium text-neutral-700">
                       Here is the token you requested:
                     </label>
-                    <div class="p-3 bg-neutral-100 border border-neutral-300 rounded font-mono text-xs break-all select-all">
+                    <div class="p-3 bg-neutral-100 border border-neutral-300 rounded-sm font-mono text-xs break-all select-all">
                       <code id="token-value">{@token}</code>
                     </div>
                     <div class="flex items-center justify-between">
@@ -185,7 +185,7 @@ defmodule PortalWeb.SignInHTML do
                         id="copy-button"
                         type="button"
                         onclick="copyToken()"
-                        class="px-4 py-2 text-sm font-medium text-white bg-accent-500 rounded hover:bg-accent-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 transition-colors"
+                        class="px-4 py-2 text-sm font-medium text-white bg-accent-500 rounded-sm hover:bg-accent-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 transition-colors"
                       >
                         Copy token to clipboard
                       </button>
@@ -198,7 +198,7 @@ defmodule PortalWeb.SignInHTML do
                     <p class="font-medium text-neutral-700">Next:</p>
                     <p>
                       Paste this token in the prompt opened by the Firezone Client, or set it as the
-                      <code class="px-1 py-0.5 bg-neutral-100 rounded text-xs font-mono">
+                      <code class="px-1 py-0.5 bg-neutral-100 rounded-sm text-xs font-mono">
                         FIREZONE_TOKEN
                       </code>
                       environment variable.

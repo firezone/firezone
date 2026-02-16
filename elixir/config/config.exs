@@ -379,14 +379,14 @@ config :portal, Portal.Mailer,
   from_email: "test@firez.one"
 
 config :esbuild,
-  version: "0.25.3",
+  version: "0.25.4",
   portal: [
     args: [
       "js/app.js",
       "--bundle",
       "--loader:.woff2=file",
       "--loader:.woff=file",
-      "--target=es2017",
+      "--target=es2022",
       "--outdir=../priv/static/assets",
       "--external:/fonts/*",
       "--external:/images/*"
@@ -397,10 +397,9 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "3.4.17",
+  version: "4.1.12",
   portal: [
     args: [
-      "--config=tailwind.config.js",
       "--input=css/main.css",
       "--output=../priv/static/assets/main.css"
     ],
