@@ -8,10 +8,6 @@ RUSTFLAGS = "--cfg tokio_unstable"
 # Nightly version used for cargo-udeps (keep in sync with .github/actions/setup-rust-nightly)
 NIGHTLY_VERSION = "nightly-2025-09-30"
 
-# =============================================================================
-# Individual checks (matching CI)
-# =============================================================================
-
 [tasks.fmt]
 description = "Format Rust code"
 run = "cargo fmt"
@@ -40,9 +36,55 @@ run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
 description = "Run tests (CI check)"
 run = "cargo test --all-features -- --include-ignored --nocapture"
 
-# =============================================================================
-# Composite tasks
-# =============================================================================
+[tasks.tunnel-test]
+description = "Run tunnel-test"
+dir = "{{config_root}}"
+run = "cargo test --features proptest --package tunnel -- --nocapture tunnel_test"
+env = { CARGO_PROFILE_TEST_OPT_LEVEL = '1', PROPTEST_VERBOSE = '0' }
+
+[tasks.tunnel-log-coverage]
+description = "Check tunnel test coverage by validating log patterns"
+dir = "{{config_root}}"
+run = '''
+#!/usr/bin/env bash
+#
+# Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
+patterns=(
+  "SendIcmpPacket"
+  "SendUdpPacket"
+  "ConnectTcp"
+  "SendDnsQueries"
+  "Packet for DNS resource"
+  "Packet for CIDR resource"
+  "Packet for Internet resource"
+  "Truncating DNS response"
+  "ICMP Error error=V4Unreachable"
+  "ICMP Error error=V6Unreachable"
+  "ICMP Error error=V4TimeExceeded"
+  "ICMP Error error=V6TimeExceeded"
+  "Forwarding query for DNS resource to corresponding site"
+  "Revoking resource authorization"
+  "Re-seeding records for DNS resources"
+  "Resource is known but its addressability changed"
+  "No A / AAAA records for domain"
+  "State change \(got new possible\): Disconnected -> Checking"
+)
+
+missing_patterns=$(
+  for pattern in "${patterns[@]}"; do
+    if ! rg --quiet --no-ignore "$pattern" "$TESTCASES_DIR"; then
+      echo "$pattern"
+    fi
+  done
+)
+
+if [ -n "$missing_patterns" ]; then
+  echo "Error: Some required patterns were not found in test logs:"
+  echo "$missing_patterns"
+  exit 1
+fi
+'''
+env = { TESTCASES_DIR = "libs/connlib/tunnel/testcases" }
 
 [tasks.check]
 description = "Run all CI static analysis checks"
@@ -51,3 +93,6 @@ depends = ["fmt-check", "clippy", "doc", "deny"]
 [tasks.check-all]
 description = "Run all CI static analysis checks including udeps (requires nightly)"
 depends = ["fmt-check", "clippy", "doc", "udeps", "deny"]
+
+[tools]
+"cargo:bpf-linker" = { version = "0.10.1", os = ["linux"] }
