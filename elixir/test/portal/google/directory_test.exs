@@ -2,6 +2,8 @@ defmodule Portal.Google.DirectoryTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
+  import Portal.GoogleDirectoryFixtures
+
   alias Portal.Google.Directory
 
   describe "changeset/1" do
@@ -83,6 +85,16 @@ defmodule Portal.Google.DirectoryTest do
 
       refute changeset.valid?
       assert "should be at most 255 character(s)" in errors_on(changeset).name
+    end
+
+    test "inserts domain at maximum length", %{account: account} do
+      dir = google_directory_fixture(account: account, domain: String.duplicate("a", 255))
+      assert String.length(dir.domain) == 255
+    end
+
+    test "inserts name at maximum length", %{account: account} do
+      dir = google_directory_fixture(account: account, name: String.duplicate("a", 255))
+      assert String.length(dir.name) == 255
     end
 
     test "validates impersonation_email format", %{account: account} do

@@ -56,7 +56,7 @@ defmodule Portal.Resource do
     changeset
     |> trim_change(fields)
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_length(:address_description, min: 1, max: 512)
+    |> validate_length(:address_description, min: 1, max: 255)
     |> maybe_put_default_ip_stack()
     |> validate_address_format()
     |> check_constraint(:ip_stack,
