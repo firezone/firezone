@@ -25,7 +25,7 @@
     "@types/react-dom": "19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/edge-config": "^1.4.3",
-    "asciinema-player": "^3.14.0",
+    "asciinema-player": "^3.14.15",
     "fast-xml-parser": "^5.3.6",
     "flowbite-react": "^0.12.17",
     "framer-motion": "^12.33.0",

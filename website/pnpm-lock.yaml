@@ -49,8 +49,8 @@ importers:
         specifier: ^1.4.3
         version: 1.4.3(@opentelemetry/api@1.9.0)(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
       asciinema-player:
-        specifier: ^3.14.0
-        version: 3.14.0
+        specifier: ^3.14.15
+        version: 3.14.15
       fast-xml-parser:
         specifier: ^5.3.6
         version: 5.3.6
@@ -1320,8 +1320,8 @@ packages:
     resolution: {integrity: sha512-BNoCY6SXXPQ7gF2opIP4GBE+Xw7U+pHMYKuzjgCN3GwiaIR09UUeKfheyIry77QtrCBlC0KK0q5/TER/tYh3PQ==}
     engines: {node: '>= 0.4'}
 
-  asciinema-player@3.14.0:
-    resolution: {integrity: sha512-44m3CpNavn8i7DSr/AeeV+rJpHpcqc/OCildCs9FAu5gnXB6XNBdbhfg6mHMG4uU3R1rxFNA3ZRTt8FMhHC48Q==}
+  asciinema-player@3.14.15:
+    resolution: {integrity: sha512-M+6n0GXMc9X4Oaz9qOr5pfQGcmnPOW8QIBzf67eZvtSpyqiKexMA03CpP4S9ZaDuUQNQIF2RSjHl6QLgJYvJ9g==}
 
   ast-types-flow@0.0.8:
     resolution: {integrity: sha512-OH/2E5Fg20h2aPrbe+QL8JZQFko0YZaF+j4mnQ7BGhfavO7OpSLa8a0y9sBwomHdSbkhTS8TQNayBfnW5DwbvQ==}
@@ -4309,7 +4309,7 @@ snapshots:
       get-intrinsic: 1.3.0
       is-array-buffer: 3.0.5
 
-  asciinema-player@3.14.0:
+  asciinema-player@3.14.15:
     dependencies:
       '@babel/runtime': 7.28.6
       solid-js: 1.9.11
