@@ -100,7 +100,6 @@ where
         self.peer_by_id.get_mut(id)
     }
 
-    #[cfg(test)]
     pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<&P> {
         let (_, id) = self.id_by_ip.longest_match(ip)?;
         self.peer_by_id.get(id)
