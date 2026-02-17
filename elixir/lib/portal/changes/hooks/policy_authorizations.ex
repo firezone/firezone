@@ -5,10 +5,14 @@ defmodule Portal.Changes.Hooks.PolicyAuthorizations do
 
   @impl true
 
-  # We don't react directly to policy authorization creation events because connection setup
-  # is latency sensitive and we've already broadcasted the relevant message from
-  # client pid to gateway pid directly.
-  def on_insert(_lsn, _data), do: :ok
+  # We don't react to policy authorization creation for gateway notification — connection
+  # setup is latency sensitive and the message is already sent directly from client pid to
+  # gateway pid. We do notify the dashboard PubSub topic so the admin UI updates in
+  # real time.
+  def on_insert(_lsn, data) do
+    policy_authorization = struct_from_params(PolicyAuthorization, data)
+    PubSub.PolicyAuthorizations.broadcast_created(policy_authorization.account_id)
+  end
 
   @impl true
 

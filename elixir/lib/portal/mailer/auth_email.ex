@@ -63,6 +63,37 @@ defmodule Portal.Mailer.AuthEmail do
     )
   end
 
+  def sign_up_verification_email(email, sign_up_url) when is_binary(email) do
+    default_email()
+    |> subject("Complete your Firezone sign up")
+    |> to(email)
+    |> render_body(__MODULE__, :sign_up_verification, sign_up_url: sign_up_url)
+  end
+
+  def existing_accounts_email(email, accounts_with_urls) when is_binary(email) do
+    default_email()
+    |> subject("Your Firezone accounts")
+    |> to(email)
+    |> render_body(__MODULE__, :existing_accounts, accounts_with_urls: accounts_with_urls)
+  end
+
+  def no_accounts_found_email(email, sign_up_url) when is_binary(email) do
+    default_email()
+    |> subject("We couldn't find your Firezone account")
+    |> to(email)
+    |> render_body(__MODULE__, :no_accounts_found,
+      recipient_email: email,
+      sign_up_url: sign_up_url
+    )
+  end
+
+  def sign_up_account_exists_email(email, accounts_with_urls) when is_binary(email) do
+    default_email()
+    |> subject("Your Firezone account")
+    |> to(email)
+    |> render_body(__MODULE__, :sign_up_account_exists, accounts_with_urls: accounts_with_urls)
+  end
+
   def new_user_email(
         %Portal.Account{} = account,
         %Portal.Actor{} = actor,

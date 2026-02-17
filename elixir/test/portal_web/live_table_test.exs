@@ -283,7 +283,6 @@ defmodule PortalWeb.LiveTableTest do
     test "renders page size and total count", %{assigns: assigns} do
       assert render_component(&live_table/1, assigns)
              |> Floki.parse_fragment!()
-             |> Floki.find("nav > span")
              |> Floki.text()
              |> String.replace(~r/[\s]+/, " ") =~ "Showing 1 of 1"
 
@@ -293,7 +292,6 @@ defmodule PortalWeb.LiveTableTest do
                  rows: Enum.map(1..10, fn _i -> ["foo"] end)
              })
              |> Floki.parse_fragment!()
-             |> Floki.find("nav > span")
              |> Floki.text()
              |> String.replace(~r/[\s]+/, " ") =~ "Showing 10 of 10"
 
@@ -303,7 +301,6 @@ defmodule PortalWeb.LiveTableTest do
                  rows: Enum.map(1..100, fn _i -> ["foo"] end)
              })
              |> Floki.parse_fragment!()
-             |> Floki.find("nav > span")
              |> Floki.text()
              |> String.replace(~r/[\s]+/, " ") =~ "Showing 100 of 100"
     end
@@ -313,7 +310,7 @@ defmodule PortalWeb.LiveTableTest do
 
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav button")
+             |> Floki.find("button[phx-click='paginate']")
              |> Floki.attribute("disabled") == ["disabled", "disabled"]
 
       assigns = %{assigns | metadata: %{assigns.metadata | next_page_cursor: "next_cursor"}}
@@ -321,10 +318,14 @@ defmodule PortalWeb.LiveTableTest do
 
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav button")
+             |> Floki.find("button[phx-click='paginate']")
              |> Floki.attribute("disabled") == ["disabled"]
 
-      enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
+      enabled_button =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("button[phx-click='paginate']:not([disabled])")
+
       assert Floki.attribute(enabled_button, "phx-click") == ["paginate"]
       assert Floki.attribute(enabled_button, "phx-value-cursor") == ["next_cursor"]
       assert Floki.attribute(enabled_button, "phx-value-table_id") == ["table-id"]
@@ -334,10 +335,14 @@ defmodule PortalWeb.LiveTableTest do
 
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav button")
+             |> Floki.find("button[phx-click='paginate']")
              |> Floki.attribute("disabled") == []
 
-      enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
+      enabled_button =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("button[phx-click='paginate']:not([disabled])")
+
       assert "prev_cursor" in Floki.attribute(enabled_button, "phx-value-cursor")
     end
 
@@ -345,10 +350,10 @@ defmodule PortalWeb.LiveTableTest do
       assigns = %{assigns | rows: []}
       html = render_component(&live_table/1, assigns)
 
-      # Should not find any nav element for pagination
+      # Should not find any paginate buttons when table is empty
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav[aria-label='Table navigation']") == []
+             |> Floki.find("button[phx-click='paginate']") == []
     end
   end
 

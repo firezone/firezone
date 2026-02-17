@@ -4,12 +4,8 @@ defmodule PortalWeb.Clients.Components do
 
   def actor_show_url(account, actor, return_to \\ nil)
 
-  def actor_show_url(account, %Portal.Actor{type: :api_client} = actor, return_to) do
-    if return_to do
-      ~p"/#{account}/settings/api_clients/#{actor}?#{[return_to: return_to]}"
-    else
-      ~p"/#{account}/settings/api_clients/#{actor}"
-    end
+  def actor_show_url(account, %Portal.Actor{type: :api_client} = _actor, _return_to) do
+    ~p"/#{account}/settings/api_clients"
   end
 
   def actor_show_url(account, actor, return_to) do
@@ -29,7 +25,7 @@ defmodule PortalWeb.Clients.Components do
     ~H"""
     <.link
       navigate={actor_show_url(@account, @actor, @return_to)}
-      class={["text-accent-500 hover:underline", @class]}
+      class={["text-[var(--brand)] hover:underline", @class]}
     >
       {@actor.name}
     </.link>
@@ -96,7 +92,7 @@ defmodule PortalWeb.Clients.Components do
           {@client.name}
           <.icon
             :if={not is_nil(@client.verified_at)}
-            name="hero-shield-check"
+            name="remix-shield-check-line"
             class="h-2.5 w-2.5 text-neutral-500"
             title="Device attributes of this client are manually verified"
           />
@@ -119,7 +115,7 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
-  def client_os_icon_name(nil), do: "hero-question-mark-circle"
+  def client_os_icon_name(nil), do: "remix-computer-line"
   def client_os_icon_name("Windows/" <> _), do: "os-windows"
   def client_os_icon_name("Mac OS/" <> _), do: "os-macos"
   def client_os_icon_name("iOS/" <> _), do: "os-ios"
@@ -144,39 +140,48 @@ defmodule PortalWeb.Clients.Components do
   attr :current, :string, required: true
   attr :latest, :string
 
+  def version(%{current: nil} = assigns) do
+    ~H"""
+    <span class="text-xs text-[var(--text-muted)]">—</span>
+    """
+  end
+
   def version(assigns) do
     assigns =
       assign(assigns, outdated?: not is_nil(assigns.latest) and assigns.current != assigns.latest)
 
     ~H"""
-    <span class="flex items-center">
-      <.popover>
-        <:target>
-          {# icon viewbox is ever so slightly off, hence the top adjustment}
+    <.popover>
+      <:target>
+        <span class={[
+          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium font-mono",
+          if(@outdated?,
+            do: "text-[var(--status-warn)] bg-[var(--status-warn-bg)]",
+            else: "text-[var(--status-active)] bg-[var(--status-active-bg)]"
+          )
+        ]}>
           <.icon
             :if={@outdated?}
-            name="hero-arrow-up-circle"
-            class="relative top-[-0.5px] h-4 w-4 text-orange-500 mr-1"
+            name="remix-arrow-up-line"
+            class="h-2.5 w-2.5 shrink-0"
           />
           <.icon
             :if={not @outdated?}
-            name="hero-check-circle"
-            class="relative top-[-0.5px] h-4 w-4 text-green-500 mr-1"
+            name="remix-check-line"
+            class="h-2.5 w-2.5 shrink-0"
           />
-        </:target>
-        <:content>
-          <p :if={not @outdated?}>
-            This component is up to date.
-          </p>
-          <p :if={@outdated?}>
-            A newer version <.website_link path="/changelog">{@latest}</.website_link> is available.
-          </p>
-        </:content>
-      </.popover>
-      <span>
-        {@current}
-      </span>
-    </span>
+          {@current}
+        </span>
+      </:target>
+      <:content>
+        <p :if={not @outdated?}>
+          This component is up to date.
+        </p>
+        <p :if={@outdated?}>
+          A newer version <.website_link path="/changelog">{@latest}</.website_link> is available.
+        </p>
+      </:content>
+    </.popover>
     """
   end
 

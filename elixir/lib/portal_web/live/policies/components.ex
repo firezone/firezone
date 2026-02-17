@@ -300,9 +300,9 @@ defmodule PortalWeb.Policies.Components do
           </p>
         </div>
         <%= if @policy_conditions_enabled? == false do %>
-          <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
+          <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+              <.icon name="remix-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
             </.badge>
           </.link>
         <% end %>
@@ -361,22 +361,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_remote_ip_location_region_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("hero-chevron-down",
+          |> JS.toggle_class("remix-arrow-down-s-line",
             to: "#policy_conditions_remote_ip_location_region_chevron"
           )
-          |> JS.toggle_class("hero-chevron-up",
+          |> JS.toggle_class("remix-arrow-up-s-line",
             to: "#policy_conditions_remote_ip_location_region_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-map-pin" class="w-5 h-5 mr-2" /> Client location
+            <.icon name="remix-map-pin-line" class="w-5 h-5 mr-2" /> Client location
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_remote_ip_location_region_chevron"
-              name="hero-chevron-down"
+              name="remix-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -448,20 +448,20 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_remote_ip_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("hero-chevron-down",
+          |> JS.toggle_class("remix-arrow-down-s-line",
             to: "#policy_conditions_remote_ip_chevron"
           )
-          |> JS.toggle_class("hero-chevron-up",
+          |> JS.toggle_class("remix-arrow-up-s-line",
             to: "#policy_conditions_remote_ip_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-globe-alt" class="w-5 h-5 mr-2" /> IP address
+            <.icon name="remix-global-line" class="w-5 h-5 mr-2" /> IP address
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
+            <.icon id="policy_conditions_remote_ip_chevron" name="remix-arrow-down-s-line" class="w-5 h-5" />
           </span>
         </legend>
       </div>
@@ -531,22 +531,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_auth_provider_id_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("hero-chevron-down",
+          |> JS.toggle_class("remix-arrow-down-s-line",
             to: "#policy_conditions_auth_provider_id_chevron"
           )
-          |> JS.toggle_class("hero-chevron-up",
+          |> JS.toggle_class("remix-arrow-up-s-line",
             to: "#policy_conditions_auth_provider_id_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-identification" class="w-5 h-5 mr-2" /> Authentication provider
+            <.icon name="remix-id-card-line" class="w-5 h-5 mr-2" /> Authentication provider
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_auth_provider_id_chevron"
-              name="hero-chevron-down"
+              name="remix-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -626,22 +626,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_client_verified_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("hero-chevron-down",
+          |> JS.toggle_class("remix-arrow-down-s-line",
             to: "#policy_conditions_client_verified_chevron"
           )
-          |> JS.toggle_class("hero-chevron-up",
+          |> JS.toggle_class("remix-arrow-up-s-line",
             to: "#policy_conditions_client_verified_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-shield-check" class="w-5 h-5 mr-2" /> Client verification
+            <.icon name="remix-shield-check-line" class="w-5 h-5 mr-2" /> Client verification
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_client_verified_chevron"
-              name="hero-chevron-down"
+              name="remix-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -704,22 +704,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_current_utc_datetime_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("hero-chevron-down",
+          |> JS.toggle_class("remix-arrow-down-s-line",
             to: "#policy_conditions_current_utc_datetime_chevron"
           )
-          |> JS.toggle_class("hero-chevron-up",
+          |> JS.toggle_class("remix-arrow-up-s-line",
             to: "#policy_conditions_current_utc_datetime_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-clock" class="w-5 h-5 mr-2" /> Current time
+            <.icon name="remix-time-line" class="w-5 h-5 mr-2" /> Current time
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_current_utc_datetime_chevron"
-              name="hero-chevron-down"
+              name="remix-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -812,6 +812,418 @@ defmodule PortalWeb.Policies.Components do
 
   def options_form(assigns) do
     ~H"""
+    """
+  end
+
+  @spec available_conditions(map() | nil) :: [atom()]
+  def available_conditions(%{type: :internet}),
+    do: [:remote_ip_location_region, :remote_ip, :auth_provider_id, :client_verified]
+
+  def available_conditions(_resource),
+    do: [
+      :remote_ip_location_region,
+      :remote_ip,
+      :auth_provider_id,
+      :client_verified,
+      :current_utc_datetime
+    ]
+
+  @spec condition_type_label(atom()) :: String.t()
+  def condition_type_label(:client_verified), do: "Require Verified Client"
+  def condition_type_label(:auth_provider_id), do: "Authentication Provider"
+  def condition_type_label(:remote_ip_location_region), do: "Client Location"
+  def condition_type_label(:remote_ip), do: "IP Range"
+  def condition_type_label(:current_utc_datetime), do: "Time of Day"
+
+  @spec country_name(String.t()) :: String.t()
+  def country_name(code) do
+    Portal.Geo.all_country_options!()
+    |> Enum.find_value(code, fn {label, c} -> if c == code, do: label end)
+  end
+
+  @condition_input_class "w-full text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-primary)] px-2 py-1.5 outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+
+  attr :type, :atom, required: true
+  attr :providers, :list, default: []
+  attr :timezone, :string, default: "UTC"
+  attr :location_search, :string, default: ""
+  attr :location_operator, :string, default: "is_in"
+  attr :location_values, :list, default: []
+  attr :ip_range_operator, :string, default: "is_in_cidr"
+  attr :ip_range_values, :list, default: []
+  attr :ip_range_input, :string, default: ""
+  attr :auth_provider_operator, :string, default: "is_in"
+  attr :auth_provider_values, :list, default: []
+  attr :tod_values, :map, default: %{}
+
+  def grant_condition_card(assigns) do
+    assigns = assign(assigns, :input_class, @condition_input_class)
+
+    ~H"""
+    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+      <div class="flex items-center justify-between px-3 py-2 bg-[var(--surface-raised)] border-b border-[var(--border)]">
+        <span class="text-xs font-medium text-[var(--text-primary)]">
+          {condition_type_label(@type)}
+        </span>
+        <button
+          type="button"
+          phx-click="remove_condition"
+          phx-value-type={@type}
+          class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+          title="Remove condition"
+        >
+          <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div :if={@type == :client_verified}>
+        <input
+          type="hidden"
+          name="policy[conditions][client_verified][property]"
+          value="client_verified"
+        />
+        <input
+          type="hidden"
+          name="policy[conditions][client_verified][operator]"
+          value="is"
+        />
+        <input
+          type="hidden"
+          name="policy[conditions][client_verified][values][]"
+          value="true"
+        />
+      </div>
+      <div :if={@type != :client_verified} class="px-3 py-2.5">
+        <div :if={@type == :auth_provider_id} class="space-y-2">
+          <input
+            type="hidden"
+            name="policy[conditions][auth_provider_id][property]"
+            value="auth_provider_id"
+          />
+          <input
+            type="hidden"
+            name="policy[conditions][auth_provider_id][operator]"
+            value={@auth_provider_operator}
+          />
+          <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+            <button
+              type="button"
+              phx-click="change_auth_provider_operator"
+              phx-value-operator="is_in"
+              class={[
+                "px-2 py-0.5 text-[10px] transition-colors",
+                if(@auth_provider_operator == "is_in",
+                  do: "bg-[var(--brand)] text-white",
+                  else:
+                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )
+              ]}
+            >
+              is in
+            </button>
+            <button
+              type="button"
+              phx-click="change_auth_provider_operator"
+              phx-value-operator="is_not_in"
+              class={[
+                "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+                if(@auth_provider_operator == "is_not_in",
+                  do: "bg-[var(--brand)] text-white",
+                  else:
+                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )
+              ]}
+            >
+              is not in
+            </button>
+          </div>
+          <input
+            :for={id <- @auth_provider_values}
+            type="hidden"
+            name="policy[conditions][auth_provider_id][values][]"
+            value={id}
+          />
+          <div :if={@auth_provider_values != []} class="flex flex-wrap gap-1 mb-2">
+            <span
+              :for={p <- Enum.filter(@providers, &(&1.id in @auth_provider_values))}
+              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+            >
+              {p.name}
+              <button
+                type="button"
+                phx-click="toggle_auth_provider_value"
+                phx-value-id={p.id}
+                class="hover:text-[var(--status-error)] transition-colors"
+              >
+                <.icon name="remix-close-line" class="w-2.5 h-2.5" />
+              </button>
+            </span>
+          </div>
+          <div class="rounded border border-[var(--border)] bg-[var(--surface)]">
+            <label
+              :for={p <- @providers}
+              class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+              phx-click="toggle_auth_provider_value"
+              phx-value-id={p.id}
+            >
+              <input
+                type="checkbox"
+                class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
+                readonly
+                checked={p.id in @auth_provider_values}
+              />
+              <span class="text-xs text-[var(--text-secondary)]">{p.name}</span>
+            </label>
+          </div>
+        </div>
+        <div :if={@type == :remote_ip_location_region}>
+          <input
+            type="hidden"
+            name="policy[conditions][remote_ip_location_region][property]"
+            value="remote_ip_location_region"
+          />
+          <input
+            type="hidden"
+            name="policy[conditions][remote_ip_location_region][operator]"
+            value={@location_operator}
+          />
+          <input
+            :for={code <- @location_values}
+            type="hidden"
+            name="policy[conditions][remote_ip_location_region][values][]"
+            value={code}
+          />
+          <div class="inline-flex rounded border border-[var(--border)] overflow-hidden mb-3">
+            <button
+              type="button"
+              phx-click="change_location_operator"
+              phx-value-operator="is_in"
+              class={[
+                "px-2 py-0.5 text-[10px] transition-colors",
+                if(@location_operator == "is_in",
+                  do: "bg-[var(--brand)] text-white",
+                  else:
+                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )
+              ]}
+            >
+              is in
+            </button>
+            <button
+              type="button"
+              phx-click="change_location_operator"
+              phx-value-operator="is_not_in"
+              class={[
+                "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+                if(@location_operator == "is_not_in",
+                  do: "bg-[var(--brand)] text-white",
+                  else:
+                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )
+              ]}
+            >
+              is not in
+            </button>
+          </div>
+          <div :if={@location_values != []} class="flex flex-wrap gap-1 mb-2">
+            <span
+              :for={code <- @location_values}
+              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+            >
+              {country_name(code)}
+              <button
+                type="button"
+                phx-click="toggle_location_value"
+                phx-value-code={code}
+                class="hover:text-[var(--status-error)] transition-colors"
+              >
+                <.icon name="remix-close-line" class="w-2.5 h-2.5" />
+              </button>
+            </span>
+          </div>
+          <input
+            type="text"
+            placeholder="Search countries…"
+            value={@location_search}
+            phx-change="update_location_search"
+            phx-debounce="150"
+            name="_location_search"
+            class="w-full px-2.5 py-1.5 text-xs rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] transition-colors mb-1"
+          />
+          <div class="max-h-36 overflow-y-auto rounded border border-[var(--border)] bg-[var(--surface)]">
+            <p
+              :if={@location_search == ""}
+              class="px-2.5 py-3 text-xs text-[var(--text-muted)] text-center"
+            >
+              Type to search countries
+            </p>
+            <label
+              :for={
+                {label, code} <-
+                  if @location_search == "" do
+                    []
+                  else
+                    Portal.Geo.all_country_options!()
+                    |> Enum.filter(fn {l, _} ->
+                      String.contains?(String.downcase(l), String.downcase(@location_search))
+                    end)
+                  end
+              }
+              class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+              phx-click="toggle_location_value"
+              phx-value-code={code}
+            >
+              <input
+                type="checkbox"
+                class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
+                readonly
+                checked={code in @location_values}
+              />
+              <span class="text-xs text-[var(--text-secondary)]">{label}</span>
+            </label>
+          </div>
+        </div>
+        <div :if={@type == :remote_ip} class="space-y-2">
+          <input
+            type="hidden"
+            name="policy[conditions][remote_ip][property]"
+            value="remote_ip"
+          />
+          <input
+            type="hidden"
+            name="policy[conditions][remote_ip][operator]"
+            value={@ip_range_operator}
+          />
+          <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+            <button
+              type="button"
+              phx-click="change_ip_range_operator"
+              phx-value-operator="is_in_cidr"
+              class={[
+                "px-2 py-0.5 text-[10px] transition-colors",
+                if(@ip_range_operator == "is_in_cidr",
+                  do: "bg-[var(--brand)] text-white",
+                  else:
+                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )
+              ]}
+            >
+              is in CIDR
+            </button>
+            <button
+              type="button"
+              phx-click="change_ip_range_operator"
+              phx-value-operator="is_not_in_cidr"
+              class={[
+                "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+                if(@ip_range_operator == "is_not_in_cidr",
+                  do: "bg-[var(--brand)] text-white",
+                  else:
+                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )
+              ]}
+            >
+              is not in CIDR
+            </button>
+          </div>
+          <input
+            :for={v <- @ip_range_values}
+            type="hidden"
+            name="policy[conditions][remote_ip][values][]"
+            value={v}
+          />
+          <div :if={@ip_range_values != []} class="flex flex-wrap gap-1 mb-2">
+            <span
+              :for={v <- @ip_range_values}
+              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-mono bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+            >
+              {v}
+              <button
+                type="button"
+                phx-click="remove_ip_range_value"
+                phx-value-range={v}
+                class="hover:text-[var(--status-error)] transition-colors"
+              >
+                <.icon name="remix-close-line" class="w-2.5 h-2.5" />
+              </button>
+            </span>
+          </div>
+          <div class="flex gap-1.5">
+            <input
+              type="text"
+              name="_ip_range_input"
+              value={@ip_range_input}
+              placeholder="e.g. 10.0.0.0/8"
+              phx-change="update_ip_range_input"
+              phx-key="Enter"
+              phx-keyup="add_ip_range_value"
+              class={[@input_class, "flex-1 font-mono placeholder:text-[var(--text-muted)]"]}
+            />
+            <button
+              type="button"
+              phx-click="add_ip_range_value"
+              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors shrink-0"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+        <div :if={@type == :current_utc_datetime} class="space-y-2">
+          <input
+            type="hidden"
+            name="policy[conditions][current_utc_datetime][property]"
+            value="current_utc_datetime"
+          />
+          <input
+            type="hidden"
+            name="policy[conditions][current_utc_datetime][operator]"
+            value="is_in_day_of_week_time_ranges"
+          />
+          <select
+            name="policy[conditions][current_utc_datetime][timezone]"
+            class={@input_class}
+          >
+            <option
+              :for={tz <- Tzdata.zone_list()}
+              value={tz}
+              selected={tz == @timezone}
+            >
+              {tz}
+            </option>
+          </select>
+          <div class="space-y-1">
+            <div
+              :for={
+                {code, name} <- [
+                  {"M", "Mon"},
+                  {"T", "Tue"},
+                  {"W", "Wed"},
+                  {"R", "Thu"},
+                  {"F", "Fri"},
+                  {"S", "Sat"},
+                  {"U", "Sun"}
+                ]
+              }
+              class="flex items-center gap-2"
+            >
+              <span class="text-[10px] text-[var(--text-tertiary)] w-6 shrink-0">{name}</span>
+              <input
+                type="text"
+                name={"policy[conditions][current_utc_datetime][values][#{code}]"}
+                id={"grant_cond_datetime_#{code}"}
+                value={Map.get(@tod_values, code, "")}
+                placeholder="off"
+                class={[
+                  "flex-1 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)]",
+                  "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                  "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+                ]}
+              />
+            </div>
+          </div>
+          <p class="text-[10px] text-[var(--text-muted)]">24h format, e.g. 09:00-17:00</p>
+        </div>
+      </div>
+    </div>
     """
   end
 

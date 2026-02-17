@@ -805,6 +805,13 @@ defmodule Portal.Repo.Seeds do
         "Mac OS/14.5 connlib/0.7.412"
       )
 
+    admin_encoded_client_token = Authentication.encode_fragment!(admin_client_token)
+    unprivileged_encoded_client_token = Authentication.encode_fragment!(unprivileged_client_token)
+
+    IO.puts("Client tokens:")
+    IO.puts("  Admin: #{admin_encoded_client_token}")
+    IO.puts("  Unprivileged: #{unprivileged_encoded_client_token}")
+
     IO.puts("Clients created")
     IO.puts("")
 

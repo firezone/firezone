@@ -119,9 +119,9 @@ defmodule PortalWeb.Resources.Components do
         <legend class="text-xl">Traffic Restriction</legend>
 
         <%= if @traffic_filters_enabled? == false do %>
-          <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
+          <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+              <.icon name="remix-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
             </.badge>
           </.link>
         <% end %>
@@ -329,82 +329,525 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :form, :any, required: true
+  attr :resource, :any, default: nil
+  attr :client_to_client_enabled, :boolean, default: false
+
+  def resource_type_picker(assigns) do
+    ~H"""
+    <div :if={is_nil(@resource) || @resource.type != :internet}>
+      <span class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        Type <span class="text-[var(--status-error)]">*</span>
+      </span>
+      <ul class={"grid w-full gap-3 #{if @client_to_client_enabled, do: "grid-cols-4", else: "grid-cols-3"}"}>
+        <li>
+          <.input
+            id="resource-form-type--dns"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="dns"
+            checked={to_string(@form[:type].value) == "dns"}
+            required
+          />
+          <label
+            for="resource-form-type--dns"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="remix-global-line" class="w-4 h-4 mr-1" /> DNS
+              </div>
+              <div class="w-full text-[10px]">
+                By DNS address
+              </div>
+            </div>
+          </label>
+        </li>
+        <li>
+          <.input
+            id="resource-form-type--ip"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="ip"
+            checked={to_string(@form[:type].value) == "ip"}
+            required
+          />
+          <label
+            for="resource-form-type--ip"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="remix-server-line" class="w-4 h-4 mr-1" /> IP
+              </div>
+              <div class="w-full text-[10px]">
+                By IP address
+              </div>
+            </div>
+          </label>
+        </li>
+        <li>
+          <.input
+            id="resource-form-type--cidr"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="cidr"
+            checked={to_string(@form[:type].value) == "cidr"}
+            required
+          />
+          <label
+            for="resource-form-type--cidr"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="remix-server-line" class="w-4 h-4 mr-1" /> CIDR
+              </div>
+              <div class="w-full text-[10px]">
+                By CIDR range
+              </div>
+            </div>
+          </label>
+        </li>
+        <li :if={@client_to_client_enabled}>
+          <.input
+            id="resource-form-type--static-device-pool"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="static_device_pool"
+            checked={to_string(@form[:type].value) == "static_device_pool"}
+            required
+          />
+          <label
+            for="resource-form-type--static-device-pool"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="remix-computer-line" class="w-4 h-4 mr-1" /> Device Pool
+              </div>
+              <div class="w-full text-[10px]">
+                Direct client access
+              </div>
+            </div>
+          </label>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :resource, :any, default: nil
+
+  def resource_core_fields(assigns) do
+    ~H"""
+    <div :if={
+      (is_nil(@resource) || @resource.type != :internet) &&
+        to_string(@form[:type].value) != "static_device_pool"
+    }>
+      <label
+        for={@form[:address].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Address <span class="text-[var(--status-error)]">*</span>
+      </label>
+      <.input
+        field={@form[:address]}
+        autocomplete="off"
+        placeholder={
+          cond do
+            to_string(@form[:type].value) == "dns" -> "gitlab.company.com"
+            to_string(@form[:type].value) == "cidr" -> "10.0.0.0/24"
+            to_string(@form[:type].value) == "ip" -> "10.3.2.1"
+            true -> "First select a type above"
+          end
+        }
+        disabled={is_nil(@form[:type].value)}
+        phx-debounce="300"
+        required
+        class="font-mono"
+      />
+    </div>
+
+    <div :if={
+      (is_nil(@resource) || @resource.type != :internet) &&
+        to_string(@form[:type].value) != "static_device_pool"
+    }>
+      <label
+        for={@form[:address_description].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Address Description <span class="text-[var(--text-muted)] font-normal">(optional)</span>
+      </label>
+      <.input
+        field={@form[:address_description]}
+        type="text"
+        placeholder="Enter a description or URL"
+        phx-debounce="300"
+      />
+      <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+        Optional description or URL shown in Clients.
+      </p>
+    </div>
+
+    <div>
+      <label
+        for={@form[:name].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Name <span class="text-[var(--status-error)]">*</span>
+      </label>
+      <.input
+        field={@form[:name]}
+        type="text"
+        placeholder="Name this resource"
+        phx-debounce="300"
+        required
+      />
+    </div>
+    """
+  end
+
+  attr :selected_clients, :list, required: true
+  attr :client_search_results, :any, default: nil
+  attr :client_search, :string, default: ""
+
+  def resource_device_pool_section(assigns) do
+    ~H"""
+    <div>
+      <span class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        Devices <span class="text-[var(--text-muted)] font-normal">(optional)</span>
+      </span>
+      <p class="mb-2 text-xs text-[var(--text-tertiary)]">
+        Select clients to include in this pool.
+      </p>
+      <.client_picker
+        selected_clients={@selected_clients}
+        client_search={@client_search}
+        client_search_results={@client_search_results}
+      />
+    </div>
+    """
+  end
+
+  attr :form, :any, required: true
+
+  def resource_dns_ip_stack_section(assigns) do
+    ~H"""
+    <div>
+      <%!-- Hidden radio inputs for form submission --%>
+      <.input
+        id="resource-form-ip-stack--dual"
+        type="radio_button_group"
+        field={@form[:ip_stack]}
+        value="dual"
+        checked={"#{@form[:ip_stack].value}" == "" or "#{@form[:ip_stack].value}" == "dual"}
+      />
+      <.input
+        id="resource-form-ip-stack--ipv4"
+        type="radio_button_group"
+        field={@form[:ip_stack]}
+        value="ipv4_only"
+        checked={"#{@form[:ip_stack].value}" == "ipv4_only"}
+      />
+      <.input
+        id="resource-form-ip-stack--ipv6"
+        type="radio_button_group"
+        field={@form[:ip_stack]}
+        value="ipv6_only"
+        checked={"#{@form[:ip_stack].value}" == "ipv6_only"}
+      />
+      <span class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        IP Stack
+      </span>
+      <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+        <label
+          for="resource-form-ip-stack--dual"
+          class={[
+            "px-4 py-1.5 text-xs transition-colors border-l border-[var(--border)] first:border-l-0 cursor-pointer",
+            if(
+              "#{@form[:ip_stack].value}" == "" or "#{@form[:ip_stack].value}" == "dual",
+              do: "bg-[var(--brand)] text-white",
+              else:
+                "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            )
+          ]}
+        >
+          Both
+        </label>
+        <label
+          for="resource-form-ip-stack--ipv4"
+          class={[
+            "px-4 py-1.5 text-xs transition-colors border-l border-[var(--border)] first:border-l-0 cursor-pointer",
+            if(
+              "#{@form[:ip_stack].value}" == "ipv4_only",
+              do: "bg-[var(--brand)] text-white",
+              else:
+                "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            )
+          ]}
+        >
+          IPv4
+        </label>
+        <label
+          for="resource-form-ip-stack--ipv6"
+          class={[
+            "px-4 py-1.5 text-xs transition-colors border-l border-[var(--border)] first:border-l-0 cursor-pointer",
+            if(
+              "#{@form[:ip_stack].value}" == "ipv6_only",
+              do: "bg-[var(--brand)] text-white",
+              else:
+                "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            )
+          ]}
+        >
+          IPv6
+        </label>
+      </div>
+      <p class="mt-1.5 text-xs text-[var(--text-secondary)] leading-snug">
+        {case "#{@form[:ip_stack].value}" do
+          "ipv4_only" ->
+            "Resolves only A records — clients connect over IPv4."
+
+          "ipv6_only" ->
+            "Resolves only AAAA records — clients connect over IPv6."
+
+          _ ->
+            "Resolves A and AAAA records — clients connect over IPv4 or IPv6, whichever is available."
+        end}
+      </p>
+    </div>
+    """
+  end
+
+  attr :resource, :any, default: nil
+  attr :form, :any, required: true
+  attr :active_protocols, :list, default: []
+  attr :filters_dropdown_open, :boolean, default: false
+  attr :filter_ports, :map, default: %{}
+
+  def resource_traffic_restrictions_section(assigns) do
+    ~H"""
+    <div :if={
+      (is_nil(@resource) || @resource.type != :internet) &&
+        to_string(@form[:type].value) != "static_device_pool"
+    }>
+      <div class="flex items-center justify-between mb-2">
+        <span class="block text-xs font-medium text-[var(--text-secondary)]">
+          Traffic Restrictions <span class="font-normal text-[var(--text-tertiary)]">(optional)</span>
+        </span>
+        <div class="relative">
+          <button
+            type="button"
+            phx-click="toggle_resource_filters_dropdown"
+            class="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] rounded px-2 py-1 bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <.icon name="remix-add-line" class="w-3 h-3" /> Add protocol
+            <.icon name="remix-arrow-down-s-line" class="w-3 h-3" />
+          </button>
+          <div
+            :if={@filters_dropdown_open}
+            phx-click-away="close_resource_filters_dropdown"
+            class="absolute right-0 top-full mt-1 z-20 bg-[var(--surface-overlay)] border border-[var(--border)] rounded shadow-md min-w-[120px]"
+          >
+            <button
+              :if={:tcp not in @active_protocols}
+              type="button"
+              phx-click="add_resource_filter"
+              phx-value-protocol="tcp"
+              class="flex items-center w-full px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              TCP
+            </button>
+            <button
+              :if={:udp not in @active_protocols}
+              type="button"
+              phx-click="add_resource_filter"
+              phx-value-protocol="udp"
+              class="flex items-center w-full px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              UDP
+            </button>
+            <button
+              :if={:icmp not in @active_protocols}
+              type="button"
+              phx-click="add_resource_filter"
+              phx-value-protocol="icmp"
+              class="flex items-center w-full px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              ICMP
+            </button>
+            <div
+              :if={
+                :tcp in @active_protocols and :udp in @active_protocols and :icmp in @active_protocols
+              }
+              class="px-3 py-2 text-xs text-[var(--text-tertiary)]"
+            >
+              All protocols added
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        :if={@active_protocols == []}
+        class="flex items-center justify-center rounded border border-dashed border-[var(--border)] px-4 py-5 text-xs text-[var(--text-tertiary)]"
+      >
+        No restrictions — all traffic is permitted
+      </div>
+
+      <div :if={@active_protocols != []} class="flex flex-col gap-2">
+        <div
+          :for={protocol <- @active_protocols}
+          class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+        >
+          <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+          <input
+            type="hidden"
+            name={"resource[filters][#{protocol}][protocol]"}
+            value={"#{protocol}"}
+          />
+          <span class="w-10 shrink-0 text-xs font-medium text-[var(--text-primary)] uppercase">
+            {protocol}
+          </span>
+          <div :if={protocol != :icmp} class="flex-1">
+            <input
+              type="text"
+              name={"resource[filters][#{protocol}][ports]"}
+              value={Map.get(@filter_ports, protocol, "")}
+              placeholder="All ports"
+              class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors border-[var(--control-border)] focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30"
+            />
+          </div>
+          <span
+            :if={protocol == :icmp}
+            class="flex-1 text-xs text-[var(--text-tertiary)] italic"
+          >
+            echo request/reply
+          </span>
+          <button
+            type="button"
+            phx-click="remove_resource_filter"
+            phx-value-protocol={"#{protocol}"}
+            class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label={"Remove #{protocol} filter"}
+          >
+            <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :sites, :list, required: true
+
+  def resource_site_selector(assigns) do
+    ~H"""
+    <div :if={to_string(@form[:type].value) != "static_device_pool"}>
+      <label
+        for={@form[:site_id].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Site <span class="text-[var(--status-error)]">*</span>
+      </label>
+      <.input
+        field={@form[:site_id]}
+        type="select"
+        options={Enum.map(@sites, fn s -> {s.name, s.id} end)}
+        prompt="Select a Site"
+        required
+      />
+    </div>
+    """
+  end
+
   attr :selected_clients, :list, required: true
   attr :client_search_results, :any, default: nil
   attr :client_search, :string, default: ""
 
   def client_picker(assigns) do
     ~H"""
-    <div class="border border-neutral-200 rounded-sm">
-      <div
-        class="p-3 bg-neutral-50 border-b border-neutral-200 relative"
-        phx-click-away="blur_client_search"
-      >
+    <div class="space-y-1">
+      <div class="relative mb-2" phx-click-away="blur_client_search">
+        <.icon
+          name="remix-search-line"
+          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+        />
         <input
           type="text"
           name="client_search"
           value={@client_search}
-          placeholder="Search clients to add..."
+          placeholder="Search clients to add…"
           phx-change="search_client"
           phx-debounce="300"
           phx-focus="focus_client_search"
           autocomplete="off"
           data-1p-ignore
-          class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
+          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
         />
+      </div>
 
-        <div
-          :if={@client_search_results != nil}
-          class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-md shadow-md max-h-48 overflow-y-auto"
-        >
+      <ul :if={@selected_clients != []} class="space-y-1 mb-1">
+        <li :for={client <- @selected_clients}>
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--brand)] bg-[var(--brand-muted)]">
+            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+              <.icon name="remix-computer-line" class="w-4 h-4 text-[var(--brand)]" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-[var(--brand)] truncate">{client.name}</p>
+              <p class="text-[10px] text-[var(--text-tertiary)] truncate">{client_details(client)}</p>
+            </div>
+            <button
+              type="button"
+              phx-click="remove_client"
+              phx-value-client_id={client.id}
+              class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-[var(--brand)]/50 hover:text-[var(--brand)] transition-colors"
+              aria-label="Remove client"
+            >
+              <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </li>
+      </ul>
+
+      <ul :if={@client_search_results != nil && @client_search_results != []} class="space-y-1">
+        <li :for={client <- @client_search_results}>
           <button
-            :for={client <- @client_search_results}
             type="button"
             phx-click="add_client"
             phx-value-client_id={client.id}
-            class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
+            class="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] cursor-pointer transition-colors"
           >
-            <div class="flex items-center gap-2">
-              <div class={[
-                "w-2 h-2 rounded-full flex-shrink-0",
-                if(client.online?, do: "bg-green-500", else: "bg-red-500")
-              ]} />
-              <div class="space-y-0.5 min-w-0">
-                <div class="text-sm font-medium text-neutral-900">{client.name}</div>
-                <div class="text-xs text-neutral-500">
-                  {client_details(client)}
-                </div>
-              </div>
+            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+              <.icon name="remix-computer-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
             </div>
-          </button>
-          <div
-            :if={@client_search_results == []}
-            class="px-3 py-4 text-center text-sm text-neutral-500"
-          >
-            No clients found
-          </div>
-        </div>
-      </div>
-
-      <ul :if={@selected_clients != []} class="divide-y divide-neutral-200 max-h-64 overflow-y-auto">
-        <li :for={client <- @selected_clients} class="p-3 flex items-center justify-between">
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-neutral-900 truncate">{client.name}</p>
-            <p class="text-xs text-neutral-500 truncate">{client_details(client)}</p>
-          </div>
-          <button
-            type="button"
-            phx-click="remove_client"
-            phx-value-client_id={client.id}
-            class="text-xs text-red-600 hover:text-red-700"
-          >
-            Remove
+            <div class="flex-1 min-w-0 text-left">
+              <p class="text-sm font-medium text-[var(--text-primary)] truncate">{client.name}</p>
+              <p class="text-[10px] text-[var(--text-tertiary)] truncate">{client_details(client)}</p>
+            </div>
+            <span class={[
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              if(client.online?, do: "bg-[var(--status-active)]", else: "bg-[var(--status-neutral)]")
+            ]} />
           </button>
         </li>
       </ul>
 
-      <div :if={@selected_clients == []} class="p-4 text-sm text-neutral-500">
-        No devices selected.
+      <div
+        :if={@client_search_results == []}
+        class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+      >
+        No clients found
+      </div>
+
+      <div
+        :if={@selected_clients == [] && is_nil(@client_search_results)}
+        class="flex items-center justify-center h-12 text-xs text-[var(--text-tertiary)]"
+      >
+        Search above to add devices
       </div>
     </div>
     """

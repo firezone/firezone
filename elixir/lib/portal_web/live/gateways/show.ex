@@ -113,7 +113,7 @@ defmodule PortalWeb.Gateways.Show do
         <.button_with_confirmation
           id="delete_gateway"
           style="danger"
-          icon="hero-trash-solid"
+          icon="remix-delete-bin-fill"
           on_confirm="delete"
         >
           <:dialog_title>Confirm deletion of Gateway</:dialog_title>

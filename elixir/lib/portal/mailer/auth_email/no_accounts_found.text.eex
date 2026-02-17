@@ -1,0 +1,13 @@
+No accounts found
+
+We couldn't find any Firezone organization accounts linked to <%= @recipient_email %>.
+
+If you think this is a mistake, contact your Firezone administrator and ask them to verify that your email address has been added to your organization's account.
+
+Want to set up Firezone for your own organization?
+Create an account: <%= @sign_up_url %>
+
+If you didn't request this, you can safely ignore this email.
+
+Thanks,
+The Firezone Team

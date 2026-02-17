@@ -9,13 +9,21 @@ defmodule PortalWeb.HomeController do
     recent_accounts = Database.get_accounts_by_ids(recent_account_ids)
     ids_to_remove = recent_account_ids -- Enum.map(recent_accounts, & &1.id)
     conn = PortalWeb.Cookie.RecentAccounts.remove(conn, ids_to_remove)
-    params = PortalWeb.Authentication.take_sign_in_params(params)
+    sign_in_params = PortalWeb.Authentication.take_sign_in_params(params)
+
+    client_mode? = sign_in_params["as"] in ["client", "gui-client", "headless-client"]
+
+    show_account_chooser =
+      client_mode? or
+        ((recent_accounts != [] or params["choose"] == "true") and
+           params["get_started"] != "true")
 
     conn
-    |> put_layout(html: {PortalWeb.Layouts, :public})
+    |> put_layout(html: {PortalWeb.Layouts, :auth})
     |> render("home.html",
       accounts: recent_accounts,
-      params: params
+      params: sign_in_params,
+      show_account_chooser: show_account_chooser
     )
   end
 

@@ -196,10 +196,10 @@ config :portal, PortalWeb.RateLimit,
 
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
+    "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self'"
+    "script-src 'self' 'nonce-${nonce}'"
   ]
 
 config :portal, :constant_execution_time, 1

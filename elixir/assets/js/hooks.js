@@ -418,4 +418,85 @@ Hooks.Toast = {
   },
 };
 
+Hooks.CloseWindow = {
+  mounted() {
+    const seconds = parseInt(this.el.dataset.seconds) || 5;
+
+    this.timer = setTimeout(() => {
+      window.close();
+    }, seconds * 1000);
+  },
+  destroyed() {
+    if (this.timer) clearTimeout(this.timer);
+  },
+};
+
+Hooks.PINInput = {
+  mounted() {
+    const inputs = this.el.querySelectorAll("input[data-pin-index]");
+    const hidden = document.getElementById("secret");
+
+    const update = () => {
+      hidden.value = Array.from(inputs).map((i) => i.value).join("");
+    };
+
+    inputs.forEach((input, idx) => {
+      input.addEventListener("input", (e) => {
+        const val = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "");
+        input.value = val ? val[val.length - 1] : "";
+        update();
+        if (input.value && idx < inputs.length - 1) {
+          inputs[idx + 1].focus();
+        }
+      });
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Backspace") {
+          if (!input.value && idx > 0) {
+            inputs[idx - 1].value = "";
+            inputs[idx - 1].focus();
+            update();
+          }
+        } else if (e.key === "Enter") {
+          const allFilled = Array.from(inputs).every((i) => i.value);
+          if (allFilled) {
+            update();
+            const form = this.el.closest("form");
+            if (form) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+          }
+        }
+      });
+
+      input.addEventListener("paste", (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData)
+          .getData("text")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+        text.split("").forEach((char, i) => {
+          if (idx + i < inputs.length) {
+            inputs[idx + i].value = char;
+          }
+        });
+        update();
+        const nextEmpty = Array.from(inputs).findIndex((i) => !i.value);
+        (nextEmpty === -1 ? inputs[inputs.length - 1] : inputs[nextEmpty]).focus();
+      });
+    });
+  },
+};
+
+Hooks.ProgressBar = {
+  mounted() {
+    this.update();
+  },
+  updated() {
+    this.update();
+  },
+  update() {
+    const pct = this.el.dataset.pct || 0;
+    this.el.style.width = `${pct}%`;
+  },
+};
+
 export default Hooks;

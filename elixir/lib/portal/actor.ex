@@ -27,6 +27,8 @@ defmodule Portal.Actor do
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]
 
+    embeds_one :preferences, Portal.Actor.Preferences, on_replace: :update
+
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :identity_count, :integer, virtual: true
     field :disabled_at, :utc_datetime_usec

@@ -9,6 +9,7 @@ defmodule Portal.Site do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           name: String.t(),
+          health_threshold: pos_integer(),
           managed_by: :account | :system,
           account_id: Ecto.UUID.t(),
           inserted_at: DateTime.t(),
@@ -20,6 +21,7 @@ defmodule Portal.Site do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     field :name, :string
+    field :health_threshold, :integer, default: 1
 
     field :managed_by, Ecto.Enum, values: ~w[account system]a, default: :account
 
@@ -30,10 +32,13 @@ defmodule Portal.Site do
     timestamps()
   end
 
+  @health_threshold_min 1
+
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required(:name)
     |> validate_length(:name, min: 1, max: 64)
+    |> validate_number(:health_threshold, greater_than_or_equal_to: @health_threshold_min)
     |> unique_constraint(:name, name: :sites_account_id_name_managed_by_index)
     |> assoc_constraint(:account)
   end

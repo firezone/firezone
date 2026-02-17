@@ -79,4 +79,28 @@ defmodule Portal.PubSub do
       [Node.self() | nodes]
     end
   end
+
+  defmodule PolicyAuthorizations do
+    @moduledoc """
+    PubSub topic for policy authorization events scoped to an account.
+    Used by the admin dashboard to receive real-time notifications when
+    new policy authorizations are created.
+    """
+
+    @doc "Subscribe to new policy authorization events for the given account."
+    @spec subscribe(String.t()) :: :ok | {:error, term()}
+    def subscribe(account_id) do
+      account_id
+      |> topic()
+      |> Portal.PubSub.subscribe()
+    end
+
+    @doc "Broadcast a new policy authorization event to subscribers in the account."
+    @spec broadcast_created(String.t()) :: :ok
+    def broadcast_created(account_id) do
+      Portal.PubSub.broadcast(topic(account_id), {:policy_authorization_created, account_id})
+    end
+
+    defp topic(account_id), do: "policy_authorizations:account:" <> account_id
+  end
 end

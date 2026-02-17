@@ -353,10 +353,10 @@ config :portal, country_code_blocklist: []
 
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
+    "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self'"
+    "script-src 'self' 'nonce-${nonce}'"
   ]
 
 config :portal, api_url_override: "ws://localhost:13001/"
