@@ -36,16 +36,22 @@ defmodule Portal.Application do
   #      needed, which avoids the Phoenix.Presence FunctionClauseError on
   #      remote nodes when merge tasks time out.
   #
-  #   2. Endpoints — kill all channel processes. Presence receives the flood of
+  #   2. Replication managers — stop replication connections proactively while
+  #      BEAM is still alive, so PostgreSQL replication sockets can disconnect
+  #      gracefully before any long endpoint drain.
+  #
+  #   3. Endpoints — kill all channel processes. Presence receives the flood of
   #      EXIT messages and processes them with a fully operational PubSub and
   #      Repo (they're still alive at positions 1-4 in the children list).
   #
-  #   3. PortalAPI.RateLimit — destroy the Hammer ETS table only after all
+  #   4. PortalAPI.RateLimit — destroy the Hammer ETS table only after all
   #      endpoint request processing has stopped, preventing "unknown table"
   #      errors from lingering channel processes.
   @impl true
   def prep_stop(state) do
     _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.Cluster)
+    _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.Changes.ReplicationConnection)
+    _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.ChangeLogs.ReplicationConnection)
     _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalWeb.Endpoint)
     _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.Endpoint)
     _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.RateLimit)
