@@ -165,6 +165,7 @@ defmodule PortalAPI.PolicyController do
     def update_policy(policy, attrs, subject) do
       policy
       |> changeset(attrs)
+      |> populate_group_idp_id(subject)
       |> Safe.scoped(subject)
       |> Safe.update()
     end
@@ -207,13 +208,13 @@ defmodule PortalAPI.PolicyController do
     end
 
     defp populate_group_idp_id(changeset, subject) do
-      case get_field(changeset, :group_id) do
+      case get_change(changeset, :group_id) do
         nil ->
           changeset
 
         group_id ->
           case get_group_idp_id(group_id, subject) do
-            nil -> changeset
+            nil -> put_change(changeset, :group_idp_id, nil)
             idp_id -> put_change(changeset, :group_idp_id, idp_id)
           end
       end

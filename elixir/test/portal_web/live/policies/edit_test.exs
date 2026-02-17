@@ -3,6 +3,7 @@ defmodule PortalWeb.Live.Policies.EditTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.GroupFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyFixtures
 
@@ -156,20 +157,24 @@ defmodule PortalWeb.Live.Policies.EditTest do
     policy: policy,
     conn: conn
   } do
-    attrs = %{description: String.duplicate("a", 1025)}
+    attrs = %{"description" => String.duplicate("a", 1025)}
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
       |> live(~p"/#{account}/policies/#{policy}/edit")
 
-    errors =
+    form =
       lv
       |> form("form[phx-submit=submit]", policy: attrs)
-      |> render_submit()
-      |> form_validation_errors()
 
+    html = render_submit(form)
+
+    errors = form_validation_errors(html)
     assert "should be at most 1024 character(s)" in errors["policy[description]"]
+
+    assert unchanged_policy = Repo.get_by(Portal.Policy, id: policy.id)
+    assert unchanged_policy.description == policy.description
   end
 
   test "updates a policy on valid attrs", %{
@@ -216,5 +221,74 @@ defmodule PortalWeb.Live.Policies.EditTest do
     assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
 
     assert_redirected(lv, ~p"/#{account}/policies/#{updated_policy.id}")
+  end
+
+  test "allows reattaching policy to a group when group_idp_id is nil", %{
+    account: account,
+    actor: actor,
+    policy: policy,
+    conn: conn
+  } do
+    policy = Repo.update!(Ecto.Changeset.change(policy, group_id: nil, group_idp_id: nil))
+    group = group_fixture(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/policies/#{policy}/edit")
+
+    lv
+    |> form("form[phx-submit=submit]", policy: %{group_id: group.id})
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/policies/#{policy}")
+
+    assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
+    assert updated_policy.group_id == group.id
+  end
+
+  test "sets group_idp_id when changing to a synced group", %{
+    account: account,
+    actor: actor,
+    policy: policy,
+    conn: conn
+  } do
+    synced_group = synced_group_fixture(account: account, idp_id: "synced_123")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/policies/#{policy}/edit")
+
+    lv
+    |> form("form[phx-submit=submit]", policy: %{group_id: synced_group.id})
+    |> render_submit()
+
+    assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
+    assert updated_policy.group_id == synced_group.id
+    assert updated_policy.group_idp_id == "synced_123"
+  end
+
+  test "clears group_idp_id when changing to a non-synced group", %{
+    account: account,
+    actor: actor,
+    policy: policy,
+    conn: conn
+  } do
+    policy = Repo.update!(Ecto.Changeset.change(policy, group_idp_id: "stale_synced_id"))
+    static_group = group_fixture(account: account, type: :static, idp_id: nil)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/policies/#{policy}/edit")
+
+    lv
+    |> form("form[phx-submit=submit]", policy: %{group_id: static_group.id})
+    |> render_submit()
+
+    assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
+    assert updated_policy.group_id == static_group.id
+    assert updated_policy.group_idp_id == nil
   end
 end

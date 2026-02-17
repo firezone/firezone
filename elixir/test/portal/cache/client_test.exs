@@ -14,6 +14,23 @@ defmodule Portal.Cache.ClientTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
 
+  describe "Portal.Cache.Cacheable.to_cache/1 for policy" do
+    test "allows nil group_id for orphaned policies" do
+      policy = %Portal.Policy{
+        id: Ecto.UUID.generate(),
+        resource_id: Ecto.UUID.generate(),
+        group_id: nil,
+        conditions: []
+      }
+
+      cached_policy = Cacheable.to_cache(policy)
+
+      assert cached_policy.group_id == nil
+      assert cached_policy.id == Ecto.UUID.dump!(policy.id)
+      assert cached_policy.resource_id == Ecto.UUID.dump!(policy.resource_id)
+    end
+  end
+
   describe "update_resource/5" do
     setup do
       account = account_fixture()
