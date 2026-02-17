@@ -41,6 +41,8 @@
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
+		6F0EDF222E79B00000D6D632 /* FirezoneId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0EDF232E79B00000D6D632 /* FirezoneId.swift */; };
+		6F0EDF242E79B00000D6D632 /* FirezoneId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0EDF232E79B00000D6D632 /* FirezoneId.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -87,6 +89,7 @@
 
 /* Begin PBXFileReference section */
 		05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		6F0EDF232E79B00000D6D632 /* FirezoneId.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneId.swift; sourceTree = "<group>"; };
 		05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "dev.firezone.firezone.network-extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneNetworkExtension.entitlements; sourceTree = "<group>"; };
 		05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
@@ -165,6 +168,7 @@
 				05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */,
 				8D5047E82CE6A8F4009802E9 /* main.swift */,
 				177FB893F19457A113042247 /* Adapter.swift */,
+				6F0EDF232E79B00000D6D632 /* FirezoneId.swift */,
 				05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */,
 				8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */,
 				6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */,
@@ -485,6 +489,7 @@
 				6F0EDF1F2E79A13800D6D632 /* Adapter.swift in Sources */,
 				8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */,
 				8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */,
+				6F0EDF222E79B00000D6D632 /* FirezoneId.swift in Sources */,
 				05CF1D17290B1FE700CF4755 /* PacketTunnelProvider.swift in Sources */,
 				146C8E809FF744D18C053A79 /* Channel.swift in Sources */,
 				8D0000012D4100000003 /* NetworkPathUpdates.swift in Sources */,
@@ -500,6 +505,7 @@
 				8D41B9A62D15DD6800D16065 /* TunnelLogArchive.swift in Sources */,
 				8DE452A82CE6C194004CEDF9 /* main.swift in Sources */,
 				8D5047FB2CE6AA37009802E9 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */,
+				6F0EDF242E79B00000D6D632 /* FirezoneId.swift in Sources */,
 				8D5047FE2CE6AA54009802E9 /* PacketTunnelProvider.swift in Sources */,
 				C1892134991C462C8E137DE3 /* Channel.swift in Sources */,
 				8D0000012D4100000004 /* NetworkPathUpdates.swift in Sources */,
