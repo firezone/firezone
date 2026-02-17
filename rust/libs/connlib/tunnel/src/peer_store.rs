@@ -37,23 +37,30 @@ where
         removed_peers
     }
 
-    pub(crate) fn upsert(&mut self, id: TId, make_peer: impl FnOnce() -> P) -> &mut P {
+    pub(crate) fn upsert(&mut self, pid: TId, make_peer: impl FnOnce() -> P) -> &mut P {
         let peer = make_peer();
 
-        if let Some(existing) = self.peer_by_id.get(&id)
+        if let Some(existing) = self.peer_by_id.get(&pid)
             && (existing.tun_ipv4() != peer.tun_ipv4() || existing.tun_ipv6() != peer.tun_ipv6())
         {
-            tracing::debug!("Peer's TUN IP has changed, replacing");
+            tracing::debug!(
+                %pid,
+                old_v4 = %existing.tun_ipv4(),
+                old_v6 = %existing.tun_ipv6(),
+                new_v4 = %peer.tun_ipv4(),
+                new_v6 = %peer.tun_ipv6(),
+                "Peer's TUN IP has changed, replacing",
+            );
 
             self.id_by_ip.remove(&existing.tun_ipv4().into());
             self.id_by_ip.remove(&existing.tun_ipv6().into());
-            self.peer_by_id.remove(&id);
+            self.peer_by_id.remove(&pid);
         }
 
-        let peer = self.peer_by_id.entry(id).or_insert(peer);
+        let peer = self.peer_by_id.entry(pid).or_insert(peer);
 
-        self.id_by_ip.insert(peer.tun_ipv4().into(), id);
-        self.id_by_ip.insert(peer.tun_ipv6().into(), id);
+        self.id_by_ip.insert(peer.tun_ipv4().into(), pid);
+        self.id_by_ip.insert(peer.tun_ipv6().into(), pid);
 
         peer
     }
