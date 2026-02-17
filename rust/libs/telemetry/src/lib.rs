@@ -325,11 +325,11 @@ impl Telemetry {
 /// As a result, this will allow us to always filter the user by the hex-encoded ID.
 fn compute_user(firezone_id: String) -> User {
     if uuid::Uuid::from_str(&firezone_id).is_ok() {
-        let encoded_id = hex::encode(sha2::Sha256::digest(firezone_id));
+        let encoded_id = hex::encode(sha2::Sha256::digest(firezone_id.clone()));
 
         return User {
-            id: Some(encoded_id.clone()),
-            other: BTreeMap::from([("uuid".to_owned(), serde_json::Value::String(encoded_id))]),
+            id: Some(encoded_id),
+            other: BTreeMap::from([("uuid".to_owned(), serde_json::Value::String(firezone_id))]),
             ..User::default()
         };
     }
