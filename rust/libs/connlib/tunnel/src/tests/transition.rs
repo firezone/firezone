@@ -65,6 +65,16 @@ pub(crate) enum Transition {
         dport: DPort,
     },
 
+    /// Send an ICMP packet to another client.
+    SendIcmpPacketToDevice {
+        client_id: ClientId,
+        src: IpAddr,
+        dst: Ipv4Addr,
+        seq: Seq,
+        identifier: Identifier,
+        payload: u64,
+    },
+
     /// Send a DNS query.
     SendDnsQueries(Vec<(ClientId, DnsQuery)>),
 

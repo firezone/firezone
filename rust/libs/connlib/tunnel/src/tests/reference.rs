@@ -520,6 +520,28 @@ impl ReferenceState {
                 (sample::select(domains), btree_set(dns_record(), 1..6))
                     .prop_map(|(domain, records)| Transition::UpdateDnsRecords { domain, records })
             })
+            .with_if_not_empty(5, state.other_client_tun_ips(), |ips| {
+                let clients = state.clients.clone();
+
+                (
+                    sample::select(ips),
+                    any::<u16>(),
+                    any::<u16>(),
+                    any::<u64>(),
+                )
+                    .prop_map(move |((src_id, dst_ip), seq, id, payload)| {
+                        let tunnel_ip4 = clients.get(&src_id).unwrap().inner().tunnel_ip4;
+
+                        Transition::SendIcmpPacketToDevice {
+                            client_id: src_id,
+                            src: IpAddr::V4(tunnel_ip4),
+                            dst: dst_ip,
+                            seq: Seq(seq),
+                            identifier: Identifier(id),
+                            payload,
+                        }
+                    })
+            })
             .boxed()
     }
 
@@ -728,6 +750,34 @@ impl ReferenceState {
                     domain.clone(),
                     BTreeMap::from([(now, records.clone())]),
                 )]));
+            }
+            Transition::SendIcmpPacketToDevice {
+                client_id,
+                dst,
+                seq,
+                identifier,
+                payload,
+                ..
+            } => {
+                let Some((remote_id, _)) = state
+                    .clients
+                    .iter()
+                    .find(|(_, c)| c.inner().tunnel_ip4 == *dst)
+                else {
+                    return state;
+                };
+
+                let remote_id = *remote_id;
+
+                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                    c.on_icmp_packet_to_device(
+                        remote_id,
+                        Destination::IpAddr(IpAddr::V4(*dst)),
+                        *seq,
+                        *identifier,
+                        *payload,
+                    );
+                })
             }
         };
 
@@ -985,6 +1035,25 @@ impl ReferenceState {
                 has_resource && has_gateway_for_resource && !has_tcp_connection
             }
             Transition::UpdateDnsRecords { .. } => true,
+
+            Transition::SendIcmpPacketToDevice {
+                client_id,
+                dst,
+                seq,
+                identifier,
+                payload,
+                ..
+            } => {
+                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
+                    return false;
+                };
+
+                ref_client.is_valid_icmp_packet(seq, identifier, payload)
+                    && state
+                        .clients
+                        .iter()
+                        .any(|(_, c)| c.inner().tunnel_ip4 == *dst)
+            }
         }
     }
 
@@ -1410,6 +1479,21 @@ impl ReferenceState {
 
     fn all_client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+
+    /// Generates a list of Client ID <> TUN IPv4 tuples without the entries of each ID's own IP.
+    fn other_client_tun_ips(&self) -> Vec<(ClientId, Ipv4Addr)> {
+        self.clients
+            .keys()
+            .flat_map(|outer_id| {
+                self.clients
+                    .iter()
+                    .filter_map(move |(inner_id, c)| {
+                        (outer_id != inner_id).then_some(c.inner().tunnel_ip4)
+                    })
+                    .map(|tun_ipv4| (*outer_id, tun_ipv4))
+            })
+            .collect()
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {

@@ -777,6 +777,8 @@ impl ClientState {
         ice_role: IceRole,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
+        tracing::debug!(%cid, "New device access authorized");
+
         let pending_device_access = self.pending_device_access.remove(&client_tun.v4);
 
         self.node.upsert_connection(
