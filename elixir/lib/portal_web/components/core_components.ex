@@ -121,16 +121,12 @@ defmodule PortalWeb.CoreComponents do
         ]}
       >
         <span id={"#{@id}-default-message"} class="inline-flex items-center">
-          <span class="inline-flex items-center">
-            <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
-            <span class="text-xs font-semibold">Copy</span>
-          </span>
+          <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
+          <span class="text-xs font-semibold">Copy</span>
         </span>
-        <span id={"#{@id}-success-message"} class="inline-flex items-center hidden">
-          <span class="inline-flex items-center">
-            <.icon name="hero-check" data-icon class="text-green-700 h-4 w-4 me-1.5" />
-            <span class="text-xs font-semibold text-green-700">Copied</span>
-          </span>
+        <span id={"#{@id}-success-message"} class="hidden items-center">
+          <.icon name="hero-check" data-icon class="text-green-700 h-4 w-4 me-1.5" />
+          <span class="text-xs font-semibold text-green-700">Copied</span>
         </span>
       </button>
     </div>
