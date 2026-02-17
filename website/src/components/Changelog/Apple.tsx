@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="12279">
+          Bumps minimum iOS version from 15.6 to 16.0 to enable SwiftUI
+          NavigationStack and NavigationSplitView API.
+        </ChangeItem>
         <ChangeItem pull="11988">
           Fixes a crash if the currently active log file gets deleted.
         </ChangeItem>
