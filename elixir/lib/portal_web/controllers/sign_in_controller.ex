@@ -46,6 +46,10 @@ defmodule PortalWeb.SignInController do
     )
   end
 
+  def client_account_disabled(conn, _params) do
+    render(conn, :client_account_disabled, layout: false)
+  end
+
   defp format_redirect_url(raw_client_handler) do
     uri = URI.parse(raw_client_handler)
 

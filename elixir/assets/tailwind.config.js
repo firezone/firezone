@@ -66,7 +66,8 @@ module.exports = {
   ],
   theme: {
     fontFamily: {
-      sans: ['"Source Sans 3 Variable"', ...defaultTheme.fontFamily.sans],
+      sans: ["Inter Variable", ...defaultTheme.fontFamily.sans],
+      mono: ["JetBrains Mono Variable", ...defaultTheme.fontFamily.mono],
     },
     extend: {
       colors: {
@@ -127,6 +128,60 @@ module.exports = {
               [`--hero-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
               "-webkit-mask": `var(--hero-${name})`,
               mask: `var(--hero-${name})`,
+              "background-color": "currentColor",
+              "vertical-align": "middle",
+              display: "inline-block",
+              width: theme("spacing.5"),
+              height: theme("spacing.5"),
+            };
+          },
+        },
+        { values }
+      );
+    }),
+
+    // Embeds Remix Icons (https://remixicon.com) into your app.css bundle.
+    // To add a new icon: copy its SVG from ./remix_icons/priv/icons/<Category>/
+    // into ./vendor/remix_icons/<Category>/ and rebuild assets with `mix assets.build`.
+    //
+    // Included icons (fill + line variants for each):
+    //   Buildings: hotel
+    //   Business:  cloud, global
+    //   Development: code-s-slash
+    //   Device:    mac, server
+    //   Map:       map-pin
+    //   Media:     notification-2
+    //   Others:    key-2
+    //   System:    loop-left, settings-3, shield
+    //   User & Faces: team, user
+    plugin(function ({ matchComponents, theme }) {
+      let iconsDir = path.join(__dirname, "./vendor/remix_icons");
+      let values = {};
+      // Recursively scan all category subdirectories for SVG files.
+      // CSS class name is derived from filename only (category is ignored),
+      // so `System/settings-3-line.svg` → class `remix-settings-3-line`.
+      function scanDir(dir) {
+        fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+          if (entry.isDirectory()) {
+            scanDir(path.join(dir, entry.name));
+          } else if (entry.name.endsWith(".svg")) {
+            let name = path.basename(entry.name, ".svg");
+            values[name] = { name, fullPath: path.join(dir, entry.name) };
+          }
+        });
+      }
+      scanDir(iconsDir);
+      matchComponents(
+        {
+          remix: ({ name, fullPath }) => {
+            let content = fs
+              .readFileSync(fullPath)
+              .toString()
+              .replace(/\r?\n|\r/g, "");
+            return {
+              [`--remix-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
+              "-webkit-mask": `var(--remix-${name})`,
+              mask: `var(--remix-${name})`,
               "background-color": "currentColor",
               "vertical-align": "middle",
               display: "inline-block",

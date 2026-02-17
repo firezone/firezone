@@ -18,18 +18,20 @@ defmodule PortalWeb.Session.Redirector do
   Returns the redirect_to if it's valid (starts with account ID or slug),
   otherwise returns the default portal path.
   """
-  def sanitize_redirect_to(%Portal.Account{} = account, redirect_to)
+  def sanitize_redirect_to(account, redirect_to, actor \\ nil)
+
+  def sanitize_redirect_to(%Portal.Account{} = account, redirect_to, actor)
       when is_binary(redirect_to) do
     if String.starts_with?(redirect_to, "/#{account.id}") or
          String.starts_with?(redirect_to, "/#{account.slug}") do
       redirect_to
     else
-      default_portal_path(account)
+      default_portal_path(account, actor)
     end
   end
 
-  def sanitize_redirect_to(%Portal.Account{} = account, _redirect_to) do
-    default_portal_path(account)
+  def sanitize_redirect_to(%Portal.Account{} = account, _redirect_to, actor) do
+    default_portal_path(account, actor)
   end
 
   @doc """
@@ -37,13 +39,20 @@ defmodule PortalWeb.Session.Redirector do
 
   Works with both LiveView sockets and Plug connections.
   """
-  def portal_signed_in(%Phoenix.LiveView.Socket{} = socket, %Portal.Account{} = account, params) do
-    redirect_to = sanitize_redirect_to(account, params["redirect_to"])
+  def portal_signed_in(conn_or_socket, account, params, actor \\ nil)
+
+  def portal_signed_in(
+        %Phoenix.LiveView.Socket{} = socket,
+        %Portal.Account{} = account,
+        params,
+        actor
+      ) do
+    redirect_to = sanitize_redirect_to(account, params["redirect_to"], actor)
     Phoenix.LiveView.redirect(socket, to: redirect_to)
   end
 
-  def portal_signed_in(%Plug.Conn{} = conn, %Portal.Account{} = account, params) do
-    redirect_to = sanitize_redirect_to(account, params["redirect_to"])
+  def portal_signed_in(%Plug.Conn{} = conn, %Portal.Account{} = account, params, actor) do
+    redirect_to = sanitize_redirect_to(account, params["redirect_to"], actor)
 
     conn
     |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
@@ -64,27 +73,31 @@ defmodule PortalWeb.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Portal.Authentication.encode_fragment!(token)
+    if Portal.Account.active?(account) do
+      fragment = Portal.Authentication.encode_fragment!(token)
 
-    client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
-      actor_name: actor_name,
-      fragment: fragment,
-      identity_provider_identifier: identifier,
-      state: state
-    }
+      client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
+        actor_name: actor_name,
+        fragment: fragment,
+        identity_provider_identifier: identifier,
+        state: state
+      }
 
-    redirect_url = ~p"/#{account.slug}/sign_in/client_redirect"
+      redirect_url = ~p"/#{account.slug}/sign_in/client_redirect"
 
-    conn
-    |> PortalWeb.Cookie.ClientAuth.put(client_auth_cookie)
-    |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
-    |> Phoenix.Controller.put_root_layout(false)
-    |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
-    |> Phoenix.Controller.render("client_redirect.html",
-      redirect_url: redirect_url,
-      account: account,
-      layout: false
-    )
+      conn
+      |> PortalWeb.Cookie.ClientAuth.put(client_auth_cookie)
+      |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
+      |> Phoenix.Controller.put_root_layout(false)
+      |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
+      |> Phoenix.Controller.render("client_redirect.html",
+        redirect_url: redirect_url,
+        account: account,
+        layout: false
+      )
+    else
+      client_account_disabled(conn, account)
+    end
   end
 
   @doc """
@@ -107,18 +120,36 @@ defmodule PortalWeb.Session.Redirector do
         %ClientToken{} = token,
         state
       ) do
-    fragment = Portal.Authentication.encode_fragment!(token)
+    if Portal.Account.active?(account) do
+      fragment = Portal.Authentication.encode_fragment!(token)
 
+      conn
+      |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
+      |> Phoenix.Controller.put_root_layout(false)
+      |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
+      |> Phoenix.Controller.render("headless_client_token.html",
+        token: fragment,
+        actor_name: actor_name,
+        account: account,
+        expires_at: token.expires_at,
+        state: state,
+        layout: false
+      )
+    else
+      client_account_disabled(conn, account)
+    end
+  end
+
+  @doc """
+  Renders the account disabled page for client sign-in attempts against a disabled account.
+  """
+  @spec client_account_disabled(Plug.Conn.t(), Portal.Account.t()) :: Plug.Conn.t()
+  def client_account_disabled(%Plug.Conn{} = conn, account) do
     conn
-    |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
     |> Phoenix.Controller.put_root_layout(false)
     |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
-    |> Phoenix.Controller.render("headless_client_token.html",
-      token: fragment,
-      actor_name: actor_name,
+    |> Phoenix.Controller.render("client_account_disabled.html",
       account: account,
-      expires_at: token.expires_at,
-      state: state,
       layout: false
     )
   end
@@ -162,7 +193,19 @@ defmodule PortalWeb.Session.Redirector do
     |> Plug.Conn.clear_session()
   end
 
-  defp default_portal_path(%Portal.Account{} = account) do
-    ~p"/#{account}/sites"
+  def default_portal_path(%Portal.Account{} = account, %Portal.Actor{
+        preferences: %{start_page: start_page}
+      }) do
+    case start_page do
+      :resources -> ~p"/#{account}/resources"
+      :groups -> ~p"/#{account}/groups"
+      :policies -> ~p"/#{account}/policies"
+      :clients -> ~p"/#{account}/clients"
+      :actors -> ~p"/#{account}/actors"
+      :sites -> ~p"/#{account}/sites"
+      _ -> ~p"/#{account}/sites"
+    end
   end
+
+  def default_portal_path(%Portal.Account{} = account, _other), do: ~p"/#{account}/sites"
 end

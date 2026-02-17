@@ -187,7 +187,7 @@ defmodule PortalWeb.UserpassControllerTest do
         })
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ "Copy to clipboard"
       assert conn.resp_body =~ actor.name
     end
 
@@ -211,7 +211,7 @@ defmodule PortalWeb.UserpassControllerTest do
         })
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ "Copy to clipboard"
     end
 
     test "rejects account_user in gui-client context when using gui-client param", %{

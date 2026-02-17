@@ -5,9 +5,9 @@ defmodule Portal.Changes.Hooks.PolicyAuthorizations do
 
   @impl true
 
-  # We don't react directly to policy authorization creation events because connection setup
-  # is latency sensitive and we've already broadcasted the relevant message from
-  # client pid to gateway pid directly.
+  # We don't react to policy authorization creation for gateway notification — connection
+  # setup is latency sensitive and the message is already sent directly from client pid to
+  # gateway pid.
   def on_insert(_lsn, _data), do: :ok
 
   @impl true

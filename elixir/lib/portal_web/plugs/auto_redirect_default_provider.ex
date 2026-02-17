@@ -25,7 +25,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
   def call(
         %{
           params: %{"as" => as, "account_id_or_slug" => account_id_or_slug},
-          path_info: [_account]
+          path_info: [_account, "sign_in"]
         } = conn,
         _opts
       )

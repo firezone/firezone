@@ -26,7 +26,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticated do
         _session,
         %{assigns: %{account: %Account{} = account, subject: %Subject{}}} = socket
       ) do
-    {:halt, Redirector.portal_signed_in(socket, account, params)}
+    {:halt, Redirector.portal_signed_in(socket, account, params, socket.assigns.subject.actor)}
   end
 
   def on_mount(:default, _params, _session, socket) do

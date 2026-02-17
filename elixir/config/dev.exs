@@ -94,7 +94,8 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
-       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions}
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
+       {worker_dev_schedule, Portal.Workers.DeleteAccountsPendingDeletion}
      ]}
   ],
   queues: [
@@ -132,6 +133,7 @@ config :portal, PortalWeb.Endpoint,
   check_origin: [
     # Android emulator
     "//10.0.2.2",
+    "//10.0.0.107",
     "//127.0.0.1",
     "//localhost"
   ],
@@ -159,10 +161,18 @@ config :phoenix_live_reload, :dirs, [File.cwd!()]
 
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
+    "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' https://cdn.tailwindcss.com/"
+    "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/"
+  ],
+  live_reload_frame_csp_policy: [
+    "default-src 'self' https://firezone.statuspage.io",
+    "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
+    "connect-src 'self' ws: wss:",
+    "frame-src 'self'"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
@@ -177,7 +187,7 @@ config :portal, PortalAPI.Endpoint,
   http: [port: api_port],
   debug_errors: true,
   code_reloader: true,
-  check_origin: ["//10.0.2.2", "//127.0.0.1", "//localhost"],
+  check_origin: ["//10.0.0.107", "//10.0.2.2", "//127.0.0.1", "//localhost"],
   watchers: [],
   server: true
 

@@ -47,8 +47,10 @@ defmodule Portal.Resource do
 
     has_many :policies, Portal.Policy, references: :id
     has_many :groups, through: [:policies, :group]
-
     has_many :static_pool_members, Portal.StaticDevicePoolMember, references: :id
+
+    field :policy_id, :binary_id, virtual: true
+    field :policy_disabled_at, :utc_datetime_usec, virtual: true
 
     timestamps()
   end

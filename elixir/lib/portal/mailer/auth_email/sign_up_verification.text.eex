@@ -1,0 +1,11 @@
+Verify your email address to complete your Firezone sign up.
+
+Click the link below to verify your email and continue setting up your account.
+This link expires in 24 hours.
+
+<%= @sign_up_url %>
+
+If you didn't request this, you can safely ignore this email.
+
+Thanks,
+The Firezone Team

@@ -200,7 +200,7 @@ defmodule PortalWeb.OIDCControllerTest do
       conn = perform_callback(conn, auth_state)
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ "Copy to clipboard"
     end
   end
 
@@ -1935,7 +1935,7 @@ defmodule PortalWeb.OIDCControllerTest do
     conn = perform_callback(ctx.conn, auth_state)
 
     assert conn.status == 200
-    assert conn.resp_body =~ "Copy token to clipboard"
+    assert conn.resp_body =~ "Copy to clipboard"
     # Headless client should NOT set client_auth cookie
     refute conn.resp_cookies["client_auth"]
 

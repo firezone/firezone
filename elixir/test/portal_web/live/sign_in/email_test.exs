@@ -5,79 +5,56 @@ defmodule PortalWeb.SignIn.EmailTest do
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
 
-  setup do
-    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+  alias PortalWeb.Cookie.EmailOTP
 
+  setup do
     account = account_fixture()
+    actor = admin_actor_fixture(account: account)
     provider = email_otp_provider_fixture(account: account)
 
-    actor =
-      actor_fixture(account: account, type: :account_admin_user, allow_email_otp_sign_in: true)
+    %{account: account, actor: actor, provider: provider}
+  end
 
-    %{
-      account: account,
-      provider: provider,
-      actor: actor
+  defp put_email_otp_cookie(conn, actor_id, email) do
+    cookie = %EmailOTP{
+      actor_id: actor_id,
+      passcode_id: Ecto.UUID.generate(),
+      email: email
     }
+
+    conn
+    |> EmailOTP.put(cookie)
+    |> then(fn c -> put_req_cookie(c, "email_otp", c.resp_cookies["email_otp"].value) end)
   end
 
-  defp setup_email_otp_cookie(conn, account, provider, actor) do
-    # Post to sign_in to send OTP and get the email_otp cookie
-    redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/email_otp/#{provider.id}", %{
-        "email" => %{"email" => actor.email}
-      })
+  describe "mount without auth state" do
+    test "redirects back to sign-in when no email session cookie",
+         %{conn: conn, account: account, provider: provider} do
+      path = ~p"/#{account}/sign_in/email_otp/#{provider}"
 
-    assert_received {:email, email}
-    [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
-
-    cookie_key = "email_otp"
-    %{value: signed_value} = redirected_conn.resp_cookies[cookie_key]
-
-    conn_with_cookie = put_req_cookie(conn, cookie_key, signed_value)
-
-    {conn_with_cookie, secret}
+      assert {:error, {:live_redirect, %{to: _}}} = live(conn, path)
+    end
   end
 
-  test "renders delivery confirmation page", %{
-    account: account,
-    provider: provider,
-    actor: actor,
-    conn: conn
-  } do
-    {conn_with_cookie, _secret} = setup_email_otp_cookie(conn, account, provider, actor)
+  describe "mount with auth state" do
+    test "renders OTP entry form with email",
+         %{conn: conn, account: account, actor: actor, provider: provider} do
+      conn = put_email_otp_cookie(conn, actor.id, actor.email)
 
-    {:ok, _lv, html} =
-      live(conn_with_cookie, ~p"/#{account}/sign_in/email_otp/#{provider.id}")
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in/email_otp/#{provider}")
 
-    assert html =~ "Please check your email"
-    assert html =~ "Open Gmail"
-    assert html =~ "Open Outlook"
-  end
+      assert html =~ "Check your email"
+      assert html =~ actor.email
+    end
 
-  test "shows sign-in code input form", %{
-    account: account,
-    provider: provider,
-    actor: actor,
-    conn: conn
-  } do
-    {conn_with_cookie, _secret} = setup_email_otp_cookie(conn, account, provider, actor)
+    test "renders resend and different method buttons",
+         %{conn: conn, account: account, actor: actor, provider: provider} do
+      conn = put_email_otp_cookie(conn, actor.id, actor.email)
 
-    {:ok, lv, _html} =
-      live(conn_with_cookie, ~p"/#{account}/sign_in/email_otp/#{provider.id}")
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in/email_otp/#{provider}")
 
-    assert has_element?(lv, ~s|form#verify-sign-in-token|)
-    assert has_element?(lv, "button", "Submit")
-  end
-
-  test "redirects when cookie is missing", %{
-    account: account,
-    provider: provider,
-    conn: conn
-  } do
-    assert {:error, {:live_redirect, %{flash: %{"error" => error_msg}}}} =
-             live(conn, ~p"/#{account}/sign_in/email_otp/#{provider.id}")
-
-    assert error_msg =~ "Please try to sign in again."
+      assert html =~ "Resend email"
+      assert html =~ "Different method"
+    end
   end
 end

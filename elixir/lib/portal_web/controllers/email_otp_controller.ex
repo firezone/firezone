@@ -257,10 +257,10 @@ defmodule PortalWeb.EmailOTPController do
 
   # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :portal, account, _actor, session, params) do
+  defp signed_in(conn, :portal, account, actor, session, params) do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
-    |> Redirector.portal_signed_in(account, params)
+    |> Redirector.portal_signed_in(account, params, actor)
   end
 
   # Context: :gui_client

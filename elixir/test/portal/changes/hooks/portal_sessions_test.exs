@@ -2,11 +2,23 @@ defmodule Portal.Changes.Hooks.PortalSessionsTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.PortalSessions
   import Portal.PortalSessionFixtures
+  alias Portal.Changes.Change
   alias Portal.PubSub
 
   describe "on_insert/2" do
-    test "returns :ok" do
-      assert :ok == on_insert(0, %{})
+    test "broadcasts inserted session change and returns :ok" do
+      session = portal_session_fixture()
+      session_id = session.id
+      account_id = session.account_id
+      :ok = PubSub.Changes.subscribe(account_id)
+
+      assert :ok == on_insert(0, Map.from_struct(session))
+
+      assert_receive %Change{
+        lsn: 0,
+        op: :insert,
+        struct: %Portal.PortalSession{id: ^session_id, account_id: ^account_id}
+      }
     end
   end
 

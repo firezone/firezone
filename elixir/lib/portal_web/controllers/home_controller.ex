@@ -2,34 +2,62 @@ defmodule PortalWeb.HomeController do
   use PortalWeb, :controller
   alias __MODULE__.Database
 
-  def home(conn, params) do
+  @spec home(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def home(conn, _params) do
+    %PortalWeb.Cookie.RecentAccounts{account_ids: recent_account_ids} =
+      PortalWeb.Cookie.RecentAccounts.fetch(conn)
+
+    if recent_account_ids != [] do
+      redirect(conn, to: ~p"/sign_in")
+    else
+      redirect(conn, to: ~p"/getting_started")
+    end
+  end
+
+  @spec getting_started(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def getting_started(conn, params) do
+    sign_in_params = PortalWeb.Authentication.take_sign_in_params(params)
+
+    conn
+    |> put_layout(html: {PortalWeb.Layouts, :auth})
+    |> render("home.html",
+      accounts: [],
+      params: sign_in_params,
+      show_account_chooser: false
+    )
+  end
+
+  @spec sign_in_chooser(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def sign_in_chooser(conn, params) do
     %PortalWeb.Cookie.RecentAccounts{account_ids: recent_account_ids} =
       PortalWeb.Cookie.RecentAccounts.fetch(conn)
 
     recent_accounts = Database.get_accounts_by_ids(recent_account_ids)
     ids_to_remove = recent_account_ids -- Enum.map(recent_accounts, & &1.id)
     conn = PortalWeb.Cookie.RecentAccounts.remove(conn, ids_to_remove)
-    params = PortalWeb.Authentication.take_sign_in_params(params)
+    sign_in_params = PortalWeb.Authentication.take_sign_in_params(params)
 
     conn
-    |> put_layout(html: {PortalWeb.Layouts, :public})
+    |> put_layout(html: {PortalWeb.Layouts, :auth})
     |> render("home.html",
       accounts: recent_accounts,
-      params: params
+      params: sign_in_params,
+      show_account_chooser: true
     )
   end
 
+  @spec redirect_to_sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     params = PortalWeb.Authentication.take_sign_in_params(params)
 
     case validate_account_id_or_slug(account_id_or_slug) do
       {:ok, account_id_or_slug} ->
-        redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
+        redirect(conn, to: ~p"/#{account_id_or_slug}/sign_in?#{params}")
 
       {:error, reason} ->
         conn
         |> put_flash(:error, reason)
-        |> redirect(to: ~p"/?#{params}")
+        |> redirect(to: ~p"/sign_in?#{params}")
     end
   end
 

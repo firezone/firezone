@@ -29,7 +29,7 @@ defmodule Portal.Mailer.Notifications do
   end
 
   def limits_exceeded_email(account, warning, recipients) do
-    billing_url = url(~p"/#{account.id}/settings/billing")
+    billing_url = url(~p"/#{account.id}/settings/account")
     plan_type = Portal.Billing.plan_type(account)
 
     default_email()

@@ -623,7 +623,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       # Headless client context renders the token display page (200)
       assert conn.status == 200
       assert conn.resp_body =~ "token-value"
-      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ "Copy to clipboard"
       assert conn.resp_body =~ actor.name
 
       # Email OTP cookie should be cleared
@@ -667,7 +667,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
 
       # Headless client context renders the token display page (200)
       assert conn.status == 200
-      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ "Copy to clipboard"
 
       # Email OTP cookie should be cleared
       state = get_cookie_state(conn)

@@ -16,7 +16,7 @@ defmodule PortalWeb.Plugs.EnsureAuthenticated do
 
   def call(conn, _opts) do
     redirect_params = maybe_store_return_to(conn)
-    redirect_to = ~p"/#{conn.path_params["account_id_or_slug"]}?#{redirect_params}"
+    redirect_to = ~p"/#{conn.path_params["account_id_or_slug"]}/sign_in?#{redirect_params}"
 
     conn
     |> put_flash(:error, "You must sign in to access that page.")

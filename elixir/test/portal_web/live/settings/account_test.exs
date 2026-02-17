@@ -1,103 +1,106 @@
-defmodule PortalWeb.Live.Settings.AccountTest do
+defmodule PortalWeb.Settings.AccountTest do
   use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.OutboundEmailTestHelpers
 
   setup do
-    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
-
     account = account_fixture()
-    actor = actor_fixture(account: account, type: :account_admin_user)
+    actor = admin_actor_fixture(account: account)
+    %{account: account, actor: actor}
+  end
 
-    %{
+  describe "unauthorized" do
+    test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
+      path = ~p"/#{account}/settings/account"
+
+      assert live(conn, path) ==
+               {:error,
+                {:redirect,
+                 %{
+                   to: ~p"/#{account}/sign_in?#{%{redirect_to: path}}",
+                   flash: %{"error" => "You must sign in to access that page."}
+                 }}}
+    end
+  end
+
+  describe "index (default action)" do
+    test "renders account settings page with account slug", %{
+      conn: conn,
       account: account,
       actor: actor
-    }
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ account.slug
+    end
+
+    test "renders plan features section", %{conn: conn, account: account, actor: actor} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Plan Features"
+    end
+
+    test "renders usage section", %{conn: conn, account: account, actor: actor} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Usage"
+    end
   end
 
-  test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    path = ~p"/#{account}/settings/account"
+  describe "delete account" do
+    test "shows confirm delete dialog on click", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
 
-    assert live(conn, path) ==
-             {:error,
-              {:redirect,
-               %{
-                 to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access that page."}
-               }}}
-  end
+      html = render_click(lv, "confirm_delete_account")
+      assert html =~ "Delete this account?"
+      assert html =~ account.slug
+    end
 
-  test "renders breadcrumbs item", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/account")
+    test "can cancel delete confirmation", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
 
-    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
-    breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "Account Settings"
-  end
+      render_click(lv, "confirm_delete_account")
+      html = render_click(lv, "cancel_delete_account")
 
-  test "renders table with account information", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/account")
+      refute html =~ "Delete this account?"
+      assert html =~ "Delete account"
+    end
 
-    rows =
-      lv
-      |> element("#account")
-      |> render()
-      |> vertical_table_to_map()
+    test "schedules account for deletion when slug matches", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
 
-    assert rows["account name"] == account.name
-    assert rows["account id"] == account.id
-    assert rows["account slug"] =~ account.slug
-  end
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
 
-  test "renders notification settings for account", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/account")
+      html =
+        lv
+        |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+        |> render_submit()
 
-    html = lv |> render()
-    assert html =~ "Gateway Upgrade Available"
-  end
-
-  test "sends account deletion email", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/account")
-
-    assert lv
-           |> element("button[type=submit]", "Delete Account")
-           |> render_click()
-           |> element_to_text() =~ "A request has been sent to delete your account"
-
-    assert_email_queued(account.id, fn email ->
-      assert email.subject == "ACCOUNT DELETE REQUEST - #{account.id}"
-      assert email.text_body =~ "#{account.id}"
-      assert email.text_body =~ "#{actor.id}"
-    end)
+      assert html =~ "Cancel deletion"
+    end
   end
 end

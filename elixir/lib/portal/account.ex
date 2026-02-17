@@ -71,6 +71,11 @@ defmodule Portal.Account do
     field :disabled_reason, :string
     field :disabled_at, :utc_datetime_usec
 
+    field :scheduled_deletion_at, :utc_datetime_usec
+
+    # Set by Ops Admins only. Prevents account admins from modifying account settings.
+    field :lock_enabled_at, :utc_datetime_usec
+
     timestamps()
   end
 
@@ -112,6 +117,14 @@ defmodule Portal.Account do
   def active?(%__MODULE__{disabled_at: nil}), do: true
   def active?(%__MODULE__{}), do: false
 
+  @spec pending_deletion?(t()) :: boolean()
+  def pending_deletion?(%__MODULE__{scheduled_deletion_at: nil}), do: false
+  def pending_deletion?(%__MODULE__{}), do: true
+
+  @spec locked?(t()) :: boolean()
+  def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
+  def locked?(%__MODULE__{}), do: true
+
   # sobelow_skip ["DOS.BinToAtom"]
   for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
@@ -123,6 +136,13 @@ defmodule Portal.Account do
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
+
+  @spec rest_api_access_requested?(t()) :: boolean()
+  def rest_api_access_requested?(%__MODULE__{metadata: %{rest_api_requested_at: at}})
+      when not is_nil(at),
+      do: true
+
+  def rest_api_access_requested?(%__MODULE__{}), do: false
 end
 
 defmodule Portal.Account.Metadata do
@@ -131,12 +151,13 @@ defmodule Portal.Account.Metadata do
 
   @primary_key false
   embedded_schema do
+    field :rest_api_requested_at, :utc_datetime_usec
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [])
+    |> cast(attrs, [:rest_api_requested_at])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end

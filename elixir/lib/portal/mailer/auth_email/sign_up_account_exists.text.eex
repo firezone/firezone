@@ -1,0 +1,16 @@
+Your Firezone account
+
+We noticed you were trying to create a new Firezone account, but each email address can only be used to create one organization.
+
+<%= if length(@accounts_with_urls) == 1 do %>Your email is already the owner of the following account:
+<% else %>Your email is already the owner of the following accounts:
+<% end %>
+<%= for {account, sign_in_url} <- @accounts_with_urls do %><%= account.name %> (<%= account.slug %>)
+Sign in: <%= sign_in_url %>
+
+<% end %>If you believe this is a mistake or need further assistance, please contact our support team.
+
+If you didn't request this, you can safely ignore this email.
+
+Thanks,
+The Firezone Team

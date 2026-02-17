@@ -4,6 +4,7 @@
 @plugin "flowbite/plugin";
 @import "./scrollbar.css";
 
+/* Start: This may not be needed after UI refactor */
 @layer base {
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]):not([disabled]) {
@@ -15,4 +16,106 @@
   .scrollbar-gutter-stable {
     scrollbar-gutter: stable;
   }
+}
+/* End */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+:root {
+  /* Surfaces */
+  --canvas: #EEF1F6;
+  --surface: #FFFFFF;
+  --surface-raised: #F7F9FC;
+  --surface-overlay: #FFFFFF;
+
+  /* Borders */
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+  --border-emphasis: rgba(15, 23, 42, 0.28);
+
+  /* Text */
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary: #94A3B8;
+  --text-muted: #CBD5E1;
+  --text-inverse: #F8FAFC;
+
+  /* Brand — orange (heat-wave-500 / heat-wave-600) */
+  --brand: #FF7605;
+  --brand-muted: #FFF9F5;
+  --brand-hover: #C25700;
+
+  /* Status */
+  --status-active: #16A34A;
+  --status-active-bg: rgba(22, 163, 74, 0.10);
+  --status-info: #2563EB;
+  --status-info-bg: rgba(37, 99, 235, 0.08);
+  --status-warn: #D97706;
+  --status-warn-bg: rgba(217, 119, 6, 0.10);
+  --status-neutral: #64748B;
+  --status-neutral-bg: rgba(100, 116, 139, 0.12);
+  --status-danger: #DC2626;
+  --status-error: #DC2626;
+  --status-error-bg: #FEE2E2;
+
+  /* Toast backgrounds (opaque — used when flash floats over page content) */
+  --toast-bg-success: #f0fdf4;
+  --toast-bg-info: #eff6ff;
+  --toast-bg-warn: #fffbeb;
+  --toast-bg-error: #fef2f2;
+
+  /* Controls */
+  --control-bg: #FFFFFF;
+  --control-border: rgba(15, 23, 42, 0.16);
+  --control-focus: #FF7605;
+
+  /* Badge variants */
+  --badge-dns-bg: #EFF6FF;
+  --badge-dns-text: #1D4ED8;
+  --badge-ip-bg: #F0FDF4;
+  --badge-ip-text: #15803D;
+  --badge-cidr-bg: #FFF7ED;
+  --badge-cidr-text: #C25700;
+  --badge-device-pool-bg: #F0FDFA;
+  --badge-device-pool-text: #0F766E;
+}
+
+.dark {
+  --canvas: #080C14;
+  --surface: #0F1623;
+  --surface-raised: #172032;
+  --surface-overlay: #1E2A3F;
+  --border: rgba(241, 245, 249, 0.07);
+  --border-strong: rgba(241, 245, 249, 0.12);
+  --border-emphasis: rgba(241, 245, 249, 0.22);
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #4E637A;
+  --text-muted: #2D3F52;
+  --text-inverse: #0F172A;
+  --brand: #FF9A47;
+  --brand-muted: rgba(255, 118, 5, 0.12);
+  --brand-hover: #FFB46A;
+  --status-active-bg: rgba(74, 222, 128, 0.10);
+  --status-warn-bg: rgba(251, 191, 36, 0.10);
+  --status-info: #60A5FA;
+  --status-info-bg: rgba(96, 165, 250, 0.1);
+  --status-error: #F87171;
+  --status-error-bg: rgba(248, 113, 113, 0.1);
+  --status-neutral-bg: rgba(100, 116, 139, 0.16);
+  --toast-bg-success: #162b22;
+  --toast-bg-info: #132040;
+  --toast-bg-warn: #2c1e0e;
+  --toast-bg-error: #2c1010;
+  --control-bg: #172032;
+  --control-border: rgba(241, 245, 249, 0.12);
+  --control-focus: #FF9A47;
 }
