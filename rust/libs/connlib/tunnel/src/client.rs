@@ -525,42 +525,20 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
+    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
-        let peer = if is_peer(dst) {
-            let Some(peer) = self.gateways.peer_by_ip_mut(dst) else {
-                tracing::trace!(?packet, "Unknown peer");
-                return None;
-            };
-
-            peer
+        let (gid, mut packet) = if is_peer(packet.destination()) {
+            self.route_packet_to_peer(packet)?
         } else {
-            let Some(resource) = self.get_resource_by_destination(dst) else {
-                tracing::trace!(?packet, "Unknown resource");
-                return None;
-            };
-
-            let Some(peer) =
-                peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
-            else {
-                self.on_not_connected_resource(resource, packet, now);
-                return None;
-            };
-
-            peer
+            self.route_packet_to_resource(packet, now)?
         };
-
-        // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
-        // Re-send if older than X.
 
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
             packet = self
                 .dns_resource_nat
-                .handle_outgoing(peer.id(), domain, packet, now)?;
+                .handle_outgoing(gid, domain, packet, now)?;
         }
-
-        let gid = peer.id();
 
         let transmit = self
             .node
@@ -569,6 +547,38 @@ impl ClientState {
             .ok()??;
 
         Some(transmit)
+    }
+
+    fn route_packet_to_peer(&mut self, packet: IpPacket) -> Option<(GatewayId, IpPacket)> {
+        let dst = packet.destination();
+
+        if let Some(gateway) = self.gateways.peer_by_ip(dst) {
+            return Some((gateway.id(), packet));
+        }
+
+        None
+    }
+
+    fn route_packet_to_resource(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Option<(GatewayId, IpPacket)> {
+        let dst = packet.destination();
+
+        let Some(resource) = self.get_resource_by_destination(dst) else {
+            tracing::trace!(?packet, "Unknown resource");
+            return None;
+        };
+
+        let Some(peer) =
+            peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
+        else {
+            self.on_not_connected_resource(resource, packet, now);
+            return None;
+        };
+
+        Some((peer.id(), packet))
     }
 
     pub fn add_ice_candidate(
