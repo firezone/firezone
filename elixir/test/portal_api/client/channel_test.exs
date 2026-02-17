@@ -1,8 +1,10 @@
 defmodule PortalAPI.Client.ChannelTest do
   use PortalAPI.ChannelCase, async: true
+  import ExUnit.CaptureLog
   alias Portal.Changes
   alias Portal.Presence
   alias Portal.{Channels, PubSub}
+  alias PortalAPI.Client.Channel
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -4210,6 +4212,103 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
+    end
+  end
+
+  describe "do_create_policy_authorization/2" do
+    test "succeeds when all FK references are valid", %{
+      subject: subject,
+      client: client,
+      gateway: gateway,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership
+    } do
+      attrs = %{
+        id: Ecto.UUID.generate(),
+        token_id: subject.credential.id,
+        policy_id: policy.id,
+        client_id: client.id,
+        gateway_id: gateway.id,
+        resource_id: resource.id,
+        membership_id: membership.id,
+        account_id: subject.account.id,
+        client_remote_ip: {100, 64, 0, 1},
+        client_user_agent: "test-agent",
+        gateway_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      assert :ok = Channel.do_create_policy_authorization(attrs, subject)
+    end
+
+    test "logs changeset errors with entity IDs when FK references are invalid", %{
+      subject: subject
+    } do
+      policy_id = Ecto.UUID.generate()
+      client_id = Ecto.UUID.generate()
+      gateway_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+      policy_authorization_id = Ecto.UUID.generate()
+
+      attrs = %{
+        id: policy_authorization_id,
+        token_id: subject.credential.id,
+        policy_id: policy_id,
+        client_id: client_id,
+        gateway_id: gateway_id,
+        resource_id: resource_id,
+        membership_id: nil,
+        account_id: subject.account.id,
+        client_remote_ip: {100, 64, 0, 1},
+        client_user_agent: "test-agent",
+        gateway_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      log =
+        capture_log(fn ->
+          Channel.do_create_policy_authorization(attrs, subject)
+        end)
+
+      assert log =~ "Failed to create policy authorization"
+      assert log =~ policy_authorization_id
+      assert log =~ policy_id
+      assert log =~ client_id
+      assert log =~ gateway_id
+      assert log =~ resource_id
+      refute log =~ "reason: \":rollback\""
+    end
+
+    test "does not log on success", %{
+      subject: subject,
+      client: client,
+      gateway: gateway,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership
+    } do
+      attrs = %{
+        id: Ecto.UUID.generate(),
+        token_id: subject.credential.id,
+        policy_id: policy.id,
+        client_id: client.id,
+        gateway_id: gateway.id,
+        resource_id: resource.id,
+        membership_id: membership.id,
+        account_id: subject.account.id,
+        client_remote_ip: {100, 64, 0, 1},
+        client_user_agent: "test-agent",
+        gateway_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      log =
+        capture_log(fn ->
+          Channel.do_create_policy_authorization(attrs, subject)
+        end)
+
+      refute log =~ "Failed to create policy authorization"
     end
   end
 end
