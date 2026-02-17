@@ -975,24 +975,17 @@ checksum = "119771309b95163ec7aaf79810da82f7cd0599c19722d48b9c03894dca833966"
 [[package]]
 name = "boringtun"
 version = "0.6.1"
-source = "git+https://github.com/firezone/boringtun?branch=master#8300b7fe57e66c051d5632a5434c30010b523ea9"
+source = "git+https://github.com/firezone/boringtun?branch=master#89dbe2732e29b3c9c2f55ef35bb04952bd91bf55"
 dependencies = [
  "aead",
- "base64 0.22.1",
  "blake2",
  "chacha20poly1305",
  "constant_time_eq",
- "hex",
  "hmac",
- "ip_network",
- "ip_network_table",
- "libc",
- "nix",
  "parking_lot",
  "rand 0.8.5",
  "ring",
  "tracing",
- "untrusted",
  "x25519-dalek",
 ]
 
@@ -3838,8 +3831,6 @@ source = "git+https://github.com/edmonds/ip_network_table?branch=some-useful-tra
 dependencies = [
  "ip_network",
  "ip_network_table-deps-treebitmap",
- "serde",
- "serde_assert",
 ]
 
 [[package]]
@@ -6670,15 +6661,6 @@ dependencies = [
  "erased-serde",
  "serde",
  "typeid",
-]
-
-[[package]]
-name = "serde_assert"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92b7be0ad5a7b2eefaa5418eb141838270f1ad2d2c6e88acec3795d2425ffa97"
-dependencies = [
- "serde",
 ]
 
 [[package]]
