@@ -1149,32 +1149,54 @@ defmodule PortalAPI.Client.Channel do
       expires_at: expires_at
     }
 
-    do_insert = fn ->
-      try do
-        changeset = create_policy_authorization_changeset(attrs)
+    Task.start(fn -> do_create_policy_authorization(attrs, subject) end)
+  end
 
-        Portal.Safe.scoped(changeset, subject)
-        |> Portal.Safe.insert()
-        |> case do
-          {:ok, _} ->
-            :ok
+  @doc false
+  def do_create_policy_authorization(attrs, subject) do
+    changeset = create_policy_authorization_changeset(attrs)
 
-          {:error, reason} ->
-            Logger.error("Failed to create policy authorization",
-              policy_authorization_id: policy_authorization_id,
-              reason: inspect(reason)
-            )
-        end
-      rescue
-        exception ->
-          Logger.error("Failed to create policy authorization",
-            policy_authorization_id: policy_authorization_id,
-            reason: inspect(exception)
-          )
-      end
+    Portal.Safe.scoped(changeset, subject)
+    |> Portal.Safe.insert()
+    |> case do
+      {:ok, _} ->
+        :ok
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        Logger.error("Failed to create policy authorization",
+          policy_authorization_id: attrs.id,
+          reason: :changeset_error,
+          changeset_errors: inspect(changeset.errors),
+          policy_id: attrs.policy_id,
+          client_id: attrs.client_id,
+          gateway_id: attrs.gateway_id,
+          resource_id: attrs.resource_id,
+          membership_id: attrs.membership_id
+        )
+
+      {:error, reason} ->
+        Logger.error("Failed to create policy authorization",
+          policy_authorization_id: attrs.id,
+          reason: inspect(reason),
+          policy_id: attrs.policy_id,
+          client_id: attrs.client_id,
+          gateway_id: attrs.gateway_id,
+          resource_id: attrs.resource_id,
+          membership_id: attrs.membership_id
+        )
     end
-
-    Task.start(do_insert)
+  rescue
+    exception ->
+      Logger.error("Failed to create policy authorization",
+        policy_authorization_id: attrs.id,
+        reason: Exception.message(exception),
+        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
+        policy_id: attrs.policy_id,
+        client_id: attrs.client_id,
+        gateway_id: attrs.gateway_id,
+        resource_id: attrs.resource_id,
+        membership_id: attrs.membership_id
+      )
   end
 
   defp create_policy_authorization_changeset(attrs) do
