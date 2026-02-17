@@ -1715,21 +1715,7 @@ impl ClientState {
             return;
         };
 
-        // First we remove the id from all allowed ips
-        for (_, resources) in peer
-            .allowed_ips
-            .iter_mut()
-            .filter(|(_, resources)| resources.contains(&id))
-        {
-            resources.remove(&id);
-
-            if !resources.is_empty() {
-                continue;
-            }
-        }
-
-        // We remove all empty allowed ips entry since there's no resource that corresponds to it
-        peer.allowed_ips.retain(|_, r| !r.is_empty());
+        peer.remove_resource(id);
 
         self.authorized_resources.remove(&id);
 
@@ -1742,7 +1728,7 @@ impl ClientState {
             self.dns_resource_nat.clear_by_domain(domain);
         }
 
-        let unused_gateways = self.gateways.extract_if(|_, p| p.allowed_ips.is_empty());
+        let unused_gateways = self.gateways.extract_if(|_, p| p.no_allowed_resources());
 
         for (gid, _) in unused_gateways {
             tracing::debug!(%gid, "Disabled / deactivated last resource for peer");
