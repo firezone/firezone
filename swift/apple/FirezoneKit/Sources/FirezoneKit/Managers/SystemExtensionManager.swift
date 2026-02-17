@@ -18,7 +18,7 @@
     }
   }
 
-  enum SystemExtensionStatus {
+  enum SystemExtensionStatus: Equatable {
     // Not installed or enabled at all
     case needsInstall
 
@@ -28,6 +28,27 @@
 
     // Installed and version is current with our app bundle
     case installed
+
+    /// Determines extension status by comparing installed extensions against the app version.
+    static func fromInstalledExtensions(
+      _ extensions: [(bundleVersion: String, bundleShortVersion: String)],
+      appBundleVersion: String,
+      appBundleShortVersion: String
+    ) -> SystemExtensionStatus {
+      let isCurrentVersionInstalled = extensions.contains { ext in
+        ext.bundleVersion == appBundleVersion
+          && ext.bundleShortVersion == appBundleShortVersion
+      }
+      if isCurrentVersionInstalled {
+        return .installed
+      }
+
+      if extensions.first != nil {
+        return .needsReplacement
+      }
+
+      return .needsInstall
+    }
   }
 
   enum SystemExtensionRequestType {
@@ -35,6 +56,7 @@
     case check
   }
 
+  @MainActor
   class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
@@ -65,23 +87,23 @@
 
     // MARK: - OSSystemExtensionRequestDelegate
 
-    // Result of system extension installation
-    func request(
+    // Delegate callbacks are non-async and nonisolated.
+    // Use Task { @MainActor in } to safely hop to our actor.
+
+    nonisolated func request(
       _ request: OSSystemExtensionRequest,
       didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
-      guard result == .completed else {
-        resume(throwing: SystemExtensionError.unknownResult(result))
-
-        return
+      Task { @MainActor in
+        guard result == .completed else {
+          self.resume(throwing: SystemExtensionError.unknownResult(result))
+          return
+        }
+        self.resume(returning: .installed)
       }
-
-      // Installation succeeded
-      resume(returning: .installed)
     }
 
-    // Result of properties request
-    func request(
+    nonisolated func request(
       _ request: OSSystemExtensionRequest,
       foundProperties properties: [OSSystemExtensionProperties]
     ) {
@@ -95,54 +117,54 @@
         fatalError("Version should exist in bundle")
       }
 
-      Log.info(
-        "Checking system extension - Client version: \(ourBundleShortVersion) (\(ourBundleVersion))"
-      )
+      let enabledExtensions =
+        properties
+        .filter { $0.isEnabled }
+        .map { (bundleVersion: $0.bundleVersion, bundleShortVersion: $0.bundleShortVersion) }
 
-      // Log all found extensions for debugging
-      for sysex in properties where sysex.isEnabled {
+      Task { @MainActor in
         Log.info(
-          "Found enabled extension - Version: \(sysex.bundleShortVersion) (\(sysex.bundleVersion))"
+          "Checking system extension - Client version: \(ourBundleShortVersion) (\(ourBundleVersion))"
         )
-      }
 
-      // Up to date if version and build number match
-      let isCurrentVersionInstalled = properties.contains { sysex in
-        sysex.isEnabled
-          && sysex.bundleVersion == ourBundleVersion
-          && sysex.bundleShortVersion == ourBundleShortVersion
-      }
-      if isCurrentVersionInstalled {
-        resume(returning: .installed)
+        for sysex in enabledExtensions {
+          Log.info(
+            "Found enabled extension - Version: \(sysex.bundleShortVersion) (\(sysex.bundleVersion))"
+          )
+        }
 
-        return
-      }
-
-      // Needs replacement if we found our extension, but its version doesn't match
-      // Note this can happen for upgrades _or_ downgrades
-      let enabledExtension = properties.first { $0.isEnabled }
-      if let enabledExtension = enabledExtension {
-        Log.warning(
-          "Extension version mismatch - Installed: \(enabledExtension.bundleShortVersion) (\(enabledExtension.bundleVersion)), Expected: \(ourBundleShortVersion) (\(ourBundleVersion))"
+        let status = SystemExtensionStatus.fromInstalledExtensions(
+          enabledExtensions,
+          appBundleVersion: ourBundleVersion,
+          appBundleShortVersion: ourBundleShortVersion
         )
-        resume(returning: .needsReplacement)
 
-        return
+        if case .needsReplacement = status, let ext = enabledExtensions.first {
+          Log.warning(
+            "Extension version mismatch - Installed: \(ext.bundleShortVersion) (\(ext.bundleVersion)), Expected: \(ourBundleShortVersion) (\(ourBundleVersion))"
+          )
+        } else if case .needsInstall = status {
+          Log.info("No system extension found - needs install")
+        }
+
+        self.resume(returning: status)
       }
-
-      Log.info("No system extension found - needs install")
-      resume(returning: .needsInstall)
     }
 
-    func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-      resume(throwing: error)
+    nonisolated func request(
+      _ request: OSSystemExtensionRequest,
+      didFailWithError error: Error
+    ) {
+      Task { @MainActor in
+        self.resume(throwing: error)
+      }
     }
 
-    func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
+    nonisolated func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
       // We assume this state until we receive a success response.
     }
 
-    func request(
+    nonisolated func request(
       _ request: OSSystemExtensionRequest,
       actionForReplacingExtension existing: OSSystemExtensionProperties,
       withExtension ext: OSSystemExtensionProperties
