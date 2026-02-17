@@ -320,6 +320,32 @@ defmodule PortalWeb.Live.Policies.NewTest do
     assert flash["success"] == "Policy created successfully"
   end
 
+  test "sets group_idp_id when creating a new policy for a synced group", %{
+    account: account,
+    actor: actor,
+    conn: conn
+  } do
+    synced_group = synced_group_fixture(account: account, idp_id: "synced_group_liveview_123")
+    resource = resource_fixture(account: account)
+
+    attrs = %{
+      group_id: synced_group.id,
+      resource_id: resource.id
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/policies/new")
+
+    assert lv
+           |> form("form[phx-submit=submit]", policy: attrs)
+           |> render_submit()
+
+    assert policy = Repo.get_by(Portal.Policy, attrs)
+    assert policy.group_idp_id == "synced_group_liveview_123"
+  end
+
   test "creates a new policy on valid attrs and pre-set resource_id", %{
     account: account,
     actor: actor,

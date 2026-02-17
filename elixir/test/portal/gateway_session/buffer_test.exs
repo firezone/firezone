@@ -190,6 +190,62 @@ defmodule Portal.GatewaySession.BufferTest do
     end
   end
 
+  describe "deleted associations" do
+    test "skips sessions with deleted tokens and inserts the rest", ctx do
+      valid_session = build_session(ctx)
+
+      other_token = gateway_token_fixture(account: ctx.account)
+      orphan_session = build_session(ctx, %{gateway_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.insert(valid_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      assert count_sessions(ctx) == 1
+    end
+
+    test "skips all sessions when all tokens are deleted", ctx do
+      other_token = gateway_token_fixture(account: ctx.account)
+      orphan_session = build_session(ctx, %{gateway_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      assert count_sessions(ctx) == 0
+    end
+
+    test "skips sessions with deleted gateways and inserts the rest", ctx do
+      valid_session = build_session(ctx)
+
+      other_gateway = gateway_fixture(account: ctx.account)
+      orphan_session = build_session(ctx, %{gateway_id: other_gateway.id})
+      Repo.delete!(other_gateway)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.insert(valid_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      assert count_sessions(ctx) == 1
+    end
+
+    test "does not crash the buffer process when tokens are deleted", ctx do
+      other_token = gateway_token_fixture(account: ctx.account)
+      orphan_session = build_session(ctx, %{gateway_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      # Buffer should still be alive and functional
+      Buffer.insert(build_session(ctx), ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      assert count_sessions(ctx) == 1
+    end
+  end
+
   describe "start_link/1" do
     test "registers with the given name" do
       name = :"buffer_custom_#{inspect(make_ref())}"

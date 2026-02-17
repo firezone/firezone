@@ -186,6 +186,67 @@ defmodule Portal.ClientSession.BufferTest do
     end
   end
 
+  describe "deleted associations" do
+    test "skips sessions with deleted tokens and inserts the rest", ctx do
+      valid_session = build_session(ctx)
+
+      other_token = client_token_fixture(account: ctx.account)
+      orphan_session = build_session(ctx, %{client_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.insert(valid_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      sessions = Repo.all(ClientSession)
+      assert length(sessions) == 1
+      assert hd(sessions).client_token_id == ctx.token.id
+    end
+
+    test "skips all sessions when all tokens are deleted", ctx do
+      other_token = client_token_fixture(account: ctx.account)
+      session = build_session(ctx, %{client_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Buffer.insert(session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      assert Repo.all(ClientSession) == []
+    end
+
+    test "skips sessions with deleted clients and inserts the rest", ctx do
+      valid_session = build_session(ctx)
+
+      actor = actor_fixture(account: ctx.account)
+      other_client = client_fixture(account: ctx.account, actor: actor)
+      orphan_session = build_session(ctx, %{client_id: other_client.id})
+      Repo.delete!(other_client)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.insert(valid_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      sessions = Repo.all(ClientSession)
+      assert length(sessions) == 1
+      assert hd(sessions).client_id == ctx.client.id
+    end
+
+    test "does not crash the buffer process when tokens are deleted", ctx do
+      other_token = client_token_fixture(account: ctx.account)
+      orphan_session = build_session(ctx, %{client_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Buffer.insert(orphan_session, ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      # Buffer should still be alive and functional
+      Buffer.insert(build_session(ctx), ctx.buffer)
+      Buffer.flush(ctx.buffer)
+
+      assert length(Repo.all(ClientSession)) == 1
+    end
+  end
+
   describe "start_link/1" do
     test "registers with the given name" do
       name = :"buffer_custom_#{inspect(make_ref())}"

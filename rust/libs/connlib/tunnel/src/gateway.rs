@@ -22,7 +22,7 @@ use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
-use snownet::{Credentials, IceConfig, IceRole, NoTurnServers, Node, RelaySocket, Transmit};
+use snownet::{IceConfig, IceRole, NoTurnServers, Node, RelaySocket, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -174,11 +174,15 @@ impl GatewayState {
             return Ok(None);
         };
 
+        if packet.destination().is_multicast() {
+            return Ok(None);
+        }
+
         flow_tracker::inbound_wg::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
-            .get_mut(&cid)
+            .peer_by_id_mut(&cid)
             .with_context(|| format!("No peer for connection {cid}"))?;
 
         flow_tracker::inbound_wg::record_client(cid, peer.client_flow_properties());
@@ -270,7 +274,7 @@ impl GatewayState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
     pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId, now: Instant) {
-        let Some(peer) = self.peers.get_mut(cid) else {
+        let Some(peer) = self.peers.peer_by_id_mut(cid) else {
             return;
         };
 
@@ -305,14 +309,8 @@ impl GatewayState {
             client.id,
             client.public_key.into(),
             x25519::StaticSecret::from(client.preshared_key.expose_secret().0),
-            Credentials {
-                username: gateway_ice.username,
-                password: gateway_ice.password,
-            },
-            Credentials {
-                username: client_ice.username,
-                password: client_ice.password,
-            },
+            gateway_ice.into(),
+            client_ice.into(),
             IceRole::Controlled,
             now,
         )?;
@@ -359,10 +357,9 @@ impl GatewayState {
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
-        let peer = self
-            .peers
-            .entry(client)
-            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun, client_props));
+        let peer = self.peers.upsert(client, || {
+            ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
+        });
 
         peer.add_resource(resource.clone(), expires_at);
 
@@ -375,9 +372,6 @@ impl GatewayState {
             )?;
         }
 
-        self.peers.add_ip(&client, &client_tun.v4.into());
-        self.peers.add_ip(&client, &client_tun.v6.into());
-
         Ok(())
     }
 
@@ -388,7 +382,7 @@ impl GatewayState {
         expires_at: DateTime<Utc>,
     ) -> anyhow::Result<()> {
         self.peers
-            .get_mut(&client)
+            .peer_by_id_mut(&client)
             .context("No peer state")?
             .update_resource_expiry(resource, expires_at);
 
@@ -406,7 +400,7 @@ impl GatewayState {
         let nat_status = resolve_result
             .and_then(|addresses| {
                 self.peers
-                    .get_mut(&req.client)
+                    .peer_by_id_mut(&req.client)
                     .context("Unknown peer")?
                     .setup_nat(
                         req.domain.clone(),
@@ -653,7 +647,7 @@ impl GatewayState {
         authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     ) {
         for (client, resources) in authorizations {
-            let Some(client) = self.peers.get_mut(&client) else {
+            let Some(client) = self.peers.peer_by_id_mut(&client) else {
                 continue;
             };
 

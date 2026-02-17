@@ -1,43 +1,21 @@
 use core::fmt;
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::HashMap;
 use std::hash::Hash;
-use std::net::IpAddr;
-
-use connlib_model::{ClientId, GatewayId, ResourceId};
-use ip_network::IpNetwork;
-use ip_network_table::IpNetworkTable;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::client::GatewayOnClient;
 use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
-    id_by_ip: IpNetworkTable<TId>,
+    id_by_ip: HashMap<IpAddr, TId>,
     peer_by_id: HashMap<TId, P>,
 }
 
 impl<TId, P> Default for PeerStore<TId, P> {
     fn default() -> Self {
         Self {
-            id_by_ip: IpNetworkTable::new(),
-            peer_by_id: HashMap::new(),
-        }
-    }
-}
-
-impl PeerStore<GatewayId, GatewayOnClient> {
-    pub(crate) fn add_ips_with_resource(
-        &mut self,
-        id: &GatewayId,
-        ips: impl IntoIterator<Item = impl Into<IpNetwork>>,
-        resource: &ResourceId,
-    ) {
-        for ip in ips {
-            let ip = ip.into();
-
-            let Some(peer) = self.add_ip(id, &ip) else {
-                continue;
-            };
-            peer.insert_id(&ip, resource);
+            id_by_ip: Default::default(),
+            peer_by_id: Default::default(),
         }
     }
 }
@@ -45,7 +23,7 @@ impl PeerStore<GatewayId, GatewayOnClient> {
 impl<TId, P> PeerStore<TId, P>
 where
     TId: Hash + Eq + Copy + fmt::Debug + fmt::Display,
-    P: Peer<Id = TId>,
+    P: Peer,
 {
     pub(crate) fn extract_if(&mut self, f: impl Fn(&TId, &mut P) -> bool) -> Vec<(TId, P)> {
         let removed_peers = self
@@ -59,32 +37,32 @@ where
         removed_peers
     }
 
-    pub(crate) fn add_ip(&mut self, id: &TId, ip: &IpNetwork) -> Option<&mut P> {
-        let peer = self.peer_by_id.get_mut(id)?;
-        let previous = self.id_by_ip.insert(*ip, *id);
+    pub(crate) fn upsert(&mut self, pid: TId, make_peer: impl FnOnce() -> P) -> &mut P {
+        let peer = make_peer();
 
-        if previous.is_some_and(|prev| prev != *id) {
-            tracing::warn!(%ip, %id, ?previous, "Broken invariant: IP was already assigned to another peer");
+        if let Some(existing) = self.peer_by_id.get(&pid)
+            && (existing.tun_ipv4() != peer.tun_ipv4() || existing.tun_ipv6() != peer.tun_ipv6())
+        {
+            tracing::debug!(
+                %pid,
+                old_v4 = %existing.tun_ipv4(),
+                old_v6 = %existing.tun_ipv6(),
+                new_v4 = %peer.tun_ipv4(),
+                new_v6 = %peer.tun_ipv6(),
+                "Peer's TUN IP has changed, replacing",
+            );
+
+            self.id_by_ip.remove(&existing.tun_ipv4().into());
+            self.id_by_ip.remove(&existing.tun_ipv6().into());
+            self.peer_by_id.remove(&pid);
         }
 
-        Some(peer)
-    }
+        let peer = self.peer_by_id.entry(pid).or_insert(peer);
 
-    pub(crate) fn insert(&mut self, peer: P, ips: &[IpNetwork]) -> Option<P> {
-        self.id_by_ip.retain(|_, &mut r_id| r_id != peer.id());
+        self.id_by_ip.insert(peer.tun_ipv4().into(), pid);
+        self.id_by_ip.insert(peer.tun_ipv6().into(), pid);
 
-        let id = peer.id();
-        let old_peer = self.peer_by_id.insert(id, peer);
-
-        for ip in ips {
-            self.add_ip(&id, ip);
-        }
-
-        old_peer
-    }
-
-    pub(crate) fn entry(&mut self, id: TId) -> Entry<'_, TId, P> {
-        self.peer_by_id.entry(id)
+        peer
     }
 
     pub(crate) fn remove(&mut self, id: &TId) -> Option<P> {
@@ -92,23 +70,26 @@ where
         self.peer_by_id.remove(id)
     }
 
-    pub(crate) fn get(&self, id: &TId) -> Option<&P> {
+    pub(crate) fn peer_by_id(&self, id: &TId) -> Option<&P> {
         self.peer_by_id.get(id)
     }
 
-    pub(crate) fn get_mut(&mut self, id: &TId) -> Option<&mut P> {
+    pub(crate) fn peer_by_id_mut(&mut self, id: &TId) -> Option<&mut P> {
         self.peer_by_id.get_mut(id)
     }
 
-    #[cfg(test)]
     pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<&P> {
-        let (_, id) = self.id_by_ip.longest_match(ip)?;
-        self.peer_by_id.get(id)
+        let id = self.id_by_ip.get(&ip)?;
+        let peer = self.peer_by_id.get(id)?;
+
+        Some(peer)
     }
 
     pub(crate) fn peer_by_ip_mut(&mut self, ip: IpAddr) -> Option<&mut P> {
-        let (_, id) = self.id_by_ip.longest_match(ip)?;
-        self.peer_by_id.get_mut(id)
+        let id = self.id_by_ip.get(&ip)?;
+        let peer = self.peer_by_id.get_mut(id)?;
+
+        Some(peer)
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut P> {
@@ -116,30 +97,33 @@ where
     }
 
     pub(crate) fn clear(&mut self) {
-        self.id_by_ip = IpNetworkTable::new();
+        self.id_by_ip.clear();
         self.peer_by_id.clear();
     }
 }
 
 pub(crate) trait Peer {
-    type Id;
-
-    fn id(&self) -> Self::Id;
+    fn tun_ipv4(&self) -> Ipv4Addr;
+    fn tun_ipv6(&self) -> Ipv6Addr;
 }
 
 impl Peer for ClientOnGateway {
-    type Id = ClientId;
+    fn tun_ipv4(&self) -> Ipv4Addr {
+        self.client_tun().v4
+    }
 
-    fn id(&self) -> Self::Id {
-        ClientOnGateway::id(self)
+    fn tun_ipv6(&self) -> Ipv6Addr {
+        self.client_tun().v6
     }
 }
 
 impl Peer for GatewayOnClient {
-    type Id = GatewayId;
+    fn tun_ipv4(&self) -> Ipv4Addr {
+        self.gateway_tun().v4
+    }
 
-    fn id(&self) -> Self::Id {
-        GatewayOnClient::id(self)
+    fn tun_ipv6(&self) -> Ipv6Addr {
+        self.gateway_tun().v6
     }
 }
 
@@ -149,37 +133,45 @@ mod tests {
 
     struct DummyPeer {
         id: u64,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
     }
 
     impl DummyPeer {
-        fn new(id: u64) -> Self {
-            Self { id }
+        fn new(id: u64, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Self {
+            Self { id, ipv4, ipv6 }
         }
     }
 
     impl Peer for DummyPeer {
-        type Id = u64;
+        fn tun_ipv4(&self) -> Ipv4Addr {
+            self.ipv4
+        }
 
-        fn id(&self) -> Self::Id {
-            self.id
+        fn tun_ipv6(&self) -> Ipv6Addr {
+            self.ipv6
         }
     }
 
     #[test]
     fn can_insert_and_retrieve_peer() {
         let mut peer_storage = PeerStore::<u64, DummyPeer>::default();
-        peer_storage.insert(DummyPeer::new(0), &[]);
-        assert!(peer_storage.get(&0).is_some());
+        peer_storage.upsert(0, || {
+            DummyPeer::new(0, Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST)
+        });
+        assert!(peer_storage.peer_by_id(&0).is_some());
     }
 
     #[test]
     fn can_insert_and_retrieve_peer_by_ip() {
         let mut peer_storage = PeerStore::<u64, DummyPeer>::default();
-        peer_storage.insert(DummyPeer::new(0), &["100.0.0.0/24".parse().unwrap()]);
+        peer_storage.upsert(0, || {
+            DummyPeer::new(0, Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST)
+        });
 
         assert_eq!(
             peer_storage
-                .peer_by_ip("100.0.0.1".parse().unwrap())
+                .peer_by_ip(Ipv4Addr::LOCALHOST.into())
                 .unwrap()
                 .id,
             0
@@ -189,13 +181,15 @@ mod tests {
     #[test]
     fn can_remove_peer() {
         let mut peer_storage = PeerStore::<u64, DummyPeer>::default();
-        peer_storage.insert(DummyPeer::new(0), &["100.0.0.0/24".parse().unwrap()]);
+        peer_storage.upsert(0, || {
+            DummyPeer::new(0, Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST)
+        });
         peer_storage.remove(&0);
 
-        assert!(peer_storage.get(&0).is_none());
+        assert!(peer_storage.peer_by_id(&0).is_none());
         assert!(
             peer_storage
-                .peer_by_ip("100.0.0.1".parse().unwrap())
+                .peer_by_ip(Ipv4Addr::LOCALHOST.into())
                 .is_none()
         )
     }
@@ -203,13 +197,17 @@ mod tests {
     #[test]
     fn inserting_peer_removes_previous_instances_of_same_id() {
         let mut peer_storage = PeerStore::<u64, DummyPeer>::default();
-        peer_storage.insert(DummyPeer::new(0), &["100.0.0.0/24".parse().unwrap()]);
-        peer_storage.insert(DummyPeer::new(0), &[]);
+        peer_storage.upsert(0, || {
+            DummyPeer::new(0, Ipv4Addr::new(1, 1, 1, 1), Ipv6Addr::LOCALHOST)
+        });
+        peer_storage.upsert(0, || {
+            DummyPeer::new(0, Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST)
+        });
 
-        assert!(peer_storage.get(&0).is_some());
+        assert!(peer_storage.peer_by_id(&0).is_some());
         assert!(
             peer_storage
-                .peer_by_ip("100.0.0.1".parse().unwrap())
+                .peer_by_ip("1.1.1.1".parse().unwrap())
                 .is_none()
         )
     }

@@ -5,6 +5,11 @@
 
 version: 2
 
+multi-ecosystem-groups:
+  tauri:
+    schedule:
+      interval: weekly
+
 updates:
   - package-ecosystem: mix
     directory: elixir/
@@ -87,10 +92,6 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      tauri:
-        patterns:
-          - tauri
-          - tauri-*
       netlink:
         patterns:
           - rtnetlink
@@ -244,9 +245,6 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-      tauri:
-        patterns:
-          - "@tauri-apps/*"
       tailwind:
         patterns:
           - tailwindcss
@@ -280,3 +278,20 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  # Tauri group
+  - package-ecosystem: npm
+    directory: rust/gui-client/
+    schedule:
+      interval: weekly
+    multi-ecosystem-group: tauri
+    patterns:
+      - "@tauri-apps/*"
+  - package-ecosystem: cargo
+    directory: rust/
+    schedule:
+      interval: weekly
+    multi-ecosystem-group: tauri
+    patterns:
+      - tauri
+      - tauri-*

@@ -69,7 +69,7 @@ bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4.43", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.57"
+clap = "4.5.58"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
@@ -118,8 +118,8 @@ l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
-libc = "0.2.180"
-libfuzzer-sys = "0.4.10"
+libc = "0.2.182"
+libfuzzer-sys = "0.4.12"
 log = "0.4.29"
 logging = { path = "libs/logging" }
 lru = "0.16.1"
@@ -187,7 +187,7 @@ subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
-syn = "2.0.114"
+syn = "2.0.115"
 tauri = "2.9.5"
 tauri-build = "2.4.0"
 tauri-plugin-dialog = "2.6.0"
@@ -207,7 +207,7 @@ tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.18"
 tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.18"
-toml = "0.9.6"
+toml = "0.9.12"
 tower = "0.5"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.4"

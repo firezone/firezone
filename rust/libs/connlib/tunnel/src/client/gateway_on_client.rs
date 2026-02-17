@@ -14,16 +14,36 @@ use crate::{IpConfig, NotAllowedResource};
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
     gateway_tun: IpConfig,
-    pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
+    allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
 }
 
 impl GatewayOnClient {
-    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
-        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
-            resources.insert(*id);
+    pub(crate) fn allow_ip_for_resource(&mut self, ip: impl Into<IpNetwork>, id: ResourceId) {
+        let ip = ip.into();
+
+        if let Some(resources) = self.allowed_ips.exact_match_mut(ip) {
+            resources.insert(id);
         } else {
-            self.allowed_ips.insert(*ip, HashSet::from([*id]));
+            self.allowed_ips.insert(ip, HashSet::from([id]));
         }
+    }
+
+    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        // First we remove the id from all allowed ips
+        for (_, resources) in self
+            .allowed_ips
+            .iter_mut()
+            .filter(|(_, resources)| resources.contains(&id))
+        {
+            resources.remove(&id);
+        }
+
+        // We remove all empty allowed ips entry since there's no resource that corresponds to it
+        self.allowed_ips.retain(|_, r| !r.is_empty());
+    }
+
+    pub(crate) fn no_allowed_resources(&self) -> bool {
+        self.allowed_ips.is_empty()
     }
 
     /// For a given destination IP, return the endpoint to which the DNS query should be sent.
@@ -35,6 +55,10 @@ impl GatewayOnClient {
         let new_dst_port = crate::gateway::TUN_DNS_PORT;
 
         SocketAddr::new(new_dst_ip, new_dst_port)
+    }
+
+    pub(crate) fn gateway_tun(&self) -> IpConfig {
+        self.gateway_tun
     }
 }
 

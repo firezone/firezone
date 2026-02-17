@@ -331,8 +331,11 @@ impl ClientState {
                 }
             }
 
-            self.gateways
-                .add_ips_with_resource(gid, proxy_ips.clone(), rid);
+            if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
+                for ip in proxy_ips {
+                    peer.allow_ip_for_resource(*ip, *rid);
+                }
+            }
         }
     }
 
@@ -341,7 +344,7 @@ impl ClientState {
             return false;
         };
 
-        self.gateways.get(gateway_id).is_some()
+        self.gateways.peer_by_id(gateway_id).is_some()
     }
 
     /// Handles packets received on the TUN device.
@@ -358,7 +361,7 @@ impl ClientState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
-        if is_definitely_not_a_resource(packet.destination()) {
+        if packet.destination().is_multicast() {
             return None;
         }
 
@@ -441,7 +444,7 @@ impl ClientState {
             return None;
         }
 
-        let Some(peer) = self.gateways.get_mut(&gid) else {
+        let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
             tracing::error!(%gid, "Couldn't find connection by ID");
 
             return None;
@@ -525,42 +528,20 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
+    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
-        let peer = if is_peer(dst) {
-            let Some(peer) = self.gateways.peer_by_ip_mut(dst) else {
-                tracing::trace!(?packet, "Unknown peer");
-                return None;
-            };
-
-            peer
+        let (gid, mut packet) = if is_peer(packet.destination()) {
+            self.route_packet_to_peer(packet)?
         } else {
-            let Some(resource) = self.get_resource_by_destination(dst) else {
-                tracing::trace!(?packet, "Unknown resource");
-                return None;
-            };
-
-            let Some(peer) =
-                peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
-            else {
-                self.on_not_connected_resource(resource, packet, now);
-                return None;
-            };
-
-            peer
+            self.route_packet_to_resource(packet, now)?
         };
-
-        // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
-        // Re-send if older than X.
 
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
             packet = self
                 .dns_resource_nat
-                .handle_outgoing(peer.id(), domain, packet, now)?;
+                .handle_outgoing(gid, domain, packet, now)?;
         }
-
-        let gid = peer.id();
 
         let transmit = self
             .node
@@ -569,6 +550,38 @@ impl ClientState {
             .ok()??;
 
         Some(transmit)
+    }
+
+    fn route_packet_to_peer(&mut self, packet: IpPacket) -> Option<(GatewayId, IpPacket)> {
+        let dst = packet.destination();
+
+        if let Some(gateway) = self.gateways.peer_by_ip(dst) {
+            return Some((gateway.id(), packet));
+        }
+
+        None
+    }
+
+    fn route_packet_to_resource(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Option<(GatewayId, IpPacket)> {
+        let dst = packet.destination();
+
+        let Some(resource) = self.get_resource_by_destination(dst) else {
+            tracing::trace!(?packet, "Unknown resource");
+            return None;
+        };
+
+        let Some(peer) =
+            peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
+        else {
+            self.on_not_connected_resource(resource, packet, now);
+            return None;
+        };
+
+        Some((peer.id(), packet))
     }
 
     pub fn add_ice_candidate(
@@ -622,14 +635,8 @@ impl ClientState {
             gid,
             gateway_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
-            snownet::Credentials {
-                username: client_ice.username,
-                password: client_ice.password,
-            },
-            snownet::Credentials {
-                username: gateway_ice.username,
-                password: gateway_ice.password,
-            },
+            client_ice.into(),
+            gateway_ice.into(),
             snownet::IceRole::Controlling,
             now,
         ) {
@@ -642,25 +649,27 @@ impl ClientState {
             .or_default()
             .insert(gid);
 
-        if self.gateways.get(&gid).is_none() {
-            self.gateways
-                .insert(GatewayOnClient::new(gid, gateway_tun), &[]);
-        };
-
-        // Allow looking up the Gateway via its TUN IP.
-        // Resources are not allowed to be in our CG-NAT range, therefore in practise this cannot overlap with resources.
-        self.gateways.add_ip(&gid, &gateway_tun.v4.into());
-        self.gateways.add_ip(&gid, &gateway_tun.v6.into());
+        let peer = self
+            .gateways
+            .upsert(gid, || GatewayOnClient::new(gid, gateway_tun));
 
         // Deal with buffered packets
 
         let (buffered_resource_packets, dns_queries) = pending_flow.into_buffered_packets();
 
+        // If we are making this connection because we want to send a DNS query to the Gateway,
+        // mark it as "used" through the DNS resource ID.
+        if !dns_queries.is_empty() {
+            peer.allow_ip_for_resource(gateway_tun.v4, rid);
+            peer.allow_ip_for_resource(gateway_tun.v6, rid);
+        }
+
         // 1. Buffered packets for resources
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
-                self.gateways
-                    .add_ips_with_resource(&gid, resource.addresses(), &rid);
+                for address in resource.addresses() {
+                    peer.allow_ip_for_resource(address, rid);
+                }
 
                 // For CIDR and Internet resources, we can directly queue the buffered packets.
                 for packet in buffered_resource_packets {
@@ -678,22 +687,9 @@ impl ClientState {
             }
         }
 
-        // If we are making this connection because we want to send a DNS query to the Gateway,
-        // mark it as "used" through the DNS resource ID.
-        if !dns_queries.is_empty() {
-            self.gateways.add_ips_with_resource(
-                &gid,
-                [
-                    IpNetwork::from(gateway_tun.v4),
-                    IpNetwork::from(gateway_tun.v6),
-                ],
-                &rid,
-            );
-        }
-
         // 2. Buffered UDP DNS queries for the Gateway
         for query in dns_queries {
-            let gateway = self.gateways.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
+            let gateway = self.gateways.peer_by_id(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
 
@@ -784,7 +780,10 @@ impl ClientState {
                         _ => Ordering::Equal,
                     })
                     .unwrap_or(Ordering::Equal);
-                let prefer_connected = match (self.gateways.get(left), self.gateways.get(right)) {
+                let prefer_connected = match (
+                    self.gateways.peer_by_id(left),
+                    self.gateways.peer_by_id(right),
+                ) {
                     (None, None) => Ordering::Equal,
                     (Some(_), Some(_)) => Ordering::Equal,
                     (None, Some(_)) => Ordering::Greater,
@@ -1720,21 +1719,7 @@ impl ClientState {
             return;
         };
 
-        // First we remove the id from all allowed ips
-        for (_, resources) in peer
-            .allowed_ips
-            .iter_mut()
-            .filter(|(_, resources)| resources.contains(&id))
-        {
-            resources.remove(&id);
-
-            if !resources.is_empty() {
-                continue;
-            }
-        }
-
-        // We remove all empty allowed ips entry since there's no resource that corresponds to it
-        peer.allowed_ips.retain(|_, r| !r.is_empty());
+        peer.remove_resource(id);
 
         self.authorized_resources.remove(&id);
 
@@ -1747,7 +1732,7 @@ impl ClientState {
             self.dns_resource_nat.clear_by_domain(domain);
         }
 
-        let unused_gateways = self.gateways.extract_if(|_, p| p.allowed_ips.is_empty());
+        let unused_gateways = self.gateways.extract_if(|_, p| p.no_allowed_resources());
 
         for (gid, _) in unused_gateways {
             tracing::debug!(%gid, "Disabled / deactivated last resource for peer");
@@ -1811,33 +1796,9 @@ fn peer_by_resource_mut<'p>(
     resource: ResourceId,
 ) -> Option<&'p mut GatewayOnClient> {
     let gateway_id = resources_gateways.get(&resource)?;
-    let peer = peers.get_mut(gateway_id)?;
+    let peer = peers.peer_by_id_mut(gateway_id)?;
 
     Some(peer)
-}
-
-/// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
-fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
-    /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
-    const IPV4_IGMP_MULTICAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 22);
-
-    /// Source: <https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv6_multicast_addresses>
-    const IPV6_MULTICAST_ALL_ROUTERS: Ipv6Addr = Ipv6Addr::new(0xFF02, 0, 0, 0, 0, 0, 0, 0x0002);
-
-    match ip {
-        IpAddr::V4(ip4) => {
-            if ip4 == IPV4_IGMP_MULTICAST {
-                return true;
-            }
-        }
-        IpAddr::V6(ip6) => {
-            if ip6 == IPV6_MULTICAST_ALL_ROUTERS {
-                return true;
-            }
-        }
-    }
-
-    false
 }
 
 fn into_udp_dns_packet(
@@ -1925,16 +1886,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ignores_ip4_igmp_multicast() {
-        assert!(is_definitely_not_a_resource(ip("224.0.0.22")))
-    }
-
-    #[test]
-    fn ignores_ip6_multicast_all_routers() {
-        assert!(is_definitely_not_a_resource(ip("ff02::2")))
-    }
-
-    #[test]
     fn prefers_already_connected_gateways() {
         let mut state = ClientState::for_test();
         state.gateways_by_site.insert(
@@ -1945,7 +1896,9 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state.gateways.insert(peer(GatewayId::from_u128(30)), &[]);
+        state
+            .gateways
+            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
 
         let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
 
@@ -1971,7 +1924,9 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state.gateways.insert(peer(GatewayId::from_u128(30)), &[]);
+        state
+            .gateways
+            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
         state
             .authorized_resources
             .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
@@ -2000,10 +1955,6 @@ mod tests {
                 Duration::ZERO,
             )
         }
-    }
-
-    fn ip(addr: &str) -> IpAddr {
-        addr.parse().unwrap()
     }
 
     fn peer(id: GatewayId) -> GatewayOnClient {
