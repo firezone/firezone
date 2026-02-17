@@ -331,7 +331,7 @@ impl ClientState {
                 }
             }
 
-            if let Some(peer) = self.gateways.get_mut(gid) {
+            if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
                 for ip in proxy_ips {
                     peer.allow_ip_for_resource(*ip, *rid);
                 }
@@ -344,7 +344,7 @@ impl ClientState {
             return false;
         };
 
-        self.gateways.get(gateway_id).is_some()
+        self.gateways.peer_by_id(gateway_id).is_some()
     }
 
     /// Handles packets received on the TUN device.
@@ -444,7 +444,7 @@ impl ClientState {
             return None;
         }
 
-        let Some(peer) = self.gateways.get_mut(&gid) else {
+        let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
             tracing::error!(%gid, "Couldn't find connection by ID");
 
             return None;
@@ -685,7 +685,7 @@ impl ClientState {
 
         // 2. Buffered UDP DNS queries for the Gateway
         for query in dns_queries {
-            let gateway = self.gateways.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
+            let gateway = self.gateways.peer_by_id(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
 
@@ -776,7 +776,10 @@ impl ClientState {
                         _ => Ordering::Equal,
                     })
                     .unwrap_or(Ordering::Equal);
-                let prefer_connected = match (self.gateways.get(left), self.gateways.get(right)) {
+                let prefer_connected = match (
+                    self.gateways.peer_by_id(left),
+                    self.gateways.peer_by_id(right),
+                ) {
                     (None, None) => Ordering::Equal,
                     (Some(_), Some(_)) => Ordering::Equal,
                     (None, Some(_)) => Ordering::Greater,
@@ -1803,7 +1806,7 @@ fn peer_by_resource_mut<'p>(
     resource: ResourceId,
 ) -> Option<&'p mut GatewayOnClient> {
     let gateway_id = resources_gateways.get(&resource)?;
-    let peer = peers.get_mut(gateway_id)?;
+    let peer = peers.peer_by_id_mut(gateway_id)?;
 
     Some(peer)
 }
