@@ -67,7 +67,7 @@ defmodule PortalWeb.Policies.New do
                     <div class="flex items-center gap-3">
                       <.provider_icon
                         type={provider_type_from_group(group)}
-                        class="w-5 h-5 flex-shrink-0"
+                        class="w-5 h-5 shrink-0"
                       />
                       <span>{group.name}</span>
                     </div>

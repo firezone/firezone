@@ -15,7 +15,7 @@ defmodule PortalWeb.NavigationComponents do
             data-drawer-toggle="drawer-navigation"
             aria-controls="drawer-navigation"
             class={[
-              "p-2 mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
+              "p-2 mr-2 text-neutral-600 rounded-sm cursor-pointer lg:hidden",
               "hover:text-neutral-900 hover:bg-neutral-100"
             ]}
           >
@@ -145,9 +145,8 @@ defmodule PortalWeb.NavigationComponents do
     <div
       class={[
         "hidden",
-        "z-50 my-4 w-56 text-base list-none bg-white rounded",
-        "divide-y divide-neutral-100 shadow",
-        "rounded-xl"
+        "z-50 my-4 w-56 text-base list-none bg-white rounded-sm",
+        "divide-y divide-neutral-100 shadow-sm"
       ]}
       id={"#{@id}-dropdown"}
     >

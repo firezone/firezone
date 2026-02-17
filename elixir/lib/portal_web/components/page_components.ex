@@ -18,7 +18,7 @@ defmodule PortalWeb.PageComponents do
     <div
       id={@id}
       class={[
-        "mb-6 bg-white shadow mx-5 rounded border px-6",
+        "mb-6 bg-white shadow-sm mx-5 rounded-sm border border-neutral-200 px-6",
         @content != [] && "pb-6"
       ]}
     >

@@ -579,11 +579,11 @@ defmodule PortalWeb.Actors do
           </:col>
           <:col :let={actor} label="status" class="w-1/12">
             <%= if actor.disabled_at do %>
-              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-red-100 text-red-800">
                 Disabled
               </span>
             <% else %>
-              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-green-100 text-green-800">
                 Active
               </span>
             <% end %>
@@ -620,7 +620,7 @@ defmodule PortalWeb.Actors do
             type="button"
             phx-click="select_type"
             phx-value-type="user"
-            class="flex flex-col items-center justify-center p-6 border-2 border-neutral-200 rounded-lg hover:border-accent-500 hover:bg-neutral-50 transition-all"
+            class="flex flex-col items-center justify-center p-6 border-2 border-neutral-200 rounded-md hover:border-accent-500 hover:bg-neutral-50 transition-all"
           >
             <.icon name="hero-user" class="w-12 h-12 mb-3 text-neutral-600" />
             <span class="text-lg font-semibold text-neutral-900">User</span>
@@ -633,7 +633,7 @@ defmodule PortalWeb.Actors do
             type="button"
             phx-click="select_type"
             phx-value-type="service_account"
-            class="flex flex-col items-center justify-center p-6 border-2 border-neutral-200 rounded-lg hover:border-accent-500 hover:bg-neutral-50 transition-all"
+            class="flex flex-col items-center justify-center p-6 border-2 border-neutral-200 rounded-md hover:border-accent-500 hover:bg-neutral-50 transition-all"
           >
             <.icon name="hero-server" class="w-12 h-12 mb-3 text-neutral-600" />
             <span class="text-lg font-semibold text-neutral-900">Service account</span>
@@ -741,7 +741,7 @@ defmodule PortalWeb.Actors do
                 type="date"
                 name="token_expiration"
                 value={@token_expiration}
-                class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50"
+                class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50"
               />
             </div>
           </div>
@@ -764,7 +764,7 @@ defmodule PortalWeb.Actors do
               <span>{@actor.name}</span>
               <.actor_type_badge actor={@actor} />
               <%= if @actor.disabled_at do %>
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-red-100 text-red-800">
                   Disabled
                 </span>
               <% end %>
@@ -777,10 +777,10 @@ defmodule PortalWeb.Actors do
         <%= if @created_token do %>
           <div
             id="created-token-display"
-            class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4"
+            class="bg-green-50 border border-green-200 rounded-md p-4 mb-4"
           >
             <div class="flex items-start gap-3">
-              <.icon name="hero-check-circle" class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <.icon name="hero-check-circle" class="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
               <div class="flex-1">
                 <h4 class="text-sm font-semibold text-green-900 mb-2">Token Created Successfully</h4>
                 <p class="text-sm text-green-800 mb-3">
@@ -789,7 +789,7 @@ defmodule PortalWeb.Actors do
                 <div id="created-token-copy-container" class="relative" phx-hook="CopyClipboard">
                   <code
                     id="created-token-copy-container-code"
-                    class="block bg-white border border-green-300 rounded px-3 py-2 pr-24 text-sm font-mono text-neutral-900 break-all"
+                    class="block bg-white border border-green-300 rounded-sm px-3 py-2 pr-24 text-sm font-mono text-neutral-900 break-all"
                   >
                     {@created_token}
                   </code>
@@ -798,7 +798,7 @@ defmodule PortalWeb.Actors do
                     data-copy-to-clipboard-target="created-token-copy-container-code"
                     data-copy-to-clipboard-content-type="innerHTML"
                     data-copy-to-clipboard-html-entities="true"
-                    class="absolute top-1 right-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-white border border-green-300 hover:bg-green-50 rounded inline-flex items-center"
+                    class="absolute top-1 right-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-white border border-green-300 hover:bg-green-50 rounded-sm inline-flex items-center"
                   >
                     <span
                       id="created-token-copy-container-default-message"
@@ -854,13 +854,13 @@ defmodule PortalWeb.Actors do
                   <div class="flex items-center gap-2">
                     <span
                       :if={@actor.allow_email_otp_sign_in}
-                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"
+                      class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-green-100 text-green-800"
                     >
                       <.icon name="hero-check-circle" class="w-3.5 h-3.5 mr-1" /> Allowed
                     </span>
                     <span
                       :if={!@actor.allow_email_otp_sign_in}
-                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600"
+                      class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-neutral-100 text-neutral-600"
                     >
                       <.icon name="hero-no-symbol" class="w-3.5 h-3.5 mr-1" /> Not Allowed
                     </span>
@@ -871,7 +871,7 @@ defmodule PortalWeb.Actors do
                 <:target>
                   <button
                     type="button"
-                    class="text-neutral-500 hover:text-neutral-700 focus:outline-none ml-4"
+                    class="text-neutral-500 hover:text-neutral-700 focus:outline-hidden ml-4"
                   >
                     <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
                   </button>
@@ -880,14 +880,14 @@ defmodule PortalWeb.Actors do
                   <div class="py-1">
                     <.link
                       navigate={~p"/#{@account}/actors/#{@actor.id}/edit?#{@query_params}"}
-                      class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
+                      class="px-3 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                     </.link>
                     <.link
                       :if={@actor.type == :service_account}
                       navigate={~p"/#{@account}/actors/#{@actor.id}/add_token?#{@query_params}"}
-                      class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
+                      class="px-3 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-key" class="w-4 h-4" /> Add Token
                     </.link>
@@ -896,7 +896,7 @@ defmodule PortalWeb.Actors do
                       type="button"
                       phx-click="send_welcome_email"
                       phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-blue-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                      class="w-full px-3 py-2 text-sm text-blue-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
                     >
                       <.icon name="hero-envelope" class="w-4 h-4" /> Send Welcome Email
                     </button>
@@ -905,7 +905,7 @@ defmodule PortalWeb.Actors do
                       type="button"
                       phx-click="disable"
                       phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-orange-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                      class="w-full px-3 py-2 text-sm text-orange-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
                     >
                       <.icon name="hero-lock-closed" class="w-4 h-4" /> Disable
                     </button>
@@ -914,7 +914,7 @@ defmodule PortalWeb.Actors do
                       type="button"
                       phx-click="enable"
                       phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-green-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                      class="w-full px-3 py-2 text-sm text-green-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
                     >
                       <.icon name="hero-lock-open" class="w-4 h-4" /> Enable
                     </button>
@@ -923,7 +923,7 @@ defmodule PortalWeb.Actors do
                       type="button"
                       phx-click="delete"
                       phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                      class="w-full px-3 py-2 text-sm text-red-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
                       data-confirm="Are you sure you want to delete this actor?"
                     >
                       <.icon name="hero-trash" class="w-4 h-4" /> Delete
@@ -1018,7 +1018,7 @@ defmodule PortalWeb.Actors do
           </div>
           <!-- Identities Tab -->
           <%= if @actor.type != :service_account and @active_tab == "identities" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
               <%= if @identities == [] do %>
                 <div class="text-center text-neutral-500 p-8">No external identities to display.</div>
               <% else %>
@@ -1029,7 +1029,7 @@ defmodule PortalWeb.Actors do
                         <div class="flex items-center gap-2 min-w-0">
                           <.provider_icon
                             type={provider_type_from_issuer(identity.issuer)}
-                            class="w-5 h-5 flex-shrink-0"
+                            class="w-5 h-5 shrink-0"
                           />
                           <div
                             class="font-medium text-sm text-neutral-900 truncate"
@@ -1140,7 +1140,7 @@ defmodule PortalWeb.Actors do
                         type="button"
                         phx-click="delete_identity"
                         phx-value-id={identity.id}
-                        class="text-red-600 hover:text-red-800 flex-shrink-0"
+                        class="text-red-600 hover:text-red-800 shrink-0"
                         data-confirm="Are you sure you want to delete this identity?"
                       >
                         <.icon name="hero-trash" class="w-5 h-5" />
@@ -1153,7 +1153,7 @@ defmodule PortalWeb.Actors do
           <% end %>
           <!-- Client Sessions Tab (Users only) -->
           <%= if @actor.type != :service_account and @active_tab == "client_sessions" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
               <%= if @tokens == [] do %>
                 <div class="text-center text-neutral-500 p-8">
                   No client sessions to display.
@@ -1170,7 +1170,7 @@ defmodule PortalWeb.Actors do
                         name={
                           client_os_icon_name(token.latest_session && token.latest_session.user_agent)
                         }
-                        class="w-6 h-6 flex-shrink-0"
+                        class="w-6 h-6 shrink-0"
                       />
                       <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
                         <div class="w-28">
@@ -1218,7 +1218,7 @@ defmodule PortalWeb.Actors do
           <% end %>
           <!-- Tokens Tab (Service Accounts only) -->
           <%= if @actor.type == :service_account and @active_tab == "tokens" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
               <%= if @tokens == [] do %>
                 <div class="text-center text-neutral-500 p-8">
                   No tokens to display.
@@ -1235,7 +1235,7 @@ defmodule PortalWeb.Actors do
                         name={
                           client_os_icon_name(token.latest_session && token.latest_session.user_agent)
                         }
-                        class="w-6 h-6 flex-shrink-0"
+                        class="w-6 h-6 shrink-0"
                       />
                       <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
                         <div class="w-28">
@@ -1283,7 +1283,7 @@ defmodule PortalWeb.Actors do
           <% end %>
           <!-- Portal Sessions Tab (Users only) -->
           <%= if @actor.type != :service_account and @active_tab == "portal_sessions" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
               <%= if @sessions == [] do %>
                 <div class="text-center text-neutral-500 p-8">
                   No sessions to display.
@@ -1298,7 +1298,7 @@ defmodule PortalWeb.Actors do
                       />
                       <.icon
                         name={session_user_agent_icon(session.user_agent)}
-                        class="w-6 h-6 flex-shrink-0"
+                        class="w-6 h-6 shrink-0"
                       />
                       <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
                         <div class="w-28">
@@ -1344,7 +1344,7 @@ defmodule PortalWeb.Actors do
           <% end %>
           <!-- Groups Tab -->
           <%= if @active_tab == "groups" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-lg">
+            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
               <%= if @groups == [] do %>
                 <div class="text-center text-neutral-500 p-8">No groups to display.</div>
               <% else %>
@@ -1365,7 +1365,7 @@ defmodule PortalWeb.Actors do
                       <div class="flex items-center gap-3">
                         <.provider_icon
                           type={provider_type_from_group(group)}
-                          class="w-5 h-5 flex-shrink-0"
+                          class="w-5 h-5 shrink-0"
                         />
                         <div class="flex-1 min-w-0">
                           <span class="flex items-center gap-2">
@@ -1374,7 +1374,7 @@ defmodule PortalWeb.Actors do
                             </span>
                             <span
                               :if={group.entity_type == :org_unit}
-                              class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600"
+                              class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-neutral-100 text-neutral-600"
                               title="Organizational Unit"
                             >
                               OU
@@ -1481,7 +1481,7 @@ defmodule PortalWeb.Actors do
                 type="date"
                 name="token_expiration"
                 value={@token_expiration}
-                class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50"
+                class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50"
                 required
               />
             </div>
@@ -1541,7 +1541,7 @@ defmodule PortalWeb.Actors do
   defp actor_type_badge(assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase",
+      "inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium uppercase",
       actor_type_badge_color(@actor.type)
     ]}>
       {actor_display_type(@actor)}

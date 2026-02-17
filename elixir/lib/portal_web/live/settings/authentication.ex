@@ -24,9 +24,9 @@ defmodule PortalWeb.Settings.Authentication do
   ]
 
   @select_type_classes ~w[
-    component bg-white rounded-lg p-4 flex items-center cursor-pointer
+    component bg-white rounded-md p-4 flex items-center cursor-pointer
     border-2 transition-all duration-150
-    border-neutral-200 hover:border-accent-300 hover:bg-neutral-50 hover:shadow-sm
+    border-neutral-200 hover:border-accent-300 hover:bg-neutral-50 hover:shadow-xs
   ]
 
   @new_types ~w[google entra okta oidc]
@@ -613,10 +613,10 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp provider_card(assigns) do
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-lg p-4" style="width: 28rem;">
+    <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0 gap-2">
-          <.provider_icon type={@type} class="w-7 h-7 flex-shrink-0" />
+          <.provider_icon type={@type} class="w-7 h-7 shrink-0" />
           <div class="flex flex-col min-w-0">
             <span class="font-medium text-xl truncate" title={@provider.name}>
               {@provider.name}
@@ -626,10 +626,10 @@ defmodule PortalWeb.Settings.Authentication do
             </span>
           </div>
           <%= if Map.has_key?(@provider, :is_default) && @provider.is_default do %>
-            <.badge type="primary" class="flex-shrink-0">DEFAULT</.badge>
+            <.badge type="primary" class="shrink-0">DEFAULT</.badge>
           <% end %>
           <%= if Map.get(@provider, :is_legacy) do %>
-            <.badge type="warning" class="flex-shrink-0">LEGACY</.badge>
+            <.badge type="warning" class="shrink-0">LEGACY</.badge>
           <% end %>
         </div>
         <div class="flex items-center gap-1">
@@ -665,7 +665,7 @@ defmodule PortalWeb.Settings.Authentication do
             <:target>
               <button
                 type="button"
-                class="p-1 text-neutral-500 hover:text-neutral-700 rounded"
+                class="p-1 text-neutral-500 hover:text-neutral-700 rounded-sm"
               >
                 <.icon name="hero-ellipsis-horizontal" class="text-neutral-800 w-5 h-5" />
               </button>
@@ -674,7 +674,7 @@ defmodule PortalWeb.Settings.Authentication do
               <div class="flex flex-col py-1">
                 <.link
                   patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
-                  class="px-4 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2"
+                  class="px-4 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2"
                 >
                   <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                 </.link>
@@ -683,7 +683,7 @@ defmodule PortalWeb.Settings.Authentication do
                   id={"delete-provider-#{@provider.id}"}
                   on_confirm="delete_provider"
                   on_confirm_id={@provider.id}
-                  class="w-full px-4 py-2 text-sm text-red-600 rounded-lg flex items-center gap-2 text-left border-0 bg-transparent"
+                  class="w-full px-4 py-2 text-sm text-red-600 rounded-md flex items-center gap-2 text-left border-0 bg-transparent"
                 >
                   <.icon name="hero-trash" class="w-4 h-4" /> Delete
                   <:dialog_title>Delete Authentication Provider</:dialog_title>
@@ -704,9 +704,9 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
       </div>
 
-      <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
+      <div class="mt-auto bg-white rounded-md p-3 space-y-3 text-sm text-neutral-600">
         <div :if={Map.get(@provider, :issuer)} class="flex items-center gap-2 min-w-0">
-          <.icon name="hero-identification" class="w-5 h-5 flex-shrink-0" title="Issuer" />
+          <.icon name="hero-identification" class="w-5 h-5 shrink-0" title="Issuer" />
           <span class="truncate font-medium" title={@provider.issuer}>{@provider.issuer}</span>
         </div>
 
@@ -969,7 +969,7 @@ defmodule PortalWeb.Settings.Authentication do
               type="text"
               readonly
               value={@redirect_uri}
-              class="block w-full rounded-l-md border-0 py-1.5 text-neutral-900 shadow-sm ring-1 ring-inset ring-neutral-300 bg-neutral-50 cursor-default sm:text-sm sm:leading-6"
+              class="block w-full rounded-l-md border-0 py-1.5 text-neutral-900 shadow-xs ring-1 ring-inset ring-neutral-300 bg-neutral-50 cursor-default sm:text-sm sm:leading-6"
             />
             <button
               type="button"
@@ -991,7 +991,7 @@ defmodule PortalWeb.Settings.Authentication do
 
         <div
           :if={@type in ["entra", "google", "okta", "oidc"] and not @is_legacy}
-          class="p-4 border-2 border-accent-200 bg-accent-50 rounded-lg"
+          class="p-4 border-2 border-accent-200 bg-accent-50 rounded-md"
         >
           <.flash :if={@verification_error} kind={:error}>
             {@verification_error}
@@ -1031,7 +1031,7 @@ defmodule PortalWeb.Settings.Authentication do
     ~H"""
     <div
       :if={verified?(@form)}
-      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-md"
+      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
     >
       <.icon name="hero-check-circle" class="h-5 w-5 mr-2" />
       <span class="font-medium">Verified</span>

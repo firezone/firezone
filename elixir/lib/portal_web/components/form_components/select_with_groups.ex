@@ -204,7 +204,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             "mt-2 pb-1 px-1 space-y-0.5 z-20",
             "w-full bg-white",
             input_border_class(),
-            "border border-gray-200 rounded shadow",
+            "border border-neutral-200 rounded-sm shadow-sm",
             "overflow-hidden"
           ]}
           role="listbox"
@@ -266,7 +266,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                       "text-sm text-neutral-800",
                       "rounded",
                       "hover:bg-neutral-100",
-                      "focus:outline-none focus:bg-neutral-100",
+                      "focus:outline-hidden focus:bg-neutral-100",
                       value != @value && "cursor-pointer",
                       value == @value && "bg-neutral-200 focus:bg-neutral-200 hover:bg-neutral-200"
                     ]}
@@ -335,7 +335,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
 
   def input_border_class,
     do: [
-      "border border-neutral-300 rounded"
+      "border border-neutral-300 rounded-sm"
     ]
 
   def input_has_errors_class,

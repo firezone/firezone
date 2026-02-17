@@ -78,10 +78,8 @@ module.exports = {
     },
   },
   plugins: [
-    require("flowbite/plugin")({
-      charts: true,
-    }),
-    require("@tailwindcss/forms"),
+    // flowbite/plugin and @tailwindcss/forms are now loaded via
+    // @plugin directives in css/main.css (Tailwind v4 CSS-native syntax)
     plugin(({ addVariant }) =>
       addVariant("phx-click-loading", [
         ".phx-click-loading&",

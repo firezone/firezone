@@ -65,7 +65,7 @@ defmodule PortalWeb.SignIn.Email do
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.hero_logo text={@account.name} />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <h1 class="text-xl leading-tight tracking-tight text-neutral-900 sm:text-2xl">
               Please check your email
@@ -185,7 +185,7 @@ defmodule PortalWeb.SignIn.Email do
       class={[
         "w-1/2 m-2 inline-flex items-center justify-center py-2.5 px-5",
         "text-sm text-neutral-900 bg-white ",
-        "rounded border border-neutral-200",
+        "rounded-sm border border-neutral-200",
         "hover:text-neutral-900 hover:bg-neutral-100"
       ]}
     >

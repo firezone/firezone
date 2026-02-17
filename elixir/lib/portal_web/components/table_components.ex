@@ -84,7 +84,7 @@ defmodule PortalWeb.TableComponents do
     <tr
       id={@id}
       class={[
-        "border-b",
+        "border-b border-neutral-200",
         @patch && "hover:cursor-pointer hover:bg-neutral-50"
       ]}
     >

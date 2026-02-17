@@ -134,7 +134,7 @@ defmodule PortalWeb.Settings.Account do
           </tr>
         </thead>
         <tbody>
-          <tr class="border-b">
+          <tr class="border-b border-neutral-200">
             <td class="px-4 py-3">
               Gateway Upgrade Available
             </td>

@@ -108,7 +108,7 @@ defmodule PortalWeb.SignUp do
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.hero_logo />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
+        <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
@@ -154,7 +154,7 @@ defmodule PortalWeb.SignUp do
         <p class="text-neutral-600">Please check your email for sign in instructions.</p>
       </div>
 
-      <div class="bg-neutral-50 rounded-lg p-6">
+      <div class="bg-neutral-50 rounded-md p-6">
         <dl class="space-y-4">
           <div class="flex justify-between items-baseline">
             <dt class="text-sm font-medium text-neutral-600">Account Name</dt>
@@ -175,11 +175,11 @@ defmodule PortalWeb.SignUp do
         </dl>
       </div>
 
-      <div class="bg-accent-50 rounded-lg p-6">
+      <div class="bg-accent-50 rounded-md p-6">
         <p class="text-sm font-semibold text-neutral-900 mb-4">Next Steps</p>
         <ul class="space-y-3">
           <li class="flex items-center gap-3">
-            <span class="flex-shrink-0 w-6 h-6 bg-accent-100 text-accent-600 rounded-full flex items-center justify-center text-xs font-medium">
+            <span class="shrink-0 w-6 h-6 bg-accent-100 text-accent-600 rounded-full flex items-center justify-center text-xs font-medium">
               1
             </span>
             <span class="text-sm text-neutral-700">
@@ -190,7 +190,7 @@ defmodule PortalWeb.SignUp do
             </span>
           </li>
           <li class="flex items-center gap-3">
-            <span class="flex-shrink-0 w-6 h-6 bg-accent-100 text-accent-600 rounded-full flex items-center justify-center text-xs font-medium">
+            <span class="shrink-0 w-6 h-6 bg-accent-100 text-accent-600 rounded-full flex items-center justify-center text-xs font-medium">
               2
             </span>
             <span class="text-sm text-neutral-700">

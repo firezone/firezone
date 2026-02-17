@@ -69,7 +69,7 @@ defmodule PortalWeb.CoreComponents do
       assign(
         assigns,
         :class,
-        "#{assigns.class} font-semibold p-[0.15rem] bg-neutral-100 rounded"
+        "#{assigns.class} font-semibold p-[0.15rem] bg-neutral-100 rounded-sm"
       )
 
     # Important: leave the </code> on the same line as the render_slot call, otherwise there will be
@@ -116,21 +116,17 @@ defmodule PortalWeb.CoreComponents do
         data-copy-to-clipboard-target={"#{@id}-code"}
         class={~w[
           absolute end-1 top-1 text-gray-900 hover:bg-gray-100
-          rounded py-2 px-2.5 inline-flex items-center justify-center
-          bg-white border-gray-200 border h-8
+          rounded-sm py-2 px-2.5 inline-flex items-center justify-center
+          bg-white border-neutral-200 border h-8
         ]}
       >
         <span id={"#{@id}-default-message"} class="inline-flex items-center">
-          <span class="inline-flex items-center">
-            <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
-            <span class="text-xs font-semibold">Copy</span>
-          </span>
+          <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
+          <span class="text-xs font-semibold">Copy</span>
         </span>
-        <span id={"#{@id}-success-message"} class="inline-flex items-center hidden">
-          <span class="inline-flex items-center">
-            <.icon name="hero-check" data-icon class="text-green-700 h-4 w-4 me-1.5" />
-            <span class="text-xs font-semibold text-green-700">Copied</span>
-          </span>
+        <span id={"#{@id}-success-message"} class="hidden items-center">
+          <.icon name="hero-check" data-icon class="text-green-700 h-4 w-4 me-1.5" />
+          <span class="text-xs font-semibold text-green-700">Copied</span>
         </span>
       </button>
     </div>
@@ -365,8 +361,8 @@ defmodule PortalWeb.CoreComponents do
         @base_kind == :info && "text-blue-800 bg-blue-100 border-blue-300",
         @base_kind == :warning && "text-yellow-800 bg-yellow-100 border-yellow-300",
         @base_kind == :error && "text-red-800 bg-red-100 border-red-300",
-        @style == "toast" && "m-0 border rounded shadow-lg",
-        @style == "inline" && "mb-4 rounded border",
+        @style == "toast" && "m-0 border rounded-sm shadow-md",
+        @style == "inline" && "mb-4 rounded-sm border",
         @class
       ]}
       role="alert"
@@ -388,7 +384,7 @@ defmodule PortalWeb.CoreComponents do
         <button
           :if={@style == "toast"}
           type="button"
-          class="text-current opacity-50 hover:opacity-100 flex-shrink-0"
+          class="text-current opacity-50 hover:opacity-100 shrink-0"
           popovertarget={@id}
           popovertargetaction="hide"
           aria-label="Close"
@@ -866,7 +862,7 @@ defmodule PortalWeb.CoreComponents do
     ~H"""
     <span
       class={[
-        "text-xs px-2.5 py-0.5 rounded whitespace-nowrap",
+        "text-xs px-2.5 py-0.5 rounded-sm whitespace-nowrap",
         @colors[@type],
         @class
       ]}
@@ -1019,7 +1015,7 @@ defmodule PortalWeb.CoreComponents do
       absolute z-10 invisible inline-block
       text-sm text-neutral-500 transition-opacity
       duration-50 bg-white border border-neutral-200
-      rounded-lg shadow-sm opacity-0
+      rounded-md shadow-xs opacity-0
       ]}>
       <div class="px-3 py-2">
         {render_slot(@content)}
@@ -1165,7 +1161,7 @@ defmodule PortalWeb.CoreComponents do
   def group_badge(%{group: nil} = assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center rounded border border-primary-300 bg-primary-50 overflow-hidden mr-1",
+      "inline-flex items-center rounded-sm border border-primary-300 bg-primary-50 overflow-hidden mr-1",
       @class
     ]}>
       <span class="inline-flex items-center justify-center py-0.5 px-1.5 text-primary-600 bg-primary-100 border-r border-primary-300">
@@ -1194,7 +1190,7 @@ defmodule PortalWeb.CoreComponents do
     ~H"""
     <span
       class={[
-        "inline-flex items-center rounded border border-neutral-200 overflow-hidden mr-1",
+        "inline-flex items-center rounded-sm border border-neutral-200 overflow-hidden mr-1",
         @class
       ]}
       data-group-id={@group.id}
@@ -1256,7 +1252,7 @@ defmodule PortalWeb.CoreComponents do
         navigate={@navigate_url}
         class={[
           "text-xs truncate min-w-0 py-0.5 text-neutral-900 bg-neutral-50",
-          if(@group.idp_id, do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-2.5")
+          if(@group.idp_id, do: "rounded-r pl-1.5 pr-2.5", else: "rounded-sm px-2.5")
         ]}
       >
         {@group.name}
@@ -1666,10 +1662,10 @@ defmodule PortalWeb.CoreComponents do
       />
       <div class={[
         "relative w-11 h-6 bg-gray-200 rounded-full peer",
-        "peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-300",
+        "peer-focus:outline-hidden peer-focus:ring-4 peer-focus:ring-accent-300",
         "peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full",
         "peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px]",
-        "after:start-[2px] after:bg-white after:border-gray-300 after:border",
+        "after:start-[2px] after:bg-white after:border-neutral-300 after:border",
         "after:rounded-full after:h-5 after:w-5 after:transition-all",
         "peer-checked:bg-accent-600",
         @disabled && "opacity-50 cursor-not-allowed"
