@@ -18,11 +18,13 @@ pub(crate) struct GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
-        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
-            resources.insert(*id);
+    pub(crate) fn allow_ip_for_resource(&mut self, ip: impl Into<IpNetwork>, id: ResourceId) {
+        let ip = ip.into();
+
+        if let Some(resources) = self.allowed_ips.exact_match_mut(ip) {
+            resources.insert(id);
         } else {
-            self.allowed_ips.insert(*ip, HashSet::from([*id]));
+            self.allowed_ips.insert(ip, HashSet::from([id]));
         }
     }
 
@@ -35,6 +37,10 @@ impl GatewayOnClient {
         let new_dst_port = crate::gateway::TUN_DNS_PORT;
 
         SocketAddr::new(new_dst_ip, new_dst_port)
+    }
+
+    pub(crate) fn gateway_tun(&self) -> IpConfig {
+        self.gateway_tun
     }
 }
 

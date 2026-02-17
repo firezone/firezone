@@ -359,10 +359,9 @@ impl GatewayState {
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
-        let peer = self
-            .peers
-            .entry(client)
-            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun, client_props));
+        let peer = self.peers.upsert(client, || {
+            ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
+        });
 
         peer.add_resource(resource.clone(), expires_at);
 
@@ -374,9 +373,6 @@ impl GatewayState {
                 BTreeSet::from_iter(entry.proxy_ips),
             )?;
         }
-
-        self.peers.add_ip(&client, &client_tun.v4.into());
-        self.peers.add_ip(&client, &client_tun.v6.into());
 
         Ok(())
     }

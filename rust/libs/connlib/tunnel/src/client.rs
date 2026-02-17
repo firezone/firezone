@@ -331,8 +331,11 @@ impl ClientState {
                 }
             }
 
-            self.gateways
-                .add_ips_with_resource(gid, proxy_ips.clone(), rid);
+            if let Some(peer) = self.gateways.get_mut(gid) {
+                for ip in proxy_ips {
+                    peer.allow_ip_for_resource(*ip, *rid);
+                }
+            }
         }
     }
 
@@ -642,25 +645,27 @@ impl ClientState {
             .or_default()
             .insert(gid);
 
-        if self.gateways.get(&gid).is_none() {
-            self.gateways
-                .insert(GatewayOnClient::new(gid, gateway_tun), &[]);
-        };
-
-        // Allow looking up the Gateway via its TUN IP.
-        // Resources are not allowed to be in our CG-NAT range, therefore in practise this cannot overlap with resources.
-        self.gateways.add_ip(&gid, &gateway_tun.v4.into());
-        self.gateways.add_ip(&gid, &gateway_tun.v6.into());
+        let peer = self
+            .gateways
+            .upsert(gid, || GatewayOnClient::new(gid, gateway_tun));
 
         // Deal with buffered packets
 
         let (buffered_resource_packets, dns_queries) = pending_flow.into_buffered_packets();
 
+        // If we are making this connection because we want to send a DNS query to the Gateway,
+        // mark it as "used" through the DNS resource ID.
+        if !dns_queries.is_empty() {
+            peer.allow_ip_for_resource(gateway_tun.v4, rid);
+            peer.allow_ip_for_resource(gateway_tun.v6, rid);
+        }
+
         // 1. Buffered packets for resources
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
-                self.gateways
-                    .add_ips_with_resource(&gid, resource.addresses(), &rid);
+                for address in resource.addresses() {
+                    peer.allow_ip_for_resource(address, rid);
+                }
 
                 // For CIDR and Internet resources, we can directly queue the buffered packets.
                 for packet in buffered_resource_packets {
@@ -676,19 +681,6 @@ impl ClientState {
             Resource::Dns(_) => {
                 self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
             }
-        }
-
-        // If we are making this connection because we want to send a DNS query to the Gateway,
-        // mark it as "used" through the DNS resource ID.
-        if !dns_queries.is_empty() {
-            self.gateways.add_ips_with_resource(
-                &gid,
-                [
-                    IpNetwork::from(gateway_tun.v4),
-                    IpNetwork::from(gateway_tun.v6),
-                ],
-                &rid,
-            );
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
@@ -1945,7 +1937,9 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state.gateways.insert(peer(GatewayId::from_u128(30)), &[]);
+        state
+            .gateways
+            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
 
         let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
 
@@ -1971,7 +1965,9 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state.gateways.insert(peer(GatewayId::from_u128(30)), &[]);
+        state
+            .gateways
+            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
         state
             .authorized_resources
             .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
