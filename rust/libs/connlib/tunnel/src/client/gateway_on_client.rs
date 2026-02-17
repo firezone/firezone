@@ -36,10 +36,6 @@ impl GatewayOnClient {
             .filter(|(_, resources)| resources.contains(&id))
         {
             resources.remove(&id);
-
-            if !resources.is_empty() {
-                continue;
-            }
         }
 
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
