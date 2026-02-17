@@ -635,14 +635,8 @@ impl ClientState {
             gid,
             gateway_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
-            snownet::Credentials {
-                username: client_ice.username,
-                password: client_ice.password,
-            },
-            snownet::Credentials {
-                username: gateway_ice.username,
-                password: gateway_ice.password,
-            },
+            client_ice.into(),
+            gateway_ice.into(),
             snownet::IceRole::Controlling,
             now,
         ) {
