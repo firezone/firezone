@@ -44,6 +44,7 @@ public final class Store: ObservableObject {
   let sessionNotification = SessionNotification()
   #if os(macOS)
     let updateChecker: UpdateChecker
+    private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
   private var resourcesTimer: Timer?
@@ -59,10 +60,21 @@ public final class Store: ObservableObject {
   // Track which unreachable resource notifications we have already shown
   private var unreachableResources: Set<UnreachableResource> = []
 
-  public init(configuration: Configuration? = nil) {
+  public convenience init(configuration: Configuration? = nil) {
+    self.init(
+      configuration: configuration,
+      systemExtensionManager: nil
+    )
+  }
+
+  init(
+    configuration: Configuration?,
+    systemExtensionManager: (any SystemExtensionManagerProtocol)?
+  ) {
     self.configuration = configuration ?? Configuration.shared
     #if os(macOS)
       self.updateChecker = UpdateChecker(configuration: configuration)
+      self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
     #endif
 
     // Load GUI-only cached state
@@ -177,18 +189,8 @@ public final class Store: ObservableObject {
       }
     }
 
-    func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws {
-      let manager = SystemExtensionManager()
-
-      self.systemExtensionStatus =
-        try await withCheckedThrowingContinuation {
-          (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-          manager.sendRequest(
-            requestType: requestType,
-            identifier: VPNConfigurationManager.bundleIdentifier,
-            continuation: continuation
-          )
-        }
+    func installSystemExtension() async throws {
+      self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
     }
   #endif
 
@@ -248,7 +250,7 @@ public final class Store: ObservableObject {
       // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
       // So load the system extension status again to determine which view to load.
       if vpnStatus == .invalid {
-        try await systemExtensionRequest(.check)
+        self.systemExtensionStatus = try await systemExtensionManager.check()
       }
     #endif
   }
@@ -259,12 +261,12 @@ public final class Store: ObservableObject {
 
   private func initSystemExtension() async throws {
     #if os(macOS)
-      try await systemExtensionRequest(.check)
+      self.systemExtensionStatus = try await systemExtensionManager.check()
 
       // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
       if systemExtensionStatus == .needsReplacement {
         Log.info("Replacing system extension with current version")
-        try await systemExtensionRequest(.install)
+        self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
         Log.info("System extension replacement completed successfully")
       }
     #endif

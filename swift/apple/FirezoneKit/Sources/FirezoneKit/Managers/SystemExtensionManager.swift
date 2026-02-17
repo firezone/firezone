@@ -51,13 +51,21 @@
     }
   }
 
+  @MainActor
+  protocol SystemExtensionManagerProtocol: Sendable {
+    func check() async throws -> SystemExtensionStatus
+    func tryInstall() async throws -> SystemExtensionStatus
+  }
+
   enum SystemExtensionRequestType {
     case install
     case check
   }
 
   @MainActor
-  class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
+  class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
+    SystemExtensionManagerProtocol
+  {
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
@@ -170,6 +178,28 @@
       withExtension ext: OSSystemExtensionProperties
     ) -> OSSystemExtensionRequest.ReplacementAction {
       return .replace
+    }
+
+    // MARK: - SystemExtensionManagerProtocol
+
+    func check() async throws -> SystemExtensionStatus {
+      try await withCheckedThrowingContinuation { continuation in
+        sendRequest(
+          requestType: .check,
+          identifier: VPNConfigurationManager.bundleIdentifier,
+          continuation: continuation
+        )
+      }
+    }
+
+    func tryInstall() async throws -> SystemExtensionStatus {
+      try await withCheckedThrowingContinuation { continuation in
+        sendRequest(
+          requestType: .install,
+          identifier: VPNConfigurationManager.bundleIdentifier,
+          continuation: continuation
+        )
+      }
     }
 
     private func resume(throwing error: Error) {
