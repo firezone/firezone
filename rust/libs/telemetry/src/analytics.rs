@@ -1,8 +1,5 @@
-use std::str::FromStr;
-
 use anyhow::{Context as _, Result, bail};
 use serde::Serialize;
-use sha2::Digest as _;
 
 use crate::{ApiUrl, Env, Telemetry, posthog};
 
@@ -10,11 +7,7 @@ use crate::{ApiUrl, Env, Telemetry, posthog};
 ///
 /// This purposely does not use the existing telemetry session because we also want to capture sessions from self-hosted users.
 pub fn new_session(maybe_legacy_id: String, api_url: String) {
-    let distinct_id = if uuid::Uuid::from_str(&maybe_legacy_id).is_ok() {
-        hex::encode(sha2::Sha256::digest(&maybe_legacy_id))
-    } else {
-        maybe_legacy_id
-    };
+    let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
     posthog::RUNTIME.spawn(async move {
         if let Err(e) = capture(

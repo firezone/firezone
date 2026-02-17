@@ -104,11 +104,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     handleTokenSave(token)
 
     // The firezone id should be initialized by now
-    guard let id = UserDefaults.standard.string(forKey: "firezoneId")
+    guard let rawId = UserDefaults.standard.string(forKey: "firezoneId")
     else {
       completionHandler(PacketTunnelProviderError.firezoneIdIsInvalid)
       return
     }
+    let firezoneId = FirezoneId(uuid: rawId)
 
     guard let apiURL = legacyConfiguration?["apiURL"] ?? tunnelConfiguration?.apiURL,
       let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
@@ -134,7 +135,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       adapter = try Adapter(
         apiURL: apiURL,
         token: token,
-        deviceId: id,
+        deviceId: firezoneId.uuid,
         logFilter: logFilter,
         accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
@@ -163,7 +164,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // - completionHandler: @Sendable
     // - accountSlug: String (Sendable)
     Task { @Sendable in
-      // Set account slug for telemetry (async)
+      // Set telemetry identifiers (async)
+      await Telemetry.setFirezoneId(firezoneId.encoded)
       await Telemetry.setAccountSlug(accountSlug)
 
       do {
@@ -408,7 +410,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     // 3. Generate and save new one
-    defaults.set(UUID().uuidString, forKey: key)
+    defaults.set(FirezoneId.generate().uuid, forKey: key)
   }
 
   #if os(macOS)
