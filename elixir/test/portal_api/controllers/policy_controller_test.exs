@@ -110,6 +110,19 @@ defmodule PortalAPI.PolicyControllerTest do
                }
              }
     end
+
+    test "returns nil group_id for orphaned policy", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account)
+      policy = Repo.update!(Ecto.Changeset.change(policy, group_id: nil))
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies/#{policy.id}")
+
+      assert json_response(conn, 200)["data"]["group_id"] == nil
+    end
   end
 
   describe "create/2" do
@@ -173,6 +186,33 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp["data"]["group_id"] == attrs["group_id"]
       assert resp["data"]["resource_id"] == attrs["resource_id"]
     end
+
+    test "sets group_idp_id when creating policy for synced group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      synced_group = synced_group_fixture(account: account, idp_id: "synced_group_create_123")
+
+      attrs = %{
+        "group_id" => synced_group.id,
+        "resource_id" => resource.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 201)["data"]["group_id"] == synced_group.id
+
+      assert policy =
+               Repo.get_by(Portal.Policy, group_id: synced_group.id, resource_id: resource.id)
+
+      assert policy.group_idp_id == "synced_group_create_123"
+    end
   end
 
   describe "update/2" do
@@ -209,6 +249,47 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["description"] == attrs["description"]
+    end
+
+    test "updates group_idp_id when changing to a synced group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy = policy_fixture(account: account)
+      synced_group = synced_group_fixture(account: account, idp_id: "synced_group_123")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"group_id" => synced_group.id})
+
+      assert json_response(conn, 200)["data"]["group_id"] == synced_group.id
+
+      assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
+      assert updated_policy.group_idp_id == "synced_group_123"
+    end
+
+    test "clears group_idp_id when changing to a non-synced group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy = policy_fixture(account: account)
+      policy = Repo.update!(Ecto.Changeset.change(policy, group_idp_id: "old_synced_id"))
+      static_group = group_fixture(account: account, type: :static, idp_id: nil)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"group_id" => static_group.id})
+
+      assert json_response(conn, 200)["data"]["group_id"] == static_group.id
+
+      assert updated_policy = Repo.get_by(Portal.Policy, id: policy.id)
+      assert updated_policy.group_idp_id == nil
     end
   end
 

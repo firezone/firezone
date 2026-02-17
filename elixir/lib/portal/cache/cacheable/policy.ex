@@ -28,7 +28,7 @@ defmodule Portal.Cache.Cacheable.Policy do
   @type t :: %__MODULE__{
           id: Portal.Cache.Cacheable.uuid_binary(),
           resource_id: Portal.Cache.Cacheable.uuid_binary(),
-          group_id: Portal.Cache.Cacheable.uuid_binary(),
+          group_id: Portal.Cache.Cacheable.uuid_binary() | nil,
           conditions: [condition()]
         }
 end
