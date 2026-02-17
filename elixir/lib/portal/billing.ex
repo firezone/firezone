@@ -647,7 +647,7 @@ defmodule Portal.Billing do
           where: s.managed_by == :system
         )
         |> Safe.unscoped(:replica)
-        |> Safe.one()
+        |> Safe.one(fallback_to_primary: true)
 
       case result do
         nil -> {:error, :not_found}
@@ -672,7 +672,7 @@ defmodule Portal.Billing do
           where: r.type == :internet
         )
         |> Safe.unscoped(:replica)
-        |> Safe.one()
+        |> Safe.one(fallback_to_primary: true)
 
       case result do
         nil -> {:error, :not_found}
