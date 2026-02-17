@@ -106,6 +106,13 @@ enum IPCClient {
   }
 
   @MainActor
+  static func fetchEncodedFirezoneId(session: NETunnelProviderSession) async throws -> String? {
+    guard let data = try await sendProviderMessage(session: session, message: .getEncodedFirezoneId)
+    else { return nil }
+    return String(data: data, encoding: .utf8)
+  }
+
+  @MainActor
   static func exportLogs(session: NETunnelProviderSession, fd: FileDescriptor) async throws {
     let isCycleStart = try await maybeCycleStart(session)
     defer {

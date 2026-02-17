@@ -6,50 +6,14 @@
 
 import Sentry
 
-/// Actor that manages telemetry state with thread-safe access.
-actor TelemetryState {
-  private var firezoneId: String?
-  private var accountSlug: String?
-
-  func setFirezoneId(_ id: String?) {
-    firezoneId = id
-    updateUser()
-  }
-
-  func setAccountSlug(_ slug: String?) {
-    accountSlug = slug
-    updateUser()
-  }
-
-  private func updateUser() {
-    guard let firezoneId, let accountSlug else {
-      return
-    }
-
-    SentrySDK.configureScope { configuration in
-      // Matches the format we use in rust/telemetry/lib.rs
+public enum Telemetry {
+  /// Sets the Sentry user from the firezone device ID and account slug.
+  public static func setUser(firezoneId: String, accountSlug: String) {
+    SentrySDK.configureScope { scope in
       let user = User(userId: firezoneId)
       user.data = ["account_slug": accountSlug]
-
-      configuration.setUser(user)
+      scope.setUser(user)
     }
-  }
-}
-
-public enum Telemetry {
-  // We can only create a new User object after Sentry is started; not retrieve
-  // the existing one. So we need to collect these fields from various codepaths
-  // during initialization / sign in so we can build a new User object any time
-  // one of these is updated.
-
-  private static let state = TelemetryState()
-
-  public static func setFirezoneId(_ id: String?) async {
-    await state.setFirezoneId(id)
-  }
-
-  public static func setAccountSlug(_ slug: String?) async {
-    await state.setAccountSlug(slug)
   }
 
   public static func start(enableAppHangTracking: Bool = true) {
