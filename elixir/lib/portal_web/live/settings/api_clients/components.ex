@@ -60,7 +60,9 @@ defmodule PortalWeb.Settings.ApiClients.Components do
       </div>
 
       <div>
-        <.code_block id="code-api-token" class="w-full mw-1/2 rounded-sm" phx-no-format><%= @encoded_token %></.code_block>
+        <.code_block id="code-api-token" class="w-full rounded-sm" phx-no-format>
+          <%= @encoded_token %>
+        </.code_block>
         <p class="mt-2 text-xs text-neutral-500">
           Store this in a safe place. <strong>It won't be shown again.</strong>
         </p>

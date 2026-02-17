@@ -100,7 +100,7 @@ defmodule PortalWeb.LiveTable do
     Map.take(filter.params, keys) != %{}
   end
 
-  def datetime_input(assigns) do
+  defp datetime_input(assigns) do
     ~H"""
     <div class={["flex items-center"]}>
       <input
@@ -116,7 +116,7 @@ defmodule PortalWeb.LiveTable do
           "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded-sm",
           "block w-1/2 mr-1",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
-          "focus:outline-hidden focus:border-1 focus:ring-0",
+          "focus:outline-hidden focus:ring-0",
           @field.errors != [] && "border-rose-400"
         ]}
       />
@@ -132,7 +132,7 @@ defmodule PortalWeb.LiveTable do
           "block w-1/2",
           "border-neutral-300",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
-          "focus:outline-hidden focus:border-1 focus:ring-0",
+          "focus:outline-hidden focus:ring-0",
           @field.errors != [] && "border-rose-400"
         ]}
       />

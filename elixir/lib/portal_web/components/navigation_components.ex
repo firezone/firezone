@@ -146,8 +146,7 @@ defmodule PortalWeb.NavigationComponents do
       class={[
         "hidden",
         "z-50 my-4 w-56 text-base list-none bg-white rounded-sm",
-        "divide-y divide-neutral-100 shadow-sm",
-        "rounded-lg"
+        "divide-y divide-neutral-100 shadow-sm"
       ]}
       id={"#{@id}-dropdown"}
     >
