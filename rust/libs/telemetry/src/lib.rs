@@ -31,6 +31,20 @@ mod posthog;
 pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 
+/// Hashes a device ID using SHA256 and returns the hex-encoded result.
+pub fn hash_device_id(id: impl AsRef<[u8]>) -> String {
+    hex::encode(sha2::Sha256::digest(id))
+}
+
+/// Hashes a device ID if it is a legacy UUID, otherwise returns it unchanged.
+pub fn maybe_hash_device_id(id: String) -> String {
+    if uuid::Uuid::from_str(&id).is_ok() {
+        hash_device_id(id)
+    } else {
+        id
+    }
+}
+
 pub struct Dsn {
     public_key: &'static str,
     project_id: u64,
@@ -325,7 +339,7 @@ impl Telemetry {
 /// As a result, this will allow us to always filter the user by the hex-encoded ID.
 fn compute_user(firezone_id: String) -> User {
     if uuid::Uuid::from_str(&firezone_id).is_ok() {
-        let encoded_id = hex::encode(sha2::Sha256::digest(firezone_id.clone()));
+        let encoded_id = hash_device_id(&firezone_id);
 
         return User {
             id: Some(encoded_id),

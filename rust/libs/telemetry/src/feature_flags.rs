@@ -11,7 +11,6 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use sha2::Digest as _;
 use tracing::{Metadata, level_filters::LevelFilter};
 use tracing_subscriber::filter::Targets;
 
@@ -112,11 +111,7 @@ async fn decide(
     maybe_legacy_id: String,
     api_key: String,
 ) -> Result<(FeatureFlagsResponse, FeatureFlagPayloadsResponse)> {
-    let distinct_id = if uuid::Uuid::from_str(&maybe_legacy_id).is_ok() {
-        hex::encode(sha2::Sha256::digest(&maybe_legacy_id))
-    } else {
-        maybe_legacy_id
-    };
+    let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
     let response = posthog::CLIENT
         .as_ref()?

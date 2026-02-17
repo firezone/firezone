@@ -630,6 +630,15 @@ pub fn log_cleanup_default_interval_secs() -> u64 {
     logging::DEFAULT_CLEANUP_INTERVAL.as_secs()
 }
 
+/// Hashes a device ID using SHA256 and returns the hex-encoded result.
+///
+/// This is exposed via FFI so that clients an produce
+/// the exact same hash as connlib, without reimplementing the algorithm.
+#[uniffi::export]
+pub fn hash_device_id(id: String) -> String {
+    telemetry::hash_device_id(id)
+}
+
 impl From<connlib_model::ResourceView> for Resource {
     fn from(resource: connlib_model::ResourceView) -> Self {
         match resource {
