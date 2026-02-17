@@ -510,6 +510,10 @@ impl ClientOnGateway {
     pub fn client_flow_properties(&self) -> flow_tracker::ClientProperties {
         self.flow_properties.clone()
     }
+
+    pub fn client_tun(&self) -> IpConfig {
+        self.client_tun
+    }
 }
 
 #[derive(Debug)]
