@@ -209,7 +209,7 @@ defmodule PortalWeb.SignIn do
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
       href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
     >
-      {render_slot(@icon)} Sign in with <strong>{@provider.name}</strong>
+      {render_slot(@icon)} <span>Sign in with <strong>{@provider.name}</strong></span>
     </.link>
     """
   end
