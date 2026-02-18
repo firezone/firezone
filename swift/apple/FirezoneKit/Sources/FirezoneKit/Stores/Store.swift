@@ -60,27 +60,28 @@ public final class Store: ObservableObject {
   // Track which unreachable resource notifications we have already shown
   private var unreachableResources: Set<UnreachableResource> = []
 
-  public convenience init(configuration: Configuration? = nil) {
-    self.init(
-      configuration: configuration,
-      systemExtensionManager: nil
-    )
-  }
-
-  init(
-    configuration: Configuration?,
-    systemExtensionManager: (any SystemExtensionManagerProtocol)?
-  ) {
-    self.configuration = configuration ?? Configuration.shared
-    #if os(macOS)
+  #if os(macOS)
+    public init(
+      configuration: Configuration? = nil,
+      systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil
+    ) {
+      self.configuration = configuration ?? Configuration.shared
       self.updateChecker = UpdateChecker(configuration: configuration)
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
-    #endif
+      self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
+      self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
+      self.postInit()
+    }
+  #else
+    public init(configuration: Configuration? = nil) {
+      self.configuration = configuration ?? Configuration.shared
+      self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
+      self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
+      self.postInit()
+    }
+  #endif
 
-    // Load GUI-only cached state
-    self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
-    self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
-
+  private func postInit() {
     self.sessionNotification.signInHandler = {
       Task {
         do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }

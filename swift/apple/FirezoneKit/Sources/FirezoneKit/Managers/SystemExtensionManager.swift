@@ -18,7 +18,7 @@
     }
   }
 
-  enum SystemExtensionStatus: Equatable {
+  public enum SystemExtensionStatus: Equatable, Sendable {
     // Not installed or enabled at all
     case needsInstall
 
@@ -52,7 +52,7 @@
   }
 
   @MainActor
-  protocol SystemExtensionManagerProtocol: Sendable {
+  public protocol SystemExtensionManagerProtocol: Sendable {
     func check() async throws -> SystemExtensionStatus
     func tryInstall() async throws -> SystemExtensionStatus
   }
@@ -69,30 +69,6 @@
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
-    func sendRequest(
-      requestType: SystemExtensionRequestType,
-      identifier: String,
-      continuation: CheckedContinuation<SystemExtensionStatus, Error>
-    ) {
-      self.continuation = continuation
-
-      let request =
-        switch requestType {
-        case .install:
-          OSSystemExtensionRequest.activationRequest(
-            forExtensionWithIdentifier: identifier, queue: .main)
-        case .check:
-          OSSystemExtensionRequest.propertiesRequest(
-            forExtensionWithIdentifier: identifier,
-            queue: .main
-          )
-        }
-
-      request.delegate = self
-
-      OSSystemExtensionManager.shared.submitRequest(request)
-    }
-
     // MARK: - OSSystemExtensionRequestDelegate
 
     // Delegate callbacks are non-async and nonisolated.
@@ -104,10 +80,10 @@
     ) {
       Task { @MainActor in
         guard result == .completed else {
-          self.resume(throwing: SystemExtensionError.unknownResult(result))
+          self.resumeErr(throwing: SystemExtensionError.unknownResult(result))
           return
         }
-        self.resume(returning: .installed)
+        self.resumeOk(returning: .installed)
       }
     }
 
@@ -155,7 +131,7 @@
           Log.info("No system extension found - needs install")
         }
 
-        self.resume(returning: status)
+        self.resumeOk(returning: status)
       }
     }
 
@@ -164,7 +140,7 @@
       didFailWithError error: Error
     ) {
       Task { @MainActor in
-        self.resume(throwing: error)
+        self.resumeErr(throwing: error)
       }
     }
 
@@ -202,12 +178,36 @@
       }
     }
 
-    private func resume(throwing error: Error) {
+    private func sendRequest(
+      requestType: SystemExtensionRequestType,
+      identifier: String,
+      continuation: CheckedContinuation<SystemExtensionStatus, Error>
+    ) {
+      self.continuation = continuation
+
+      let request =
+        switch requestType {
+        case .install:
+          OSSystemExtensionRequest.activationRequest(
+            forExtensionWithIdentifier: identifier, queue: .main)
+        case .check:
+          OSSystemExtensionRequest.propertiesRequest(
+            forExtensionWithIdentifier: identifier,
+            queue: .main
+          )
+        }
+
+      request.delegate = self
+
+      OSSystemExtensionManager.shared.submitRequest(request)
+    }
+
+    private func resumeErr(throwing error: Error) {
       self.continuation?.resume(throwing: error)
       self.continuation = nil
     }
 
-    private func resume(returning val: SystemExtensionStatus) {
+    private func resumeOk(returning val: SystemExtensionStatus) {
       self.continuation?.resume(returning: val)
       self.continuation = nil
     }
