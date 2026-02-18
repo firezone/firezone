@@ -15,16 +15,31 @@ pub use platform::{
 };
 
 #[cfg(target_os = "linux")]
-#[path = "known_dirs/linux.rs"]
+#[path = "platform/linux.rs"]
 pub mod platform;
 
 #[cfg(target_os = "macos")]
-#[path = "known_dirs/macos.rs"]
+#[path = "platform/macos.rs"]
 pub mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "known_dirs/windows.rs"]
+#[path = "platform/windows.rs"]
 pub mod platform;
+
+/// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+///
+/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
+/// so if your dev system has Firezone installed by MSI, the notifications will look right.
+/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 pub fn tunnel_log_filter() -> Result<PathBuf> {
     Ok(tunnel_service_config()
@@ -48,10 +63,9 @@ mod tests {
             settings(),
         ] {
             let dir = dir.expect("should have gotten Some(path)");
-            assert!(
-                dir.components()
-                    .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
-            );
+            assert!(dir
+                .components()
+                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
         }
     }
 }

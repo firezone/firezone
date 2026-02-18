@@ -48,7 +48,7 @@ pub enum Source {
 /// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
 /// `/var/lib/dev.firezone.client/config/firezone-id.json`.
 pub fn client_path() -> Result<PathBuf> {
-    let path = crate::known_dirs::tunnel_service_config()
+    let path = known_dirs::tunnel_service_config()
         .context("Failed to compute path for firezone-id file")?
         .join("firezone-id.json");
     Ok(path)

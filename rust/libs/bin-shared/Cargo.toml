@@ -21,6 +21,7 @@ hex = { workspace = true }
 hex-literal = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
+known-dirs = { workspace = true }
 logging = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -36,7 +37,6 @@ uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 atomicwrites = { workspace = true }
-dirs = { workspace = true }
 hmac = { workspace = true }
 libc = { workspace = true }
 netlink-packet-core = { workspace = true }
@@ -51,7 +51,6 @@ zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it wil
 dashmap = { workspace = true }
 ipconfig = "0.3.2"
 itertools = { workspace = true }
-known-folders = { workspace = true }
 ring = "0.17"
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

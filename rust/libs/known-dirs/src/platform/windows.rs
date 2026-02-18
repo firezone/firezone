@@ -1,6 +1,6 @@
 use crate::BUNDLE_ID;
 use anyhow::{Context as _, Result};
-use known_folders::{KnownFolder, get_known_folder_path};
+use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::PathBuf;
 
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client

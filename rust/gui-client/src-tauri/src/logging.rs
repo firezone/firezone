@@ -3,7 +3,6 @@
 pub use ::logging::*;
 
 use anyhow::{Context as _, Result, bail};
-use bin_shared::known_dirs;
 use serde::Serialize;
 use std::{
     fs,
@@ -193,8 +192,8 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) = std::fs::read_to_string(bin_shared::known_dirs::tunnel_log_filter()?)
-        .map(|s| s.trim().to_string())
+    if let Ok(filter) =
+        std::fs::read_to_string(known_dirs::tunnel_log_filter()?).map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }

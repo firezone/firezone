@@ -25,6 +25,6 @@ pub(crate) async fn set() -> Result<()> {
 }
 
 fn path() -> Result<PathBuf> {
-    let session_dir = bin_shared::known_dirs::session().context("Couldn't find session dir")?;
+    let session_dir = known_dirs::session().context("Couldn't find session dir")?;
     Ok(session_dir.join("ran_before.txt"))
 }

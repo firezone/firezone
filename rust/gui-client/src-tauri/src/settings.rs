@@ -2,7 +2,6 @@
 //! advanced settings and code for manipulating diagnostic logs.
 
 use anyhow::{Context as _, Result};
-use bin_shared::known_dirs;
 use connlib_model::ResourceId;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};

@@ -26,7 +26,6 @@ pub use macos as platform;
 
 pub mod device_id;
 pub mod device_info;
-pub mod known_dirs;
 pub mod signals;
 pub mod uptime;
 

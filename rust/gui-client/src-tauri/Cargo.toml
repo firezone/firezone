@@ -35,6 +35,7 @@ humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }
+known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }

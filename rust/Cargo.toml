@@ -27,6 +27,7 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/http-client",
+    "libs/known-dirs",
     "libs/logging",
     "libs/telemetry",
     "relay/ebpf-shared",
@@ -112,6 +113,7 @@ ip_network_table = { version = "0.2.0", default-features = false }
 itertools = "0.14.0"
 jni = "0.21.1"
 keyring-core = "0.7.0"
+known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.0"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }

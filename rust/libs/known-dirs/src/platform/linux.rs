@@ -14,14 +14,13 @@ use std::path::PathBuf;
 /// `BUNDLE_ID` because we need our own subdir
 ///
 /// `config` to match how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
-#[expect(clippy::unnecessary_wraps)] // Signature must match Windows
+#[expect(clippy::unnecessary_wraps)]
 pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(PathBuf::from("/var/lib").join(BUNDLE_ID).join("config"))
 }
 
-#[expect(clippy::unnecessary_wraps)] // Signature must match Windows
+#[expect(clippy::unnecessary_wraps)]
 pub fn tunnel_service_logs() -> Option<PathBuf> {
-    // TODO: This is magic, it must match the systemd file
     Some(PathBuf::from("/var/log").join(BUNDLE_ID))
 }
 
@@ -37,7 +36,7 @@ pub fn logs() -> Option<PathBuf> {
 ///
 /// System-wide runtime directory, typically root-owned.
 /// Used for the tunnel service IPC socket.
-#[expect(clippy::unnecessary_wraps)] // Signature must match other platforms
+#[expect(clippy::unnecessary_wraps)]
 pub fn root_runtime() -> Option<PathBuf> {
     Some(PathBuf::from("/run").join(BUNDLE_ID))
 }
