@@ -855,5 +855,10 @@ mod tests {
         let _ = tokio::time::timeout(Duration::from_secs(1), handle)
             .await
             .unwrap_err(); // We want to timeout because that means the task is still running.
+
+        // We can reconnect another instance.
+        let (_, _) = ipc::connect::<ServerMsg, ClientMsg>(id, ipc::ConnectOptions::default())
+            .await
+            .unwrap();
     }
 }
