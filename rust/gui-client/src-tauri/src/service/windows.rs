@@ -27,6 +27,8 @@ use windows_service::{
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
+use crate::ipc::SocketId;
+
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
@@ -285,6 +287,7 @@ fn run_service(arguments: Vec<OsString>) {
         .block_on(super::ipc_listen(
             DnsControlMethod::Nrpt,
             &log_filter_reloader,
+            SocketId::Tunnel,
             &mut signals,
         ))
         .inspect_err(|e| tracing::error!("Tunnel service failed: {e:#}"));

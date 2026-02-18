@@ -3,6 +3,8 @@ use std::{path::PathBuf, time::Duration};
 use anyhow::{Context as _, Result, bail};
 use bin_shared::{DnsControlMethod, signals};
 
+use crate::ipc::SocketId;
+
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
@@ -23,6 +25,7 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     rt.block_on(super::ipc_listen(
         dns_control,
         &log_filter_reloader,
+        SocketId::Tunnel,
         &mut signals,
     ))
     .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))?;
