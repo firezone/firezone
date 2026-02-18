@@ -108,7 +108,7 @@
     func grantPermission() {
       Task {
         do {
-          try await store.systemExtensionRequest(.install)
+          try await store.installSystemExtension()
           try await store.installVPNConfiguration()
         } catch let error as NSError {
           if error.domain == "NEVPNErrorDomain" && error.code == 5 {
