@@ -412,14 +412,14 @@ defmodule PortalWeb.FormComponents do
       id={@id}
       class={[
         "backdrop:bg-gray-800/75 bg-transparent",
-        "p-4 w-full md:inset-0 max-h-full",
+        "w-full md:inset-0 max-h-full",
         "overflow-y-auto overflow-x-hidden",
         @class
       ]}
       phx-hook="Modal"
       phx-on-close={@on_close}
     >
-      <div class="flex items-center justify-center">
+      <div class="flex items-center justify-center min-h-screen p-4">
         <div
           class="relative bg-white rounded-md shadow-sm w-full max-w-2xl"
           phx-click-away={@on_close}
@@ -514,11 +514,11 @@ defmodule PortalWeb.FormComponents do
       id={"#{@id}_dialog"}
       class={[
         "backdrop:bg-gray-800/75 bg-transparent",
-        "p-4 w-full md:inset-0 max-h-full",
+        "w-full md:inset-0 max-h-full",
         "overflow-y-auto overflow-x-hidden"
       ]}
     >
-      <form method="dialog" class="flex items-center justify-center">
+      <form method="dialog" class="flex items-center justify-center min-h-screen p-4">
         <div class="relative bg-white rounded-md shadow-sm max-w-2xl">
           <div class="flex items-center justify-between p-4 md:p-5 border-b border-neutral-200 rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">
