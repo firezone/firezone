@@ -119,8 +119,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    // Configure telemetry (sync part)
     Telemetry.setEnvironmentOrClose(apiURL)
+    Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
     let enabled = legacyConfiguration?["internetResourceEnabled"]
     let internetResourceEnabled =
@@ -162,12 +162,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Start the adapter asynchronously. The Task only captures Sendable values:
     // - adapter: actor (Sendable)
     // - completionHandler: @Sendable
-    // - accountSlug: String (Sendable)
     Task { @Sendable in
-      // Set telemetry identifiers (async)
-      await Telemetry.setFirezoneId(firezoneId.encoded)
-      await Telemetry.setAccountSlug(accountSlug)
-
       do {
         try await adapter.start()
         completionHandler(nil)
@@ -254,6 +249,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           let connlibState = await adapter.getStateIfVersionDifferentFrom(hash: hash)
           completionHandler?(connlibState)
         }
+      case .getEncodedFirezoneId:
+        guard let rawId = UserDefaults.standard.string(forKey: "firezoneId") else {
+          Log.error(PacketTunnelProviderError.firezoneIdIsInvalid)
+          completionHandler?(nil)
+          return
+        }
+        let encodedId = FirezoneId(uuid: rawId).encoded
+        completionHandler?(encodedId.data(using: .utf8))
       case .clearLogs:
         clearLogs(completionHandler)
       case .getLogFolderSize:

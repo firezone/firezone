@@ -39,8 +39,6 @@ public final class Store: ObservableObject {
     @Published public var menuBarOpenRequested = false
   #endif
 
-  var firezoneId: String?
-
   let sessionNotification = SessionNotification()
   #if os(macOS)
     let updateChecker: UpdateChecker
@@ -215,6 +213,7 @@ public final class Store: ObservableObject {
 
     if newVPNStatus == .connected {
       beginUpdatingResources()
+      fetchAndCacheFirezoneId()
     } else {
       endUpdatingResources()
     }
@@ -326,7 +325,6 @@ public final class Store: ObservableObject {
     UserDefaults.standard.set(actorName, forKey: "actorName")
 
     configuration.accountSlug = accountSlug
-    await Telemetry.setAccountSlug(accountSlug)
 
     try await manager().enable()
 
@@ -362,6 +360,26 @@ public final class Store: ObservableObject {
   }
 
   // MARK: Private functions
+
+  private func fetchAndCacheFirezoneId() {
+    // Skip IPC if we already have a cached Firezone ID for this session
+    if UserDefaults.standard.string(forKey: "encodedFirezoneId") != nil {
+      return
+    }
+
+    Task {
+      do {
+        guard let session = try manager().session(),
+          let firezoneId = try await IPCClient.fetchEncodedFirezoneId(session: session)
+        else { return }
+
+        UserDefaults.standard.set(firezoneId, forKey: "encodedFirezoneId")
+        Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
+      } catch {
+        Log.error(error)
+      }
+    }
+  }
 
   private func markAlertAsShown(_ id: String) {
     shownAlertIds.insert(id)

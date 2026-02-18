@@ -14,6 +14,7 @@ public enum ProviderMessage: Codable {
   case clearLogs
   case getLogFolderSize
   case exportLogs
+  case getEncodedFirezoneId
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -27,6 +28,7 @@ public enum ProviderMessage: Codable {
     case clearLogs
     case getLogFolderSize
     case exportLogs
+    case getEncodedFirezoneId
   }
 
   public init(from decoder: Decoder) throws {
@@ -47,6 +49,8 @@ public enum ProviderMessage: Codable {
       self = .getLogFolderSize
     case .exportLogs:
       self = .exportLogs
+    case .getEncodedFirezoneId:
+      self = .getEncodedFirezoneId
     }
   }
 
@@ -67,6 +71,8 @@ public enum ProviderMessage: Codable {
       try container.encode(MessageType.getLogFolderSize, forKey: .type)
     case .exportLogs:
       try container.encode(MessageType.exportLogs, forKey: .type)
+    case .getEncodedFirezoneId:
+      try container.encode(MessageType.getEncodedFirezoneId, forKey: .type)
     }
   }
 }

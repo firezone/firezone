@@ -352,3 +352,70 @@ struct TunnelConfigurationCodableTests {
     #expect(config.internetResourceEnabled == false)
   }
 }
+
+// MARK: - ProviderMessage Codable Tests
+
+@Suite("ProviderMessage Codable Tests")
+struct ProviderMessageCodableTests {
+  private let encoder = JSONEncoder()
+  private let decoder = JSONDecoder()
+
+  private func roundTrip(_ message: ProviderMessage) throws -> ProviderMessage {
+    let data = try encoder.encode(message)
+    return try decoder.decode(ProviderMessage.self, from: data)
+  }
+
+  @Test("getEncodedFirezoneId round-trips through JSON")
+  func getEncodedFirezoneIdRoundTrip() throws {
+    let decoded = try roundTrip(.getEncodedFirezoneId)
+
+    if case .getEncodedFirezoneId = decoded {
+      // success
+    } else {
+      Issue.record("Expected .getEncodedFirezoneId, got \(decoded)")
+    }
+  }
+
+  @Test("All valueless cases round-trip through JSON")
+  func valuelessCasesRoundTrip() throws {
+    let cases: [ProviderMessage] = [
+      .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
+    ]
+
+    for message in cases {
+      let decoded = try roundTrip(message)
+      let originalData = try encoder.encode(message)
+      let decodedData = try encoder.encode(decoded)
+      #expect(originalData == decodedData, "Round-trip failed for \(message)")
+    }
+  }
+
+  @Test("getState round-trips through JSON")
+  func getStateRoundTrip() throws {
+    let hash = Data([0x01, 0x02, 0x03])
+    let decoded = try roundTrip(.getState(hash))
+
+    if case .getState(let decodedHash) = decoded {
+      #expect(decodedHash == hash)
+    } else {
+      Issue.record("Expected .getState, got \(decoded)")
+    }
+  }
+
+  @Test("setConfiguration round-trips through JSON")
+  func setConfigurationRoundTrip() throws {
+    let config = TunnelConfiguration(
+      apiURL: "wss://api.example.com",
+      accountSlug: "test",
+      logFilter: "info",
+      internetResourceEnabled: true
+    )
+    let decoded = try roundTrip(.setConfiguration(config))
+
+    if case .setConfiguration(let decodedConfig) = decoded {
+      #expect(decodedConfig == config)
+    } else {
+      Issue.record("Expected .setConfiguration, got \(decoded)")
+    }
+  }
+}
