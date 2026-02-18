@@ -47,6 +47,16 @@ pub fn tunnel_log_filter() -> Result<PathBuf> {
         .join("log-filter"))
 }
 
+/// Returns the default path for storing the authentication token
+///
+/// This is used by the headless client to store tokens persistently on disk.
+/// The path varies by platform:
+/// - Linux/macOS: `/etc/dev.firezone.client/token`
+/// - Windows: `C:\ProgramData\dev.firezone.client\token.txt`
+pub fn default_token_path() -> PathBuf {
+    platform::default_token_path()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,9 +73,10 @@ mod tests {
             settings(),
         ] {
             let dir = dir.expect("should have gotten Some(path)");
-            assert!(dir
-                .components()
-                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+            assert!(
+                dir.components()
+                    .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
+            );
         }
     }
 }

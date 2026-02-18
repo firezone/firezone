@@ -1,6 +1,5 @@
 use anyhow::Result;
-use bin_shared::BUNDLE_ID;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // The return value is useful on Linux
 #[expect(clippy::unnecessary_wraps)]
@@ -42,10 +41,6 @@ pub(crate) fn write_token(path: &Path, token: &str) -> Result<()> {
     set_token_permissions(path)?;
 
     Ok(())
-}
-
-pub(crate) fn default_token_path() -> PathBuf {
-    PathBuf::from("/etc").join(BUNDLE_ID).join("token")
 }
 
 // The return value is useful on Linux

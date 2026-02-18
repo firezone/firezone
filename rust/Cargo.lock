@@ -2522,7 +2522,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "ip_network",
- "known-folders",
+ "known-dirs",
  "libc",
  "logging",
  "nix",

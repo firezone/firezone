@@ -137,7 +137,7 @@ struct Cli {
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
     // on disk somewhere anyway.)
-    #[arg(default_value = platform::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
+    #[arg(default_value = known_dirs::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
 
     /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
@@ -757,7 +757,7 @@ mod tests {
     fn sign_in_uses_default_token_path() {
         let actual = Cli::try_parse_from(["firezone-headless-client", "sign-in"]).unwrap();
 
-        assert_eq!(actual.token_path, super::platform::default_token_path());
+        assert_eq!(actual.token_path, known_dirs::default_token_path());
     }
 
     #[test]

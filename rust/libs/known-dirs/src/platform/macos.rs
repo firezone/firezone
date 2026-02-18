@@ -7,7 +7,7 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 /// Path for Tunnel service config that the Tunnel service can write
-#[expect(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)] // Signature must match Windows
 pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(
         PathBuf::from("/Library/Application Support")
@@ -17,7 +17,7 @@ pub fn tunnel_service_config() -> Option<PathBuf> {
 }
 
 /// Path for Tunnel service logs
-#[expect(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)] // Signature must match Windows
 pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(PathBuf::from("/Library/Logs").join(BUNDLE_ID))
 }
@@ -45,7 +45,7 @@ pub fn root_runtime() -> Option<PathBuf> {
 /// Uses the OS-assigned per-user temp directory (`TMPDIR` on macOS) rather than
 /// hardcoding `/tmp` with the `USER` env var, which is unreliable and can be
 /// influenced by the process environment.
-#[expect(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)] // Signature must match other platforms
 pub fn user_runtime() -> Option<PathBuf> {
     Some(std::env::temp_dir().join(BUNDLE_ID))
 }
@@ -68,4 +68,11 @@ pub fn settings() -> Option<PathBuf> {
             .join(BUNDLE_ID)
             .join("config"),
     )
+}
+
+/// Returns the default path for storing the authentication token
+///
+/// e.g. `/etc/dev.firezone.client/token`
+pub fn default_token_path() -> PathBuf {
+    PathBuf::from("/etc").join(BUNDLE_ID).join("token")
 }

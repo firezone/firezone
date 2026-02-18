@@ -1,6 +1,6 @@
 use crate::BUNDLE_ID;
 use anyhow::{Context as _, Result};
-use known_folders::{get_known_folder_path, KnownFolder};
+use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::PathBuf;
 
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
@@ -71,4 +71,14 @@ pub fn session() -> Option<PathBuf> {
 /// See connlib docs for details
 pub fn settings() -> Option<PathBuf> {
     Some(app_local_data_dir().ok()?.join("config"))
+}
+
+/// Returns the default path for storing the authentication token
+///
+/// e.g. `C:\ProgramData\dev.firezone.client\token.txt`
+pub fn default_token_path() -> PathBuf {
+    get_known_folder_path(KnownFolder::ProgramData)
+        .expect("ProgramData folder not found. Is %PROGRAMDATA% set?")
+        .join(BUNDLE_ID)
+        .join("token.txt")
 }
