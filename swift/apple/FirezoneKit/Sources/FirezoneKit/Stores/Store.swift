@@ -39,7 +39,7 @@ public final class Store: ObservableObject {
     @Published public var menuBarOpenRequested = false
   #endif
 
-  let sessionNotification = SessionNotification()
+  private(set) var sessionNotification: SessionNotificationProtocol
   #if os(macOS)
     let updateChecker: UpdateChecker
     private let systemExtensionManager: any SystemExtensionManagerProtocol
@@ -61,18 +61,24 @@ public final class Store: ObservableObject {
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
+      sessionNotification: SessionNotificationProtocol = SessionNotification(),
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil
     ) {
       self.configuration = configuration ?? Configuration.shared
       self.updateChecker = UpdateChecker(configuration: configuration)
+      self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
       self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
   #else
-    public init(configuration: Configuration? = nil) {
+    public init(
+      configuration: Configuration? = nil,
+      sessionNotification: SessionNotificationProtocol = SessionNotification()
+    ) {
       self.configuration = configuration ?? Configuration.shared
+      self.sessionNotification = sessionNotification
       self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
       self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
@@ -236,7 +242,7 @@ public final class Store: ObservableObject {
               // Only show the alert if we haven't shown this specific error before
               Task { @MainActor in
                 if !self.shownAlertIds.contains(id) {
-                  await self.sessionNotification.showSignedOutAlertmacOS(reason)
+                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
                   self.markAlertAsShown(id)
                 }
               }
