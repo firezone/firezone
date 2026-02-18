@@ -338,7 +338,7 @@ pub fn run(
         }
 
         assert_eq!(
-            bin_shared::BUNDLE_ID,
+            crate::BUNDLE_ID,
             app_handle.config().identifier,
             "BUNDLE_ID should match bundle ID in tauri.conf.json"
         );

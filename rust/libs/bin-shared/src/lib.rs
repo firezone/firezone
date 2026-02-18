@@ -29,8 +29,6 @@ pub mod device_info;
 pub mod signals;
 pub mod uptime;
 
-pub use known_dirs::BUNDLE_ID;
-
 pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 // wintun automatically append " Tunnel" to this
