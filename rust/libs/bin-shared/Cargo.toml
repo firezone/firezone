@@ -6,6 +6,9 @@ description = "Firezone-specific modules shared between binaries."
 license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+test = [] # APIs only exposed for testing.
+
 [dependencies]
 anyhow = { workspace = true }
 atomicwrites = { workspace = true }

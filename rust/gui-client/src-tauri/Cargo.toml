@@ -104,6 +104,7 @@ tauri-build = { workspace = true, features = [] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+bin-shared = { workspace = true, features = ["test"] }
 
 [lints]
 workspace = true

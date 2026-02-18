@@ -26,10 +26,11 @@ pub struct DeviceId {
 }
 
 impl DeviceId {
+    #[cfg(feature = "test")]
     pub fn test() -> Self {
         Self {
-            id: String::new(),
-            source: Source::HardwareId,
+            id: "FF85E1A39B9489356C5F5A23134CC80442530B76ED44925FAF787AF4B33ABA94".to_owned(),
+            source: Source::Test,
         }
     }
 }
@@ -38,6 +39,8 @@ impl DeviceId {
 pub enum Source {
     Disk,
     HardwareId,
+    #[cfg(feature = "test")]
+    Test,
 }
 
 /// Returns the path of the randomly-generated Firezone device ID
