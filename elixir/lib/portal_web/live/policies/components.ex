@@ -27,7 +27,8 @@ defmodule PortalWeb.Policies.Components do
     internet: @all_conditions -- [:current_utc_datetime],
     dns: @all_conditions,
     ip: @all_conditions,
-    cidr: @all_conditions
+    cidr: @all_conditions,
+    static_device_pool: @all_conditions
   }
 
   attr(:policy, :map, required: true)

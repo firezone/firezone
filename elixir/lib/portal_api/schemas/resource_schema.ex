@@ -16,8 +16,8 @@ defmodule PortalAPI.Schemas.Resource do
         address_description: %Schema{type: :string, description: "Resource address description"},
         type: %Schema{
           type: :string,
-          description: "Resource type",
-          enum: ["cidr", "ip", "dns"]
+          description: "Resource type. For `static_device_pool`, `address` is not applicable.",
+          enum: ["cidr", "ip", "dns", "static_device_pool"]
         },
         ip_stack: %Schema{
           type: :string,
@@ -30,7 +30,7 @@ defmodule PortalAPI.Schemas.Resource do
           type: :string
         }
       },
-      required: [:name, :type, :site_id],
+      required: [:name, :type],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Prod DB",

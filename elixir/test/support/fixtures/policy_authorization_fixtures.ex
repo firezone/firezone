@@ -153,6 +153,7 @@ defmodule Portal.PolicyAuthorizationFixtures do
         :account_id,
         :policy_id,
         :client_id,
+        :receiving_client_id,
         :gateway_id,
         :resource_id,
         :token_id,

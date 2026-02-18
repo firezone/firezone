@@ -196,6 +196,28 @@ defmodule Portal.ResourceTest do
     end
   end
 
+  describe "changeset/1 static device pool type" do
+    test "sets address and site_id to nil for static device pool type" do
+      changeset =
+        build_changeset(%{
+          type: :static_device_pool,
+          address: "ignored.example.com",
+          site_id: Ecto.UUID.generate()
+        })
+
+      assert get_change(changeset, :address) == nil
+      assert get_change(changeset, :site_id) == nil
+    end
+
+    test "clears existing address and site when changing to static device pool" do
+      existing = %Resource{type: :dns, address: "example.com", site_id: Ecto.UUID.generate()}
+      changeset = build_changeset_on_existing(existing, %{type: :static_device_pool})
+
+      assert get_change(changeset, :address) == nil
+      assert get_change(changeset, :site_id) == nil
+    end
+  end
+
   describe "changeset/1 type change revalidation" do
     test "revalidates address when type changes from cidr to ip" do
       # A valid CIDR but invalid IP

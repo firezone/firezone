@@ -88,7 +88,8 @@ defmodule PortalAPI.Client.ChannelTest do
           search_domain: "example.com"
         },
         features: %{
-          internet_resource: true
+          internet_resource: true,
+          client_to_client: true
         }
       )
 
@@ -474,6 +475,38 @@ defmodule PortalAPI.Client.ChannelTest do
                search_domain: "example.com"
              }
     end
+
+    # TODO: re-enable after verifying this won't break older clients
+    # test "includes authorized_ipv4s from non-expired policy authorizations", %{
+    #   account: account,
+    #   actor: actor,
+    #   client: client,
+    #   subject: subject
+    # } do
+    #   other_actor = actor_fixture(account: account)
+    #   other_client = client_fixture(account: account, actor: other_actor)
+    #
+    #   policy_authorization_fixture(
+    #     account: account,
+    #     actor: actor,
+    #     client: other_client,
+    #     receiving_client_id: client.id,
+    #     expires_at: DateTime.add(DateTime.utc_now(), 60, :second)
+    #   )
+    #
+    #   expired_policy_authorization_fixture(
+    #     account: account,
+    #     actor: actor,
+    #     client: other_client,
+    #     receiving_client_id: client.id
+    #   )
+    #
+    #   _socket = join_channel(client, subject)
+    #
+    #   assert_push "init", %{authorized_ipv4s: authorized_ipv4s}
+    #
+    #   assert authorized_ipv4s == [Portal.Types.INET.to_string(other_client.ipv4_address.address)]
+    # end
 
     test "only sends the same resource once", %{
       account: account,
@@ -4270,8 +4303,25 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "client_device_access_denied", %{ipv4: "100.64.0.2", reason: :disabled}
     end
 
-    test "sends denied with :not_found when target IP is not in presence", %{
-      account: account,
+    test "sends denied with :disabled when account feature is off even if global feature is on",
+         %{
+           account: account,
+           client: client,
+           subject: subject
+         } do
+      enable_feature(:client_to_client)
+      account = update_account(account, %{features: %{client_to_client: false}})
+      subject = %{subject | account: account}
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      push(socket, "request_device_access", %{"ipv4" => "100.64.0.2"})
+
+      assert_push "client_device_access_denied", %{ipv4: "100.64.0.2", reason: :disabled}
+    end
+
+    test "sends denied with :forbidden when target IP is not authorized", %{
       client: client,
       subject: subject
     } do
@@ -4284,14 +4334,14 @@ defmodule PortalAPI.Client.ChannelTest do
       unknown_ip = "100.96.200.1"
       push(socket, "request_device_access", %{"ipv4" => unknown_ip})
 
-      assert_push "client_device_access_denied", %{ipv4: ^unknown_ip, reason: :not_found}
-      refute Presence.Clients.Account.find_by_ipv4(account.id, {100, 96, 200, 1})
+      assert_push "client_device_access_denied", %{ipv4: ^unknown_ip, reason: :forbidden}
     end
 
     test "sends authorized to both clients when target IP is found in presence", %{
       account: account,
       client: client,
-      subject: subject
+      subject: subject,
+      group: group
     } do
       enable_feature(:client_to_client)
 
@@ -4305,6 +4355,9 @@ defmodule PortalAPI.Client.ChannelTest do
           type: :client,
           user_agent: "Linux/24.04 connlib/1.3.0"
         )
+
+      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      policy_fixture(account: account, group: group, resource: resource)
 
       initiating_socket = join_channel(client, subject)
       assert_push "init", _
@@ -4329,6 +4382,58 @@ defmodule PortalAPI.Client.ChannelTest do
         client_id: ^initiating_client_id,
         ice_role: :controlled
       }
+    end
+
+    test "sends denied with :forbidden when target is not in an authorized device pool", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+
+      target_subject =
+        subject_fixture(
+          account: account,
+          actor: target_actor,
+          type: :client,
+          user_agent: "Linux/24.04 connlib/1.3.0"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      _target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :forbidden}
+    end
+
+    test "sends denied with :offline when authorized target is offline", %{
+      account: account,
+      client: client,
+      subject: subject,
+      group: group
+    } do
+      enable_feature(:client_to_client)
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      policy_fixture(account: account, group: group, resource: resource)
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :offline}
     end
 
     test "does not find clients from other accounts", %{
@@ -4359,7 +4464,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(initiating_socket, "request_device_access", %{"ipv4" => other_ip})
 
-      assert_push "client_device_access_denied", %{ipv4: ^other_ip, reason: :not_found}
+      assert_push "client_device_access_denied", %{ipv4: ^other_ip, reason: :forbidden}
     end
   end
 
