@@ -362,6 +362,11 @@ public final class Store: ObservableObject {
   // MARK: Private functions
 
   private func fetchAndCacheFirezoneId() {
+    // Skip IPC if we already have a cached Firezone ID for this session
+    if UserDefaults.standard.string(forKey: "encodedFirezoneId") != nil {
+      return
+    }
+
     Task {
       do {
         guard let session = try manager().session(),

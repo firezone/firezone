@@ -250,7 +250,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           completionHandler?(connlibState)
         }
       case .getEncodedFirezoneId:
-        let rawId = UserDefaults.standard.string(forKey: "firezoneId") ?? ""
+        guard let rawId = UserDefaults.standard.string(forKey: "firezoneId") else {
+          Log.error(PacketTunnelProviderError.firezoneIdIsInvalid)
+          completionHandler?(nil)
+          return
+        }
         let encodedId = FirezoneId(uuid: rawId).encoded
         completionHandler?(encodedId.data(using: .utf8))
       case .clearLogs:
