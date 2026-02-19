@@ -98,9 +98,6 @@ pub struct Node<TId, RId> {
 
     rng: StdRng,
 
-    default_ice_config: IceConfig,
-    idle_ice_config: IceConfig,
-
     /// The number of seconds since the UNIX epoch.
     unix_ts: Duration,
     /// The [`Instant`] at the time we read the UNIX epoch above.
@@ -169,13 +166,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(
-        seed: [u8; 32],
-        now: Instant,
-        unix_ts: Duration,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
-    ) -> Self {
+    pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         let mut rng = StdRng::from_seed(seed);
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
@@ -195,8 +186,6 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
-            default_ice_config,
-            idle_ice_config,
             unix_now: now,
             unix_ts,
         }
@@ -261,6 +250,8 @@ where
         local_creds: Credentials,
         remote_creds: Credentials,
         ice_role: IceRole,
+        default_ice_config: IceConfig,
+        idle_ice_config: IceConfig,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
@@ -330,7 +321,7 @@ where
         }
 
         let mut agent = new_agent(ice_role);
-        self.default_ice_config.apply(&mut agent);
+        default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -352,6 +343,8 @@ where
             preshared_key,
             selected_relay,
             index,
+            default_ice_config,
+            idle_ice_config,
             now,
             now,
         );
@@ -728,6 +721,8 @@ where
         key: x25519::StaticSecret,
         relay: RId,
         index: Index,
+        default_ice_config: IceConfig,
+        idle_ice_config: IceConfig,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -783,8 +778,8 @@ where
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
-            default_ice_config: self.default_ice_config,
-            idle_ice_config: self.idle_ice_config,
+            default_ice_config,
+            idle_ice_config,
         }
     }
 
