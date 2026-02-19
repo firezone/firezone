@@ -408,6 +408,9 @@ public final class Store: ObservableObject {
               do {
                 guard let session = try self.manager().session() else { return }
                 try await self.fetchState(session: session)
+              } catch IPCClient.Error.invalidStatus(.disconnecting) {
+                Log.debug("Network extension is shutting down, stopping `updateState` timer")
+                self.endUpdatingState()
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
