@@ -619,7 +619,6 @@ where
         self.connections.check_relays_available(
             &self.allocations,
             &mut self.pending_events,
-            self.default_ice_config,
             &mut self.rng,
             now,
         );

@@ -12,7 +12,7 @@ use rand::Rng;
 
 use crate::{
     ConnectionStats, Event,
-    node::{Connection, IceConfig, allocations::Allocations, new_ice_candidate_event},
+    node::{Connection, allocations::Allocations},
 };
 
 pub struct Connections<TId, RId> {
@@ -86,7 +86,6 @@ where
         &mut self,
         allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
-        default_ice_config: IceConfig,
         rng: &mut impl Rng,
         now: Instant,
     ) {
@@ -108,15 +107,9 @@ where
 
             c.relay.id = rid;
 
-            for candidate in allocation
-                .current_relay_candidates()
-                .filter_map(|candidate| c.agent.add_local_candidate(candidate).cloned())
-            {
-                pending_events.push_back(new_ice_candidate_event(cid, candidate));
+            for candidate in allocation.current_relay_candidates() {
+                c.add_local_candidate(cid, &candidate, pending_events, now);
             }
-
-            c.state
-                .on_candidate(cid, &mut c.agent, default_ice_config, now);
         }
     }
 
@@ -355,7 +348,10 @@ mod tests {
     use ringbuffer::AllocRingBuffer;
     use str0m::ice::IceAgent;
 
-    use crate::node::{ConnectionState, SelectedRelay};
+    use crate::{
+        IceConfig,
+        node::{ConnectionState, SelectedRelay},
+    };
 
     use super::*;
 
