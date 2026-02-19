@@ -46,7 +46,7 @@ public final class Store: ObservableObject {
   #endif
 
   private var stateTimer: Timer?
-  private var resourceUpdateTask: Task<Void, Never>?
+  private var stateUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
   private var vpnConfigurationManager: VPNConfigurationManager?
@@ -402,8 +402,8 @@ public final class Store: ObservableObject {
     let updateState: @Sendable (Timer) -> Void = { _ in
       Task {
         await MainActor.run {
-          self.resourceUpdateTask?.cancel()
-          self.resourceUpdateTask = Task {
+          self.stateUpdateTask?.cancel()
+          self.stateUpdateTask = Task {
             if !Task.isCancelled {
               do {
                 guard let session = try self.manager().session() else { return }
@@ -437,7 +437,7 @@ public final class Store: ObservableObject {
   }
 
   private func endUpdatingState() {
-    resourceUpdateTask?.cancel()
+    stateUpdateTask?.cancel()
     stateTimer?.invalidate()
     stateTimer = nil
     resourceList = ResourceList.loading
