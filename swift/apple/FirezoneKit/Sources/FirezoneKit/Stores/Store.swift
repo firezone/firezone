@@ -87,9 +87,7 @@ public final class Store: ObservableObject {
 
   private func postInit() {
     self.sessionNotification.signInHandler = {
-      Task {
-        do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
-      }
+      do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
     }
 
     // We monitor for any configuration changes and tell the tunnel service about them

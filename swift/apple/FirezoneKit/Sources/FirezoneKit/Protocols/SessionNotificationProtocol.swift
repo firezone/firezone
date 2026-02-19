@@ -14,7 +14,7 @@ import UserNotifications
 @MainActor
 public protocol SessionNotificationProtocol: AnyObject {
   /// Handler called when user clicks "Sign In" in a session expired notification.
-  var signInHandler: () -> Void { get set }
+  var signInHandler: () async -> Void { get set }
 
   /// Requests notification permissions from the user.
   func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus

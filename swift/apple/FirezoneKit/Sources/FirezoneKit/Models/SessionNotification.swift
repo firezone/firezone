@@ -19,7 +19,7 @@ public enum NotificationIndentifier: String {
 
 @MainActor
 public class SessionNotification: NSObject, SessionNotificationProtocol {
-  public var signInHandler: () -> Void = {}
+  public var signInHandler: () async -> Void = {}
   private let notificationCenter = UNUserNotificationCenter.current()
 
   override public init() {
@@ -131,7 +131,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       let signInClicked = await MacOSAlert.showSignedOutAlert(message)
       if signInClicked {
         Log.log("\(#function): 'Sign In' clicked in notification")
-        signInHandler()
+        await signInHandler()
       }
     }
   #endif
@@ -152,7 +152,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       {
         // User clicked on 'Sign In' in the notification
         Task { @MainActor in
-          signInHandler()
+          await signInHandler()
         }
       }
 
