@@ -180,18 +180,6 @@ where
     }
 }
 
-impl<T> QueueLength for flume::WeakSender<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn queue_length(&self) -> Option<u64> {
-        let sender = self.upgrade()?;
-        let len = sender.len();
-
-        Some(len as u64)
-    }
-}
-
 pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resource {
     Resource::builder_empty()
         .with_detector(Box::new(TelemetryResourceDetector))

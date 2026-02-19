@@ -186,7 +186,7 @@ impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (error_tx, error_rx) = flume::bounded(0);
+        let (error_tx, error_rx) = std::sync::mpsc::sync_channel(0);
 
         tokio::spawn(otel::metrics::periodic_system_queue_length(
             outbound_tx.downgrade(),

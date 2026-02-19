@@ -1351,7 +1351,6 @@ dependencies = [
  "client-shared",
  "connlib-model",
  "dns-types",
- "flume",
  "futures",
  "ip-packet",
  "ip_network",
@@ -2628,18 +2627,6 @@ dependencies = [
  "crc32fast",
  "libz-rs-sys",
  "miniz_oxide",
-]
-
-[[package]]
-name = "flume"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
-dependencies = [
- "futures-core",
- "futures-sink",
- "nanorand",
- "spin",
 ]
 
 [[package]]
@@ -4444,15 +4431,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "nanorand"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a51313c5820b0b02bd422f4b44776fbf47961755c74ce64afc73bfad10226c3"
-dependencies = [
- "getrandom 0.2.16",
 ]
 
 [[package]]
@@ -7116,15 +7094,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-dependencies = [
- "lock_api",
-]
-
-[[package]]
 name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7786,7 +7755,6 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "flume",
  "futures",
  "hex",
  "ip-packet",
@@ -8493,7 +8461,6 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "firezone-relay",
- "flume",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
