@@ -174,6 +174,12 @@ impl SimGateway {
         }
     }
 
+    pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
+        if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
+            self.sut.handle_timeout(now, utc_now)
+        }
+    }
+
     /// Process an IP packet received on the gateway.
     fn on_received_packet(
         &mut self,

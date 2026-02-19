@@ -825,12 +825,13 @@ impl TunnelTest {
             }) {
                 buffered_transmits.push_from(transmit, client, now)
             }
-            client.exec_mut(|c| c.handle_timeout(now));
 
             // Handle the client's `Transmit`s.
             while let Some(transmit) = client.poll_inbox(now) {
                 client.exec_mut(|c| c.receive(transmit, now))
             }
+
+            client.exec_mut(|c| c.handle_timeout(now));
         }
 
         // Handle all gateway `Transmit`s and timeouts.
@@ -849,11 +850,7 @@ impl TunnelTest {
                 buffered_transmits.push_from(reply, gateway, now);
             }
 
-            gateway.exec_mut(|g| {
-                if g.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
-                    g.sut.handle_timeout(now, self.flux_capacitor.now())
-                }
-            });
+            gateway.exec_mut(|g| g.handle_timeout(now, self.flux_capacitor.now()));
         }
 
         // Handle all relay `Transmit`s and timeouts.
