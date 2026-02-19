@@ -741,23 +741,7 @@ impl TunnelTest {
                 });
             }
 
-            for (_, gateway) in self.gateways.iter_mut() {
-                let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(transmit, gateway, now);
-                continue 'outer;
-            }
-
-            for (_, client) in self.clients.iter_mut() {
-                let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(transmit, client, now);
-                continue 'outer;
-            }
+            self.drain_transmits(buffered_transmits, now);
 
             if let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, now);
@@ -782,6 +766,20 @@ impl TunnelTest {
 
         for (transmit, at) in buffered_transmits.drain() {
             self.dispatch_transmit(transmit, at);
+        }
+    }
+
+    fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
+        for (_, gateway) in self.gateways.iter_mut() {
+            while let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
+                buffered_transmits.push_from(transmit, gateway, now);
+            }
+        }
+
+        for (_, client) in self.clients.iter_mut() {
+            while let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) {
+                buffered_transmits.push_from(transmit, client, now);
+            }
         }
     }
 
