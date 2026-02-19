@@ -1024,12 +1024,7 @@ where
                 }
                 allocation::Event::Invalid(candidate) => {
                     for (cid, c) in self.connections.iter_mut() {
-                        remove_local_candidate(
-                            cid,
-                            &mut c.agent,
-                            &candidate,
-                            &mut self.pending_events,
-                        );
+                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events);
                     }
                 }
             }
@@ -1142,35 +1137,8 @@ fn invalidate_allocation_candidates<TId, RId>(
 {
     for (cid, c) in connections.iter_mut() {
         for candidate in allocation.current_relay_candidates() {
-            remove_local_candidate(cid, &mut c.agent, &candidate, pending_events);
+            c.remove_local_candidate(cid, &candidate, pending_events);
         }
-    }
-}
-
-fn remove_local_candidate<TId>(
-    id: TId,
-    agent: &mut IceAgent,
-    candidate: &Candidate,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: fmt::Display,
-{
-    if candidate.kind() != CandidateKind::Relayed {
-        debug_assert_eq!(
-            candidate.kind(),
-            CandidateKind::Relayed,
-            "we should only ever invalidate relay candidates"
-        );
-        return;
-    }
-
-    let was_present = agent.invalidate_candidate(candidate);
-
-    if was_present {
-        pending_events.push_back(Event::InvalidateIceCandidate {
-            connection: id,
-            candidate: candidate.clone(),
-        })
     }
 }
 
@@ -1847,6 +1815,33 @@ where
             allocations,
             now,
         ));
+    }
+
+    fn remove_local_candidate<TId>(
+        &mut self,
+        id: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display,
+    {
+        if candidate.kind() != CandidateKind::Relayed {
+            debug_assert_eq!(
+                candidate.kind(),
+                CandidateKind::Relayed,
+                "we should only ever invalidate relay candidates"
+            );
+            return;
+        }
+
+        let was_present = self.agent.invalidate_candidate(candidate);
+
+        if was_present {
+            pending_events.push_back(Event::InvalidateIceCandidate {
+                connection: id,
+                candidate: candidate.clone(),
+            })
+        }
     }
 
     fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
