@@ -742,16 +742,13 @@ impl TunnelTest {
                 continue 'outer;
             }
 
-            let mut found_transmit = false;
-            for client in self.clients.values_mut() {
-                if let Some(transmit) = client.exec_mut(|sim| sim.sut.poll_transmit()) {
-                    buffered_transmits.push_from(transmit, client, now);
-                    found_transmit = true;
-                    break;
-                }
-            }
-            if found_transmit {
-                continue;
+            for (_, client) in self.clients.iter_mut() {
+                let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(transmit, client, now);
+                continue 'outer;
             }
 
             for client in self.clients.values_mut() {
