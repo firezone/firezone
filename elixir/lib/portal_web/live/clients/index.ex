@@ -152,7 +152,7 @@ defmodule PortalWeb.Clients.Index do
       base_query =
         from(c in Client, as: :clients)
         |> join(
-          :inner_lateral,
+          :left_lateral,
           [clients: c],
           s in subquery(
             from(s in ClientSession,
@@ -206,23 +206,22 @@ defmodule PortalWeb.Clients.Index do
       ]
     end
 
+    # The latest session fields are already loaded by the lateral join in list_clients/2.
+    # We build the struct from those virtual fields to avoid a redundant DB round-trip.
     defp preload_latest_sessions(clients) do
-      account_ids = clients |> Enum.map(& &1.account_id) |> Enum.uniq()
-      client_ids = Enum.map(clients, & &1.id)
-
-      sessions_by_client_id =
-        from(s in ClientSession,
-          where: s.account_id in ^account_ids,
-          where: s.client_id in ^client_ids,
-          distinct: s.client_id,
-          order_by: [asc: s.client_id, desc: s.inserted_at]
-        )
-        |> Safe.unscoped(:replica)
-        |> Safe.all()
-        |> Map.new(&{&1.client_id, &1})
-
       Enum.map(clients, fn client ->
-        %{client | latest_session: Map.get(sessions_by_client_id, client.id)}
+        if client.latest_session_inserted_at do
+          %{
+            client
+            | latest_session: %ClientSession{
+                version: client.latest_session_version,
+                inserted_at: client.latest_session_inserted_at,
+                user_agent: client.latest_session_user_agent
+              }
+          }
+        else
+          client
+        end
       end)
     end
 
