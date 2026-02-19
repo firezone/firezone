@@ -434,20 +434,14 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
+        tracing::debug!(?candidate, "Received candidate from remote");
+
         let Ok(c) = self.connections.get_mut(&cid, now) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
 
-        tracing::debug!(?candidate, "Received candidate from remote");
-
-        c.agent.add_remote_candidate(candidate.clone());
-
-        generate_optimistic_candidates(&mut c.agent);
-
-        // Make sure we move out of idle mode when we add new candidates.
-        c.state
-            .on_candidate(cid, &mut c.agent, self.default_ice_config, now);
+        c.add_remote_candidate(cid, candidate.clone(), now);
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -1852,6 +1846,19 @@ where
             allocations,
             now,
         ));
+    }
+
+    fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        self.agent.add_remote_candidate(candidate);
+
+        generate_optimistic_candidates(&mut self.agent);
+
+        // Make sure we move out of idle mode when we add new candidates.
+        self.state
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
     fn socket(&self) -> Option<PeerSocket> {
