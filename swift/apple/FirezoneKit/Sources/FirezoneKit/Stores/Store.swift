@@ -45,7 +45,7 @@ public final class Store: ObservableObject {
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
-  private var resourcesTimer: Timer?
+  private var stateTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
@@ -392,7 +392,7 @@ public final class Store: ObservableObject {
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
   private func beginUpdatingState() {
-    if self.resourcesTimer != nil {
+    if self.stateTimer != nil {
       // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
       // in a row, which can happen occasionally.
       return
@@ -430,7 +430,7 @@ public final class Store: ObservableObject {
 
     // Schedule the timer on the main runloop
     RunLoop.main.add(timer, forMode: .common)
-    resourcesTimer = timer
+    stateTimer = timer
 
     // We're impatient, make one call now
     updateState(timer)
@@ -438,8 +438,8 @@ public final class Store: ObservableObject {
 
   private func endUpdatingState() {
     resourceUpdateTask?.cancel()
-    resourcesTimer?.invalidate()
-    resourcesTimer = nil
+    stateTimer?.invalidate()
+    stateTimer = nil
     resourceList = ResourceList.loading
     connlibStateHash = Data()
     unreachableResources.removeAll()
