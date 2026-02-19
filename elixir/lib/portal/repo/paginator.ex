@@ -84,8 +84,14 @@ defmodule Portal.Repo.Paginator do
   end
 
   defp default_order_by_cursor_fields(queryable, cursor_fields) do
-    Enum.reduce(cursor_fields, queryable, fn {binding, order, field}, queryable ->
-      order_by(queryable, [{^binding, b}], [{^order, field(b, ^field)}])
+    Enum.reduce(cursor_fields, queryable, fn
+      {binding, :desc, field}, queryable ->
+        # Use NULLS LAST so that records with nil sort fields appear at the end,
+        # which enables keyset pagination through nullable joined fields.
+        order_by(queryable, [{^binding, b}], [{:desc_nulls_last, field(b, ^field)}])
+
+      {binding, order, field}, queryable ->
+        order_by(queryable, [{^binding, b}], [{^order, field(b, ^field)}])
     end)
   end
 
@@ -132,7 +138,32 @@ defmodule Portal.Repo.Paginator do
     )
   end
 
-  # DESC
+  # DESC (NULLS LAST) - nil cursor value
+  # With DESC NULLS LAST ordering, null-field records appear last.
+  # When paginating forward from a null-field record, only other null-field records
+  # with a larger tie-breaker can follow.
+  defp append_by_cursor_dynamic(dynamic, :after, {binding, :desc, field}, nil)
+       when not is_nil(dynamic) do
+    dynamic([{^binding, b}], is_nil(field(b, ^field)) and ^dynamic)
+  end
+
+  # When paginating backward from a null-field record, all non-null records
+  # come before it (they appear earlier with NULLS LAST), plus null-field records
+  # with a smaller tie-breaker.
+  defp append_by_cursor_dynamic(nil, :before, {binding, :desc, field}, nil) do
+    dynamic([{^binding, b}], not is_nil(field(b, ^field)))
+  end
+
+  defp append_by_cursor_dynamic(dynamic, :before, {binding, :desc, field}, nil) do
+    dynamic(
+      [{^binding, b}],
+      not is_nil(field(b, ^field)) or (is_nil(field(b, ^field)) and ^dynamic)
+    )
+  end
+
+  # DESC (NULLS LAST) - non-nil cursor value
+  # With NULLS LAST, null-field records sort after all non-null records, so they
+  # must be included in the "after" condition for any non-null cursor value.
   defp append_by_cursor_dynamic(nil, :before, {binding, :desc, field}, value) do
     dynamic([{^binding, b}], field(b, ^field) > ^value)
   end
@@ -145,13 +176,14 @@ defmodule Portal.Repo.Paginator do
   end
 
   defp append_by_cursor_dynamic(nil, :after, {binding, :desc, field}, value) do
-    dynamic([{^binding, b}], field(b, ^field) < ^value)
+    dynamic([{^binding, b}], field(b, ^field) < ^value or is_nil(field(b, ^field)))
   end
 
   defp append_by_cursor_dynamic(dynamic, :after, {binding, :desc, field}, value) do
     dynamic(
       [{^binding, b}],
-      field(b, ^field) < ^value or (field(b, ^field) == ^value and ^dynamic)
+      field(b, ^field) < ^value or (field(b, ^field) == ^value and ^dynamic) or
+        is_nil(field(b, ^field))
     )
   end
 
@@ -296,10 +328,8 @@ defmodule Portal.Repo.Paginator do
 
   defp decode_cursor(encoded) do
     with {:ok, etf} <- Base.url_decode64(encoded, padding: false),
-         {direction, values} <- Plug.Crypto.non_executable_binary_to_term(etf, [:safe]),
-         values = decompress_cursor(values),
-         false <- Enum.any?(values, &is_nil/1) do
-      {:ok, {direction, values}}
+         {direction, values} <- Plug.Crypto.non_executable_binary_to_term(etf, [:safe]) do
+      {:ok, {direction, decompress_cursor(values)}}
     else
       _ -> {:error, :invalid_cursor}
     end
