@@ -215,10 +215,10 @@ public final class Store: ObservableObject {
     self.vpnStatus = newVPNStatus
 
     if newVPNStatus == .connected {
-      beginUpdatingResources()
+      beginUpdatingState()
       fetchAndCacheFirezoneId()
     } else {
-      endUpdatingResources()
+      endUpdatingState()
     }
 
     #if os(macOS)
@@ -391,7 +391,7 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  private func beginUpdatingResources() {
+  private func beginUpdatingState() {
     if self.resourcesTimer != nil {
       // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
       // in a row, which can happen occasionally.
@@ -436,7 +436,7 @@ public final class Store: ObservableObject {
     updateState(timer)
   }
 
-  private func endUpdatingResources() {
+  private func endUpdatingState() {
     resourceUpdateTask?.cancel()
     resourcesTimer?.invalidate()
     resourcesTimer = nil
