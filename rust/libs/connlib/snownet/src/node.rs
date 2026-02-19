@@ -288,7 +288,7 @@ where
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
             c.state
-                .on_upsert(cid, &mut c.agent, self.default_ice_config, now);
+                .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
 
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<Vec<_>>();
