@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use bin_shared::BUNDLE_ID;
 use std::env;
 use winreg::RegKey;
 use winreg::enums::*;
@@ -66,7 +65,7 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
     // For some reason `on_activated` is FnMut
     let mut tx = Some(tx);
 
-    tauri_winrt_notification::Toast::new(BUNDLE_ID)
+    tauri_winrt_notification::Toast::new(crate::BUNDLE_ID)
         .title(&title)
         .text1(&body)
         .scenario(tauri_winrt_notification::Scenario::Reminder)

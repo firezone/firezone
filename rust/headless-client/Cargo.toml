@@ -19,6 +19,7 @@ futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
+known-dirs = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
@@ -42,9 +43,6 @@ url = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-known-folders = { workspace = true }
 
 [lints]
 workspace = true

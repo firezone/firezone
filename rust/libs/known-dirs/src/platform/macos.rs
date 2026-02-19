@@ -69,3 +69,10 @@ pub fn settings() -> Option<PathBuf> {
             .join("config"),
     )
 }
+
+/// Returns the default path for storing the authentication token
+///
+/// e.g. `/etc/dev.firezone.client/token`
+pub fn default_token_path() -> PathBuf {
+    PathBuf::from("/etc").join(BUNDLE_ID).join("token")
+}

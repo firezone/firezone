@@ -2,18 +2,13 @@
 
 use super::TOKEN_ENV_KEY;
 use anyhow::{Result, bail};
-use bin_shared::BUNDLE_ID;
 use nix::fcntl::AT_FDCWD;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
-
-pub(crate) fn default_token_path() -> PathBuf {
-    PathBuf::from("/etc").join(BUNDLE_ID).join("token")
-}
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     let Ok(stat) = nix::sys::stat::fstatat(AT_FDCWD, path, nix::fcntl::AtFlags::empty()) else {

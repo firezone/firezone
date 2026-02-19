@@ -15,21 +15,38 @@ pub use platform::{
 };
 
 #[cfg(target_os = "linux")]
-#[path = "known_dirs/linux.rs"]
+#[path = "platform/linux.rs"]
 pub mod platform;
 
 #[cfg(target_os = "macos")]
-#[path = "known_dirs/macos.rs"]
+#[path = "platform/macos.rs"]
 pub mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "known_dirs/windows.rs"]
+#[path = "platform/windows.rs"]
 pub mod platform;
+
+/// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+const BUNDLE_ID: &str = "dev.firezone.client";
 
 pub fn tunnel_log_filter() -> Result<PathBuf> {
     Ok(tunnel_service_config()
         .context("Failed to compute `tunnel_service_config` directory")?
         .join("log-filter"))
+}
+
+/// Returns the default path for storing the authentication token
+///
+/// This is used by the headless client to store tokens persistently on disk.
+/// The path varies by platform:
+/// - Linux/macOS: `/etc/dev.firezone.client/token`
+/// - Windows: `C:\ProgramData\dev.firezone.client\token.txt`
+pub fn default_token_path() -> PathBuf {
+    platform::default_token_path()
 }
 
 #[cfg(test)]

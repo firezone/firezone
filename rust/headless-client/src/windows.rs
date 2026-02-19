@@ -5,9 +5,7 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::{Context as _, Result};
-use bin_shared::BUNDLE_ID;
-use known_folders::{KnownFolder, get_known_folder_path};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // The return value is useful on Linux
 #[expect(clippy::unnecessary_wraps)]
@@ -47,13 +45,6 @@ pub(crate) fn write_token(path: &Path, token: &str) -> Result<()> {
     set_token_permissions(path)?;
 
     Ok(())
-}
-
-pub(crate) fn default_token_path() -> PathBuf {
-    get_known_folder_path(KnownFolder::ProgramData)
-        .expect("ProgramData folder not found. Is %PROGRAMDATA% set?")
-        .join(BUNDLE_ID)
-        .join("token.txt")
 }
 
 // Does nothing on Windows. On Linux this notifies systemd that we're ready.

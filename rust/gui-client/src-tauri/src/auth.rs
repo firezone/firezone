@@ -1,7 +1,6 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
 use anyhow::{Context, Result};
-use bin_shared::known_dirs;
 use keyring_core::CredentialStore;
 use logging::err_with_src;
 use rand::{RngCore, thread_rng};

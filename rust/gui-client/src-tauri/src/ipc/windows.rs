@@ -1,6 +1,5 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail};
-use bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
@@ -151,10 +150,10 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 /// Named pipe for an IPC connection
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
-        SocketId::Tunnel => format!("{BUNDLE_ID}_tunnel.ipc"),
-        SocketId::Gui => format!("{BUNDLE_ID}_gui.ipc"),
+        SocketId::Tunnel => format!("{}_tunnel.ipc", crate::BUNDLE_ID),
+        SocketId::Gui => format!("{}_gui.ipc", crate::BUNDLE_ID),
         #[cfg(test)]
-        SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc"),
+        SocketId::Test(id) => format!("{}_test_{id}.ipc", crate::BUNDLE_ID),
     };
     named_pipe_path(&name)
 }

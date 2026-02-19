@@ -3,7 +3,6 @@
 
 use super::FZ_SCHEME;
 use anyhow::{Context, Result};
-use bin_shared::BUNDLE_ID;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -16,7 +15,7 @@ use std::{
 pub fn register(exe: PathBuf) -> Result<()> {
     let exe = exe.display().to_string().replace("\\\\?\\", "");
 
-    set_registry_values(BUNDLE_ID, &exe).context("Can't set Windows Registry values")?;
+    set_registry_values(crate::BUNDLE_ID, &exe).context("Can't set Windows Registry values")?;
 
     Ok(())
 }

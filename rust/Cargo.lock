@@ -844,7 +844,6 @@ dependencies = [
  "bytes",
  "clap",
  "dashmap",
- "dirs",
  "dns-types",
  "futures",
  "gat-lending-iterator",
@@ -856,7 +855,7 @@ dependencies = [
  "ip_network",
  "ipconfig",
  "itertools",
- "known-folders",
+ "known-dirs",
  "libc",
  "logging",
  "netlink-packet-core",
@@ -2456,6 +2455,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "keyring-core",
+ "known-dirs",
  "logging",
  "native-dialog",
  "nix",
@@ -2521,7 +2521,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "ip_network",
- "known-folders",
+ "known-dirs",
  "libc",
  "logging",
  "nix",
@@ -4004,6 +4004,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f668c4c52e5e79879d9ce68b2da363b78a378c4becae267f8cfc26c55db4ed3"
 dependencies = [
  "log",
+]
+
+[[package]]
+name = "known-dirs"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "dirs",
+ "known-folders",
 ]
 
 [[package]]

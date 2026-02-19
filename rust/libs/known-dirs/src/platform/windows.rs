@@ -72,3 +72,13 @@ pub fn session() -> Option<PathBuf> {
 pub fn settings() -> Option<PathBuf> {
     Some(app_local_data_dir().ok()?.join("config"))
 }
+
+/// Returns the default path for storing the authentication token
+///
+/// e.g. `C:\ProgramData\dev.firezone.client\token.txt`
+pub fn default_token_path() -> PathBuf {
+    get_known_folder_path(KnownFolder::ProgramData)
+        .expect("ProgramData folder not found. Is %PROGRAMDATA% set?")
+        .join(BUNDLE_ID)
+        .join("token.txt")
+}

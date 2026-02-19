@@ -110,14 +110,14 @@ impl Server {
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
 fn ipc_path(id: SocketId) -> Result<PathBuf> {
     Ok(match id {
-        SocketId::Tunnel => bin_shared::known_dirs::root_runtime()
+        SocketId::Tunnel => known_dirs::root_runtime()
             .context("Failed to get root runtime directory")?
             .join("tunnel.sock"),
-        SocketId::Gui => bin_shared::known_dirs::user_runtime()
+        SocketId::Gui => known_dirs::user_runtime()
             .context("Failed to get user runtime directory")?
             .join("gui.sock"),
         #[cfg(test)]
-        SocketId::Test(id) => bin_shared::known_dirs::user_runtime()
+        SocketId::Test(id) => known_dirs::user_runtime()
             .context("Failed to get user runtime directory")?
             .join(format!("ipc_test_{id}.sock")),
     })
