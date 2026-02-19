@@ -471,11 +471,7 @@ where
             return;
         };
 
-        c.agent.invalidate_candidate(&candidate);
-        c.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
-
-        c.state
-            .on_candidate(cid, &mut c.agent, self.default_ice_config, now)
+        c.remove_remote_candidate(cid, candidate, now);
     }
 
     /// Decapsulate an incoming packet.
@@ -1864,6 +1860,17 @@ where
         // Make sure we move out of idle mode when we add new candidates.
         self.state
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
+    }
+
+    fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        self.agent.invalidate_candidate(&candidate);
+        self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+
+        self.state
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
     fn socket(&self) -> Option<PeerSocket> {
