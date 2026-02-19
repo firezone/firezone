@@ -274,7 +274,7 @@ where
         // Only if all of those things are the same, will:
         // - ICE be able to establish a connection
         // - boringtun be able to handshake a session
-        if let Ok(c) = self.connections.get_established_mut(&cid, now)
+        if let Ok(c) = self.connections.get_mut(&cid, now)
             && c.agent.local_credentials() == &local_creds
             && c.agent
                 .remote_credentials()
@@ -432,16 +432,16 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        let Some((agent, state, relay)) = self.connections.agent_and_state_mut(cid) else {
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
 
         tracing::debug!(?candidate, "Received candidate from remote");
 
-        agent.add_remote_candidate(candidate.clone());
+        c.agent.add_remote_candidate(candidate.clone());
 
-        generate_optimistic_candidates(agent);
+        generate_optimistic_candidates(&mut c.agent);
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -454,24 +454,26 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut_by_id(&relay) else {
-            tracing::debug!(rid = %relay, "Unknown relay");
+        let Some(allocation) = self.allocations.get_mut_by_id(&c.relay.id) else {
+            tracing::debug!(rid = %c.relay.id, "Unknown relay");
             return;
         };
 
         allocation.bind_channel(candidate.addr(), now);
 
         // Make sure we move out of idle mode when we add new candidates.
-        state.on_candidate(cid, agent, self.default_ice_config, now);
+        c.state
+            .on_candidate(cid, &mut c.agent, self.default_ice_config, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        if let Some((agent, state, _)) = self.connections.agent_and_state_mut(cid) {
-            agent.invalidate_candidate(&candidate);
-            agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+        if let Ok(c) = self.connections.get_mut(&cid, now) {
+            c.agent.invalidate_candidate(&candidate);
+            c.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
 
-            state.on_candidate(cid, agent, self.default_ice_config, now)
+            c.state
+                .on_candidate(cid, &mut c.agent, self.default_ice_config, now)
         }
     }
 
@@ -523,7 +525,7 @@ where
         packet: &IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
-        let conn = self.connections.get_established_mut(&cid, now)?;
+        let conn = self.connections.get_mut(&cid, now)?;
 
         if !conn.agent.controlling() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -908,9 +910,9 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (_, agent) in self.connections.agents_mut() {
-            if agent.accepts_message(&message) {
-                agent.handle_packet(
+        for (_, c) in self.connections.iter_mut() {
+            if c.agent.accepts_message(&message) {
+                c.agent.handle_packet(
                     now,
                     StunPacket {
                         proto: Protocol::Udp,
@@ -1011,20 +1013,26 @@ where
 
             match event {
                 allocation::Event::New(candidate) => {
-                    for (cid, agent, state) in self.connections.agents_and_state_by_relay_mut(rid) {
+                    for (cid, c) in self.connections.iter_mut_by_relay(rid) {
                         if let Some(candidate) =
-                            agent.add_local_candidate(candidate.clone()).cloned()
+                            c.agent.add_local_candidate(candidate.clone()).cloned()
                         {
                             self.pending_events
                                 .push_back(new_ice_candidate_event(cid, candidate));
                         }
 
-                        state.on_candidate(cid, agent, self.default_ice_config, now);
+                        c.state
+                            .on_candidate(cid, &mut c.agent, self.default_ice_config, now);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
-                    for (cid, agent) in self.connections.agents_mut() {
-                        remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
+                    for (cid, c) in self.connections.iter_mut() {
+                        remove_local_candidate(
+                            cid,
+                            &mut c.agent,
+                            &candidate,
+                            &mut self.pending_events,
+                        );
                     }
                 }
             }
@@ -1135,9 +1143,9 @@ fn invalidate_allocation_candidates<TId, RId>(
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    for (cid, agent) in connections.agents_mut() {
+    for (cid, c) in connections.iter_mut() {
         for candidate in allocation.current_relay_candidates() {
-            remove_local_candidate(cid, agent, &candidate, pending_events);
+            remove_local_candidate(cid, &mut c.agent, &candidate, pending_events);
         }
     }
 }
