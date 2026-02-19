@@ -492,6 +492,12 @@ impl TunnelTest {
                 }
             }
             Transition::RestartClient { client_id, key } => {
+                // Cleanly shut down the client.
+                let client = state.clients.get_mut(&client_id).unwrap();
+                client.exec_mut(|c| c.sut.shut_down(now));
+                // Drain transmits so they don't get lost as part of the restart.
+                state.drain_transmits(&mut buffered_transmits, now);
+
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
 
