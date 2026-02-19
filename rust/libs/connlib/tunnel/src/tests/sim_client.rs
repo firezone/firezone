@@ -29,7 +29,7 @@ use std::{
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Simulation state for a particular client.
@@ -65,7 +65,7 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), IpPacket>,
+    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), (Instant, IpPacket)>,
     pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
@@ -74,7 +74,7 @@ pub(crate) struct SimClient {
     /// The received UDP packets, indexed by our custom ICMP payload.
     pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
 
-    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), IpPacket>,
+    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), (Instant, IpPacket)>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
@@ -217,7 +217,7 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
-        self.update_sent_requests(&packet);
+        self.update_sent_requests(&packet, now);
 
         let Some(transmit) = self.sut.handle_tun_input(packet, now) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
@@ -242,12 +242,12 @@ impl SimClient {
         }
     }
 
-    fn update_sent_requests(&mut self, packet: &IpPacket) {
+    fn update_sent_requests(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
             self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
             return;
         }
 
@@ -255,14 +255,14 @@ impl SimClient {
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
             self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
             return;
         }
 
         if let Some(udp) = packet.as_udp() {
             self.sent_udp_requests.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
-                packet.clone(),
+                (now, packet.clone()),
             );
         }
     }
@@ -553,6 +553,9 @@ pub struct RefClient {
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
+
+    #[debug(skip)]
+    connection_resets: Vec<Instant>,
 }
 
 impl RefClient {
@@ -689,16 +692,18 @@ impl RefClient {
         table
     }
 
-    pub(crate) fn restart(&mut self, key: PrivateKey) {
+    pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
 
         self.key = key;
 
-        self.reset_connections();
+        self.reset_connections(now);
         self.readd_all_resources();
     }
 
-    pub(crate) fn reset_connections(&mut self) {
+    pub(crate) fn reset_connections(&mut self, now: Instant) {
+        self.connection_resets.push(now);
+
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
@@ -1341,6 +1346,16 @@ impl RefClient {
             .iter()
             .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
     }
+
+    /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
+    pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
+        let ice_timeout = Duration::from_millis(15250);
+
+        self.connection_resets
+            .iter()
+            .copied()
+            .any(|t| (t..t + ice_timeout).contains(&at))
+    }
 }
 
 // This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
@@ -1415,6 +1430,7 @@ fn ref_client(
                     resources: Default::default(),
                     routes: Default::default(),
                     site_status: Default::default(),
+                    connection_resets: Default::default(),
                 }
             },
         )

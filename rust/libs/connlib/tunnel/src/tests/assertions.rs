@@ -81,7 +81,7 @@ fn assert_packets_properties<T, U>(
     sim_clients: &BTreeMap<ClientId, &SimClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
-    get_sent_requests: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
+    get_sent_requests: impl Fn(&SimClient) -> &BTreeMap<(T, U), (Instant, IpPacket)>,
     get_expected_gateway_handshakes: impl Fn(
         &RefClient,
     )
@@ -202,7 +202,7 @@ fn assert_packets_properties<T, U>(
 
             let ref_client = ref_clients.get(cid).unwrap();
 
-            let Some(client_sent_request) = all_sent_requests.get(&(*cid, (*t, *u))) else {
+            let Some((_, client_sent_request)) = all_sent_requests.get(&(*cid, (*t, *u))) else {
                 tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
                 continue;
             };
@@ -291,49 +291,60 @@ fn assert_packets_properties<T, U>(
         }
     }
 
-    for (client, expected_handshakes) in &all_expected_client_handshakes {
-        let received_requests_for_client = received_requests_by_client.get(client).unwrap();
+    for (dst_client_id, expected_handshakes) in &all_expected_client_handshakes {
+        let mut num_expected_handshakes = expected_handshakes.len();
 
-        for (payload, (cid, _, t, u)) in expected_handshakes {
+        let received_requests_for_client = received_requests_by_client.get(dst_client_id).unwrap();
+
+        for (payload, (src_client_id, _, t, u)) in expected_handshakes {
             let _guard = make_span(*t, *u).entered();
 
-            let ref_client = ref_clients.get(cid).unwrap();
+            let src_ref_client = ref_clients.get(src_client_id).unwrap();
+            let dst_ref_client = ref_clients.get(dst_client_id).unwrap();
 
-            let Some(client_sent_request) = all_sent_requests.get(&(*cid, (*t, *u))) else {
-                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
+            let Some((sent_at, client_sent_request)) =
+                all_sent_requests.get(&(*src_client_id, (*t, *u)))
+            else {
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
                 continue;
             };
             let Some(client_received_reply) =
-                all_received_replies_on_client.get(&(*cid, (*t, *u).reply_to()))
+                all_received_replies_on_client.get(&(*src_client_id, (*t, *u).reply_to()))
             else {
-                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} reply on client");
+                // If the request was made after we reset our connections, missing a reply is okay.
+                if dst_ref_client.has_reset_connections_within_ice_timeout(*sent_at) {
+                    tracing::debug!(target: "assertions", %dst_client_id, "Destination client reset its connections and packet got lost");
+                    num_expected_handshakes -= 1;
+                    continue;
+                }
+
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} reply on client");
                 continue;
             };
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
             let Some((_, client_received_request)) = received_requests_for_client.get(payload)
             else {
-                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
                 continue;
             };
 
             {
-                let expected = ref_client.tunnel_ip_for(client_received_request.source());
+                let expected = src_ref_client.tunnel_ip_for(client_received_request.source());
                 let actual = client_received_request.source();
 
                 if expected != actual {
-                    tracing::error!(target: "assertions", %cid, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
+                    tracing::error!(target: "assertions", %src_client_id, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
                 }
             }
         }
 
-        let num_expected_handshakes = expected_handshakes.len();
         let num_actual_handshakes = received_requests_for_client.len();
 
         if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %client, "❌ Unexpected {packet_protocol} requests");
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %dst_client_id, "❌ Unexpected {packet_protocol} requests");
         } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %client, "✅ Performed the expected {packet_protocol} handshakes");
+            tracing::info!(target: "assertions", %num_expected_handshakes, %dst_client_id, "✅ Performed the expected {packet_protocol} handshakes");
         }
     }
 }

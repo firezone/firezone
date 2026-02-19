@@ -710,7 +710,7 @@ impl ReferenceState {
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
-                    client.reset_connections();
+                    client.reset_connections(now);
                     client.readd_all_resources()
                 });
             }
@@ -731,7 +731,7 @@ impl ReferenceState {
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
                     for client in state.clients.values_mut() {
-                        client.exec_mut(|c| c.reset_connections());
+                        client.exec_mut(|c| c.reset_connections(now));
                     }
                 }
             }
@@ -742,7 +742,7 @@ impl ReferenceState {
             }
             Transition::RestartClient { client_id, key } => {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.restart(*key);
+                    c.restart(*key, now);
                 })
             }
             Transition::UpdateDnsRecords { domain, records } => {
