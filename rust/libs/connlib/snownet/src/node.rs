@@ -1011,15 +1011,7 @@ where
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        if let Some(candidate) =
-                            c.agent.add_local_candidate(candidate.clone()).cloned()
-                        {
-                            self.pending_events
-                                .push_back(new_ice_candidate_event(cid, candidate));
-                        }
-
-                        c.state
-                            .on_candidate(cid, &mut c.agent, self.default_ice_config, now);
+                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1815,6 +1807,23 @@ where
             allocations,
             now,
         ));
+    }
+
+    fn add_local_candidate<TId>(
+        &mut self,
+        cid: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+        now: Instant,
+    ) where
+        TId: fmt::Display + Copy,
+    {
+        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
+            pending_events.push_back(new_ice_candidate_event(cid, candidate));
+        }
+
+        self.state
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
     fn remove_local_candidate<TId>(
