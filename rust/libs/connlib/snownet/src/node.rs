@@ -464,13 +464,18 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        if let Ok(c) = self.connections.get_mut(&cid, now) {
-            c.agent.invalidate_candidate(&candidate);
-            c.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+        tracing::debug!(?candidate, "Received invalidated candidate from remote");
 
-            c.state
-                .on_candidate(cid, &mut c.agent, self.default_ice_config, now)
-        }
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
+            tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
+            return;
+        };
+
+        c.agent.invalidate_candidate(&candidate);
+        c.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+
+        c.state
+            .on_candidate(cid, &mut c.agent, self.default_ice_config, now)
     }
 
     /// Decapsulate an incoming packet.
