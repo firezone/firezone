@@ -733,6 +733,14 @@ impl TunnelTest {
                 continue 'outer;
             }
 
+            for client in self.clients.values_mut() {
+                client.exec_mut(|sim| {
+                    while let Some(packet) = sim.sut.poll_packets() {
+                        sim.on_received_packet(packet)
+                    }
+                });
+            }
+
             for (_, gateway) in self.gateways.iter_mut() {
                 let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
                     continue;
@@ -749,14 +757,6 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now);
                 continue 'outer;
-            }
-
-            for client in self.clients.values_mut() {
-                client.exec_mut(|sim| {
-                    while let Some(packet) = sim.sut.poll_packets() {
-                        sim.on_received_packet(packet)
-                    }
-                });
             }
 
             if let Some(transmit) = buffered_transmits.pop(now) {
