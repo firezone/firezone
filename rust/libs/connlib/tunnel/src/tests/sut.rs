@@ -492,6 +492,12 @@ impl TunnelTest {
                 }
             }
             Transition::RestartClient { client_id, key } => {
+                // Cleanly shut down the client.
+                let client = state.clients.get_mut(&client_id).unwrap();
+                client.exec_mut(|c| c.sut.shut_down(now));
+                // Drain transmits so they don't get lost as part of the restart.
+                state.drain_transmits(&mut buffered_transmits, now);
+
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
 
@@ -733,27 +739,6 @@ impl TunnelTest {
                 continue 'outer;
             }
 
-            for (_, gateway) in self.gateways.iter_mut() {
-                let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(transmit, gateway, now);
-                continue 'outer;
-            }
-
-            let mut found_transmit = false;
-            for client in self.clients.values_mut() {
-                if let Some(transmit) = client.exec_mut(|sim| sim.sut.poll_transmit()) {
-                    buffered_transmits.push_from(transmit, client, now);
-                    found_transmit = true;
-                    break;
-                }
-            }
-            if found_transmit {
-                continue;
-            }
-
             for client in self.clients.values_mut() {
                 client.exec_mut(|sim| {
                     while let Some(packet) = sim.sut.poll_packets() {
@@ -761,6 +746,8 @@ impl TunnelTest {
                     }
                 });
             }
+
+            self.drain_transmits(buffered_transmits, now);
 
             if let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, now);
@@ -785,6 +772,20 @@ impl TunnelTest {
 
         for (transmit, at) in buffered_transmits.drain() {
             self.dispatch_transmit(transmit, at);
+        }
+    }
+
+    fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
+        for (_, gateway) in self.gateways.iter_mut() {
+            while let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
+                buffered_transmits.push_from(transmit, gateway, now);
+            }
+        }
+
+        for (_, client) in self.clients.iter_mut() {
+            while let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) {
+                buffered_transmits.push_from(transmit, client, now);
+            }
         }
     }
 

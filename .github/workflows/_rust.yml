@@ -201,6 +201,8 @@ jobs:
             "Resource is known but its addressability changed"
             "No A / AAAA records for domain"
             "State change \(got new possible\): Disconnected -> Checking"
+            "Initiating graceful shutdown"
+            "Connection closed proactively \(sent goodbye\)"
           )
 
           missing_patterns=$(
