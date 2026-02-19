@@ -7,7 +7,7 @@ pub use connections::UnknownConnection;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
-use crate::node::connection_state::ConnectionState;
+use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
@@ -1296,60 +1296,6 @@ struct SelectedRelay<RId> {
     id: RId,
     /// Whether we've already logged failure to sample a new relay.
     logged_sample_failure: bool,
-}
-
-/// The socket of the peer we are connected to.
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum PeerSocket {
-    PeerToPeer {
-        source: SocketAddr,
-        dest: SocketAddr,
-    },
-    PeerToRelay {
-        source: SocketAddr,
-        dest: SocketAddr,
-    },
-    RelayToPeer {
-        dest: SocketAddr,
-    },
-    RelayToRelay {
-        dest: SocketAddr,
-    },
-}
-
-impl PeerSocket {
-    fn send_from_relay(&self) -> bool {
-        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
-    }
-
-    fn fmt<RId>(&self, relay: RId) -> String
-    where
-        RId: fmt::Display,
-    {
-        match self {
-            PeerSocket::PeerToPeer { source, dest } => {
-                format!("PeerToPeer {{ source: {source}, dest: {dest} }}")
-            }
-            PeerSocket::PeerToRelay { source, dest } => {
-                format!("PeerToRelay {{ source: {source}, dest: {dest} }}")
-            }
-            PeerSocket::RelayToPeer { dest } => {
-                format!("RelayToPeer {{ relay: {relay}, dest: {dest} }}")
-            }
-            PeerSocket::RelayToRelay { dest } => {
-                format!("RelayToRelay {{ relay: {relay}, dest: {dest} }}")
-            }
-        }
-    }
-
-    fn kind(&self) -> &'static str {
-        match self {
-            PeerSocket::PeerToPeer { .. } => "PeerToPeer",
-            PeerSocket::PeerToRelay { .. } => "PeerToRelay",
-            PeerSocket::RelayToPeer { .. } => "RelayToPeer",
-            PeerSocket::RelayToRelay { .. } => "RelayToRelay",
-        }
-    }
 }
 
 impl<RId> Connection<RId>

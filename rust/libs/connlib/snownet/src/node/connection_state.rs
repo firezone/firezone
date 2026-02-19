@@ -1,5 +1,6 @@
 use std::{
     fmt,
+    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -8,7 +9,7 @@ use ringbuffer::AllocRingBuffer;
 use str0m::IceConnectionState;
 use str0m::ice::IceAgent;
 
-use crate::{IceConfig, node::PeerSocket};
+use crate::IceConfig;
 
 #[derive(Debug)]
 pub(crate) enum ConnectionState {
@@ -243,4 +244,58 @@ fn idle_at(last_activity: Instant) -> Instant {
     const MAX_IDLE: Duration = Duration::from_secs(20); // Must be longer than the ICE timeout otherwise we might not detect a failed connection early enough.
 
     last_activity + MAX_IDLE
+}
+
+/// The socket of the peer we are connected to.
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub(crate) enum PeerSocket {
+    PeerToPeer {
+        source: SocketAddr,
+        dest: SocketAddr,
+    },
+    PeerToRelay {
+        source: SocketAddr,
+        dest: SocketAddr,
+    },
+    RelayToPeer {
+        dest: SocketAddr,
+    },
+    RelayToRelay {
+        dest: SocketAddr,
+    },
+}
+
+impl PeerSocket {
+    pub(crate) fn send_from_relay(&self) -> bool {
+        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
+    }
+
+    pub(crate) fn fmt<RId>(&self, relay: RId) -> String
+    where
+        RId: fmt::Display,
+    {
+        match self {
+            PeerSocket::PeerToPeer { source, dest } => {
+                format!("PeerToPeer {{ source: {source}, dest: {dest} }}")
+            }
+            PeerSocket::PeerToRelay { source, dest } => {
+                format!("PeerToRelay {{ source: {source}, dest: {dest} }}")
+            }
+            PeerSocket::RelayToPeer { dest } => {
+                format!("RelayToPeer {{ relay: {relay}, dest: {dest} }}")
+            }
+            PeerSocket::RelayToRelay { dest } => {
+                format!("RelayToRelay {{ relay: {relay}, dest: {dest} }}")
+            }
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            PeerSocket::PeerToPeer { .. } => "PeerToPeer",
+            PeerSocket::PeerToRelay { .. } => "PeerToRelay",
+            PeerSocket::RelayToPeer { .. } => "RelayToPeer",
+            PeerSocket::RelayToRelay { .. } => "RelayToRelay",
+        }
+    }
 }
