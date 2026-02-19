@@ -445,6 +445,10 @@ where
 
         generate_optimistic_candidates(&mut c.agent);
 
+        // Make sure we move out of idle mode when we add new candidates.
+        c.state
+            .on_candidate(cid, &mut c.agent, self.default_ice_config, now);
+
         match candidate.kind() {
             CandidateKind::Host => {
                 // Binding a TURN channel for host candidates does not make sense.
@@ -462,10 +466,6 @@ where
         };
 
         allocation.bind_channel(candidate.addr(), now);
-
-        // Make sure we move out of idle mode when we add new candidates.
-        c.state
-            .on_candidate(cid, &mut c.agent, self.default_ice_config, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
