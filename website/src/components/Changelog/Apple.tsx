@@ -32,6 +32,10 @@ export default function Apple() {
           Notifies the user when a connection to a resource cannot be
           established.
         </ChangeItem>
+        <ChangeItem pull="12248">
+          Re-establishes the WebSocket connection to the control plane if it
+          becomes unresponsive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.13" date={new Date("2026-01-30")}>
         <ChangeItem pull="11901">

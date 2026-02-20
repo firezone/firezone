@@ -27,6 +27,10 @@ export default function Gateway() {
           Fixes an issue where outdated and thus irrelevant candidates were sent
           to Clients, causing connectivity issues in rare situations.
         </ChangeItem>
+        <ChangeItem pull="12248">
+          Re-establishes the WebSocket connection to the control plane if it
+          becomes unresponsive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.0" date={new Date("2026-02-02")}>
         <ChangeItem pull="11771">

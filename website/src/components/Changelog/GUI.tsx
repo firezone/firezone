@@ -19,6 +19,10 @@ export default function GUI({ os }: { os: OS }) {
           Notifies the user when a connection to a resource cannot be
           established.
         </ChangeItem>
+        <ChangeItem pull="12248">
+          Re-establishes the WebSocket connection to the control plane if it
+          becomes unresponsive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-02-02")}>
         <ChangeItem pull="11625">
