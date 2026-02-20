@@ -3115,7 +3115,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "prepare_connection", %{"resource_id" => Ecto.UUID.generate()})
-      assert_reply ref, :error, %{reason: :not_found}, 1000
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when there are no online relays", %{
