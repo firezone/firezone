@@ -411,7 +411,7 @@ where
             ..
         }) = &mut self.state
         else {
-            tracing::debug!(%topic, "Cannot join topic while being disconnected");
+            tracing::debug!(%topic, "Cannot join topic when disconnected");
             return;
         };
 
@@ -435,7 +435,7 @@ where
             ..
         }) = &mut self.state
         else {
-            tracing::debug!(%topic, "Cannot send message while disconnected");
+            tracing::debug!(%topic, "Cannot send message when disconnected");
             return;
         };
 
