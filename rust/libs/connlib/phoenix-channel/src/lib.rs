@@ -562,6 +562,7 @@ where
                         self.backoff = None;
                         self.was_connected = true;
                         self.heartbeat.reset();
+                        self.inflight_heartbeats.clear();
                         self.state = State::Connected(stream);
 
                         // Clear local state.
