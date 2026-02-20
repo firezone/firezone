@@ -82,6 +82,9 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
+/// How long after we reset a site status from "Offline" back to "Unknown".
+const OFFLINE_SITE_STATUS_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
 /// A sans-IO implementation of a Client's functionality.
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
@@ -106,7 +109,7 @@ pub struct ClientState {
     /// An entry in this data structure does _not_ mean that we are connected to the Gateway / site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site, together with the timestamp when we set it.
-    sites_status: HashMap<SiteId, (ResourceStatus, Instant)>,
+    sites_status: BTreeMap<SiteId, (ResourceStatus, Instant)>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<CidrResource>,
@@ -1044,6 +1047,7 @@ impl ClientState {
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
+        self.reset_offline_site_status(now);
 
         self.dns_cache.handle_timeout(now);
     }
@@ -1172,6 +1176,32 @@ impl ClientState {
                 &mut self.node,
                 &mut self.buffered_transmits,
             );
+        }
+    }
+
+    fn reset_offline_site_status(&mut self, now: Instant) {
+        let mut any_reset = false;
+
+        for (site, (status, set_at)) in self.sites_status.iter_mut() {
+            if *status != ResourceStatus::Offline {
+                continue;
+            };
+
+            let offline_for = now.duration_since(*set_at);
+            if offline_for < OFFLINE_SITE_STATUS_TIMEOUT {
+                continue;
+            };
+
+            tracing::debug!(%site, ?offline_for, "Resetting offline site status back to unknown");
+
+            *status = ResourceStatus::Unknown;
+            *set_at = now;
+
+            any_reset = true;
+        }
+
+        if any_reset {
+            self.resource_list.update(self.resources());
         }
     }
 
@@ -1949,6 +1979,53 @@ mod tests {
                 GatewayId::from_u128(40)
             ]
         );
+    }
+
+    #[test]
+    fn offline_site_status_resets_after_5_minutes() {
+        let mut now = Instant::now();
+        let mut state = ClientState::for_test();
+        let site = SiteId::from_u128(1);
+
+        state
+            .sites_status
+            .insert(site, (ResourceStatus::Offline, now));
+
+        now += Duration::from_secs(5 * 60);
+
+        state.handle_timeout(now);
+
+        assert_eq!(
+            state.sites_status.get(&site).unwrap(),
+            &(ResourceStatus::Unknown, now)
+        );
+        assert!(matches!(
+            state.poll_event().unwrap(),
+            ClientEvent::ResourcesChanged { .. }
+        ));
+    }
+
+    #[test]
+    fn no_resource_list_update_if_site_status_does_not_change() {
+        let mut now = Instant::now();
+        let mut state = ClientState::for_test();
+        let site = SiteId::from_u128(1);
+
+        let offline_at = now;
+
+        state
+            .sites_status
+            .insert(site, (ResourceStatus::Offline, offline_at));
+
+        now += Duration::from_secs(60);
+
+        state.handle_timeout(now);
+
+        assert_eq!(
+            state.sites_status.get(&site).unwrap(),
+            &(ResourceStatus::Offline, offline_at)
+        );
+        assert!(state.poll_event().is_none());
     }
 
     impl ClientState {
