@@ -216,7 +216,7 @@ enum InternalError {
     SocketConnection(Vec<(SocketAddr, io::Error)>),
     NoAddresses,
     ConnectTimeout,
-    TooManyUnansweredHearbeats,
+    TooManyUnansweredHeartbeats,
 }
 
 impl InternalError {
@@ -297,7 +297,7 @@ impl fmt::Display for InternalError {
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
             InternalError::NoAddresses => write!(f, "no IP addresses available"),
             InternalError::ConnectTimeout => write!(f, "connection to portal timed out"),
-            InternalError::TooManyUnansweredHearbeats => {
+            InternalError::TooManyUnansweredHeartbeats => {
                 write!(f, "too many heartbeats were unanswered")
             }
         }
@@ -316,7 +316,7 @@ impl std::error::Error for InternalError {
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
             InternalError::ConnectTimeout => None,
-            InternalError::TooManyUnansweredHearbeats => None,
+            InternalError::TooManyUnansweredHeartbeats => None,
         }
     }
 }
@@ -840,7 +840,7 @@ where
             }
 
             if self.inflight_heartbeats.len() > 3 {
-                self.reconnect_on_transient_error(InternalError::TooManyUnansweredHearbeats);
+                self.reconnect_on_transient_error(InternalError::TooManyUnansweredHeartbeats);
                 continue;
             }
 
