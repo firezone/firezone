@@ -632,6 +632,12 @@ impl RefClient {
         }
     }
 
+    pub(crate) fn reset_site_statuses(&mut self) {
+        // Clear all site statuses so expected_resource_status() returns Unknown for all resources.
+        // This mirrors the SITE_STATUS_INACTIVITY_TIMEOUT behavior in ClientState.
+        self.site_status.clear();
+    }
+
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
         self.resources.push(Resource::Internet(resource.clone()));
 

@@ -62,6 +62,8 @@ pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
 
 const DNS_PORT: u16 = 53;
 
+const SITE_STATUS_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
 const LLMNR_PORT: u16 = 5355;
 const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
 const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
@@ -107,6 +109,14 @@ pub struct ClientState {
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, ResourceStatus>,
+
+    /// Tracks the last WireGuard application traffic timestamp per gateway.
+    /// Used to reset Online site status to Unknown after SITE_STATUS_INACTIVITY_TIMEOUT.
+    last_activity_by_gateway: HashMap<GatewayId, Instant>,
+
+    /// Tracks when a site was last explicitly set to Offline by the portal.
+    /// Used to reset Offline site status to Unknown after SITE_STATUS_INACTIVITY_TIMEOUT.
+    last_offline_by_site: HashMap<SiteId, Instant>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<CidrResource>,
@@ -166,6 +176,8 @@ impl ClientState {
             ),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
+            last_activity_by_gateway: Default::default(),
+            last_offline_by_site: Default::default(),
             stub_resolver: StubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
@@ -226,13 +238,14 @@ impl ClientState {
         ResourceStatus::Unknown
     }
 
-    pub fn set_resource_offline(&mut self, id: ResourceId) {
+    pub fn set_resource_offline(&mut self, id: ResourceId, now: Instant) {
         let Some(resource) = self.resources_by_id.get(&id).cloned() else {
             return;
         };
 
         for Site { id, .. } in resource.sites() {
             self.sites_status.insert(*id, ResourceStatus::Offline);
+            self.last_offline_by_site.insert(*id, now);
         }
 
         self.on_connection_failed(id);
@@ -444,6 +457,13 @@ impl ClientState {
             return None;
         }
 
+        // Only real resource packets (not DNS, p2p control, or peer-to-peer gateway traffic) count as activity.
+        // Peer-to-peer packets have a source IP in the Firezone peer space (gateway tunnel IPs).
+        // Resource packets have a source IP of the actual resource (not a peer IP).
+        if !is_peer(packet.source()) {
+            self.on_incoming_from_gateway(gid, now);
+        }
+
         let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
             tracing::error!(%gid, "Couldn't find connection by ID");
 
@@ -549,6 +569,13 @@ impl ClientState {
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
+        // Only resource packets (not peer-to-peer gateway traffic) count as application activity.
+        if !is_peer(dst) {
+            self.last_activity_by_gateway
+                .entry(gid)
+                .and_modify(|t| *t = now);
+        }
+
         Some(transmit)
     }
 
@@ -593,7 +620,7 @@ impl ClientState {
         self.node
             .add_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.drain_node_events(now);
     }
 
     pub fn remove_ice_candidate(
@@ -605,7 +632,7 @@ impl ClientState {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.drain_node_events(now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
@@ -861,6 +888,8 @@ impl ClientState {
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_gateway))]
     fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId) {
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown);
+        // Intentionally keep the `last_activity_by_gateway` entry so that a reconnect can
+        // determine whether the gateway was recently active (quick reconnect) or stale.
         self.gateways.remove(disconnected_gateway);
         self.authorized_resources
             .retain(|_, g| g != disconnected_gateway);
@@ -1034,12 +1063,17 @@ impl ClientState {
                     .map(|instant| (instant, "TCP DNS server")),
             )
             .chain(self.node.poll_timeout())
+            .chain(
+                self.next_site_status_reset()
+                    .map(|instant| (instant, "site status inactivity")),
+            )
             .min_by_key(|(instant, _)| *instant)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.drain_node_events(now);
+        self.reset_stale_site_statuses(now);
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
@@ -1443,7 +1477,7 @@ impl ClientState {
         self.initialise_tcp_dns_server();
     }
 
-    fn drain_node_events(&mut self) {
+    fn drain_node_events(&mut self, now: Instant) {
         let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
         let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
 
@@ -1471,7 +1505,27 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(id) => {
-                    self.update_site_status_by_gateway(&id, ResourceStatus::Online);
+                    match self.last_activity_by_gateway.get(&id).copied() {
+                        None => {
+                            // First ever connection for this gateway: set Online and record time.
+                            tracing::debug!(%id, ?now, "ConnectionEstablished: first connection");
+                            self.update_site_status_by_gateway(&id, ResourceStatus::Online);
+                            self.last_activity_by_gateway.insert(id, now);
+                        }
+                        Some(last) if now.duration_since(last) < SITE_STATUS_INACTIVITY_TIMEOUT => {
+                            // Quick reconnect within the inactivity window: restore Online.
+                            // Do NOT update last_activity — preserve the original app-traffic
+                            // timestamp so the inactivity timer fires at the correct time.
+                            tracing::debug!(%id, ?now, ?last, since=?now.duration_since(last), "ConnectionEstablished: quick reconnect");
+                            self.update_site_status_by_gateway(&id, ResourceStatus::Online);
+                        }
+                        Some(last) => {
+                            // Stale reconnect after the inactivity window has elapsed.
+                            // Status is already Unknown from the inactivity timer; leave it so
+                            // that Online is restored only when real application traffic flows.
+                            tracing::debug!(%id, ?now, ?last, since=?now.duration_since(last), "ConnectionEstablished: stale reconnect, not setting Online");
+                        }
+                    }
                 }
             }
         }
@@ -1506,6 +1560,109 @@ impl ClientState {
 
         self.sites_status.insert(*sid, status);
         self.resource_list.update(self.resources());
+    }
+
+    fn on_incoming_from_gateway(&mut self, gid: GatewayId, now: Instant) {
+        let Some(last_activity) = self.last_activity_by_gateway.get_mut(&gid) else {
+            return; // Not a known/tracked gateway
+        };
+        *last_activity = now;
+
+        // If the site was reset to Unknown by the inactivity timer, restore it to Online.
+        // Receiving a packet proves the gateway is still reachable.
+        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
+        let Some((sid, _)) = self
+            .gateways_by_site
+            .iter()
+            .find(|(_, gateways)| gateways.contains(&gid))
+        else {
+            return;
+        };
+
+        if self.sites_status.get(sid) == Some(&ResourceStatus::Unknown) {
+            self.sites_status.insert(*sid, ResourceStatus::Online);
+            self.resource_list.update(self.resources());
+        }
+    }
+
+    fn next_site_status_reset(&self) -> Option<Instant> {
+        // Earliest Online→Unknown reset (based on application traffic activity)
+        let next_online_reset = self
+            .last_activity_by_gateway
+            .iter()
+            .filter_map(|(gid, &last_activity)| {
+                #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
+                let is_online = self
+                    .gateways_by_site
+                    .iter()
+                    .find(|(_, gids)| gids.contains(gid))
+                    .and_then(|(sid, _)| self.sites_status.get(sid))
+                    .is_some_and(|s| *s == ResourceStatus::Online);
+
+                is_online.then_some(last_activity + SITE_STATUS_INACTIVITY_TIMEOUT)
+            })
+            .min();
+
+        // Earliest Offline→Unknown reset (based on when portal last said offline)
+        let next_offline_reset = self
+            .last_offline_by_site
+            .iter()
+            .filter_map(|(&sid, &last_offline)| {
+                self.sites_status
+                    .get(&sid)
+                    .is_some_and(|s| *s == ResourceStatus::Offline)
+                    .then_some(last_offline + SITE_STATUS_INACTIVITY_TIMEOUT)
+            })
+            .min();
+
+        [next_online_reset, next_offline_reset]
+            .into_iter()
+            .flatten()
+            .min()
+    }
+
+    fn reset_stale_site_statuses(&mut self, now: Instant) {
+        // Reset Online sites whose gateway has been inactive too long.
+        // We check that the site is currently Online before resetting to avoid redundant updates
+        // for gateways that are already Unknown (e.g. due to a prior disconnect).
+        let stale_gateways: Vec<GatewayId> = self
+            .last_activity_by_gateway
+            .iter()
+            .filter_map(|(&gid, &last_activity)| {
+                if now < last_activity + SITE_STATUS_INACTIVITY_TIMEOUT {
+                    return None;
+                }
+                #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
+                let is_online = self
+                    .gateways_by_site
+                    .iter()
+                    .find(|(_, gids)| gids.contains(&gid))
+                    .and_then(|(sid, _)| self.sites_status.get(sid))
+                    .is_some_and(|s| *s == ResourceStatus::Online);
+                is_online.then_some(gid)
+            })
+            .collect();
+
+        for gid in stale_gateways {
+            self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
+        }
+
+        // Reset Offline sites that haven't had an update in a while
+        let stale_sites: Vec<SiteId> = self
+            .last_offline_by_site
+            .iter()
+            .filter_map(|(&sid, &last_offline)| {
+                (now >= last_offline + SITE_STATUS_INACTIVITY_TIMEOUT
+                    && self.sites_status.get(&sid) == Some(&ResourceStatus::Offline))
+                .then_some(sid)
+            })
+            .collect();
+
+        for sid in stale_sites {
+            self.sites_status.insert(sid, ResourceStatus::Unknown);
+            self.last_offline_by_site.remove(&sid);
+            self.resource_list.update(self.resources());
+        }
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -1544,7 +1701,7 @@ impl ClientState {
         self.gateways.clear(); // Clear all state associated with Gateways.
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
-        self.drain_node_events();
+        self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
         // Failed queries get translated into `SERVFAIL` responses to the client.
@@ -1750,7 +1907,7 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
-        self.drain_node_events(); // Ensure all state changes are fully-propagated.
+        self.drain_node_events(now); // Ensure all state changes are fully-propagated.
     }
 
     fn on_not_connected_resource(
@@ -2221,7 +2378,7 @@ mod proptests {
             client_state.add_resource(r.clone(), Instant::now());
         }
 
-        client_state.set_resource_offline(single_site_resource.id());
+        client_state.set_resource_offline(single_site_resource.id(), Instant::now());
 
         assert_eq!(
             client_state.resource_status(&single_site_resource),

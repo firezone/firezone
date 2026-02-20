@@ -705,7 +705,13 @@ impl ReferenceState {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 state.deploy_new_relays(new_relays)
             }
-            Transition::Idle => {}
+            Transition::Idle => {
+                // After 6 minutes idle, all site statuses reset to Unknown,
+                // mirroring the SITE_STATUS_INACTIVITY_TIMEOUT behavior in ClientState.
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| c.reset_site_statuses());
+                }
+            }
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
                     for client in state.clients.values_mut() {
