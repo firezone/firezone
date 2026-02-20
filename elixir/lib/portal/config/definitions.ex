@@ -168,6 +168,19 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Internal port to listen on for the Phoenix server for the `ops` application.
+  """
+  defconfig(:phoenix_http_ops_port, :integer,
+    default: 13_002,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
   Allows to override Bandit HTTP/1.1 server options.
 
   These options are passed to Bandit's `http_1_options`. Keep in mind that changing
@@ -469,6 +482,32 @@ defmodule Portal.Config.Definitions do
   Encryption salt for cookies issued by the Phoenix web application.
   """
   defconfig(:cookie_encryption_salt, :string,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
+  )
+
+  @doc """
+  Secret key base for the ops Phoenix endpoint. Must be different from `secret_key_base`.
+  """
+  defconfig(:ops_secret_key_base, :string,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
+  )
+
+  @doc """
+  Signing salt for Phoenix LiveView connection tokens on the ops endpoint.
+  Must be different from `live_view_signing_salt`.
+  """
+  defconfig(:ops_live_view_signing_salt, :string,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
+  )
+
+  @doc """
+  Signing salt for cookies issued by the ops Phoenix endpoint.
+  Must be different from `cookie_signing_salt`.
+  """
+  defconfig(:ops_cookie_signing_salt, :string,
     sensitive: true,
     changeset: &Portal.Changeset.validate_base64/2
   )

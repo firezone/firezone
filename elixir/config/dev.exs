@@ -3,6 +3,7 @@ import Config
 # Local vars
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
+ops_port = System.get_env("PHOENIX_OPS_PORT", "13002") |> String.to_integer()
 
 # DATABASE_SSL can be "true", "false", or a JSON object with SSL options
 db_ssl =
@@ -172,6 +173,18 @@ config :portal, PortalAPI.Endpoint,
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//10.0.2.2", "//127.0.0.1", "//localhost"],
+  watchers: [],
+  server: true
+
+###############################
+##### PortalOps Endpoint ######
+###############################
+
+config :portal, PortalOps.Endpoint,
+  http: [port: ops_port],
+  debug_errors: true,
+  code_reloader: true,
+  check_origin: ["http://localhost:#{ops_port}"],
   watchers: [],
   server: true
 

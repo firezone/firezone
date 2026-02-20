@@ -1,6 +1,7 @@
 [
   import_deps: [
     :ecto,
+    :oban_web,
     :open_api_spex,
     :phoenix,
     :phoenix_live_view,
