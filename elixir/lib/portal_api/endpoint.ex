@@ -43,7 +43,7 @@ defmodule PortalAPI.Endpoint do
       check_origin: :conn,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
-      timeout: :timer.seconds(307)
+      timeout: :timer.seconds(37)
     ],
     longpoll: false
 
