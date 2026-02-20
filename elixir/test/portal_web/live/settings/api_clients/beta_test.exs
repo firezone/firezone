@@ -68,7 +68,6 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
           rest_api: false,
           traffic_filters: true,
           policy_conditions: true,
-          multi_site_resources: true,
           idp_sync: true
         }
       })

@@ -255,7 +255,6 @@ config :portal, :enabled_features,
   traffic_filters: true,
   sign_up: true,
   policy_conditions: true,
-  multi_site_resources: true,
   rest_api: true,
   internet_resource: true
 

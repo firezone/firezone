@@ -5,7 +5,6 @@ defmodule Portal.Accounts.Features do
   @primary_key false
   embedded_schema do
     field :policy_conditions, :boolean
-    field :multi_site_resources, :boolean
     field :traffic_filters, :boolean
     field :idp_sync, :boolean
     field :rest_api, :boolean
@@ -15,7 +14,6 @@ defmodule Portal.Accounts.Features do
   def changeset(features \\ %__MODULE__{}, attrs) do
     fields = ~w[
       policy_conditions
-      multi_site_resources
       traffic_filters
       idp_sync
       rest_api
