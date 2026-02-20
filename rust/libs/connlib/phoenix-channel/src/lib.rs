@@ -750,6 +750,11 @@ where
 
             // Priority 3: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(Message::Close(frame)))) => {
+                    tracing::debug!(?frame, "Portal sent WebSocket close frame");
+                    self.reconnect_on_transient_error(InternalError::StreamClosed);
+                    continue;
+                }
                 Poll::Ready(Some(Ok(message))) => {
                     let Ok(message) = message.into_text() else {
                         tracing::warn!("Received non-text message from portal");
