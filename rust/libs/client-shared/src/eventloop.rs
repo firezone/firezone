@@ -459,7 +459,9 @@ impl Eventloop {
 
                 match reason {
                     FailReason::Offline => {
-                        tunnel.state_mut().set_resource_offline(resource_id);
+                        tunnel
+                            .state_mut()
+                            .set_resource_offline(resource_id, Instant::now());
 
                         let _ = self
                             .user_notification_sender
