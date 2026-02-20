@@ -37,6 +37,10 @@ export default function Headless({ os }: { os: OS }) {
           for IPv4-only DNS resources if the setting was only changed after a
           DNS query had already been processed.
         </ChangeItem>
+        <ChangeItem pull="12248">
+          Re-establishes the WebSocket connection to the control plane if it
+          becomes unresponsive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.6" date={new Date("2026-01-06")}>
         <ChangeItem pull="11627">

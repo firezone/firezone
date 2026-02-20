@@ -230,6 +230,69 @@ async fn client_clears_local_message_on_connect() {
     server.await.unwrap();
 }
 
+#[tokio::test]
+async fn times_out_after_missed_heartbeats() {
+    use phoenix_channel::PublicKeyParam;
+
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+            }
+            // We send a bogus reply (bad `ref`) to ensure the implementation matches those up correctly.
+            r#"{"topic":"phoenix","event":"heartbeat","payload":{},"ref":1}"# => {
+                r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#
+            }
+            r#"{"topic":"phoenix","event":"heartbeat","payload":{},"ref":2}"# => {
+                r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#
+            }
+            r#"{"topic":"phoenix","event":"heartbeat","payload":{},"ref":3}"# => {
+                r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#
+            }
+            r#"{"topic":"phoenix","event":"heartbeat","payload":{},"ref":4}"# => {
+                r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#
+            }
+            other => panic!("Unexpected message: {other}"),
+        }
+    })
+    .await;
+
+    let mut channel = make_websocket_test_channel(port);
+
+    let client = async {
+        channel.connect(PublicKeyParam([0u8; 32]));
+
+        loop {
+            match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                phoenix_channel::Event::SuccessResponse { .. } => {}
+                phoenix_channel::Event::ErrorResponse { res, .. } => {
+                    panic!("Unexpected error: {res:?}")
+                }
+                phoenix_channel::Event::JoinedRoom { .. } => {}
+                phoenix_channel::Event::HeartbeatSent => {}
+                phoenix_channel::Event::InboundMessage { .. } => {}
+                phoenix_channel::Event::Hiccup { error, .. } => break error,
+                phoenix_channel::Event::NoAddresses => {
+                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+                }
+                phoenix_channel::Event::Closed => {
+                    panic!("Channel closed")
+                }
+            }
+        }
+    };
+
+    let error = client.await;
+    server.abort();
+
+    assert_eq!(
+        format!("{error:#}"),
+        "Reconnecting to portal on transient error: too many heartbeats were unanswered"
+    );
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum InboundMsg {

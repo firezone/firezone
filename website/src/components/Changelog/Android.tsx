@@ -70,6 +70,10 @@ export default function Android() {
           Notifies the user when a connection to a resource cannot be
           established.
         </ChangeItem>
+        <ChangeItem pull="12248">
+          Re-establishes the WebSocket connection to the control plane if it
+          becomes unresponsive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull="11077">

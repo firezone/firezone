@@ -5,7 +5,7 @@ mod login_url;
 
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -25,6 +25,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
+use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
     tungstenite::{Message, handshake::client::Request},
@@ -35,7 +36,6 @@ use url::Url;
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
-use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
@@ -55,6 +55,7 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
     heartbeat: tokio::time::Interval,
+    inflight_heartbeats: HashSet<OutboundRequestId>,
 
     _phantom: PhantomData<TInboundMsg>,
 
@@ -215,6 +216,7 @@ enum InternalError {
     SocketConnection(Vec<(SocketAddr, io::Error)>),
     NoAddresses,
     ConnectTimeout,
+    TooManyUnansweredHeartbeats,
 }
 
 impl InternalError {
@@ -295,6 +297,9 @@ impl fmt::Display for InternalError {
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
             InternalError::NoAddresses => write!(f, "no IP addresses available"),
             InternalError::ConnectTimeout => write!(f, "connection to portal timed out"),
+            InternalError::TooManyUnansweredHeartbeats => {
+                write!(f, "too many heartbeats were unanswered")
+            }
         }
     }
 }
@@ -311,6 +316,7 @@ impl std::error::Error for InternalError {
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
             InternalError::ConnectTimeout => None,
+            InternalError::TooManyUnansweredHeartbeats => None,
         }
     }
 }
@@ -380,7 +386,8 @@ where
             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             pending_heartbeat: None,
             _phantom: PhantomData,
-            heartbeat: tokio::time::interval(Duration::from_secs(30)),
+            heartbeat: tokio::time::interval(Duration::from_secs(10)),
+            inflight_heartbeats: Default::default(),
             next_request_id: 0,
             pending_join_requests: Default::default(),
             login,
@@ -555,6 +562,7 @@ where
                         self.backoff = None;
                         self.was_connected = true;
                         self.heartbeat.reset();
+                        self.inflight_heartbeats.clear();
                         self.state = State::Connected(stream);
 
                         // Clear local state.
@@ -767,6 +775,11 @@ where
                                 }));
                             }
 
+                            if self.inflight_heartbeats.remove(&req_id) {
+                                tracing::trace!(%req_id, "Received heartbeat reply");
+                                continue;
+                            }
+
                             tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
@@ -816,14 +829,20 @@ where
             // Priority 4: Handle heartbeats.
             match self.heartbeat.poll_tick(cx) {
                 Poll::Ready(_) => {
-                    let (_, heartbeat) = self
+                    let (id, heartbeat) = self
                         .make_control_message("phoenix", EgressControlMessage::Heartbeat(Empty {}));
 
                     self.pending_heartbeat = Some(heartbeat);
+                    self.inflight_heartbeats.insert(id);
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
                 Poll::Pending => {}
+            }
+
+            if self.inflight_heartbeats.len() > 3 {
+                self.reconnect_on_transient_error(InternalError::TooManyUnansweredHeartbeats);
+                continue;
             }
 
             return Poll::Pending;
