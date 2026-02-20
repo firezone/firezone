@@ -60,6 +60,8 @@ defmodule PortalWeb.Live.Sites.ShowTest do
     site: site,
     conn: conn
   } do
+    Portal.Config.put_env_override(:portal, :test_pid, self())
+
     gateway =
       gateway_fixture(
         account: account,
@@ -72,20 +74,17 @@ defmodule PortalWeb.Live.Sites.ShowTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/sites/#{site}")
 
-    :ok = Portal.Presence.Gateways.Site.subscribe(site.id)
     gateway_token = gateway_token_fixture(site: site, account: account)
     :ok = Portal.Presence.Gateways.connect(gateway, gateway_token.id)
-    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:sites:" <> _}
+    assert_receive {:live_table_reloaded, "gateways"}
 
-    wait_for(fn ->
-      lv
-      |> element("#gateways")
-      |> render()
-      |> table_to_map()
-      |> with_table_row("instance", gateway.name, fn row ->
-        assert row["version"] =~ "1.3.2"
-        assert row["status"] =~ "Online"
-      end)
+    lv
+    |> element("#gateways")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("instance", gateway.name, fn row ->
+      assert row["version"] =~ "1.3.2"
+      assert row["status"] =~ "Online"
     end)
   end
 end

@@ -71,75 +71,113 @@ defmodule PortalWeb.Actors do
 
   # Show Actor Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    actor = Database.get_actor!(id, socket.assigns.subject)
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+      # Load identities and tokens/sessions based on actor type
+      identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
+      groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
 
-    # Load identities and tokens/sessions based on actor type
-    identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
-    groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
+      # Load tokens and sessions based on actor type
+      {tokens, sessions} =
+        if actor.type == :service_account do
+          {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
+        else
+          # Users have both client tokens and portal sessions
+          {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject),
+           Database.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
+        end
 
-    # Load tokens and sessions based on actor type
-    {tokens, sessions} =
-      if actor.type == :service_account do
-        {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
-      else
-        # Users have both client tokens and portal sessions
-        {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject),
-         Database.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
-      end
+      socket = handle_live_tables_params(socket, params, uri)
 
-    socket = handle_live_tables_params(socket, params, uri)
+      default_tab = if actor.type == :service_account, do: "tokens", else: "identities"
 
-    default_tab = if actor.type == :service_account, do: "tokens", else: "identities"
+      socket =
+        socket
+        |> assign(
+          actor: actor,
+          active_tab: default_tab,
+          identities: identities,
+          groups: groups,
+          tokens: tokens,
+          sessions: sessions
+        )
+        |> assign_new(:created_token, fn -> nil end)
 
-    socket =
-      socket
-      |> assign(
-        actor: actor,
-        active_tab: default_tab,
-        identities: identities,
-        groups: groups,
-        tokens: tokens,
-        sessions: sessions
-      )
-      |> assign_new(:created_token, fn -> nil end)
+      {:noreply, socket}
+    else
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Actor not found")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
 
-    {:noreply, socket}
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You are not authorized to view this actor")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+    end
   end
 
   # Add Token Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :add_token}} = socket) do
-    actor = Database.get_actor!(id, socket.assigns.subject)
-    socket = handle_live_tables_params(socket, params, uri)
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+      socket = handle_live_tables_params(socket, params, uri)
 
-    # Default token expiration to 1 year from now
-    default_expiration =
-      Date.utc_today()
-      |> Date.add(365)
-      |> Date.to_iso8601()
+      # Default token expiration to 1 year from now
+      default_expiration =
+        Date.utc_today()
+        |> Date.add(365)
+        |> Date.to_iso8601()
 
-    {:noreply,
-     assign(socket,
-       actor: actor,
-       token_expiration: default_expiration
-     )}
+      {:noreply,
+       assign(socket,
+         actor: actor,
+         token_expiration: default_expiration
+       )}
+    else
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Actor not found")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You are not authorized to view this actor")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+    end
   end
 
   # Edit Actor Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    actor = Database.get_actor!(id, socket.assigns.subject)
-    socket = handle_live_tables_params(socket, params, uri)
-    changeset = changeset(actor, %{})
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+      socket = handle_live_tables_params(socket, params, uri)
+      changeset = changeset(actor, %{})
 
-    is_last_admin =
-      actor.type == :account_admin_user and
-        not other_enabled_admins_exist?(actor, socket.assigns.subject)
+      is_last_admin =
+        actor.type == :account_admin_user and
+          not other_enabled_admins_exist?(actor, socket.assigns.subject)
 
-    {:noreply,
-     assign(socket,
-       actor: actor,
-       form: to_form(changeset),
-       is_last_admin: is_last_admin
-     )}
+      {:noreply,
+       assign(socket,
+         actor: actor,
+         form: to_form(changeset),
+         is_last_admin: is_last_admin
+       )}
+    else
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Actor not found")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You are not authorized to view this actor")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+    end
   end
 
   # Default handler
@@ -308,80 +346,88 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    actor = Database.get_actor!(id, socket.assigns.subject)
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+      # Prevent users from deleting themselves
+      if actor.id == socket.assigns.subject.actor.id do
+        {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
+      else
+        case Database.delete(actor, socket.assigns.subject) do
+          {:ok, _actor} ->
+            {:noreply, handle_success(socket, "Actor deleted successfully")}
 
-    # Prevent users from deleting themselves
-    if actor.id == socket.assigns.subject.actor.id do
-      {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
-    else
-      case Database.delete(actor, socket.assigns.subject) do
-        {:ok, _actor} ->
-          {:noreply, handle_success(socket, "Actor deleted successfully")}
+          {:error, :unauthorized} ->
+            {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
 
-        {:error, :unauthorized} ->
-          {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
-
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to delete actor")}
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to delete actor")}
+        end
       end
+    else
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Actor not found")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
     end
   end
 
   def handle_event("disable", %{"id" => id}, socket) do
-    actor = Database.get_actor!(id, socket.assigns.subject)
-
-    # Prevent users from disabling themselves
-    if actor.id == socket.assigns.subject.actor.id do
-      {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
-    else
-      case actor
-           |> change()
-           |> put_change(:disabled_at, DateTime.utc_now())
-           |> Database.update(socket.assigns.subject) do
-        {:ok, updated_actor} ->
-          socket = reload_live_table!(socket, "actors")
-
-          # If the modal is open for this actor, update it
-          socket =
-            if Map.get(socket.assigns, :actor) && socket.assigns.actor.id == id do
-              assign(socket, actor: updated_actor)
-            else
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+      # Prevent users from disabling themselves
+      if actor.id == socket.assigns.subject.actor.id do
+        {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
+      else
+        case actor
+             |> change()
+             |> put_change(:disabled_at, DateTime.utc_now())
+             |> Database.update(socket.assigns.subject) do
+          {:ok, updated_actor} ->
+            socket =
               socket
-            end
+              |> reload_live_table!("actors")
+              |> maybe_update_actor_assign(id, updated_actor)
 
-          {:noreply, put_flash(socket, :success_inline, "Actor disabled successfully")}
+            {:noreply, put_flash(socket, :success_inline, "Actor disabled successfully")}
 
-        {:error, :unauthorized} ->
-          {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
+          {:error, :unauthorized} ->
+            {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
 
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to disable actor")}
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to disable actor")}
+        end
       end
+    else
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Actor not found")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
     end
   end
 
   def handle_event("enable", %{"id" => id}, socket) do
-    actor = Database.get_actor!(id, socket.assigns.subject)
-
-    case actor
-         |> change()
-         |> put_change(:disabled_at, nil)
-         |> Database.update(socket.assigns.subject) do
-      {:ok, updated_actor} ->
-        socket = reload_live_table!(socket, "actors")
-
-        # If the modal is open for this actor, update it
-        socket =
-          if Map.get(socket.assigns, :actor) && socket.assigns.actor.id == id do
-            assign(socket, actor: updated_actor)
-          else
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+      case actor
+           |> change()
+           |> put_change(:disabled_at, nil)
+           |> Database.update(socket.assigns.subject) do
+        {:ok, updated_actor} ->
+          socket =
             socket
-          end
+            |> reload_live_table!("actors")
+            |> maybe_update_actor_assign(id, updated_actor)
 
-        {:noreply, put_flash(socket, :success_inline, "Actor enabled successfully")}
+          {:noreply, put_flash(socket, :success_inline, "Actor enabled successfully")}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to enable actor")}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to enable actor")}
+      end
+    else
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Actor not found")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You are not authorized to enable this actor")}
     end
   end
 
@@ -527,6 +573,14 @@ defmodule PortalWeb.Actors do
   def handle_actors_update!(socket, list_opts) do
     with {:ok, actors, metadata} <- Database.list_actors(socket.assigns.subject, list_opts) do
       {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
+    end
+  end
+
+  defp maybe_update_actor_assign(socket, id, updated_actor) do
+    if Map.get(socket.assigns, :actor) && socket.assigns.actor.id == id do
+      assign(socket, actor: updated_actor)
+    else
+      socket
     end
   end
 
@@ -1907,12 +1961,19 @@ defmodule PortalWeb.Actors do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def get_actor!(id, subject) do
-      from(a in Actor, as: :actors)
-      |> where([actors: a], a.id == ^id)
-      |> where([actors: a], a.type != :api_client)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+    def get_actor(id, subject) do
+      result =
+        from(a in Actor, as: :actors)
+        |> where([actors: a], a.id == ^id)
+        |> where([actors: a], a.type != :api_client)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        actor -> {:ok, actor}
+      end
     end
 
     def get_identities_for_actor(actor_id, subject) do
