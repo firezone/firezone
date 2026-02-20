@@ -18,8 +18,8 @@ public enum NotificationIndentifier: String {
 }
 
 @MainActor
-public class SessionNotification: NSObject {
-  public var signInHandler = {}
+public class SessionNotification: NSObject, SessionNotificationProtocol {
+  public var signInHandler: () async -> Void = {}
   private let notificationCenter = UNUserNotificationCenter.current()
 
   override public init() {
@@ -49,7 +49,7 @@ public class SessionNotification: NSObject {
     #endif
   }
 
-  func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
+  public func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
     // Ask the user for permission.
     try await notificationCenter.requestAuthorization(options: [.sound, .alert])
 
@@ -57,7 +57,7 @@ public class SessionNotification: NSObject {
     return await loadAuthorizationStatus()
   }
 
-  func loadAuthorizationStatus() async -> UNAuthorizationStatus {
+  public func loadAuthorizationStatus() async -> UNAuthorizationStatus {
     let settings = await notificationCenter.notificationSettings()
 
     return settings.authorizationStatus
@@ -68,7 +68,7 @@ public class SessionNotification: NSObject {
   /// - Parameters:
   ///   - title: The notification title
   ///   - body: The notification body text
-  func showResourceNotification(title: String, body: String) async {
+  public func showResourceNotification(title: String, body: String) async {
     // Check if we have permission to show notifications
     let settings = await notificationCenter.notificationSettings()
     guard settings.authorizationStatus == .authorized else {
@@ -127,11 +127,11 @@ public class SessionNotification: NSObject {
     // In macOS, use a Cocoa alert.
     // This gets called from the app side.
     @MainActor
-    func showSignedOutAlertmacOS(_ message: String?) async {
+    public func showSignedOutAlertMacOS(_ message: String?) async {
       let signInClicked = await MacOSAlert.showSignedOutAlert(message)
       if signInClicked {
         Log.log("\(#function): 'Sign In' clicked in notification")
-        signInHandler()
+        await signInHandler()
       }
     }
   #endif
@@ -152,7 +152,7 @@ public class SessionNotification: NSObject {
       {
         // User clicked on 'Sign In' in the notification
         Task { @MainActor in
-          signInHandler()
+          await signInHandler()
         }
       }
 
