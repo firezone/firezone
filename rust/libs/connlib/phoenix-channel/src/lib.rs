@@ -7,6 +7,7 @@ use anyhow::Result;
 use futures::stream::FuturesUnordered;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
@@ -45,6 +46,9 @@ const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
 /// Overall timeout for a single connection attempt (TCP + TLS + WebSocket handshake).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How long to wait for a heartbeat reply before treating the connection as dead.
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(11);
+
 pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     state: State,
     waker: Option<Waker>,
@@ -55,6 +59,10 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
     heartbeat: tokio::time::Interval,
+    /// Request ID of the in-flight heartbeat (set when queued, cleared on reply or reconnect).
+    heartbeat_pending_id: Option<OutboundRequestId>,
+    /// Fires after HEARTBEAT_TIMEOUT if no reply received; drives the missed-heartbeat reconnect.
+    heartbeat_reply_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
     _phantom: PhantomData<TInboundMsg>,
 
@@ -215,6 +223,7 @@ enum InternalError {
     SocketConnection(Vec<(SocketAddr, io::Error)>),
     NoAddresses,
     ConnectTimeout,
+    MissedHeartbeat,
 }
 
 impl InternalError {
@@ -295,6 +304,7 @@ impl fmt::Display for InternalError {
             InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
             InternalError::NoAddresses => write!(f, "no IP addresses available"),
             InternalError::ConnectTimeout => write!(f, "connection to portal timed out"),
+            InternalError::MissedHeartbeat => write!(f, "missed heartbeat reply"),
         }
     }
 }
@@ -311,6 +321,7 @@ impl std::error::Error for InternalError {
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
             InternalError::ConnectTimeout => None,
+            InternalError::MissedHeartbeat => None,
         }
     }
 }
@@ -381,6 +392,8 @@ where
             pending_heartbeat: None,
             _phantom: PhantomData,
             heartbeat: tokio::time::interval(Duration::from_secs(30)),
+            heartbeat_pending_id: None,
+            heartbeat_reply_timeout: None,
             next_request_id: 0,
             pending_join_requests: Default::default(),
             login,
@@ -444,6 +457,8 @@ where
         // 1. Reset the backoff and local state.
         self.backoff = None;
         self.pending_messages.clear();
+        self.heartbeat_reply_timeout = None;
+        self.heartbeat_pending_id = None;
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
@@ -555,6 +570,8 @@ where
                         self.backoff = None;
                         self.was_connected = true;
                         self.heartbeat.reset();
+                        self.heartbeat_reply_timeout = None;
+                        self.heartbeat_pending_id = None;
                         self.state = State::Connected(stream);
 
                         // Clear local state.
@@ -640,6 +657,11 @@ where
                         match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %heartbeat);
+                                // Start the reply deadline now that the heartbeat is on the wire.
+                                if self.heartbeat_pending_id.is_some() {
+                                    self.heartbeat_reply_timeout =
+                                        Some(Box::pin(tokio::time::sleep(HEARTBEAT_TIMEOUT)));
+                                }
                             }
                             Err(e) => {
                                 self.reconnect_on_transient_error(InternalError::WebSocket(e));
@@ -767,6 +789,11 @@ where
                                 }));
                             }
 
+                            if self.heartbeat_pending_id.as_ref() == Some(&req_id) {
+                                self.heartbeat_pending_id = None;
+                                self.heartbeat_reply_timeout = None;
+                            }
+
                             tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
@@ -813,13 +840,28 @@ where
                 continue;
             }
 
+            // Check for missed heartbeat reply.
+            if let Some(timeout) = &mut self.heartbeat_reply_timeout {
+                match timeout.as_mut().poll(cx) {
+                    Poll::Ready(()) => {
+                        tracing::warn!("Missed heartbeat reply, reconnecting");
+                        self.heartbeat_reply_timeout = None;
+                        self.heartbeat_pending_id = None;
+                        self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
+                        continue;
+                    }
+                    Poll::Pending => {}
+                }
+            }
+
             // Priority 4: Handle heartbeats.
             match self.heartbeat.poll_tick(cx) {
                 Poll::Ready(_) => {
-                    let (_, heartbeat) = self
+                    let (request_id, heartbeat) = self
                         .make_control_message("phoenix", EgressControlMessage::Heartbeat(Empty {}));
 
                     self.pending_heartbeat = Some(heartbeat);
+                    self.heartbeat_pending_id = Some(request_id);
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
