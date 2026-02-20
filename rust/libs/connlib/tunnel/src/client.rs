@@ -105,8 +105,8 @@ pub struct ClientState {
     /// Gateways are bound to a single site, hence this state is never cleaned up.
     /// An entry in this data structure does _not_ mean that we are connected to the Gateway / site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
-    /// The online/offline status of a site.
-    sites_status: HashMap<SiteId, ResourceStatus>,
+    /// The online/offline status of a site, together with the timestamp when we set it.
+    sites_status: HashMap<SiteId, (ResourceStatus, Instant)>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<CidrResource>,
@@ -210,7 +210,7 @@ impl ClientState {
         if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
-                .is_some_and(|s| *s == ResourceStatus::Online)
+                .is_some_and(|(s, _)| *s == ResourceStatus::Online)
         }) {
             return ResourceStatus::Online;
         }
@@ -218,7 +218,7 @@ impl ClientState {
         if resource.sites().iter().all(|s| {
             self.sites_status
                 .get(&s.id)
-                .is_some_and(|s| *s == ResourceStatus::Offline)
+                .is_some_and(|(s, _)| *s == ResourceStatus::Offline)
         }) {
             return ResourceStatus::Offline;
         }
@@ -226,16 +226,17 @@ impl ClientState {
         ResourceStatus::Unknown
     }
 
-    pub fn set_resource_offline(&mut self, id: ResourceId) {
+    pub fn set_resource_offline(&mut self, id: ResourceId, now: Instant) {
         let Some(resource) = self.resources_by_id.get(&id).cloned() else {
             return;
         };
 
         for Site { id, .. } in resource.sites() {
-            self.sites_status.insert(*id, ResourceStatus::Offline);
+            self.sites_status
+                .insert(*id, (ResourceStatus::Offline, now));
         }
 
-        self.on_connection_failed(id);
+        self.on_connection_failed(id, now);
         self.resource_list.update(self.resources());
     }
 
@@ -434,7 +435,7 @@ impl ClientState {
                 }
                 p2p_control::GOODBYE_EVENT => {
                     self.node.remove_connection(gid, "received `goodbye`", now);
-                    self.cleanup_connected_gateway(&gid);
+                    self.cleanup_connected_gateway(&gid, now);
                 }
                 code => {
                     tracing::debug!(code = %code.into_u8(), "Unknown control protocol");
@@ -593,7 +594,7 @@ impl ClientState {
         self.node
             .add_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.drain_node_events(now);
     }
 
     pub fn remove_ice_candidate(
@@ -605,7 +606,7 @@ impl ClientState {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.drain_node_events(now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
@@ -755,12 +756,12 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
-    pub fn on_connection_failed(&mut self, resource: ResourceId) {
+    pub fn on_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_flows.remove(&resource);
         let Some(disconnected_gateway) = self.authorized_resources.remove(&resource) else {
             return;
         };
-        self.cleanup_connected_gateway(&disconnected_gateway);
+        self.cleanup_connected_gateway(&disconnected_gateway, now);
     }
 
     fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
@@ -859,8 +860,8 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_gateway))]
-    fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId) {
-        self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown);
+    fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId, now: Instant) {
+        self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown, now);
         self.gateways.remove(disconnected_gateway);
         self.authorized_resources
             .retain(|_, g| g != disconnected_gateway);
@@ -1039,7 +1040,7 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.drain_node_events(now);
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
@@ -1443,14 +1444,14 @@ impl ClientState {
         self.initialise_tcp_dns_server();
     }
 
-    fn drain_node_events(&mut self) {
+    fn drain_node_events(&mut self, now: Instant) {
         let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
         let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
                 snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
-                    self.cleanup_connected_gateway(&id);
+                    self.cleanup_connected_gateway(&id, now);
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -1471,7 +1472,7 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(id) => {
-                    self.update_site_status_by_gateway(&id, ResourceStatus::Online);
+                    self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                 }
             }
         }
@@ -1493,7 +1494,12 @@ impl ClientState {
         }
     }
 
-    fn update_site_status_by_gateway(&mut self, gid: &GatewayId, status: ResourceStatus) {
+    fn update_site_status_by_gateway(
+        &mut self,
+        gid: &GatewayId,
+        status: ResourceStatus,
+        now: Instant,
+    ) {
         #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
         let Some((sid, _)) = self
             .gateways_by_site
@@ -1504,7 +1510,7 @@ impl ClientState {
             return;
         };
 
-        self.sites_status.insert(*sid, status);
+        self.sites_status.insert(*sid, (status, now));
         self.resource_list.update(self.resources());
     }
 
@@ -1544,7 +1550,7 @@ impl ClientState {
         self.gateways.clear(); // Clear all state associated with Gateways.
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
-        self.drain_node_events();
+        self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
         // Failed queries get translated into `SERVFAIL` responses to the client.
@@ -1738,7 +1744,7 @@ impl ClientState {
             tracing::debug!(%gid, "Disabled / deactivated last resource for peer");
 
             self.node.close_connection(gid, p2p_control::goodbye(), now);
-            self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
+            self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown, now);
             self.resource_list.update(self.resources());
         }
     }
@@ -1750,7 +1756,7 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
-        self.drain_node_events(); // Ensure all state changes are fully-propagated.
+        self.drain_node_events(now); // Ensure all state changes are fully-propagated.
     }
 
     fn on_not_connected_resource(
@@ -2164,7 +2170,11 @@ mod proptests {
             HashSet::from([gateway]),
         );
 
-        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
+        client_state.update_site_status_by_gateway(
+            &gateway,
+            ResourceStatus::Online,
+            Instant::now(),
+        );
 
         for resource in resources_online {
             assert_eq!(
@@ -2199,8 +2209,16 @@ mod proptests {
             HashSet::from([gateway]),
         );
 
-        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
-        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);
+        client_state.update_site_status_by_gateway(
+            &gateway,
+            ResourceStatus::Online,
+            Instant::now(),
+        );
+        client_state.update_site_status_by_gateway(
+            &gateway,
+            ResourceStatus::Unknown,
+            Instant::now(),
+        );
 
         for resource in resources {
             assert_eq!(
@@ -2221,7 +2239,7 @@ mod proptests {
             client_state.add_resource(r.clone(), Instant::now());
         }
 
-        client_state.set_resource_offline(single_site_resource.id());
+        client_state.set_resource_offline(single_site_resource.id(), Instant::now());
 
         assert_eq!(
             client_state.resource_status(&single_site_resource),
