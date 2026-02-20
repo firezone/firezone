@@ -77,7 +77,8 @@ defmodule PortalWeb.Endpoint do
         session: {__MODULE__, :live_view_session_options, []}
       ]
     ],
-    longpoll: false
+    longpoll: false,
+    drainer: []
 
   def real_ip_opts do
     [

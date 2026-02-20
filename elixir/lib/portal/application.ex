@@ -22,43 +22,6 @@ defmodule Portal.Application do
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
-  # Gracefully shut down services that have conflicting start/stop ordering
-  # requirements before the supervision tree tears down.
-  #
-  # prep_stop/1 runs while the full supervision tree is still alive, so each
-  # step below executes with all remaining services fully operational.
-  #
-  # Order matters:
-  #
-  #   1. Portal.Cluster — broadcast goodbye while DB and PubSub are healthy.
-  #      Other nodes receive the goodbye, disconnect immediately, and clean up
-  #      our Presence entries via :nodedown — no cross-node CRDT merge tasks
-  #      needed, which avoids the Phoenix.Presence FunctionClauseError on
-  #      remote nodes when merge tasks time out.
-  #
-  #   2. Replication managers — stop replication connections proactively while
-  #      BEAM is still alive, so PostgreSQL replication sockets can disconnect
-  #      gracefully before any long endpoint drain.
-  #
-  #   3. Endpoints — kill all channel processes. Presence receives the flood of
-  #      EXIT messages and processes them with a fully operational PubSub and
-  #      Repo (they're still alive at positions 1-4 in the children list).
-  #
-  #   4. PortalAPI.RateLimit — destroy the Hammer ETS table only after all
-  #      endpoint request processing has stopped, preventing "unknown table"
-  #      errors from lingering channel processes.
-  @impl true
-  def prep_stop(state) do
-    _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.Cluster)
-    _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.Changes.ReplicationConnection)
-    _ = Supervisor.terminate_child(__MODULE__.Supervisor, Portal.ChangeLogs.ReplicationConnection)
-    _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalWeb.Endpoint)
-    _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.Endpoint)
-    _ = Supervisor.terminate_child(__MODULE__.Supervisor, PortalAPI.RateLimit)
-
-    state
-  end
-
   @impl true
   def stop(_state) do
     # Remove the Sentry logger handler before Sentry.Supervisor terminates
@@ -68,7 +31,7 @@ defmodule Portal.Application do
   end
 
   defp children do
-    [
+    base_children = [
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
@@ -76,22 +39,31 @@ defmodule Portal.Application do
       %{id: :pg, start: {:pg, :start_link, []}},
       Portal.PubSub,
 
-      # Infrastructure services
-      Portal.Cluster,
-
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
       # Health check server (always enabled)
-      Portal.Health,
+      Portal.Health
+    ]
 
-      # Web and API apps are always started to allow VerifiedRoutes to work
-      PortalWeb.Endpoint,
-      PortalAPI.Endpoint
-    ] ++
+    endpoint_children = [
+      # Give Phoenix socket drain enough time to gracefully close channel topics
+      # before transports are force-terminated.
+      {PortalWeb.Endpoint, shutdown: 40_000},
+      {PortalAPI.Endpoint, shutdown: 40_000}
+    ]
+
+    # Child order is chosen to make reverse-order shutdown graceful:
+    # 1) Portal.Cluster sends goodbye while DB/PubSub are healthy.
+    # 2) Replication managers disconnect while BEAM is still fully alive.
+    # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
+    # 4) PortalAPI.RateLimit stops after endpoint traffic has ceased.
+    base_children ++
       client_session_buffer() ++
-      gateway_session_buffer() ++ rate_limit() ++ telemetry() ++ oban() ++ replication()
+      gateway_session_buffer() ++
+      rate_limit() ++
+      telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
   end
 
   defp configure_logger do

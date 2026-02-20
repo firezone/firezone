@@ -81,9 +81,9 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: elixir/priv/plts
-          key: dialyzer-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('elixir/mix.lock') }}
+          key: plt-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('elixir/mix.lock') }}
           # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
-          restore-keys: dialyzer-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-
+          restore-keys: plt-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-
 
       - name: Create PLTs
         # Always run to incrementally update PLT if restored from cache with different mix.lock

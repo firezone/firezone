@@ -35,7 +35,8 @@ defmodule PortalAPI.Endpoint do
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
     ],
-    longpoll: false
+    longpoll: false,
+    drainer: []
 
   socket "/client", PortalAPI.Client.Socket,
     websocket: [
@@ -45,7 +46,8 @@ defmodule PortalAPI.Endpoint do
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
     ],
-    longpoll: false
+    longpoll: false,
+    drainer: []
 
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
@@ -55,7 +57,8 @@ defmodule PortalAPI.Endpoint do
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(41)
     ],
-    longpoll: false
+    longpoll: false,
+    drainer: []
 
   plug :fetch_user_agent
   plug PortalAPI.Router
