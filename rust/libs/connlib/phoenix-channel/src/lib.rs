@@ -468,7 +468,7 @@ where
             return;
         }
 
-        // 1. Reset the backoff and local state.
+        // 1. Reset the backoff.
         self.backoff = None;
 
         // 2. Set state to `Connecting` without a timer.
