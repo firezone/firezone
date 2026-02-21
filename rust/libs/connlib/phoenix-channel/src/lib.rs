@@ -292,12 +292,11 @@ impl fmt::Display for InternalError {
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
-            InternalError::WsClose(frame) => {
-                write!(f, "portal sent websocket close frame")?;
-                if let Some(frame) = frame {
-                    write!(f, ": {} {}", frame.code, frame.reason)?;
-                }
-                Ok(())
+            InternalError::WsClose(Some(frame)) => {
+                write!(f, "portal sent websocket close frame: {frame}")
+            }
+            InternalError::WsClose(None) => {
+                write!(f, "portal sent empty websocket close frame")
             }
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::SocketConnection(errors) => {
