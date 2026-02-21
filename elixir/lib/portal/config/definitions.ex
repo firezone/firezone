@@ -181,6 +181,13 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The IP address or hostname allowed as the WebSocket origin for the ops endpoint.
+
+  Maps to the `OPS_WEBSOCKET_ORIGIN` environment variable.
+  """
+  defconfig(:ops_websocket_origin, :string, default: "localhost")
+
+  @doc """
   Allows to override Bandit HTTP/1.1 server options.
 
   These options are passed to Bandit's `http_1_options`. Keep in mind that changing
