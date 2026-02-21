@@ -759,7 +759,36 @@ where
             // Priority 3: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(Message::Close(frame)))) => {
-                    self.reconnect_on_transient_error(InternalError::WsClose(frame));
+                    // Grab ownership of the `stream`.
+                    let mut stream = match std::mem::replace(&mut self.state, State::Closed) {
+                        State::Connected(stream) => stream,
+                        State::Reconnect { .. }
+                        | State::Connecting(_)
+                        | State::Closing(_)
+                        | State::Closed => {
+                            // Defense-in-depth: This should not happen but never know what kind of bugs we might introduce in the future.
+                            debug_assert!(
+                                false,
+                                "Should be in Connected after receiving Close frame"
+                            );
+                            self.reconnect_on_transient_error(InternalError::WsClose(frame));
+                            continue;
+                        }
+                    };
+
+                    // If an endpoint receives a Close frame and did not previously send a Close frame,
+                    // the endpoint MUST send a Close frame in response.
+                    // See <https://datatracker.ietf.org/doc/html/rfc6455#section-5.5.1>.
+                    self.state = State::Connecting(
+                        async move {
+                            let _ = stream.send(Message::Close(frame.clone())).await;
+                            let _ = stream.flush().await;
+                            let _ = SinkExt::close(&mut stream).await;
+
+                            Err(InternalError::WsClose(frame))
+                        }
+                        .boxed(),
+                    );
                     continue;
                 }
                 Poll::Ready(Some(Ok(Message::Text(message)))) => {
