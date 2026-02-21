@@ -3,7 +3,7 @@
 mod get_user_agent;
 mod login_url;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use futures::stream::FuturesUnordered;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
 use backoff::ExponentialBackoff;
 use backoff::ExponentialBackoffBuilder;
@@ -79,7 +80,7 @@ enum State<TOutboundMsg> {
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
     ),
-    Closing(WebSocketStream<MaybeTlsStream<TcpStream>>),
+    Closing(BoxFuture<'static, Result<()>>),
     Closed,
 }
 
@@ -219,7 +220,7 @@ enum InternalError {
     WebSocket(tungstenite::Error),
     Serde(serde_json::Error),
     CloseMessage,
-    WsClose(Option<tungstenite::protocol::CloseFrame>),
+    WsClose(Option<CloseFrame>),
     StreamClosed,
     RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, io::Error)>),
@@ -533,7 +534,27 @@ where
 
         match mem::replace(&mut self.state, State::Closed) {
             State::Connecting(_) => return Err(Connecting),
-            State::Closing(stream) | State::Connected(Connected { stream, .. }) => {
+            State::Connected(Connected { mut stream, .. }) => {
+                self.state = State::Closing(
+                    async move {
+                        stream
+                            .send(Message::Close(Some(CloseFrame {
+                                code: tungstenite::protocol::frame::coding::CloseCode::Normal,
+                                reason: Default::default(),
+                            })))
+                            .await
+                            .context("Failed to send Close frame")?;
+                        stream.flush().await.context("Failed to flush")?;
+                        SinkExt::close(&mut stream)
+                            .await
+                            .context("failed to close connection")?;
+
+                        anyhow::Ok(())
+                    }
+                    .boxed(),
+                );
+            }
+            State::Closing(stream) => {
                 self.state = State::Closing(stream);
             }
             State::Closed | State::Reconnect { .. } => {}
@@ -556,7 +577,7 @@ where
                 next_request_id,
             } = match &mut self.state {
                 State::Closed => return Poll::Ready(Ok(Event::Closed)),
-                State::Closing(stream) => match stream.poll_close_unpin(cx) {
+                State::Closing(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(())) => {
                         tracing::info!("Closed websocket connection to portal");
 
@@ -565,7 +586,9 @@ where
                         return Poll::Ready(Ok(Event::Closed));
                     }
                     Poll::Ready(Err(e)) => {
-                        tracing::warn!("Error while closing websocket: {}", err_with_src(&e));
+                        tracing::info!("Error while closing websocket connection to portal: {e:#}");
+
+                        self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
@@ -761,7 +784,7 @@ where
                 Poll::Ready(Some(Ok(Message::Close(frame)))) => {
                     // Grab ownership of the `stream`.
                     let mut stream = match std::mem::replace(&mut self.state, State::Closed) {
-                        State::Connected(stream) => stream,
+                        State::Connected(Connected { stream, .. }) => stream,
                         State::Reconnect { .. }
                         | State::Connecting(_)
                         | State::Closing(_)
