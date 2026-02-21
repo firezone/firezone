@@ -29,6 +29,10 @@ export default function Apple() {
           Bumps minimum iOS version from 15.6 to 16.0 to enable SwiftUI
           NavigationStack and NavigationSplitView API.
         </ChangeItem>
+        <ChangeItem pull="12251">
+          Gracefully handles WebSocket closes from the portal instead of logging
+          a deserialization error.
+        </ChangeItem>
         <ChangeItem pull="11988">
           Fixes a crash if the currently active log file gets deleted.
         </ChangeItem>
