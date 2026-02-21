@@ -219,6 +219,7 @@ enum InternalError {
     WebSocket(tungstenite::Error),
     Serde(serde_json::Error),
     CloseMessage,
+    WsClose(Option<tungstenite::protocol::CloseFrame>),
     StreamClosed,
     RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, io::Error)>),
@@ -291,6 +292,13 @@ impl fmt::Display for InternalError {
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
+            InternalError::WsClose(frame) => {
+                write!(f, "portal sent websocket close frame")?;
+                if let Some(frame) = frame {
+                    write!(f, ": {} {}", frame.code, frame.reason)?;
+                }
+                Ok(())
+            }
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::SocketConnection(errors) => {
                 write!(
@@ -320,6 +328,7 @@ impl std::error::Error for InternalError {
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
             InternalError::CloseMessage => None,
+            InternalError::WsClose(_) => None,
             InternalError::StreamClosed => None,
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
@@ -751,16 +760,10 @@ where
             // Priority 3: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(Message::Close(frame)))) => {
-                    tracing::debug!(?frame, "Portal sent WebSocket close frame");
-                    self.reconnect_on_transient_error(InternalError::StreamClosed);
+                    self.reconnect_on_transient_error(InternalError::WsClose(frame));
                     continue;
                 }
-                Poll::Ready(Some(Ok(message))) => {
-                    let Ok(message) = message.into_text() else {
-                        tracing::warn!("Received non-text message from portal");
-                        continue;
-                    };
-
+                Poll::Ready(Some(Ok(Message::Text(message)))) => {
                     tracing::trace!(target: "wire::api::recv", %message);
 
                     let message =
@@ -849,6 +852,13 @@ where
                             return Poll::Ready(Err(Error::InvalidToken));
                         }
                     }
+                }
+                Poll::Ready(Some(Ok(Message::Binary(_)))) => {
+                    tracing::warn!("Received unexpected binary message from portal");
+                    continue;
+                }
+                Poll::Ready(Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)))) => {
+                    continue;
                 }
                 Poll::Ready(Some(Err(e))) => {
                     self.reconnect_on_transient_error(InternalError::WebSocket(e));
