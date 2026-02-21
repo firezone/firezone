@@ -1578,12 +1578,6 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
-  def feature_name(%{feature: :multi_site_resources} = assigns) do
-    ~H"""
-    Define globally-distributed Resources
-    """
-  end
-
   def feature_name(%{feature: :traffic_filters} = assigns) do
     ~H"""
     Restrict access based on port and protocol rules

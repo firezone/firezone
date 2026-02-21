@@ -160,7 +160,6 @@ if config_env() == :prod do
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
     sign_up: env_var_to_config!(:feature_sign_up_enabled),
     policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
-    multi_site_resources: env_var_to_config!(:feature_multi_site_resources_enabled),
     rest_api: env_var_to_config!(:feature_rest_api_enabled),
     internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 

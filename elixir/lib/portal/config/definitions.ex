@@ -731,11 +731,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:feature_policy_conditions_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Multi-Site resources functionality on/off for all accounts.
-  """
-  defconfig(:feature_multi_site_resources_enabled, :boolean, default: false)
-
-  @doc """
   Boolean flag to turn API Client UI functionality on/off for all accounts.
   """
   defconfig(:feature_rest_api_enabled, :boolean, default: false)
