@@ -594,6 +594,7 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
                 portal.update_ips(ips);
             }
+            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

@@ -586,6 +586,7 @@ async fn phoenix_channel_event_loop(
             Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
                 update_portal_host_ips(&mut portal, &resolver).await
             }
+            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

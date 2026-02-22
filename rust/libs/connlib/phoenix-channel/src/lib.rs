@@ -605,7 +605,7 @@ where
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
 
-                        continue;
+                        return Poll::Ready(Ok(Event::Connected));
                     }
                     Poll::Ready(Err(InternalError::NoAddresses)) => {
                         // Fixed 1s interval to avoid busy-looping in case DNS resolution fails / is not possible.
@@ -966,6 +966,8 @@ pub enum Event<TInboundMsg> {
     NoAddresses,
     /// The connection was closed successfully.
     Closed,
+    /// The WebSocket connection was established.
+    Connected,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
