@@ -65,7 +65,7 @@ defmodule Portal.OIDC.AuthProvider do
     |> validate_acceptance(:is_verified)
     |> validate_length(:client_id, min: 1, max: 255)
     |> validate_length(:client_secret, min: 1, max: 255)
-    |> validate_uri(:discovery_document_uri)
+    |> validate_uri(:discovery_document_uri, block_private_ips: true)
     |> validate_length(:discovery_document_uri, min: 1, max: 2000)
     |> validate_length(:issuer, min: 1, max: 2000)
     |> validate_number(:portal_session_lifetime_secs,

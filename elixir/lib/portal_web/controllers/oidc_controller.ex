@@ -196,11 +196,11 @@ defmodule PortalWeb.OIDCController do
         |> redirect(external: uri)
 
       {:error, reason} ->
-        handle_authorization_uri_error(conn, account, provider, reason)
+        handle_authorization_uri_error(conn, account, provider, params, reason)
     end
   end
 
-  defp handle_authorization_uri_error(conn, account, provider, reason) do
+  defp handle_authorization_uri_error(conn, account, provider, params, reason) do
     Logger.warning("OIDC authorization URI error",
       account_id: account.id,
       provider_id: provider.id,
@@ -211,7 +211,7 @@ defmodule PortalWeb.OIDCController do
 
     conn
     |> put_flash(:error, error)
-    |> redirect(to: ~p"/#{account.slug}")
+    |> redirect(to: error_path(account.slug, params))
   end
 
   defp authorization_error_reason(%Req.TransportError{reason: reason}), do: inspect(reason)
@@ -249,9 +249,8 @@ defmodule PortalWeb.OIDCController do
   defp transport_error_message(:timeout),
     do: "Unable to fetch discovery document: Connection timed out. Please try again."
 
-  defp transport_error_message(reason),
-    do:
-      "Unable to fetch discovery document: #{inspect(reason)}. Please check the Discovery Document URI."
+  defp transport_error_message(_reason),
+    do: "Unable to fetch discovery document. Please check the Discovery Document URI."
 
   defp discovery_http_error_message(404),
     do:
@@ -266,6 +265,9 @@ defmodule PortalWeb.OIDCController do
 
   defp discovery_error_message(:invalid_discovery_document_uri),
     do: "The Discovery Document URI is invalid. Please check your provider configuration."
+
+  defp discovery_error_message(:private_ip_blocked),
+    do: "The Discovery Document URI must not point to a private or reserved IP address."
 
   defp discovery_error_message(reason) do
     if invalid_json_reason?(reason) do

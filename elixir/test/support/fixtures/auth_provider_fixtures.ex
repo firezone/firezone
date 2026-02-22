@@ -197,9 +197,9 @@ defmodule Portal.AuthProviderFixtures do
       |> Map.put_new(:client_secret, "client-secret-#{unique_num}")
       |> Map.put_new(
         :discovery_document_uri,
-        "https://auth.example.com/.well-known/openid-configuration"
+        "https://accounts.google.com/.well-known/openid-configuration"
       )
-      |> Map.put_new(:issuer, "https://auth.example.com")
+      |> Map.put_new(:issuer, "https://accounts.google.com")
       |> Map.put_new(:is_verified, true)
       |> Map.put_new(:is_disabled, false)
 

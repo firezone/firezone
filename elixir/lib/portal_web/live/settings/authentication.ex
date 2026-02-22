@@ -1219,7 +1219,7 @@ defmodule PortalWeb.Settings.Authentication do
           "Unable to fetch discovery document: Connection timed out. Please try again."
 
         _ ->
-          "Unable to fetch discovery document: #{inspect(reason)}. Please check your network connection."
+          "Unable to fetch discovery document. Please check your network connection."
       end
 
     add_verification_error(msg, field, socket)
@@ -1227,11 +1227,11 @@ defmodule PortalWeb.Settings.Authentication do
 
   # HTTP protocol errors
   defp handle_verification_setup_error(
-         {:error, %Req.HTTPError{protocol: protocol, reason: reason}},
+         {:error, %Req.HTTPError{protocol: _protocol, reason: _reason}},
          field,
          socket
        ) do
-    msg = "Identity provider returned a #{protocol} protocol error: #{inspect(reason)}."
+    msg = "Identity provider returned an unexpected protocol error. Please try again."
     add_verification_error(msg, field, socket)
   end
 
@@ -1245,9 +1245,6 @@ defmodule PortalWeb.Settings.Authentication do
 
         {status, _} when status in 500..599 ->
           "Identity provider returned a server error (HTTP #{status}). Please try again later."
-
-        {status, %{"error" => error_code}} ->
-          "Identity provider returned an error: #{error_code} (HTTP #{status})."
 
         {status, _} ->
           "Failed to fetch discovery document (HTTP #{status}). Please verify your configuration."
@@ -1279,6 +1276,12 @@ defmodule PortalWeb.Settings.Authentication do
     add_verification_error(msg, field, socket)
   end
 
+  # Private IP blocked
+  defp handle_verification_setup_error({:error, :private_ip_blocked}, field, socket) do
+    msg = "The Discovery Document URI must not point to a private or reserved IP address."
+    add_verification_error(msg, field, socket)
+  end
+
   # Catch-all for unexpected errors
   defp handle_verification_setup_error({:error, reason}, field, socket) do
     Logger.info(
@@ -1287,7 +1290,7 @@ defmodule PortalWeb.Settings.Authentication do
       reason: reason
     )
 
-    msg = "An unexpected error occurred: #{inspect(reason)}. Please try again or contact support."
+    msg = "An unexpected error occurred. Please try again or contact support."
     add_verification_error(msg, field, socket)
   end
 

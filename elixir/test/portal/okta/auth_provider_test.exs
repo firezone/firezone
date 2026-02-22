@@ -15,6 +15,38 @@ defmodule Portal.Okta.AuthProviderTest do
     |> AuthProvider.changeset()
   end
 
+  describe "changeset/1 discovery_document_uri IP blocking" do
+    test "rejects private IP in okta_domain (169.254.169.254)" do
+      changeset =
+        build_changeset(%{
+          okta_domain: "169.254.169.254",
+          issuer: "https://169.254.169.254"
+        })
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).discovery_document_uri
+    end
+
+    test "rejects private IP in okta_domain (10.0.0.1)" do
+      changeset =
+        build_changeset(%{
+          okta_domain: "10.0.0.1",
+          issuer: "https://10.0.0.1"
+        })
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).discovery_document_uri
+    end
+
+    test "accepts valid okta domain" do
+      changeset =
+        build_changeset(%{
+          okta_domain: "myorg.okta.com",
+          issuer: "https://myorg.okta.com"
+        })
+
+      refute :discovery_document_uri in Keyword.keys(changeset.errors)
+    end
+  end
+
   describe "changeset/1 basic validations" do
     test "inserts okta_domain at maximum length" do
       domain = String.duplicate("a", 251) <> ".com"

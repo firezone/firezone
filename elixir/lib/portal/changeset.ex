@@ -3,7 +3,45 @@ defmodule Portal.Changeset do
   This module extend `Ecto.Changeset`'s with custom validations and polymorphic embeds.
   """
   import Ecto.Changeset
+  import Bitwise
   alias Ecto.Changeset
+
+  @special_use_ipv4_cidrs [
+    %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 8},
+    %Postgrex.INET{address: {10, 0, 0, 0}, netmask: 8},
+    %Postgrex.INET{address: {100, 64, 0, 0}, netmask: 10},
+    %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
+    %Postgrex.INET{address: {169, 254, 0, 0}, netmask: 16},
+    %Postgrex.INET{address: {172, 16, 0, 0}, netmask: 12},
+    %Postgrex.INET{address: {192, 0, 0, 0}, netmask: 24},
+    %Postgrex.INET{address: {192, 0, 2, 0}, netmask: 24},
+    %Postgrex.INET{address: {192, 31, 196, 0}, netmask: 24},
+    %Postgrex.INET{address: {192, 52, 193, 0}, netmask: 24},
+    %Postgrex.INET{address: {192, 88, 99, 0}, netmask: 24},
+    %Postgrex.INET{address: {192, 168, 0, 0}, netmask: 16},
+    %Postgrex.INET{address: {192, 175, 48, 0}, netmask: 24},
+    %Postgrex.INET{address: {198, 18, 0, 0}, netmask: 15},
+    %Postgrex.INET{address: {198, 51, 100, 0}, netmask: 24},
+    %Postgrex.INET{address: {203, 0, 113, 0}, netmask: 24},
+    %Postgrex.INET{address: {224, 0, 0, 0}, netmask: 4},
+    %Postgrex.INET{address: {240, 0, 0, 0}, netmask: 4}
+  ]
+
+  @special_use_ipv6_cidrs [
+    %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 128},
+    %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128},
+    %Postgrex.INET{address: {0x0064, 0xFF9B, 0, 0, 0, 0, 0, 0}, netmask: 96},
+    %Postgrex.INET{address: {0x0064, 0xFF9B, 0x0001, 0, 0, 0, 0, 0}, netmask: 48},
+    %Postgrex.INET{address: {0x0100, 0, 0, 0, 0, 0, 0, 0}, netmask: 64},
+    %Postgrex.INET{address: {0x2001, 0, 0, 0, 0, 0, 0, 0}, netmask: 32},
+    %Postgrex.INET{address: {0x2001, 0x0002, 0, 0, 0, 0, 0, 0}, netmask: 48},
+    %Postgrex.INET{address: {0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0}, netmask: 32},
+    %Postgrex.INET{address: {0x2001, 0x0020, 0, 0, 0, 0, 0, 0}, netmask: 28},
+    %Postgrex.INET{address: {0x2002, 0, 0, 0, 0, 0, 0, 0}, netmask: 16},
+    %Postgrex.INET{address: {0xFC00, 0, 0, 0, 0, 0, 0, 0}, netmask: 7},
+    %Postgrex.INET{address: {0xFE80, 0, 0, 0, 0, 0, 0, 0}, netmask: 10},
+    %Postgrex.INET{address: {0xFF00, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}
+  ]
 
   # Helpers
 
@@ -217,34 +255,87 @@ defmodule Portal.Changeset do
   end
 
   def validate_uri(%Ecto.Changeset{} = changeset, field, opts \\ []) when is_atom(field) do
-    valid_schemes = Keyword.get(opts, :schemes, ~w[http https])
-    require_trailing_slash? = Keyword.get(opts, :require_trailing_slash, false)
-
     validate_change(changeset, field, fn _current_field, value ->
       case URI.new(value) do
-        {:ok, %URI{} = uri} ->
-          cond do
-            uri.host == nil or uri.host == "" ->
-              [{field, "does not contain a scheme or a host"}]
-
-            uri.scheme == nil ->
-              [{field, "does not contain a scheme"}]
-
-            uri.scheme not in valid_schemes ->
-              [{field, "only #{Enum.join(valid_schemes, ", ")} schemes are supported"}]
-
-            require_trailing_slash? and not is_nil(uri.path) and
-                not String.ends_with?(uri.path, "/") ->
-              [{field, "does not end with a trailing slash"}]
-
-            true ->
-              []
-          end
-
-        {:error, part} ->
-          [{field, "is invalid. Error at #{part}"}]
+        {:ok, %URI{} = uri} -> validate_uri_errors(field, uri, opts)
+        {:error, _part} -> [{field, "is invalid"}]
       end
     end)
+  end
+
+  defp validate_uri_errors(field, uri, opts) do
+    valid_schemes = Keyword.get(opts, :schemes, ~w[http https])
+    require_trailing_slash? = Keyword.get(opts, :require_trailing_slash, false)
+    block_private_ips? = Keyword.get(opts, :block_private_ips, false)
+
+    cond do
+      uri.host == nil or uri.host == "" ->
+        [{field, "does not contain a scheme or a host"}]
+
+      uri.scheme == nil ->
+        [{field, "does not contain a scheme"}]
+
+      uri.scheme not in valid_schemes ->
+        [{field, "only #{Enum.join(valid_schemes, ", ")} schemes are supported"}]
+
+      require_trailing_slash? and not is_nil(uri.path) and
+          not String.ends_with?(uri.path, "/") ->
+        [{field, "does not end with a trailing slash"}]
+
+      block_private_ips? and not public_host?(uri.host) ->
+        [{field, "must not be a private or reserved IP address"}]
+
+      true ->
+        []
+    end
+  end
+
+  def public_host?(host) when is_binary(host) and host != "" do
+    not private_host?(host)
+  end
+
+  def public_host?(_), do: false
+
+  defp private_host?(host) do
+    charlist = String.to_charlist(host)
+
+    case :inet.parse_address(charlist) do
+      {:ok, ip} ->
+        private_ip?(ip)
+
+      {:error, _} ->
+        ips4 =
+          case :inet.getaddrs(charlist, :inet) do
+            {:ok, ips} -> ips
+            _ -> []
+          end
+
+        ips6 =
+          case :inet.getaddrs(charlist, :inet6) do
+            {:ok, ips} -> ips
+            _ -> []
+          end
+
+        Enum.any?(ips4 ++ ips6, &private_ip?/1)
+    end
+  end
+
+  # IPv4-mapped IPv6 addresses (::ffff:w.x.y.z)
+  def private_ip?({0, 0, 0, 0, 0, 0xFFFF, w, x}), do: private_ip?(to_ipv4_tuple(w, x))
+  def private_ip?({_, _, _, _} = ip), do: private_ip_in_cidrs?(ip, @special_use_ipv4_cidrs)
+
+  def private_ip?({_, _, _, _, _, _, _, _} = ip),
+    do: private_ip_in_cidrs?(ip, @special_use_ipv6_cidrs)
+
+  def private_ip?(_), do: false
+
+  defp to_ipv4_tuple(w, x) do
+    {w >>> 8, band(w, 0x00FF), x >>> 8, band(x, 0x00FF)}
+  end
+
+  defp private_ip_in_cidrs?(ip, cidrs) do
+    inet = %Postgrex.INET{address: ip}
+    Enum.any?(cidrs, &Portal.Types.CIDR.contains?(&1, inet))
   end
 
   @email_regex ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/

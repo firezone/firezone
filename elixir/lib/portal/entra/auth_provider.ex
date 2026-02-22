@@ -1,6 +1,7 @@
 defmodule Portal.Entra.AuthProvider do
   use Ecto.Schema
   import Ecto.Changeset
+  import Portal.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -48,6 +49,7 @@ defmodule Portal.Entra.AuthProvider do
     |> validate_required([:name, :context, :issuer, :is_verified])
     |> validate_acceptance(:is_verified)
     |> validate_length(:issuer, min: 1, max: 2_000)
+    |> validate_uri(:issuer, block_private_ips: true)
     |> validate_number(:portal_session_lifetime_secs,
       greater_than_or_equal_to: @portal_session_lifetime_min,
       less_than_or_equal_to: @portal_session_lifetime_max
