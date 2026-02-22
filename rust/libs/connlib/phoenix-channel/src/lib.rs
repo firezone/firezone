@@ -357,6 +357,10 @@ impl fmt::Display for OutboundRequestId {
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
 
+#[derive(Debug, thiserror::Error)]
+#[error("Not connected")]
+pub struct NotConnected<T>(pub T);
+
 impl<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
     PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
 where
@@ -426,7 +430,11 @@ where
     }
 
     /// Send a message to a topic.
-    pub fn send(&mut self, topic: impl Into<String>, message: TOutboundMsg) {
+    pub fn send(
+        &mut self,
+        topic: impl Into<String>,
+        message: TOutboundMsg,
+    ) -> Result<(), NotConnected<TOutboundMsg>> {
         let topic = topic.into();
 
         let State::Connected(Connected {
@@ -435,8 +443,7 @@ where
             ..
         }) = &mut self.state
         else {
-            tracing::debug!(%topic, "Cannot send message when disconnected");
-            return;
+            return Err(NotConnected(message));
         };
 
         if pending_messages.iter().any(|m| match &m.payload {
@@ -447,7 +454,7 @@ where
             Payload::Disconnect { .. } => false,
         }) {
             tracing::debug!(?message, "Refusing to queue exact duplicate");
-            return;
+            return Ok(());
         }
 
         let request_id = fetch_add_request_id(next_request_id);
@@ -457,6 +464,8 @@ where
             message,
             Some(request_id),
         ));
+
+        Ok(())
     }
 
     /// Establishes a new connection, dropping the current one if any exists.

@@ -593,7 +593,12 @@ async fn phoenix_channel_event_loop(
                 break;
             }
             Either::Right((Some(PortalCommand::Send(msg)), _)) => {
-                portal.send(PHOENIX_TOPIC, msg);
+                match portal.send(PHOENIX_TOPIC, msg) {
+                    Ok(()) => {}
+                    Err(phoenix_channel::NotConnected(msg)) => {
+                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
+                    }
+                }
             }
             Either::Right((Some(PortalCommand::Connect(param)), _)) => {
                 portal.connect(param);

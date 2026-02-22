@@ -92,7 +92,7 @@ async fn client_does_not_pipeline_messages() {
                 }
                 phoenix_channel::Event::Closed => break,
                 phoenix_channel::Event::Connected => {
-                    channel.send("test", OutboundMsg::Bar);
+                    channel.send("test", OutboundMsg::Bar).unwrap();
                 }
             }
         }
@@ -143,10 +143,10 @@ async fn client_deduplicates_messages() {
                     panic!("Unexpected error: {res:?}")
                 }
                 phoenix_channel::Event::JoinedRoom { .. } => {
-                    channel.send("test", OutboundMsg::Bar);
-                    channel.send("test", OutboundMsg::Bar);
-                    channel.send("test", OutboundMsg::Bar);
-                    channel.send("test", OutboundMsg::Bar);
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
                 }
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
@@ -200,7 +200,7 @@ async fn client_clears_local_message_on_connect() {
     let mut channel = make_websocket_test_channel(port);
 
     let client = async {
-        channel.send("test", OutboundMsg::Bar);
+        channel.send("test", OutboundMsg::Bar).unwrap_err();
         channel.connect(PublicKeyParam([0u8; 32]));
 
         loop {
@@ -210,7 +210,7 @@ async fn client_clears_local_message_on_connect() {
                     panic!("Unexpected error: {res:?}")
                 }
                 phoenix_channel::Event::JoinedRoom { .. } => {
-                    channel.send("test", OutboundMsg::Bar);
+                    channel.send("test", OutboundMsg::Bar).unwrap();
                 }
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {

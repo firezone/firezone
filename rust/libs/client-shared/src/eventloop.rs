@@ -536,7 +536,12 @@ async fn phoenix_channel_event_loop(
         // This allows `NoAddresses` events to use the updated `UdpDnsClient` to resolve the domain.
         match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
             Either::Left((Some(PortalCommand::Send(msg)), _)) => {
-                portal.send(PHOENIX_TOPIC, msg);
+                match portal.send(PHOENIX_TOPIC, msg) {
+                    Ok(()) => {}
+                    Err(phoenix_channel::NotConnected(msg)) => {
+                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
+                    }
+                }
             }
             Either::Left((Some(PortalCommand::Connect(param)), _)) => {
                 portal.connect(param);
