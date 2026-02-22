@@ -683,21 +683,24 @@ public struct SettingsView: View {
       isDisabled: Bool,
       errorMessage: String
     ) -> some View {
-      HStack {
-        Text(label)
-          .frame(width: 150, alignment: .trailing)
-        TextField("", text: text, prompt: Text(prompt))
-          .focused($focusedField, equals: field)
-          .disabled(isDisabled)
-          .frame(width: 250)
-          .validationBorder(isValid: isValid, isFocused: focusedField == field)
-      }
-      if !isValid && focusedField != field {
-        Text(errorMessage)
-          .font(.caption)
-          .foregroundStyle(.red)
-          .frame(maxWidth: .infinity, alignment: .trailing)
-          .padding(.trailing, 10)
+      VStack(alignment: .leading, spacing: 2) {
+        HStack {
+          Text(label)
+            .frame(width: 150, alignment: .trailing)
+          TextField("", text: text, prompt: Text(prompt))
+            .focused($focusedField, equals: field)
+            .disabled(isDisabled)
+            .frame(width: 250)
+            .validationBorder(isValid: isValid, isFocused: focusedField == field)
+        }
+        HStack(spacing: 0) {
+          Spacer()
+            .frame(width: 158)
+          Text(errorMessage)
+            .font(.caption)
+            .foregroundStyle(.red)
+            .opacity(!isValid && focusedField != field ? 1 : 0)
+        }
       }
     }
   #endif
