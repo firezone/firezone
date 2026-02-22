@@ -28,7 +28,7 @@
     "asciinema-player": "^3.14.15",
     "fast-xml-parser": "^5.3.6",
     "flowbite-react": "^0.12.17",
-    "framer-motion": "^12.34.0",
+    "framer-motion": "^12.34.2",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
     "posthog-js": "^1.x",
