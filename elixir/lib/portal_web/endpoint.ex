@@ -84,6 +84,7 @@ defmodule PortalWeb.Endpoint do
   def real_ip_opts do
     [
       headers: ["x-forwarded-for"],
+      parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
       proxies: {__MODULE__, :external_trusted_proxies, []},
       clients: {__MODULE__, :clients, []}
     ]
