@@ -30,6 +30,7 @@ defmodule PortalWeb.Endpoint do
 
   plug RemoteIp,
     headers: ["x-forwarded-for"],
+    parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
     proxies: {__MODULE__, :external_trusted_proxies, []},
     clients: {__MODULE__, :clients, []}
 
