@@ -32,7 +32,7 @@ async fn client_does_not_pipeline_messages() {
         loop {
             match ws.next().await {
                 Some(Ok(Message::Text(text))) => match text.as_str() {
-                    r#"{"topic":"test","event":"phx_join","payload":null,"ref":1}"# => {
+                    r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
                         // The real Elixir backend processes messages in parallel and therefore may drop messages if we pipeline them instead of waiting for the channel join.
                         // This is difficult to assert in a test because we need to mimic this behaviour of not processing messages sequentially.
                         // The way we assert this is by checking, whether any messages are pipelined.
@@ -44,10 +44,10 @@ async fn client_does_not_pipeline_messages() {
                         }
 
                         ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":1,"topic":"client","payload":{"status":"ok","response":{}}}"#,
+                            r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#,
                         )).await.unwrap();
                     }
-                    r#"{"topic":"test","event":"bar","ref":0}"# => {
+                    r#"{"topic":"test","event":"bar","ref":1}"# => {
                         ws.send(Message::text(
                             r#"{"topic":"test","event":"foo","payload":null}"#,
                         ))
@@ -69,7 +69,6 @@ async fn client_does_not_pipeline_messages() {
 
     let client = async move {
         channel.connect(PublicKeyParam([0u8; 32]));
-        channel.send("test", OutboundMsg::Bar);
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
@@ -92,6 +91,9 @@ async fn client_does_not_pipeline_messages() {
                     panic!("Unexpected hiccup: {error:?}")
                 }
                 phoenix_channel::Event::Closed => break,
+                phoenix_channel::Event::Connected => {
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                }
             }
         }
     };
@@ -141,10 +143,10 @@ async fn client_deduplicates_messages() {
                     panic!("Unexpected error: {res:?}")
                 }
                 phoenix_channel::Event::JoinedRoom { .. } => {
-                    channel.send("test", OutboundMsg::Bar);
-                    channel.send("test", OutboundMsg::Bar);
-                    channel.send("test", OutboundMsg::Bar);
-                    channel.send("test", OutboundMsg::Bar);
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
                 }
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
@@ -160,6 +162,7 @@ async fn client_deduplicates_messages() {
                     channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Closed => break,
+                phoenix_channel::Event::Connected => {}
             }
         }
     };
@@ -182,8 +185,8 @@ async fn client_clears_local_message_on_connect() {
 
     let (server, port) = spawn_websocket_server(|text| {
         match text {
-            r#"{"topic":"test","event":"phx_join","payload":null,"ref":2}"# => {
-                r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":{}}}"#
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
             }
             // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
             r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -197,9 +200,8 @@ async fn client_clears_local_message_on_connect() {
     let mut channel = make_websocket_test_channel(port);
 
     let client = async {
-        channel.send("test", OutboundMsg::Bar);
+        channel.send("test", OutboundMsg::Bar).unwrap_err();
         channel.connect(PublicKeyParam([0u8; 32]));
-        channel.send("test", OutboundMsg::Bar);
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
@@ -207,7 +209,9 @@ async fn client_clears_local_message_on_connect() {
                 phoenix_channel::Event::ErrorResponse { res, .. } => {
                     panic!("Unexpected error: {res:?}")
                 }
-                phoenix_channel::Event::JoinedRoom { .. } => {}
+                phoenix_channel::Event::JoinedRoom { .. } => {
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                }
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
                     msg: InboundMsg::Foo,
@@ -222,6 +226,7 @@ async fn client_clears_local_message_on_connect() {
                     channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Closed => break,
+                phoenix_channel::Event::Connected => {}
             }
         }
     };
@@ -280,6 +285,7 @@ async fn times_out_after_missed_heartbeats() {
                 phoenix_channel::Event::Closed => {
                     panic!("Channel closed")
                 }
+                phoenix_channel::Event::Connected => {}
             }
         }
     };

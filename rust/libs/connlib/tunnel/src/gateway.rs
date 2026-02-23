@@ -74,13 +74,7 @@ impl GatewayState {
     pub(crate) fn new(flow_logs: bool, seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
-            node: Node::new(
-                seed,
-                now,
-                unix_ts,
-                IceConfig::server_default(),
-                IceConfig::server_idle(),
-            ),
+            node: Node::new(seed, now, unix_ts),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
@@ -312,6 +306,8 @@ impl GatewayState {
             gateway_ice.into(),
             client_ice.into(),
             IceRole::Controlled,
+            IceConfig::server_default(),
+            IceConfig::server_idle(),
             now,
         )?;
 

@@ -1,4 +1,5 @@
 mod allocations;
+mod connection_state;
 mod connections;
 
 pub use connections::UnknownConnection;
@@ -6,6 +7,7 @@ pub use connections::UnknownConnection;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
+use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
@@ -96,9 +98,6 @@ pub struct Node<TId, RId> {
 
     rng: StdRng,
 
-    default_ice_config: IceConfig,
-    idle_ice_config: IceConfig,
-
     /// The number of seconds since the UNIX epoch.
     unix_ts: Duration,
     /// The [`Instant`] at the time we read the UNIX epoch above.
@@ -167,13 +166,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(
-        seed: [u8; 32],
-        now: Instant,
-        unix_ts: Duration,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
-    ) -> Self {
+    pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         let mut rng = StdRng::from_seed(seed);
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
@@ -193,8 +186,6 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
-            default_ice_config,
-            idle_ice_config,
             unix_now: now,
             unix_ts,
         }
@@ -259,6 +250,8 @@ where
         local_creds: Credentials,
         remote_creds: Credentials,
         ice_role: IceRole,
+        default_ice_config: IceConfig,
+        idle_ice_config: IceConfig,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
@@ -274,7 +267,7 @@ where
         // Only if all of those things are the same, will:
         // - ICE be able to establish a connection
         // - boringtun be able to handshake a session
-        if let Ok(c) = self.connections.get_established_mut(&cid, now)
+        if let Ok(c) = self.connections.get_mut(&cid, now)
             && c.agent.local_credentials() == &local_creds
             && c.agent
                 .remote_credentials()
@@ -286,7 +279,7 @@ where
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
             c.state
-                .on_upsert(cid, &mut c.agent, self.default_ice_config, now);
+                .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
 
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<Vec<_>>();
@@ -328,7 +321,7 @@ where
         }
 
         let mut agent = new_agent(ice_role);
-        self.default_ice_config.apply(&mut agent);
+        default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -350,6 +343,8 @@ where
             preshared_key,
             selected_relay,
             index,
+            default_ice_config,
+            idle_ice_config,
             now,
             now,
         );
@@ -432,16 +427,14 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        let Some((agent, state, relay)) = self.connections.agent_and_state_mut(cid) else {
+        tracing::debug!(?candidate, "Received candidate from remote");
+
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
 
-        tracing::debug!(?candidate, "Received candidate from remote");
-
-        agent.add_remote_candidate(candidate.clone());
-
-        generate_optimistic_candidates(agent);
+        c.add_remote_candidate(cid, candidate.clone(), now);
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -454,25 +447,24 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut_by_id(&relay) else {
-            tracing::debug!(rid = %relay, "Unknown relay");
+        let Some(allocation) = self.allocations.get_mut_by_id(&c.relay.id) else {
+            tracing::debug!(rid = %c.relay.id, "Unknown relay");
             return;
         };
 
         allocation.bind_channel(candidate.addr(), now);
-
-        // Make sure we move out of idle mode when we add new candidates.
-        state.on_candidate(cid, agent, self.default_ice_config, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        if let Some((agent, state, _)) = self.connections.agent_and_state_mut(cid) {
-            agent.invalidate_candidate(&candidate);
-            agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+        tracing::debug!(?candidate, "Received invalidated candidate from remote");
 
-            state.on_candidate(cid, agent, self.default_ice_config, now)
-        }
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
+            tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
+            return;
+        };
+
+        c.remove_remote_candidate(cid, candidate, now);
     }
 
     /// Decapsulate an incoming packet.
@@ -523,7 +515,7 @@ where
         packet: &IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
-        let conn = self.connections.get_established_mut(&cid, now)?;
+        let conn = self.connections.get_mut(&cid, now)?;
 
         if !conn.agent.controlling() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -620,7 +612,6 @@ where
         self.connections.check_relays_available(
             &self.allocations,
             &mut self.pending_events,
-            self.default_ice_config,
             &mut self.rng,
             now,
         );
@@ -730,6 +721,8 @@ where
         key: x25519::StaticSecret,
         relay: RId,
         index: Index,
+        default_ice_config: IceConfig,
+        idle_ice_config: IceConfig,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -785,8 +778,8 @@ where
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
-            default_ice_config: self.default_ice_config,
-            idle_ice_config: self.idle_ice_config,
+            default_ice_config,
+            idle_ice_config,
         }
     }
 
@@ -908,9 +901,9 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (_, agent) in self.connections.agents_mut() {
-            if agent.accepts_message(&message) {
-                agent.handle_packet(
+        for (_, c) in self.connections.iter_mut() {
+            if c.agent.accepts_message(&message) {
+                c.agent.handle_packet(
                     now,
                     StunPacket {
                         proto: Protocol::Udp,
@@ -1011,20 +1004,13 @@ where
 
             match event {
                 allocation::Event::New(candidate) => {
-                    for (cid, agent, state) in self.connections.agents_and_state_by_relay_mut(rid) {
-                        if let Some(candidate) =
-                            agent.add_local_candidate(candidate.clone()).cloned()
-                        {
-                            self.pending_events
-                                .push_back(new_ice_candidate_event(cid, candidate));
-                        }
-
-                        state.on_candidate(cid, agent, self.default_ice_config, now);
+                    for (cid, c) in self.connections.iter_mut_by_relay(rid) {
+                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
-                    for (cid, agent) in self.connections.agents_mut() {
-                        remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
+                    for (cid, c) in self.connections.iter_mut() {
+                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events);
                     }
                 }
             }
@@ -1135,37 +1121,10 @@ fn invalidate_allocation_candidates<TId, RId>(
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    for (cid, agent) in connections.agents_mut() {
+    for (cid, c) in connections.iter_mut() {
         for candidate in allocation.current_relay_candidates() {
-            remove_local_candidate(cid, agent, &candidate, pending_events);
+            c.remove_local_candidate(cid, &candidate, pending_events);
         }
-    }
-}
-
-fn remove_local_candidate<TId>(
-    id: TId,
-    agent: &mut IceAgent,
-    candidate: &Candidate,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: fmt::Display,
-{
-    if candidate.kind() != CandidateKind::Relayed {
-        debug_assert_eq!(
-            candidate.kind(),
-            CandidateKind::Relayed,
-            "we should only ever invalidate relay candidates"
-        );
-        return;
-    }
-
-    let was_present = agent.invalidate_candidate(candidate);
-
-    if was_present {
-        pending_events.push_back(Event::InvalidateIceCandidate {
-            connection: id,
-            candidate: candidate.clone(),
-        })
     }
 }
 
@@ -1286,290 +1245,6 @@ struct SelectedRelay<RId> {
     id: RId,
     /// Whether we've already logged failure to sample a new relay.
     logged_sample_failure: bool,
-}
-
-#[derive(Debug)]
-enum ConnectionState {
-    /// We are still running ICE to figure out, which socket to use to send data.
-    Connecting {
-        /// Packets emitted by wireguard whilst are still running ICE.
-        ///
-        /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
-        /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        wg_buffer: AllocRingBuffer<Vec<u8>>,
-
-        /// Packets we are told to send whilst we are still running ICE.
-        ///
-        /// These need to be encrypted and sent once the tunnel is established.
-        ip_buffer: AllocRingBuffer<IpPacket>,
-    },
-    /// A socket has been nominated.
-    Connected {
-        /// Our nominated socket.
-        peer_socket: PeerSocket,
-
-        last_activity: Instant,
-    },
-    /// We haven't seen application packets in a while.
-    Idle {
-        /// Our nominated socket.
-        peer_socket: PeerSocket,
-    },
-    /// The connection failed in an unrecoverable way and will be GC'd.
-    Failed,
-}
-
-impl ConnectionState {
-    fn poll_timeout(&self, agent: &IceAgent) -> Option<(Instant, &'static str)> {
-        if agent.state() != IceConnectionState::Connected {
-            return None;
-        }
-
-        match self {
-            ConnectionState::Connected { last_activity, .. } => {
-                Some((idle_at(*last_activity), "idle transition"))
-            }
-            ConnectionState::Connecting { .. }
-            | ConnectionState::Idle { .. }
-            | ConnectionState::Failed => None,
-        }
-    }
-
-    fn handle_timeout(&mut self, agent: &mut IceAgent, idle_ice_config: IceConfig, now: Instant) {
-        let Self::Connected {
-            last_activity,
-            peer_socket,
-        } = self
-        else {
-            return;
-        };
-
-        if idle_at(*last_activity) > now {
-            return;
-        }
-
-        if agent.state() != IceConnectionState::Connected {
-            return;
-        }
-
-        let peer_socket = *peer_socket;
-
-        self.transition_to_idle(peer_socket, agent, idle_ice_config);
-    }
-
-    fn on_upsert<TId>(
-        &mut self,
-        cid: TId,
-        agent: &mut IceAgent,
-        default_ice_config: IceConfig,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_activity, .. } => {
-                *last_activity = now;
-                return;
-            }
-            Self::Failed | Self::Connecting { .. } => return,
-        };
-
-        self.transition_to_connected(cid, peer_socket, agent, default_ice_config, "upsert", now);
-    }
-
-    fn on_candidate<TId>(
-        &mut self,
-        cid: TId,
-        agent: &mut IceAgent,
-        default_ice_config: IceConfig,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_activity, .. } => {
-                *last_activity = now;
-                return;
-            }
-            Self::Failed | Self::Connecting { .. } => return,
-        };
-
-        self.transition_to_connected(
-            cid,
-            peer_socket,
-            agent,
-            default_ice_config,
-            "candidates changed",
-            now,
-        );
-    }
-
-    fn on_outgoing<TId>(
-        &mut self,
-        cid: TId,
-        agent: &mut IceAgent,
-        default_ice_config: IceConfig,
-        packet: &IpPacket,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_activity, .. } => {
-                *last_activity = now;
-                return;
-            }
-            Self::Failed | Self::Connecting { .. } => return,
-        };
-
-        self.transition_to_connected(
-            cid,
-            peer_socket,
-            agent,
-            default_ice_config,
-            tracing::field::debug(packet),
-            now,
-        );
-    }
-
-    fn on_incoming<TId>(
-        &mut self,
-        cid: TId,
-        agent: &mut IceAgent,
-        default_ice_config: IceConfig,
-        packet: &IpPacket,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_activity, .. } => {
-                *last_activity = now;
-                return;
-            }
-            Self::Failed | Self::Connecting { .. } => return,
-        };
-
-        self.transition_to_connected(
-            cid,
-            peer_socket,
-            agent,
-            default_ice_config,
-            tracing::field::debug(packet),
-            now,
-        );
-    }
-
-    fn transition_to_idle(
-        &mut self,
-        peer_socket: PeerSocket,
-        agent: &mut IceAgent,
-        idle_ice_config: IceConfig,
-    ) {
-        tracing::debug!("Connection is idle");
-        *self = Self::Idle { peer_socket };
-        idle_ice_config.apply(agent);
-    }
-
-    fn transition_to_connected<TId>(
-        &mut self,
-        cid: TId,
-        peer_socket: PeerSocket,
-        agent: &mut IceAgent,
-        default_ice_config: IceConfig,
-        trigger: impl tracing::Value,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        tracing::debug!(trigger, %cid, "Connection resumed");
-        *self = Self::Connected {
-            peer_socket,
-            last_activity: now,
-        };
-        default_ice_config.apply(agent);
-    }
-
-    fn has_nominated_socket(&self) -> bool {
-        matches!(self, Self::Connected { .. } | Self::Idle { .. })
-    }
-}
-
-impl fmt::Display for ConnectionState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConnectionState::Connecting { .. } => write!(f, "Connecting"),
-            ConnectionState::Connected { peer_socket, .. } => {
-                write!(f, "Connected({})", peer_socket.kind())
-            }
-            ConnectionState::Idle { peer_socket } => write!(f, "Idle({})", peer_socket.kind()),
-            ConnectionState::Failed => write!(f, "Failed"),
-        }
-    }
-}
-
-fn idle_at(last_activity: Instant) -> Instant {
-    const MAX_IDLE: Duration = Duration::from_secs(20); // Must be longer than the ICE timeout otherwise we might not detect a failed connection early enough.
-
-    last_activity + MAX_IDLE
-}
-
-/// The socket of the peer we are connected to.
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum PeerSocket {
-    PeerToPeer {
-        source: SocketAddr,
-        dest: SocketAddr,
-    },
-    PeerToRelay {
-        source: SocketAddr,
-        dest: SocketAddr,
-    },
-    RelayToPeer {
-        dest: SocketAddr,
-    },
-    RelayToRelay {
-        dest: SocketAddr,
-    },
-}
-
-impl PeerSocket {
-    fn send_from_relay(&self) -> bool {
-        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
-    }
-
-    fn fmt<RId>(&self, relay: RId) -> String
-    where
-        RId: fmt::Display,
-    {
-        match self {
-            PeerSocket::PeerToPeer { source, dest } => {
-                format!("PeerToPeer {{ source: {source}, dest: {dest} }}")
-            }
-            PeerSocket::PeerToRelay { source, dest } => {
-                format!("PeerToRelay {{ source: {source}, dest: {dest} }}")
-            }
-            PeerSocket::RelayToPeer { dest } => {
-                format!("RelayToPeer {{ relay: {relay}, dest: {dest} }}")
-            }
-            PeerSocket::RelayToRelay { dest } => {
-                format!("RelayToRelay {{ relay: {relay}, dest: {dest} }}")
-            }
-        }
-    }
-
-    fn kind(&self) -> &'static str {
-        match self {
-            PeerSocket::PeerToPeer { .. } => "PeerToPeer",
-            PeerSocket::PeerToRelay { .. } => "PeerToRelay",
-            PeerSocket::RelayToPeer { .. } => "RelayToPeer",
-            PeerSocket::RelayToRelay { .. } => "RelayToRelay",
-        }
-    }
 }
 
 impl<RId> Connection<RId>
@@ -2126,6 +1801,74 @@ where
             allocations,
             now,
         ));
+    }
+
+    fn add_local_candidate<TId>(
+        &mut self,
+        cid: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+        now: Instant,
+    ) where
+        TId: fmt::Display + Copy,
+    {
+        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
+            pending_events.push_back(new_ice_candidate_event(cid, candidate));
+        }
+
+        self.state
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
+    }
+
+    fn remove_local_candidate<TId>(
+        &mut self,
+        id: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display,
+    {
+        if candidate.kind() != CandidateKind::Relayed {
+            debug_assert_eq!(
+                candidate.kind(),
+                CandidateKind::Relayed,
+                "we should only ever invalidate relay candidates"
+            );
+            return;
+        }
+
+        let was_present = self.agent.invalidate_candidate(candidate);
+
+        if was_present {
+            pending_events.push_back(Event::InvalidateIceCandidate {
+                connection: id,
+                candidate: candidate.clone(),
+            })
+        }
+    }
+
+    fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        self.agent.add_remote_candidate(candidate);
+
+        generate_optimistic_candidates(&mut self.agent);
+
+        // Make sure we move out of idle mode when we add new candidates.
+        self.state
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
+    }
+
+    fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        self.agent.invalidate_candidate(&candidate);
+        self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+
+        self.state
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
     fn socket(&self) -> Option<PeerSocket> {

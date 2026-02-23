@@ -801,6 +801,7 @@ async fn phoenix_channel_event_loop(
                 is_connected.store(false, Ordering::Relaxed);
                 tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}");
             }
+            Ok(Event::Connected) => {}
             Err(e) => {
                 is_connected.store(false, Ordering::Relaxed);
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
