@@ -1,4 +1,25 @@
 [toolchain]
 channel = "1.93.0" # Keep in sync with `Dockerfile`
 components = ["rust-src", "rust-analyzer", "clippy"]
-targets = ["x86_64-unknown-linux-musl"]
+targets = [
+    # Ensure this list is synced with `deny.toml`.
+
+    # Windows
+    "x86_64-pc-windows-msvc",
+
+    # Linux
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "armv7-unknown-linux-musleabihf",
+
+    # Apple
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-apple-ios",
+
+    # Android
+    "armv7-linux-androideabi",
+    "aarch64-linux-android",
+    "x86_64-linux-android",
+    "i686-linux-android"
+]
