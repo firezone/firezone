@@ -46,5 +46,16 @@ defmodule Portal.RemoteIp.XForwardedForParserTest do
     test "handles whitespace around values" do
       assert XForwardedForParser.parse("  107.197.104.68:53859  ") == [{107, 197, 104, 68}]
     end
+
+    # RFC 7239 bracketed IPv6 – brackets confuse :inet.parse_strict_address/1
+    test "strips brackets and port from bracketed IPv6" do
+      assert XForwardedForParser.parse("[2601:5c1:8200:4e5:49f9:23d9:a1c0:bb0b]:64828") ==
+               [{0x2601, 0x5C1, 0x8200, 0x04E5, 0x49F9, 0x23D9, 0xA1C0, 0xBB0B}]
+    end
+
+    test "strips brackets from bracketed IPv6 without port" do
+      assert XForwardedForParser.parse("[2601:5c1:8200:4e5:49f9:23d9:a1c0:bb0b]") ==
+               [{0x2601, 0x5C1, 0x8200, 0x04E5, 0x49F9, 0x23D9, 0xA1C0, 0xBB0B}]
+    end
   end
 end

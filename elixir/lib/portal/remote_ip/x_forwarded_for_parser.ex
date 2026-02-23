@@ -3,7 +3,8 @@ defmodule Portal.RemoteIp.XForwardedForParser do
 
   @moduledoc """
   A custom `RemoteIp.Parser` for the `X-Forwarded-For` header that handles
-  Azure Application Gateway's non-standard port appending.
+  Azure Application Gateway's non-standard port appending and RFC 7239
+  bracketed IPv6 addresses.
 
   Azure App Gateway appends the source port directly to the IP address without
   RFC 7239 bracket notation, producing values like:
@@ -12,10 +13,14 @@ defmodule Portal.RemoteIp.XForwardedForParser do
   - IPv6: `"2601:5c1:8200:4e5:49f9:23d9:a1c0:bb0b:64828"` instead of
     `"[2601:5c1:8200:4e5:49f9:23d9:a1c0:bb0b]:64828"`
 
-  These fail `:inet.parse_strict_address/1`, causing `RemoteIp` to see no
-  valid client IP and fall back to `peer_data.address` (the App Gateway's own
-  private IP). This parser strips the trailing `:port` before delegating to
-  the standard parser.
+  RFC-compliant proxies may send bracketed IPv6 with or without a port:
+
+  - `"[2601:5c1:8200:4e5:49f9:23d9:a1c0:bb0b]:64828"`
+  - `"[2601:5c1:8200:4e5:49f9:23d9:a1c0:bb0b]"`
+
+  All of these fail `:inet.parse_strict_address/1`. This parser normalizes
+  the address by stripping surrounding brackets and/or the trailing `:port`
+  before re-attempting the parse.
   """
 
   @impl RemoteIp.Parser
@@ -35,13 +40,22 @@ defmodule Portal.RemoteIp.XForwardedForParser do
 
       {:error, _} ->
         trimmed
-        |> strip_port()
+        |> normalize_address()
         |> then(fn candidate ->
           case :inet.parse_strict_address(to_charlist(candidate)) do
             {:ok, ip} -> [ip]
             {:error, _} -> []
           end
         end)
+    end
+  end
+
+  # Handles RFC 7239 bracketed IPv6 with optional port: "[ip]:port" or "[ip]".
+  # Falls back to strip_port/1 for Azure's non-bracketed "ip:port" form.
+  defp normalize_address(str) do
+    case Regex.run(~r/^\[([^\]]+)\](?::\d+)?$/, str) do
+      [_, ip] -> ip
+      nil -> strip_port(str)
     end
   end
 
