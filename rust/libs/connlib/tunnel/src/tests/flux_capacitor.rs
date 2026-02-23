@@ -62,6 +62,17 @@ impl FluxCapacitor {
         }
     }
 
+    pub(crate) fn reset(&self) {
+        let elapsed = self.elapsed();
+
+        {
+            let mut guard = self.now.lock().unwrap();
+
+            guard.0 -= elapsed;
+            guard.1 -= elapsed;
+        }
+    }
+
     fn elapsed(&self) -> Duration {
         self.now::<Instant>().duration_since(self.start)
     }

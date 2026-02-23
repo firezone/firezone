@@ -72,6 +72,7 @@ fn tunnel_test() {
         |(mut ref_state, transitions, mut seen_counter)| {
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
+            flux_capacitor.reset();
             let _guard = init_logging(flux_capacitor.clone(), test_index);
 
             std::fs::write(
