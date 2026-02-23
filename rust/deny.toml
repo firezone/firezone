@@ -108,8 +108,6 @@ ignore = [
     "RUSTSEC-2025-0012", # backoff, See #8386
     "RUSTSEC-2024-0436", # paste, See #8387
 
-    "RUSTSEC-2024-0429", # `glib`, need to wait for tauri to upgrade
-
     "RUSTSEC-2025-0057", # `fxhash` is unmaintained, used by transitive dependencies. See #10297.
 
     # `rust-unic` crates are unmaintained but still pulled in via tauri.
@@ -292,20 +290,11 @@ skip = [
     "toml",
     "toml_datetime",
     "toml_edit",
-    "wasi",
-    "wasm-streams",
     "webpki-roots",
     "which",
     "windows-link",
     "windows-sys",
     "windows-targets",
-    "windows_aarch64_gnullvm",
-    "windows_aarch64_msvc",
-    "windows_i686_gnu",
-    "windows_i686_gnullvm",
-    "windows_i686_msvc",
-    "windows_x86_64_gnu",
-    "windows_x86_64_gnullvm",
     "windows_x86_64_msvc",
     "winnow",
     "winreg",
