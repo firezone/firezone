@@ -1349,7 +1349,7 @@ impl RefClient {
 
     /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
     pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
-        let ice_timeout = Duration::from_millis(15250);
+        let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?
 
         self.connection_resets
             .iter()
