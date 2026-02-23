@@ -929,6 +929,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
+      # Synchronize with the channel to ensure the change is fully processed
+      # before asserting the push. The channel may make DB queries in
+      # reauthorize_policy_authorization which can be slow under CI load.
+      :sys.get_state(socket.channel_pid)
+
       assert_push "reject_access", %{
         client_id: client_id,
         resource_id: resource_id
@@ -950,6 +955,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
 
       Changes.Hooks.PolicyAuthorizations.on_delete(200, data)
+
+      :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{
         client_id: client_id,
