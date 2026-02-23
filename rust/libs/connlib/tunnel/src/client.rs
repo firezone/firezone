@@ -160,13 +160,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: Node::new(
-                seed,
-                now,
-                unix_ts,
-                snownet::IceConfig::client_default(),
-                snownet::IceConfig::client_idle(),
-            ),
+            node: Node::new(seed, now, unix_ts),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
             stub_resolver: StubResolver::new(records),
@@ -642,6 +636,8 @@ impl ClientState {
             client_ice.into(),
             gateway_ice.into(),
             snownet::IceRole::Controlling,
+            snownet::IceConfig::client_default(),
+            snownet::IceConfig::client_idle(),
             now,
         ) {
             Ok(()) => {}
