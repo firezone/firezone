@@ -1437,6 +1437,13 @@ defmodule Portal.Repo.Seeds do
     IO.puts("Policies Created")
     IO.puts("")
 
+    ops_username = Application.get_env(:portal, :ops_admin_username, "admin")
+    ops_password = Application.get_env(:portal, :ops_admin_password, "firezone")
+    IO.puts("Ops endpoint: http://localhost:13002")
+    IO.puts("  Username: #{ops_username}")
+    IO.puts("  Password: #{ops_password}")
+    IO.puts("")
+
     membership =
       Repo.get_by(Membership,
         group_id: synced_group.id,

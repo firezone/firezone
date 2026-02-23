@@ -18,8 +18,18 @@ defmodule PortalOps.Router do
     plug :put_secure_browser_headers, %{"content-security-policy" => @csp}
   end
 
+  pipeline :admin_auth do
+    plug :basic_auth
+  end
+
+  defp basic_auth(conn, _opts) do
+    username = Portal.Config.fetch_env!(:portal, :ops_admin_username)
+    password = Portal.Config.fetch_env!(:portal, :ops_admin_password)
+    Plug.BasicAuth.basic_auth(conn, username: username, password: password)
+  end
+
   scope "/" do
-    pipe_through :browser
+    pipe_through [:browser, :admin_auth]
     oban_dashboard "/oban"
     live_dashboard "/dashboard", metrics: Portal.Telemetry
   end

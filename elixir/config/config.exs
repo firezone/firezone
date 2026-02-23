@@ -365,6 +365,10 @@ config :portal, PortalOps.Endpoint,
   ],
   pubsub_server: Portal.PubSub
 
+config :portal,
+  ops_admin_username: "admin",
+  ops_admin_password: "firezone"
+
 config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,

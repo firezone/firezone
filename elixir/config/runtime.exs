@@ -175,7 +175,9 @@ if config_env() == :prod do
     cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
     cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
     cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt),
-    ops_cookie_signing_salt: env_var_to_config!(:ops_cookie_signing_salt)
+    ops_cookie_signing_salt: env_var_to_config!(:ops_cookie_signing_salt),
+    ops_admin_username: env_var_to_config!(:ops_admin_username),
+    ops_admin_password: env_var_to_config!(:ops_admin_password)
 
   config :portal,
     external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),

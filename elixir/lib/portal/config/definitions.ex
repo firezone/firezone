@@ -519,6 +519,18 @@ defmodule Portal.Config.Definitions do
     changeset: &Portal.Changeset.validate_base64/2
   )
 
+  @doc """
+  Username for HTTP basic authentication on the ops endpoint.
+  Maps to the `OPS_ADMIN_USERNAME` environment variable.
+  """
+  defconfig(:ops_admin_username, :string)
+
+  @doc """
+  Password for HTTP basic authentication on the ops endpoint.
+  Maps to the `OPS_ADMIN_PASSWORD` environment variable.
+  """
+  defconfig(:ops_admin_password, :string, sensitive: true)
+
   ##############################################
   ## Userpass / SAML / OIDC / Email authentication
   ##############################################
