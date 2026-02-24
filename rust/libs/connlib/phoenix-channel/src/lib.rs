@@ -475,6 +475,7 @@ where
             addresses
                 .into_iter()
                 .chain(self.host().parse::<IpAddr>().ok())
+                .unique()
                 .map(|ip| SocketAddr::new(ip, self.port()))
                 .collect(),
             self.host(),
