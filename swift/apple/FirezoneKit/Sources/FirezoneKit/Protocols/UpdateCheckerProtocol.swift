@@ -7,11 +7,12 @@
 #if os(macOS)
   import Combine
 
-  /// Abstracts update checking for testing.
+  /// Abstracts update checking to support dependency injection.
   ///
-  /// This protocol enables dependency injection in Store, allowing tests to
-  /// run without accessing UNUserNotificationCenter which crashes in test context.
-  /// Production uses `UpdateChecker`, tests use `MockUpdateChecker`.
+  /// In production, `UpdateChecker` uses `UNUserNotificationCenter` indirectly
+  /// via `NotificationAdapter`, which can crash in test contexts.
+  /// By depending on this protocol, tests can inject `MockUpdateChecker` to
+  /// avoid that indirect `UNUserNotificationCenter` access.
   @MainActor
   public protocol UpdateCheckerProtocol: AnyObject, ObservableObject {
     var updateAvailable: Bool { get }
