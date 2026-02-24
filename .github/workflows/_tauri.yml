@@ -69,7 +69,7 @@ jobs:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust-stable
-      - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/setup-rust-target-dependency-cache
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
         with:
