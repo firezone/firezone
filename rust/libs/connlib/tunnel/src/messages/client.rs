@@ -123,9 +123,7 @@ pub struct ClientDeviceAccessAuthorized {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessDenied {
-    pub client_id: Option<ClientId>,
     pub client_ipv4: Ipv4Addr,
-    pub client_ipv6: Ipv6Addr,
     pub reason: FailReason,
 }
 

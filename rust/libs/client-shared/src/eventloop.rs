@@ -575,12 +575,10 @@ impl Eventloop {
                 };
             }
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
-                client_id,
                 client_ipv4,
                 reason,
-                ..
             }) => {
-                tracing::debug!(?client_id, %client_ipv4, "Failed to access device: {reason:?}");
+                tracing::debug!(%client_ipv4, "Failed to access device: {reason:?}");
 
                 match reason {
                     FailReason::Offline => tunnel.state_mut().set_client_offline(client_ipv4),
