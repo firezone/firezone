@@ -150,7 +150,7 @@ public struct SettingsView: View {
           }
         },
         message: {
-          Text("Changing this setting will sign you out. Do you want to continue?")
+          Text("This will sign you out of your current session. Do you want to continue?")
         }
       )
   }
@@ -239,17 +239,6 @@ public struct SettingsView: View {
           Spacer()
         }
 
-        HStack {
-          Spacer()
-          Button("Reset to Defaults") {
-            focusedField = nil
-            viewModel.reset()
-          }
-          .disabled(viewModel.shouldDisableResetButton)
-          Spacer()
-        }
-        .padding(.top, 10)
-
         Spacer()
       }
     #elseif os(iOS)
@@ -282,18 +271,6 @@ public struct SettingsView: View {
                 .onChange(of: viewModel.connectOnStart) { _ in
                   withErrorHandler { try await viewModel.saveToggle(.connectOnStart) }
                 }
-              }
-              HStack {
-                Spacer()
-                Button(
-                  "Reset to Defaults",
-                  action: {
-                    focusedField = nil
-                    viewModel.reset()
-                  }
-                )
-                .disabled(viewModel.shouldDisableResetButton)
-                Spacer()
               }
             },
             header: { Text("General Settings") },
@@ -728,6 +705,8 @@ public struct SettingsView: View {
             .frame(width: 250)
             .validationBorder(isValid: isValid, isFocused: focusedField == field)
         }
+        // Use .opacity(0) instead of conditional rendering to reserve layout
+        // space and prevent vertical jumps when validation errors appear/disappear.
         HStack(spacing: 0) {
           // 150pt label width + 8pt default HStack spacing
           Spacer()
