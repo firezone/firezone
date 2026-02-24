@@ -551,6 +551,7 @@ where
                 pending_messages,
                 next_request_id,
             } = match &mut self.state {
+                State::Connected(stream) => stream,
                 State::Closed => return Poll::Ready(Ok(Event::Closed)),
                 State::Closing(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(())) => {
@@ -568,7 +569,6 @@ where
                     }
                     Poll::Pending => return Poll::Pending,
                 },
-                State::Connected(stream) => stream,
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
                         self.state = State::Connected(Connected {
