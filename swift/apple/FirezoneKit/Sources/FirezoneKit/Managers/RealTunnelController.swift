@@ -43,10 +43,7 @@ public final class RealTunnelController: TunnelControllerProtocol {
   }
 
   public func enable() async throws {
-    guard let manager = vpnManager else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await manager.enable()
+    try await requireManager().enable()
   }
 
   public func installConfiguration() async throws {
@@ -56,72 +53,44 @@ public final class RealTunnelController: TunnelControllerProtocol {
   // MARK: - IPC Operations
 
   public func fetchResources(currentHash: Data) async throws -> Data? {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    return try await IPCClient.fetchState(session: session, currentHash: currentHash)
+    try await IPCClient.fetchState(session: requireSession(), currentHash: currentHash)
   }
 
   public func setConfiguration(_ config: TunnelConfiguration) async throws {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.setConfiguration(session: session, config)
+    try await IPCClient.setConfiguration(session: requireSession(), config)
   }
 
   public func start(configuration: TunnelConfiguration) throws {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try IPCClient.start(session: session, configuration: configuration)
+    try IPCClient.start(session: requireSession(), configuration: configuration)
   }
 
   public func start(token: String, configuration: TunnelConfiguration) throws {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try IPCClient.start(session: session, token: token, configuration: configuration)
+    try IPCClient.start(session: requireSession(), token: token, configuration: configuration)
   }
 
   public func signOut() async throws {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.signOut(session: session)
+    try await IPCClient.signOut(session: requireSession())
   }
 
   public func clearLogs() async throws {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.clearLogs(session: session)
+    try await IPCClient.clearLogs(session: requireSession())
   }
 
   public func fetchFirezoneId() async throws -> String? {
-    guard let session = vpnManager?.session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    return try await IPCClient.fetchEncodedFirezoneId(session: session)
+    try await IPCClient.fetchEncodedFirezoneId(session: requireSession())
   }
 
   #if os(macOS)
     public func getLogFolderSize() async throws -> Int64 {
-      guard let session = vpnManager?.session() else {
-        throw VPNConfigurationManagerError.managerNotInitialized
-      }
-      return try await IPCClient.getLogFolderSize(session: session)
+      try await IPCClient.getLogFolderSize(session: requireSession())
     }
 
     public func exportLogs(fd: FileDescriptor) async throws {
-      guard let session = vpnManager?.session() else {
-        throw VPNConfigurationManagerError.managerNotInitialized
-      }
-      try await IPCClient.exportLogs(session: session, fd: fd)
+      try await IPCClient.exportLogs(session: requireSession(), fd: fd)
     }
 
     public func fetchLastDisconnectError(handler: @escaping @Sendable (Error?) -> Void) {
-      guard let session = vpnManager?.session() else { return }
-      session.fetchLastDisconnectError(completionHandler: handler)
+      vpnManager?.session()?.fetchLastDisconnectError(completionHandler: handler)
     }
   #endif
 
@@ -147,5 +116,21 @@ public final class RealTunnelController: TunnelControllerProtocol {
         }
       }
     }
+  }
+
+  // MARK: - Private
+
+  private func requireManager() throws -> VPNConfigurationManager {
+    guard let vpnManager else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    return vpnManager
+  }
+
+  private func requireSession() throws -> NETunnelProviderSession {
+    guard let session = try requireManager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    return session
   }
 }
