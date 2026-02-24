@@ -149,26 +149,30 @@ enum IPCClient {
     }
   }
 
-  // Subscribe to system notifications about our VPN status changing
-  // and let our handler know about them.
-  static func subscribeToVPNStatusUpdates(
-    session: NETunnelProviderSession,
-    handler: @escaping @MainActor (NEVPNStatus) async throws -> Void
-  ) {
-    Task {
-      for await notification in NotificationCenter.default.notifications(
-        named: .NEVPNStatusDidChange)
-      {
-        guard let notificationSession = notification.object as? NETunnelProviderSession
-        else {
-          return
-        }
+  /// Returns a stream of VPN status updates for the given session.
+  ///
+  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
+  /// The caller is responsible for consuming the stream in a task they manage.
+  static func vpnStatusUpdates(
+    session: NETunnelProviderSession
+  ) -> AsyncStream<NEVPNStatus> {
+    AsyncStream { continuation in
+      let task = Task {
+        for await notification in NotificationCenter.default.notifications(
+          named: .NEVPNStatusDidChange)
+        {
+          guard let notificationSession = notification.object as? NETunnelProviderSession
+          else {
+            return
+          }
 
-        // Only handle notifications for our session
-        if notificationSession === session {
-          do { try await handler(notificationSession.status) } catch { Log.error(error) }
+          if notificationSession === session {
+            continuation.yield(notificationSession.status)
+          }
         }
+        continuation.finish()
       }
+      continuation.onTermination = { _ in task.cancel() }
     }
   }
 

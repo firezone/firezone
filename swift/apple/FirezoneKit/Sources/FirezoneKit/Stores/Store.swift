@@ -58,8 +58,8 @@ public final class Store: ObservableObject {
   // Track which unreachable resource notifications we have already shown
   private var unreachableResources: Set<UnreachableResource> = []
 
-  // Prevents duplicate VPN status subscriptions on startup retry
-  private var observersSetup = false
+  // Task consuming VPN status updates; its presence means observers are active.
+  private var vpnStatusTask: CancellableTask?
 
   #if os(macOS)
     public init(
@@ -194,27 +194,27 @@ public final class Store: ObservableObject {
   #endif
 
   private func setupTunnelObservers() async throws {
-    guard !observersSetup else {
+    guard vpnStatusTask == nil else {
       Log.debug("Tunnel observers already set up, skipping")
       return
-    }
-
-    let vpnStatusChangeHandler: @MainActor (NEVPNStatus) async throws -> Void = {
-      [weak self] status in
-      try await self?.handleVPNStatusChange(newVPNStatus: status)
     }
 
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    IPCClient.subscribeToVPNStatusUpdates(session: session, handler: vpnStatusChangeHandler)
-    observersSetup = true
+    let statusStream = IPCClient.vpnStatusUpdates(session: session)
 
-    let initialStatus = session.status
+    vpnStatusTask = CancellableTask { [weak self] in
+      for await status in statusStream {
+        do { try await self?.handleVPNStatusChange(newVPNStatus: status) } catch {
+          Log.error(error)
+        }
+      }
+    }
 
     // Handle initial status to ensure resources start loading if already connected
-    try await handleVPNStatusChange(newVPNStatus: initialStatus)
+    try await handleVPNStatusChange(newVPNStatus: session.status)
   }
 
   private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
