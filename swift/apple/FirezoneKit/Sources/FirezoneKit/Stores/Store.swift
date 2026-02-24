@@ -41,7 +41,7 @@ public final class Store: ObservableObject {
 
   private(set) var sessionNotification: SessionNotificationProtocol
   #if os(macOS)
-    let updateChecker: UpdateChecker
+    let updateChecker: any UpdateCheckerProtocol
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
@@ -62,10 +62,11 @@ public final class Store: ObservableObject {
     public init(
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      updateChecker: (any UpdateCheckerProtocol)? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.updateChecker = UpdateChecker(configuration: configuration)
+      self.updateChecker = updateChecker ?? UpdateChecker(configuration: configuration)
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
