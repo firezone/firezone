@@ -1,10 +1,10 @@
 defmodule Portal.Channels do
   @moduledoc """
-  Targeted message delivery to client and gateway channel processes using `:pg` process groups.
+  Targeted message delivery to client and gateway channel processes using `:pg` as a registry.
 
   Replaces the previous `PubSub.Account.broadcast` pattern which sent messages to every
   channel in an account. Instead, processes register under their specific ID and messages
-  are sent directly to the registered processes.
+  are delivered directly via `GenServer.call/2`.
 
   `:pg` works natively across distributed Erlang clusters, auto-deregisters dead processes,
   and handles netsplits by removing unreachable members from the local view.
@@ -14,32 +14,34 @@ defmodule Portal.Channels do
   Registers the calling process as a client channel for the given client ID.
   """
   def register_client(client_id) do
-    :ok = :pg.join(group(:client, client_id), self())
+    :ok = :pg.join(pg_key(:client, client_id), self())
   end
 
   @doc """
   Registers the calling process as a gateway channel for the given gateway ID.
   """
   def register_gateway(gateway_id) do
-    :ok = :pg.join(group(:gateway, gateway_id), self())
+    :ok = :pg.join(pg_key(:gateway, gateway_id), self())
   end
 
   @doc """
-  Sends a message to all processes registered for the given client ID.
+  Calls the registered client channel process with the given message.
 
-  Returns `:ok` if at least one process is registered, `{:error, :not_found}` otherwise.
+  Returns `:ok` if the process handled the call, `{:error, :not_found}` if no process
+  is registered or the process exits or times out.
   """
   def send_to_client(client_id, message) do
-    send_to_group(group(:client, client_id), message)
+    call_channel(pg_key(:client, client_id), message)
   end
 
   @doc """
-  Sends a message to all processes registered for the given gateway ID.
+  Calls the registered gateway channel process with the given message.
 
-  Returns `:ok` if at least one process is registered, `{:error, :not_found}` otherwise.
+  Returns `:ok` if the process handled the call, `{:error, :not_found}` if no process
+  is registered or the process exits or times out.
   """
   def send_to_gateway(gateway_id, message) do
-    send_to_group(group(:gateway, gateway_id), message)
+    call_channel(pg_key(:gateway, gateway_id), message)
   end
 
   @doc """
@@ -52,16 +54,18 @@ defmodule Portal.Channels do
     send_to_gateway(gateway_id, {:reject_access, client_id, resource_id})
   end
 
-  defp send_to_group(group, message) do
-    case :pg.get_members(group) do
+  defp call_channel(pg_key, message) do
+    case :pg.get_members(pg_key) do
       [] ->
         {:error, :not_found}
 
-      pids ->
-        Enum.each(pids, &send(&1, message))
+      [pid] ->
+        GenServer.call(pid, message)
         :ok
     end
+  catch
+    :exit, _ -> {:error, :not_found}
   end
 
-  defp group(type, id), do: {__MODULE__, type, id}
+  defp pg_key(type, id), do: {__MODULE__, type, id}
 end

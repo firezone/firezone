@@ -2290,7 +2290,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:ice_candidates, gateway.id, candidates}
       )
@@ -2313,7 +2313,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       candidates = ["foo", "bar"]
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:invalidate_ice_candidates, gateway.id, candidates}
       )
@@ -2488,7 +2488,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
@@ -2552,7 +2552,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(global_relay)
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -2610,7 +2610,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2746,7 +2746,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2802,7 +2802,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
@@ -2848,7 +2848,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2891,8 +2891,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = connect_gateway_presence(gateway2, gateway_token.id)
 
-      :ok = Channels.register_gateway(gateway1.id)
-      :ok = Channels.register_gateway(gateway2.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway1.id) end)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway2.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2955,7 +2955,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3002,7 +3002,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3062,7 +3062,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3283,7 +3283,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3597,7 +3597,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3688,7 +3688,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3791,7 +3791,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3953,7 +3953,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -4020,7 +4020,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -4100,7 +4100,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       push(socket, "request_connection", %{
         "resource_id" => resource.id,
@@ -4151,7 +4151,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -4197,7 +4197,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
-      :ok = Channels.register_gateway(gateway.id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway.id) end)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 

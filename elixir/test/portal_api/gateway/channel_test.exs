@@ -209,7 +209,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         gateway: %{username: "C", password: "D"}
       }
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
@@ -298,7 +298,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         gateway: %{username: "C", password: "D"}
       }
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
@@ -321,7 +321,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "authorize_flow", _payload
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
@@ -499,7 +499,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay)
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -572,7 +572,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Consume the relays_presence message from relay connection
       assert_push "relays_presence", _relays_presence
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -647,7 +647,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -663,7 +663,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -759,7 +759,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "expires_at" => policy_authorization.expires_at
       }
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -850,7 +850,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         )
 
       # Build up policy authorization cache
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -866,7 +866,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -882,7 +882,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -997,7 +997,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
       :ok = Portal.Presence.Relays.connect(relay)
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -1066,7 +1066,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = PubSub.Changes.subscribe(account.id)
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -1146,7 +1146,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
          %{
@@ -1550,7 +1550,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       candidates = ["foo", "bar"]
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:ice_candidates, client.id, candidates}
       )
@@ -1573,7 +1573,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       candidates = ["foo", "bar"]
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:invalidate_ice_candidates, client.id, candidates}
       )
@@ -1617,7 +1617,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay)
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
@@ -1697,7 +1697,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
@@ -1772,7 +1772,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         gateway: %{username: "C", password: "D"}
       }
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
@@ -1871,7 +1871,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
@@ -1967,7 +1967,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         gateway: %{username: "C", password: "D"}
       }
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:authorize_policy, {channel_pid, socket_ref},
          %{
@@ -2056,7 +2056,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay)
 
-      send(
+      GenServer.call(
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
@@ -2156,7 +2156,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Channels.register_client(client.id)
+      spawn_call_receiver(fn -> Channels.register_client(client.id) end)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -2201,7 +2201,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Channels.register_client(client.id)
+      spawn_call_receiver(fn -> Channels.register_client(client.id) end)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 

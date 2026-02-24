@@ -238,29 +238,6 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  #############################################################
-  ##### Forwarding replies from the gateway to the client #####
-  #############################################################
-
-  # This the list of ICE candidates gathered by the gateway and relayed to the client
-  def handle_info({:ice_candidates, gateway_id, candidates}, socket) do
-    push(socket, "ice_candidates", %{
-      gateway_id: gateway_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:invalidate_ice_candidates, gateway_id, candidates}, socket) do
-    push(socket, "invalidate_ice_candidates", %{
-      gateway_id: gateway_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
-  end
-
   # DEPRECATED IN 1.4
   # This message is sent by the gateway when it is ready to accept the connection from the client
   def handle_info(
@@ -331,6 +308,30 @@ defmodule PortalAPI.Client.Channel do
 
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  #############################################################
+  ##### Forwarding replies from the gateway to the client #####
+  #############################################################
+
+  # This the list of ICE candidates gathered by the gateway and relayed to the client
+  @impl true
+  def handle_call({:ice_candidates, gateway_id, candidates}, _from, socket) do
+    push(socket, "ice_candidates", %{
+      gateway_id: gateway_id,
+      candidates: candidates
+    })
+
+    {:reply, :ok, socket}
+  end
+
+  def handle_call({:invalidate_ice_candidates, gateway_id, candidates}, _from, socket) do
+    push(socket, "invalidate_ice_candidates", %{
+      gateway_id: gateway_id,
+      candidates: candidates
+    })
+
+    {:reply, :ok, socket}
+  end
 
   ####################################
   ##### Client-initiated actions #####

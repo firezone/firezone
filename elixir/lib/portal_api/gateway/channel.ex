@@ -209,29 +209,33 @@ defmodule PortalAPI.Gateway.Channel do
     end
   end
 
+  # Catch-all for messages we don't handle
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   ###########################
   #### Connection setup #####
   ###########################
 
-  def handle_info({:ice_candidates, client_id, candidates}, socket) do
+  @impl true
+  def handle_call({:ice_candidates, client_id, candidates}, _from, socket) do
     push(socket, "ice_candidates", %{
       client_id: client_id,
       candidates: candidates
     })
 
-    {:noreply, socket}
+    {:reply, :ok, socket}
   end
 
-  def handle_info({:invalidate_ice_candidates, client_id, candidates}, socket) do
+  def handle_call({:invalidate_ice_candidates, client_id, candidates}, _from, socket) do
     push(socket, "invalidate_ice_candidates", %{
       client_id: client_id,
       candidates: candidates
     })
 
-    {:noreply, socket}
+    {:reply, :ok, socket}
   end
 
-  def handle_info({:authorize_policy, {channel_pid, socket_ref}, payload}, socket) do
+  def handle_call({:authorize_policy, {channel_pid, socket_ref}, payload}, _from, socket) do
     %{
       client: client,
       subject: subject,
@@ -272,11 +276,11 @@ defmodule PortalAPI.Gateway.Channel do
         authorization_expires_at
       )
 
-    {:noreply, assign(socket, cache: cache)}
+    {:reply, :ok, assign(socket, cache: cache)}
   end
 
   # DEPRECATED IN 1.4
-  def handle_info({:allow_access, {channel_pid, socket_ref}, attrs}, socket) do
+  def handle_call({:allow_access, {channel_pid, socket_ref}, attrs}, _from, socket) do
     %{
       client_id: client_id,
       client_ipv4: client_ipv4,
@@ -289,7 +293,7 @@ defmodule PortalAPI.Gateway.Channel do
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
       nil ->
-        {:noreply, socket}
+        {:reply, :ok, socket}
 
       resource ->
         ref =
@@ -317,12 +321,12 @@ defmodule PortalAPI.Gateway.Channel do
             authorization_expires_at
           )
 
-        {:noreply, assign(socket, cache: cache)}
+        {:reply, :ok, assign(socket, cache: cache)}
     end
   end
 
   # DEPRECATED IN 1.4
-  def handle_info({:request_connection, {channel_pid, socket_ref}, attrs}, socket) do
+  def handle_call({:request_connection, {channel_pid, socket_ref}, attrs}, _from, socket) do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
@@ -332,7 +336,7 @@ defmodule PortalAPI.Gateway.Channel do
 
     case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
       nil ->
-        {:noreply, socket}
+        {:reply, :ok, socket}
 
       resource ->
         ref =
@@ -357,17 +361,14 @@ defmodule PortalAPI.Gateway.Channel do
             authorization_expires_at
           )
 
-        {:noreply, assign(socket, cache: cache)}
+        {:reply, :ok, assign(socket, cache: cache)}
     end
   end
 
-  def handle_info({:reject_access, client_id, resource_id}, socket) do
+  def handle_call({:reject_access, client_id, resource_id}, _from, socket) do
     push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
-    {:noreply, socket}
+    {:reply, :ok, socket}
   end
-
-  # Catch-all for messages we don't handle
-  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def handle_in("flow_authorized", %{"ref" => signed_ref}, socket) do

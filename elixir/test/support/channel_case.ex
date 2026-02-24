@@ -73,6 +73,38 @@ defmodule PortalAPI.ChannelCase do
     }
   end
 
+  @doc """
+  Spawns a process that calls `register_fn`, signals the parent, then loops
+  handling GenServer.call protocol. Used to avoid deadlocks when tests register
+  themselves as a client/gateway and Portal.Channels uses GenServer.call.
+  """
+  def spawn_call_receiver(register_fn) do
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        register_fn.()
+        send(parent, {:registered, self()})
+        call_receiver_loop(parent)
+      end)
+
+    assert_receive {:registered, ^pid}
+    pid
+  end
+
+  @doc """
+  Loops handling GenServer.call protocol by replying :ok and forwarding the
+  unwrapped message to parent.
+  """
+  def call_receiver_loop(parent) do
+    receive do
+      {:"$gen_call", from, message} ->
+        GenServer.reply(from, :ok)
+        send(parent, message)
+        call_receiver_loop(parent)
+    end
+  end
+
   setup tags do
     # Isolate relay presence per test to prevent interference between async tests
     Portal.Config.put_env_override(

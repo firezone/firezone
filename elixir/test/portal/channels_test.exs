@@ -2,56 +2,22 @@ defmodule Portal.ChannelsTest do
   use ExUnit.Case, async: true
   alias Portal.Channels
 
-  describe "register_client/1 and send_to_client/2" do
-    test "delivers message to a registered client process" do
-      client_id = Ecto.UUID.generate()
-      Channels.register_client(client_id)
+  for {type, register, deliver} <- [
+        {:client, &Channels.register_client/1, &Channels.send_to_client/2},
+        {:gateway, &Channels.register_gateway/1, &Channels.send_to_gateway/2}
+      ] do
+    @register register
+    @deliver deliver
 
-      assert :ok = Channels.send_to_client(client_id, :hello)
-      assert_receive :hello
+    test "delivers message to registered #{type} process" do
+      id = Ecto.UUID.generate()
+      spawn_call_receiver(fn -> @register.(id) end)
+      assert :ok = @deliver.(id, :hello)
+      assert_receive {:received, _pid, :hello}
     end
 
-    test "delivers message to multiple registered processes" do
-      client_id = Ecto.UUID.generate()
-      parent = self()
-
-      pids =
-        for _ <- 1..3 do
-          spawn(fn ->
-            Channels.register_client(client_id)
-            send(parent, {:registered, self()})
-
-            receive do
-              msg -> send(parent, {:received, self(), msg})
-            end
-          end)
-        end
-
-      for pid <- pids, do: assert_receive({:registered, ^pid})
-
-      assert :ok = Channels.send_to_client(client_id, :broadcast)
-
-      for pid <- pids, do: assert_receive({:received, ^pid, :broadcast})
-    end
-
-    test "returns {:error, :not_found} when no process is registered" do
-      client_id = Ecto.UUID.generate()
-      assert {:error, :not_found} = Channels.send_to_client(client_id, :hello)
-    end
-  end
-
-  describe "register_gateway/1 and send_to_gateway/2" do
-    test "delivers message to a registered gateway process" do
-      gateway_id = Ecto.UUID.generate()
-      Channels.register_gateway(gateway_id)
-
-      assert :ok = Channels.send_to_gateway(gateway_id, :hello)
-      assert_receive :hello
-    end
-
-    test "returns {:error, :not_found} when no process is registered" do
-      gateway_id = Ecto.UUID.generate()
-      assert {:error, :not_found} = Channels.send_to_gateway(gateway_id, :hello)
+    test "returns {:error, :not_found} when no #{type} is registered" do
+      assert {:error, :not_found} = @deliver.(Ecto.UUID.generate(), :hello)
     end
   end
 
@@ -66,23 +32,20 @@ defmodule Portal.ChannelsTest do
           send(parent, :registered)
 
           receive do
-            :stop -> :ok
+            {:"$gen_call", from, _message} ->
+              GenServer.reply(from, :ok)
+              receive do: (:stop -> :ok)
           end
         end)
 
       assert_receive :registered
-
-      # Confirm delivery works while process is alive
       assert :ok = Channels.send_to_client(client_id, :ping)
 
-      # Stop the process and wait for :pg to clean up
       Process.monitor(pid)
       send(pid, :stop)
       assert_receive {:DOWN, _, :process, ^pid, :normal}
 
-      # :pg cleanup is async; give it a moment
       Process.sleep(50)
-
       assert {:error, :not_found} = Channels.send_to_client(client_id, :ping)
     end
   end
@@ -93,15 +56,37 @@ defmodule Portal.ChannelsTest do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
 
-      Channels.register_gateway(gateway_id)
+      spawn_call_receiver(fn -> Channels.register_gateway(gateway_id) end)
 
       assert :ok = Channels.reject_access(gateway_id, client_id, resource_id)
-      assert_receive {:reject_access, ^client_id, ^resource_id}
+      assert_receive {:received, _pid, {:reject_access, ^client_id, ^resource_id}}
     end
 
     test "returns {:error, :not_found} when gateway is not registered" do
-      gateway_id = Ecto.UUID.generate()
-      assert {:error, :not_found} = Channels.reject_access(gateway_id, "c", "r")
+      assert {:error, :not_found} = Channels.reject_access(Ecto.UUID.generate(), "c", "r")
+    end
+  end
+
+  defp spawn_call_receiver(register_fn) do
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        register_fn.()
+        send(parent, {:registered, self()})
+        call_receiver_loop(parent)
+      end)
+
+    assert_receive {:registered, ^pid}
+    pid
+  end
+
+  defp call_receiver_loop(parent) do
+    receive do
+      {:"$gen_call", from, message} ->
+        GenServer.reply(from, :ok)
+        send(parent, {:received, self(), message})
+        call_receiver_loop(parent)
     end
   end
 end
