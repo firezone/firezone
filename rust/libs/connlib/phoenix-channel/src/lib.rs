@@ -633,7 +633,7 @@ where
 
             // Priority 1: Ensure we are fully flushed.
             if let Err(e) = std::task::ready!(stream.poll_flush_unpin(cx)) {
-                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                self.handle_internal_error(InternalError::WebSocket(e));
                 continue;
             }
 
@@ -646,7 +646,7 @@ where
                                 tracing::trace!(target: "wire::api::send", %heartbeat);
                             }
                             Err(e) => {
-                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                self.handle_internal_error(InternalError::WebSocket(e));
                             }
                         }
 
@@ -662,7 +662,7 @@ where
                             }
                             Err(e) => {
                                 pending_joins.push_front(join);
-                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                self.handle_internal_error(InternalError::WebSocket(e));
                             }
                         }
 
@@ -685,7 +685,7 @@ where
                                 }
                                 Err(e) => {
                                     pending_messages.push_front(msg);
-                                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                    self.handle_internal_error(InternalError::WebSocket(e));
                                 }
                             }
 
@@ -699,7 +699,7 @@ where
                     }
                 }
                 Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                    self.handle_internal_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
@@ -747,7 +747,7 @@ where
                         match serde_json::from_str::<PhoenixMessage<TInboundMsg>>(&message) {
                             Ok(m) => m,
                             Err(e) if e.is_io() || e.is_eof() => {
-                                self.reconnect_on_transient_error(InternalError::Serde(e));
+                                self.handle_internal_error(InternalError::Serde(e));
                                 continue;
                             }
                             Err(e) => {
@@ -831,7 +831,7 @@ where
                             continue;
                         }
                         (Payload::Close(Empty {}), _) => {
-                            self.reconnect_on_transient_error(InternalError::CloseMessage);
+                            self.handle_internal_error(InternalError::CloseMessage);
                             continue;
                         }
                         (
@@ -852,11 +852,11 @@ where
                     continue;
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                    self.handle_internal_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Ready(None) => {
-                    self.reconnect_on_transient_error(InternalError::StreamClosed);
+                    self.handle_internal_error(InternalError::StreamClosed);
                     continue;
                 }
                 Poll::Pending => {}
@@ -866,7 +866,7 @@ where
                 .values()
                 .any(|sent_at| sent_at.elapsed() > Duration::from_secs(5))
             {
-                self.reconnect_on_transient_error(InternalError::RoomJoinTimedOut);
+                self.handle_internal_error(InternalError::RoomJoinTimedOut);
                 continue;
             }
 
@@ -888,7 +888,7 @@ where
             }
 
             if inflight_heartbeats.len() > 3 {
-                self.reconnect_on_transient_error(InternalError::TooManyUnansweredHeartbeats);
+                self.handle_internal_error(InternalError::TooManyUnansweredHeartbeats);
                 continue;
             }
 
@@ -898,8 +898,8 @@ where
 
     /// Sets the channels state to [`State::Connecting`] with the given error.
     ///
-    /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
-    fn reconnect_on_transient_error(&mut self, e: InternalError) {
+    /// The [`PhoenixChannel::poll`] function will handle the error appropriately.
+    fn handle_internal_error(&mut self, e: InternalError) {
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 }
@@ -942,6 +942,9 @@ fn make_initial_backoff() -> ExponentialBackoff {
 pub enum Event<TInboundMsg> {
     /// The server sent us a message.
     Message { topic: String, msg: TInboundMsg },
+    /// The connection failed with a transient error.
+    ///
+    /// You must call [`PhoenixChannel::connect`] after this (or discard the instance).
     Hiccup {
         backoff: Duration,
         max_elapsed_time: Option<Duration>,
