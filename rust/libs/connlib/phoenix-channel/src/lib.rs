@@ -555,7 +555,6 @@ where
                 State::Closing(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(())) => {
                         tracing::info!("Closed websocket connection to portal");
-
                         self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Closed));
