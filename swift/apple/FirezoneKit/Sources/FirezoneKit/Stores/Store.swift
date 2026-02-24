@@ -412,7 +412,7 @@ public final class Store: ObservableObject {
 
   private func fetchAndCacheFirezoneId() {
     // Skip IPC if we already have a cached Firezone ID for this session
-    if UserDefaults.standard.string(forKey: "encodedFirezoneId") != nil {
+    if userDefaults.string(forKey: "encodedFirezoneId") != nil {
       return
     }
 
@@ -421,7 +421,7 @@ public final class Store: ObservableObject {
         guard let firezoneId = try await tunnelController.fetchFirezoneId()
         else { return }
 
-        UserDefaults.standard.set(firezoneId, forKey: "encodedFirezoneId")
+        userDefaults.set(firezoneId, forKey: "encodedFirezoneId")
         Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
       } catch {
         Log.error(error)
