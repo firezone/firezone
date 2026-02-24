@@ -231,7 +231,7 @@ async fn replies_with_close_frame_upon_close() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             other => panic!("Unexpected message: {other}"),
         }
@@ -268,7 +268,7 @@ async fn replies_with_close_frame_upon_close() {
 
     assert_eq!(
         format!("{client_result:#}"),
-        "Reconnecting to portal on transient error: portal sent empty websocket close frame"
+        "Connection hiccup: portal sent empty websocket close frame"
     );
 }
 
