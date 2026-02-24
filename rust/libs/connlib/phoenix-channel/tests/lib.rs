@@ -78,7 +78,6 @@ async fn client_does_not_pipeline_messages() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
                     msg: InboundMsg::Foo,
                     ..
@@ -140,7 +139,6 @@ async fn client_deduplicates_messages() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
                     msg: InboundMsg::Foo,
                     ..
@@ -203,7 +201,6 @@ async fn client_clears_local_message_on_connect() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
                     msg: InboundMsg::Foo,
                     ..
@@ -322,7 +319,6 @@ async fn times_out_after_missed_heartbeats() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage { .. } => {}
                 phoenix_channel::Event::Hiccup { error, .. } => break error,
                 phoenix_channel::Event::Closed => {
@@ -473,7 +469,6 @@ async fn includes_ip_from_hostname() {
     let client = async {
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage { .. } => {}
                 phoenix_channel::Event::Hiccup { error, .. } => panic!("{error:#}"),
                 phoenix_channel::Event::Closed => {

@@ -771,9 +771,6 @@ async fn phoenix_channel_event_loop(
 
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
-            Ok(Event::HeartbeatSent) => {
-                tracing::debug!(target: "relay", "Heartbeat sent to portal");
-            }
             Ok(Event::InboundMessage { msg, .. }) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");

@@ -881,7 +881,7 @@ where
                     pending_heartbeat.replace(heartbeat);
                     inflight_heartbeats.insert(id);
 
-                    return Poll::Ready(Ok(Event::HeartbeatSent));
+                    continue;
                 }
                 Poll::Pending => {}
             }
@@ -939,12 +939,8 @@ fn make_initial_backoff() -> ExponentialBackoff {
 
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
-    HeartbeatSent,
     /// The server sent us a message, most likely this is a broadcast to all connected clients.
-    InboundMessage {
-        topic: String,
-        msg: TInboundMsg,
-    },
+    InboundMessage { topic: String, msg: TInboundMsg },
     Hiccup {
         backoff: Duration,
         max_elapsed_time: Option<Duration>,
