@@ -8,14 +8,14 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{
     collections::BTreeSet,
     io,
     net::IpAddr,
     task::{Context, Poll},
 };
-use std::{future, mem};
+use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
@@ -527,9 +527,8 @@ async fn phoenix_channel_event_loop(
 
     let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
 
-    let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
-    portal.update_ips(ips);
-    portal.connect(param);
+    let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+    portal.connect(ips, Duration::ZERO, param.clone());
 
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
@@ -544,7 +543,8 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Either::Left((Some(PortalCommand::Connect(param)), _)) => {
-                portal.connect(param);
+                let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+                portal.connect(ips, Duration::ZERO, param);
             }
             Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
                 udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
@@ -594,10 +594,9 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-            }
-            Either::Right((Ok(phoenix_channel::Event::NoAddresses), _)) => {
-                let ips = resolve_portal_host_ips(portal.host(), &udp_dns_client).await;
-                portal.update_ips(ips);
+
+                let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+                portal.connect(ips, backoff, param.clone());
             }
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Right((Err(e), _)) => {
@@ -618,10 +617,7 @@ async fn phoenix_channel_event_loop(
 ///
 /// If any of these fail, we simply default to an empty list of IPs.
 /// This is fine as this routine will be triggered again if we ever run out of IPs to use.
-async fn resolve_portal_host_ips(
-    host: String,
-    udp_dns_client: &UdpDnsClient,
-) -> impl IntoIterator<Item = IpAddr> {
+async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) -> Vec<IpAddr> {
     let udp_ips = udp_dns_client
         .resolve(host.clone())
         .await
@@ -635,7 +631,7 @@ async fn resolve_portal_host_ips(
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    udp_ips.into_iter().chain(etc_hosts_ips)
+    iter::empty().chain(udp_ips).chain(etc_hosts_ips).collect()
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

@@ -70,7 +70,11 @@ async fn client_does_not_pipeline_messages() {
     let mut channel = make_test_channel("localhost", server_addr.port());
 
     let client = async move {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
@@ -85,9 +89,6 @@ async fn client_does_not_pipeline_messages() {
                     ..
                 } => {
                     channel.close().unwrap();
-                }
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
@@ -136,7 +137,11 @@ async fn client_deduplicates_messages() {
     let mut num_responses = 0;
 
     let client = async {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
@@ -159,9 +164,6 @@ async fn client_deduplicates_messages() {
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
-                }
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Closed => break,
                 phoenix_channel::Event::Connected => {}
@@ -203,7 +205,11 @@ async fn client_clears_local_message_on_connect() {
 
     let client = async {
         channel.send("test", OutboundMsg::Bar).unwrap_err();
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
@@ -223,9 +229,6 @@ async fn client_clears_local_message_on_connect() {
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
-                }
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Closed => break,
                 phoenix_channel::Event::Connected => {}
@@ -326,7 +329,11 @@ async fn times_out_after_missed_heartbeats() {
     let mut channel = make_test_channel("localhost", port);
 
     let client = async {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
@@ -338,9 +345,6 @@ async fn times_out_after_missed_heartbeats() {
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage { .. } => {}
                 phoenix_channel::Event::Hiccup { error, .. } => break error,
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
-                }
                 phoenix_channel::Event::Closed => {
                     panic!("Channel closed")
                 }
@@ -375,7 +379,11 @@ async fn http_429_triggers_retry() {
     let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -395,7 +403,12 @@ async fn http_408_triggers_retry() {
     let port = http_status_server(http::StatusCode::REQUEST_TIMEOUT).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -415,7 +428,12 @@ async fn http_400_returns_client_error() {
     let port = http_status_server(http::StatusCode::BAD_REQUEST).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -434,7 +452,12 @@ async fn http_401_returns_invalid_token() {
     let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -449,67 +472,45 @@ async fn http_401_returns_invalid_token() {
 }
 
 #[tokio::test]
-async fn discards_failed_ips_on_hiccup() {
-    let mut channel = make_test_channel("localhost", 443); // Use a hostname so we run out of IPs
-    channel.update_ips(vec![
-        IpAddr::from(Ipv4Addr::from([127, 0, 0, 1])),
-        IpAddr::from(Ipv4Addr::from([127, 0, 0, 10])),
-        IpAddr::from(Ipv4Addr::from([127, 0, 0, 111])),
-    ]);
-    channel.connect(PublicKeyParam([0u8; 32]));
+async fn includes_ip_from_hostname() {
+    use phoenix_channel::PublicKeyParam;
 
-    let event = tokio::time::timeout(Duration::from_secs(6), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+            }
+            other => panic!("Unexpected message: {other}"),
+        }
     })
-    .await
-    .expect("should not timeout")
-    .expect("should not error");
+    .await;
 
-    let phoenix_channel::Event::Hiccup { .. } = event else {
-        panic!("Expected `Hiccup`")
+    let mut channel = make_test_channel("127.0.0.1", port);
+    channel.connect(vec![], Duration::ZERO, PublicKeyParam([0u8; 32]));
+
+    let client = async {
+        loop {
+            match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                phoenix_channel::Event::SuccessResponse { .. } => {}
+                phoenix_channel::Event::ErrorResponse { res, .. } => {
+                    panic!("Unexpected error: {res:?}")
+                }
+                phoenix_channel::Event::JoinedRoom { .. } => {}
+                phoenix_channel::Event::HeartbeatSent => {}
+                phoenix_channel::Event::InboundMessage { .. } => {}
+                phoenix_channel::Event::Hiccup { error, .. } => panic!("{error:#}"),
+                phoenix_channel::Event::Closed => {
+                    panic!("Channel closed")
+                }
+                phoenix_channel::Event::Connected => break,
+            }
+        }
     };
 
-    let result = tokio::time::timeout(Duration::from_secs(2), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    assert!(
-        matches!(result, Ok(phoenix_channel::Event::NoAddresses)),
-        "expected Event::NoAddresses, got {result:?}"
-    );
-}
-
-#[tokio::test]
-async fn emits_no_addresses_when_no_ips() {
-    let mut channel = make_test_channel("localhost", 443); // Use a hostname so we run out of IPs
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let result = tokio::time::timeout(Duration::from_secs(5), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    assert!(
-        matches!(result, Ok(phoenix_channel::Event::NoAddresses)),
-        "expected Event::NoAddresses, got {result:?}"
-    );
-}
-
-#[tokio::test]
-async fn does_not_clear_address_from_url_on_hiccup() {
-    let mut channel = make_test_channel("127.0.0.1", 443);
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    loop {
-        match std::future::poll_fn(|cx| channel.poll(cx)).await {
-            Ok(phoenix_channel::Event::Hiccup { .. }) => continue,
-            Err(phoenix_channel::Error::MaxRetriesReached { .. }) => break,
-            other => panic!("Unexpected event: {other:?}"), // This line ensures we never receive `Event::NoAddresses` which means we keep retrying.
-        }
-    }
+    client.await;
+    server.abort();
 }
 
 /// Spawns a WebSocket server that responds to requests using a handler function.
@@ -675,7 +676,12 @@ async fn http_503_triggers_retry() {
     let port = http_status_server(http::StatusCode::SERVICE_UNAVAILABLE).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -695,7 +701,12 @@ async fn http_429_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -721,7 +732,12 @@ async fn http_503_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -750,8 +766,11 @@ async fn initial_connection_uses_constant_1s_backoff() {
     let _guard = logging::test("debug");
 
     let mut channel = make_test_channel("127.0.0.1", 1);
-
-    channel.connect(PublicKeyParam([0u8; 32]));
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let mut hiccups = Vec::new();
     let start = std::time::Instant::now();
@@ -764,9 +783,12 @@ async fn initial_connection_uses_constant_1s_backoff() {
                 ..
             }) => {
                 hiccups.push((backoff, max_elapsed_time));
-            }
-            Ok(phoenix_channel::Event::NoAddresses) => {
-                channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+
+                channel.connect(
+                    vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+                    backoff,
+                    PublicKeyParam([0u8; 32]),
+                );
             }
             Err(Error::MaxRetriesReached { .. }) => break,
             other => panic!("Unexpected event: {other:?}"),

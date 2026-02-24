@@ -533,8 +533,8 @@ async fn phoenix_channel_event_loop(
     use futures::future::Either;
     use futures::future::select;
 
-    update_portal_host_ips(&mut portal, &resolver).await;
-    portal.connect(param);
+    let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+    portal.connect(ips, Duration::ZERO, param.clone());
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -582,9 +582,9 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-            }
-            Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
-                update_portal_host_ips(&mut portal, &resolver).await
+
+                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+                portal.connect(ips, backoff, param.clone());
             }
             Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Left((Err(e), _)) => {
@@ -601,7 +601,8 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Either::Right((Some(PortalCommand::Connect(param)), _)) => {
-                portal.connect(param);
+                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+                portal.connect(ips, Duration::ZERO, param);
             }
             Either::Right((Some(PortalCommand::Close), _)) => {
                 let _ = portal.close();
@@ -614,23 +615,14 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-async fn update_portal_host_ips(
-    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    resolver: &TokioResolver,
-) {
-    let ips = match resolver
-        .lookup_ip(portal.host())
+async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<IpAddr> {
+    resolver
+        .lookup_ip(host.clone())
         .await
         .context("Failed to lookup portal host")
-    {
-        Ok(ips) => ips,
-        Err(e) => {
-            tracing::debug!(host = %portal.host(), "{e:#}");
-            return;
-        }
-    };
-
-    portal.update_ips(ips);
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
+        .map(|ips| ips.into_iter().collect())
+        .unwrap_or_default()
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

@@ -5,7 +5,7 @@ mod login_url;
 
 use anyhow::{Context as _, Result};
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -66,16 +66,11 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     backoff: Option<ExponentialBackoff>,
     was_connected: bool,
 
-    resolved_addresses: BTreeSet<IpAddr>,
-
     login: &'static str,
     init_req: TInitReq,
 }
 
 enum State<TOutboundMsg> {
-    Reconnect {
-        backoff: Duration,
-    },
     Connected(Connected<TOutboundMsg>),
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
@@ -107,8 +102,10 @@ impl<TOutboundMsg> State<TOutboundMsg> {
         user_agent: String,
         token: SecretString,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        backoff: Duration,
     ) -> Self {
-        Self::Connecting(
+        Self::Connecting(Box::pin(async move {
+            tokio::time::sleep(backoff).await;
             create_and_connect_websocket(
                 url,
                 addresses,
@@ -118,8 +115,8 @@ impl<TOutboundMsg> State<TOutboundMsg> {
                 socket_factory,
                 CONNECT_TIMEOUT,
             )
-            .boxed(),
-        )
+            .await
+        }))
     }
 }
 
@@ -245,14 +242,6 @@ impl InternalError {
         let duration = parse_retry_after_value(value)?;
 
         Some(duration)
-    }
-
-    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &io::Error)> {
-        let Self::SocketConnection(errors) = self else {
-            return Vec::default();
-        };
-
-        errors.iter().map(|(s, e)| (s.ip(), e)).collect()
     }
 }
 
@@ -406,7 +395,6 @@ where
             _phantom: PhantomData,
             login,
             init_req,
-            resolved_addresses: Default::default(),
             last_url: None,
         }
     }
@@ -478,27 +466,24 @@ where
     }
 
     /// Establishes a new connection, dropping the current one if any exists.
-    pub fn connect(&mut self, params: TFinish) {
+    pub fn connect(&mut self, addresses: Vec<IpAddr>, backoff: Duration, params: TFinish) {
         let url = self.url_prototype.to_url(params);
 
-        if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
-            tracing::debug!("We are already connecting");
-            return;
-        }
-
-        // 1. Reset the backoff.
-        self.backoff = None;
-
-        // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
         let token = self.token.clone();
+
         self.state = State::connect(
             url.clone(),
-            self.socket_addresses(),
+            addresses
+                .into_iter()
+                .chain(self.host().parse::<IpAddr>().ok())
+                .map(|ip| SocketAddr::new(ip, self.port()))
+                .collect(),
             self.host(),
             user_agent,
             token,
             self.socket_factory.clone(),
+            backoff,
         );
         self.last_url = Some(url);
 
@@ -516,16 +501,8 @@ where
         self.url_prototype.host_and_port().0.to_owned()
     }
 
-    pub fn update_ips(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
-        let new = BTreeSet::from_iter(ips);
-
-        if new == self.resolved_addresses {
-            return;
-        }
-
-        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, ?new, "Updating resolved IPs");
-
-        self.resolved_addresses = new;
+    fn port(&self) -> u16 {
+        self.url_prototype.host_and_port().1
     }
 
     /// Initiate a graceful close of the connection.
@@ -557,7 +534,7 @@ where
             State::Closing(stream) => {
                 self.state = State::Closing(stream);
             }
-            State::Closed | State::Reconnect { .. } => {}
+            State::Closed => {}
         }
 
         Ok(())
@@ -595,39 +572,9 @@ where
                     Poll::Pending => return Poll::Pending,
                 },
                 State::Connected(stream) => stream,
-                State::Reconnect { backoff } => {
-                    let backoff = *backoff;
-                    let socket_addresses = self.socket_addresses();
-                    let host = self.host();
-
-                    let secret_url = self
-                        .last_url
-                        .as_ref()
-                        .expect("should have last URL if we receive connection error")
-                        .clone();
-                    let user_agent = self.user_agent.clone();
-                    let token = self.token.clone();
-                    let socket_factory = self.socket_factory.clone();
-
-                    self.state = State::Connecting(Box::pin(async move {
-                        tokio::time::sleep(backoff).await;
-                        create_and_connect_websocket(
-                            secret_url,
-                            socket_addresses,
-                            host,
-                            user_agent,
-                            token,
-                            socket_factory,
-                            CONNECT_TIMEOUT,
-                        )
-                        .await
-                    }));
-
-                    continue;
-                }
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.backoff = None;
+                        self.backoff = None; // TODO: Should we only reset this once we have joined the room?
                         self.was_connected = true;
                         self.state = State::Connected(Connected {
                             stream,
@@ -646,14 +593,6 @@ where
                         self.join(self.login, self.init_req.clone());
 
                         return Poll::Ready(Ok(Event::Connected));
-                    }
-                    Poll::Ready(Err(InternalError::NoAddresses)) => {
-                        // Fixed 1s interval to avoid busy-looping in case DNS resolution fails / is not possible.
-                        self.state = State::Reconnect {
-                            backoff: Duration::from_secs(1),
-                        };
-
-                        return Poll::Ready(Ok(Event::NoAddresses));
                     }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::UNAUTHORIZED =>
@@ -678,14 +617,6 @@ where
                                     })?
                             }
                         };
-
-                        for (ip, error) in e.failed_ips() {
-                            if self.resolved_addresses.remove(&ip) {
-                                tracing::debug!(%ip, "Discarding failed IP: {error}");
-                            }
-                        }
-
-                        self.state = State::Reconnect { backoff };
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
@@ -962,17 +893,6 @@ where
     fn reconnect_on_transient_error(&mut self, e: InternalError) {
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
-
-    fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let (host, port) = self.url_prototype.host_and_port();
-
-        self.resolved_addresses
-            .iter()
-            .copied()
-            .chain(host.parse::<IpAddr>().ok())
-            .map(|ip| SocketAddr::new(ip, port))
-            .collect()
-    }
 }
 
 fn make_control_message<TInitReq>(
@@ -1034,11 +954,6 @@ pub enum Event<TInboundMsg> {
         max_elapsed_time: Option<Duration>,
         error: anyhow::Error,
     },
-    /// We don't have any addresses to connect to.
-    ///
-    /// Upon receiving this event, you should re-resolve the [`host`](PhoenixChannel::host)
-    /// and provide new IPs for it via [`PhoenixChannel::update_ips`].
-    NoAddresses,
     /// The connection was closed successfully.
     Closed,
     /// The WebSocket connection was established.
