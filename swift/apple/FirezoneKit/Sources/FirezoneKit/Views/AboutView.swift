@@ -1,6 +1,6 @@
 //
 //  AboutView.swift
-//  (c) 2024 Firezone, Inc.
+//  (c) 2026 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
