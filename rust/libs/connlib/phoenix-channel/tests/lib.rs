@@ -238,35 +238,28 @@ async fn replies_with_close_frame_upon_close() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
-    let (mut join_tx, mut join_rx) = futures::channel::mpsc::channel(1);
+    let (mut connected_tx, mut connected_rx) = futures::channel::mpsc::channel(1);
 
     let client = tokio::spawn(async move {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::SuccessResponse { .. } => {}
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
-                phoenix_channel::Event::JoinedRoom { .. } => {
-                    join_tx.send(()).await.unwrap();
-                }
-                phoenix_channel::Event::HeartbeatSent => {}
-                phoenix_channel::Event::InboundMessage { .. } => {}
                 phoenix_channel::Event::Hiccup { error, .. } => break error,
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
-                }
                 phoenix_channel::Event::Closed => panic!("Should not close"),
-                phoenix_channel::Event::Connected => {}
+                phoenix_channel::Event::Message { .. } => {}
+                phoenix_channel::Event::Connected => connected_tx.send(()).await.unwrap(),
             }
         }
     });
 
-    join_rx.recv().await.unwrap(); // Wait for successful join.
+    connected_rx.recv().await.unwrap(); // Wait for successful connection.
 
     let server_result = server.stop().await;
     let client_result = client.await.unwrap();
