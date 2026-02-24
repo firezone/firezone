@@ -78,9 +78,6 @@ async fn client_does_not_pipeline_messages() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
                 phoenix_channel::Event::JoinedRoom { .. } => {}
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage {
@@ -144,9 +141,6 @@ async fn client_deduplicates_messages() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
                 phoenix_channel::Event::JoinedRoom { .. } => {
                     channel.send("test", OutboundMsg::Bar).unwrap();
                     channel.send("test", OutboundMsg::Bar).unwrap();
@@ -211,9 +205,6 @@ async fn client_clears_local_message_on_connect() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
                 phoenix_channel::Event::JoinedRoom { .. } => {
                     channel.send("test", OutboundMsg::Bar).unwrap();
                 }
@@ -334,9 +325,6 @@ async fn times_out_after_missed_heartbeats() {
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
                 phoenix_channel::Event::JoinedRoom { .. } => {}
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage { .. } => {}
@@ -489,9 +477,6 @@ async fn includes_ip_from_hostname() {
     let client = async {
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
                 phoenix_channel::Event::JoinedRoom { .. } => {}
                 phoenix_channel::Event::HeartbeatSent => {}
                 phoenix_channel::Event::InboundMessage { .. } => {}

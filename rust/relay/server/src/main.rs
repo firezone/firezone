@@ -775,9 +775,6 @@ async fn phoenix_channel_event_loop(
                 tracing::info!(target: "relay", "Successfully joined room '{topic}'");
                 is_connected.store(true, Ordering::Relaxed);
             }
-            Ok(Event::ErrorResponse { topic, req_id, res }) => {
-                tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
-            }
             Ok(Event::HeartbeatSent) => {
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
             }

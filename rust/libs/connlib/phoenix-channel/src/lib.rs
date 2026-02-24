@@ -196,7 +196,7 @@ pub enum Error {
     )]
     MaxRetriesReached { final_error: String },
     #[error("Failed to login with portal: {0}")]
-    LoginFailed(ErrorReply),
+    LoginFailed(String),
     #[error("Fatal IO error: {0}")]
     FatalIo(io::Error),
 }
@@ -402,7 +402,7 @@ where
     /// Join the provided room.
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
-    pub fn join(&mut self, topic: impl Into<String>, payload: TInitReq) {
+    fn join(&mut self, topic: impl Into<String>, payload: TInitReq) {
         let topic = topic.into();
 
         let State::Connected(Connected {
@@ -779,14 +779,25 @@ where
                             if message.topic == self.login
                                 && pending_join_requests.contains_key(&req_id)
                             {
-                                return Poll::Ready(Err(Error::LoginFailed(reason)));
+                                return Poll::Ready(Err(Error::LoginFailed(reason.to_string())));
                             }
 
-                            return Poll::Ready(Ok(Event::ErrorResponse {
-                                topic: message.topic,
-                                req_id,
-                                res: reason,
-                            }));
+                            match reason {
+                                ErrorReply::UnmatchedTopic if message.topic == self.login => {
+                                    tracing::debug!(topic = %self.login, "We are no longer part of our room, rejoining");
+
+                                    self.join(self.login, self.init_req.clone());
+                                    continue;
+                                }
+                                ErrorReply::UnmatchedTopic
+                                | ErrorReply::InvalidVersion
+                                | ErrorReply::Disabled
+                                | ErrorReply::Other => {
+                                    tracing::debug!(%req_id, %reason, "Received error reply");
+                                }
+                            }
+
+                            continue;
                         }
                         (Payload::Reply(Reply::Ok(OkReply::Message(()))), Some(_)) => {
                             // We don't use the reply feature of phoenix-channel.
@@ -929,11 +940,6 @@ fn make_initial_backoff() -> ExponentialBackoff {
 
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
-    ErrorResponse {
-        topic: String,
-        req_id: OutboundRequestId,
-        res: ErrorReply,
-    },
     JoinedRoom {
         topic: String,
     },
@@ -1002,7 +1008,7 @@ enum OkReply<T> {
 /// This represents the info we have about the error
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ErrorReply {
+enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
     InvalidVersion,

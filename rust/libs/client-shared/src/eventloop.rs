@@ -3,7 +3,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{PublicKey, ResourceId, ResourceView};
 use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
-use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
+use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
@@ -561,20 +561,6 @@ async fn phoenix_channel_event_loop(
                     break;
                 }
             }
-            Either::Right((
-                Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }),
-                _,
-            )) => match res {
-                ErrorReply::Disabled => {
-                    tracing::debug!(%req_id, "Functionality is disabled");
-                }
-                ErrorReply::UnmatchedTopic => {
-                    portal.join(topic, ());
-                }
-                reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
-                    tracing::debug!(%req_id, %reason, "Request failed");
-                }
-            },
             Either::Right((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
             Either::Right((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
             Either::Right((Ok(phoenix_channel::Event::Closed), _)) => {

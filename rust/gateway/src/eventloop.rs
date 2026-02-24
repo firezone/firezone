@@ -544,19 +544,6 @@ async fn phoenix_channel_event_loop(
                     break;
                 }
             }
-            Either::Left((
-                Ok(phoenix_channel::Event::ErrorResponse {
-                    topic,
-                    res: phoenix_channel::ErrorReply::UnmatchedTopic,
-                    ..
-                }),
-                _,
-            )) => {
-                portal.join(topic, ());
-            }
-            Either::Left((Ok(phoenix_channel::Event::ErrorResponse { topic, req_id, res }), _)) => {
-                tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
-            }
             Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
                 tracing::debug!("Portal connection clsed: exiting phoenix-channel event-loop");
                 break;
