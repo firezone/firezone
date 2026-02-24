@@ -67,7 +67,7 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let mut channel = make_websocket_test_channel(server_addr.port());
+    let mut channel = make_test_channel("localhost", server_addr.port());
 
     let client = async move {
         channel.connect(PublicKeyParam([0u8; 32]));
@@ -131,7 +131,7 @@ async fn client_deduplicates_messages() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
     let mut num_responses = 0;
 
@@ -199,7 +199,7 @@ async fn client_clears_local_message_on_connect() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
     let client = async {
         channel.send("test", OutboundMsg::Bar).unwrap_err();
@@ -323,7 +323,7 @@ async fn times_out_after_missed_heartbeats() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
     let client = async {
         channel.connect(PublicKeyParam([0u8; 32]));
@@ -581,40 +581,10 @@ impl ServerHandle {
     }
 }
 
-fn make_websocket_test_channel(
+fn make_test_channel(
+    host: &str,
     port: u16,
 ) -> PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam> {
-    use std::{str::FromStr, sync::Arc, time::Duration};
-
-    use backoff::ExponentialBackoffBuilder;
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel};
-    use secrecy::SecretString;
-    use url::Url;
-
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", port)).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    )
-}
-
-fn make_test_channel(host: &str, port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
         format!("ws://{host}:{port}").as_str(),
         "test-device-id".to_string(),
