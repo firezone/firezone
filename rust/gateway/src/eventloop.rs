@@ -545,7 +545,7 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
-                tracing::debug!("Portal connection clsed: exiting phoenix-channel event-loop");
+                tracing::debug!("Portal connection closed: exiting phoenix-channel event-loop");
                 break;
             }
             Either::Left((
