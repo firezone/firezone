@@ -205,8 +205,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
       }
 
       send(
@@ -294,8 +294,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
       }
 
       send(
@@ -1768,8 +1768,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
       }
 
       send(
@@ -1828,8 +1828,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
                actor_name: subject.actor.name
              }
 
-      assert payload.client_ice_credentials == ice_credentials.client
-      assert payload.gateway_ice_credentials == ice_credentials.gateway
+      assert payload.client_ice_credentials == ice_credentials.initiator
+      assert payload.gateway_ice_credentials == ice_credentials.receiver
 
       assert DateTime.from_unix!(payload.expires_at) ==
                DateTime.truncate(expires_at, :second)
@@ -1856,8 +1856,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       public_key = Portal.ClientFixtures.generate_public_key()
 
       ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
       }
 
       policy_authorization =
@@ -1963,8 +1963,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
       ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
       }
 
       send(
