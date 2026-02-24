@@ -25,17 +25,10 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Extract Rust version
-      run: |
-        RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
-        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
-      shell: bash
-
     - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
       id: toolchain-1
       continue-on-error: true
       with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy,llvm-tools-preview
         cache: false # We explicitly configure caching somewhere else.
         rust-src-dir: rust/
@@ -45,7 +38,6 @@ runs:
       continue-on-error: true
       id: toolchain-2
       with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy,llvm-tools-preview
         cache: false # We explicitly configure caching somewhere else.
         rust-src-dir: rust/
@@ -53,7 +45,6 @@ runs:
     - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
       if: ${{ steps.toolchain-2.outcome == 'failure' }}
       with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy,llvm-tools-preview
         cache: false # We explicitly configure caching somewhere else.
         rust-src-dir: rust/
