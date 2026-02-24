@@ -32,7 +32,7 @@ enum SettingsField: Hashable {
   case accountSlug
 }
 
-enum SettingsToggle {
+enum SettingsToggle: Hashable {
   case connectOnStart
   case startOnLogin
 }
@@ -40,9 +40,10 @@ enum SettingsToggle {
 @MainActor
 class SettingsViewModel: ObservableObject {
   private let configuration: Configuration
-  private let store: Store?
+  private let store: Store
   private var cancellables: Set<AnyCancellable> = []
 
+  private(set) var isResetting = false
   @Published private(set) var shouldDisableResetButton = false
   @Published var authURL: String
   @Published var apiURL: String
@@ -58,7 +59,7 @@ class SettingsViewModel: ObservableObject {
   private var savedAccountSlug: String
   var pendingFieldChange: (field: SettingsField, value: String)?
 
-  init(configuration: Configuration? = nil, store: Store? = nil) {
+  init(configuration: Configuration? = nil, store: Store) {
     self.configuration = configuration ?? Configuration.shared
     self.store = store
 
@@ -107,6 +108,9 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reset() {
+    isResetting = true
+    defer { isResetting = false }
+
     if !configuration.isAuthURLForced {
       authURL = Configuration.defaultAuthURL
       configuration.authURL = authURL
@@ -139,6 +143,8 @@ class SettingsViewModel: ObservableObject {
   }
 
   func saveField(_ field: SettingsField) async throws {
+    guard !isResetting else { return }
+
     switch field {
     case .authURL:
       guard isAuthURLValid else { return }
@@ -176,11 +182,12 @@ class SettingsViewModel: ObservableObject {
   }
 
   private var requiresSignOut: Bool {
-    guard let store = store else { return false }
-    return [.connected, .connecting, .reasserting].contains(store.vpnStatus)
+    [.connected, .connecting, .reasserting].contains(store.vpnStatus)
   }
 
   func saveToggle(_ field: SettingsToggle) async throws {
+    guard !isResetting else { return }
+
     switch field {
     case .connectOnStart:
       configuration.connectOnStart = connectOnStart
@@ -192,6 +199,10 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
+  /// Applies the pending identity-field change and signs out.
+  ///
+  /// Safe to use `pendingFieldChange` directly because the sign-out
+  /// confirmation alert is modal — the user cannot edit the field while it is presented.
   func confirmSignOutChange() async throws {
     guard let pending = pendingFieldChange else { return }
 
@@ -212,9 +223,7 @@ class SettingsViewModel: ObservableObject {
       break
     }
 
-    if let store = store {
-      try await store.signOut()
-    }
+    try await store.signOut()
 
     pendingFieldChange = nil
     showSignOutConfirmation = false
