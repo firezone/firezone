@@ -46,7 +46,7 @@ async fn client_does_not_pipeline_messages() {
                         }
 
                         ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#,
+                            r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#,
                         )).await.unwrap();
                     }
                     r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -115,7 +115,7 @@ async fn client_deduplicates_messages() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             // We only handle the message with `ref: 1` and thus guarantee that not more than 1 is received
             r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -178,7 +178,7 @@ async fn client_clears_local_message_on_connect() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
             r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -288,7 +288,7 @@ async fn times_out_after_missed_heartbeats() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             // We send a bogus reply (bad `ref`) to ensure the implementation matches those up correctly.
             r#"{"topic":"phoenix","event":"heartbeat","payload":{},"ref":1}"# => {
@@ -456,7 +456,7 @@ async fn includes_ip_from_hostname() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             other => panic!("Unexpected message: {other}"),
         }
