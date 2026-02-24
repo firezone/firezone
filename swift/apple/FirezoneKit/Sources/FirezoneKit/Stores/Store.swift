@@ -44,7 +44,7 @@ public final class Store: ObservableObject {
   /// tests inject MockSessionNotification.
   private(set) var sessionNotification: SessionNotificationProtocol
   #if os(macOS)
-    let updateChecker: UpdateChecker
+    let updateChecker: any UpdateCheckerProtocol
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
@@ -76,11 +76,12 @@ public final class Store: ObservableObject {
       configuration: Configuration? = nil,
       tunnelController: TunnelControllerProtocol = RealTunnelController(),
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      updateChecker: (any UpdateCheckerProtocol)? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.updateChecker = UpdateChecker(configuration: configuration)
+      self.updateChecker = updateChecker ?? UpdateChecker(configuration: configuration)
       self.tunnelController = tunnelController
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
