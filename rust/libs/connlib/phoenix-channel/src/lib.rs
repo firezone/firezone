@@ -3,7 +3,7 @@
 mod get_user_agent;
 mod login_url;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use futures::stream::FuturesUnordered;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
 use backoff::ExponentialBackoff;
 use backoff::ExponentialBackoffBuilder;
@@ -79,7 +80,7 @@ enum State<TOutboundMsg> {
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
     ),
-    Closing(WebSocketStream<MaybeTlsStream<TcpStream>>),
+    Closing(BoxFuture<'static, Result<()>>),
     Closed,
 }
 
@@ -219,6 +220,7 @@ enum InternalError {
     WebSocket(tungstenite::Error),
     Serde(serde_json::Error),
     CloseMessage,
+    WsClose(Option<CloseFrame>),
     StreamClosed,
     RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, io::Error)>),
@@ -291,6 +293,12 @@ impl fmt::Display for InternalError {
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
+            InternalError::WsClose(Some(frame)) => {
+                write!(f, "portal sent websocket close frame: {frame}")
+            }
+            InternalError::WsClose(None) => {
+                write!(f, "portal sent empty websocket close frame")
+            }
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::SocketConnection(errors) => {
                 write!(
@@ -320,6 +328,7 @@ impl std::error::Error for InternalError {
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
             InternalError::CloseMessage => None,
+            InternalError::WsClose(_) => None,
             InternalError::StreamClosed => None,
             InternalError::RoomJoinTimedOut => None,
             InternalError::NoAddresses => None,
@@ -525,7 +534,27 @@ where
 
         match mem::replace(&mut self.state, State::Closed) {
             State::Connecting(_) => return Err(Connecting),
-            State::Closing(stream) | State::Connected(Connected { stream, .. }) => {
+            State::Connected(Connected { mut stream, .. }) => {
+                self.state = State::Closing(
+                    async move {
+                        stream
+                            .send(Message::Close(Some(CloseFrame {
+                                code: tungstenite::protocol::frame::coding::CloseCode::Normal,
+                                reason: Default::default(),
+                            })))
+                            .await
+                            .context("Failed to send Close frame")?;
+                        stream.flush().await.context("Failed to flush")?;
+                        SinkExt::close(&mut stream)
+                            .await
+                            .context("failed to close connection")?;
+
+                        anyhow::Ok(())
+                    }
+                    .boxed(),
+                );
+            }
+            State::Closing(stream) => {
                 self.state = State::Closing(stream);
             }
             State::Closed | State::Reconnect { .. } => {}
@@ -548,7 +577,7 @@ where
                 next_request_id,
             } = match &mut self.state {
                 State::Closed => return Poll::Ready(Ok(Event::Closed)),
-                State::Closing(stream) => match stream.poll_close_unpin(cx) {
+                State::Closing(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(())) => {
                         tracing::info!("Closed websocket connection to portal");
 
@@ -557,7 +586,9 @@ where
                         return Poll::Ready(Ok(Event::Closed));
                     }
                     Poll::Ready(Err(e)) => {
-                        tracing::warn!("Error while closing websocket: {}", err_with_src(&e));
+                        tracing::info!("Error while closing websocket connection to portal: {e:#}");
+
+                        self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
@@ -750,12 +781,40 @@ where
 
             // Priority 3: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok(message))) => {
-                    let Ok(message) = message.into_text() else {
-                        tracing::warn!("Received non-text message from portal");
-                        continue;
+                Poll::Ready(Some(Ok(Message::Close(frame)))) => {
+                    // Grab ownership of the `stream`.
+                    let mut stream = match std::mem::replace(&mut self.state, State::Closed) {
+                        State::Connected(Connected { stream, .. }) => stream,
+                        State::Reconnect { .. }
+                        | State::Connecting(_)
+                        | State::Closing(_)
+                        | State::Closed => {
+                            // Defense-in-depth: This should not happen but never know what kind of bugs we might introduce in the future.
+                            debug_assert!(
+                                false,
+                                "Should be in Connected after receiving Close frame"
+                            );
+                            self.reconnect_on_transient_error(InternalError::WsClose(frame));
+                            continue;
+                        }
                     };
 
+                    // If an endpoint receives a Close frame and did not previously send a Close frame,
+                    // the endpoint MUST send a Close frame in response.
+                    // See <https://datatracker.ietf.org/doc/html/rfc6455#section-5.5.1>.
+                    self.state = State::Connecting(
+                        async move {
+                            let _ = stream.send(Message::Close(frame.clone())).await;
+                            let _ = stream.flush().await;
+                            let _ = SinkExt::close(&mut stream).await;
+
+                            Err(InternalError::WsClose(frame))
+                        }
+                        .boxed(),
+                    );
+                    continue;
+                }
+                Poll::Ready(Some(Ok(Message::Text(message)))) => {
                     tracing::trace!(target: "wire::api::recv", %message);
 
                     let message =
@@ -844,6 +903,13 @@ where
                             return Poll::Ready(Err(Error::InvalidToken));
                         }
                     }
+                }
+                Poll::Ready(Some(Ok(Message::Binary(_)))) => {
+                    tracing::warn!("Received unexpected binary message from portal");
+                    continue;
+                }
+                Poll::Ready(Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)))) => {
+                    continue;
                 }
                 Poll::Ready(Some(Err(e))) => {
                     self.reconnect_on_transient_error(InternalError::WebSocket(e));

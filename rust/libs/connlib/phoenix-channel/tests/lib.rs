@@ -4,10 +4,12 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::{future, sync::Arc, time::Duration};
 
+use futures::SinkExt as _;
 use phoenix_channel::{DeviceInfo, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
 use secrecy::SecretString;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
+use tokio::task::JoinError;
 use tokio_tungstenite::tungstenite::http;
 
 #[tokio::test]
@@ -169,7 +171,7 @@ async fn client_deduplicates_messages() {
 
     let _ = tokio::time::timeout(
         Duration::from_secs(2),
-        futures::future::join(server, client),
+        futures::future::join(server.wait(), client),
     )
     .await
     .unwrap_err(); // We expect to timeout because we don't ever exit from the tasks.
@@ -232,7 +234,64 @@ async fn client_clears_local_message_on_connect() {
     };
 
     client.await;
-    server.await.unwrap();
+    server.wait().await;
+}
+
+#[tokio::test]
+async fn replies_with_close_frame_upon_close() {
+    use phoenix_channel::PublicKeyParam;
+
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+            }
+            other => panic!("Unexpected message: {other}"),
+        }
+    })
+    .await;
+
+    let mut channel = make_websocket_test_channel(port);
+
+    let (mut join_tx, mut join_rx) = futures::channel::mpsc::channel(1);
+
+    let client = tokio::spawn(async move {
+        channel.connect(PublicKeyParam([0u8; 32]));
+
+        loop {
+            match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                phoenix_channel::Event::SuccessResponse { .. } => {}
+                phoenix_channel::Event::ErrorResponse { res, .. } => {
+                    panic!("Unexpected error: {res:?}")
+                }
+                phoenix_channel::Event::JoinedRoom { .. } => {
+                    join_tx.send(()).await.unwrap();
+                }
+                phoenix_channel::Event::HeartbeatSent => {}
+                phoenix_channel::Event::InboundMessage { .. } => {}
+                phoenix_channel::Event::Hiccup { error, .. } => break error,
+                phoenix_channel::Event::NoAddresses => {
+                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+                }
+                phoenix_channel::Event::Closed => panic!("Should not close"),
+                phoenix_channel::Event::Connected => {}
+            }
+        }
+    });
+
+    join_rx.recv().await.unwrap(); // Wait for successful join.
+
+    let server_result = server.stop().await;
+    let client_result = client.await.unwrap();
+
+    server_result.unwrap(); // Server should shutdown cleanly.
+
+    assert_eq!(
+        format!("{client_result:#}"),
+        "Reconnecting to portal on transient error: portal sent empty websocket close frame"
+    );
 }
 
 #[tokio::test]
@@ -455,7 +514,7 @@ async fn does_not_clear_address_from_url_on_hiccup() {
 
 /// Spawns a WebSocket server that responds to requests using a handler function.
 /// Returns the server task handle and the port number.
-async fn spawn_websocket_server<F>(handler: F) -> (tokio::task::JoinHandle<()>, u16)
+async fn spawn_websocket_server<F>(handler: F) -> (ServerHandle, u16)
 where
     F: Fn(&str) -> &str + Send + 'static,
 {
@@ -465,27 +524,61 @@ where
 
     let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
+    let (close_tx, mut close_rx) = futures::channel::mpsc::channel(1);
 
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
 
         loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => {
+            match futures::future::select(ws.next(), close_rx.recv()).await {
+                futures::future::Either::Left((Some(Ok(Message::Text(text))), _)) => {
                     let response = handler(text.as_str());
                     ws.send(Message::text(response)).await.unwrap();
                 }
-                Some(Ok(Message::Close(_))) => continue,
-                Some(other) => {
+                futures::future::Either::Left((Some(Ok(Message::Close(_))), _)) => continue,
+                futures::future::Either::Left((Some(other), _)) => {
                     panic!("Unexpected message: {other:?}")
                 }
-                None => break,
+                futures::future::Either::Left((None, _)) => break,
+                futures::future::Either::Right((Err(_), _)) => continue,
+                futures::future::Either::Right((Ok(()), _)) => {
+                    ws.close(None).await.unwrap();
+                    ws.flush().await.unwrap();
+                    SinkExt::close(&mut ws).await.unwrap();
+                }
             }
         }
     });
 
-    (server, port)
+    (
+        ServerHandle {
+            task: server,
+            close_tx,
+        },
+        port,
+    )
+}
+
+struct ServerHandle {
+    task: tokio::task::JoinHandle<()>,
+    close_tx: futures::channel::mpsc::Sender<()>,
+}
+
+impl ServerHandle {
+    async fn stop(mut self) -> Result<(), JoinError> {
+        let _ = self.close_tx.send(()).await;
+
+        self.task.await
+    }
+
+    async fn wait(self) {
+        self.task.await.unwrap()
+    }
+
+    fn abort(self) {
+        self.task.abort();
+    }
 }
 
 fn make_websocket_test_channel(

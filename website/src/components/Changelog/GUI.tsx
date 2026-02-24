@@ -11,6 +11,10 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="12251">
+          Gracefully handles WebSocket closes from the portal instead of logging
+          a deserialization error.
+        </ChangeItem>
         <ChangeItem pull="#12111">
           Prevents unbounded log growth by enforcing a 100 MB log size cap with
           automatic cleanup of oldest files.

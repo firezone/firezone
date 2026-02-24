@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="12251">
+          Gracefully handles WebSocket closes from the portal instead of logging
+          a deserialization error.
+        </ChangeItem>
         <ChangeItem pull="12134">
           Fixes an issue where outdated and thus irrelevant candidates were sent
           to Clients, causing connectivity issues in rare situations.
