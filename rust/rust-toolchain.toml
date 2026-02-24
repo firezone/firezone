@@ -1,6 +1,6 @@
 [toolchain]
 channel = "1.93.0" # Keep in sync with `Dockerfile`
-components = ["rust-src", "rust-analyzer", "clippy"]
+components = ["clippy"]
 targets = [
     # Ensure this list is synced with `deny.toml`.
 
