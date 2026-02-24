@@ -763,7 +763,7 @@ where
 
                     match (message.payload, message.reference) {
                         (Payload::Message(msg), _) => {
-                            return Poll::Ready(Ok(Event::InboundMessage {
+                            return Poll::Ready(Ok(Event::Message {
                                 topic: message.topic,
                                 msg,
                             }));
@@ -939,8 +939,8 @@ fn make_initial_backoff() -> ExponentialBackoff {
 
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
-    /// The server sent us a message, most likely this is a broadcast to all connected clients.
-    InboundMessage { topic: String, msg: TInboundMsg },
+    /// The server sent us a message.
+    Message { topic: String, msg: TInboundMsg },
     Hiccup {
         backoff: Duration,
         max_elapsed_time: Option<Duration>,

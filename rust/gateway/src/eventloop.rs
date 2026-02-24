@@ -538,7 +538,7 @@ async fn phoenix_channel_event_loop(
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
-            Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+            Either::Left((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
                     break;

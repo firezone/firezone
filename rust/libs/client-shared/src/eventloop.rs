@@ -554,7 +554,7 @@ async fn phoenix_channel_event_loop(
 
                 break;
             }
-            Either::Right((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+            Either::Right((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
