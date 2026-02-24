@@ -253,6 +253,7 @@
     loadVersion(key: lastNotifiedVersionKey)
   }
 
+  // swiftlint:disable no_userdefaults_standard - view-layer update notification state
   func setVersion(key: String, version: SemanticVersion) {
     let encoder = PropertyListEncoder()
 
@@ -268,6 +269,7 @@
     let decoder = PropertyListDecoder()
 
     guard let data = UserDefaults.standard.object(forKey: lastDismissedVersionKey) as? Data
+    // swiftlint:enable no_userdefaults_standard
     else { return nil }
 
     do {

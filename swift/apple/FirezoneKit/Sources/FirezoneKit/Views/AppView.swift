@@ -79,9 +79,11 @@ public struct AppView: View {
       }
     }
 
+    // swiftlint:disable no_userdefaults_standard - view-layer one-shot check
     private static func launchedBefore() -> Bool {
       let bool = UserDefaults.standard.bool(forKey: "launchedBefore")
       UserDefaults.standard.set(true, forKey: "launchedBefore")
+      // swiftlint:enable no_userdefaults_standard
 
       return bool
     }

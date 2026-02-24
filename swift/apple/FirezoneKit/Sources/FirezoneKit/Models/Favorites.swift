@@ -34,6 +34,7 @@ public final class Favorites: ObservableObject {
     return ids.isEmpty
   }
 
+  // swiftlint:disable no_userdefaults_standard - standalone model, not DI-managed
   private func save() {
     // It's a run-time exception if we pass the `Set` directly here
     let ids = Array(ids)
@@ -42,6 +43,7 @@ public final class Favorites: ObservableObject {
 
   private static func load() -> Set<String> {
     if let ids = UserDefaults.standard.stringArray(forKey: key) {
+    // swiftlint:enable no_userdefaults_standard
       return Set(ids)
     }
     return []

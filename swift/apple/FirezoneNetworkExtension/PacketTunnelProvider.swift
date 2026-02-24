@@ -30,6 +30,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private var logExportState: LogExportState = .idle
   private var tunnelConfiguration: TunnelConfiguration?
+  // swiftlint:disable:next no_userdefaults_standard
   private let defaults = UserDefaults.standard
 
   override init() {
@@ -104,6 +105,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     handleTokenSave(token)
 
     // The firezone id should be initialized by now
+    // swiftlint:disable:next no_userdefaults_standard
     guard let rawId = UserDefaults.standard.string(forKey: "firezoneId")
     else {
       completionHandler(PacketTunnelProviderError.firezoneIdIsInvalid)
@@ -243,6 +245,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           completionHandler?(connlibState)
         }
       case .getEncodedFirezoneId:
+        // swiftlint:disable:next no_userdefaults_standard
         guard let rawId = UserDefaults.standard.string(forKey: "firezoneId") else {
           Log.error(PacketTunnelProviderError.firezoneIdIsInvalid)
           completionHandler?(nil)
@@ -524,12 +527,14 @@ extension TunnelConfiguration {
       "internetResourceEnabled": internetResourceEnabled,
     ]
 
+    // swiftlint:disable:next no_userdefaults_standard
     UserDefaults.standard.set(dict, forKey: key)
   }
 
   static func tryLoad() -> TunnelConfiguration? {
     let key = "configurationCache"
 
+    // swiftlint:disable:next no_userdefaults_standard
     guard let dict = UserDefaults.standard.dictionary(forKey: key)
     else {
       return nil
