@@ -386,7 +386,8 @@ public final class Store: ObservableObject {
 
     // Enable and start the tunnel with the auth token
     try await tunnelController.enable()
-    try tunnelController.start(token: authResponse.token, configuration: configuration.toTunnelConfiguration())
+    try tunnelController.start(
+      token: authResponse.token, configuration: configuration.toTunnelConfiguration())
   }
 
   func signOut() async throws {
