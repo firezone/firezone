@@ -76,21 +76,18 @@ jobs:
       matrix:
         include:
           - job_name: build-ios
-            rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             artifact-file: "Firezone.ipa"
             platform: iOS
 
           - job_name: build-macos-appstore
-            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             artifact-file: "Firezone.pkg"
             platform: macOS
 
           - job_name: build-macos-standalone
-            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
@@ -107,8 +104,6 @@ jobs:
         with:
           install_args: --cd swift/apple
       - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.rust-targets }}
       - uses: ./.github/actions/setup-rust-target-dependency-cache
         with:
           save-if: ${{ github.event_name == 'merge_group' || github.ref == 'refs/heads/main' }}
