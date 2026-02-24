@@ -485,7 +485,7 @@ where
         );
         self.last_url = Some(url);
 
-        // 3. In case we were already re-connecting, we need to wake the suspended task.
+        // In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
             waker.wake();
         }
@@ -553,21 +553,19 @@ where
             } = match &mut self.state {
                 State::Connected(stream) => stream,
                 State::Closed => return Poll::Ready(Ok(Event::Closed)),
-                State::Closing(future) => match future.poll_unpin(cx) {
-                    Poll::Ready(Ok(())) => {
+                State::Closing(future) => match std::task::ready!(future.poll_unpin(cx)) {
+                    Ok(()) => {
                         tracing::info!("Closed websocket connection to portal");
                         self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
-                    Poll::Ready(Err(e)) => {
+                    Err(e) => {
                         tracing::info!("Error while closing websocket connection to portal: {e:#}");
-
                         self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
-                    Poll::Pending => return Poll::Pending,
                 },
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
@@ -591,6 +589,7 @@ where
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::UNAUTHORIZED =>
                     {
+                        self.state = State::Closed;
                         return Poll::Ready(Err(Error::InvalidToken));
                     }
                     Poll::Ready(Err(e)) => {
@@ -611,6 +610,7 @@ where
                                     })?
                             }
                         };
+                        self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
