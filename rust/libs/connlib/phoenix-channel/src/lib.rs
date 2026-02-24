@@ -710,16 +710,13 @@ where
                     // Grab ownership of the `stream`.
                     let mut stream = match std::mem::replace(&mut self.state, State::Closed) {
                         State::Connected(Connected { stream, .. }) => stream,
-                        State::Reconnect { .. }
-                        | State::Connecting(_)
-                        | State::Closing(_)
-                        | State::Closed => {
+                        State::Connecting(_) | State::Closing(_) | State::Closed => {
                             // Defense-in-depth: This should not happen but never know what kind of bugs we might introduce in the future.
                             debug_assert!(
                                 false,
                                 "Should be in Connected after receiving Close frame"
                             );
-                            self.reconnect_on_transient_error(InternalError::WsClose(frame));
+                            self.handle_internal_error(InternalError::WsClose(frame));
                             continue;
                         }
                     };
