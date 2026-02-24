@@ -572,8 +572,6 @@ where
                 State::Connected(stream) => stream,
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.backoff = None; // TODO: Should we only reset this once we have joined the room?
-                        self.was_connected = true;
                         self.state = State::Connected(Connected {
                             stream,
                             heartbeat: tokio::time::interval(HEARTBEAT_INTERVAL),
@@ -808,6 +806,9 @@ where
 
                             if pending_join_requests.remove(&req_id).is_some() {
                                 if message.topic == self.login {
+                                    self.backoff = None;
+                                    self.was_connected = true;
+
                                     let (host, _) = self.url_prototype.host_and_port();
                                     tracing::info!(%host, "Connected to portal");
 
