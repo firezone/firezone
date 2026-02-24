@@ -1974,7 +1974,7 @@ mod tests {
 
         IceConfig::client_default().apply(&mut agent);
 
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(16500))
     }
 
     #[test]
@@ -1992,7 +1992,7 @@ mod tests {
 
         IceConfig::server_default().apply(&mut agent);
 
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(600_750))
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(615_500))
     }
 
     #[test]
