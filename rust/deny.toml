@@ -43,7 +43,7 @@ targets = [
     "armv7-linux-androideabi",
     "aarch64-linux-android",
     "x86_64-linux-android",
-    "i686-linux-android"
+    "i686-linux-android",
 
     # You can also specify which target_features you promise are enabled for a
     # particular target. target_features are currently not validated against
