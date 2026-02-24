@@ -124,6 +124,9 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - uses: ./.github/actions/setup-tauri-v2
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         env:
@@ -161,6 +164,9 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -241,6 +247,9 @@ jobs:
       - uses: ./.github/actions/setup-rust-nightly
         id: setup-rust
       - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -267,6 +276,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-target-dependency-cache
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - run: scripts/tests/${{ matrix.test }}
