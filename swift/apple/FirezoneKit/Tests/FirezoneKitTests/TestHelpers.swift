@@ -58,6 +58,7 @@ struct MockStoreFixture {
 
   #if os(macOS)
     let systemExtension: MockSystemExtensionManager
+    let updateChecker: MockUpdateChecker
   #endif
 }
 
@@ -78,10 +79,12 @@ func makeMockStore(
 
   #if os(macOS)
     let systemExtension = MockSystemExtensionManager()
+    let updateChecker = MockUpdateChecker()
     let store = Store(
       configuration: config,
       tunnelController: controller,
       sessionNotification: notification,
+      updateChecker: updateChecker,
       systemExtensionManager: systemExtension,
       userDefaults: defaults
     )
@@ -91,7 +94,8 @@ func makeMockStore(
       config: config,
       defaults: defaults,
       notification: notification,
-      systemExtension: systemExtension
+      systemExtension: systemExtension,
+      updateChecker: updateChecker
     )
   #else
     let store = Store(

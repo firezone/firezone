@@ -65,6 +65,7 @@ struct StoreSignInTests {
         configuration: config,
         tunnelController: controller,
         sessionNotification: notification,
+        updateChecker: MockUpdateChecker(),
         systemExtensionManager: systemExtension,
         userDefaults: defaults
       )
