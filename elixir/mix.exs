@@ -76,6 +76,7 @@ defmodule Portal.MixProject do
       {:phoenix_html, "~> 4.0"},
       {:phoenix_template, "~> 1.0.4"},
       {:phoenix_live_view, "~> 1.1"},
+      {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:bandit, "~> 1.0"},
       {:plug, "~> 1.15"},
@@ -91,6 +92,7 @@ defmodule Portal.MixProject do
 
       # Background jobs
       {:oban, "~> 2.19"},
+      {:oban_web, "~> 2.11"},
 
       # Erlang clustering
       {:libcluster, "~> 3.3"},

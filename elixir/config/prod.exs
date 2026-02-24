@@ -18,6 +18,7 @@ config :portal, PortalWeb.Endpoint,
   server: true
 
 config :portal, PortalAPI.Endpoint, server: true
+config :portal, PortalOps.Endpoint, server: true
 
 config :portal, Portal.Billing,
   # Stripe live mode product IDs

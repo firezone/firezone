@@ -51,7 +51,8 @@ defmodule Portal.Application do
       # Give Phoenix socket drain enough time to gracefully close channel topics
       # before transports are force-terminated.
       {PortalWeb.Endpoint, shutdown: 40_000},
-      {PortalAPI.Endpoint, shutdown: 40_000}
+      {PortalAPI.Endpoint, shutdown: 40_000},
+      {PortalOps.Endpoint, shutdown: 40_000}
     ]
 
     # Child order is chosen to make reverse-order shutdown graceful:

@@ -85,8 +85,10 @@ defmodule Portal.Health do
     config = Portal.Config.fetch_env!(:portal, Portal.Health)
     web_endpoint = Keyword.fetch!(config, :web_endpoint)
     api_endpoint = Keyword.fetch!(config, :api_endpoint)
+    ops_endpoint = Keyword.fetch!(config, :ops_endpoint)
 
-    Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil
+    Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil and
+      Process.whereis(ops_endpoint) != nil
   end
 end
 

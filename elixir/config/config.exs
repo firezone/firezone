@@ -169,6 +169,7 @@ config :portal, Portal.Health,
   health_port: 4000,
   web_endpoint: PortalWeb.Endpoint,
   api_endpoint: PortalAPI.Endpoint,
+  ops_endpoint: PortalOps.Endpoint,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
@@ -304,7 +305,8 @@ config :portal,
 config :portal,
   cookie_secure: true,
   cookie_signing_salt: "WjllcThpb2Y=",
-  cookie_encryption_salt: "M0EzM0R6NEMyaw=="
+  cookie_encryption_salt: "M0EzM0R6NEMyaw==",
+  ops_cookie_signing_salt: "tXeFEZ+WMutTXeH3oDDV50YcUeA3X5DX"
 
 config :portal,
   external_trusted_proxies: [],
@@ -338,6 +340,34 @@ config :portal, PortalAPI.Endpoint,
   ],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
   pubsub_server: Portal.PubSub
+
+###############################
+##### PortalOps Endpoint ######
+###############################
+
+config :portal, PortalOps.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [
+    scheme: "http",
+    host: "localhost",
+    port: 13_002,
+    path: nil
+  ],
+  render_errors: [
+    formats: [
+      html: PortalWeb.ErrorHTML
+    ],
+    layout: false
+  ],
+  secret_key_base: "MG9VUq7d0UdezhKtiQBa+8r9mnY/i74qxZN2CRnb6cHoXIcjfREIskr1bcxDgH5h",
+  live_view: [
+    signing_salt: "x9+QI+p/jXqWHuBf4oI9mPZ2G/zUrQgg"
+  ],
+  pubsub_server: Portal.PubSub
+
+config :portal,
+  ops_admin_username: "admin",
+  ops_admin_password: "firezone"
 
 config :portal, relays_presence_debounce_timeout_ms: 1_000
 

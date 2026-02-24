@@ -174,7 +174,10 @@ if config_env() == :prod do
   config :portal,
     cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
     cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
-    cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
+    cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt),
+    ops_cookie_signing_salt: env_var_to_config!(:ops_cookie_signing_salt),
+    ops_admin_username: env_var_to_config!(:ops_admin_username),
+    ops_admin_password: env_var_to_config!(:ops_admin_password)
 
   config :portal,
     external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
@@ -346,6 +349,30 @@ if config_env() == :prod do
     config :portal,
       api_external_url: api_external_url
   end
+
+  ###############################
+  ##### PortalOps Endpoint ######
+  ###############################
+
+  config :portal, PortalOps.Endpoint,
+    http: [
+      ip: env_var_to_config!(:phoenix_listen_address).address,
+      port: env_var_to_config!(:phoenix_http_ops_port),
+      http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+    ],
+    url: [
+      scheme: "http",
+      host: "localhost",
+      port: env_var_to_config!(:phoenix_http_ops_port),
+      path: nil
+    ],
+    secret_key_base: env_var_to_config!(:ops_secret_key_base),
+    live_view: [
+      signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
+    ],
+    check_origin: [
+      "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:phoenix_http_ops_port)}"
+    ]
 
   ###############################
   ##### Third-party configs #####

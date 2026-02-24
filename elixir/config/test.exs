@@ -199,6 +199,12 @@ config :portal, PortalAPI.Endpoint,
   url: [port: 13_101],
   server: true
 
+# Use ephemeral port for HTTP server to avoid conflicts between test runs
+config :portal, PortalOps.Endpoint,
+  http: [port: 0],
+  url: [port: 13_102],
+  server: true
+
 # shorten debounce timeout for tests
 config :portal, relays_presence_debounce_timeout_ms: 100
 
