@@ -744,35 +744,12 @@ async fn http_503_with_retry_after_uses_header_value() {
 
 #[tokio::test]
 async fn initial_connection_uses_constant_1s_backoff() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
-
-    use phoenix_channel::{DeviceInfo, Error, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
-    use url::Url;
+    use phoenix_channel::{Error, PublicKeyParam};
+    use std::time::Duration;
 
     let _guard = logging::test("debug");
 
-    let login_url = LoginUrl::client(
-        Url::from_str("ws://127.0.0.1:1").unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            backoff::ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(Duration::from_secs(3600)))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    );
+    let mut channel = make_test_channel("127.0.0.1", 1);
 
     channel.connect(PublicKeyParam([0u8; 32]));
 
