@@ -276,6 +276,7 @@ async fn replies_with_close_frame_upon_close() {
                     channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Closed => panic!("Should not close"),
+                phoenix_channel::Event::Connected => {}
             }
         }
     });
@@ -573,6 +574,10 @@ impl ServerHandle {
 
     async fn wait(self) {
         self.task.await.unwrap()
+    }
+
+    fn abort(self) {
+        self.task.abort();
     }
 }
 
