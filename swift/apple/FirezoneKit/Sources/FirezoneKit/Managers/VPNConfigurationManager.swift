@@ -27,9 +27,13 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: NETunnelProviderManager
 
-  // App cannot run without bundle identifier - force unwrap is safe
-  // swiftlint:disable:next force_unwrapping
-  public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
+  nonisolated public static var bundleIdentifier: String {
+    guard let mainBundleId = Bundle.main.bundleIdentifier else {
+      // Return a placeholder for test environment where main bundle has no identifier
+      return "dev.firezone.firezone.network-extension"
+    }
+    return "\(mainBundleId).network-extension"
+  }
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
