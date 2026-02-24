@@ -685,6 +685,7 @@ public struct SettingsView: View {
   // MARK: - Validated field helpers
 
   #if os(macOS)
+    // swiftlint:disable:next function_parameter_count
     @ViewBuilder
     private func validatedField(
       label: String,
@@ -721,6 +722,7 @@ public struct SettingsView: View {
   #endif
 
   #if os(iOS)
+    // swiftlint:disable:next function_parameter_count
     @ViewBuilder
     private func iOSValidatedField(
       label: String,
