@@ -619,8 +619,7 @@ where
                                 .backoff
                                 .as_ref()
                                 .and_then(|b| b.max_elapsed_time),
-                            error: anyhow::Error::new(e)
-                                .context("Reconnecting to portal on transient error"),
+                            error: anyhow::Error::new(e).context("Connection hiccup"),
                         }));
                     }
                     Poll::Pending => {

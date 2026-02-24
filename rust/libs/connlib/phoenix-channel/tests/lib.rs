@@ -334,7 +334,7 @@ async fn times_out_after_missed_heartbeats() {
 
     assert_eq!(
         format!("{error:#}"),
-        "Reconnecting to portal on transient error: too many heartbeats were unanswered"
+        "Connection hiccup: too many heartbeats were unanswered"
     );
 }
 
