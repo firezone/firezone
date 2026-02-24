@@ -771,10 +771,6 @@ async fn phoenix_channel_event_loop(
 
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
-            Ok(Event::JoinedRoom { topic }) => {
-                tracing::info!(target: "relay", "Successfully joined room '{topic}'");
-                is_connected.store(true, Ordering::Relaxed);
-            }
             Ok(Event::HeartbeatSent) => {
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
             }
@@ -799,7 +795,9 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(portal.host()).await;
                 portal.connect(ips, backoff, NoParams);
             }
-            Ok(Event::Connected) => {}
+            Ok(Event::Connected) => {
+                is_connected.store(true, Ordering::Relaxed);
+            }
             Err(e) => {
                 is_connected.store(false, Ordering::Relaxed);
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.

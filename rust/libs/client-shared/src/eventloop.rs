@@ -562,7 +562,6 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Either::Right((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
-            Either::Right((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
             Either::Right((Ok(phoenix_channel::Event::Closed), _)) => {
                 unimplemented!("Client never actively closes the portal connection")
             }

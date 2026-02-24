@@ -585,12 +585,11 @@ where
                             next_request_id: 0,
                         });
 
-                        let (host, _) = self.url_prototype.host_and_port();
+                        tracing::debug!("WebSocket connection established");
 
-                        tracing::info!(%host, "Connected to portal");
                         self.join_room();
 
-                        return Poll::Ready(Ok(Event::Connected));
+                        continue;
                     }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::UNAUTHORIZED =>
@@ -802,17 +801,19 @@ where
                             continue;
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
-                            if pending_join_requests.remove(&req_id).is_some() {
-                                tracing::debug!("Joined {} room on portal", message.topic);
-
-                                // For `phx_join` requests, `reply` is empty so we can safely ignore it.
-                                return Poll::Ready(Ok(Event::JoinedRoom {
-                                    topic: message.topic,
-                                }));
-                            }
-
                             if inflight_heartbeats.remove(&req_id) {
                                 tracing::trace!(%req_id, "Received heartbeat reply");
+                                continue;
+                            }
+
+                            if pending_join_requests.remove(&req_id).is_some() {
+                                if message.topic == self.login {
+                                    let (host, _) = self.url_prototype.host_and_port();
+                                    tracing::info!(%host, "Connected to portal");
+
+                                    return Poll::Ready(Ok(Event::Connected));
+                                }
+
                                 continue;
                             }
 
@@ -938,9 +939,6 @@ fn make_initial_backoff() -> ExponentialBackoff {
 
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
-    JoinedRoom {
-        topic: String,
-    },
     HeartbeatSent,
     /// The server sent us a message, most likely this is a broadcast to all connected clients.
     InboundMessage {
@@ -954,7 +952,9 @@ pub enum Event<TInboundMsg> {
     },
     /// The connection was closed successfully.
     Closed,
-    /// The WebSocket connection was established.
+    /// The portal connection was established.
+    ///
+    /// This includes successfully joining the room on the portal end.
     Connected,
 }
 

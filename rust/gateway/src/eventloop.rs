@@ -548,13 +548,7 @@ async fn phoenix_channel_event_loop(
                 tracing::debug!("Portal connection clsed: exiting phoenix-channel event-loop");
                 break;
             }
-            Either::Left((
-                Ok(
-                    phoenix_channel::Event::HeartbeatSent
-                    | phoenix_channel::Event::JoinedRoom { .. },
-                ),
-                _,
-            )) => {}
+            Either::Left((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
             Either::Left((
                 Ok(phoenix_channel::Event::Hiccup {
                     backoff,
