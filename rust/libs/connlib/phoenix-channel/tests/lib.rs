@@ -772,7 +772,6 @@ async fn initial_connection_uses_constant_1s_backoff() {
         PublicKeyParam([0u8; 32]),
     );
 
-    let mut hiccups = Vec::new();
     let start = std::time::Instant::now();
 
     loop {
@@ -782,7 +781,8 @@ async fn initial_connection_uses_constant_1s_backoff() {
                 max_elapsed_time,
                 ..
             }) => {
-                hiccups.push((backoff, max_elapsed_time));
+                assert_eq!(max_elapsed_time, Some(Duration::from_secs(15)));
+                assert_eq!(backoff, Duration::from_secs(1));
 
                 channel.connect(
                     vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -801,11 +801,4 @@ async fn initial_connection_uses_constant_1s_backoff() {
         elapsed < Duration::from_secs(20),
         "Expected to complete within 20s, but took {elapsed:?}"
     );
-
-    for (i, (backoff, max_elapsed_time)) in hiccups.iter().enumerate() {
-        assert_eq!(*max_elapsed_time, Some(Duration::from_secs(15)));
-        if i > 0 {
-            assert_eq!(*backoff, Duration::from_secs(1));
-        }
-    }
 }
