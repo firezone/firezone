@@ -40,7 +40,7 @@ enum SettingsToggle: Hashable {
 @MainActor
 class SettingsViewModel: ObservableObject {
   private let configuration: Configuration
-  private let store: Store
+  private let store: Store?
   private var cancellables: Set<AnyCancellable> = []
 
   private(set) var isResetting = false
@@ -52,14 +52,20 @@ class SettingsViewModel: ObservableObject {
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
 
-  // Sign-out confirmation for identity-related field changes
+  // Sign-out confirmation for identity-related changes (field edits or reset)
   @Published var showSignOutConfirmation: Bool = false
   private var savedAuthURL: String
   private var savedApiURL: String
   private var savedAccountSlug: String
-  var pendingFieldChange: (field: SettingsField, value: String)?
 
-  init(configuration: Configuration? = nil, store: Store) {
+  private enum PendingChange {
+    case field(SettingsField, String)
+    case reset
+  }
+
+  private var pendingChange: PendingChange?
+
+  init(configuration: Configuration? = nil, store: Store? = nil) {
     self.configuration = configuration ?? Configuration.shared
     self.store = store
 
@@ -109,6 +115,15 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reset() {
+    if requiresSignOut {
+      pendingChange = .reset
+      showSignOutConfirmation = true
+      return
+    }
+    performReset()
+  }
+
+  private func performReset() {
     isResetting = true
     defer { isResetting = false }
 
@@ -150,7 +165,7 @@ class SettingsViewModel: ObservableObject {
     case .authURL:
       guard !configuration.isAuthURLForced, isAuthURLValid else { return }
       if authURL != savedAuthURL, requiresSignOut {
-        pendingFieldChange = (field: .authURL, value: authURL)
+        pendingChange = .field(.authURL, authURL)
         showSignOutConfirmation = true
         return
       }
@@ -160,7 +175,7 @@ class SettingsViewModel: ObservableObject {
     case .apiURL:
       guard !configuration.isApiURLForced, isApiURLValid else { return }
       if apiURL != savedApiURL, requiresSignOut {
-        pendingFieldChange = (field: .apiURL, value: apiURL)
+        pendingChange = .field(.apiURL, apiURL)
         showSignOutConfirmation = true
         return
       }
@@ -174,7 +189,7 @@ class SettingsViewModel: ObservableObject {
     case .accountSlug:
       guard !configuration.isAccountSlugForced else { return }
       if accountSlug != savedAccountSlug, requiresSignOut {
-        pendingFieldChange = (field: .accountSlug, value: accountSlug)
+        pendingChange = .field(.accountSlug, accountSlug)
         showSignOutConfirmation = true
         return
       }
@@ -183,67 +198,87 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
+  func save() async throws {
+    try await saveField(.authURL)
+    try await saveField(.apiURL)
+    try await saveField(.logFilter)
+    try await saveField(.accountSlug)
+    try await saveToggle(.connectOnStart)
+    try await saveToggle(.startOnLogin)
+  }
+
   private var requiresSignOut: Bool {
-    [.connected, .connecting, .reasserting].contains(store.vpnStatus)
+    guard let store = store else { return false }
+    return [.connected, .connecting, .reasserting].contains(store.vpnStatus)
   }
 
   func saveToggle(_ field: SettingsToggle) async throws {
-    guard !isResetting else { return }
-
     switch field {
     case .connectOnStart:
-      guard !configuration.isConnectOnStartForced else { return }
+      guard !configuration.isConnectOnStartForced,
+        connectOnStart != configuration.connectOnStart
+      else { return }
       configuration.connectOnStart = connectOnStart
     case .startOnLogin:
-      guard !configuration.isStartOnLoginForced else { return }
+      guard !configuration.isStartOnLoginForced,
+        startOnLogin != configuration.startOnLogin
+      else { return }
       configuration.startOnLogin = startOnLogin
-      #if os(macOS)
-        try await configuration.updateAppService()
-      #endif
     }
   }
 
-  /// Applies the pending identity-field change and signs out.
+  /// Applies the pending change (field edit or reset) and signs out.
   ///
-  /// Safe to use `pendingFieldChange` directly because the sign-out
-  /// confirmation alert is modal — the user cannot edit the field while it is presented.
+  /// Safe to read `pendingChange` directly because the sign-out
+  /// confirmation alert is modal — the user cannot edit fields while it is presented.
   func confirmSignOutChange() async throws {
-    guard let pending = pendingFieldChange else { return }
+    guard let pending = pendingChange else { return }
 
-    switch pending.field {
-    case .authURL:
-      authURL = pending.value
-      configuration.authURL = authURL
-      savedAuthURL = authURL
-    case .apiURL:
-      apiURL = pending.value
-      configuration.apiURL = apiURL
-      savedApiURL = apiURL
-    case .accountSlug:
-      accountSlug = pending.value
-      configuration.accountSlug = accountSlug
-      savedAccountSlug = accountSlug
-    case .logFilter:
-      break
+    switch pending {
+    case .field(let field, let value):
+      switch field {
+      case .authURL:
+        authURL = value
+        configuration.authURL = authURL
+        savedAuthURL = authURL
+      case .apiURL:
+        apiURL = value
+        configuration.apiURL = apiURL
+        savedApiURL = apiURL
+      case .accountSlug:
+        accountSlug = value
+        configuration.accountSlug = accountSlug
+        savedAccountSlug = accountSlug
+      case .logFilter:
+        break
+      }
+    case .reset:
+      performReset()
     }
 
-    try await store.signOut()
+    if let store = store {
+      try await store.signOut()
+    }
 
-    pendingFieldChange = nil
+    pendingChange = nil
     showSignOutConfirmation = false
   }
 
   func cancelSignOutChange() {
-    guard let pending = pendingFieldChange else { return }
+    guard let pending = pendingChange else { return }
 
-    switch pending.field {
-    case .authURL: authURL = savedAuthURL
-    case .apiURL: apiURL = savedApiURL
-    case .accountSlug: accountSlug = savedAccountSlug
-    case .logFilter: break
+    // Revert UI fields to their last-saved values for field edits.
+    // Reset needs no revert — the UI fields haven't been changed yet.
+    if case .field(let field, _) = pending {
+      switch field {
+      case .authURL: authURL = savedAuthURL
+      case .apiURL: apiURL = savedApiURL
+      case .accountSlug: accountSlug = savedAccountSlug
+      case .logFilter: break
+      }
     }
 
-    pendingFieldChange = nil
+    pendingChange = nil
     showSignOutConfirmation = false
   }
 
