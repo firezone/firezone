@@ -126,6 +126,12 @@ public struct SettingsView: View {
 
   private var settingsContent: some View {
     splitView
+      .onDisappear {
+        if let field = focusedField, !viewModel.showSignOutConfirmation {
+          focusedField = nil
+          withErrorHandler { try await viewModel.saveField(field) }
+        }
+      }
       .onChange(of: focusedField) { [oldField = focusedField] newField in
         guard let field = oldField, field != newField else { return }
         withErrorHandler { try await viewModel.saveField(field) }
@@ -232,6 +238,18 @@ public struct SettingsView: View {
           .padding(10)
           Spacer()
         }
+
+        HStack {
+          Spacer()
+          Button("Reset to Defaults") {
+            focusedField = nil
+            viewModel.reset()
+          }
+          .disabled(viewModel.shouldDisableResetButton)
+          Spacer()
+        }
+        .padding(.top, 10)
+
         Spacer()
       }
     #elseif os(iOS)
@@ -264,6 +282,18 @@ public struct SettingsView: View {
                 .onChange(of: viewModel.connectOnStart) { _ in
                   withErrorHandler { try await viewModel.saveToggle(.connectOnStart) }
                 }
+              }
+              HStack {
+                Spacer()
+                Button(
+                  "Reset to Defaults",
+                  action: {
+                    focusedField = nil
+                    viewModel.reset()
+                  }
+                )
+                .disabled(viewModel.shouldDisableResetButton)
+                Spacer()
               }
             },
             header: { Text("General Settings") },
@@ -330,6 +360,7 @@ public struct SettingsView: View {
         HStack {
           Spacer()
           Button("Reset to Defaults") {
+            focusedField = nil
             viewModel.reset()
           }
           .disabled(viewModel.shouldDisableResetButton)
@@ -350,7 +381,8 @@ public struct SettingsView: View {
                 text: $viewModel.authURL,
                 field: .authURL,
                 isValid: viewModel.isAuthURLValid,
-                isDisabled: configuration.isAuthURLForced
+                isDisabled: configuration.isAuthURLForced,
+                errorMessage: "Must be a valid http:// or https:// URL with no path"
               )
               iOSValidatedField(
                 label: "API URL",
@@ -358,7 +390,8 @@ public struct SettingsView: View {
                 text: $viewModel.apiURL,
                 field: .apiURL,
                 isValid: viewModel.isApiURLValid,
-                isDisabled: configuration.isApiURLForced
+                isDisabled: configuration.isApiURLForced,
+                errorMessage: "Must be a valid wss:// or ws:// URL with no path"
               )
               iOSValidatedField(
                 label: "Log Filter",
@@ -366,13 +399,15 @@ public struct SettingsView: View {
                 text: $viewModel.logFilter,
                 field: .logFilter,
                 isValid: viewModel.isLogFilterValid,
-                isDisabled: configuration.isLogFilterForced
+                isDisabled: configuration.isLogFilterForced,
+                errorMessage: "Must not be empty"
               )
               HStack {
                 Spacer()
                 Button(
                   "Reset to Defaults",
                   action: {
+                    focusedField = nil
                     viewModel.reset()
                   }
                 )
@@ -694,8 +729,9 @@ public struct SettingsView: View {
             .validationBorder(isValid: isValid, isFocused: focusedField == field)
         }
         HStack(spacing: 0) {
+          // 150pt label width + 8pt default HStack spacing
           Spacer()
-            .frame(width: 158)
+            .frame(width: 150 + 8)
           Text(errorMessage)
             .font(.caption)
             .foregroundStyle(.red)
@@ -713,7 +749,8 @@ public struct SettingsView: View {
       text: Binding<String>,
       field: SettingsField,
       isValid: Bool,
-      isDisabled: Bool
+      isDisabled: Bool,
+      errorMessage: String = ""
     ) -> some View {
       VStack(alignment: .leading, spacing: 2) {
         Text(label)
@@ -726,11 +763,18 @@ public struct SettingsView: View {
           .submitLabel(.done)
           .disabled(isDisabled)
           .validationBorder(isValid: isValid, isFocused: focusedField == field)
+        if !isValid && focusedField != field && !errorMessage.isEmpty {
+          Text(errorMessage)
+            .font(.caption)
+            .foregroundStyle(.red)
+        }
       }
     }
   #endif
 }
 
+/// Adds a red border around a field when invalid and not focused.
+/// Scoped `fileprivate` to SettingsView only.
 extension View {
   fileprivate func validationBorder(isValid: Bool, isFocused: Bool) -> some View {
     overlay(

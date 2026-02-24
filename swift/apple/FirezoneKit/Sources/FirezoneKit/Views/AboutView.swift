@@ -1,8 +1,15 @@
-// AboutView.swift
+//
+//  AboutView.swift
+//  (c) 2024 Firezone, Inc.
+//  LICENSE: Apache-2.0
+//
 
 import SwiftUI
 
 struct AboutView: View {
+  // Apple's continuous corner radius ratio (superellipse) applied to 128pt icon
+  private static let iOSIconCornerRadius: CGFloat = 128 * 0.1748
+
   private var appName: String {
     Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String ?? "Firezone"
   }
@@ -45,7 +52,7 @@ struct AboutView: View {
         Image(uiImage: uiImage)
           .resizable()
           .frame(width: 128, height: 128)
-          .cornerRadius(22.37, antialiased: true)
+          .cornerRadius(Self.iOSIconCornerRadius, antialiased: true)
       } else {
         fallbackIcon
       }
