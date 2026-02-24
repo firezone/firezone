@@ -399,11 +399,9 @@ where
         }
     }
 
-    /// Join the provided room.
-    ///
-    /// If successful, a [`Event::JoinedRoom`] event will be emitted.
-    fn join(&mut self, topic: impl Into<String>, payload: TInitReq) {
-        let topic = topic.into();
+    /// Join our room.
+    fn join_room(&mut self) {
+        let topic = self.login.to_owned();
 
         let State::Connected(Connected {
             pending_joins,
@@ -419,7 +417,7 @@ where
         let (request_id, msg) = make_control_message(
             next_request_id,
             topic,
-            EgressControlMessage::PhxJoin(payload),
+            EgressControlMessage::PhxJoin(self.init_req.clone()),
         );
 
         pending_joins.push_back(msg);
@@ -590,7 +588,7 @@ where
                         let (host, _) = self.url_prototype.host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
-                        self.join(self.login, self.init_req.clone());
+                        self.join_room();
 
                         return Poll::Ready(Ok(Event::Connected));
                     }
@@ -786,7 +784,7 @@ where
                                 ErrorReply::UnmatchedTopic if message.topic == self.login => {
                                     tracing::debug!(topic = %self.login, "We are no longer part of our room, rejoining");
 
-                                    self.join(self.login, self.init_req.clone());
+                                    self.join_room();
                                     continue;
                                 }
                                 ErrorReply::UnmatchedTopic
