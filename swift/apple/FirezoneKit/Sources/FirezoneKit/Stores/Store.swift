@@ -45,8 +45,8 @@ public final class Store: ObservableObject {
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
-  private var resourcesTimer: Timer?
-  private var resourceUpdateTask: Task<Void, Never>?
+  private var stateTimer: Timer?
+  private var stateUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
   private var vpnConfigurationManager: VPNConfigurationManager?
@@ -219,10 +219,10 @@ public final class Store: ObservableObject {
     self.vpnStatus = newVPNStatus
 
     if newVPNStatus == .connected {
-      beginUpdatingResources()
+      beginUpdatingState()
       fetchAndCacheFirezoneId()
     } else {
-      endUpdatingResources()
+      endUpdatingState()
     }
 
     #if os(macOS)
@@ -395,8 +395,8 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  private func beginUpdatingResources() {
-    if self.resourcesTimer != nil {
+  private func beginUpdatingState() {
+    if self.stateTimer != nil {
       // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
       // in a row, which can happen occasionally.
       return
@@ -406,8 +406,8 @@ public final class Store: ObservableObject {
     let updateState: @Sendable (Timer) -> Void = { _ in
       Task {
         await MainActor.run {
-          self.resourceUpdateTask?.cancel()
-          self.resourceUpdateTask = Task {
+          self.stateUpdateTask?.cancel()
+          self.stateUpdateTask = Task {
             if !Task.isCancelled {
               do {
                 guard let session = try self.manager().session() else { return }
@@ -434,16 +434,16 @@ public final class Store: ObservableObject {
 
     // Schedule the timer on the main runloop
     RunLoop.main.add(timer, forMode: .common)
-    resourcesTimer = timer
+    stateTimer = timer
 
     // We're impatient, make one call now
     updateState(timer)
   }
 
-  private func endUpdatingResources() {
-    resourceUpdateTask?.cancel()
-    resourcesTimer?.invalidate()
-    resourcesTimer = nil
+  private func endUpdatingState() {
+    stateUpdateTask?.cancel()
+    stateTimer?.invalidate()
+    stateTimer = nil
     resourceList = ResourceList.loading
     connlibStateHash = Data()
     unreachableResources.removeAll()
