@@ -561,7 +561,6 @@ async fn phoenix_channel_event_loop(
                     break;
                 }
             }
-            Either::Right((Ok(phoenix_channel::Event::SuccessResponse { .. }), _)) => {}
             Either::Right((
                 Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }),
                 _,

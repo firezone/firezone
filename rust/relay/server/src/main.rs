@@ -771,7 +771,6 @@ async fn phoenix_channel_event_loop(
 
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
-            Ok(Event::SuccessResponse { .. }) => {}
             Ok(Event::JoinedRoom { topic }) => {
                 tracing::info!(target: "relay", "Successfully joined room '{topic}'");
                 is_connected.store(true, Ordering::Relaxed);

@@ -788,11 +788,9 @@ where
                                 res: reason,
                             }));
                         }
-                        (Payload::Reply(Reply::Ok(OkReply::Message(()))), Some(req_id)) => {
-                            return Poll::Ready(Ok(Event::SuccessResponse {
-                                topic: message.topic,
-                                req_id,
-                            }));
+                        (Payload::Reply(Reply::Ok(OkReply::Message(()))), Some(_)) => {
+                            // We don't use the reply feature of phoenix-channel.
+                            continue;
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             if pending_join_requests.remove(&req_id).is_some() {
@@ -931,10 +929,6 @@ fn make_initial_backoff() -> ExponentialBackoff {
 
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
-    SuccessResponse {
-        topic: String,
-        req_id: OutboundRequestId,
-    },
     ErrorResponse {
         topic: String,
         req_id: OutboundRequestId,

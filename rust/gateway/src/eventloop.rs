@@ -563,8 +563,7 @@ async fn phoenix_channel_event_loop(
             }
             Either::Left((
                 Ok(
-                    phoenix_channel::Event::SuccessResponse { .. }
-                    | phoenix_channel::Event::HeartbeatSent
+                    phoenix_channel::Event::HeartbeatSent
                     | phoenix_channel::Event::JoinedRoom { .. },
                 ),
                 _,
