@@ -91,16 +91,17 @@ The separation between control plane and data plane state serves two functions:
 
 Firezone uses the following tools for ops and infrastructure:
 
-| Category                      | Tool/Service                  |
-| ----------------------------- | ----------------------------- |
-| Cloud provider: Control plane | Google Cloud Platform         |
-| Cloud provider: Relays        | Microsoft Azure               |
-| Source code management        | GitHub                        |
-| CI/CD                         | GitHub Actions                |
-| Monitoring and alerting       | Sentry                        |
-| Logging                       | Sentry                        |
-| Persistence store             | Google Cloud SQL (PostgreSQL) |
-| Infrastructure as code        | Terraform                     |
+| Category                      | Tool/Service                          |
+| ----------------------------- | ------------------------------------- |
+| Cloud provider: Control plane | Microsoft Azure                       |
+| Cloud provider: Relays        | Microsoft Azure                       |
+| Source code management        | GitHub                                |
+| CI/CD                         | GitHub Actions                        |
+| Monitoring and alerting       | Sentry                                |
+| Logging                       | Sentry                                |
+| Feature flag evaluation       | PostHog                               |
+| Persistence store             | Azure Flexible Servers for Postgresql |
+| Infrastructure as code        | Terraform                             |
 
 ### Regional availability
 
