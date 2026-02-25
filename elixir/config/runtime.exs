@@ -371,7 +371,7 @@ if config_env() == :prod do
       signing_salt: env_var_to_config!(:ops_live_view_signing_salt)
     ],
     check_origin: [
-      "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:phoenix_http_ops_port)}"
+      "//#{env_var_to_config!(:ops_websocket_origin)}:#{env_var_to_config!(:ops_websocket_port)}"
     ]
 
   ###############################

@@ -188,6 +188,25 @@ defmodule Portal.Config.Definitions do
   defconfig(:ops_websocket_origin, :string, default: "localhost")
 
   @doc """
+  The external port used in WebSocket origin checks for the ops endpoint.
+
+  This should be the stable ingress port (e.g. 1080) rather than the internal
+  blue/green listen port, so that `check_origin` passes when traffic is
+  redirected via iptables.
+
+  Maps to the `OPS_WEBSOCKET_PORT` environment variable.
+  """
+  defconfig(:ops_websocket_port, :integer,
+    default: 13_002,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
   Allows to override Bandit HTTP/1.1 server options.
 
   These options are passed to Bandit's `http_1_options`. Keep in mind that changing
