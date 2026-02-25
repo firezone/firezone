@@ -48,6 +48,7 @@ defmodule Portal.Entra.ErrorHandler do
   defp classify({tag, _}) when tag in [:validation, :scopes, :circuit_breaker, :consent_revoked],
     do: :client_error
 
+  defp classify({_tag, _msg, _body}), do: :transient
   defp classify(nil), do: :transient
   defp classify(msg) when is_binary(msg), do: :transient
 
@@ -110,6 +111,7 @@ defmodule Portal.Entra.ErrorHandler do
     format(%Req.Response{status: status, body: body})
   end
 
+  defp format({_tag, msg, _body}) when is_binary(msg), do: msg
   defp format({_tag, msg}) when is_binary(msg), do: msg
   defp format(nil), do: "Unknown error occurred"
   defp format(msg) when is_binary(msg), do: msg

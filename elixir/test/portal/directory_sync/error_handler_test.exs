@@ -5,6 +5,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
   import Portal.AccountFixtures
   import Portal.EntraDirectoryFixtures
+  import Portal.GoogleDirectoryFixtures
   import Portal.OktaDirectoryFixtures
 
   describe "format_transport_error/1" do
@@ -236,6 +237,30 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_verified == false
       assert updated_directory.error_message =~ "okta.users.read"
     end
+
+    test "classifies 3-tuple errors as transient and does not disable directory",
+         %{directory: directory} do
+      job = %Oban.Job{
+        worker: "Portal.Okta.Sync",
+        args: %{"directory_id" => directory.id}
+      }
+
+      # An unexpected 3-tuple error (e.g. from a future API response shape) should
+      # be treated as transient, not a permanent client error.
+      error = %Portal.Okta.SyncError{
+        error: {:invalid_response, "Expected array, got map", %{"errorCode" => "E0000001"}},
+        directory_id: directory.id,
+        step: :stream_app_users
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
+
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert updated_directory.error_message == "Expected array, got map"
+    end
   end
 
   describe "handle_error/1 with Entra SyncError" do
@@ -401,6 +426,146 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.disabled_reason == "Sync error"
       assert updated_directory.is_verified == false
       assert updated_directory.error_message =~ "Insufficient permissions"
+    end
+
+    test "classifies 3-tuple errors as transient and does not disable directory",
+         %{directory: directory} do
+      job = %Oban.Job{
+        worker: "Portal.Entra.Sync",
+        args: %{"directory_id" => directory.id}
+      }
+
+      # {missing_key, msg, body} is produced by the Entra API client when the API response
+      # is missing the expected "value" key, e.g. due to an undocumented API change.
+      error = %Portal.Entra.SyncError{
+        error:
+          {:missing_key, "Expected key 'value' not found in response",
+           %{"@odata.context" => "https://graph.microsoft.com/v1.0/$metadata#groups"}},
+        directory_id: directory.id,
+        step: :stream_groups
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
+
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert updated_directory.error_message == "Expected key 'value' not found in response"
+    end
+  end
+
+  describe "handle_error/1 with Google SyncError" do
+    setup do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+
+      %{account: account, directory: directory}
+    end
+
+    test "classifies HTTP 4xx errors as client_error and disables directory",
+         %{directory: directory} do
+      job = %Oban.Job{
+        worker: "Portal.Google.Sync",
+        args: %{"directory_id" => directory.id}
+      }
+
+      error = %Portal.Google.SyncError{
+        error: %Req.Response{
+          status: 403,
+          body: %{
+            "error" => %{
+              "code" => 403,
+              "message" => "Request had insufficient authentication scopes.",
+              "errors" => [%{"reason" => "insufficientPermissions"}]
+            }
+          }
+        },
+        directory_id: directory.id,
+        step: :stream_users
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Google.Directory, directory.id)
+
+      assert updated_directory.is_disabled == true
+      assert updated_directory.disabled_reason == "Sync error"
+      assert updated_directory.is_verified == false
+      assert updated_directory.error_message =~ "insufficientPermissions"
+    end
+
+    test "classifies HTTP 5xx errors as transient and does not disable directory",
+         %{directory: directory} do
+      job = %Oban.Job{
+        worker: "Portal.Google.Sync",
+        args: %{"directory_id" => directory.id}
+      }
+
+      error = %Portal.Google.SyncError{
+        error: %Req.Response{
+          status: 500,
+          body: %{"error" => %{"message" => "Internal error encountered."}}
+        },
+        directory_id: directory.id,
+        step: :list_groups
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Google.Directory, directory.id)
+
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert updated_directory.error_message != nil
+    end
+
+    test "classifies 3-tuple errors as transient and does not disable directory",
+         %{directory: directory} do
+      job = %Oban.Job{
+        worker: "Portal.Google.Sync",
+        args: %{"directory_id" => directory.id}
+      }
+
+      # {missing_key, msg, body} is produced by the Google API client when a mandatory
+      # key (e.g. "groups") is absent from a paginated response, indicating an unexpected
+      # API format change rather than a permanent auth/permission failure.
+      error = %Portal.Google.SyncError{
+        error:
+          {:missing_key, "Expected key 'groups' not found in response",
+           %{"kind" => "admin#directory#groups"}},
+        directory_id: directory.id,
+        step: :stream_groups
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Google.Directory, directory.id)
+
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert updated_directory.error_message == "Expected key 'groups' not found in response"
+    end
+
+    test "classifies transport errors as transient", %{directory: directory} do
+      job = %Oban.Job{
+        worker: "Portal.Google.Sync",
+        args: %{"directory_id" => directory.id}
+      }
+
+      error = %Portal.Google.SyncError{
+        error: %Req.TransportError{reason: :timeout},
+        directory_id: directory.id,
+        step: :get_access_token
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Google.Directory, directory.id)
+
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert updated_directory.error_message == "Connection timed out."
     end
   end
 end
