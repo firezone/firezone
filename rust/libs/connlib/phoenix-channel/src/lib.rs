@@ -5,7 +5,7 @@ mod login_url;
 
 use anyhow::{Context as _, Result};
 use futures::stream::FuturesUnordered;
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -66,16 +66,11 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     backoff: Option<ExponentialBackoff>,
     was_connected: bool,
 
-    resolved_addresses: BTreeSet<IpAddr>,
-
     login: &'static str,
     init_req: TInitReq,
 }
 
 enum State<TOutboundMsg> {
-    Reconnect {
-        backoff: Duration,
-    },
     Connected(Connected<TOutboundMsg>),
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
@@ -107,8 +102,10 @@ impl<TOutboundMsg> State<TOutboundMsg> {
         user_agent: String,
         token: SecretString,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        backoff: Duration,
     ) -> Self {
-        Self::Connecting(
+        Self::Connecting(Box::pin(async move {
+            tokio::time::sleep(backoff).await;
             create_and_connect_websocket(
                 url,
                 addresses,
@@ -118,8 +115,8 @@ impl<TOutboundMsg> State<TOutboundMsg> {
                 socket_factory,
                 CONNECT_TIMEOUT,
             )
-            .boxed(),
-        )
+            .await
+        }))
     }
 }
 
@@ -199,7 +196,7 @@ pub enum Error {
     )]
     MaxRetriesReached { final_error: String },
     #[error("Failed to login with portal: {0}")]
-    LoginFailed(ErrorReply),
+    LoginFailed(String),
     #[error("Fatal IO error: {0}")]
     FatalIo(io::Error),
 }
@@ -245,14 +242,6 @@ impl InternalError {
         let duration = parse_retry_after_value(value)?;
 
         Some(duration)
-    }
-
-    pub(crate) fn failed_ips(&self) -> Vec<(IpAddr, &io::Error)> {
-        let Self::SocketConnection(errors) = self else {
-            return Vec::default();
-        };
-
-        errors.iter().map(|(s, e)| (s.ip(), e)).collect()
     }
 }
 
@@ -406,16 +395,13 @@ where
             _phantom: PhantomData,
             login,
             init_req,
-            resolved_addresses: Default::default(),
             last_url: None,
         }
     }
 
-    /// Join the provided room.
-    ///
-    /// If successful, a [`Event::JoinedRoom`] event will be emitted.
-    pub fn join(&mut self, topic: impl Into<String>, payload: TInitReq) {
-        let topic = topic.into();
+    /// Join our room.
+    fn join_room(&mut self) {
+        let topic = self.login.to_owned();
 
         let State::Connected(Connected {
             pending_joins,
@@ -431,7 +417,7 @@ where
         let (request_id, msg) = make_control_message(
             next_request_id,
             topic,
-            EgressControlMessage::PhxJoin(payload),
+            EgressControlMessage::PhxJoin(self.init_req.clone()),
         );
 
         pending_joins.push_back(msg);
@@ -478,31 +464,29 @@ where
     }
 
     /// Establishes a new connection, dropping the current one if any exists.
-    pub fn connect(&mut self, params: TFinish) {
+    pub fn connect(&mut self, addresses: Vec<IpAddr>, backoff: Duration, params: TFinish) {
         let url = self.url_prototype.to_url(params);
 
-        if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
-            tracing::debug!("We are already connecting");
-            return;
-        }
-
-        // 1. Reset the backoff.
-        self.backoff = None;
-
-        // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
         let token = self.token.clone();
+
         self.state = State::connect(
             url.clone(),
-            self.socket_addresses(),
+            addresses
+                .into_iter()
+                .chain(self.host().parse::<IpAddr>().ok())
+                .unique()
+                .map(|ip| SocketAddr::new(ip, self.port()))
+                .collect(),
             self.host(),
             user_agent,
             token,
             self.socket_factory.clone(),
+            backoff,
         );
         self.last_url = Some(url);
 
-        // 3. In case we were already re-connecting, we need to wake the suspended task.
+        // In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
             waker.wake();
         }
@@ -516,16 +500,8 @@ where
         self.url_prototype.host_and_port().0.to_owned()
     }
 
-    pub fn update_ips(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
-        let new = BTreeSet::from_iter(ips);
-
-        if new == self.resolved_addresses {
-            return;
-        }
-
-        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, ?new, "Updating resolved IPs");
-
-        self.resolved_addresses = new;
+    fn port(&self) -> u16 {
+        self.url_prototype.host_and_port().1
     }
 
     /// Initiate a graceful close of the connection.
@@ -557,7 +533,7 @@ where
             State::Closing(stream) => {
                 self.state = State::Closing(stream);
             }
-            State::Closed | State::Reconnect { .. } => {}
+            State::Closed => {}
         }
 
         Ok(())
@@ -576,59 +552,24 @@ where
                 pending_messages,
                 next_request_id,
             } = match &mut self.state {
-                State::Closed => return Poll::Ready(Ok(Event::Closed)),
-                State::Closing(future) => match future.poll_unpin(cx) {
-                    Poll::Ready(Ok(())) => {
-                        tracing::info!("Closed websocket connection to portal");
-
-                        self.state = State::Closed;
-
-                        return Poll::Ready(Ok(Event::Closed));
-                    }
-                    Poll::Ready(Err(e)) => {
-                        tracing::info!("Error while closing websocket connection to portal: {e:#}");
-
-                        self.state = State::Closed;
-
-                        return Poll::Ready(Ok(Event::Closed));
-                    }
-                    Poll::Pending => return Poll::Pending,
-                },
                 State::Connected(stream) => stream,
-                State::Reconnect { backoff } => {
-                    let backoff = *backoff;
-                    let socket_addresses = self.socket_addresses();
-                    let host = self.host();
+                State::Closed => return Poll::Ready(Ok(Event::Closed)),
+                State::Closing(future) => match std::task::ready!(future.poll_unpin(cx)) {
+                    Ok(()) => {
+                        tracing::info!("Closed websocket connection to portal");
+                        self.state = State::Closed;
 
-                    let secret_url = self
-                        .last_url
-                        .as_ref()
-                        .expect("should have last URL if we receive connection error")
-                        .clone();
-                    let user_agent = self.user_agent.clone();
-                    let token = self.token.clone();
-                    let socket_factory = self.socket_factory.clone();
+                        return Poll::Ready(Ok(Event::Closed));
+                    }
+                    Err(e) => {
+                        tracing::info!("Error while closing websocket connection to portal: {e:#}");
+                        self.state = State::Closed;
 
-                    self.state = State::Connecting(Box::pin(async move {
-                        tokio::time::sleep(backoff).await;
-                        create_and_connect_websocket(
-                            secret_url,
-                            socket_addresses,
-                            host,
-                            user_agent,
-                            token,
-                            socket_factory,
-                            CONNECT_TIMEOUT,
-                        )
-                        .await
-                    }));
-
-                    continue;
-                }
+                        return Poll::Ready(Ok(Event::Closed));
+                    }
+                },
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.backoff = None;
-                        self.was_connected = true;
                         self.state = State::Connected(Connected {
                             stream,
                             heartbeat: tokio::time::interval(HEARTBEAT_INTERVAL),
@@ -640,24 +581,16 @@ where
                             next_request_id: 0,
                         });
 
-                        let (host, _) = self.url_prototype.host_and_port();
+                        tracing::debug!("WebSocket connection established");
 
-                        tracing::info!(%host, "Connected to portal");
-                        self.join(self.login, self.init_req.clone());
+                        self.join_room();
 
-                        return Poll::Ready(Ok(Event::Connected));
-                    }
-                    Poll::Ready(Err(InternalError::NoAddresses)) => {
-                        // Fixed 1s interval to avoid busy-looping in case DNS resolution fails / is not possible.
-                        self.state = State::Reconnect {
-                            backoff: Duration::from_secs(1),
-                        };
-
-                        return Poll::Ready(Ok(Event::NoAddresses));
+                        continue;
                     }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
                         if r.status() == StatusCode::UNAUTHORIZED =>
                     {
+                        self.state = State::Closed;
                         return Poll::Ready(Err(Error::InvalidToken));
                     }
                     Poll::Ready(Err(e)) => {
@@ -678,14 +611,7 @@ where
                                     })?
                             }
                         };
-
-                        for (ip, error) in e.failed_ips() {
-                            if self.resolved_addresses.remove(&ip) {
-                                tracing::debug!(%ip, "Discarding failed IP: {error}");
-                            }
-                        }
-
-                        self.state = State::Reconnect { backoff };
+                        self.state = State::Closed;
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
@@ -693,8 +619,7 @@ where
                                 .backoff
                                 .as_ref()
                                 .and_then(|b| b.max_elapsed_time),
-                            error: anyhow::Error::new(e)
-                                .context("Reconnecting to portal on transient error"),
+                            error: anyhow::Error::new(e).context("Connection hiccup"),
                         }));
                     }
                     Poll::Pending => {
@@ -707,7 +632,7 @@ where
 
             // Priority 1: Ensure we are fully flushed.
             if let Err(e) = std::task::ready!(stream.poll_flush_unpin(cx)) {
-                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                self.handle_internal_error(InternalError::WebSocket(e));
                 continue;
             }
 
@@ -720,7 +645,7 @@ where
                                 tracing::trace!(target: "wire::api::send", %heartbeat);
                             }
                             Err(e) => {
-                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                self.handle_internal_error(InternalError::WebSocket(e));
                             }
                         }
 
@@ -736,7 +661,7 @@ where
                             }
                             Err(e) => {
                                 pending_joins.push_front(join);
-                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                self.handle_internal_error(InternalError::WebSocket(e));
                             }
                         }
 
@@ -759,7 +684,7 @@ where
                                 }
                                 Err(e) => {
                                     pending_messages.push_front(msg);
-                                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                    self.handle_internal_error(InternalError::WebSocket(e));
                                 }
                             }
 
@@ -773,7 +698,7 @@ where
                     }
                 }
                 Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                    self.handle_internal_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
@@ -785,16 +710,13 @@ where
                     // Grab ownership of the `stream`.
                     let mut stream = match std::mem::replace(&mut self.state, State::Closed) {
                         State::Connected(Connected { stream, .. }) => stream,
-                        State::Reconnect { .. }
-                        | State::Connecting(_)
-                        | State::Closing(_)
-                        | State::Closed => {
+                        State::Connecting(_) | State::Closing(_) | State::Closed => {
                             // Defense-in-depth: This should not happen but never know what kind of bugs we might introduce in the future.
                             debug_assert!(
                                 false,
                                 "Should be in Connected after receiving Close frame"
                             );
-                            self.reconnect_on_transient_error(InternalError::WsClose(frame));
+                            self.handle_internal_error(InternalError::WsClose(frame));
                             continue;
                         }
                     };
@@ -821,7 +743,7 @@ where
                         match serde_json::from_str::<PhoenixMessage<TInboundMsg>>(&message) {
                             Ok(m) => m,
                             Err(e) if e.is_io() || e.is_eof() => {
-                                self.reconnect_on_transient_error(InternalError::Serde(e));
+                                self.handle_internal_error(InternalError::Serde(e));
                                 continue;
                             }
                             Err(e) => {
@@ -835,7 +757,7 @@ where
 
                     match (message.payload, message.reference) {
                         (Payload::Message(msg), _) => {
-                            return Poll::Ready(Ok(Event::InboundMessage {
+                            return Poll::Ready(Ok(Event::Message {
                                 topic: message.topic,
                                 msg,
                             }));
@@ -848,33 +770,47 @@ where
                             if message.topic == self.login
                                 && pending_join_requests.contains_key(&req_id)
                             {
-                                return Poll::Ready(Err(Error::LoginFailed(reason)));
+                                return Poll::Ready(Err(Error::LoginFailed(reason.to_string())));
                             }
 
-                            return Poll::Ready(Ok(Event::ErrorResponse {
-                                topic: message.topic,
-                                req_id,
-                                res: reason,
-                            }));
+                            match reason {
+                                ErrorReply::UnmatchedTopic if message.topic == self.login => {
+                                    tracing::debug!(topic = %self.login, "We are no longer part of our room, rejoining");
+
+                                    self.join_room();
+                                    continue;
+                                }
+                                ErrorReply::UnmatchedTopic
+                                | ErrorReply::InvalidVersion
+                                | ErrorReply::Disabled
+                                | ErrorReply::Other => {
+                                    tracing::debug!(%req_id, %reason, "Received error reply");
+                                }
+                            }
+
+                            continue;
                         }
-                        (Payload::Reply(Reply::Ok(OkReply::Message(()))), Some(req_id)) => {
-                            return Poll::Ready(Ok(Event::SuccessResponse {
-                                topic: message.topic,
-                                req_id,
-                            }));
+                        (Payload::Reply(Reply::Ok(OkReply::Message(()))), Some(_)) => {
+                            // We don't use the reply feature of phoenix-channel.
+                            continue;
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
-                            if pending_join_requests.remove(&req_id).is_some() {
-                                tracing::debug!("Joined {} room on portal", message.topic);
-
-                                // For `phx_join` requests, `reply` is empty so we can safely ignore it.
-                                return Poll::Ready(Ok(Event::JoinedRoom {
-                                    topic: message.topic,
-                                }));
-                            }
-
                             if inflight_heartbeats.remove(&req_id) {
                                 tracing::trace!(%req_id, "Received heartbeat reply");
+                                continue;
+                            }
+
+                            if pending_join_requests.remove(&req_id).is_some() {
+                                if message.topic == self.login {
+                                    self.backoff = None;
+                                    self.was_connected = true;
+
+                                    let (host, _) = self.url_prototype.host_and_port();
+                                    tracing::info!(%host, "Connected to portal");
+
+                                    return Poll::Ready(Ok(Event::Connected));
+                                }
+
                                 continue;
                             }
 
@@ -891,7 +827,7 @@ where
                             continue;
                         }
                         (Payload::Close(Empty {}), _) => {
-                            self.reconnect_on_transient_error(InternalError::CloseMessage);
+                            self.handle_internal_error(InternalError::CloseMessage);
                             continue;
                         }
                         (
@@ -912,11 +848,11 @@ where
                     continue;
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                    self.handle_internal_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Ready(None) => {
-                    self.reconnect_on_transient_error(InternalError::StreamClosed);
+                    self.handle_internal_error(InternalError::StreamClosed);
                     continue;
                 }
                 Poll::Pending => {}
@@ -926,7 +862,7 @@ where
                 .values()
                 .any(|sent_at| sent_at.elapsed() > Duration::from_secs(5))
             {
-                self.reconnect_on_transient_error(InternalError::RoomJoinTimedOut);
+                self.handle_internal_error(InternalError::RoomJoinTimedOut);
                 continue;
             }
 
@@ -942,13 +878,13 @@ where
                     pending_heartbeat.replace(heartbeat);
                     inflight_heartbeats.insert(id);
 
-                    return Poll::Ready(Ok(Event::HeartbeatSent));
+                    continue;
                 }
                 Poll::Pending => {}
             }
 
             if inflight_heartbeats.len() > 3 {
-                self.reconnect_on_transient_error(InternalError::TooManyUnansweredHeartbeats);
+                self.handle_internal_error(InternalError::TooManyUnansweredHeartbeats);
                 continue;
             }
 
@@ -958,20 +894,9 @@ where
 
     /// Sets the channels state to [`State::Connecting`] with the given error.
     ///
-    /// The [`PhoenixChannel::poll`] function will handle the reconnect if appropriate for the given error.
-    fn reconnect_on_transient_error(&mut self, e: InternalError) {
+    /// The [`PhoenixChannel::poll`] function will handle the error appropriately.
+    fn handle_internal_error(&mut self, e: InternalError) {
         self.state = State::Connecting(future::ready(Err(e)).boxed())
-    }
-
-    fn socket_addresses(&self) -> Vec<SocketAddr> {
-        let (host, port) = self.url_prototype.host_and_port();
-
-        self.resolved_addresses
-            .iter()
-            .copied()
-            .chain(host.parse::<IpAddr>().ok())
-            .map(|ip| SocketAddr::new(ip, port))
-            .collect()
     }
 }
 
@@ -1011,37 +936,21 @@ fn make_initial_backoff() -> ExponentialBackoff {
 
 #[derive(Debug)]
 pub enum Event<TInboundMsg> {
-    SuccessResponse {
-        topic: String,
-        req_id: OutboundRequestId,
-    },
-    ErrorResponse {
-        topic: String,
-        req_id: OutboundRequestId,
-        res: ErrorReply,
-    },
-    JoinedRoom {
-        topic: String,
-    },
-    HeartbeatSent,
-    /// The server sent us a message, most likely this is a broadcast to all connected clients.
-    InboundMessage {
-        topic: String,
-        msg: TInboundMsg,
-    },
+    /// The server sent us a message.
+    Message { topic: String, msg: TInboundMsg },
+    /// The connection failed with a transient error.
+    ///
+    /// You must call [`PhoenixChannel::connect`] after this (or discard the instance).
     Hiccup {
         backoff: Duration,
         max_elapsed_time: Option<Duration>,
         error: anyhow::Error,
     },
-    /// We don't have any addresses to connect to.
-    ///
-    /// Upon receiving this event, you should re-resolve the [`host`](PhoenixChannel::host)
-    /// and provide new IPs for it via [`PhoenixChannel::update_ips`].
-    NoAddresses,
     /// The connection was closed successfully.
     Closed,
-    /// The WebSocket connection was established.
+    /// The portal connection was established.
+    ///
+    /// This includes successfully joining the room on the portal end.
     Connected,
 }
 
@@ -1093,7 +1002,7 @@ enum OkReply<T> {
 /// This represents the info we have about the error
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ErrorReply {
+enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
     InvalidVersion,

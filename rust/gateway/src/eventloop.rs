@@ -525,7 +525,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    param: PublicKeyParam,
+    mut public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -533,42 +533,21 @@ async fn phoenix_channel_event_loop(
     use futures::future::Either;
     use futures::future::select;
 
-    update_portal_host_ips(&mut portal, &resolver).await;
-    portal.connect(param);
+    let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+    portal.connect(ips, Duration::ZERO, public_key.clone());
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
-            Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+            Either::Left((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
                     break;
                 }
             }
-            Either::Left((
-                Ok(phoenix_channel::Event::ErrorResponse {
-                    topic,
-                    res: phoenix_channel::ErrorReply::UnmatchedTopic,
-                    ..
-                }),
-                _,
-            )) => {
-                portal.join(topic, ());
-            }
-            Either::Left((Ok(phoenix_channel::Event::ErrorResponse { topic, req_id, res }), _)) => {
-                tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
-            }
             Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
-                tracing::debug!("Portal connection clsed: exiting phoenix-channel event-loop");
+                tracing::debug!("Portal connection closed: exiting phoenix-channel event-loop");
                 break;
             }
-            Either::Left((
-                Ok(
-                    phoenix_channel::Event::SuccessResponse { .. }
-                    | phoenix_channel::Event::HeartbeatSent
-                    | phoenix_channel::Event::JoinedRoom { .. },
-                ),
-                _,
-            )) => {}
             Either::Left((
                 Ok(phoenix_channel::Event::Hiccup {
                     backoff,
@@ -582,9 +561,9 @@ async fn phoenix_channel_event_loop(
                     ?max_elapsed_time,
                     "Hiccup in portal connection: {error:#}"
                 );
-            }
-            Either::Left((Ok(phoenix_channel::Event::NoAddresses), _)) => {
-                update_portal_host_ips(&mut portal, &resolver).await
+
+                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+                portal.connect(ips, backoff, public_key.clone());
             }
             Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Left((Err(e), _)) => {
@@ -600,8 +579,11 @@ async fn phoenix_channel_event_loop(
                     }
                 }
             }
-            Either::Right((Some(PortalCommand::Connect(param)), _)) => {
-                portal.connect(param);
+            Either::Right((Some(PortalCommand::Connect(new_public_key)), _)) => {
+                public_key = new_public_key; // Important! Update the current public key so we can re-use on connection hiccups!
+
+                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
+                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Right((Some(PortalCommand::Close), _)) => {
                 let _ = portal.close();
@@ -614,23 +596,14 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-async fn update_portal_host_ips(
-    portal: &mut PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    resolver: &TokioResolver,
-) {
-    let ips = match resolver
-        .lookup_ip(portal.host())
+async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<IpAddr> {
+    resolver
+        .lookup_ip(host.clone())
         .await
         .context("Failed to lookup portal host")
-    {
-        Ok(ips) => ips,
-        Err(e) => {
-            tracing::debug!(host = %portal.host(), "{e:#}");
-            return;
-        }
-    };
-
-    portal.update_ips(ips);
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
+        .map(|ips| ips.into_iter().collect())
+        .unwrap_or_default()
 }
 
 fn is_unreachable(e: &io::Error) -> bool {

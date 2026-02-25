@@ -16,7 +16,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -766,23 +766,12 @@ async fn phoenix_channel_event_loop(
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     is_connected: Arc<AtomicBool>,
 ) {
-    update_portal_host_ips(&mut portal).await;
-    portal.connect(NoParams);
+    let ips = resolve_portal_host_ips(portal.host()).await;
+    portal.connect(ips, Duration::ZERO, NoParams);
 
     loop {
         match std::future::poll_fn(|cx| portal.poll(cx)).await {
-            Ok(Event::SuccessResponse { .. }) => {}
-            Ok(Event::JoinedRoom { topic }) => {
-                tracing::info!(target: "relay", "Successfully joined room '{topic}'");
-                is_connected.store(true, Ordering::Relaxed);
-            }
-            Ok(Event::ErrorResponse { topic, req_id, res }) => {
-                tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
-            }
-            Ok(Event::HeartbeatSent) => {
-                tracing::debug!(target: "relay", "Heartbeat sent to portal");
-            }
-            Ok(Event::InboundMessage { msg, .. }) => {
+            Ok(Event::Message { msg, .. }) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
                     break;
@@ -792,7 +781,6 @@ async fn phoenix_channel_event_loop(
                 is_connected.store(false, Ordering::Relaxed);
                 break;
             }
-            Ok(Event::NoAddresses) => update_portal_host_ips(&mut portal).await,
             Ok(Event::Hiccup {
                 backoff,
                 max_elapsed_time,
@@ -800,8 +788,13 @@ async fn phoenix_channel_event_loop(
             }) => {
                 is_connected.store(false, Ordering::Relaxed);
                 tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}");
+
+                let ips = resolve_portal_host_ips(portal.host()).await;
+                portal.connect(ips, backoff, NoParams);
             }
-            Ok(Event::Connected) => {}
+            Ok(Event::Connected) => {
+                is_connected.store(true, Ordering::Relaxed);
+            }
             Err(e) => {
                 is_connected.store(false, Ordering::Relaxed);
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
@@ -812,23 +805,13 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-async fn update_portal_host_ips(
-    portal: &mut PhoenixChannel<JoinMessage, (), IngressMessages, NoParams>,
-) {
-    let host = portal.host();
-
-    let ips = match tokio::net::lookup_host(format!("{host}:0"))
+async fn resolve_portal_host_ips(host: String) -> Vec<IpAddr> {
+    tokio::net::lookup_host(format!("{host}:0"))
         .await
         .context("Failed to lookup portal host")
-    {
-        Ok(sockets) => sockets.map(|s| s.ip()),
-        Err(e) => {
-            tracing::warn!(%host, "{e:#}");
-            return;
-        }
-    };
-
-    portal.update_ips(ips);
+        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
+        .map(|ips| ips.map(|s| s.ip()).collect())
+        .unwrap_or_default()
 }
 
 fn fmt_human_throughput(mut throughput: f64) -> String {

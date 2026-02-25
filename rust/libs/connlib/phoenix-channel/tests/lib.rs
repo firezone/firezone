@@ -46,7 +46,7 @@ async fn client_does_not_pipeline_messages() {
                         }
 
                         ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#,
+                            r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#,
                         )).await.unwrap();
                     }
                     r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -67,27 +67,22 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let mut channel = make_websocket_test_channel(server_addr.port());
+    let mut channel = make_test_channel("localhost", server_addr.port());
 
     let client = async move {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::SuccessResponse { .. } => {}
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
-                phoenix_channel::Event::JoinedRoom { .. } => {}
-                phoenix_channel::Event::HeartbeatSent => {}
-                phoenix_channel::Event::InboundMessage {
+                phoenix_channel::Event::Message {
                     msg: InboundMsg::Foo,
                     ..
                 } => {
                     channel.close().unwrap();
-                }
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
                 }
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
@@ -120,7 +115,7 @@ async fn client_deduplicates_messages() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             // We only handle the message with `ref: 1` and thus guarantee that not more than 1 is received
             r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -131,27 +126,20 @@ async fn client_deduplicates_messages() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
     let mut num_responses = 0;
 
     let client = async {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::SuccessResponse { .. } => {}
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
-                phoenix_channel::Event::JoinedRoom { .. } => {
-                    channel.send("test", OutboundMsg::Bar).unwrap();
-                    channel.send("test", OutboundMsg::Bar).unwrap();
-                    channel.send("test", OutboundMsg::Bar).unwrap();
-                    channel.send("test", OutboundMsg::Bar).unwrap();
-                }
-                phoenix_channel::Event::HeartbeatSent => {}
-                phoenix_channel::Event::InboundMessage {
+                phoenix_channel::Event::Message {
                     msg: InboundMsg::Foo,
                     ..
                 } => {
@@ -160,11 +148,13 @@ async fn client_deduplicates_messages() {
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
                 }
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
-                }
                 phoenix_channel::Event::Closed => break,
-                phoenix_channel::Event::Connected => {}
+                phoenix_channel::Event::Connected => {
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                }
             }
         }
     };
@@ -188,7 +178,7 @@ async fn client_clears_local_message_on_connect() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             // We only handle the message with `ref: 1` and thus guarantee that the first one is not received.
             r#"{"topic":"test","event":"bar","ref":1}"# => {
@@ -199,23 +189,19 @@ async fn client_clears_local_message_on_connect() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
     let client = async {
         channel.send("test", OutboundMsg::Bar).unwrap_err();
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::SuccessResponse { .. } => {}
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
-                phoenix_channel::Event::JoinedRoom { .. } => {
-                    channel.send("test", OutboundMsg::Bar).unwrap();
-                }
-                phoenix_channel::Event::HeartbeatSent => {}
-                phoenix_channel::Event::InboundMessage {
+                phoenix_channel::Event::Message {
                     msg: InboundMsg::Foo,
                     ..
                 } => {
@@ -224,11 +210,10 @@ async fn client_clears_local_message_on_connect() {
                 phoenix_channel::Event::Hiccup { error, .. } => {
                     panic!("Unexpected hiccup: {error:?}")
                 }
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
-                }
                 phoenix_channel::Event::Closed => break,
-                phoenix_channel::Event::Connected => {}
+                phoenix_channel::Event::Connected => {
+                    channel.send("test", OutboundMsg::Bar).unwrap();
+                }
             }
         }
     };
@@ -246,42 +231,35 @@ async fn replies_with_close_frame_upon_close() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             other => panic!("Unexpected message: {other}"),
         }
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
-    let (mut join_tx, mut join_rx) = futures::channel::mpsc::channel(1);
+    let (mut connected_tx, mut connected_rx) = futures::channel::mpsc::channel(1);
 
     let client = tokio::spawn(async move {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::SuccessResponse { .. } => {}
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
-                phoenix_channel::Event::JoinedRoom { .. } => {
-                    join_tx.send(()).await.unwrap();
-                }
-                phoenix_channel::Event::HeartbeatSent => {}
-                phoenix_channel::Event::InboundMessage { .. } => {}
                 phoenix_channel::Event::Hiccup { error, .. } => break error,
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
-                }
                 phoenix_channel::Event::Closed => panic!("Should not close"),
-                phoenix_channel::Event::Connected => {}
+                phoenix_channel::Event::Message { .. } => {}
+                phoenix_channel::Event::Connected => connected_tx.send(()).await.unwrap(),
             }
         }
     });
 
-    join_rx.recv().await.unwrap(); // Wait for successful join.
+    connected_rx.recv().await.unwrap(); // Wait for successful connection.
 
     let server_result = server.stop().await;
     let client_result = client.await.unwrap();
@@ -290,7 +268,7 @@ async fn replies_with_close_frame_upon_close() {
 
     assert_eq!(
         format!("{client_result:#}"),
-        "Reconnecting to portal on transient error: portal sent empty websocket close frame"
+        "Connection hiccup: portal sent empty websocket close frame"
     );
 }
 
@@ -303,7 +281,7 @@ async fn times_out_after_missed_heartbeats() {
     let (server, port) = spawn_websocket_server(|text| {
         match text {
             r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
-                r#"{"event":"phx_reply","ref":0,"topic":"client","payload":{"status":"ok","response":{}}}"#
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
             }
             // We send a bogus reply (bad `ref`) to ensure the implementation matches those up correctly.
             r#"{"topic":"phoenix","event":"heartbeat","payload":{},"ref":1}"# => {
@@ -323,24 +301,19 @@ async fn times_out_after_missed_heartbeats() {
     })
     .await;
 
-    let mut channel = make_websocket_test_channel(port);
+    let mut channel = make_test_channel("localhost", port);
 
     let client = async {
-        channel.connect(PublicKeyParam([0u8; 32]));
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
 
         loop {
             match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
-                phoenix_channel::Event::SuccessResponse { .. } => {}
-                phoenix_channel::Event::ErrorResponse { res, .. } => {
-                    panic!("Unexpected error: {res:?}")
-                }
-                phoenix_channel::Event::JoinedRoom { .. } => {}
-                phoenix_channel::Event::HeartbeatSent => {}
-                phoenix_channel::Event::InboundMessage { .. } => {}
+                phoenix_channel::Event::Message { .. } => {}
                 phoenix_channel::Event::Hiccup { error, .. } => break error,
-                phoenix_channel::Event::NoAddresses => {
-                    channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
-                }
                 phoenix_channel::Event::Closed => {
                     panic!("Channel closed")
                 }
@@ -354,7 +327,7 @@ async fn times_out_after_missed_heartbeats() {
 
     assert_eq!(
         format!("{error:#}"),
-        "Reconnecting to portal on transient error: too many heartbeats were unanswered"
+        "Connection hiccup: too many heartbeats were unanswered"
     );
 }
 
@@ -375,7 +348,11 @@ async fn http_429_triggers_retry() {
     let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -395,7 +372,12 @@ async fn http_408_triggers_retry() {
     let port = http_status_server(http::StatusCode::REQUEST_TIMEOUT).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -415,7 +397,12 @@ async fn http_400_returns_client_error() {
     let port = http_status_server(http::StatusCode::BAD_REQUEST).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -434,7 +421,12 @@ async fn http_401_returns_invalid_token() {
     let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -449,67 +441,39 @@ async fn http_401_returns_invalid_token() {
 }
 
 #[tokio::test]
-async fn discards_failed_ips_on_hiccup() {
-    let mut channel = make_test_channel("localhost", 443); // Use a hostname so we run out of IPs
-    channel.update_ips(vec![
-        IpAddr::from(Ipv4Addr::from([127, 0, 0, 1])),
-        IpAddr::from(Ipv4Addr::from([127, 0, 0, 10])),
-        IpAddr::from(Ipv4Addr::from([127, 0, 0, 111])),
-    ]);
-    channel.connect(PublicKeyParam([0u8; 32]));
+async fn includes_ip_from_hostname() {
+    use phoenix_channel::PublicKeyParam;
 
-    let event = tokio::time::timeout(Duration::from_secs(6), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let (server, port) = spawn_websocket_server(|text| {
+        match text {
+            r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+                r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
+            }
+            other => panic!("Unexpected message: {other}"),
+        }
     })
-    .await
-    .expect("should not timeout")
-    .expect("should not error");
+    .await;
 
-    let phoenix_channel::Event::Hiccup { .. } = event else {
-        panic!("Expected `Hiccup`")
+    let mut channel = make_test_channel("127.0.0.1", port);
+    channel.connect(vec![], Duration::ZERO, PublicKeyParam([0u8; 32]));
+
+    let client = async {
+        loop {
+            match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                phoenix_channel::Event::Message { .. } => {}
+                phoenix_channel::Event::Hiccup { error, .. } => panic!("{error:#}"),
+                phoenix_channel::Event::Closed => {
+                    panic!("Channel closed")
+                }
+                phoenix_channel::Event::Connected => break,
+            }
+        }
     };
 
-    let result = tokio::time::timeout(Duration::from_secs(2), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    assert!(
-        matches!(result, Ok(phoenix_channel::Event::NoAddresses)),
-        "expected Event::NoAddresses, got {result:?}"
-    );
-}
-
-#[tokio::test]
-async fn emits_no_addresses_when_no_ips() {
-    let mut channel = make_test_channel("localhost", 443); // Use a hostname so we run out of IPs
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let result = tokio::time::timeout(Duration::from_secs(5), async {
-        future::poll_fn(|cx| channel.poll(cx)).await
-    })
-    .await
-    .expect("should not timeout");
-
-    assert!(
-        matches!(result, Ok(phoenix_channel::Event::NoAddresses)),
-        "expected Event::NoAddresses, got {result:?}"
-    );
-}
-
-#[tokio::test]
-async fn does_not_clear_address_from_url_on_hiccup() {
-    let mut channel = make_test_channel("127.0.0.1", 443);
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    loop {
-        match std::future::poll_fn(|cx| channel.poll(cx)).await {
-            Ok(phoenix_channel::Event::Hiccup { .. }) => continue,
-            Err(phoenix_channel::Error::MaxRetriesReached { .. }) => break,
-            other => panic!("Unexpected event: {other:?}"), // This line ensures we never receive `Event::NoAddresses` which means we keep retrying.
-        }
-    }
+    client.await;
+    server.abort();
 }
 
 /// Spawns a WebSocket server that responds to requests using a handler function.
@@ -581,40 +545,10 @@ impl ServerHandle {
     }
 }
 
-fn make_websocket_test_channel(
+fn make_test_channel(
+    host: &str,
     port: u16,
 ) -> PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam> {
-    use std::{str::FromStr, sync::Arc, time::Duration};
-
-    use backoff::ExponentialBackoffBuilder;
-    use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel};
-    use secrecy::SecretString;
-    use url::Url;
-
-    let login_url = LoginUrl::client(
-        Url::from_str(&format!("ws://localhost:{}", port)).unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_initial_interval(Duration::from_secs(1))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
-    )
-}
-
-fn make_test_channel(host: &str, port: u16) -> PhoenixChannel<(), (), (), PublicKeyParam> {
     let url = LoginUrl::client(
         format!("ws://{host}:{port}").as_str(),
         "test-device-id".to_string(),
@@ -705,7 +639,12 @@ async fn http_503_triggers_retry() {
     let port = http_status_server(http::StatusCode::SERVICE_UNAVAILABLE).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -725,7 +664,12 @@ async fn http_429_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -751,7 +695,12 @@ async fn http_503_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
 
     let mut channel = make_test_channel("127.0.0.1", port);
-    channel.connect(PublicKeyParam([0u8; 32]));
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
 
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
@@ -774,39 +723,18 @@ async fn http_503_with_retry_after_uses_header_value() {
 
 #[tokio::test]
 async fn initial_connection_uses_constant_1s_backoff() {
-    use std::{str::FromStr, sync::Arc, time::Duration};
-
-    use phoenix_channel::{DeviceInfo, Error, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::SecretString;
-    use url::Url;
+    use phoenix_channel::{Error, PublicKeyParam};
+    use std::time::Duration;
 
     let _guard = logging::test("debug");
 
-    let login_url = LoginUrl::client(
-        Url::from_str("ws://127.0.0.1:1").unwrap(),
-        String::new(),
-        None,
-        DeviceInfo::default(),
-    )
-    .unwrap();
-
-    let mut channel = PhoenixChannel::<(), OutboundMsg, InboundMsg, _>::disconnected(
-        login_url,
-        SecretString::from("secret"),
-        "test/1.0.0".to_owned(),
-        "test",
-        (),
-        || {
-            backoff::ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(Duration::from_secs(3600)))
-                .build()
-        },
-        Arc::new(socket_factory::tcp),
+    let mut channel = make_test_channel("127.0.0.1", 1);
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
     );
 
-    channel.connect(PublicKeyParam([0u8; 32]));
-
-    let mut hiccups = Vec::new();
     let start = std::time::Instant::now();
 
     loop {
@@ -816,10 +744,14 @@ async fn initial_connection_uses_constant_1s_backoff() {
                 max_elapsed_time,
                 ..
             }) => {
-                hiccups.push((backoff, max_elapsed_time));
-            }
-            Ok(phoenix_channel::Event::NoAddresses) => {
-                channel.update_ips(vec![IpAddr::from(Ipv4Addr::LOCALHOST)]);
+                assert_eq!(max_elapsed_time, Some(Duration::from_secs(15)));
+                assert_eq!(backoff, Duration::from_secs(1));
+
+                channel.connect(
+                    vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+                    backoff,
+                    PublicKeyParam([0u8; 32]),
+                );
             }
             Err(Error::MaxRetriesReached { .. }) => break,
             other => panic!("Unexpected event: {other:?}"),
@@ -832,11 +764,4 @@ async fn initial_connection_uses_constant_1s_backoff() {
         elapsed < Duration::from_secs(20),
         "Expected to complete within 20s, but took {elapsed:?}"
     );
-
-    for (i, (backoff, max_elapsed_time)) in hiccups.iter().enumerate() {
-        assert_eq!(*max_elapsed_time, Some(Duration::from_secs(15)));
-        if i > 0 {
-            assert_eq!(*backoff, Duration::from_secs(1));
-        }
-    }
 }
