@@ -31,6 +31,9 @@ defmodule PortalOps.Router do
   scope "/" do
     pipe_through [:browser, :admin_auth]
     oban_dashboard "/oban"
-    live_dashboard "/dashboard", metrics: Portal.Telemetry
+
+    live_dashboard "/dashboard",
+      metrics: Portal.Telemetry,
+      live_socket_path: "/dashboard/live"
   end
 end

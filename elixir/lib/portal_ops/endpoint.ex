@@ -25,7 +25,7 @@ defmodule PortalOps.Endpoint do
   plug Plug.Session, @session_cookie
   plug PortalOps.Router
 
-  socket "/live", Phoenix.LiveView.Socket,
+  socket "/dashboard/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
         :trace_context_headers,
