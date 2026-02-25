@@ -11,27 +11,31 @@ defmodule Portal.ChannelsTest do
       assert_receive :hello
     end
 
-    test "delivers message to multiple registered processes" do
+    test "re-registration replaces the previous process" do
       client_id = Ecto.UUID.generate()
       parent = self()
 
-      pids =
-        for _ <- 1..3 do
-          spawn(fn ->
-            Channels.register_client(client_id)
-            send(parent, {:registered, self()})
+      old_pid =
+        spawn(fn ->
+          Channels.register_client(client_id)
+          send(parent, :registered)
 
-            receive do
-              msg -> send(parent, {:received, self(), msg})
-            end
-          end)
-        end
+          receive do
+            msg -> send(parent, {:old_received, msg})
+          end
+        end)
 
-      for pid <- pids, do: assert_receive({:registered, ^pid})
+      assert_receive :registered
 
-      assert :ok = Channels.send_to_client(client_id, :broadcast)
+      # New process (self) registers for the same client_id — should evict old_pid
+      Channels.register_client(client_id)
 
-      for pid <- pids, do: assert_receive({:received, ^pid, :broadcast})
+      assert :ok = Channels.send_to_client(client_id, :hello)
+      assert_receive :hello
+      refute_receive {:old_received, :hello}
+
+      # Cleanup
+      Process.exit(old_pid, :kill)
     end
 
     test "returns {:error, :not_found} when no process is registered" do
@@ -47,6 +51,33 @@ defmodule Portal.ChannelsTest do
 
       assert :ok = Channels.send_to_gateway(gateway_id, :hello)
       assert_receive :hello
+    end
+
+    test "re-registration replaces the previous process" do
+      gateway_id = Ecto.UUID.generate()
+      parent = self()
+
+      old_pid =
+        spawn(fn ->
+          Channels.register_gateway(gateway_id)
+          send(parent, :registered)
+
+          receive do
+            msg -> send(parent, {:old_received, msg})
+          end
+        end)
+
+      assert_receive :registered
+
+      # New process (self) registers for the same gateway_id — should evict old_pid
+      Channels.register_gateway(gateway_id)
+
+      assert :ok = Channels.send_to_gateway(gateway_id, :hello)
+      assert_receive :hello
+      refute_receive {:old_received, :hello}
+
+      # Cleanup
+      Process.exit(old_pid, :kill)
     end
 
     test "returns {:error, :not_found} when no process is registered" do

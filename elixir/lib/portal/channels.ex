@@ -12,16 +12,24 @@ defmodule Portal.Channels do
 
   @doc """
   Registers the calling process as a client channel for the given client ID.
+
+  Uses upsert semantics: any previously registered processes for this client ID
+  are evicted from the group before the calling process joins. This ensures only
+  one process per client ID is ever registered (e.g. on reconnection).
   """
   def register_client(client_id) do
-    :ok = :pg.join(group(:client, client_id), self())
+    upsert_group(group(:client, client_id))
   end
 
   @doc """
   Registers the calling process as a gateway channel for the given gateway ID.
+
+  Uses upsert semantics: any previously registered processes for this gateway ID
+  are evicted from the group before the calling process joins. This ensures only
+  one process per gateway ID is ever registered (e.g. on reconnection).
   """
   def register_gateway(gateway_id) do
-    :ok = :pg.join(group(:gateway, gateway_id), self())
+    upsert_group(group(:gateway, gateway_id))
   end
 
   @doc """
@@ -50,6 +58,15 @@ defmodule Portal.Channels do
   """
   def reject_access(gateway_id, client_id, resource_id) do
     send_to_gateway(gateway_id, {:reject_access, client_id, resource_id})
+  end
+
+  defp upsert_group(group) do
+    case :pg.get_members(group) do
+      [] -> :ok
+      members -> :pg.leave(group, members)
+    end
+
+    :pg.join(group, self())
   end
 
   defp send_to_group(group, message) do
