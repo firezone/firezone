@@ -543,7 +543,7 @@ async fn phoenix_channel_event_loop(
                 }
             }
             Either::Left((Some(PortalCommand::Connect(new_public_key)), _)) => {
-                public_key = new_public_key; // Important! Update the current public key so we can re-use on connection hiccups!
+                public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
 
                 let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
                 portal.connect(ips, Duration::ZERO, public_key.clone());
