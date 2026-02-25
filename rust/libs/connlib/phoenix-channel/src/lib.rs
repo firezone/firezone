@@ -572,7 +572,10 @@ where
                     Poll::Ready(Ok(stream)) => {
                         self.state = State::Connected(Connected {
                             stream,
-                            heartbeat: tokio::time::interval(HEARTBEAT_INTERVAL),
+                            heartbeat: tokio::time::interval_at(
+                                tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
+                                HEARTBEAT_INTERVAL,
+                            ),
                             inflight_heartbeats: Default::default(),
                             pending_heartbeat: Default::default(),
                             pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
@@ -656,8 +659,6 @@ where
                         match stream.start_send_unpin(Message::Text(join.clone().into())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %join);
-
-                                heartbeat.reset()
                             }
                             Err(e) => {
                                 pending_joins.push_front(join);
@@ -679,8 +680,6 @@ where
                             {
                                 Ok(()) => {
                                     tracing::trace!(target: "wire::api::send", msg = %serialized_msg);
-
-                                    heartbeat.reset()
                                 }
                                 Err(e) => {
                                     pending_messages.push_front(msg);

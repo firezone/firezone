@@ -721,6 +721,114 @@ async fn http_503_with_retry_after_uses_header_value() {
     }
 }
 
+/// Regression test for <https://github.com/firezone/firezone/pull/12309>.
+///
+/// The original bug reset the heartbeat timer on every message send, meaning a
+/// busy client that was continuously exchanging data with the portal would
+/// never actually send a heartbeat, causing the portal to silently drop the
+/// connection.
+#[tokio::test(start_paused = true)]
+async fn heartbeat_not_reset_by_message_sends() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use futures::StreamExt as _;
+    use phoenix_channel::PublicKeyParam;
+    use tokio_tungstenite::tungstenite::Message;
+
+    // 10 seconds, matching the private HEARTBEAT_INTERVAL constant in lib.rs.
+    const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let server_addr = listener.local_addr().unwrap();
+
+    let heartbeat_received = Arc::new(AtomicBool::new(false));
+    let heartbeat_received_server = heartbeat_received.clone();
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+        while let Some(Ok(msg)) = ws.next().await {
+            match msg {
+                Message::Text(text) if text.contains("phx_join") => {
+                    ws.send(Message::text(
+                        r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#,
+                    ))
+                    .await
+                    .unwrap();
+                }
+                Message::Text(text) if text.contains(r#""heartbeat""#) => {
+                    heartbeat_received_server.store(true, Ordering::SeqCst);
+                }
+                Message::Close(_) | Message::Text(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    let mut channel = make_test_channel("localhost", server_addr.port());
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    // Drive the channel until connected.
+    loop {
+        match std::future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+            phoenix_channel::Event::Connected => break,
+            _ => {}
+        }
+    }
+
+    // Send several messages to simulate a busy client.  With the regression
+    // (heartbeat.reset() being called on each send), these sends would keep
+    // resetting the heartbeat timer so it could never fire.
+    for _ in 0..10 {
+        let _ = channel.send("test", OutboundMsg::Bar);
+    }
+
+    // Advance time past the heartbeat interval.  With the bug, the timer would
+    // have been reset by the last message send and this advance would NOT cross
+    // a heartbeat deadline.  Without the bug, the timer runs independently and
+    // this advance DOES cross the deadline.
+    tokio::time::advance(HEARTBEAT_INTERVAL + Duration::from_millis(100)).await;
+
+    // Poll the channel until it has nothing left to process.  This sends the
+    // pending messages and, after the heartbeat tick fires, also queues and
+    // sends the heartbeat message.
+    loop {
+        match std::future::poll_fn(|cx| match channel.poll(cx) {
+            std::task::Poll::Ready(r) => std::task::Poll::Ready(Some(r)),
+            std::task::Poll::Pending => std::task::Poll::Ready(None),
+        })
+        .await
+        {
+            Some(Ok(_)) => {} // Got an event; keep draining.
+            Some(Err(_)) | None => break,
+        }
+    }
+
+    // Yield to let the server task process the heartbeat message it received.
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+
+    assert!(
+        heartbeat_received.load(Ordering::SeqCst),
+        "No heartbeat was sent after passing the heartbeat interval while \
+         messages were being sent.  This indicates heartbeat.reset() is being \
+         called on message sends (regression of PR #12309)."
+    );
+
+    server.abort();
+}
+
 #[tokio::test]
 async fn initial_connection_uses_constant_1s_backoff() {
     use phoenix_channel::{Error, PublicKeyParam};

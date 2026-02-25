@@ -11,6 +11,11 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="12309">
+          Fixes an issue where a busy Client continuously sending data to the
+          portal could be silently disconnected due to heartbeats never being
+          sent.
+        </ChangeItem>
         <ChangeItem pull="12251">
           Gracefully handles WebSocket closes from the portal instead of logging
           a deserialization error.

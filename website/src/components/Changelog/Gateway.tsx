@@ -23,6 +23,11 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="12309">
+          Fixes an issue where a busy Gateway continuously sending data to the
+          portal could be silently disconnected due to heartbeats never being
+          sent.
+        </ChangeItem>
         <ChangeItem pull="12251">
           Gracefully handles WebSocket closes from the portal instead of logging
           a deserialization error.

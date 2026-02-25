@@ -23,7 +23,7 @@ use stun_codec::{
         attributes::{
             ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
         },
-        errors::{StaleNonce, Unauthorized, UnknownAttribute},
+        errors::{BadRequest, StaleNonce, Unauthorized, UnknownAttribute},
         methods::BINDING,
     },
     rfc5766::{
