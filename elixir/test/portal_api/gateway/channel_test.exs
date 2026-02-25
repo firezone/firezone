@@ -2259,6 +2259,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
+      # Use a non-zero debounce so both disconnect and reconnect presence_diff events
+      # are captured in the same window and delivered as one combined message.
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
+
       relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
 
       :ok = Portal.Presence.Relays.connect(relay1)
