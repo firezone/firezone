@@ -94,32 +94,6 @@ struct Connected<TOutboundMsg> {
     next_request_id: u64,
 }
 
-impl<TOutboundMsg> State<TOutboundMsg> {
-    fn connect(
-        url: Url,
-        addresses: Vec<SocketAddr>,
-        host: String,
-        user_agent: String,
-        token: SecretString,
-        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-        backoff: Duration,
-    ) -> Self {
-        Self::Connecting(Box::pin(async move {
-            tokio::time::sleep(backoff).await;
-            create_and_connect_websocket(
-                url,
-                addresses,
-                host,
-                user_agent,
-                token,
-                socket_factory,
-                CONNECT_TIMEOUT,
-            )
-            .await
-        }))
-    }
-}
-
 async fn create_and_connect_websocket(
     url: Url,
     addresses: Vec<SocketAddr>,
@@ -483,23 +457,33 @@ where
     pub fn connect(&mut self, addresses: Vec<IpAddr>, backoff: Duration, params: TFinish) {
         let url = self.url_prototype.to_url(params);
 
-        let user_agent = self.user_agent.clone();
-        let token = self.token.clone();
-
-        self.state = State::connect(
-            url.clone(),
-            addresses
+        self.state = State::Connecting(Box::pin({
+            let url = url.clone();
+            let addresses = addresses
                 .into_iter()
                 .chain(self.host().parse::<IpAddr>().ok())
                 .unique()
                 .map(|ip| SocketAddr::new(ip, self.port()))
-                .collect(),
-            self.host(),
-            user_agent,
-            token,
-            self.socket_factory.clone(),
-            backoff,
-        );
+                .collect();
+            let host = self.host();
+            let user_agent = self.user_agent.clone();
+            let token = self.token.clone();
+            let socket_factory = self.socket_factory.clone();
+
+            async move {
+                tokio::time::sleep(backoff).await;
+                create_and_connect_websocket(
+                    url,
+                    addresses,
+                    host,
+                    user_agent,
+                    token,
+                    socket_factory,
+                    CONNECT_TIMEOUT,
+                )
+                .await
+            }
+        }));
         self.last_url = Some(url);
 
         // In case we were already re-connecting, we need to wake the suspended task.
