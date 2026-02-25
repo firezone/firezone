@@ -210,27 +210,16 @@ fn version_file_path() -> Result<PathBuf> {
         .join("latest_version_seen.txt"))
 }
 
-/// Detects the Linux package format by checking which package manager installed the client.
+/// Detects the Linux package format by reading the marker file written by the installer.
 ///
-/// Returns "deb" if the package was installed via dpkg/apt, "rpm" if installed via rpm/dnf,
-/// or "deb" as a default fallback.
+/// Returns "rpm" if the package was installed from an RPM, "deb" otherwise.
+/// The file is written by the post-installation script for each package format.
 #[cfg(target_os = "linux")]
 fn linux_package_format() -> &'static str {
-    if std::process::Command::new("dpkg")
-        .args(["--status", "firezone-client-gui"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return "deb";
-    }
-    if std::process::Command::new("rpm")
-        .args(["--query", "firezone-client-gui"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return "rpm";
+    if let Ok(format) = std::fs::read_to_string("/usr/lib/firezone-client-gui/package-format") {
+        if format.trim() == "rpm" {
+            return "rpm";
+        }
     }
     "deb"
 }
