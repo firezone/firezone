@@ -8,27 +8,7 @@ use tokio::sync::mpsc;
 // Maximum size for GSO packets: 64KB for IP + 12 bytes for vnet header
 const MAX_GSO_BUFFER_SIZE: usize = 65536 + VIRTIO_NET_HDR_SIZE;
 
-// virtio_net_hdr_v1 structure (12 bytes, little-endian)
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-struct VirtioNetHdr {
-    flags: u8,
-    gso_type: u8,
-    hdr_len: u16,
-    gso_size: u16,
-    csum_start: u16,
-    csum_offset: u16,
-    num_buffers: u16,
-}
-
 pub const VIRTIO_NET_HDR_SIZE: usize = 12;
-
-// GSO types
-const VIRTIO_NET_HDR_GSO_NONE: u8 = 0;
-const VIRTIO_NET_HDR_GSO_TCPV4: u8 = 1;
-const VIRTIO_NET_HDR_GSO_UDP: u8 = 3;
-const VIRTIO_NET_HDR_GSO_TCPV6: u8 = 4;
-const VIRTIO_NET_HDR_GSO_UDP_L4: u8 = 5;
 
 pub fn tun_send<T>(
     fd: T,
@@ -138,18 +118,17 @@ where
 
 /// Parse a packet with virtio_net_hdr and handle GSO/USO segmentation
 fn parse_vnet_packet(
-    vnet_hdr_bytes: &[u8; VIRTIO_NET_HDR_SIZE],
+    vnet_hdr: &[u8; VIRTIO_NET_HDR_SIZE],
     ip_data: &[u8],
 ) -> Result<Vec<IpPacket>> {
-    // Parse virtio_net_hdr (12 bytes, little-endian)
     let hdr = VirtioNetHdr {
-        flags: vnet_hdr_bytes[0],
-        gso_type: vnet_hdr_bytes[1],
-        hdr_len: u16::from_le_bytes([vnet_hdr_bytes[2], vnet_hdr_bytes[3]]),
-        gso_size: u16::from_le_bytes([vnet_hdr_bytes[4], vnet_hdr_bytes[5]]),
-        csum_start: u16::from_le_bytes([vnet_hdr_bytes[6], vnet_hdr_bytes[7]]),
-        csum_offset: u16::from_le_bytes([vnet_hdr_bytes[8], vnet_hdr_bytes[9]]),
-        num_buffers: u16::from_le_bytes([vnet_hdr_bytes[10], vnet_hdr_bytes[11]]),
+        flags: vnet_hdr[0],
+        gso_type: vnet_hdr[1],
+        hdr_len: u16::from_le_bytes([vnet_hdr[2], vnet_hdr[3]]),
+        gso_size: u16::from_le_bytes([vnet_hdr[4], vnet_hdr[5]]),
+        csum_start: u16::from_le_bytes([vnet_hdr[6], vnet_hdr[7]]),
+        csum_offset: u16::from_le_bytes([vnet_hdr[8], vnet_hdr[9]]),
+        num_buffers: u16::from_le_bytes([vnet_hdr[10], vnet_hdr[11]]),
     };
 
     // Handle GSO/USO segmentation
@@ -267,6 +246,26 @@ fn segment_gso_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> 
 
     Ok(packets)
 }
+
+// virtio_net_hdr_v1 structure (12 bytes, little-endian)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct VirtioNetHdr {
+    flags: u8,
+    gso_type: u8,
+    hdr_len: u16,
+    gso_size: u16,
+    csum_start: u16,
+    csum_offset: u16,
+    num_buffers: u16,
+}
+
+// GSO types
+const VIRTIO_NET_HDR_GSO_NONE: u8 = 0;
+const VIRTIO_NET_HDR_GSO_TCPV4: u8 = 1;
+const VIRTIO_NET_HDR_GSO_UDP: u8 = 3;
+const VIRTIO_NET_HDR_GSO_TCPV6: u8 = 4;
+const VIRTIO_NET_HDR_GSO_UDP_L4: u8 = 5;
 
 #[cfg(test)]
 mod tests {
