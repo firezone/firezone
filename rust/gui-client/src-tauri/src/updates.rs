@@ -210,6 +210,31 @@ fn version_file_path() -> Result<PathBuf> {
         .join("latest_version_seen.txt"))
 }
 
+/// Detects the Linux package format by checking which package manager installed the client.
+///
+/// Returns "deb" if the package was installed via dpkg/apt, "rpm" if installed via rpm/dnf,
+/// or "deb" as a default fallback.
+#[cfg(target_os = "linux")]
+fn linux_package_format() -> &'static str {
+    if std::process::Command::new("dpkg")
+        .args(["--status", "firezone-client-gui"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return "deb";
+    }
+    if std::process::Command::new("rpm")
+        .args(["--query", "firezone-client-gui"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return "rpm";
+    }
+    "deb"
+}
+
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release> {
     let client = reqwest::Client::builder()
@@ -242,10 +267,11 @@ pub(crate) async fn check() -> Result<Release> {
     let version = api_response.gui;
     tracing::debug!(?version, "Latest GUI version from API");
 
-    let download_url = url::Url::parse(&format!(
-        "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
-    ))
-    .context("Failed to construct download URL")?;
+    let base_url = format!("{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}");
+    #[cfg(target_os = "linux")]
+    let base_url = format!("{base_url}/{}", linux_package_format());
+    let download_url =
+        url::Url::parse(&base_url).context("Failed to construct download URL")?;
 
     Ok(Release {
         download_url,
@@ -376,10 +402,10 @@ mod tests {
         let version = Version::new(major, minor, patch);
         let arch = std::env::consts::ARCH;
         let os = std::env::consts::OS;
-        let download_url = url::Url::parse(&format!(
-            "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
-        ))
-        .unwrap();
+        let base = format!("{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}");
+        #[cfg(target_os = "linux")]
+        let base = format!("{base}/{}", super::linux_package_format());
+        let download_url = url::Url::parse(&base).unwrap();
         Release {
             download_url,
             version,
@@ -411,9 +437,19 @@ mod tests {
 
         let release = release(1, 5, 9);
 
+        #[cfg(not(target_os = "linux"))]
         assert_eq!(
             release.download_url.as_str(),
             format!("{BASE_URL}/dl/firezone-client-gui-{os}/1.5.9/{arch}")
+        );
+
+        #[cfg(target_os = "linux")]
+        assert!(
+            release.download_url.as_str().starts_with(&format!(
+                "{BASE_URL}/dl/firezone-client-gui-{os}/1.5.9/{arch}/"
+            )),
+            "Linux download URL should include package format suffix, got: {}",
+            release.download_url.as_str()
         );
     }
 }
