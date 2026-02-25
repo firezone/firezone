@@ -42,6 +42,7 @@ defmodule Portal.MixProject do
         :logger,
         :runtime_tools,
         :crypto,
+        :os_mon,
         :dialyzer,
         # Ensure Postgrex.SCRAM.LockedCache is started before any database connections
         :postgrex
@@ -68,6 +69,7 @@ defmodule Portal.MixProject do
       {:postgrex, "~> 0.20"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
+      {:ecto_psql_extras, "~> 0.8"},
       {:phoenix_ecto, "~> 4.4"},
 
       # Phoenix / Plug
