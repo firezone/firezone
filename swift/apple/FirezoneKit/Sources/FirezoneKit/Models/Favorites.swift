@@ -3,9 +3,11 @@ import Foundation
 public final class Favorites: ObservableObject {
   private static let key = "favoriteResourceIDs"
   private var ids: Set<String>
+  private let userDefaults: UserDefaults
 
-  public init() {
-    ids = Favorites.load()
+  public init(userDefaults: UserDefaults = .standard) {
+    self.userDefaults = userDefaults
+    ids = Self.load(from: userDefaults)
   }
 
   func contains(_ id: String) -> Bool {
@@ -34,16 +36,14 @@ public final class Favorites: ObservableObject {
     return ids.isEmpty
   }
 
-  // swiftlint:disable no_userdefaults_standard - standalone model, not DI-managed
   private func save() {
     // It's a run-time exception if we pass the `Set` directly here
     let ids = Array(ids)
-    UserDefaults.standard.set(ids, forKey: Favorites.key)
+    userDefaults.set(ids, forKey: Favorites.key)
   }
 
-  private static func load() -> Set<String> {
-    if let ids = UserDefaults.standard.stringArray(forKey: key) {
-      // swiftlint:enable no_userdefaults_standard
+  private static func load(from userDefaults: UserDefaults) -> Set<String> {
+    if let ids = userDefaults.stringArray(forKey: key) {
       return Set(ids)
     }
     return []

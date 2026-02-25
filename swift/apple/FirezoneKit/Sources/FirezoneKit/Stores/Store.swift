@@ -19,7 +19,7 @@ import UserNotifications
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
   @Published private(set) var actorName: String
-  @Published private(set) var favorites = Favorites()
+  @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
@@ -86,6 +86,7 @@ public final class Store: ObservableObject {
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.userDefaults = userDefaults
+      self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
@@ -101,6 +102,7 @@ public final class Store: ObservableObject {
       self.tunnelController = tunnelController
       self.sessionNotification = sessionNotification
       self.userDefaults = userDefaults
+      self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
 
@@ -139,8 +141,8 @@ public final class Store: ObservableObject {
     // Monitor configuration changes and propagate to tunnel service
     setupConfigurationObserver()
 
-    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
-    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
+    // Run the startup sequence: configure telemetry, check system extension (macOS),
+    // load VPN configuration, set up observers, and auto-connect if enabled.
     Task {
       await startupSequence()
       await initNotifications()
@@ -443,10 +445,9 @@ public final class Store: ObservableObject {
       return
     }
 
-    // Define the Timer's closure
-    // Note: Strong capture of self is intentional - timer is invalidated in endUpdatingResources()
+    // Note: Strong capture of self is intentional — timer is invalidated in endUpdatingState()
     // when VPN disconnects, preventing retain cycles.
-    let updateState: @Sendable (Timer) -> Void = { _ in
+    let updateState: @Sendable (Timer) -> Void = { [self] _ in
       Task {
         await MainActor.run {
           self.stateUpdateTask?.cancel()

@@ -67,12 +67,10 @@ final class MockTunnelController: TunnelControllerProtocol {
   var fetchResourcesSequence: [Data?] = []
   private var sequenceIndex = 0
 
-  /// Enable realistic hash-based behavior for fetchResources.
-  /// When true, the mock simulates the tunnel provider's hash comparison:
-  /// - Returns nil if the incoming hash matches the current response's hash
-  /// - Returns data if hashes differ
-  /// When false (default), returns fetchResourcesResponse directly (legacy behavior).
-  var simulateHashBehavior: Bool = false
+  /// When true, returns nil from `fetchResources` if the incoming hash matches the
+  /// response's hash (simulating the tunnel provider's "no changes" optimisation).
+  /// When false (default), always returns `fetchResourcesResponse` directly.
+  var enableHashBasedFiltering: Bool = false
   /// The last hash received from the client (for test inspection).
   private(set) var lastReceivedHash: Data?
 
@@ -139,7 +137,7 @@ final class MockTunnelController: TunnelControllerProtocol {
     }
 
     // When hash behavior is enabled, simulate realistic tunnel provider behavior
-    if simulateHashBehavior, let data = fetchResourcesResponse {
+    if enableHashBasedFiltering, let data = fetchResourcesResponse {
       let responseHash = Data(SHA256.hash(data: data))
       // Return nil if hashes match (no changes), data if different
       return currentHash == responseHash ? nil : data
