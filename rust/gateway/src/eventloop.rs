@@ -525,7 +525,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    param: PublicKeyParam,
+    mut public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -534,7 +534,7 @@ async fn phoenix_channel_event_loop(
     use futures::future::select;
 
     let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
-    portal.connect(ips, Duration::ZERO, param.clone());
+    portal.connect(ips, Duration::ZERO, public_key.clone());
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -563,7 +563,7 @@ async fn phoenix_channel_event_loop(
                 );
 
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
-                portal.connect(ips, backoff, param.clone());
+                portal.connect(ips, backoff, public_key.clone());
             }
             Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Left((Err(e), _)) => {
@@ -579,9 +579,11 @@ async fn phoenix_channel_event_loop(
                     }
                 }
             }
-            Either::Right((Some(PortalCommand::Connect(param)), _)) => {
+            Either::Right((Some(PortalCommand::Connect(new_public_key)), _)) => {
+                public_key = new_public_key; // Important! Update the current public key so we can re-use on connection hiccups!
+
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
-                portal.connect(ips, Duration::ZERO, param);
+                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Right((Some(PortalCommand::Close), _)) => {
                 let _ = portal.close();

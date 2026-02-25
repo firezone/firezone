@@ -515,7 +515,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    param: PublicKeyParam,
+    mut public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -528,7 +528,7 @@ async fn phoenix_channel_event_loop(
     let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
 
     let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
-    portal.connect(ips, Duration::ZERO, param.clone());
+    portal.connect(ips, Duration::ZERO, public_key.clone());
 
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
@@ -542,9 +542,11 @@ async fn phoenix_channel_event_loop(
                     }
                 }
             }
-            Either::Left((Some(PortalCommand::Connect(param)), _)) => {
+            Either::Left((Some(PortalCommand::Connect(new_public_key)), _)) => {
+                public_key = new_public_key; // Important! Update the current public key so we can re-use on connection hiccups!
+
                 let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
-                portal.connect(ips, Duration::ZERO, param);
+                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
                 udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
@@ -579,7 +581,7 @@ async fn phoenix_channel_event_loop(
                 );
 
                 let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
-                portal.connect(ips, backoff, param.clone());
+                portal.connect(ips, backoff, public_key.clone());
             }
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
             Either::Right((Err(e), _)) => {
