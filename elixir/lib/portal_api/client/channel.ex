@@ -929,9 +929,9 @@ defmodule PortalAPI.Client.Channel do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
   end
 
-  # Ice credentials must stay the same for all connections between client and gateway as long as they
-  # do not loose their state, so we can leverage public_key which is reset on each restart of the client
-  # or gateway.
+  # ICE credentials must stay the same for all connections between an initiator and a receiver as long
+  # as they do not lose their state, so we can leverage their public keys, which are reset on each
+  # restart of an initiator or a receiver.
   defp generate_ice_credentials(initiator_pubkey, initiator, receiver, receiver_pubkey) do
     ice_credential_seed =
       [
