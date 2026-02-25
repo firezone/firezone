@@ -24,11 +24,12 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
   # Only redirect from the base sign-in page, not from provider-specific routes
   def call(
         %{
-          params: %{"as" => "client", "account_id_or_slug" => account_id_or_slug},
+          params: %{"as" => as, "account_id_or_slug" => account_id_or_slug},
           path_info: [_account]
         } = conn,
         _opts
-      ) do
+      )
+      when as in ["client", "gui-client", "headless-client"] do
     with %Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
          provider when is_struct(provider) <- Database.get_default_provider_for_account(account) do
       redirect_path = redirect_path(account, provider)

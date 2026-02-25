@@ -12,14 +12,18 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       listener = start_supervised!({Postgrex.Notifications, Portal.Repo.config()})
       {:ok, _ref} = Postgrex.Notifications.listen(listener, channel_name)
 
-      _pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      # Use a short heartbeat_interval so connection retries happen quickly
+      # in case of transient too_many_connections errors under concurrent test load.
+      _pid =
+        start_supervised!(
+          {PostgresStrategy, [build_state(channel_name: channel_name, heartbeat_interval: 100)]}
+        )
 
-      assert_receive {:notification, _, _, ^channel_name, "heartbeat:" <> _}, 1000
+      assert_receive {:notification, _, _, ^channel_name, "heartbeat:" <> _}, 5000
       flush_notifications()
 
       stop_supervised!(PostgresStrategy)
-      assert_receive {:notification, _, _, ^channel_name, "goodbye:" <> _}, 1000
+      assert_receive {:notification, _, _, ^channel_name, "goodbye:" <> _}, 5000
     end
   end
 
