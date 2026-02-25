@@ -717,7 +717,7 @@ impl Tun {
 
                 move || {
                     logging::unwrap_or_warn!(
-                        tun::unix::tun_send(fd, outbound_rx, write),
+                        tun::linux::tun_send(fd, outbound_rx, write),
                         "Failed to send to TUN device: {}"
                     )
                 }
@@ -727,7 +727,7 @@ impl Tun {
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::linux::tun_recv(fd, inbound_tx, read),
                     "Failed to recv from TUN device: {}"
                 )
             })
