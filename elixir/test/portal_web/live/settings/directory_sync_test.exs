@@ -204,6 +204,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Name"
       assert html =~ "Impersonation Email"
       assert html =~ "Directory Verification"
+      assert html =~ "Note:"
+      assert html =~ "all org units and active users will be synced"
     end
 
     test "renders new Entra directory form", %{account: account, actor: actor, conn: conn} do
@@ -1332,6 +1334,14 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       html = render(lv)
       assert html =~ "Directory saved successfully"
       assert html =~ "New Google Directory"
+
+      directory =
+        Portal.Repo.get_by!(Portal.Google.Directory,
+          account_id: account.id,
+          name: "New Google Directory"
+        )
+
+      assert directory.orgunit_sync_enabled == false
     end
 
     test "creates new Okta directory successfully", %{account: account, actor: actor, conn: conn} do

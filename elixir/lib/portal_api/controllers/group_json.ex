@@ -23,6 +23,7 @@ defmodule PortalAPI.GroupJSON do
     %{
       id: group.id,
       name: group.name,
+      email: group.email,
       entity_type: group.entity_type,
       directory_id: group.directory_id,
       idp_id: group.idp_id,

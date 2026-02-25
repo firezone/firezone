@@ -27,7 +27,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
-    Google.Directory => @common_fields ++ ~w[domain impersonation_email]a,
+    Google.Directory =>
+      @common_fields ++ ~w[domain impersonation_email group_sync_mode orgunit_sync_enabled]a,
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
 
@@ -935,10 +936,10 @@ defmodule PortalWeb.Settings.DirectorySync do
           </p>
         </div>
 
-        <div :if={@type == "entra"}>
-          <label class="block text-sm font-medium text-neutral-700 mb-3">
+        <fieldset :if={@type == "entra"}>
+          <legend class="block text-sm font-medium text-neutral-700 mb-3">
             Group sync mode
-          </label>
+          </legend>
           <% sync_all_groups = get_field(@form.source, :sync_all_groups) %>
           <div class="grid gap-4 md:grid-cols-2">
             <label class={[
@@ -992,7 +993,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               </span>
             </label>
           </div>
-        </div>
+        </fieldset>
 
         <div :if={@type == "google"}>
           <.input
@@ -1006,6 +1007,110 @@ defmodule PortalWeb.Settings.DirectorySync do
           />
           <p class="mt-1 text-xs text-neutral-600">
             Enter the admin email address to impersonate for directory sync.
+          </p>
+        </div>
+
+        <fieldset :if={@type == "google"}>
+          <legend class="block text-sm font-medium text-neutral-700 mb-3">
+            Group sync mode
+          </legend>
+          <% group_sync_mode = get_field(@form.source, :group_sync_mode) %>
+          <div class="grid gap-4 md:grid-cols-3">
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
+              if(group_sync_mode == :all,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <input
+                type="radio"
+                name={@form[:group_sync_mode].name}
+                value="all"
+                checked={group_sync_mode == :all}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
+                  All groups
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600">
+                All groups from your directory will be synced.
+                <strong class="block mt-1">Default.</strong>
+              </span>
+            </label>
+
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
+              if(group_sync_mode == :filtered,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <input
+                type="radio"
+                name={@form[:group_sync_mode].name}
+                value="filtered"
+                checked={group_sync_mode == :filtered}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
+                  Filtered groups
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600">
+                Only groups whose name starts with
+                <code class="text-xs"><strong>[firezone-sync]</strong></code>
+                or email starts with <code class="text-xs"><strong>firezone-sync</strong></code>
+                will be synced.
+              </span>
+            </label>
+
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
+              if(group_sync_mode == :disabled,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <input
+                type="radio"
+                name={@form[:group_sync_mode].name}
+                value="disabled"
+                checked={group_sync_mode == :disabled}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
+                  Disabled
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600">
+                No groups will be synced from your directory.
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div :if={@type == "google"} class="mt-4">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="hidden" name={@form[:orgunit_sync_enabled].name} value="false" />
+            <input
+              type="checkbox"
+              name={@form[:orgunit_sync_enabled].name}
+              value="true"
+              checked={get_field(@form.source, :orgunit_sync_enabled)}
+              class="w-4 h-4 text-accent-600 border-neutral-300 rounded"
+            />
+            <span class="text-sm font-medium text-neutral-700">
+              Sync Organization Units
+            </span>
+          </label>
+          <p class="mt-1 ml-7 text-xs text-neutral-600">
+            Sync Google Workspace organizational units as groups. <strong>Note:</strong>
+            When enabled, all org units and active users will be synced.
           </p>
         </div>
 
@@ -1348,15 +1453,19 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset = socket.assigns.form.source
     impersonation_email = get_field(changeset, :impersonation_email)
     config = Portal.Config.fetch_env!(:portal, Google.APIClient)
-    key = config[:service_account_key] |> JSON.decode!()
 
     result =
-      with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
+      with key_json when is_binary(key_json) <- config[:service_account_key],
+           key = JSON.decode!(key_json),
+           {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
              Google.APIClient.get_access_token(impersonation_email, key),
            {:ok, %Req.Response{status: 200, body: body}} <-
              Google.APIClient.get_customer(access_token),
            :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
         {:ok, body["customerDomain"]}
+      else
+        nil -> {:error, :service_account_not_configured}
+        other -> other
       end
 
     case result do
@@ -1527,6 +1636,10 @@ defmodule PortalWeb.Settings.DirectorySync do
     Logger.info("Transport error while verifying Google directory", error: inspect(reason))
 
     "Transport error while attempting to connect to Google.  We're looking into this"
+  end
+
+  defp parse_google_verification_error({:error, :service_account_not_configured}) do
+    "No service account key is configured for this deployment. Please contact your administrator."
   end
 
   defp parse_google_verification_error({:error, reason}) when is_exception(reason) do

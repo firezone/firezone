@@ -4,9 +4,11 @@ defmodule Portal.Google.SyncTest do
 
   import Portal.AccountFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.ResourceFixtures
   import ExUnit.CaptureLog
 
   alias Portal.Google.{Sync, SyncError, APIClient}
+  alias Portal.Google.Sync.Database
 
   @test_private_key """
   -----BEGIN RSA PRIVATE KEY-----
@@ -38,10 +40,30 @@ defmodule Portal.Google.SyncTest do
   -----END RSA PRIVATE KEY-----
   """
 
+  # Builds a valid multipart/mixed batch response and sends it via the conn.
+  # `users` is a list of user maps to include as 200 OK parts.
+  defp respond_with_batch_users(conn, users) do
+    boundary = "test_batch_response_boundary"
+
+    parts =
+      Enum.map(users, fn user ->
+        json = JSON.encode!(user)
+
+        "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
+      end)
+
+    body = Enum.join(parts, "") <> "--#{boundary}--"
+
+    conn
+    |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+    |> Plug.Conn.send_resp(200, body)
+  end
+
   describe "perform/1" do
     setup do
       # Set up test configuration for API client
       original_config = Application.get_env(:portal, APIClient)
+      original_log_level = Logger.level()
 
       test_config = [
         endpoint: "https://test.googleapis.com",
@@ -63,6 +85,7 @@ defmodule Portal.Google.SyncTest do
       ]
 
       Application.put_env(:portal, APIClient, test_config)
+      Logger.configure(level: :debug)
 
       # Set up default stub
       Req.Test.stub(APIClient, fn conn ->
@@ -70,6 +93,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       on_exit(fn ->
+        Logger.configure(level: original_log_level)
         Application.put_env(:portal, APIClient, original_config)
       end)
 
@@ -121,19 +145,43 @@ defmodule Portal.Google.SyncTest do
       assert log =~ directory.id
     end
 
-    test "performs successful sync with users, groups, and org units" do
+    test "performs successful sync with groups, org units, and user identity sync" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock access token request
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         assert conn.request_path == "/token"
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock users API
+      # 2. Groups API
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups")
+        refute String.contains?(conn.request_path, "/members")
+
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "DevOps", "email" => "devops@example.com"}
+          ]
+        })
+      end)
+
+      # 3. Org units API
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      # 4. Org unit members for /Engineering (now synced before group BFS)
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/users")
+        assert String.contains?(conn.query_string || "", "orgUnitPath")
 
         Req.Test.json(conn, %{
           "users" => [
@@ -146,48 +194,13 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # Mock groups API
-      Req.Test.expect(APIClient, fn conn ->
-        assert String.contains?(conn.request_path, "/groups")
-        refute String.contains?(conn.request_path, "/members")
-
-        Req.Test.json(conn, %{
-          "groups" => [
-            %{"id" => "group1", "name" => "DevOps", "email" => "devops@example.com"}
-          ]
-        })
-      end)
-
-      # Mock group members API
+      # 5. Group members for group1 (BFS phase)
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/groups/group1/members")
 
         Req.Test.json(conn, %{
           "members" => [
             %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}
-          ]
-        })
-      end)
-
-      # Mock org units API
-      Req.Test.expect(APIClient, fn conn ->
-        assert String.contains?(conn.request_path, "/orgunits")
-
-        Req.Test.json(conn, %{
-          "organizationUnits" => [
-            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
-          ]
-        })
-      end)
-
-      # Mock org unit users API
-      Req.Test.expect(APIClient, fn conn ->
-        assert String.contains?(conn.request_path, "/users")
-        assert String.contains?(conn.query_string || "", "orgUnitPath")
-
-        Req.Test.json(conn, %{
-          "users" => [
-            %{"id" => "user1", "primaryEmail" => "user1@example.com"}
           ]
         })
       end)
@@ -201,7 +214,7 @@ defmodule Portal.Google.SyncTest do
       assert updated_directory.error_email_count == 0
       assert updated_directory.is_disabled == false
 
-      # Verify identities were created
+      # Verify identity was created
       identities = Repo.all(Portal.ExternalIdentity)
       assert length(identities) == 1
       identity = hd(identities)
@@ -212,11 +225,11 @@ defmodule Portal.Google.SyncTest do
       groups = Repo.all(Portal.Group)
       assert length(groups) == 2
 
-      # Verify we have one group and one org unit
       group_by_type = Enum.group_by(groups, & &1.entity_type)
       assert length(group_by_type[:group]) == 1
       assert length(group_by_type[:org_unit]) == 1
       assert hd(group_by_type[:group]).name == "DevOps"
+      assert hd(group_by_type[:group]).email == "devops@example.com"
       assert hd(group_by_type[:org_unit]).name == "Engineering"
 
       # Verify memberships were created (one for group, one for org unit)
@@ -240,42 +253,16 @@ defmodule Portal.Google.SyncTest do
       end
     end
 
-    test "raises SyncError when users API returns error" do
-      account = account_fixture()
-      directory = google_directory_fixture(account: account, domain: "example.com")
-
-      # Mock successful access token
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
-      end)
-
-      # Mock users API to fail
-      Req.Test.expect(APIClient, fn conn ->
-        conn
-        |> Plug.Conn.put_status(403)
-        |> Req.Test.json(%{"error" => "insufficient_permissions"})
-      end)
-
-      assert_raise SyncError, ~r/at stream_users: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
-      end
-    end
-
     test "raises SyncError when groups API returns error" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock groups API to fail
+      # 2. Groups API fails
       Req.Test.expect(APIClient, fn conn ->
         conn
         |> Plug.Conn.put_status(500)
@@ -291,22 +278,17 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock successful groups API
+      # 2. Groups API succeeds (empty)
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # Mock org units API to fail
+      # 3. Org units API fails
       Req.Test.expect(APIClient, fn conn ->
         conn
         |> Plug.Conn.put_status(403)
@@ -318,45 +300,79 @@ defmodule Portal.Google.SyncTest do
       end
     end
 
-    test "raises SyncError when user is missing id field" do
+    test "raises SyncError when group member is missing id field" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock users API with missing id
+      # 2. Groups API returns group1
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
-          "users" => [
-            %{"primaryEmail" => "user@example.com", "name" => %{"fullName" => "User"}}
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      # 3. Org units
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. Group members — member is missing "id" field
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"type" => "USER", "email" => "user@example.com"}
           ]
         })
       end)
 
-      assert_raise SyncError, ~r/user missing 'id' field/, fn ->
+      assert_raise SyncError, ~r/member missing 'id' field/, fn ->
         perform_job(Sync, %{"directory_id" => directory.id})
       end
     end
 
-    test "raises SyncError when user is missing primaryEmail field" do
+    test "raises SyncError when get_user returns user missing primaryEmail field" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock users API with missing primaryEmail
+      # 2. Groups API returns group1
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
-          "users" => [
-            %{"id" => "user1", "name" => %{"fullName" => "User"}}
-          ]
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
         })
+      end)
+
+      # 3. Org units
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. Group members returns user1
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}]
+        })
+      end)
+
+      # 5. batch_get_users returns user without primaryEmail
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{"id" => "user1", "name" => %{"fullName" => "User"}}
+        ])
       end)
 
       assert_raise SyncError, ~r/user .* missing 'primaryEmail' field/, fn ->
@@ -368,17 +384,12 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock groups API with missing id
+      # 2. Groups API returns group without id
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "groups" => [
@@ -396,17 +407,12 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock groups API with missing name and email
+      # 2. Groups API returns group with only id
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "groups" => [
@@ -424,22 +430,17 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock successful groups API
+      # 2. Groups API
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # Mock org units API with missing orgUnitId
+      # 3. Org units API with missing orgUnitId
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "organizationUnits" => [
@@ -457,22 +458,17 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock successful groups API
+      # 2. Groups API
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # Mock org units API with missing name
+      # 3. Org units API with missing name
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "organizationUnits" => [
@@ -490,22 +486,17 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock successful users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => []})
-      end)
-
-      # Mock successful groups API
+      # 2. Groups API
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # Mock org units API with missing orgUnitPath
+      # 3. Org units API with missing orgUnitPath
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "organizationUnits" => [
@@ -519,32 +510,31 @@ defmodule Portal.Google.SyncTest do
       end
     end
 
-    test "handles empty user list" do
+    test "handles empty groups and org units" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock successful access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock empty users, groups, and org units
-      Req.Test.expect(APIClient, 3, fn conn ->
-        cond do
-          String.contains?(conn.request_path, "/users") ->
-            Req.Test.json(conn, %{"users" => []})
-
-          String.contains?(conn.request_path, "/groups") ->
-            Req.Test.json(conn, %{"groups" => []})
-
-          String.contains?(conn.request_path, "/orgunits") ->
-            Req.Test.json(conn, %{"organizationUnits" => []})
-        end
+      # 2. Groups → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups")
+        Req.Test.json(conn, %{"groups" => []})
       end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # No group members, no org unit members, no get_user calls
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
 
-      # Verify sync completed successfully with no data
       updated_directory = Repo.get!(Portal.Google.Directory, directory.id)
       assert updated_directory.synced_at != nil
       assert updated_directory.error_message == nil
@@ -579,31 +569,42 @@ defmodule Portal.Google.SyncTest do
         }
         |> Repo.insert()
 
-      # Mock successful sync with new user
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
+      # 2. Groups → group1 with new_user as member
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
-          "users" => [
-            %{
-              "id" => "new_user",
-              "primaryEmail" => "new@example.com",
-              "name" => %{"fullName" => "New User"}
-            }
-          ]
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
         })
       end)
 
-      Req.Test.expect(APIClient, 2, fn conn ->
-        cond do
-          String.contains?(conn.request_path, "/groups") ->
-            Req.Test.json(conn, %{"groups" => []})
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
 
-          String.contains?(conn.request_path, "/orgunits") ->
-            Req.Test.json(conn, %{"organizationUnits" => []})
-        end
+      # 4. Group members → new_user
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "new_user", "type" => "USER", "email" => "new@example.com"}]
+        })
+      end)
+
+      # 5. batch_get_users for new_user
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "new_user",
+            "primaryEmail" => "new@example.com",
+            "name" => %{"fullName" => "New User"}
+          }
+        ])
       end)
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
@@ -633,30 +634,30 @@ defmodule Portal.Google.SyncTest do
         google_directory_fixture(
           account: account,
           domain: "example.com",
-          legacy_service_account_key: legacy_key
+          legacy_service_account_key: nil
         )
+
+      Repo.update!(Ecto.Changeset.change(directory, legacy_service_account_key: legacy_key))
 
       test_pid = self()
 
-      # Mock access token request and capture the request
+      # 1. Token — capture the request to verify legacy key was used
       Req.Test.expect(APIClient, fn conn ->
         {:ok, body, _conn} = Plug.Conn.read_body(conn)
         send(test_pid, {:token_request, body})
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock empty responses for API calls
-      Req.Test.expect(APIClient, 3, fn conn ->
-        cond do
-          String.contains?(conn.request_path, "/users") ->
-            Req.Test.json(conn, %{"users" => []})
+      # 2. Groups → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups")
+        Req.Test.json(conn, %{"groups" => []})
+      end)
 
-          String.contains?(conn.request_path, "/groups") ->
-            Req.Test.json(conn, %{"groups" => []})
-
-          String.contains?(conn.request_path, "/orgunits") ->
-            Req.Test.json(conn, %{"organizationUnits" => []})
-        end
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+        Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
@@ -665,60 +666,67 @@ defmodule Portal.Google.SyncTest do
       assert_receive {:token_request, body}
       params = URI.decode_query(body)
       assert params["assertion"]
-      # The JWT would be signed with the legacy key's client_email
     end
 
-    test "handles multiple pages of users" do
+    test "handles multiple pages of group members" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock paginated users API
-      page_counter = :counters.new(1, [:atomics])
-
-      Req.Test.expect(APIClient, 2, fn conn ->
-        current_page = :counters.get(page_counter, 1)
-        :counters.add(page_counter, 1, 1)
-
-        case current_page do
-          0 ->
-            Req.Test.json(conn, %{
-              "users" => [
-                %{
-                  "id" => "user1",
-                  "primaryEmail" => "user1@example.com",
-                  "name" => %{"fullName" => "User One"}
-                }
-              ],
-              "nextPageToken" => "page2"
-            })
-
-          1 ->
-            Req.Test.json(conn, %{
-              "users" => [
-                %{
-                  "id" => "user2",
-                  "primaryEmail" => "user2@example.com",
-                  "name" => %{"fullName" => "User Two"}
-                }
-              ]
-            })
-        end
+      # 2. Groups → group1
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
       end)
 
-      # Mock groups and org units
-      Req.Test.expect(APIClient, 2, fn conn ->
-        cond do
-          String.contains?(conn.request_path, "/groups") ->
-            Req.Test.json(conn, %{"groups" => []})
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
 
-          String.contains?(conn.request_path, "/orgunits") ->
-            Req.Test.json(conn, %{"organizationUnits" => []})
-        end
+      # 4. Group members — paginated: page 1 returns user1 with nextPageToken
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+        refute String.contains?(conn.query_string || "", "pageToken")
+
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}],
+          "nextPageToken" => "page2"
+        })
+      end)
+
+      # 5. Group members — page 2 returns user2
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+        assert String.contains?(conn.query_string || "", "pageToken")
+
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user2", "type" => "USER", "email" => "user2@example.com"}]
+        })
+      end)
+
+      # 6. batch_get_users for user1 and user2 (both in a single batch call, accumulated from both pages)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          },
+          %{
+            "id" => "user2",
+            "primaryEmail" => "user2@example.com",
+            "name" => %{"fullName" => "User Two"}
+          }
+        ])
       end)
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
@@ -730,29 +738,16 @@ defmodule Portal.Google.SyncTest do
       assert idp_ids == ["user1", "user2"]
     end
 
-    test "filters non-USER members from group membership" do
+    test "discovers GROUP-type members as sub-groups and only creates USER-type memberships for the parent" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock user
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "users" => [
-            %{
-              "id" => "user1",
-              "primaryEmail" => "user1@example.com",
-              "name" => %{"fullName" => "User One"}
-            }
-          ]
-        })
-      end)
-
-      # Mock group
+      # 2. Groups → group1
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "groups" => [
@@ -761,8 +756,15 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # Mock group members with mixed types
+      # 3. Org units → empty
       Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. Group members for group1: USER user1, GROUP group2, EXTERNAL ext1
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
         Req.Test.json(conn, %{
           "members" => [
             %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
@@ -772,46 +774,620 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # Mock org units
+      # 5. batch_get_users for user1 only (GROUP and EXTERNAL do not become USER identities)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          }
+        ])
+      end)
+
+      # 6. get_group("group2") — BFS fetches full details for the discovered sub-group
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2")
+        refute String.contains?(conn.request_path, "/members")
+
+        Req.Test.json(conn, %{
+          "id" => "group2",
+          "name" => "Nested Team",
+          "email" => "nested@example.com"
+        })
+      end)
+
+      # 7. Group members for group2 (BFS continues into the discovered sub-group) → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2/members")
+        Req.Test.json(conn, %{"members" => []})
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Verify group1 (seed) and group2 (discovered via BFS) both exist as portal groups
+      groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
+      assert length(groups) == 2
+
+      [g1, g2] = groups
+      assert g1.idp_id == "group1"
+      assert g1.name == "Engineering"
+      assert g1.email == "eng@example.com"
+      assert g2.idp_id == "group2"
+      assert g2.name == "Nested Team"
+      assert g2.email == "nested@example.com"
+
+      # Only user1 (USER type) created a membership in group1; group2 has no members
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 1
+    end
+
+    test "syncs transitive sub-groups recursively and creates memberships at each level" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # group1 (seed) → [GROUP group2] → [USER user2, GROUP group3] → [USER user3]
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Groups → group1 only (seed)
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Top Level", "email" => "top@example.com"}]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. group1 members: GROUP group2 (no direct USER members)
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "group2", "type" => "GROUP", "email" => "mid@example.com"}]
+        })
+      end)
+
+      # 5. get_group("group2")
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2")
+        refute String.contains?(conn.request_path, "/members")
+
+        Req.Test.json(conn, %{
+          "id" => "group2",
+          "name" => "Middle Level",
+          "email" => "mid@example.com"
+        })
+      end)
+
+      # 6. group2 members: USER user2 + GROUP group3
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user2", "type" => "USER", "email" => "user2@example.com"},
+            %{"id" => "group3", "type" => "GROUP", "email" => "leaf@example.com"}
+          ]
+        })
+      end)
+
+      # 7. batch_get_users for user2 (new)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user2",
+            "primaryEmail" => "user2@example.com",
+            "name" => %{"fullName" => "User Two"}
+          }
+        ])
+      end)
+
+      # 8. get_group("group3")
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group3")
+        refute String.contains?(conn.request_path, "/members")
+
+        Req.Test.json(conn, %{
+          "id" => "group3",
+          "name" => "Leaf Level",
+          "email" => "leaf@example.com"
+        })
+      end)
+
+      # 9. group3 members: USER user3
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group3/members")
+
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user3", "type" => "USER", "email" => "user3@example.com"}]
+        })
+      end)
+
+      # 10. batch_get_users for user3 (new)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user3",
+            "primaryEmail" => "user3@example.com",
+            "name" => %{"fullName" => "User Three"}
+          }
+        ])
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # All three portal groups were created
+      groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
+      assert Enum.map(groups, & &1.idp_id) == ["group1", "group2", "group3"]
+      assert Enum.map(groups, & &1.name) == ["Top Level", "Middle Level", "Leaf Level"]
+
+      # Flattened memberships:
+      # group1 -> user2,user3 ; group2 -> user2,user3 ; group3 -> user3
+      memberships =
+        Repo.all(Portal.Membership)
+        |> Repo.preload([:group, :actor])
+        |> Enum.map(fn m -> {m.group.idp_id, m.actor.name} end)
+        |> Enum.sort()
+
+      assert memberships == [
+               {"group1", "User Three"},
+               {"group1", "User Two"},
+               {"group2", "User Three"},
+               {"group2", "User Two"},
+               {"group3", "User Three"}
+             ]
+
+      identities = Repo.all(Portal.ExternalIdentity) |> Enum.sort_by(& &1.idp_id)
+      assert Enum.map(identities, & &1.idp_id) == ["user2", "user3"]
+    end
+
+    test "BFS stops when a sub-group has already been visited (cycle prevention)" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # group1 (seed) → [GROUP group2]
+      # group2 → [USER user1, GROUP group1]  ← group1 already visited, stops here
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Groups → group1
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Group One", "email" => "g1@example.com"}]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. group1 members → GROUP group2 (no USER members)
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "group2", "type" => "GROUP", "email" => "g2@example.com"}]
+        })
+      end)
+
+      # 5. get_group("group2")
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2")
+        refute String.contains?(conn.request_path, "/members")
+
+        Req.Test.json(conn, %{
+          "id" => "group2",
+          "name" => "Group Two",
+          "email" => "g2@example.com"
+        })
+      end)
+
+      # 6. group2 members → USER user1 + GROUP group1 (cycle back to already-visited group1)
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => "group1", "type" => "GROUP", "email" => "g1@example.com"}
+          ]
+        })
+      end)
+
+      # 7. batch_get_users for user1
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          }
+        ])
+      end)
+
+      # No get_group("group1") call — it's already in visited, BFS skips it
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
+      assert Enum.map(groups, & &1.idp_id) == ["group1", "group2"]
+
+      memberships =
+        Repo.all(Portal.Membership)
+        |> Repo.preload([:group, :actor])
+        |> Enum.map(fn m -> {m.group.idp_id, m.actor.name} end)
+        |> Enum.sort()
+
+      assert memberships == [
+               {"group1", "User One"},
+               {"group2", "User One"}
+             ]
+    end
+
+    test "BFS skips sub-groups that no longer exist in Google (404)" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Groups → group1
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Top", "email" => "top@example.com"}]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. group1 members → GROUP deleted_group
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "deleted_group", "type" => "GROUP", "email" => "gone@example.com"}
+          ]
+        })
+      end)
+
+      # 5. get_group("deleted_group") → 404
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/deleted_group")
+
+        conn
+        |> Plug.Conn.put_status(404)
+        |> Req.Test.json(%{"error" => %{"code" => 404, "message" => "Resource Not Found"}})
+      end)
+
+      # No group2 members call — it was skipped
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Only group1 exists; deleted_group was silently skipped
+      groups = Repo.all(Portal.Group)
+      assert length(groups) == 1
+      assert hd(groups).idp_id == "group1"
+    end
+
+    test "group_sync_mode :filtered issues separate email and name prefix queries, then syncs members" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          group_sync_mode: :filtered
+        )
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. First groups call: email prefix query → group1
+      Req.Test.expect(APIClient, fn conn ->
+        refute String.contains?(conn.request_path, "/members")
+        assert String.contains?(conn.query_string, "email%3Afirezone-sync")
+
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{
+              "id" => "group1",
+              "name" => "firezone-sync-admins",
+              "email" => "firezone-sync-admins@example.com"
+            }
+          ]
+        })
+      end)
+
+      # 3. Second groups call: name prefix query → group2
+      Req.Test.expect(APIClient, fn conn ->
+        refute String.contains?(conn.request_path, "/members")
+        assert String.contains?(conn.query_string, "name%3A%5Bfirezone-sync%5D")
+
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group2", "name" => "[firezone-sync] ops", "email" => "ops@example.com"}
+          ]
+        })
+      end)
+
+      # 4. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 5. Group members for group1 → user1
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}
+          ]
+        })
+      end)
+
+      # 6. batch_get_users for user1 (right after group1 members in BFS)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          }
+        ])
+      end)
+
+      # 7. Group members for group2 → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2/members")
+        Req.Test.json(conn, %{"members" => []})
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
+      assert length(groups) == 2
+      assert Enum.map(groups, & &1.idp_id) == ["group1", "group2"]
+
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 1
+    end
+
+    test "group_sync_mode :disabled skips group sync — stale groups are deleted" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          group_sync_mode: :disabled
+        )
+
+      # Pre-existing group with stale last_synced_at
+      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      {:ok, existing_group} =
+        %Portal.Group{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          directory_id: directory.id,
+          idp_id: "group-devops",
+          name: "DevOps",
+          type: :static,
+          entity_type: :group,
+          last_synced_at: old_synced_at
+        }
+        |> Repo.insert()
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # No groups API call expected (mode is :disabled)
+
+      # 2. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Stale group was not synced this run — delete_unsynced removes it
+      refute Repo.get_by(Portal.Group, id: existing_group.id)
+    end
+
+    test "orgunit_sync_enabled false skips org unit sync — stale org units are deleted" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          orgunit_sync_enabled: false
+        )
+
+      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      {:ok, existing_ou} =
+        %Portal.Group{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          directory_id: directory.id,
+          idp_id: "ou-engineering",
+          name: "Engineering",
+          type: :static,
+          entity_type: :org_unit,
+          last_synced_at: old_synced_at
+        }
+        |> Repo.insert()
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Groups → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      # No org units API call expected (orgunit_sync_enabled: false)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Stale org unit was not synced this run — delete_unsynced removes it
+      refute Repo.get_by(Portal.Group, id: existing_ou.id)
+    end
+
+    test "group_sync_mode :disabled and orgunit_sync_enabled false — all stale groups deleted" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          group_sync_mode: :disabled,
+          orgunit_sync_enabled: false
+        )
+
+      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      {:ok, existing_group} =
+        %Portal.Group{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          directory_id: directory.id,
+          idp_id: "group-devops",
+          name: "DevOps",
+          type: :static,
+          entity_type: :group,
+          last_synced_at: old_synced_at
+        }
+        |> Repo.insert()
+
+      {:ok, existing_ou} =
+        %Portal.Group{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          directory_id: directory.id,
+          idp_id: "ou-engineering",
+          name: "Engineering",
+          type: :static,
+          entity_type: :org_unit,
+          last_synced_at: old_synced_at
+        }
+        |> Repo.insert()
+
+      # 1. Token only — no groups or org units API calls
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Both are stale — delete_unsynced removes them
+      refute Repo.get_by(Portal.Group, id: existing_group.id)
+      refute Repo.get_by(Portal.Group, id: existing_ou.id)
+    end
+
+    test "group_sync_mode :filtered deletes non-matching groups" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          group_sync_mode: :filtered
+        )
+
+      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      # A stale group that does NOT match the firezone-sync prefix
+      {:ok, non_matching_group} =
+        %Portal.Group{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          directory_id: directory.id,
+          idp_id: "group-devops",
+          name: "DevOps",
+          type: :static,
+          entity_type: :group,
+          last_synced_at: old_synced_at
+        }
+        |> Repo.insert()
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Both prefix queries return empty (no firezone-sync groups in Google)
+      Req.Test.expect(APIClient, 2, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      # 3. Org units → empty
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
 
-      # Verify only USER type member created a membership
-      memberships = Repo.all(Portal.Membership)
-      assert length(memberships) == 1
+      # Non-matching group is stale — delete_unsynced removes it
+      refute Repo.get_by(Portal.Group, id: non_matching_group.id)
     end
 
     test "syncs org unit with no members when users key is missing in response" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # Mock access token
+      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # Mock users API
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "users" => [
-            %{
-              "id" => "user1",
-              "primaryEmail" => "user1@example.com",
-              "name" => %{"fullName" => "User One"}
-            }
-          ]
-        })
-      end)
-
-      # Mock groups API
+      # 2. Groups → empty
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # Mock org units API - return one org unit
+      # 3. Org units → ou1
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "organizationUnits" => [
@@ -820,12 +1396,13 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # Mock org unit members API - return response WITHOUT "users" key (empty org unit)
-      # Google omits the "users" key entirely when no users match the query
+      # 4. Org unit members — Google omits "users" key for empty org units
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.query_string || "", "orgUnitPath")
         Req.Test.json(conn, %{"etag" => "\"p9q284efnuVA987\"", "kind" => "admin#directory#users"})
       end)
+
+      # No get_user calls — no members
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
 
@@ -839,6 +1416,479 @@ defmodule Portal.Google.SyncTest do
       # Verify no memberships were created for the empty org unit
       memberships = Repo.all(Portal.Membership)
       assert length(memberships) == 0
+    end
+
+    test "raises SyncError when access token transport fails" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
+
+      assert_raise SyncError, ~r/get_access_token/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when access token response is missing access_token field" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"expires_in" => 3600})
+      end)
+
+      assert_raise SyncError, ~r/get_access_token/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when service account key is not configured and no legacy key exists" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account)
+
+      config = Application.get_env(:portal, APIClient)
+
+      Application.put_env(
+        :portal,
+        APIClient,
+        Keyword.put(config, :service_account_key, %{invalid: true})
+      )
+
+      assert_raise SyncError, ~r/service account key is not configured/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "logs reconnect count when orphaned policies are reconnected" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      resource = resource_fixture(account: account)
+
+      policy =
+        Repo.insert!(%Portal.Policy{
+          account_id: account.id,
+          resource_id: resource.id,
+          group_id: nil,
+          group_idp_id: "group1",
+          description: "Orphaned policy awaiting group reconnection",
+          conditions: []
+        })
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"members" => []})
+      end)
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+        end)
+
+      assert log =~ "Reconnected 1 orphaned policies after sync"
+      assert Repo.get_by!(Portal.Policy, id: policy.id, account_id: account.id).group_id != nil
+    end
+
+    test "raises SyncError when discovered sub-group is missing both name and email" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Top", "email" => "top@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "group2", "type" => "GROUP", "email" => "group2@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"id" => "group2"})
+      end)
+
+      assert_raise SyncError, ~r/discovered group 'group2' missing 'name' field/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when discovered sub-group is missing id field" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Top", "email" => "top@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "group2", "type" => "GROUP", "email" => "group2@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"name" => "Nested Group", "email" => "group2@example.com"})
+      end)
+
+      assert_raise SyncError, ~r/discovered group missing 'id' field/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when discovered sub-group lookup returns non-404 error" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Top", "email" => "top@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "group2", "type" => "GROUP", "email" => "group2@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(500)
+        |> Req.Test.json(%{"error" => "server error"})
+      end)
+
+      assert_raise SyncError, ~r/get_group/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when group members API returns error" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "forbidden"})
+      end)
+
+      assert_raise SyncError, ~r/at stream_group_members: HTTP 403/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when batch_get_users returns error response" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(500)
+        |> Req.Test.json(%{"error" => "server error"})
+      end)
+
+      assert_raise SyncError, ~r/at batch_get_users: HTTP 500/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "ignores GROUP members with nil id while still syncing valid USER members" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => nil, "type" => "GROUP", "email" => "unknown@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          }
+        ])
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert Repo.aggregate(Portal.Group, :count, :id) == 1
+      assert Repo.aggregate(Portal.Membership, :count, :id) == 1
+    end
+
+    test "raises SyncError when org unit members API returns error" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "forbidden"})
+      end)
+
+      assert_raise SyncError, ~r/at stream_org_unit_members: HTTP 403/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "raises SyncError when org unit user is missing id field" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"users" => [%{"primaryEmail" => "missing-id@example.com"}]})
+      end)
+
+      assert_raise SyncError, ~r/user missing 'id' field in org unit ou1/, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+    end
+
+    test "syncs identities for new org unit users not seen in group BFS" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"groups" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "users" => [
+            %{
+              "id" => "ou_user_1",
+              "primaryEmail" => "ou1@example.com",
+              "name" => %{"fullName" => "OU User"}
+            }
+          ]
+        })
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert Repo.aggregate(Portal.ExternalIdentity, :count, :id) == 1
+      assert Repo.aggregate(Portal.Membership, :count, :id) == 1
+    end
+
+    test "Database upsert helpers cover empty and error branches" do
+      now = DateTime.utc_now()
+      nonexistent_account_id = Ecto.UUID.generate()
+      nonexistent_directory_id = Ecto.UUID.generate()
+
+      assert {:ok, %{upserted_identities: 0}} =
+               Database.batch_upsert_identities(
+                 nonexistent_account_id,
+                 nonexistent_directory_id,
+                 now,
+                 []
+               )
+
+      assert {:ok, %{upserted_groups: 0}} =
+               Database.batch_upsert_groups(
+                 nonexistent_account_id,
+                 nonexistent_directory_id,
+                 now,
+                 [],
+                 :group
+               )
+
+      assert {:ok, %{upserted_memberships: 0}} =
+               Database.batch_upsert_memberships(
+                 nonexistent_account_id,
+                 nonexistent_directory_id,
+                 now,
+                 []
+               )
+
+      assert {:error, _reason} =
+               Database.batch_upsert_groups(
+                 nonexistent_account_id,
+                 nonexistent_directory_id,
+                 now,
+                 [%{idp_id: "group1", name: "Group 1", email: "group1@example.com"}],
+                 :group
+               )
+
+      assert {:error, _reason} =
+               Database.batch_upsert_identities(
+                 nonexistent_account_id,
+                 nonexistent_directory_id,
+                 now,
+                 [%{idp_id: "user1", email: "u1@example.com", name: "User 1"}]
+               )
+
+      assert {:error, _reason} =
+               Database.batch_upsert_memberships(
+                 nonexistent_account_id,
+                 nonexistent_directory_id,
+                 "not-a-datetime",
+                 [{"group1", "user1"}]
+               )
+    end
+
+    test "Sync batch upsert wrappers return :error and log on database failures" do
+      directory = %Portal.Google.Directory{
+        id: Ecto.UUID.generate(),
+        account_id: Ecto.UUID.generate()
+      }
+
+      identity_log =
+        capture_log(fn ->
+          assert :error ==
+                   Sync.batch_upsert_identities(directory, DateTime.utc_now(), [
+                     %{idp_id: "user1", email: "broken@example.com", name: "Broken User"}
+                   ])
+        end)
+
+      assert identity_log =~ "Failed to upsert identities"
+
+      memberships_log =
+        capture_log(fn ->
+          assert_raise SyncError, ~r/batch_upsert_memberships/, fn ->
+            Sync.batch_upsert_memberships(directory, "not-a-datetime", [
+              {"group1", "user1"}
+            ])
+          end
+        end)
+
+      assert memberships_log =~ "Failed to upsert memberships"
     end
   end
 end

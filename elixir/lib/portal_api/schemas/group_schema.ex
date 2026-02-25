@@ -12,6 +12,11 @@ defmodule PortalAPI.Schemas.Group do
       properties: %{
         id: %Schema{type: :string, description: "Group ID"},
         name: %Schema{type: :string, description: "Group Name"},
+        email: %Schema{
+          type: :string,
+          description: "Group email address for synced groups",
+          nullable: true
+        },
         entity_type: %Schema{
           type: :string,
           enum: ["group", "org_unit"],
@@ -48,6 +53,7 @@ defmodule PortalAPI.Schemas.Group do
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Engineering",
+        "email" => nil,
         "entity_type" => "group",
         "directory_id" => nil,
         "idp_id" => nil,
@@ -95,6 +101,7 @@ defmodule PortalAPI.Schemas.Group do
         "data" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "name" => "Engineering",
+          "email" => nil,
           "entity_type" => "group",
           "directory_id" => nil,
           "idp_id" => nil,
@@ -124,6 +131,7 @@ defmodule PortalAPI.Schemas.Group do
           %{
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "name" => "Engineering",
+            "email" => nil,
             "entity_type" => "group",
             "directory_id" => nil,
             "idp_id" => nil,
@@ -133,7 +141,8 @@ defmodule PortalAPI.Schemas.Group do
           },
           %{
             "id" => "4ae929a7-1973-43f2-a1a8-9221b91a4c0e",
-            "name" => "Finance",
+            "name" => "firezone-sync-admins",
+            "email" => "firezone-sync-admins@example.com",
             "entity_type" => "group",
             "directory_id" => "6b4e3a2c-1234-5678-9abc-def012345678",
             "idp_id" => "google-workspace-group-123",

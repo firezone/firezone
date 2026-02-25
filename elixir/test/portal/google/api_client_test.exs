@@ -120,6 +120,49 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
+  describe "get_group/2" do
+    test "returns group body for 200 response" do
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "GET"
+        assert conn.request_path == "/admin/directory/v1/groups/group123"
+        Req.Test.json(conn, %{"id" => "group123", "name" => "Engineering"})
+      end)
+
+      assert {:ok, %{"id" => "group123", "name" => "Engineering"}} =
+               APIClient.get_group(@test_access_token, "group123")
+    end
+
+    test "returns :not_found for 404 response" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(404)
+        |> Req.Test.json(%{"error" => "not found"})
+      end)
+
+      assert {:error, :not_found} = APIClient.get_group(@test_access_token, "missing-group")
+    end
+
+    test "returns response error for non-404 non-200 response" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(500)
+        |> Req.Test.json(%{"error" => "server error"})
+      end)
+
+      assert {:error, %Req.Response{status: 500}} =
+               APIClient.get_group(@test_access_token, "group123")
+    end
+
+    test "returns transport error unchanged" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
+
+      assert {:error, %Req.TransportError{reason: :econnrefused}} =
+               APIClient.get_group(@test_access_token, "group123")
+    end
+  end
+
   describe "test_connection/2" do
     test "returns :ok when all endpoints are accessible" do
       Req.Test.expect(APIClient, 3, fn conn ->
@@ -401,7 +444,7 @@ defmodule Portal.Google.APIClientTest do
       assert [[%{"id" => "group1"}], [%{"id" => "group2"}]] = result
     end
 
-    test "returns error when groups key is missing" do
+    test "returns empty list when groups key is missing (e.g. filtered query with no matches)" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{})
       end)
@@ -410,13 +453,12 @@ defmodule Portal.Google.APIClientTest do
         APIClient.stream_groups(@test_access_token, @test_domain)
         |> Enum.to_list()
 
-      assert [{:error, {:missing_key, message, _body}}] = result
-      assert message =~ "groups"
+      assert [[]] = result
     end
   end
 
   describe "stream_group_members/2" do
-    test "streams a single page of members with includeDerivedMembership" do
+    test "streams a single page of direct members" do
       test_pid = self()
       group_key = "group123"
 
@@ -443,7 +485,7 @@ defmodule Portal.Google.APIClientTest do
       assert_receive {:members_request, conn}
       assert_authorization_header(conn, @test_access_token)
       assert conn.query_params["maxResults"] == "200"
-      assert conn.query_params["includeDerivedMembership"] == "true"
+      refute Map.has_key?(conn.query_params, "includeDerivedMembership")
     end
 
     test "streams multiple pages of members" do
@@ -476,11 +518,11 @@ defmodule Portal.Google.APIClientTest do
       assert [[%{"id" => "user1"}], [%{"id" => "user2"}]] = result
 
       assert_receive {:members_page, 0, page1_params}
-      assert page1_params["includeDerivedMembership"] == "true"
+      refute Map.has_key?(page1_params, "includeDerivedMembership")
       refute Map.has_key?(page1_params, "pageToken")
 
       assert_receive {:members_page, 1, page2_params}
-      assert page2_params["includeDerivedMembership"] == "true"
+      refute Map.has_key?(page2_params, "includeDerivedMembership")
       assert page2_params["pageToken"] == "page2"
     end
 
@@ -694,6 +736,242 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
+  describe "batch_get_users/2" do
+    test "returns empty list when user_ids is empty" do
+      assert {:ok, []} = APIClient.batch_get_users(@test_access_token, [])
+    end
+
+    test "uses configured batch endpoint when provided" do
+      original_config = Application.get_env(:portal, APIClient)
+
+      custom_endpoint = "https://batch.googleapis.test/custom-batch"
+
+      Application.put_env(
+        :portal,
+        APIClient,
+        Keyword.put(original_config, :batch_endpoint, custom_endpoint)
+      )
+
+      on_exit(fn ->
+        Application.put_env(:portal, APIClient, original_config)
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.host == "batch.googleapis.test"
+        assert conn.request_path == "/custom-batch"
+
+        boundary = "custom_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, [%{"id" => "user1", "primaryEmail" => "user1@example.com"}]} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "parses multipart responses with quoted boundary values" do
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        boundary = "quoted_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=\"#{boundary}\"")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, [%{"id" => "user1", "primaryEmail" => "user1@example.com"}]} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "returns error for parts with malformed HTTP status line" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "malformed_status_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"NOT-HTTP", JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 502}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "skips 404 users in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "not_found_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 404 Not Found", JSON.encode!(%{"error" => %{"message" => "not found"}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
+    end
+
+    test "handles iodata response body for multipart parsing" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "iodata_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, [body])
+      end)
+
+      assert {:ok, [%{"id" => "user1", "primaryEmail" => "user1@example.com"}]} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "returns error for non-200 batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(500)
+        |> Req.Test.json(%{"error" => "server error"})
+      end)
+
+      assert {:error, %Req.Response{status: 500}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "returns error for non-404 per-part status in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "forbidden_part_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 403 Forbidden", JSON.encode!(%{"error" => %{"message" => "forbidden"}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 403}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "returns transport error for batch request failure" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.transport_error(conn, :timeout)
+      end)
+
+      assert {:error, %Req.TransportError{reason: :timeout}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "halts on chunk error after first successful chunk" do
+      counter = :atomics.new(1, [])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        call_idx = :atomics.get(counter, 1)
+        :atomics.put(counter, 1, call_idx + 1)
+
+        case call_idx do
+          0 ->
+            boundary = "first_chunk"
+
+            body =
+              build_batch_body(boundary, [
+                {"HTTP/1.1 200 OK",
+                 JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+              ])
+
+            conn
+            |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+            |> Plug.Conn.send_resp(200, body)
+
+          _ ->
+            conn
+            |> Plug.Conn.put_status(503)
+            |> Req.Test.json(%{"error" => "unavailable"})
+        end
+      end)
+
+      user_ids = Enum.map(1..101, &"user-#{&1}")
+
+      assert {:error, %Req.Response{status: 503}} =
+               APIClient.batch_get_users(@test_access_token, user_ids)
+    end
+
+    test "raises when multipart boundary is missing from content type" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed")
+        |> Plug.Conn.send_resp(200, "--irrelevant--")
+      end)
+
+      assert_raise RuntimeError, ~r/Could not extract multipart boundary/, fn ->
+        APIClient.batch_get_users(@test_access_token, ["user1"])
+      end
+    end
+
+    test "returns error for malformed multipart parts" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "malformed_part_boundary"
+
+        body =
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nmalformed\r\n--#{boundary}--"
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 502}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "returns error for batch parts with invalid JSON payload" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "invalid_json_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK", "not-json"}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 502}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+  end
+
   describe "pagination edge cases" do
     test "handles empty result list correctly for users" do
       Req.Test.expect(APIClient, fn conn ->
@@ -775,6 +1053,15 @@ defmodule Portal.Google.APIClientTest do
   end
 
   # Helper functions
+
+  defp build_batch_body(boundary, parts) do
+    encoded_parts =
+      Enum.map(parts, fn {status_line, json_body} ->
+        "--#{boundary}\r\nContent-Type: application/http\r\n\r\n#{status_line}\r\nContent-Type: application/json\r\n\r\n#{json_body}\r\n"
+      end)
+
+    Enum.join(encoded_parts, "") <> "--#{boundary}--"
+  end
 
   defp assert_authorization_header(conn, expected_token) do
     auth_header =

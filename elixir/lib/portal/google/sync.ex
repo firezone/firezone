@@ -1,6 +1,19 @@
 defmodule Portal.Google.Sync do
   @moduledoc """
   Oban worker for syncing users, groups, and memberships from Google Workspace.
+
+  Sync runs in four phases:
+  1. Upsert seed groups (based on group_sync_mode), collect group idp_ids.
+  2. Upsert org units (if orgunit_sync_enabled), collect {idp_id, path} pairs.
+  3. Org unit member sync: per org unit, fetch users, upsert identities directly
+     from the users payload (deduped via seen_user_ids), and upsert memberships.
+  4. BFS group member sync: for each group, fetch direct members, upsert identities,
+     discover GROUP-type members as sub-groups (fetching each via get_group for its
+     display name), upsert them, and recurse. We collect direct user memberships and
+     the group graph during traversal, then compute flattened memberships in-memory
+     and upsert them in batches. A `seen_user_ids` set is threaded through to skip
+     redundant batch_get_users calls for users already fetched in an earlier group.
+  Finally, delete everything with a stale last_synced_at.
   """
   use Oban.Worker,
     queue: :google_sync,
@@ -14,6 +27,7 @@ defmodule Portal.Google.Sync do
   alias Portal.Google
   alias __MODULE__.Database
   require Logger
+  @db_batch_size 500
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"directory_id" => directory_id}}) do
@@ -126,72 +140,90 @@ defmodule Portal.Google.Sync do
 
       _ ->
         config = Portal.Config.fetch_env!(:portal, Google.APIClient)
-        config[:service_account_key] |> JSON.decode!()
+
+        case config[:service_account_key] do
+          key when is_binary(key) ->
+            JSON.decode!(key)
+
+          _ ->
+            raise Google.SyncError,
+              error: "service account key is not configured",
+              directory_id: directory.id,
+              step: :service_account_key
+        end
     end
   end
 
+  # Phase orchestration
+
   defp fetch_and_sync_all(directory, access_token, synced_at) do
-    # Sync users first
-    sync_users(directory, access_token, synced_at)
+    # Phase 1: Upsert seed groups (based on group_sync_mode), collect idp_ids
+    group_idp_ids = sync_groups_phase(directory, access_token, synced_at)
 
-    # Then sync groups and their members
-    sync_groups(directory, access_token, synced_at)
+    # Phase 2: Upsert org units (if enabled), collect {idp_id, path} pairs
+    org_unit_entries = sync_org_units_phase(directory, access_token, synced_at)
 
-    # Finally sync organization units
-    sync_org_units(directory, access_token, synced_at)
+    # Phase 3: Org unit member sync.
+    # Per org unit: fetch users → upsert identities directly from user payload (deduped)
+    # → upsert memberships. Returns the set of user IDs already synced.
+    seen_user_ids =
+      sync_org_unit_members_phase(
+        directory,
+        access_token,
+        synced_at,
+        org_unit_entries,
+        MapSet.new()
+      )
+
+    # Phase 4: BFS group member sync.
+    # For each group: fetch direct members → batch_get_users only for unseen users
+    # → upsert identities → discover GROUP-type sub-groups → recurse.
+    sync_group_members_bfs(
+      directory,
+      access_token,
+      synced_at,
+      group_idp_ids,
+      seen_user_ids
+    )
 
     :ok
   end
 
-  defp sync_users(directory, access_token, synced_at) do
-    Logger.debug("Streaming users", google_directory_id: directory.id)
+  # Phase 1: groups
 
-    Google.APIClient.stream_users(access_token, directory.domain)
-    |> Stream.each(fn
-      {:error, error} ->
-        Logger.debug("Failed to stream users",
-          google_directory_id: directory.id,
-          error: inspect(error)
-        )
+  @firezone_sync_prefix "firezone-sync"
 
-        raise Google.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_users
+  defp sync_groups_phase(directory, access_token, synced_at) do
+    case directory.group_sync_mode do
+      :disabled ->
+        []
 
-      users when is_list(users) ->
-        Logger.debug("Received users page",
-          google_directory_id: directory.id,
-          count: length(users)
-        )
+      :all ->
+        upsert_groups(directory, access_token, synced_at)
 
-        # Build identities for these users - validate required fields
-        identities =
-          Enum.map(users, fn user ->
-            # Ensure critical fields exist
-            unless user["id"] do
-              raise Google.SyncError,
-                error: {:validation, "user missing 'id' field"},
-                directory_id: directory.id,
-                step: :process_user
-            end
+      :filtered ->
+        # Google's query language does not support OR, so we issue two queries and
+        # rely on idempotent upserts to deduplicate groups that match both.
+        ids1 =
+          upsert_groups(directory, access_token, synced_at,
+            query: "email:#{@firezone_sync_prefix}*"
+          )
 
-            map_user_to_identity(user, directory.id)
-          end)
+        ids2 =
+          upsert_groups(directory, access_token, synced_at,
+            query: "name:[#{@firezone_sync_prefix}]*"
+          )
 
-        unless Enum.empty?(identities) do
-          batch_upsert_identities(directory, synced_at, identities)
-        end
-    end)
-    |> Stream.run()
+        Enum.uniq(ids1 ++ ids2)
+    end
   end
 
-  defp sync_groups(directory, access_token, synced_at) do
+  defp upsert_groups(directory, access_token, synced_at, opts \\ []) do
     Logger.debug("Streaming groups", google_directory_id: directory.id)
 
-    Google.APIClient.stream_groups(access_token, directory.domain)
-    |> Stream.each(fn
-      {:error, error} ->
+    Google.APIClient.stream_groups(access_token, directory.domain, opts)
+    |> Enum.reduce([], fn
+      {:error, error}, _acc ->
         Logger.debug("Failed to stream groups",
           google_directory_id: directory.id,
           error: inspect(error)
@@ -202,16 +234,14 @@ defmodule Portal.Google.Sync do
           directory_id: directory.id,
           step: :stream_groups
 
-      groups when is_list(groups) ->
+      groups, acc when is_list(groups) ->
         Logger.debug("Received groups page",
           google_directory_id: directory.id,
           count: length(groups)
         )
 
-        # Build and sync groups - validate required fields are present
         group_attrs =
           Enum.map(groups, fn group ->
-            # Ensure critical fields exist - if Google returns incomplete data, we must fail
             unless group["id"] do
               raise Google.SyncError,
                 error: {:validation, "group missing 'id' field"},
@@ -228,7 +258,8 @@ defmodule Portal.Google.Sync do
 
             %{
               idp_id: group["id"],
-              name: group["name"] || group["email"]
+              name: group["name"] || group["email"],
+              email: group["email"]
             }
           end)
 
@@ -236,79 +267,28 @@ defmodule Portal.Google.Sync do
           batch_upsert_groups(directory, synced_at, group_attrs)
         end
 
-        # For each group, stream and sync members
-        Enum.each(groups, fn group ->
-          sync_group_members(directory, access_token, synced_at, group)
-        end)
+        group_ids = Enum.map(groups, & &1["id"])
+        Enum.reverse(group_ids, acc)
     end)
-    |> Stream.run()
+    |> Enum.reverse()
   end
 
-  defp sync_group_members(directory, access_token, synced_at, group) do
-    group_key = group["id"]
-    group_name = group["name"] || group["email"]
+  # Phase 2: org units
 
-    Logger.debug("Streaming members for group",
-      google_directory_id: directory.id,
-      group_key: group_key,
-      group_name: group_name
-    )
-
-    Google.APIClient.stream_group_members(access_token, group_key)
-    |> Stream.each(fn
-      {:error, error} ->
-        Logger.error("Failed to fetch members for group",
-          group_key: group_key,
-          group_name: group_name,
-          error: inspect(error),
-          google_directory_id: directory.id
-        )
-
-        raise Google.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_members
-
-      members when is_list(members) ->
-        process_group_members_page(directory, synced_at, group_key, group_name, members)
-    end)
-    |> Stream.run()
-  end
-
-  defp process_group_members_page(directory, synced_at, group_key, group_name, members) do
-    Logger.debug("Received members page",
-      google_directory_id: directory.id,
-      group_key: group_key,
-      count: length(members)
-    )
-
-    # Filter only user members (not groups or other types)
-    user_members = Enum.filter(members, fn member -> member["type"] == "USER" end)
-
-    # Build memberships (group_idp_id, user_idp_id) - validate required fields
-    memberships =
-      Enum.map(user_members, fn member ->
-        unless member["id"] do
-          raise Google.SyncError,
-            error: {:validation, "member missing 'id' field in group #{group_name}"},
-            directory_id: directory.id,
-            step: :process_member
-        end
-
-        {group_key, member["id"]}
-      end)
-
-    unless Enum.empty?(memberships) do
-      batch_upsert_memberships(directory, synced_at, memberships)
+  defp sync_org_units_phase(directory, access_token, synced_at) do
+    if directory.orgunit_sync_enabled do
+      upsert_org_units(directory, access_token, synced_at)
+    else
+      []
     end
   end
 
-  defp sync_org_units(directory, access_token, synced_at) do
+  defp upsert_org_units(directory, access_token, synced_at) do
     Logger.debug("Streaming organization units", google_directory_id: directory.id)
 
     Google.APIClient.stream_organization_units(access_token)
-    |> Stream.each(fn
-      {:error, error} ->
+    |> Enum.reduce([], fn
+      {:error, error}, _acc ->
         Logger.debug("Failed to stream organization units",
           google_directory_id: directory.id,
           error: inspect(error)
@@ -319,13 +299,12 @@ defmodule Portal.Google.Sync do
           directory_id: directory.id,
           step: :stream_org_units
 
-      org_units when is_list(org_units) ->
+      org_units, acc when is_list(org_units) ->
         Logger.debug("Received organization units page",
           google_directory_id: directory.id,
           count: length(org_units)
         )
 
-        # Build org unit attrs - validate required fields
         org_unit_attrs =
           Enum.map(org_units, fn org_unit ->
             unless org_unit["orgUnitId"] do
@@ -352,7 +331,8 @@ defmodule Portal.Google.Sync do
 
             %{
               idp_id: org_unit["orgUnitId"],
-              name: org_unit["name"]
+              name: org_unit["name"],
+              email: nil
             }
           end)
 
@@ -360,33 +340,370 @@ defmodule Portal.Google.Sync do
           batch_upsert_org_units(directory, synced_at, org_unit_attrs)
         end
 
-        # For each org unit, stream and sync members
-        Enum.each(org_units, fn org_unit ->
-          sync_org_unit_members(directory, access_token, synced_at, org_unit)
-        end)
+        entries = Enum.map(org_units, fn ou -> {ou["orgUnitId"], ou["orgUnitPath"]} end)
+        Enum.reverse(entries, acc)
     end)
-    |> Stream.run()
+    |> Enum.reverse()
   end
 
-  defp sync_org_unit_members(directory, access_token, synced_at, org_unit) do
-    org_unit_id = org_unit["orgUnitId"]
-    org_unit_name = org_unit["name"]
-    org_unit_path = org_unit["orgUnitPath"]
+  # Phase 3: BFS group member sync
 
-    Logger.debug("Streaming members for organization unit",
-      google_directory_id: directory.id,
-      org_unit_id: org_unit_id,
-      org_unit_name: org_unit_name,
-      org_unit_path: org_unit_path
+  defp sync_group_members_bfs(
+         directory,
+         access_token,
+         synced_at,
+         seed_group_idp_ids,
+         seen_user_ids
+       ) do
+    visited = MapSet.new(seed_group_idp_ids)
+    queue = :queue.from_list(seed_group_idp_ids)
+
+    initial_state = %{
+      seen_user_ids: seen_user_ids,
+      direct_users_by_group: %{},
+      children_by_group: %{}
+    }
+
+    final_state = do_bfs(directory, access_token, synced_at, queue, visited, initial_state)
+
+    upsert_flattened_group_memberships(
+      directory,
+      synced_at,
+      final_state.children_by_group,
+      final_state.direct_users_by_group
     )
 
-    Google.APIClient.stream_organization_unit_members(access_token, org_unit_path)
-    |> Stream.each(fn
+    final_state.seen_user_ids
+  end
+
+  defp do_bfs(directory, access_token, synced_at, queue, visited, state) do
+    case :queue.out(queue) do
+      {:empty, _} ->
+        state
+
+      {{:value, group_idp_id}, remaining_queue} ->
+        {next_queue, next_visited, next_state} =
+          process_group_bfs_node(
+            directory,
+            access_token,
+            synced_at,
+            group_idp_id,
+            remaining_queue,
+            visited,
+            state
+          )
+
+        do_bfs(directory, access_token, synced_at, next_queue, next_visited, next_state)
+    end
+  end
+
+  defp process_group_bfs_node(
+         directory,
+         access_token,
+         synced_at,
+         group_idp_id,
+         remaining_queue,
+         visited,
+         state
+       ) do
+    {user_tuples, sub_group_ids} = fetch_group_members(directory, access_token, group_idp_id)
+    direct_user_ids = user_ids_set_from_memberships(user_tuples)
+
+    next_seen_user_ids =
+      sync_new_user_identities(
+        directory,
+        access_token,
+        synced_at,
+        direct_user_ids,
+        state.seen_user_ids
+      )
+
+    next_state =
+      state
+      |> put_group_direct_users(group_idp_id, direct_user_ids)
+      |> put_group_children(group_idp_id, sub_group_ids)
+      |> Map.put(:seen_user_ids, next_seen_user_ids)
+
+    {next_queue, next_visited} =
+      enqueue_discovered_sub_groups(
+        directory,
+        access_token,
+        synced_at,
+        sub_group_ids,
+        remaining_queue,
+        visited
+      )
+
+    {next_queue, next_visited, next_state}
+  end
+
+  defp put_group_direct_users(state, group_idp_id, direct_user_ids) do
+    %{
+      state
+      | direct_users_by_group: Map.put(state.direct_users_by_group, group_idp_id, direct_user_ids)
+    }
+  end
+
+  defp put_group_children(state, group_idp_id, sub_group_ids) do
+    children_set = MapSet.new(sub_group_ids)
+    %{state | children_by_group: Map.put(state.children_by_group, group_idp_id, children_set)}
+  end
+
+  defp user_ids_set_from_memberships(memberships) do
+    memberships
+    |> Enum.map(fn {_, user_id} -> user_id end)
+    |> MapSet.new()
+  end
+
+  defp upsert_flattened_group_memberships(
+         _directory,
+         _synced_at,
+         children_by_group,
+         direct_users_by_group
+       )
+       when map_size(children_by_group) == 0 and map_size(direct_users_by_group) == 0,
+       do: :ok
+
+  defp upsert_flattened_group_memberships(
+         directory,
+         synced_at,
+         children_by_group,
+         direct_users_by_group
+       ) do
+    children_group_ids =
+      children_by_group
+      |> Map.values()
+      |> Enum.flat_map(&MapSet.to_list/1)
+
+    group_ids =
+      (Map.keys(children_by_group) ++ Map.keys(direct_users_by_group) ++ children_group_ids)
+      |> MapSet.new()
+      |> MapSet.to_list()
+
+    flattened_users_by_group =
+      group_ids
+      |> Enum.reduce(%{}, fn group_id, acc ->
+        Map.put(acc, group_id, Map.get(direct_users_by_group, group_id, MapSet.new()))
+      end)
+      |> expand_flattened_users_until_stable(group_ids, children_by_group)
+
+    memberships =
+      flattened_users_by_group
+      |> Enum.flat_map(fn {group_id, user_ids} ->
+        Enum.map(user_ids, fn user_id -> {group_id, user_id} end)
+      end)
+
+    upsert_membership_batches(directory, synced_at, memberships)
+  end
+
+  defp expand_flattened_users_until_stable(flattened_users_by_group, group_ids, children_by_group) do
+    {next, changed?} =
+      Enum.reduce(group_ids, {flattened_users_by_group, false}, fn group_id, {acc, changed?} ->
+        current_users = Map.get(acc, group_id, MapSet.new())
+
+        expanded_users =
+          Map.get(children_by_group, group_id, MapSet.new())
+          |> Enum.reduce(current_users, fn child_group_id, users_acc ->
+            MapSet.union(users_acc, Map.get(acc, child_group_id, MapSet.new()))
+          end)
+
+        if MapSet.equal?(current_users, expanded_users) do
+          {acc, changed?}
+        else
+          {Map.put(acc, group_id, expanded_users), true}
+        end
+      end)
+
+    if changed? do
+      expand_flattened_users_until_stable(next, group_ids, children_by_group)
+    else
+      next
+    end
+  end
+
+  defp maybe_enqueue_sub_group(directory, access_token, synced_at, sub_id, {q, v}) do
+    if MapSet.member?(v, sub_id) do
+      {q, v}
+    else
+      case fetch_and_upsert_discovered_group(directory, access_token, synced_at, sub_id) do
+        :ok -> {:queue.in(sub_id, q), MapSet.put(v, sub_id)}
+        :skip -> {q, MapSet.put(v, sub_id)}
+      end
+    end
+  end
+
+  defp enqueue_discovered_sub_groups(
+         directory,
+         access_token,
+         synced_at,
+         sub_group_ids,
+         queue,
+         visited
+       ) do
+    Enum.reduce(sub_group_ids, {queue, visited}, fn sub_id, acc ->
+      maybe_enqueue_sub_group(directory, access_token, synced_at, sub_id, acc)
+    end)
+  end
+
+  # Fetches and upserts a sub-group discovered during BFS by calling get_group to
+  # retrieve its display name and email. Returns :ok on success or :skip if the
+  # group no longer exists in Google (404).
+  defp fetch_and_upsert_discovered_group(directory, access_token, synced_at, group_id) do
+    Logger.debug("Fetching discovered sub-group",
+      google_directory_id: directory.id,
+      group_id: group_id
+    )
+
+    case Google.APIClient.get_group(access_token, group_id) do
+      {:ok, group} ->
+        unless group["id"] do
+          raise Google.SyncError,
+            error: {:validation, "discovered group missing 'id' field"},
+            directory_id: directory.id,
+            step: :get_group
+        end
+
+        unless group["name"] || group["email"] do
+          raise Google.SyncError,
+            error: {:validation, "discovered group '#{group_id}' missing 'name' field"},
+            directory_id: directory.id,
+            step: :get_group
+        end
+
+        attrs = [
+          %{
+            idp_id: group["id"],
+            name: group["name"] || group["email"],
+            email: group["email"]
+          }
+        ]
+
+        batch_upsert_groups(directory, synced_at, attrs)
+        :ok
+
+      {:error, :not_found} ->
+        Logger.debug("Discovered sub-group no longer exists in Google, skipping",
+          google_directory_id: directory.id,
+          group_id: group_id
+        )
+
+        :skip
+
       {:error, error} ->
+        raise Google.SyncError,
+          error: error,
+          directory_id: directory.id,
+          step: :get_group
+    end
+  end
+
+  # Returns {user_membership_tuples, sub_group_idp_ids}:
+  # - user_membership_tuples: [{group_idp_id, user_idp_id}] for type=USER members
+  # - sub_group_idp_ids: [idp_id] for type=GROUP members (to be discovered via BFS)
+  defp fetch_group_members(directory, access_token, group_idp_id) do
+    Logger.debug("Streaming members for group",
+      google_directory_id: directory.id,
+      group_key: group_idp_id
+    )
+
+    Google.APIClient.stream_group_members(access_token, group_idp_id)
+    |> Enum.reduce({[], []}, fn
+      {:error, error}, _acc ->
+        Logger.error("Failed to fetch members for group",
+          group_key: group_idp_id,
+          error: inspect(error),
+          google_directory_id: directory.id
+        )
+
+        raise Google.SyncError,
+          error: error,
+          directory_id: directory.id,
+          step: :stream_group_members
+
+      members, {user_acc, sub_group_acc} when is_list(members) ->
+        Logger.debug("Received members page",
+          google_directory_id: directory.id,
+          group_key: group_idp_id,
+          count: length(members)
+        )
+
+        user_members = Enum.filter(members, fn m -> m["type"] == "USER" end)
+        group_members = Enum.filter(members, fn m -> m["type"] == "GROUP" end)
+
+        user_tuples =
+          Enum.map(user_members, fn member ->
+            unless member["id"] do
+              raise Google.SyncError,
+                error: {:validation, "member missing 'id' field in group #{group_idp_id}"},
+                directory_id: directory.id,
+                step: :process_member
+            end
+
+            {group_idp_id, member["id"]}
+          end)
+
+        sub_group_ids =
+          Enum.flat_map(group_members, fn member ->
+            case member["id"] do
+              nil -> []
+              id -> [id]
+            end
+          end)
+
+        {Enum.reverse(user_tuples, user_acc), Enum.reverse(sub_group_ids, sub_group_acc)}
+    end)
+    |> then(fn {user_acc, sub_group_acc} ->
+      {Enum.reverse(user_acc), Enum.reverse(sub_group_acc)}
+    end)
+  end
+
+  # Phase 3: org unit member sync
+
+  defp sync_org_unit_members_phase(
+         directory,
+         access_token,
+         synced_at,
+         org_unit_entries,
+         seen_user_ids
+       ) do
+    Enum.reduce(org_unit_entries, seen_user_ids, fn {ou_idp_id, ou_path}, seen ->
+      sync_single_org_unit(directory, access_token, synced_at, ou_idp_id, ou_path, seen)
+    end)
+  end
+
+  defp sync_single_org_unit(directory, access_token, synced_at, ou_idp_id, ou_path, seen_user_ids) do
+    {user_tuples, users_by_id} =
+      fetch_org_unit_memberships(directory, access_token, ou_idp_id, ou_path)
+
+    user_ids = user_ids_from_membership_tuples(user_tuples)
+
+    new_user_ids =
+      user_ids
+      |> Enum.reject(&MapSet.member?(seen_user_ids, &1))
+
+    new_users =
+      new_user_ids
+      |> Enum.map(&Map.fetch!(users_by_id, &1))
+
+    sync_identities_for_user_payloads(directory, synced_at, new_users)
+    upsert_membership_batches(directory, synced_at, user_tuples)
+
+    Enum.reduce(user_ids, seen_user_ids, &MapSet.put(&2, &1))
+  end
+
+  defp fetch_org_unit_memberships(directory, access_token, ou_idp_id, ou_path) do
+    Logger.debug("Streaming members for organization unit",
+      google_directory_id: directory.id,
+      org_unit_id: ou_idp_id,
+      org_unit_path: ou_path
+    )
+
+    Google.APIClient.stream_organization_unit_members(access_token, ou_path)
+    |> Enum.reduce({[], %{}}, fn
+      {:error, error}, _acc ->
         Logger.error("Failed to fetch users for organization unit",
-          org_unit_id: org_unit_id,
-          org_unit_name: org_unit_name,
-          org_unit_path: org_unit_path,
+          org_unit_id: ou_idp_id,
+          org_unit_path: ou_path,
           error: inspect(error),
           google_directory_id: directory.id
         )
@@ -396,38 +713,165 @@ defmodule Portal.Google.Sync do
           directory_id: directory.id,
           step: :stream_org_unit_members
 
-      users when is_list(users) ->
-        process_org_unit_members_page(directory, synced_at, org_unit_id, org_unit_name, users)
+      users, {tuple_acc, users_by_id_acc} when is_list(users) ->
+        Logger.debug("Received users page for organization unit",
+          google_directory_id: directory.id,
+          org_unit_id: ou_idp_id,
+          count: length(users)
+        )
+
+        tuples =
+          Enum.map(users, fn user ->
+            unless user["id"] do
+              raise Google.SyncError,
+                error: {:validation, "user missing 'id' field in org unit #{ou_idp_id}"},
+                directory_id: directory.id,
+                step: :process_org_unit_member
+            end
+
+            {ou_idp_id, user["id"]}
+          end)
+
+        users_by_id =
+          Enum.reduce(users, users_by_id_acc, fn user, acc ->
+            Map.put(acc, user["id"], user)
+          end)
+
+        {Enum.reverse(tuples, tuple_acc), users_by_id}
     end)
-    |> Stream.run()
+    |> then(fn {tuple_acc, users_by_id} ->
+      {Enum.reverse(tuple_acc), users_by_id}
+    end)
   end
 
-  defp process_org_unit_members_page(directory, synced_at, org_unit_id, org_unit_name, users) do
-    Logger.debug("Received users page for organization unit",
-      google_directory_id: directory.id,
-      org_unit_id: org_unit_id,
-      count: length(users)
+  # Identity sync (shared by group BFS and org unit phases)
+
+  defp sync_identities_for_users(_directory, _access_token, _synced_at, []), do: :ok
+
+  defp sync_identities_for_users(directory, access_token, synced_at, user_idp_ids) do
+    Logger.debug("Fetching user details for #{length(user_idp_ids)} users via batch API",
+      google_directory_id: directory.id
     )
 
-    # Build memberships (org_unit_idp_id, user_idp_id) - validate required fields
-    memberships =
-      Enum.map(users, fn user ->
-        unless user["id"] do
+    users =
+      case Google.APIClient.batch_get_users(access_token, user_idp_ids) do
+        {:ok, users} ->
+          users
+
+        {:error, error} ->
           raise Google.SyncError,
-            error: {:validation, "user missing 'id' field in org unit #{org_unit_name}"},
+            error: error,
             directory_id: directory.id,
-            step: :process_org_unit_member
-        end
+            step: :batch_get_users
+      end
 
-        {org_unit_id, user["id"]}
-      end)
+    identities = Enum.map(users, &map_user_to_identity(&1, directory.id))
 
-    unless Enum.empty?(memberships) do
-      batch_upsert_memberships(directory, synced_at, memberships)
-    end
+    identities
+    |> Enum.chunk_every(@db_batch_size)
+    |> Enum.each(&batch_upsert_identities(directory, synced_at, &1))
   end
 
-  defp batch_upsert_identities(directory, synced_at, identities) do
+  defp sync_identities_for_user_payloads(_directory, _synced_at, []), do: :ok
+
+  defp sync_identities_for_user_payloads(directory, synced_at, users) do
+    identities = Enum.map(users, &map_user_to_identity(&1, directory.id))
+
+    identities
+    |> Enum.chunk_every(@db_batch_size)
+    |> Enum.each(&batch_upsert_identities(directory, synced_at, &1))
+  end
+
+  defp sync_new_user_identities(directory, access_token, synced_at, user_ids, seen_user_ids) do
+    new_user_idp_ids =
+      user_ids
+      |> Enum.reject(&MapSet.member?(seen_user_ids, &1))
+
+    sync_identities_for_users(directory, access_token, synced_at, new_user_idp_ids)
+
+    Enum.reduce(new_user_idp_ids, seen_user_ids, &MapSet.put(&2, &1))
+  end
+
+  defp user_ids_from_membership_tuples(user_tuples) do
+    user_tuples
+    |> Enum.map(fn {_, user_id} -> user_id end)
+    |> Enum.uniq()
+  end
+
+  defp upsert_membership_batches(_directory, _synced_at, []), do: :ok
+
+  defp upsert_membership_batches(directory, synced_at, memberships) do
+    memberships
+    |> Enum.chunk_every(@db_batch_size)
+    |> Enum.each(&batch_upsert_memberships(directory, synced_at, &1))
+  end
+
+  defp map_user_to_identity(user, directory_id) do
+    primary_email = user["primaryEmail"]
+
+    unless primary_email do
+      raise Google.SyncError,
+        error: {:validation, "user '#{user["id"]}' missing 'primaryEmail' field"},
+        directory_id: directory_id,
+        step: :process_user
+    end
+
+    full_name =
+      user
+      |> Map.get("name", %{})
+      |> Map.get("fullName")
+
+    %{
+      idp_id: user["id"],
+      email: primary_email,
+      name: full_name || primary_email,
+      given_name: Map.get(user, "name", %{}) |> Map.get("givenName"),
+      family_name: Map.get(user, "name", %{}) |> Map.get("familyName"),
+      preferred_username: primary_email,
+      picture: Map.get(user, "thumbnailPhotoUrl")
+    }
+  end
+
+  # Cleanup
+
+  defp delete_unsynced(directory, synced_at) do
+    account_id = directory.account_id
+    directory_id = directory.id
+
+    # Delete memberships before groups (memberships reference groups via FK)
+    {count, _} = Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
+
+    Logger.debug("Deleted unsynced memberships",
+      google_directory_id: directory.id,
+      count: count
+    )
+
+    {count, _} = Database.delete_unsynced_groups(account_id, directory_id, synced_at)
+
+    Logger.debug("Deleted unsynced groups and org units",
+      google_directory_id: directory.id,
+      count: count
+    )
+
+    {count, _} = Database.delete_unsynced_identities(account_id, directory_id, synced_at)
+
+    Logger.debug("Deleted unsynced identities",
+      google_directory_id: directory.id,
+      count: count
+    )
+
+    {count, _} = Database.delete_actors_without_identities(account_id, directory_id)
+
+    Logger.debug("Deleted actors without identities",
+      google_directory_id: directory.id,
+      count: count
+    )
+  end
+
+  # Batch DB helpers
+
+  @doc false
+  def batch_upsert_identities(directory, synced_at, identities) do
     account_id = directory.account_id
     directory_id = directory.id
 
@@ -458,7 +902,8 @@ defmodule Portal.Google.Sync do
     :ok
   end
 
-  defp batch_upsert_memberships(directory, synced_at, memberships) do
+  @doc false
+  def batch_upsert_memberships(directory, synced_at, memberships) do
     account_id = directory.account_id
     directory_id = directory.id
 
@@ -474,7 +919,10 @@ defmodule Portal.Google.Sync do
           google_directory_id: directory.id
         )
 
-        :error
+        raise Google.SyncError,
+          error: {:database, "failed to upsert memberships: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_memberships
     end
   end
 
@@ -487,70 +935,6 @@ defmodule Portal.Google.Sync do
 
     Logger.debug("Upserted #{count} organization units", google_directory_id: directory.id)
     :ok
-  end
-
-  defp delete_unsynced(directory, synced_at) do
-    account_id = directory.account_id
-    directory_id = directory.id
-
-    # Delete groups that weren't synced
-    {deleted_groups_count, _} =
-      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced groups",
-      google_directory_id: directory.id,
-      count: deleted_groups_count
-    )
-
-    # Delete identities that weren't synced
-    {deleted_identities_count, _} =
-      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced identities",
-      google_directory_id: directory.id,
-      count: deleted_identities_count
-    )
-
-    # Delete memberships that weren't synced
-    {deleted_memberships_count, _} =
-      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced group memberships",
-      google_directory_id: directory.id,
-      count: deleted_memberships_count
-    )
-
-    # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} =
-      Database.delete_actors_without_identities(account_id, directory_id)
-
-    Logger.debug("Deleted actors without identities",
-      google_directory_id: directory.id,
-      count: deleted_actors_count
-    )
-  end
-
-  defp map_user_to_identity(user, directory_id) do
-    # Map Google Workspace user fields to our identity schema
-    # Validate that critical fields are present
-    primary_email = user["primaryEmail"]
-
-    unless primary_email do
-      raise Google.SyncError,
-        error: {:validation, "user '#{user["id"]}' missing 'primaryEmail' field"},
-        directory_id: directory_id,
-        step: :process_user
-    end
-
-    %{
-      idp_id: user["id"],
-      email: primary_email,
-      name: Map.get(user, "name", %{}) |> Map.get("fullName"),
-      given_name: Map.get(user, "name", %{}) |> Map.get("givenName"),
-      family_name: Map.get(user, "name", %{}) |> Map.get("familyName"),
-      preferred_username: primary_email,
-      picture: Map.get(user, "thumbnailPhotoUrl")
-    }
   end
 
   defmodule Database do
@@ -732,7 +1116,6 @@ defmodule Portal.Google.Sync do
       do: {:ok, %{upserted_groups: 0}}
 
     def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs, entity_type) do
-      # Convert to raw SQL to support conditional updates based on last_synced_at
       query = build_group_upsert_query(length(group_attrs))
 
       params =
@@ -754,30 +1137,31 @@ defmodule Portal.Google.Sync do
     end
 
     defp build_group_upsert_query(count) do
-      # Each group has 2 fields: idp_id, name
+      # Each group has 3 fields: idp_id, name, email
       values_clause =
-        for i <- 1..count, base = (i - 1) * 2 do
-          "($#{base + 1}, $#{base + 2})"
+        for i <- 1..count, base = (i - 1) * 3 do
+          "($#{base + 1}, $#{base + 2}, $#{base + 3})"
         end
         |> Enum.join(", ")
 
-      offset = count * 2
+      offset = count * 3
       account_id = offset + 1
       directory_id = offset + 2
       last_synced_at = offset + 3
       entity_type = offset + 4
 
       """
-      WITH input_data (idp_id, name) AS (
+      WITH input_data (idp_id, name, email) AS (
         VALUES #{values_clause}
       )
       INSERT INTO groups (
-        id, name, directory_id, idp_id, account_id,
+        id, name, email, directory_id, idp_id, account_id,
         inserted_at, updated_at, type, entity_type, last_synced_at
       )
       SELECT
         uuid_generate_v4(),
         id.name,
+        id.email,
         $#{directory_id},
         id.idp_id,
         $#{account_id},
@@ -793,6 +1177,11 @@ defmodule Portal.Google.Sync do
           WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
           THEN EXCLUDED.name
           ELSE groups.name
+        END,
+        email = CASE
+          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
+          THEN EXCLUDED.email
+          ELSE groups.email
         END,
         directory_id = CASE
           WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
@@ -822,10 +1211,9 @@ defmodule Portal.Google.Sync do
       group_params =
         group_attrs
         |> Enum.flat_map(fn attrs ->
-          [attrs.idp_id, attrs.name]
+          [attrs.idp_id, attrs.name, Map.get(attrs, :email)]
         end)
 
-      # Properly cast UUIDs to binary
       group_params ++
         [
           Ecto.UUID.dump!(account_id),
@@ -844,7 +1232,14 @@ defmodule Portal.Google.Sync do
       params =
         build_membership_upsert_params(account_id, directory_id, last_synced_at, tuples)
 
-      case Safe.unscoped() |> Safe.query(query, params) do
+      result =
+        try do
+          Safe.unscoped() |> Safe.query(query, params)
+        rescue
+          error in DBConnection.EncodeError -> {:error, error}
+        end
+
+      case result do
         {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
         {:error, reason} -> {:error, reason}
       end
@@ -930,7 +1325,6 @@ defmodule Portal.Google.Sync do
     end
 
     def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      # Delete memberships for groups in this directory that haven't been synced
       query =
         from(m in Portal.Membership,
           join: g in Portal.Group,
