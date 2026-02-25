@@ -32,6 +32,7 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
+const EVENTLOOP_WORK_BUDGET: usize = 256;
 
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
@@ -508,6 +509,8 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
+        let mut work_budget = EVENTLOOP_WORK_BUDGET;
+
         loop {
             let mut ready = false;
 
@@ -725,6 +728,12 @@ where
             if !ready {
                 break Poll::Pending;
             }
+
+            if consume_work_budget_and_should_yield(&mut work_budget) {
+                // Ensure other tasks on the current-thread runtime make progress.
+                cx.waker().wake_by_ref();
+                break Poll::Pending;
+            }
         }
     }
 
@@ -828,6 +837,11 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
     format!("{throughput:.2} TB/s")
 }
 
+fn consume_work_budget_and_should_yield(work_budget: &mut usize) -> bool {
+    *work_budget = work_budget.saturating_sub(1);
+    *work_budget == 0
+}
+
 fn make_otel_metadata() -> opentelemetry_sdk::Resource {
     use opentelemetry::{Key, KeyValue};
     use opentelemetry_sdk::Resource;
@@ -853,6 +867,23 @@ mod tests {
         assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
         assert_eq!(fmt_human_throughput(955_333_999.0), "955.33 MB/s");
         assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
+    }
+
+    #[test]
+    fn work_budget_yields_when_exhausted() {
+        let mut budget = 2;
+        assert!(!consume_work_budget_and_should_yield(&mut budget));
+        assert_eq!(budget, 1);
+
+        assert!(consume_work_budget_and_should_yield(&mut budget));
+        assert_eq!(budget, 0);
+    }
+
+    #[test]
+    fn work_budget_saturates_at_zero() {
+        let mut budget = 0;
+        assert!(consume_work_budget_and_should_yield(&mut budget));
+        assert_eq!(budget, 0);
     }
 
     // Regression tests to ensure we can parse sockets as well as domains for the otlp-grpc endpoint.
