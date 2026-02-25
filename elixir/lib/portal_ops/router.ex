@@ -7,7 +7,7 @@ defmodule PortalOps.Router do
          "script-src 'self' 'unsafe-inline'; " <>
          "style-src 'self' 'unsafe-inline'; " <>
          "img-src 'self' data:; " <>
-         "font-src 'self'; " <>
+         "font-src 'self' data:; " <>
          "connect-src 'self' ws: wss:; " <>
          "frame-ancestors 'none'"
 
