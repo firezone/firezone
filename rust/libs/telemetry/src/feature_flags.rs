@@ -42,6 +42,12 @@ pub fn stream_logs(metadata: &Metadata<'_>) -> bool {
     FEATURE_FLAGS.stream_logs(metadata)
 }
 
+/// Returns whether log streaming is currently active (i.e. `stream_logs` flag is on
+/// and has non-empty directives).
+pub fn stream_logs_active() -> bool {
+    !FEATURE_FLAGS.stream_logs.read().directives.is_empty()
+}
+
 pub fn icmp_error_unreachable_prohibited_create_new_flow() -> bool {
     FEATURE_FLAGS.icmp_error_unreachable_prohibited_create_new_flow()
 }
