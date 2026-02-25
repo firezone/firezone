@@ -761,13 +761,19 @@ defmodule PortalAPI.Client.Channel do
       false ->
         push(socket, "client_device_access_denied", %{
           ipv4: ipv4_string,
-          reason: :feature_disabled
+          reason: :disabled
         })
 
         {:noreply, socket}
 
       {:error, :invalid_ipv4} ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :invalid_ipv4})
+        Logger.warning("Invalid IPv4 address provided for device access request",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          ipv4: ipv4_string
+        )
+
         {:noreply, socket}
 
       :not_found ->
@@ -812,19 +818,16 @@ defmodule PortalAPI.Client.Channel do
       {:noreply, socket}
     else
       false ->
-        push(socket, "client_ice_candidate_error", %{
-          client_id: target_client_id,
-          reason: :feature_disabled
-        })
+        Logger.warning("Client-to-client communication is disabled, cannot send ICE candidates",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          target_client_id: target_client_id
+        )
 
         {:noreply, socket}
 
       {:error, :not_found} ->
-        push(socket, "client_ice_candidate_error", %{
-          client_id: target_client_id,
-          reason: :offline
-        })
-
         {:noreply, socket}
     end
   end
@@ -845,7 +848,7 @@ defmodule PortalAPI.Client.Channel do
       false ->
         push(socket, "client_ice_candidate_error", %{
           client_id: target_client_id,
-          reason: :feature_disabled
+          reason: :disabled
         })
 
         {:noreply, socket}
