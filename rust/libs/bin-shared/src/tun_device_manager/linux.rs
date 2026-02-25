@@ -853,9 +853,24 @@ fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
 fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     let buf = packet.packet();
 
+    // Empty vnet header (all zeros means no offloading for TX)
+    // flags = 0, gso_type = 0 (VIRTIO_NET_HDR_GSO_NONE), all other fields = 0
+    let vnet_hdr = [0u8; VNET_HDR_SIZE as usize];
+
+    let iov = [
+        libc::iovec {
+            iov_base: vnet_hdr.as_ptr() as *mut libc::c_void,
+            iov_len: vnet_hdr.len(),
+        },
+        libc::iovec {
+            iov_base: buf.as_ptr() as *mut libc::c_void,
+            iov_len: buf.len(),
+        },
+    ];
+
     // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
+    match unsafe { libc::writev(fd, iov.as_ptr(), 2) } {
         -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
+        n => Ok(n as usize - VNET_HDR_SIZE as usize),
     }
 }
