@@ -6,6 +6,7 @@ defmodule PortalAPI.Client.Channel do
     Cache,
     Channels,
     Changes.Change,
+    Features,
     PubSub,
     Gateway,
     Presence,
@@ -61,8 +62,20 @@ defmodule PortalAPI.Client.Channel do
     # Cache relay IDs and stamp secrets for tracking
     socket = cache_relays(socket, relays)
 
-    # Track client's presence
-    :ok = Presence.Clients.connect(socket.assigns.client, socket.assigns.subject.credential.id)
+    # Track client's presence with session metadata for client-to-client signaling
+    session_meta = %{
+      ipv4: socket.assigns.client.ipv4_address && socket.assigns.client.ipv4_address.address,
+      ipv6: socket.assigns.client.ipv6_address && socket.assigns.client.ipv6_address.address,
+      public_key: socket.assigns.session.public_key,
+      psk_base: socket.assigns.client.psk_base
+    }
+
+    :ok =
+      Presence.Clients.connect(
+        socket.assigns.client,
+        socket.assigns.subject.credential.id,
+        session_meta
+      )
 
     # Register for targeted messages from gateway channels
     :ok = Channels.register_client(socket.assigns.client.id)
@@ -293,7 +306,7 @@ defmodule PortalAPI.Client.Channel do
       reply_payload = %{
         resource_id: resource_id,
         preshared_key: preshared_key,
-        client_ice_credentials: ice_credentials.client,
+        client_ice_credentials: ice_credentials.initiator,
         # TODO: conditionally rename to site_id based on client version
         # apple: >= 1.5.11
         # headless: >= 1.5.6
@@ -305,7 +318,7 @@ defmodule PortalAPI.Client.Channel do
         gateway_public_key: gateway_public_key,
         gateway_ipv4: gateway_ipv4,
         gateway_ipv6: gateway_ipv6,
-        gateway_ice_credentials: ice_credentials.gateway
+        gateway_ice_credentials: ice_credentials.receiver
       }
 
       push(socket, "flow_created", reply_payload)
@@ -327,6 +340,25 @@ defmodule PortalAPI.Client.Channel do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_info({:client_device_access_authorized, payload}, socket) do
+    push(socket, "client_device_access_authorized", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
+    push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
+    {:noreply, socket}
+  end
+
+  def handle_info({:invalidate_client_ice_candidates, client_id, candidates}, socket) do
+    push(socket, "invalidate_client_ice_candidates", %{
+      client_id: client_id,
+      candidates: candidates
+    })
+
+    {:noreply, socket}
   end
 
   # Catch-all for messages we don't handle
@@ -674,6 +706,163 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
+  def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
+    account_id = socket.assigns.client.account_id
+
+    with true <- client_to_client_enabled?(),
+         {:ok, ipv4_tuple} <- parse_ipv4(ipv4_string),
+         {target_client_id, target_meta} <-
+           Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) || :not_found do
+      client = socket.assigns.client
+      client_public_key = socket.assigns.session.public_key
+      target_client = %Portal.Client{id: target_client_id, psk_base: target_meta.psk_base}
+
+      preshared_key =
+        Portal.Crypto.psk(client, client_public_key, target_client, target_meta.public_key)
+
+      ice_credentials =
+        generate_ice_credentials(
+          client_public_key,
+          client,
+          target_client,
+          target_meta.public_key
+        )
+
+      Channels.send_to_client(
+        target_client_id,
+        {:client_device_access_authorized,
+         %{
+           client_id: client.id,
+           client_public_key: client_public_key,
+           client_ipv4:
+             client.ipv4_address && %Postgrex.INET{address: client.ipv4_address.address},
+           client_ipv6:
+             client.ipv6_address && %Postgrex.INET{address: client.ipv6_address.address},
+           preshared_key: preshared_key,
+           local_ice_credentials: ice_credentials.receiver,
+           remote_ice_credentials: ice_credentials.initiator,
+           ice_role: :controlled
+         }}
+      )
+
+      push(socket, "client_device_access_authorized", %{
+        client_id: target_client_id,
+        client_public_key: target_meta.public_key,
+        client_ipv4: target_meta.ipv4 && %Postgrex.INET{address: target_meta.ipv4},
+        client_ipv6: target_meta.ipv6 && %Postgrex.INET{address: target_meta.ipv6},
+        preshared_key: preshared_key,
+        local_ice_credentials: ice_credentials.initiator,
+        remote_ice_credentials: ice_credentials.receiver,
+        ice_role: :controlling
+      })
+
+      {:noreply, socket}
+    else
+      false ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: ipv4_string,
+          reason: :disabled
+        })
+
+        {:noreply, socket}
+
+      {:error, :invalid_ipv4} ->
+        Logger.warning("Invalid IPv4 address provided for device access request",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          ipv4: ipv4_string
+        )
+
+        {:noreply, socket}
+
+      :not_found ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :not_found})
+        {:noreply, socket}
+    end
+  end
+
+  def handle_in(
+        "new_gateway_ice_candidates",
+        %{"candidates" => candidates, "gateway_id" => gateway_id},
+        socket
+      ) do
+    Channels.send_to_gateway(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
+    {:noreply, socket}
+  end
+
+  def handle_in(
+        "invalidate_gateway_ice_candidates",
+        %{"candidates" => candidates, "gateway_id" => gateway_id},
+        socket
+      ) do
+    Channels.send_to_gateway(
+      gateway_id,
+      {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_in(
+        "new_client_ice_candidates",
+        %{"candidates" => candidates, "client_id" => target_client_id},
+        socket
+      ) do
+    with true <- client_to_client_enabled?(),
+         :ok <-
+           Channels.send_to_client(
+             target_client_id,
+             {:client_ice_candidates, socket.assigns.client.id, candidates}
+           ) do
+      {:noreply, socket}
+    else
+      false ->
+        Logger.warning("Client-to-client communication is disabled, cannot send ICE candidates",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          target_client_id: target_client_id
+        )
+
+        {:noreply, socket}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_in(
+        "invalidate_client_ice_candidates",
+        %{"candidates" => candidates, "client_id" => target_client_id},
+        socket
+      ) do
+    with true <- client_to_client_enabled?(),
+         :ok <-
+           Channels.send_to_client(
+             target_client_id,
+             {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+           ) do
+      {:noreply, socket}
+    else
+      false ->
+        push(socket, "client_ice_candidate_error", %{
+          client_id: target_client_id,
+          reason: :disabled
+        })
+
+        {:noreply, socket}
+
+      {:error, :not_found} ->
+        push(socket, "client_ice_candidate_error", %{
+          client_id: target_client_id,
+          reason: :offline
+        })
+
+        {:noreply, socket}
+    end
+  end
+
   # The client pushes it's ICE candidates list and the list of gateways that need to receive it
   def handle_in(
         "broadcast_ice_candidates",
@@ -712,6 +901,15 @@ defmodule PortalAPI.Client.Channel do
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
+  defp client_to_client_enabled?, do: Database.client_to_client_enabled?()
+
+  defp parse_ipv4(ipv4_string) when is_binary(ipv4_string) do
+    case :inet.parse_address(String.to_charlist(ipv4_string)) do
+      {:ok, {_, _, _, _} = tuple} -> {:ok, tuple}
+      _ -> {:error, :invalid_ipv4}
+    end
+  end
+
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
 
@@ -734,16 +932,16 @@ defmodule PortalAPI.Client.Channel do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
   end
 
-  # Ice credentials must stay the same for all connections between client and gateway as long as they
-  # do not loose their state, so we can leverage public_key which is reset on each restart of the client
-  # or gateway.
-  defp generate_ice_credentials(client_public_key, client, gateway, gateway_public_key) do
+  # ICE credentials must stay the same for all connections between an initiator and a receiver as long
+  # as they do not lose their state, so we can leverage their public keys, which are reset on each
+  # restart of an initiator or a receiver.
+  defp generate_ice_credentials(initiator_pubkey, initiator, receiver, receiver_pubkey) do
     ice_credential_seed =
       [
-        client.id,
-        client_public_key,
-        gateway.id,
-        gateway_public_key
+        initiator.id,
+        initiator_pubkey,
+        receiver.id,
+        receiver_pubkey
       ]
       |> Enum.join(":")
 
@@ -752,17 +950,17 @@ defmodule PortalAPI.Client.Channel do
       |> Base.encode32(case: :lower, padding: false)
 
     [
-      {:client_username, client_username},
-      {:client_password, client_password},
-      {:gateway_username, gateway_username},
-      {:gateway_password, gateway_password}
+      {:initiator_username, initiator_username},
+      {:initiator_password, initiator_password},
+      {:receiver_username, receiver_username},
+      {:receiver_password, receiver_password}
     ] =
       Enum.map(
         [
-          client_username: 0..3,
-          client_password: 4..25,
-          gateway_username: 26..29,
-          gateway_password: 30..52
+          initiator_username: 0..3,
+          initiator_password: 4..25,
+          receiver_username: 26..29,
+          receiver_password: 30..52
         ],
         fn {key, range} ->
           {key, String.slice(ice_credential_seed_hash, range)}
@@ -770,8 +968,8 @@ defmodule PortalAPI.Client.Channel do
       )
 
     %{
-      client: %{username: client_username, password: client_password},
-      gateway: %{username: gateway_username, password: gateway_password}
+      initiator: %{username: initiator_username, password: initiator_password},
+      receiver: %{username: receiver_username, password: receiver_password}
     }
   end
 
@@ -1019,6 +1217,17 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defmodule Database do
+    import Ecto.Query, only: [from: 2]
+
+    alias Portal.Features
+
+    def client_to_client_enabled? do
+      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
+
+      Portal.Safe.unscoped(query, :replica)
+      |> Portal.Safe.exists?()
+    end
+
     def all_compatible_gateways_for_client_and_resource(
           client_version,
           resource,

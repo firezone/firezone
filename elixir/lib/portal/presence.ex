@@ -8,8 +8,8 @@ defmodule Portal.Presence do
   alias Portal.Gateway
 
   defmodule Clients do
-    def connect(%Client{} = client, token_id) do
-      with {:ok, _} <- __MODULE__.Account.track(client.account_id, client.id),
+    def connect(%Client{} = client, token_id, session_meta \\ %{}) do
+      with {:ok, _} <- __MODULE__.Account.track(client.account_id, client.id, session_meta),
            {:ok, _} <- __MODULE__.Actor.track(client.actor_id, client.id, token_id) do
         :ok
       end
@@ -50,12 +50,12 @@ defmodule Portal.Presence do
     end
 
     defmodule Account do
-      def track(account_id, client_id) do
+      def track(account_id, client_id, session_meta \\ %{}) do
         Portal.Presence.track(
           self(),
           topic(account_id),
           client_id,
-          %{online_at: System.system_time(:second)}
+          Map.merge(session_meta, %{online_at: System.system_time(:second)})
         )
       end
 
@@ -75,6 +75,14 @@ defmodule Portal.Presence do
         account_id
         |> topic()
         |> Portal.Presence.list()
+      end
+
+      def find_by_ipv4(account_id, ipv4_tuple) when is_tuple(ipv4_tuple) do
+        account_id
+        |> list()
+        |> Enum.find_value(fn {client_id, %{metas: [meta | _]}} ->
+          if meta.ipv4 == ipv4_tuple, do: {client_id, meta}
+        end)
       end
 
       defp topic(account_id) do

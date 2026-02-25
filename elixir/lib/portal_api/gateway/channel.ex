@@ -256,9 +256,9 @@ defmodule PortalAPI.Gateway.Channel do
     push(socket, "authorize_flow", %{
       ref: ref,
       resource: resource,
-      gateway_ice_credentials: ice_credentials.gateway,
+      gateway_ice_credentials: ice_credentials.receiver,
       client: client,
-      client_ice_credentials: ice_credentials.client,
+      client_ice_credentials: ice_credentials.initiator,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
       subject: subject
     })
