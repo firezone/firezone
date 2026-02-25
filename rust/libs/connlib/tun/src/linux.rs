@@ -131,11 +131,7 @@ fn parse_vnet_packet(
         num_buffers: u16::from_le_bytes([vnet_hdr[10], vnet_hdr[11]]),
     };
 
-    // Handle GSO/USO segmentation
-    if hdr.gso_type != VIRTIO_NET_HDR_GSO_NONE && hdr.gso_size > 0 {
-        // This is a GSO packet that needs to be split into individual packets
-        segment_gso_packet(ip_data, &hdr)
-    } else {
+    if hdr.gso_type == VIRTIO_NET_HDR_GSO_NONE {
         // Regular packet - copy to a new IpPacketBuf
         let mut buf = IpPacketBuf::new();
         let buf_slice = buf.buf();
@@ -143,15 +139,17 @@ fn parse_vnet_packet(
 
         let packet = IpPacket::new(buf, ip_data.len()).context("Failed to parse IP packet")?;
 
-        Ok(vec![packet])
+        return Ok(vec![packet]);
     }
+
+    let packets = segment_gso_packet(ip_data, &hdr)?;
+
+    Ok(packets)
 }
 
 /// Segment a GSO/USO packet into individual IP packets
 fn segment_gso_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> {
-    use anyhow::ensure;
-
-    ensure!(
+    anyhow::ensure!(
         hdr.hdr_len as usize <= data.len(),
         "Header length {} exceeds packet size {}",
         hdr.hdr_len,
@@ -163,7 +161,7 @@ fn segment_gso_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> 
     let payload_start = header_len;
     let total_payload_len = data.len() - header_len;
 
-    ensure!(segment_size > 0, "GSO segment size is zero");
+    anyhow::ensure!(segment_size > 0, "GSO segment size is zero");
 
     let mut packets = Vec::new();
     let mut offset = 0;
