@@ -40,7 +40,10 @@ defmodule PortalOps.Endpoint do
   plug PortalOps.Router
 
   def cookie_secure do
-    Portal.Config.fetch_env!(:portal, :cookie_secure)
+    # The ops endpoint is always served over plain HTTP, so cookies must never
+    # be marked Secure or the browser will refuse to send them back, breaking
+    # the LiveView session and causing an infinite reload loop.
+    false
   end
 
   def cookie_signing_salt do
