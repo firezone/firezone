@@ -14,30 +14,21 @@ struct ScopedResolversTests {
 
   // MARK: - Basic Tests
 
-  @Test("Can instantiate ScopedResolvers")
-  func canInstantiate() async throws {
-    // Just verify instantiation doesn't crash
-    _ = ScopedResolvers()
-  }
-
   @Test("Returns empty array for nil interface name")
   func returnsEmptyForNilInterface() async throws {
-    let resolvers = ScopedResolvers()
-    let result = resolvers.getDefaultDNSServers(interfaceName: nil)
+    let result = ScopedResolvers.getDefaultDNSServers(interfaceName: nil)
     #expect(result.isEmpty)
   }
 
   @Test("Returns empty array for non-existent interface")
   func returnsEmptyForNonExistentInterface() async throws {
-    let resolvers = ScopedResolvers()
-    let result = resolvers.getDefaultDNSServers(interfaceName: "nonexistent99")
+    let result = ScopedResolvers.getDefaultDNSServers(interfaceName: "nonexistent99")
     #expect(result.isEmpty)
   }
 
   @Test("Returns empty array for empty interface name")
   func returnsEmptyForEmptyInterface() async throws {
-    let resolvers = ScopedResolvers()
-    let result = resolvers.getDefaultDNSServers(interfaceName: "")
+    let result = ScopedResolvers.getDefaultDNSServers(interfaceName: "")
     #expect(result.isEmpty)
   }
 
@@ -45,11 +36,9 @@ struct ScopedResolversTests {
 
   @Test("Can query real interface")
   func canQueryRealInterface() async throws {
-    let resolvers = ScopedResolvers()
-
     // Use "en0" as a commonly used example interface name on Apple platforms
     // This test verifies the dlsym/dns_configuration_copy path works without crashing
-    let result = resolvers.getDefaultDNSServers(interfaceName: "en0")
+    let result = ScopedResolvers.getDefaultDNSServers(interfaceName: "en0")
 
     // Verify each result is a valid IP address
     for server in result {
@@ -61,21 +50,8 @@ struct ScopedResolversTests {
 
   @Test("Multiple calls return consistent results")
   func multipleCallsConsistent() async throws {
-    let resolvers = ScopedResolvers()
-
-    let result1 = resolvers.getDefaultDNSServers(interfaceName: "en0")
-    let result2 = resolvers.getDefaultDNSServers(interfaceName: "en0")
-
-    #expect(result1 == result2)
-  }
-
-  @Test("Different instances return same results")
-  func differentInstancesSameResults() async throws {
-    let resolvers1 = ScopedResolvers()
-    let resolvers2 = ScopedResolvers()
-
-    let result1 = resolvers1.getDefaultDNSServers(interfaceName: "en0")
-    let result2 = resolvers2.getDefaultDNSServers(interfaceName: "en0")
+    let result1 = ScopedResolvers.getDefaultDNSServers(interfaceName: "en0")
+    let result2 = ScopedResolvers.getDefaultDNSServers(interfaceName: "en0")
 
     #expect(result1 == result2)
   }

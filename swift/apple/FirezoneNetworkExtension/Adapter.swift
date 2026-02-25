@@ -55,9 +55,6 @@ actor Adapter {
   /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
   private var startContinuation: CheckedContinuation<Void, Error>?
 
-  /// Used for finding system DNS resolvers when network conditions have changed.
-  private let scopedResolvers: ScopedResolvers
-
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
   /// network state.
@@ -142,8 +139,6 @@ actor Adapter {
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
     self.unreachableResources = []
-    self.scopedResolvers = ScopedResolvers()
-
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)
   }
@@ -449,7 +444,7 @@ actor Adapter {
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {
     // Step 1: Get system default resolvers
-    let resolvers = self.scopedResolvers.getDefaultDNSServers(
+    let resolvers = ScopedResolvers.getDefaultDNSServers(
       interfaceName: path.availableInterfaces.first?.name)
 
     // Step 2: Validate addresses and filter out sentinel ranges

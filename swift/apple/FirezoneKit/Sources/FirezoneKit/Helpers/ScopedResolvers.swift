@@ -10,15 +10,13 @@ import Foundation
 ///
 /// This uses dlsym to access the `dns_configuration_copy` private API, which returns
 /// scoped resolvers that aren't shadowed by our tunnel's DNS settings.
-public class ScopedResolvers {
-
-  public init() {}
+public enum ScopedResolvers {
 
   /// Returns the DNS servers configured for the given interface.
   ///
   /// - Parameter interfaceName: The network interface name (e.g., "en0", "pdp_ip0")
   /// - Returns: Array of DNS server IP addresses, or empty array if unavailable
-  public func getDefaultDNSServers(interfaceName: String?) -> [String] {
+  public static func getDefaultDNSServers(interfaceName: String?) -> [String] {
     guard let interfaceName = interfaceName, !interfaceName.isEmpty else {
       return []
     }
