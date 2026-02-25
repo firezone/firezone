@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="12236">
+          Fixes an issue on macOS where the app could get stuck on the loading
+          spinner if the system extension was not ready at startup.
+        </ChangeItem>
         <ChangeItem pull="12279">
           Bumps minimum iOS version from 15.6 to 16.0 to enable SwiftUI
           NavigationStack and NavigationSplitView API.

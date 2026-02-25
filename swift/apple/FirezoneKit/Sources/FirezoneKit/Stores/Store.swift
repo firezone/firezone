@@ -58,6 +58,9 @@ public final class Store: ObservableObject {
   // Track which unreachable resource notifications we have already shown
   private var unreachableResources: Set<UnreachableResource> = []
 
+  // Task consuming VPN status updates; its presence means observers are active.
+  private var vpnStatusTask: CancellableTask?
+
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
@@ -147,15 +150,8 @@ public final class Store: ObservableObject {
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
-      do {
-        await initNotifications()
-        try await initSystemExtension()
-        try await initVPNConfiguration()
-        try await setupTunnelObservers()
-        try await maybeAutoConnect()
-      } catch {
-        Log.error(error)
-      }
+      await startupSequence()
+      await initNotifications()
     }
   }
 
@@ -198,21 +194,27 @@ public final class Store: ObservableObject {
   #endif
 
   private func setupTunnelObservers() async throws {
-    let vpnStatusChangeHandler: @MainActor (NEVPNStatus) async throws -> Void = {
-      [weak self] status in
-      try await self?.handleVPNStatusChange(newVPNStatus: status)
+    guard vpnStatusTask == nil else {
+      Log.debug("Tunnel observers already set up, skipping")
+      return
     }
 
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    IPCClient.subscribeToVPNStatusUpdates(session: session, handler: vpnStatusChangeHandler)
+    let statusStream = IPCClient.vpnStatusUpdates(session: session)
 
-    let initialStatus = session.status
+    vpnStatusTask = CancellableTask { [weak self] in
+      for await status in statusStream {
+        do { try await self?.handleVPNStatusChange(newVPNStatus: status) } catch {
+          Log.error(error)
+        }
+      }
+    }
 
     // Handle initial status to ensure resources start loading if already connected
-    try await handleVPNStatusChange(newVPNStatus: initialStatus)
+    try await handleVPNStatusChange(newVPNStatus: session.status)
   }
 
   private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
@@ -257,6 +259,60 @@ public final class Store: ObservableObject {
         self.systemExtensionStatus = try await systemExtensionManager.check()
       }
     #endif
+  }
+
+  /// Runs the throwing startup steps with exponential backoff on CancellationError.
+  ///
+  /// The OS may cancel system extension or VPN requests during boot (e.g. the system
+  /// extension daemon isn't ready yet). Steps that run inside the retry loop are
+  /// idempotent, so retrying is safe.
+  private func startupSequence() async {
+    // Configure telemetry once before retryable steps — it only depends on the
+    // API URL which is fixed, and calling setEnvironmentOrClose multiple times
+    // can close the Sentry SDK with no way to reopen it.
+    Telemetry.setEnvironmentOrClose(configuration.apiURL)
+
+    let maxAttempts = 4
+
+    for attempt in 0..<maxAttempts {
+      do {
+        Log.debug("Startup: initSystemExtension (attempt \(attempt + 1)/\(maxAttempts))")
+        try await initSystemExtension()
+        Log.debug("Startup: initVPNConfiguration")
+        try await initVPNConfiguration()
+        Log.debug("Startup: setupTunnelObservers")
+        try await setupTunnelObservers()
+        Log.debug("Startup: maybeAutoConnect")
+        try await maybeAutoConnect()
+        return
+      } catch is CancellationError {
+        if attempt < maxAttempts - 1 {
+          let delay = UInt64(1) << attempt  // 1s, 2s, 4s
+          Log.info(
+            "Startup cancelled by OS, retrying in \(delay)s (attempt \(attempt + 1)/\(maxAttempts))"
+          )
+          try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+        }
+      } catch {
+        Log.error(error)
+        return
+      }
+    }
+
+    Log.warning(
+      "Startup sequence gave up after \(maxAttempts) attempts due to repeated cancellation")
+
+    // Transition to a recoverable UI state instead of leaving the user on a spinner.
+    // GrantVPNView is shown when systemExtensionStatus == .needsInstall or vpnStatus == .invalid,
+    // and it has buttons to manually retry installation.
+    #if os(macOS)
+      if self.systemExtensionStatus == nil {
+        self.systemExtensionStatus = .needsInstall
+      }
+    #endif
+    if self.vpnStatus == nil {
+      self.vpnStatus = .invalid
+    }
   }
 
   private func initNotifications() async {
