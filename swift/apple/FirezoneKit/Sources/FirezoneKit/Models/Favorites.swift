@@ -43,7 +43,7 @@ public final class Favorites: ObservableObject {
 
   private static func load() -> Set<String> {
     if let ids = UserDefaults.standard.stringArray(forKey: key) {
-    // swiftlint:enable no_userdefaults_standard
+      // swiftlint:enable no_userdefaults_standard
       return Set(ids)
     }
     return []
