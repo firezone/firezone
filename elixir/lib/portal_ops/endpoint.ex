@@ -15,16 +15,6 @@ defmodule PortalOps.Endpoint do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
-  plug Plug.RequestId
-  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
-
-  plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart],
-    pass: ["*/*"]
-
-  plug Plug.Session, @session_cookie
-  plug PortalOps.Router
-
   socket "/dashboard/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
@@ -38,6 +28,16 @@ defmodule PortalOps.Endpoint do
     ],
     longpoll: false,
     drainer: []
+
+  plug Plug.RequestId
+  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
+
+  plug Plug.Parsers,
+    parsers: [:urlencoded, :multipart],
+    pass: ["*/*"]
+
+  plug Plug.Session, @session_cookie
+  plug PortalOps.Router
 
   def cookie_secure do
     Portal.Config.fetch_env!(:portal, :cookie_secure)
