@@ -7,7 +7,7 @@ use futures::{
     future::{self, Either},
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::IpPacket;
 use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
@@ -44,10 +44,19 @@ use tokio_util::sync::PollSender;
 use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
+const TUNSETVNETHDRSZ: libc::c_ulong = 0x4004_54d8;
+const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 
 const TUN_FILE: &CStr = c"/dev/net/tun";
+
+// Offload flags for TUNSETOFFLOAD
+const TUN_F_CSUM: libc::c_uint = 1;
+const TUN_F_TSO4: libc::c_uint = 2;
+const TUN_F_TSO6: libc::c_uint = 4;
+const TUN_F_USO4: libc::c_uint = 32;
+const TUN_F_USO6: libc::c_uint = 64;
 
 const FIREZONE_TABLE_USER: u32 = 0x2021_fd00;
 const FIREZONE_TABLE_LINK_SCOPE: u32 = 0x2021_fd01;
@@ -758,6 +767,24 @@ fn open_tun() -> Result<OwnedFd> {
             &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
         )
         .context("Failed to set flags on TUN device")?;
+
+        // Set vnet header size to 12 bytes (virtio_net_hdr_v1)
+        if libc::ioctl(
+            fd,
+            TUNSETVNETHDRSZ as _,
+            &(tun::linux::VIRTIO_NET_HDR_SIZE as libc::c_int),
+        ) < 0
+        {
+            return Err(anyhow::Error::new(get_last_error()))
+                .context("Failed to set vnet header size");
+        }
+
+        // Enable offloads: checksumming, TSO, and USO
+        let offload_flags = TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6;
+        if libc::ioctl(fd, TUNSETOFFLOAD as _, offload_flags) < 0 {
+            return Err(anyhow::Error::new(get_last_error()))
+                .context("Failed to set offload flags");
+        }
     }
 
     set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
@@ -838,10 +865,8 @@ fn create_tun_device() -> io::Result<()> {
     Ok(())
 }
 
-/// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
+/// Read from the given file descriptor into a buffer.
+fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
         -1 => Err(io::Error::last_os_error()),
@@ -855,7 +880,7 @@ fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
 
     // Empty vnet header (all zeros means no offloading for TX)
     // flags = 0, gso_type = 0 (VIRTIO_NET_HDR_GSO_NONE), all other fields = 0
-    let vnet_hdr = [0u8; VNET_HDR_SIZE as usize];
+    let vnet_hdr = [0u8; tun::linux::VIRTIO_NET_HDR_SIZE];
 
     let iov = [
         libc::iovec {
@@ -871,6 +896,6 @@ fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::writev(fd, iov.as_ptr(), 2) } {
         -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize - VNET_HDR_SIZE as usize),
+        n => Ok(n as usize - tun::linux::VIRTIO_NET_HDR_SIZE),
     }
 }
