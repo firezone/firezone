@@ -37,6 +37,10 @@ export default function Apple() {
           Gracefully handles WebSocket closes from the portal instead of logging
           a deserialization error.
         </ChangeItem>
+        <ChangeItem pull="12016">
+          Uses the system{`'`}s DNS resolver ordering on macOS for more accurate
+          DNS resolution behavior.
+        </ChangeItem>
         <ChangeItem pull="11988">
           Fixes a crash if the currently active log file gets deleted.
         </ChangeItem>
