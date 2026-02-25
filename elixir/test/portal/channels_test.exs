@@ -53,6 +53,33 @@ defmodule Portal.ChannelsTest do
       assert_receive :hello
     end
 
+    test "re-registration replaces the previous process" do
+      gateway_id = Ecto.UUID.generate()
+      parent = self()
+
+      old_pid =
+        spawn(fn ->
+          Channels.register_gateway(gateway_id)
+          send(parent, :registered)
+
+          receive do
+            msg -> send(parent, {:old_received, msg})
+          end
+        end)
+
+      assert_receive :registered
+
+      # New process (self) registers for the same gateway_id — should evict old_pid
+      Channels.register_gateway(gateway_id)
+
+      assert :ok = Channels.send_to_gateway(gateway_id, :hello)
+      assert_receive :hello
+      refute_receive {:old_received, :hello}
+
+      # Cleanup
+      Process.exit(old_pid, :kill)
+    end
+
     test "returns {:error, :not_found} when no process is registered" do
       gateway_id = Ecto.UUID.generate()
       assert {:error, :not_found} = Channels.send_to_gateway(gateway_id, :hello)

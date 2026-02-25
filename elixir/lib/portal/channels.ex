@@ -61,8 +61,11 @@ defmodule Portal.Channels do
   end
 
   defp upsert_group(group) do
-    others = group |> :pg.get_members() |> Enum.reject(&(&1 == self()))
-    unless others == [], do: :pg.leave(group, others)
+    case :pg.get_members(group) do
+      [] -> :ok
+      members -> :pg.leave(group, members)
+    end
+
     :pg.join(group, self())
   end
 
