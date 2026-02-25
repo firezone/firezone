@@ -142,13 +142,12 @@ fn parse_vnet_packet(
         return Ok(vec![packet]);
     }
 
-    let packets = segment_gso_packet(ip_data, &hdr)?;
+    let packets = segment_packet(ip_data, &hdr)?;
 
     Ok(packets)
 }
 
-/// Segment a GSO/USO packet into individual IP packets
-fn segment_gso_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> {
+fn segment_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> {
     anyhow::ensure!(
         hdr.hdr_len as usize <= data.len(),
         "Header length {} exceeds packet size {}",
@@ -158,89 +157,86 @@ fn segment_gso_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> 
 
     let header_len = hdr.hdr_len as usize;
     let segment_size = hdr.gso_size as usize;
-    let payload_start = header_len;
-    let total_payload_len = data.len() - header_len;
 
     anyhow::ensure!(segment_size > 0, "GSO segment size is zero");
 
-    let mut packets = Vec::new();
-    let mut offset = 0;
+    let (headers, payload) = data.split_at(header_len);
 
-    while offset < total_payload_len {
-        let segment_payload_len = std::cmp::min(segment_size, total_payload_len - offset);
-        let packet_len = header_len + segment_payload_len;
+    let packets = payload
+        .chunks(segment_size)
+        .enumerate()
+        .map(|(segment_idx, payload)| {
+            let packet_len = header_len + payload.len();
+            let mut packet_buf = IpPacketBuf::new();
+            let buf = packet_buf.buf();
 
-        let mut packet_buf = IpPacketBuf::new();
-        let buf = packet_buf.buf();
+            // Copy headers
+            buf[..header_len].copy_from_slice(headers);
 
-        // Copy headers
-        buf[..header_len].copy_from_slice(&data[..header_len]);
+            // Copy payload
+            buf[header_len..packet_len].copy_from_slice(payload);
 
-        // Copy segment payload
-        buf[header_len..packet_len].copy_from_slice(
-            &data[payload_start + offset..payload_start + offset + segment_payload_len],
-        );
+            // Update IP length field based on IP version
+            if buf[0] >> 4 == 4 {
+                // IPv4
+                let total_len = packet_len as u16;
+                buf[2..4].copy_from_slice(&total_len.to_be_bytes());
+            } else if buf[0] >> 4 == 6 {
+                // IPv6 - payload length doesn't include the 40-byte header
+                let payload_len = (packet_len - 40) as u16;
+                buf[4..6].copy_from_slice(&payload_len.to_be_bytes());
+            }
 
-        // Update IP length field based on IP version
-        if buf[0] >> 4 == 4 {
-            // IPv4
-            let total_len = packet_len as u16;
-            buf[2..4].copy_from_slice(&total_len.to_be_bytes());
-        } else if buf[0] >> 4 == 6 {
-            // IPv6 - payload length doesn't include the 40-byte header
-            let payload_len = (packet_len - 40) as u16;
-            buf[4..6].copy_from_slice(&payload_len.to_be_bytes());
-        }
+            // Update TCP/UDP length if applicable
+            match hdr.gso_type {
+                VIRTIO_NET_HDR_GSO_TCPV4 | VIRTIO_NET_HDR_GSO_TCPV6 => {
+                    // TCP: update sequence number for segments after the first
+                    if segment_idx > 0 && header_len >= 20 + 12 {
+                        let tcp_offset = if buf[0] >> 4 == 4 {
+                            (buf[0] & 0x0F) as usize * 4 // IPv4 header length
+                        } else {
+                            40 // IPv6 header is always 40 bytes
+                        };
 
-        // Update TCP/UDP length if applicable
-        match hdr.gso_type {
-            VIRTIO_NET_HDR_GSO_TCPV4 | VIRTIO_NET_HDR_GSO_TCPV6 => {
-                // TCP: update sequence number for segments after the first
-                if offset > 0 && header_len >= 20 + 12 {
-                    let tcp_offset = if buf[0] >> 4 == 4 {
-                        (buf[0] & 0x0F) as usize * 4 // IPv4 header length
-                    } else {
-                        40 // IPv6 header is always 40 bytes
-                    };
-
-                    if tcp_offset + 4 <= header_len {
-                        let seq_offset = tcp_offset + 4;
-                        let original_seq = u32::from_be_bytes([
-                            buf[seq_offset],
-                            buf[seq_offset + 1],
-                            buf[seq_offset + 2],
-                            buf[seq_offset + 3],
-                        ]);
-                        let new_seq = original_seq.wrapping_add(offset as u32);
-                        buf[seq_offset..seq_offset + 4].copy_from_slice(&new_seq.to_be_bytes());
+                        if tcp_offset + 4 <= header_len {
+                            let seq_offset = tcp_offset + 4;
+                            let original_seq = u32::from_be_bytes([
+                                buf[seq_offset],
+                                buf[seq_offset + 1],
+                                buf[seq_offset + 2],
+                                buf[seq_offset + 3],
+                            ]);
+                            let new_seq =
+                                original_seq.wrapping_add((segment_idx * segment_size) as u32);
+                            buf[seq_offset..seq_offset + 4].copy_from_slice(&new_seq.to_be_bytes());
+                        }
                     }
                 }
-            }
-            VIRTIO_NET_HDR_GSO_UDP | VIRTIO_NET_HDR_GSO_UDP_L4 => {
-                // UDP: update length field
-                let udp_offset = if buf[0] >> 4 == 4 {
-                    (buf[0] & 0x0F) as usize * 4
-                } else {
-                    40
-                };
+                VIRTIO_NET_HDR_GSO_UDP | VIRTIO_NET_HDR_GSO_UDP_L4 => {
+                    // UDP: update length field
+                    let udp_offset = if buf[0] >> 4 == 4 {
+                        (buf[0] & 0x0F) as usize * 4
+                    } else {
+                        40
+                    };
 
-                if udp_offset + 4 <= header_len {
-                    let udp_len = (segment_payload_len + 8) as u16; // 8-byte UDP header
-                    buf[udp_offset + 4..udp_offset + 6].copy_from_slice(&udp_len.to_be_bytes());
+                    if udp_offset + 4 <= header_len {
+                        let udp_len = (payload.len() + 8) as u16; // 8-byte UDP header
+                        buf[udp_offset + 4..udp_offset + 6].copy_from_slice(&udp_len.to_be_bytes());
+                    }
                 }
+                _ => {}
             }
-            _ => {}
-        }
 
-        let mut packet =
-            IpPacket::new(packet_buf, packet_len).context("Failed to parse segmented IP packet")?;
+            let mut packet = IpPacket::new(packet_buf, packet_len)
+                .context("Failed to parse segmented IP packet")?;
 
-        // Recalculate checksums for the segmented packet
-        packet.update_checksum();
+            // Recalculate checksums for the segmented packet
+            packet.update_checksum();
 
-        packets.push(packet);
-        offset += segment_payload_len;
-    }
+            anyhow::Ok(packet)
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(packets)
 }
