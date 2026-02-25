@@ -89,31 +89,18 @@ where
                             return Ok(Vec::new());
                         }
 
-                        if total_len < VIRTIO_NET_HDR_SIZE {
+                        let Some((vnet_hdr_buf, ip_data)) = read_buffer.split_first_chunk() else {
                             return Err(io::Error::new(
                                 io::ErrorKind::UnexpectedEof,
-                                format!(
-                                    "Read only {} bytes, less than vnet header size",
-                                    total_len
-                                ),
+                                "Read less than vnet header",
                             ));
-                        }
+                        };
 
-                        // Split vnet header and packet data
-                        let (vnet_hdr_bytes, ip_data) = read_buffer.split_at(VIRTIO_NET_HDR_SIZE);
-                        let vnet_hdr_buf: [u8; VIRTIO_NET_HDR_SIZE] = vnet_hdr_bytes
-                            .try_into()
-                            .expect("vnet header is exactly VIRTIO_NET_HDR_SIZE bytes");
                         let packet_len = total_len - VIRTIO_NET_HDR_SIZE;
 
-                        // Parse and handle vnet header
-                        let packets = parse_vnet_packet(&vnet_hdr_buf, &ip_data[..packet_len])
+                        let packets = parse_vnet_packet(vnet_hdr_buf, &ip_data[..packet_len])
                             .context("Failed to parse packet with vnet header")
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
-                        if packets.len() > 1 {
-                            tracing::debug!(num_packets = %packets.len(), "Read packets from TUN device");
-                        }
 
                         Ok(packets)
                     })
@@ -122,11 +109,16 @@ where
                 match next_inbound_packets.context("Failed to read from TUN FD") {
                     Ok(packets) if packets.is_empty() => bail!("TUN file descriptor is closed"),
                     Ok(packets) => {
-                        for packet in packets {
-                            if inbound_tx.send(packet).await.is_err() {
+                        let permits = match inbound_tx.reserve_many(packets.len()).await {
+                            Ok(permits) => permits,
+                            Err(_) => {
                                 tracing::debug!("Inbound packet receiver gone, shutting down task");
                                 return anyhow::Ok(());
                             }
+                        };
+
+                        for (permit, packet) in permits.zip(packets) {
+                            permit.send(packet);
                         }
                     }
                     Err(e) if e.any_is::<ip_packet::Fragmented>() => {
