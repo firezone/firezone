@@ -457,6 +457,12 @@ where
     pub fn connect(&mut self, addresses: Vec<IpAddr>, backoff: Duration, params: TFinish) {
         let url = self.url_prototype.to_url(params);
 
+        let closing = match std::mem::replace(&mut self.state, State::Closed) {
+            State::Closing(closing) => closing,
+            State::Connected(connected) => close_websocket(connected.stream).boxed(),
+            State::Connecting(_) | State::Closed => std::future::ready(Ok(())).boxed(),
+        };
+
         self.state = State::Connecting(Box::pin({
             let url = url.clone();
             let addresses = addresses
@@ -471,6 +477,10 @@ where
             let socket_factory = self.socket_factory.clone();
 
             async move {
+                if let Err(e) = closing.await {
+                    tracing::debug!("Failed to gracefully close connection: {e:#}");
+                }
+
                 tokio::time::sleep(backoff).await;
                 create_and_connect_websocket(
                     url,
