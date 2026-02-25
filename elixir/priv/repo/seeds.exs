@@ -238,6 +238,10 @@ defmodule Portal.Repo.Seeds do
     # Ensure seeds are deterministic
     :rand.seed(:exsss, {1, 2, 3})
 
+    Repo.query!(
+      "INSERT INTO features (feature, enabled) VALUES ('client_to_client', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+    )
+
     account =
       %Account{}
       |> cast(
