@@ -156,6 +156,22 @@ async fn create_and_connect_websocket(
     Ok(conn)
 }
 
+async fn close_websocket(mut stream: WebSocketStream<MaybeTlsStream<TcpStream>>) -> Result<()> {
+    stream
+        .send(Message::Close(Some(CloseFrame {
+            code: tungstenite::protocol::frame::coding::CloseCode::Normal,
+            reason: Default::default(),
+        })))
+        .await
+        .context("Failed to send Close frame")?;
+    stream.flush().await.context("Failed to flush")?;
+    SinkExt::close(&mut stream)
+        .await
+        .context("failed to close connection")?;
+
+    anyhow::Ok(())
+}
+
 async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
@@ -510,25 +526,8 @@ where
 
         match mem::replace(&mut self.state, State::Closed) {
             State::Connecting(_) => return Err(Connecting),
-            State::Connected(Connected { mut stream, .. }) => {
-                self.state = State::Closing(
-                    async move {
-                        stream
-                            .send(Message::Close(Some(CloseFrame {
-                                code: tungstenite::protocol::frame::coding::CloseCode::Normal,
-                                reason: Default::default(),
-                            })))
-                            .await
-                            .context("Failed to send Close frame")?;
-                        stream.flush().await.context("Failed to flush")?;
-                        SinkExt::close(&mut stream)
-                            .await
-                            .context("failed to close connection")?;
-
-                        anyhow::Ok(())
-                    }
-                    .boxed(),
-                );
+            State::Connected(Connected { stream, .. }) => {
+                self.state = State::Closing(close_websocket(stream).boxed());
             }
             State::Closing(stream) => {
                 self.state = State::Closing(stream);
