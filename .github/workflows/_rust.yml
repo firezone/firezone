@@ -151,6 +151,7 @@ jobs:
           format: lcov
           flag-name: rust-test-${{ runner.os }}
           parallel: true
+          fail-on-error: false
 
   tunnel_test:
     name: tunnel-test
@@ -228,6 +229,7 @@ jobs:
           format: lcov
           flag-name: rust-tunnel-test
           parallel: true
+          fail-on-error: false
 
   fuzz:
     name: fuzz

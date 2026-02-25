@@ -53,6 +53,7 @@ jobs:
           format: lcov
           flag-name: portal
           parallel: true
+          fail-on-error: false
 
   type-check:
     runs-on: ubuntu-24.04
