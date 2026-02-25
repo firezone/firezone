@@ -974,7 +974,7 @@ checksum = "119771309b95163ec7aaf79810da82f7cd0599c19722d48b9c03894dca833966"
 [[package]]
 name = "boringtun"
 version = "0.6.1"
-source = "git+https://github.com/firezone/boringtun?branch=master#89dbe2732e29b3c9c2f55ef35bb04952bd91bf55"
+source = "git+https://github.com/firezone/boringtun?branch=master#bb3034dcd12b63970ccd364ab779ce90f3561653"
 dependencies = [
  "aead",
  "blake2",
