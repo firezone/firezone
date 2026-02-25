@@ -27,7 +27,7 @@ export default function Apple() {
       <Unreleased>
         <ChangeItem pull="12236">
           Fixes an issue on macOS where the app could get stuck on the loading
-          spinner if the system extension wasn't ready at startup.
+          spinner if the system extension was not ready at startup.
         </ChangeItem>
         <ChangeItem pull="12279">
           Bumps minimum iOS version from 15.6 to 16.0 to enable SwiftUI
