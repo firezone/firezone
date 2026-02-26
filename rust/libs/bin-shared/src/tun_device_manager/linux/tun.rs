@@ -47,9 +47,15 @@ const TUN_F_USO6: libc::c_uint = 64;
 
 const QUEUE_SIZE: usize = 10_000;
 
+/// Represents either a single packet or a batch of packets to send to TUN
+#[derive(Debug)]
+enum OutboundPacket {
+    Single(IpPacket),
+    Batch(tun_gso_queue::IpPacketBatch),
+}
+
 pub struct Tun {
-    outbound_tx: PollSender<IpPacket>,
-    outbound_batch_tx: PollSender<tun_gso_queue::IpPacketBatch>,
+    outbound_tx: PollSender<OutboundPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
     gso_queue: tun_gso_queue::TunGsoQueue,
 }
@@ -60,17 +66,9 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (outbound_batch_tx, outbound_batch_rx) = mpsc::channel(QUEUE_SIZE);
 
         tokio::spawn(otel::metrics::periodic_system_queue_length(
             outbound_tx.downgrade(),
-            [
-                otel::attr::queue_item_ip_packet(),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
-            outbound_batch_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
@@ -93,13 +91,7 @@ impl Tun {
 
                 move || {
                     logging::unwrap_or_warn!(
-                        tun_send(
-                            fd,
-                            outbound_rx,
-                            outbound_batch_rx,
-                            write_single,
-                            write_batch
-                        ),
+                        tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
@@ -117,7 +109,6 @@ impl Tun {
 
         Ok(Self {
             outbound_tx: PollSender::new(outbound_tx),
-            outbound_batch_tx: PollSender::new(outbound_batch_tx),
             inbound_rx,
             gso_queue: tun_gso_queue::TunGsoQueue::new(),
         })
@@ -174,32 +165,32 @@ fn open_tun() -> Result<OwnedFd> {
 
 impl tun::Tun for Tun {
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        std::task::ready!(self.outbound_tx.poll_ready_unpin(cx)).map_err(io::Error::other)?;
-        std::task::ready!(self.outbound_batch_tx.poll_ready_unpin(cx)).map_err(io::Error::other)?;
-
-        Poll::Ready(Ok(()))
+        self.outbound_tx
+            .poll_ready_unpin(cx)
+            .map_err(io::Error::other)
     }
 
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         // Try to batch the packet, fall back to direct send if not batchable
         if self.gso_queue.enqueue(&packet).is_err() {
             self.outbound_tx
-                .start_send_unpin(packet)
+                .start_send_unpin(OutboundPacket::Single(packet))
                 .map_err(io::Error::other)?;
         }
 
         Ok(())
     }
 
-    fn flush(&mut self) -> io::Result<()> {
-        // Drain all batches from the queue and send them through the batch channel
+    fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         for batch in self.gso_queue.packets() {
-            self.outbound_batch_tx
-                .start_send_unpin(batch)
+            std::task::ready!(self.outbound_tx.poll_ready_unpin(cx)).map_err(io::Error::other)?;
+
+            self.outbound_tx
+                .start_send_unpin(OutboundPacket::Batch(batch))
                 .map_err(io::Error::other)?;
         }
 
-        Ok(())
+        Poll::Ready(Ok(()))
     }
 
     fn poll_recv_many(
@@ -216,14 +207,8 @@ impl tun::Tun for Tun {
     }
 }
 
-/// Custom tun_send that handles both single packets and batches from separate channels
-fn tun_send<T>(
-    fd: T,
-    mut outbound_rx: mpsc::Receiver<IpPacket>,
-    mut outbound_batch_rx: mpsc::Receiver<tun_gso_queue::IpPacketBatch>,
-    write_single: impl Fn(RawFd, &IpPacket) -> io::Result<usize>,
-    write_batch: impl Fn(RawFd, &tun_gso_queue::IpPacketBatch) -> io::Result<usize>,
-) -> Result<()>
+/// Custom tun_send that handles both single packets and batches from a unified channel
+fn tun_send<T>(fd: T, mut outbound_rx: mpsc::Receiver<OutboundPacket>) -> Result<()>
 where
     T: AsRawFd + Clone,
 {
@@ -237,8 +222,8 @@ where
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
 
             loop {
-                tokio::select! {
-                    Some(packet) = outbound_rx.recv() => {
+                match outbound_rx.recv().await {
+                    Some(OutboundPacket::Single(packet)) => {
                         if let Err(e) = fd
                             .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
                                 write_single(fd_ref.as_raw_fd(), &packet)
@@ -248,7 +233,7 @@ where
                             tracing::warn!("Failed to write single packet to TUN FD: {e}");
                         }
                     }
-                    Some(batch) = outbound_batch_rx.recv() => {
+                    Some(OutboundPacket::Batch(batch)) => {
                         if let Err(e) = fd
                             .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
                                 write_batch(fd_ref.as_raw_fd(), &batch)
@@ -258,7 +243,7 @@ where
                             tracing::warn!("Failed to write batch to TUN FD: {e}");
                         }
                     }
-                    else => break,
+                    None => break,
                 }
             }
 

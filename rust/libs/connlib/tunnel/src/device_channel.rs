@@ -51,6 +51,14 @@ impl Device {
         tun.poll_send_ready(cx)
     }
 
+    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let Some(tun) = self.tun.as_mut() else {
+            return Poll::Ready(Ok(()));
+        };
+
+        tun.poll_flush(cx)
+    }
+
     pub fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         debug_assert!(
             !packet.is_fz_p2p_control(),

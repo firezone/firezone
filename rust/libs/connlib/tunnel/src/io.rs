@@ -457,6 +457,10 @@ impl Io {
                 .context("Failed to send IP packet to TUN device")?;
         }
 
+        if self.tun.poll_flush(cx).is_pending() {
+            any_pending = true;
+        }
+
         if any_pending {
             return Poll::Pending;
         }

@@ -29,7 +29,7 @@ pub trait Tun: Send + Sync + 'static {
     fn name(&self) -> &str;
 
     /// Flush any buffered packets.
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+    fn poll_flush(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 }
