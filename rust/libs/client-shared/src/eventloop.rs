@@ -575,7 +575,7 @@ impl Eventloop {
                 };
             }
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
-                client_ipv4,
+                ipv4: client_ipv4,
                 reason,
             }) => {
                 tracing::debug!(%client_ipv4, "Failed to access device: {reason:?}");
