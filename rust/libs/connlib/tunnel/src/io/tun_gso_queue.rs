@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, VecDeque},
-    
+    net::IpAddr,
 };
 
 use bufferpool::{Buffer, BufferPool};
@@ -15,11 +15,11 @@ const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
 /// Key for grouping packets that can be coalesced via GSO
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
 struct FlowKey {
-    src_addr: [u8; 16], // Source IP (IPv4 mapped to IPv6 format)
-    dst_addr: [u8; 16], // Destination IP (IPv4 mapped to IPv6 format)
-    src_port: u16,      // Source port (0 for non-TCP/UDP)
-    dst_port: u16,      // Destination port (0 for non-TCP/UDP)
-    protocol: u8,       // IP protocol number (6=TCP, 17=UDP)
+    src_addr: IpAddr, // Source IP
+    dst_addr: IpAddr, // Destination IP
+    src_port: u16,    // Source port (0 for non-TCP/UDP)
+    dst_port: u16,    // Destination port (0 for non-TCP/UDP)
+    protocol: u8,     // IP protocol number (6=TCP, 17=UDP)
 }
 
 /// Holds IP packets that need to be sent, indexed by flow and segment size.
@@ -42,17 +42,11 @@ impl TunGsoQueue {
     }
 
     pub fn enqueue(&mut self, packet: IpPacket) {
-        // Parse packet to extract flow key
-        let key = match extract_flow_key(&packet) {
-            Some(k) => k,
-            None => {
-                tracing::debug!("Failed to extract flow key, skipping packet");
-                return;
-            }
-        };
-
         let payload_len = packet.packet().len();
         let packet_bytes = packet.packet();
+
+        // Extract flow key - this works for all protocols (TCP/UDP/ICMP/etc)
+        let key = extract_flow_key(&packet);
 
         // Get or create batch for this flow
         let batches = self.inner.entry(key).or_default();
@@ -87,11 +81,50 @@ impl TunGsoQueue {
 }
 
 /// Extract flow key from IP packet for batching
-fn extract_flow_key(packet: &IpPacket) -> Option<FlowKey> {
-    // For now, return None to disable batching until Phase 5
-    // TODO: Implement full flow key extraction
-    let _ = packet;
-    None
+/// Always returns a key so all packets can be sent, even if they can't be batched effectively.
+fn extract_flow_key(packet: &IpPacket) -> FlowKey {
+    // Get source and destination IPs
+    let src_addr = packet.source();
+    let dst_addr = packet.destination();
+
+    // Get protocol number
+    let protocol = packet.next_header().0;
+
+    // Extract ports for TCP/UDP, use 0 for other protocols
+    // For protocols where parsing fails (malformed packets), we still return a key
+    // with ports = 0 so the packet can be sent (just not batched effectively)
+    let (src_port, dst_port) = match protocol {
+        6 => {
+            // TCP
+            if let Some(tcp) = packet.as_tcp() {
+                (tcp.source_port(), tcp.destination_port())
+            } else {
+                tracing::debug!("Failed to parse TCP packet, sending without port info");
+                (0, 0)
+            }
+        }
+        17 => {
+            // UDP
+            if let Some(udp) = packet.as_udp() {
+                (udp.source_port(), udp.destination_port())
+            } else {
+                tracing::debug!("Failed to parse UDP packet, sending without port info");
+                (0, 0)
+            }
+        }
+        _ => {
+            // Other protocols (ICMP, ESP, etc.) - no ports
+            (0, 0)
+        }
+    };
+
+    FlowKey {
+        src_addr,
+        dst_addr,
+        src_port,
+        dst_port,
+        protocol,
+    }
 }
 
 struct DrainPacketsIter<'a> {
@@ -114,5 +147,33 @@ impl Iterator for DrainPacketsIter<'_> {
                 segment_size,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn test_flow_key_different_for_different_ips() {
+        // Verify that FlowKey correctly distinguishes different IPs
+        let key1 = FlowKey {
+            src_addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            dst_addr: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+            src_port: 8080,
+            dst_port: 443,
+            protocol: 6,
+        };
+
+        let key2 = FlowKey {
+            src_addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            dst_addr: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+            src_port: 8080,
+            dst_port: 443,
+            protocol: 6,
+        };
+
+        assert_ne!(key1, key2);
     }
 }
