@@ -641,7 +641,6 @@ where
 
                         match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
                             Ok(()) => {
-                                // Only track the heartbeat as inflight once it is actually sent.
                                 inflight_heartbeats.insert(id);
                                 tracing::trace!(target: "wire::api::send", %heartbeat);
                             }
