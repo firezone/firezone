@@ -777,6 +777,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
+      :sys.get_state(socket.channel_pid)
+
       assert_push "reject_access", %{
         client_id: client_id,
         resource_id: resource_id
@@ -1111,6 +1113,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         old_struct: %Portal.Resource{id: ^resource_id},
         struct: %Portal.Resource{id: ^resource_id, address: "new-address"}
       }
+
+      :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", payload
 
@@ -1730,6 +1734,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
 
+      :sys.get_state(socket.channel_pid)
+
       assert_push "reject_access", %{
         client_id: client_id,
         resource_id: resource_id
@@ -1907,6 +1913,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
 
       Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
+
+      # Synchronize with the channel process to ensure it has fully processed
+      # the %Change{} before asserting. `direct_broadcast!` places the message
+      # in the channel's mailbox before `on_delete` returns, so `:sys.get_state`
+      # (called after) is queued behind it. By the time it returns, the channel
+      # has completed `handle_change` and pushed `reject_access`.
+      :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{
         client_id: client_id,
