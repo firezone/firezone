@@ -57,7 +57,26 @@ impl Device {
             "FZ p2p control protocol packets should never leave `connlib`"
         );
 
-        self.tun()?.send(packet)?;
+        #[cfg(target_os = "linux")]
+        {
+            // On Linux, wrap the packet in IpPacketOut with segment_size = 0 (single packet)
+            // In Phase 4, we'll route through TunGsoQueue instead
+            let packet_bytes = packet.packet();
+            let mut buffer = bufferpool::BufferPool::<bytes::BytesMut>::new(packet_bytes.len(), "temp").pull();
+            buffer.extend_from_slice(packet_bytes);
+
+            let packet_out = tun::IpPacketOut {
+                packet: buffer,
+                segment_size: 0,
+            };
+            self.tun()?.send(packet_out)?;
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            // On non-Linux, send directly (no change)
+            self.tun()?.send(packet)?;
+        }
 
         Ok(())
     }

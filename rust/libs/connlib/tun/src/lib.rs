@@ -27,7 +27,13 @@ pub struct IpPacketOut {
 pub trait Tun: Send + Sync + 'static {
     /// Check if more packets can be sent.
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
-    /// Send a packet.
+
+    #[cfg(target_os = "linux")]
+    /// Send a packet or batch (Linux only).
+    fn send(&mut self, packet: IpPacketOut) -> io::Result<()>;
+
+    #[cfg(not(target_os = "linux"))]
+    /// Send a single packet (non-Linux platforms).
     fn send(&mut self, packet: IpPacket) -> io::Result<()>;
 
     /// Receive a batch of packets up to `max`.

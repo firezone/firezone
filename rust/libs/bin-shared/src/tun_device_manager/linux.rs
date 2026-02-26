@@ -802,9 +802,28 @@ impl tun::Tun for Tun {
             .map_err(io::Error::other)
     }
 
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+    fn send(&mut self, packet: tun::IpPacketOut) -> io::Result<()> {
+        // For now, just handle the packet data directly
+        // TODO: In Phase 6/7, properly handle batched packets with GSO
+
+        // Extract the single packet from IpPacketOut
+        let packet_buf = packet.packet.clone();
+        let len = if packet.segment_size == 0 {
+            packet_buf.len()
+        } else {
+            packet.segment_size
+        };
+
+        // Create IpPacket from the buffer
+        let mut ip_packet_buf = ip_packet::IpPacketBuf::new();
+        let buf = ip_packet_buf.buf();
+        buf[..len].copy_from_slice(&packet_buf[..len]);
+
+        let ip_packet = IpPacket::new(ip_packet_buf, len)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
         self.outbound_tx
-            .start_send_unpin(packet)
+            .start_send_unpin(ip_packet)
             .map_err(io::Error::other)?;
 
         Ok(())
