@@ -60,12 +60,13 @@ defmodule Portal.Channels do
     send_to_gateway(gateway_id, {:reject_access, client_id, resource_id})
   end
 
-  defp upsert_group(group) do
-    case :pg.get_members(group) do
-      [] -> :ok
-      members -> :pg.leave(group, members)
-    end
+  @doc false
+  def handle_eviction(group) do
+    :pg.leave(group, self())
+  end
 
+  defp upsert_group(group) do
+    Enum.each(:pg.get_members(group), &send(&1, {:pg_group_evicted, group}))
     :pg.join(group, self())
   end
 

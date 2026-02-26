@@ -158,6 +158,26 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 pg_group_evicted" do
+    test "channel leaves pg group and stops receiving targeted messages", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      # Flush :after_join before asserting group membership
+      :sys.get_state(socket.channel_pid)
+
+      assert :ok = Channels.send_to_gateway(gateway.id, :ping)
+
+      group = {Portal.Channels, :gateway, gateway.id}
+      send(socket.channel_pid, {:pg_group_evicted, group})
+      :sys.get_state(socket.channel_pid)
+
+      assert {:error, :not_found} = Channels.send_to_gateway(gateway.id, :ping)
+    end
+  end
+
   describe "handle_info/2" do
     test "ignores out of order %Change{}", %{
       gateway: gateway,

@@ -118,6 +118,40 @@ defmodule Portal.ChannelsTest do
     end
   end
 
+  describe "handle_eviction/1" do
+    test "removes the calling process from its registered group" do
+      client_id = Ecto.UUID.generate()
+      parent = self()
+      group = {Portal.Channels, :client, client_id}
+
+      pid =
+        spawn(fn ->
+          Channels.register_client(client_id)
+          send(parent, :registered)
+
+          receive do
+            {:pg_group_evicted, g} ->
+              Channels.handle_eviction(g)
+              send(parent, :evicted)
+          end
+
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      assert_receive :registered
+      assert :ok = Channels.send_to_client(client_id, :ping)
+
+      send(pid, {:pg_group_evicted, group})
+      assert_receive :evicted
+
+      assert {:error, :not_found} = Channels.send_to_client(client_id, :ping)
+
+      Process.exit(pid, :kill)
+    end
+  end
+
   describe "reject_access/3" do
     test "sends reject_access message to the gateway" do
       gateway_id = Ecto.UUID.generate()
