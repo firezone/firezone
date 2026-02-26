@@ -430,6 +430,8 @@ fn make_rng(seed: Option<u64>) -> StdRng {
 }
 
 const MAX_UDP_SIZE: usize = 65536;
+// How many times we will at most loop before force-yielding from [`Eventloop::poll`].
+const MAX_EVENTLOOP_ITERS: u32 = 256;
 
 struct Eventloop<R> {
     sockets: Sockets,
@@ -508,7 +510,7 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
-        loop {
+        for _ in 0..MAX_EVENTLOOP_ITERS {
             let mut ready = false;
 
             ready!(self.sockets.flush(cx))?;
@@ -723,9 +725,12 @@ where
             }
 
             if !ready {
-                break Poll::Pending;
+                return Poll::Pending;
             }
         }
+
+        cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
+        Poll::Pending
     }
 
     fn create_channel_binding_in_ebpf_map(
