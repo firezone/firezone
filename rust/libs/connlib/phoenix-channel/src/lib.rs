@@ -84,7 +84,6 @@ struct Connected<TOutboundMsg> {
 
     heartbeat: tokio::time::Interval,
     inflight_heartbeats: HashSet<OutboundRequestId>,
-    pending_heartbeat: Option<(OutboundRequestId, String)>,
 
     pending_joins: VecDeque<String>,
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
@@ -539,7 +538,6 @@ where
                 stream,
                 heartbeat,
                 inflight_heartbeats,
-                pending_heartbeat,
                 pending_joins,
                 pending_join_requests,
                 pending_messages,
@@ -570,7 +568,6 @@ where
                                 HEARTBEAT_INTERVAL,
                             ),
                             inflight_heartbeats: Default::default(),
-                            pending_heartbeat: Default::default(),
                             pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
                             pending_join_requests: Default::default(),
                             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
@@ -635,11 +632,17 @@ where
             // Priority 2: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    if let Some((hb_id, heartbeat)) = pending_heartbeat.take() {
+                    if heartbeat.poll_tick(cx).is_ready() {
+                        let (id, heartbeat) = make_control_message(
+                            next_request_id,
+                            "phoenix",
+                            EgressControlMessage::<()>::Heartbeat(Empty {}),
+                        );
+
                         match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
                             Ok(()) => {
                                 // Only track the heartbeat as inflight once it is actually sent.
-                                inflight_heartbeats.insert(hb_id);
+                                inflight_heartbeats.insert(id);
                                 tracing::trace!(target: "wire::api::send", %heartbeat);
                             }
                             Err(e) => {
@@ -861,25 +864,6 @@ where
             }
 
             // Priority 4: Handle heartbeats.
-            match heartbeat.poll_tick(cx) {
-                Poll::Ready(_) => {
-                    let (id, heartbeat) = make_control_message(
-                        next_request_id,
-                        "phoenix",
-                        EgressControlMessage::<()>::Heartbeat(Empty {}),
-                    );
-
-                    // Store the ID alongside the message. The ID is only moved into
-                    // inflight_heartbeats when the message is actually sent (Priority 2).
-                    // This prevents orphaned IDs accumulating when the sink is backpressured
-                    // and pending_heartbeat gets replaced by subsequent ticks.
-                    pending_heartbeat.replace((id, heartbeat));
-
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
             if inflight_heartbeats.len() > 3 {
                 self.handle_internal_error(InternalError::TooManyUnansweredHeartbeats);
                 continue;
