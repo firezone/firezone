@@ -30,7 +30,6 @@ use tun::Tun;
 use tun_gso_queue::TunGsoQueue;
 use udp_gso_queue::UdpGsoQueue;
 
-#[cfg(not(target_os = "linux"))]
 use std::collections::VecDeque;
 
 /// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
@@ -75,7 +74,6 @@ pub struct Io {
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
     tun: Device,
-    #[cfg(not(target_os = "linux"))]
     outbound_packet_buffer: VecDeque<IpPacket>,
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
@@ -172,7 +170,6 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            #[cfg(not(target_os = "linux"))]
             outbound_packet_buffer: VecDeque::default(),
             timeout: None,
             sockets,
@@ -452,7 +449,26 @@ impl Io {
         }
 
         #[cfg(target_os = "linux")]
-        let mut tun_packets = self.tun_gso_queue.packets();
+        let batched_packets = self.tun_gso_queue.packets();
+
+        #[cfg(target_os = "linux")]
+        let unbatched_packets = std::iter::from_fn(|| {
+            self.outbound_packet_buffer.pop_front().map(|packet| {
+                use bufferpool::BufferPool;
+                use bytes::BytesMut;
+                let packet_bytes = packet.packet();
+                let pool = BufferPool::<BytesMut>::new(packet_bytes.len(), "unbatched");
+                let buffer = pool.pull_initialised(packet_bytes);
+                tun::IpPacketOut {
+                    packet: buffer,
+                    segment_size: 0, // Single packet, no GSO
+                }
+            })
+        });
+
+        #[cfg(target_os = "linux")]
+        let mut tun_packets = batched_packets.chain(unbatched_packets);
+
         #[cfg(not(target_os = "linux"))]
         let mut tun_packets = std::iter::from_fn(|| self.outbound_packet_buffer.pop_front());
 
@@ -496,7 +512,10 @@ impl Io {
 
         #[cfg(target_os = "linux")]
         {
-            self.tun_gso_queue.enqueue(packet);
+            if self.tun_gso_queue.enqueue(&packet).is_err() {
+                // Non-batchable packet (ICMP, etc.), send via regular path
+                self.outbound_packet_buffer.push_back(packet);
+            }
         }
 
         #[cfg(not(target_os = "linux"))]

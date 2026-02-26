@@ -24,6 +24,27 @@ pub struct IpPacketOut {
     pub segment_size: usize,
 }
 
+impl IpPacketOut {
+    /// Returns true if this represents a GSO batch (multiple segments)
+    pub fn is_gso(&self) -> bool {
+        self.segment_size > 0
+    }
+
+    /// Returns the number of segments in this packet/batch
+    pub fn segment_count(&self) -> usize {
+        if self.segment_size == 0 {
+            1
+        } else {
+            self.packet.len() / self.segment_size
+        }
+    }
+
+    /// Returns the total size of the buffer
+    pub fn total_len(&self) -> usize {
+        self.packet.len()
+    }
+}
+
 pub trait Tun: Send + Sync + 'static {
     /// Check if more packets can be sent.
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
