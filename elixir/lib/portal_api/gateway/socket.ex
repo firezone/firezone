@@ -1,5 +1,6 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
+  defoverridable terminate: 2
   alias Portal.Authentication
   alias Portal.{Gateway, GatewaySession, Version}
   alias __MODULE__.Database
@@ -11,6 +12,29 @@ defmodule PortalAPI.Gateway.Socket do
   ## Channels
 
   channel "gateway", PortalAPI.Gateway.Channel
+
+  ## Termination
+
+  @impl true
+  def terminate(:timeout, {_state, socket}) do
+    gateway = socket.assigns[:gateway]
+    session = socket.assigns[:session]
+
+    if gateway do
+      Logger.info("Gateway missed heartbeat, connection will timeout",
+        gateway_id: gateway.id,
+        site_id: gateway.site_id,
+        account_id: gateway.account_id,
+        token_id: socket.assigns[:token_id],
+        session_remote_ip: session && session.remote_ip
+      )
+    end
+
+    :ok
+  end
+
+  @impl true
+  def terminate(_reason, _state), do: :ok
 
   ## Authentication
 

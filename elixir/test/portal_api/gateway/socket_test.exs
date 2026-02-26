@@ -1,5 +1,6 @@
 defmodule PortalAPI.Gateway.SocketTest do
   use PortalAPI.ChannelCase, async: true
+  import ExUnit.CaptureLog
   import PortalAPI.Gateway.Socket, except: [connect: 3]
   import Portal.AccountFixtures
   import Portal.SiteFixtures
@@ -253,6 +254,54 @@ defmodule PortalAPI.Gateway.SocketTest do
       # Both connections with different tokens should succeed
       assert {:ok, _socket} = connect(Socket, attrs1, connect_info: connect_info_1)
       assert {:ok, _socket} = connect(Socket, attrs2, connect_info: connect_info_2)
+    end
+  end
+
+  describe "terminate/2" do
+    test "logs when connection times out" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token_id = Ecto.UUID.generate()
+      session = %Portal.GatewaySession{remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}}}
+
+      socket =
+        socket(PortalAPI.Gateway.Socket, "", %{
+          gateway: gateway,
+          session: session,
+          token_id: token_id
+        })
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:timeout, {%{}, socket})
+        end)
+
+      assert log =~ "Gateway missed heartbeat"
+      assert log =~ gateway.id
+      assert log =~ token_id
+    end
+
+    test "does not log for other termination reasons" do
+      socket = socket(PortalAPI.Gateway.Socket, "", %{})
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:shutdown, {%{}, socket})
+        end)
+
+      refute log =~ "Gateway missed heartbeat"
+    end
+
+    test "does not log when gateway is not yet assigned" do
+      socket = socket(PortalAPI.Gateway.Socket, "", %{})
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:timeout, {%{}, socket})
+        end)
+
+      refute log =~ "Gateway missed heartbeat"
     end
   end
 

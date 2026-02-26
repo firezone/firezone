@@ -27,7 +27,8 @@ defmodule PortalAPI.Relay.Socket do
     :ok
   end
 
-  def terminate(reason, state), do: super(reason, state)
+  @impl true
+  def terminate(_reason, _state), do: :ok
 
   ## Authentication
 

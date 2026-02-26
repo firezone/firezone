@@ -1,6 +1,7 @@
 defmodule PortalAPI.Client.SocketTest do
   use PortalAPI.ChannelCase, async: true
 
+  import ExUnit.CaptureLog
   import PortalAPI.Client.Socket, only: [id: 1]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -468,6 +469,54 @@ defmodule PortalAPI.Client.SocketTest do
       assert log =~ "Hardware ID mismatch"
       assert log =~ "device_serial"
       assert log =~ "device_uuid"
+    end
+  end
+
+  describe "terminate/2" do
+    test "logs when connection times out" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      subject = subject_fixture(account: account, actor: %{type: :account_user})
+      session = %Portal.ClientSession{remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}}}
+
+      socket =
+        socket(PortalAPI.Client.Socket, "", %{
+          client: client,
+          subject: subject,
+          session: session
+        })
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:timeout, {%{}, socket})
+        end)
+
+      assert log =~ "Client missed heartbeat"
+      assert log =~ client.id
+      assert log =~ subject.account.slug
+    end
+
+    test "does not log for other termination reasons" do
+      socket = socket(PortalAPI.Client.Socket, "", %{})
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:shutdown, {%{}, socket})
+        end)
+
+      refute log =~ "Client missed heartbeat"
+    end
+
+    test "does not log when client is not yet assigned" do
+      socket = socket(PortalAPI.Client.Socket, "", %{})
+
+      log =
+        capture_log(fn ->
+          assert :ok = Socket.terminate(:timeout, {%{}, socket})
+        end)
+
+      refute log =~ "Client missed heartbeat"
     end
   end
 
