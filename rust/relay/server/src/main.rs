@@ -797,7 +797,7 @@ async fn phoenix_channel_event_loop(
                 error,
             }) => {
                 is_connected.store(false, Ordering::Relaxed);
-                tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}");
+                tracing::info!(?backoff, ?max_elapsed_time, "{error:#}");
 
                 let ips = resolve_portal_host_ips(portal.host()).await;
                 portal.connect(ips, backoff, NoParams);
