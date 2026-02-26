@@ -12,7 +12,6 @@ use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
-use hex_display::HexDisplayExt as _;
 use logging::err_with_src;
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, UpDownCounter};
