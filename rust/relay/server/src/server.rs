@@ -462,7 +462,6 @@ where
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_binding_request(&mut self, request: &Binding, sender: ClientSocket) {
         let mut message = success_response(BINDING, request.transaction_id());
         message.add_attribute(XorMappedAddress::new(sender.0));
