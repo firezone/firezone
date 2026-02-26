@@ -8461,6 +8461,8 @@ name = "tun"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "bufferpool",
+ "bytes",
  "ip-packet",
  "libc",
  "tokio",

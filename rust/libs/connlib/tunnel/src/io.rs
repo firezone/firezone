@@ -1,5 +1,6 @@
 mod doh;
 mod udp_gso_queue;
+mod tun_gso_queue;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
@@ -12,6 +13,7 @@ use futures::FutureExt as _;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
 use udp_gso_queue::UdpGsoQueue;
+use tun_gso_queue::TunGsoQueue;
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
@@ -48,6 +50,9 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: UdpGsoQueue,
+    
+    #[cfg(target_os = "linux")]
+    tun_gso_queue: TunGsoQueue,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -188,6 +193,8 @@ impl Io {
                 10,
             ),
             gso_queue: UdpGsoQueue::new(),
+            #[cfg(target_os = "linux")]
+            tun_gso_queue: TunGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),

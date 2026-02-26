@@ -3,6 +3,8 @@ use std::{
     task::{Context, Poll},
 };
 
+use bufferpool::Buffer;
+use bytes::BytesMut;
 use ip_packet::IpPacket;
 
 #[cfg(target_family = "unix")]
@@ -11,6 +13,16 @@ pub mod ioctl;
 pub mod linux;
 #[cfg(target_family = "unix")]
 pub mod unix;
+
+/// Represents one or more IP packets to be sent to a TUN device.
+/// On Linux, this can represent a batch of packets (segment_size > 0).
+/// On other platforms, only single packets are used (segment_size = 0).
+pub struct IpPacketOut {
+    /// Buffer containing one or more IP packet payloads
+    pub packet: Buffer<BytesMut>,
+    /// Size of each segment in the buffer. 0 means single packet (no GSO).
+    pub segment_size: usize,
+}
 
 pub trait Tun: Send + Sync + 'static {
     /// Check if more packets can be sent.
