@@ -478,9 +478,10 @@ async fn includes_ip_from_hostname() {
 
 /// Spawns a WebSocket server that responds to requests using a handler function.
 /// Returns the server task handle and the port number.
-async fn spawn_websocket_server<F>(handler: F) -> (ServerHandle, u16)
+async fn spawn_websocket_server<F, R>(handler: F) -> (ServerHandle, u16)
 where
-    F: Fn(&str) -> &str + Send + 'static,
+    F: Fn(&str) -> R + Send + 'static,
+    R: Into<tokio_tungstenite::tungstenite::Utf8Bytes>,
 {
     use futures::{SinkExt, StreamExt};
     use tokio::net::TcpListener;
