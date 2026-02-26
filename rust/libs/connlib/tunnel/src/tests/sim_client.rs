@@ -71,7 +71,7 @@ pub(crate) struct SimClient {
     /// The received ICMP packets, indexed by our custom ICMP payload.
     pub(crate) received_icmp_requests: BTreeMap<u64, (Instant, IpPacket)>,
 
-    /// The received UDP packets, indexed by our custom ICMP payload.
+    /// The received UDP packets, indexed by our custom UDP payload.
     pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
 
     pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), (Instant, IpPacket)>,
