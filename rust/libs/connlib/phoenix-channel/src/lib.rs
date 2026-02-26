@@ -94,32 +94,6 @@ struct Connected<TOutboundMsg> {
     next_request_id: u64,
 }
 
-impl<TOutboundMsg> State<TOutboundMsg> {
-    fn connect(
-        url: Url,
-        addresses: Vec<SocketAddr>,
-        host: String,
-        user_agent: String,
-        token: SecretString,
-        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-        backoff: Duration,
-    ) -> Self {
-        Self::Connecting(Box::pin(async move {
-            tokio::time::sleep(backoff).await;
-            create_and_connect_websocket(
-                url,
-                addresses,
-                host,
-                user_agent,
-                token,
-                socket_factory,
-                CONNECT_TIMEOUT,
-            )
-            .await
-        }))
-    }
-}
-
 async fn create_and_connect_websocket(
     url: Url,
     addresses: Vec<SocketAddr>,
@@ -154,6 +128,22 @@ async fn create_and_connect_websocket(
     .map_err(|_| InternalError::ConnectTimeout)??;
 
     Ok(conn)
+}
+
+async fn close_websocket(mut stream: WebSocketStream<MaybeTlsStream<TcpStream>>) -> Result<()> {
+    stream
+        .send(Message::Close(Some(CloseFrame {
+            code: tungstenite::protocol::frame::coding::CloseCode::Normal,
+            reason: Default::default(),
+        })))
+        .await
+        .context("Failed to send Close frame")?;
+    stream.flush().await.context("Failed to flush")?;
+    SinkExt::close(&mut stream)
+        .await
+        .context("failed to close connection")?;
+
+    anyhow::Ok(())
 }
 
 async fn connect(
@@ -467,23 +457,43 @@ where
     pub fn connect(&mut self, addresses: Vec<IpAddr>, backoff: Duration, params: TFinish) {
         let url = self.url_prototype.to_url(params);
 
-        let user_agent = self.user_agent.clone();
-        let token = self.token.clone();
+        let closing = match std::mem::replace(&mut self.state, State::Closed) {
+            State::Closing(closing) => closing,
+            State::Connected(connected) => close_websocket(connected.stream).boxed(),
+            State::Connecting(_) | State::Closed => std::future::ready(Ok(())).boxed(),
+        };
 
-        self.state = State::connect(
-            url.clone(),
-            addresses
+        self.state = State::Connecting(Box::pin({
+            let url = url.clone();
+            let addresses = addresses
                 .into_iter()
                 .chain(self.host().parse::<IpAddr>().ok())
                 .unique()
                 .map(|ip| SocketAddr::new(ip, self.port()))
-                .collect(),
-            self.host(),
-            user_agent,
-            token,
-            self.socket_factory.clone(),
-            backoff,
-        );
+                .collect();
+            let host = self.host();
+            let user_agent = self.user_agent.clone();
+            let token = self.token.clone();
+            let socket_factory = self.socket_factory.clone();
+
+            async move {
+                if let Err(e) = closing.await {
+                    tracing::debug!("Failed to gracefully close connection: {e:#}");
+                }
+
+                tokio::time::sleep(backoff).await;
+                create_and_connect_websocket(
+                    url,
+                    addresses,
+                    host,
+                    user_agent,
+                    token,
+                    socket_factory,
+                    CONNECT_TIMEOUT,
+                )
+                .await
+            }
+        }));
         self.last_url = Some(url);
 
         // In case we were already re-connecting, we need to wake the suspended task.
@@ -510,25 +520,8 @@ where
 
         match mem::replace(&mut self.state, State::Closed) {
             State::Connecting(_) => return Err(Connecting),
-            State::Connected(Connected { mut stream, .. }) => {
-                self.state = State::Closing(
-                    async move {
-                        stream
-                            .send(Message::Close(Some(CloseFrame {
-                                code: tungstenite::protocol::frame::coding::CloseCode::Normal,
-                                reason: Default::default(),
-                            })))
-                            .await
-                            .context("Failed to send Close frame")?;
-                        stream.flush().await.context("Failed to flush")?;
-                        SinkExt::close(&mut stream)
-                            .await
-                            .context("failed to close connection")?;
-
-                        anyhow::Ok(())
-                    }
-                    .boxed(),
-                );
+            State::Connected(Connected { stream, .. }) => {
+                self.state = State::Closing(close_websocket(stream).boxed());
             }
             State::Closing(stream) => {
                 self.state = State::Closing(stream);
