@@ -1,5 +1,7 @@
 //! TUN device implementation for Linux with GSO batching support
 
+use crate::tun_device_manager::linux::tun_gso_queue::IpPacketBatch;
+
 use super::tun_gso_queue;
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use futures::SinkExt;
@@ -51,7 +53,7 @@ const QUEUE_SIZE: usize = 10_000;
 #[derive(Debug)]
 enum OutboundPacket {
     Single(IpPacket),
-    Batch(tun_gso_queue::IpPacketBatch),
+    Batch(IpPacketBatch),
 }
 
 pub struct Tun {
@@ -326,7 +328,7 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     }
 }
 
-fn write_batch(fd: RawFd, batch: &tun_gso_queue::IpPacketBatch) -> io::Result<usize> {
+fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
     let vnet_hdr = build_vnet_header(batch);
     let header_bytes = batch.header_bytes();
     let payload_bytes = batch.payload_bytes();
@@ -354,7 +356,7 @@ fn write_batch(fd: RawFd, batch: &tun_gso_queue::IpPacketBatch) -> io::Result<us
 }
 
 /// Build virtio_net_hdr for a batch by parsing the serialized header
-fn build_vnet_header(batch: &tun_gso_queue::IpPacketBatch) -> [u8; VIRTIO_NET_HDR_SIZE] {
+fn build_vnet_header(batch: &IpPacketBatch) -> [u8; VIRTIO_NET_HDR_SIZE] {
     let mut vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
 
     let header_bytes = batch.header_bytes();
