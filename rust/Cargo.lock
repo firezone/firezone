@@ -4507,9 +4507,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.28.0"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ce3636fa715e988114552619582b530481fd5ef176a1e5c1bf024077c2c9445"
+checksum = "df9854ea6ad14e3f4698a7f03b65bce0833dd2d81d594a0e4a984170537146b6"
 dependencies = [
  "bitflags 2.10.0",
  "libc",
@@ -6186,8 +6186,7 @@ dependencies = [
 [[package]]
 name = "rtnetlink"
 version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b960d5d873a75b5be9761b1e73b146f52dddcd27bac75263f40fba686d4d7b5"
+source = "git+https://github.com/rust-netlink/rtnetlink?branch=main#eb685374ba7f7a1201754f6b2b40c491d3d50cb3"
 dependencies = [
  "futures-channel",
  "futures-util",

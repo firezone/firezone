@@ -129,7 +129,7 @@ mio = "1.1.1"
 moka = "0.12.13"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.28.0"
+netlink-packet-route = "0.29.0"
 network-types = "0.1.0"
 nix = "0.30.1"
 notify-rust = "4.12.0"
@@ -266,6 +266,7 @@ softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting 
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
+rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
