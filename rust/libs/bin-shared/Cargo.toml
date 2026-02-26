@@ -13,6 +13,8 @@ test = [] # APIs only exposed for testing.
 anyhow = { workspace = true }
 atomicwrites = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio"] }
+bufferpool = { workspace = true }
+bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 dns-types = { workspace = true }
 futures = { workspace = true, features = ["std", "async-await"] }

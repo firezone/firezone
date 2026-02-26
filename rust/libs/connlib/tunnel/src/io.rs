@@ -1,7 +1,6 @@
 mod doh;
 mod nameserver_set;
 mod tcp_dns;
-mod tun_gso_queue;
 mod udp_dns;
 mod udp_gso_queue;
 
@@ -27,7 +26,6 @@ use std::{
 };
 use tracing::Level;
 use tun::Tun;
-use tun_gso_queue::TunGsoQueue;
 use udp_gso_queue::UdpGsoQueue;
 
 use std::collections::VecDeque;
@@ -52,9 +50,6 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: UdpGsoQueue,
-
-    #[cfg(target_os = "linux")]
-    tun_gso_queue: TunGsoQueue,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -195,8 +190,6 @@ impl Io {
                 10,
             ),
             gso_queue: UdpGsoQueue::new(),
-            #[cfg(target_os = "linux")]
-            tun_gso_queue: TunGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -448,26 +441,6 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        #[cfg(target_os = "linux")]
-        {
-            // Send batched packets using send_batch
-            let mut batched_packets = self.tun_gso_queue.packets();
-            loop {
-                if self.tun.poll_send_ready(cx)?.is_pending() {
-                    any_pending = true;
-                    break;
-                }
-
-                let Some(batch) = batched_packets.next() else {
-                    break;
-                };
-
-                self.tun
-                    .send_batch(batch)
-                    .context("Failed to send IP packet batch to TUN device")?;
-            }
-        }
-
         // Send unbatched packets using send
         loop {
             if self.tun.poll_send_ready(cx)?.is_pending() {
@@ -504,18 +477,7 @@ impl Io {
             ],
         );
 
-        #[cfg(target_os = "linux")]
-        {
-            if self.tun_gso_queue.enqueue(&packet).is_err() {
-                // Non-batchable packet (ICMP, etc.), send via regular path
-                self.outbound_packet_buffer.push_back(packet);
-            }
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            self.outbound_packet_buffer.push_back(packet);
-        }
+        self.outbound_packet_buffer.push_back(packet);
     }
 
     pub fn reset(&mut self) {
@@ -523,10 +485,6 @@ impl Io {
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
-        #[cfg(target_os = "linux")]
-        {
-            self.tun_gso_queue.clear();
-        }
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.nameservers.evaluate();
@@ -860,11 +818,6 @@ mod tests {
         }
 
         fn send(&mut self, _: IpPacket) -> io::Result<()> {
-            Ok(())
-        }
-
-        #[cfg(target_os = "linux")]
-        fn send_batch(&mut self, _: tun::IpPacketBatch) -> io::Result<()> {
             Ok(())
         }
 

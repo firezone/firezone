@@ -450,14 +450,6 @@ impl Tun for ValidateChecksumAdapter {
         self.inner.send(packet)
     }
 
-    #[cfg(target_os = "linux")]
-    fn send_batch(&mut self, batch: tun::IpPacketBatch) -> std::io::Result<()> {
-        // For GSO batches on Linux, we can't validate individual checksums
-        // as we only have the canonical header and concatenated payloads
-        // The kernel will handle checksum offload
-        self.inner.send_batch(batch)
-    }
-
     fn poll_recv_many(
         &mut self,
         cx: &mut std::task::Context,
