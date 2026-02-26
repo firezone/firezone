@@ -1,13 +1,18 @@
 defmodule PortalOps.Endpoint do
   use Phoenix.Endpoint, otp_app: :portal
 
+  # The ops endpoint is always served over plain HTTP, so this must be false.
+  # NOTE: Plug.Session does not resolve MFA tuples for the `secure` option —
+  # it passes the value directly to put_resp_cookie/4, where any non-false/nil
+  # term is truthy. Using an MFA here would always set the Secure flag,
+  # causing the browser to reject the cookie over HTTP.
   @session_cookie [
     store: :cookie,
     key: "_firezone_ops_key",
     same_site: "Lax",
     max_age: 8 * 60 * 60,
     sign: true,
-    secure: {__MODULE__, :cookie_secure, []},
+    secure: false,
     signing_salt: {__MODULE__, :cookie_signing_salt, []}
   ]
 
@@ -38,13 +43,6 @@ defmodule PortalOps.Endpoint do
 
   plug Plug.Session, @session_cookie
   plug PortalOps.Router
-
-  def cookie_secure do
-    # The ops endpoint is always served over plain HTTP, so cookies must never
-    # be marked Secure or the browser will refuse to send them back, breaking
-    # the LiveView session and causing an infinite reload loop.
-    false
-  end
 
   def cookie_signing_salt do
     Portal.Config.fetch_env!(:portal, :ops_cookie_signing_salt)
