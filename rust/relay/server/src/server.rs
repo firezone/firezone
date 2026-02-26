@@ -466,7 +466,7 @@ where
         let mut message = success_response(BINDING, request.transaction_id());
         message.add_attribute(XorMappedAddress::new(sender.0));
 
-        tracing::info!("Handled BINDING request");
+        tracing::info!(%sender, "Handled BINDING request");
 
         self.send_message(
             AuthenticatedMessage::new_dangerous_unauthenticated(message),
