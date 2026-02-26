@@ -21,9 +21,9 @@ defmodule PortalAPI.Plugs.RateLimit do
       {:allow, _count} ->
         conn
 
-      {:deny, _refill_time} ->
+      {:deny, retry_after_ms} ->
         conn
-        |> put_resp_header("retry-after", Integer.to_string(div(@cost_default, refill_rate)))
+        |> put_resp_header("retry-after", Integer.to_string(ceil(retry_after_ms / 1000)))
         |> put_status(429)
         |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
         |> Phoenix.Controller.render(:"429")
@@ -32,10 +32,10 @@ defmodule PortalAPI.Plugs.RateLimit do
   end
 
   defp refill_rate(account) do
-    Map.get(account.limits, :api_refill_rate, @refill_rate_default)
+    account.limits.api_refill_rate || @refill_rate_default
   end
 
   defp capacity(account) do
-    Map.get(account.limits, :api_capacity, @capacity_default)
+    account.limits.api_capacity || @capacity_default
   end
 end

@@ -11,6 +11,8 @@ defmodule Portal.Accounts.Limits do
     field :account_admin_users_count, :integer
     field :api_clients_count, :integer, default: 100
     field :api_tokens_per_client_count, :integer, default: 100
+    field :api_refill_rate, :integer
+    field :api_capacity, :integer
   end
 
   def changeset(limits \\ %__MODULE__{}, attrs) do
@@ -22,6 +24,8 @@ defmodule Portal.Accounts.Limits do
       account_admin_users_count
       api_clients_count
       api_tokens_per_client_count
+      api_refill_rate
+      api_capacity
     ]a
 
     limits
