@@ -21,6 +21,10 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="12332">
+          Processes TUN reads and writes in a hot loop until the file descriptor
+          would block, reducing per-packet scheduler wakeups.
+        </ChangeItem>
         <ChangeItem pull="12251">
           Gracefully handles WebSocket closes from the portal instead of logging
           a deserialization error.

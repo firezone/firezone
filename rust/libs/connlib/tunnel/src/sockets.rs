@@ -164,9 +164,7 @@ where
 ///
 /// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
 const QUEUE_SIZE: usize = {
-    if cfg!(target_os = "ios") {
-        64
-    } else if cfg!(target_os = "android") {
+    if cfg!(any(target_os = "ios", target_os = "android")) {
         10
     } else {
         1000
@@ -270,6 +268,8 @@ impl ThreadedUdpSocket {
 
                     async move {
                         while let Some(datagram) = outbound_rx.recv().await {
+                            tokio::task::yield_now().await;
+
                             if let Err(e) = socket.send(datagram).await {
                                 if let Some(io) = e.any_downcast_ref::<io::Error>() {
                                     io_error_counter.add(
@@ -300,6 +300,8 @@ impl ThreadedUdpSocket {
                 });
                 let receive = runtime.spawn(async move {
                     loop {
+                        tokio::task::yield_now().await;
+
                         let result = socket.recv_from().await;
 
                         if let Some(io) = result
