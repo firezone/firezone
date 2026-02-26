@@ -1698,6 +1698,7 @@ impl ClientState {
 
         self.node.reset(now); // Clear all network connections.
         self.gateways.clear(); // Clear all state associated with Gateways.
+        self.clients.clear(); // Clear all state associated with Clients.
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events(now);
