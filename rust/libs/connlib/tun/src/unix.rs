@@ -19,22 +19,71 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+            let mut pending_packets = Vec::with_capacity(128);
 
-            while let Some(packet) = outbound_rx.recv().await {
-                #[cfg(debug_assertions)]
-                tracing::trace!(target: "wire::dev::send", ?packet);
+            loop {
+                // Read a batch of packets.
+                let num_read = outbound_rx.recv_many(&mut pending_packets, 128).await;
 
-                if let Err(e) = fd
-                    .async_io(tokio::io::Interest::WRITABLE, |fd| {
-                        write(fd.as_raw_fd(), &packet)
-                    })
-                    .await
-                {
-                    tracing::warn!("Failed to write to TUN FD: {e}");
+                if num_read == 0 {
+                    return anyhow::Ok(());
                 }
-            }
 
-            anyhow::Ok(())
+                // Wait until fd is writable.
+                let mut guard = loop {
+                    match fd.writable().await {
+                        Ok(guard) => break guard,
+                        Err(e) => {
+                            tracing::warn!("Failed to await TUN fd writability: {e}");
+                        }
+                    }
+                };
+
+                let mut idx = 0;
+
+                'write: while idx < num_read {
+                    let Some(packet) = pending_packets.get(idx) else {
+                        tracing::warn!(
+                            idx,
+                            num_read,
+                            pending_packets_len = pending_packets.len(),
+                            "Missing pending packet while writing batch"
+                        );
+                        break 'write;
+                    };
+
+                    // Try and write the current packet.
+                    match guard.try_io(|fd| write(fd.as_raw_fd(), packet)) {
+                        Err(_would_block) => {
+                            // Renew the guard if fd is no longer writable.
+                            guard = match fd.writable().await {
+                                Ok(guard) => guard,
+                                Err(e) => {
+                                    // Temporary(?) IO error when waiting for writability.
+                                    // Loop around to try and write the same packet again.
+                                    // Most likely, we will end up in this branch again as a result.
+                                    tracing::warn!("Failed to await TUN fd writability: {e}");
+                                    continue 'write;
+                                }
+                            };
+                        }
+                        Ok(Ok(_bytes_written)) => {
+                            #[cfg(debug_assertions)]
+                            tracing::trace!(target: "wire::dev::send", ?packet);
+
+                            idx += 1; // We sent the packet, go to the next one.
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(?packet, "Failed to write to TUN FD: {e}");
+
+                            idx += 1; // We failed to send the packet, go to the next one.
+                        }
+                    }
+                }
+
+                // Clear the buffer for the next batch.
+                pending_packets.clear();
+            }
         })?;
 
     anyhow::Ok(())
@@ -56,51 +105,58 @@ where
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
 
             loop {
-                let next_inbound_packet = fd
-                    .async_io(tokio::io::Interest::READABLE, |fd| {
-                        let mut ip_packet_buf = IpPacketBuf::new();
-
-                        let len = read(fd.as_raw_fd(), &mut ip_packet_buf)?;
-
-                        if len == 0 {
-                            return Ok(None);
-                        }
-
-                        let packet = IpPacket::new(ip_packet_buf, len)
-                            .context("Failed to parse IP packet") // Add an extra layer to ensure any inner error is the `cause`
-                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
-                        Ok(Some(packet))
-                    })
-                    .await;
-
-                match next_inbound_packet.context("Failed to read from TUN FD") {
-                    Ok(None) => bail!("TUN file descriptor is closed"),
-                    Ok(Some(packet)) => {
-                        #[cfg(debug_assertions)]
-                        tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                        if inbound_tx.send(packet).await.is_err() {
-                            tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                            break;
-                        };
-                    }
-                    Err(e) if e.any_is::<ip_packet::Fragmented>() => {
-                        tracing::debug!("{e:#}"); // Log on debug to be less noisy.
-                        continue;
-                    }
+                let mut guard = match fd.readable().await {
+                    Ok(guard) => guard,
                     Err(e) => {
-                        tracing::warn!("{e:#}");
+                        tracing::warn!("Failed to await TUN fd readability: {e}");
                         continue;
+                    }
+                };
+
+                // `try_io` returns an `Err` only if the fd is not readable anymore.
+                // In that case we want to loop around and .await a new read guard.
+                while let Ok(res) = guard.try_io(|fd| read_packet(&read, fd.as_raw_fd())) {
+                    match res.context("Failed to read from TUN fd") {
+                        Ok(Some(packet)) => {
+                            #[cfg(debug_assertions)]
+                            tracing::trace!(target: "wire::dev::recv", ?packet);
+
+                            if inbound_tx.send(packet).await.is_err() {
+                                tracing::debug!("Inbound packet receiver gone, shutting down task");
+                                return anyhow::Ok(());
+                            }
+                        }
+                        Ok(None) => bail!("TUN file descriptor is closed"),
+                        Err(e) if e.any_is::<ip_packet::Fragmented>() => {
+                            tracing::debug!("{e:#}"); // Log on debug to be less noisy.
+                        }
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                        }
                     }
                 }
             }
-
-            anyhow::Ok(())
         })?;
 
     anyhow::Ok(())
+}
+
+fn read_packet(
+    read: &impl Fn(i32, &mut IpPacketBuf) -> std::result::Result<usize, io::Error>,
+    raw_fd: i32,
+) -> std::result::Result<Option<IpPacket>, io::Error> {
+    let mut ip_packet_buf = IpPacketBuf::new();
+    let len = read(raw_fd, &mut ip_packet_buf)?;
+
+    if len == 0 {
+        return Ok(None);
+    }
+
+    let packet = IpPacket::new(ip_packet_buf, len)
+        .context("Failed to parse IP packet") // Add an extra layer to ensure any inner error is the `cause`
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    Ok(Some(packet))
 }
 
 #[cfg(test)]

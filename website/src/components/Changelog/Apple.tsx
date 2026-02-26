@@ -24,7 +24,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull={12332}>
+          Processes TUN reads and writes in a hot loop until the file descriptor
+          would block, reducing per-packet scheduler wakeups.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.14" date={new Date("2026-03-17")}>
         <ChangeItem pull={12407}>
           Fixes update notification dismissal on macOS where dismissing one

@@ -10,7 +10,14 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os === OS.Linux && (
+          <ChangeItem pull={12332}>
+            Processes TUN reads and writes in a hot loop until the file
+            descriptor would block, reducing per-packet scheduler wakeups.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.5.11" date={new Date("2026-03-16")}>
         <ChangeItem pull={12355}>
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
