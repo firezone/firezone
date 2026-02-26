@@ -814,6 +814,25 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 pg_group_evicted" do
+    test "channel leaves pg group and stops receiving targeted messages", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      # Flush :after_join before asserting group membership
+      :sys.get_state(socket.channel_pid)
+
+      assert :ok = Channels.send_to_client(client.id, :ping)
+
+      group = {Portal.Channels, :client, client.id}
+      send(socket.channel_pid, {:pg_group_evicted, group})
+      :sys.get_state(socket.channel_pid)
+
+      assert {:error, :not_found} = Channels.send_to_client(client.id, :ping)
+    end
+  end
+
   describe "handle_info/2 recompute_authorized_resources" do
     test "sends resource_created_or_updated for new connectable_resources", %{
       account: account,

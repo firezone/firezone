@@ -365,6 +365,11 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  def handle_info({:pg_group_evicted, group}, socket) do
+    Channels.handle_eviction(group)
+    {:noreply, socket}
+  end
+
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
 
