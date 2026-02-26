@@ -17,16 +17,19 @@ const MAX_SEGMENT_SIZE: usize =
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
-pub struct GsoQueue {
+pub struct UdpGsoQueue {
     inner: BTreeMap<Connection, VecDeque<(usize, Buffer<BytesMut>)>>,
     buffer_pool: BufferPool<BytesMut>,
 }
 
-impl GsoQueue {
+impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
             inner: Default::default(),
-            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH, "gso-queue"),
+            buffer_pool: BufferPool::new(
+                MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH,
+                "udp-gso-queue",
+            ),
         }
     }
 
@@ -74,9 +77,9 @@ struct Connection {
     ecn: Ecn,
 }
 
-/// An [`Iterator`] that drains datagrams from the [`GsoQueue`].
+/// An [`Iterator`] that drains datagrams from the [`UdpGsoQueue`].
 struct DrainDatagramsIter<'a> {
-    queue: &'a mut GsoQueue,
+    queue: &'a mut UdpGsoQueue,
 }
 
 impl Iterator for DrainDatagramsIter<'_> {
@@ -112,7 +115,7 @@ mod tests {
 
     #[test]
     fn dropping_datagram_iterator_does_not_drop_items() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
 
@@ -128,7 +131,7 @@ mod tests {
 
     #[test]
     fn appends_items_of_same_batch() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -144,7 +147,7 @@ mod tests {
 
     #[test]
     fn starts_new_batch_for_new_dst() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -165,7 +168,7 @@ mod tests {
 
     #[test]
     fn continues_batch_for_old_dst() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -189,7 +192,7 @@ mod tests {
 
     #[test]
     fn starts_new_batch_after_single_item_less_than_segment_length() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);

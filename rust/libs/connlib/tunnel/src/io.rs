@@ -1,5 +1,5 @@
 mod doh;
-mod gso_queue;
+mod udp_gso_queue;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
@@ -11,7 +11,7 @@ use dns_types::DoHUrl;
 use futures::FutureExt as _;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
-use gso_queue::GsoQueue;
+use udp_gso_queue::UdpGsoQueue;
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
@@ -47,7 +47,7 @@ const MAX_INBOUND_PACKET_BATCH: usize = {
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    gso_queue: GsoQueue,
+    gso_queue: UdpGsoQueue,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -187,7 +187,7 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
-            gso_queue: GsoQueue::new(),
+            gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
