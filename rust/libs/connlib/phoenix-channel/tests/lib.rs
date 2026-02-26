@@ -2,6 +2,7 @@
 #![allow(clippy::unwrap_used)]
 
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::atomic::AtomicUsize;
 use std::{future, sync::Arc, time::Duration};
 
 use futures::SinkExt as _;
@@ -331,6 +332,78 @@ async fn times_out_after_missed_heartbeats() {
     );
 }
 
+#[tokio::test]
+async fn sends_heartbeats_regardless_of_messages() {
+    use phoenix_channel::PublicKeyParam;
+
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let num_heartbeats = Arc::new(AtomicUsize::default());
+
+    let (server, port) = spawn_websocket_server({
+        let num_heartbeats = num_heartbeats.clone();
+
+        move |text| {
+            let msg = serde_json::from_str::<'_, serde_json::Value>(text).unwrap();
+            let reference = &msg["ref"];
+            let topic = msg["topic"].as_str().unwrap();
+
+            match msg["event"].as_str().unwrap() {
+                "phx_join" => {
+                    format!(r#"{{"event":"phx_reply","ref":{reference},"topic":"{topic}","payload":{{"status":"ok","response":{{}}}}}}"#)
+                }
+                "heartbeat" => {
+                    num_heartbeats.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                    format!(r#"{{"event":"phx_reply","ref":{reference},"topic":"phoenix","payload":{{"status":"ok","response":{{}}}}}}"#)
+                }
+                "bar" => {
+                    format!(r#"{{"event":"foo","ref":{reference},"topic":"{topic}","payload":null}}"#)
+                }
+                other => panic!("Unknown event: {other}")
+            }
+        }
+    })
+    .await;
+
+    let mut channel = make_test_channel("localhost", port);
+
+    let client = tokio::spawn(async move {
+        channel.connect(
+            vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+            Duration::ZERO,
+            PublicKeyParam([0u8; 32]),
+        );
+
+        let mut message_interval = tokio::time::interval(Duration::from_secs(3));
+
+        loop {
+            tokio::select! {
+                event = std::future::poll_fn(|cx| channel.poll(cx)) => {
+                    match event.unwrap() {
+                        phoenix_channel::Event::Message { .. } => {}
+                        phoenix_channel::Event::Hiccup { error, .. } => panic!("Connection failed: {error}"),
+                        phoenix_channel::Event::Closed => {
+                            panic!("Channel closed")
+                        }
+                        phoenix_channel::Event::Connected => {}
+                    }
+                }
+                _ = message_interval.tick() => {
+                    let _ = channel.send("test", OutboundMsg::Bar);
+                }
+            }
+        }
+    });
+
+    tokio::time::sleep(Duration::from_secs(25)).await;
+
+    assert_eq!(num_heartbeats.load(std::sync::atomic::Ordering::SeqCst), 2);
+
+    client.abort();
+    server.abort();
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum InboundMsg {
@@ -478,9 +551,10 @@ async fn includes_ip_from_hostname() {
 
 /// Spawns a WebSocket server that responds to requests using a handler function.
 /// Returns the server task handle and the port number.
-async fn spawn_websocket_server<F>(handler: F) -> (ServerHandle, u16)
+async fn spawn_websocket_server<F, R>(handler: F) -> (ServerHandle, u16)
 where
-    F: Fn(&str) -> &str + Send + 'static,
+    F: Fn(&str) -> R + Send + 'static,
+    R: Into<tokio_tungstenite::tungstenite::Utf8Bytes>,
 {
     use futures::{SinkExt, StreamExt};
     use tokio::net::TcpListener;

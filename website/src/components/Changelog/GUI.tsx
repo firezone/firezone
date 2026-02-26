@@ -27,6 +27,10 @@ export default function GUI({ os }: { os: OS }) {
           Re-establishes the WebSocket connection to the control plane if it
           becomes unresponsive.
         </ChangeItem>
+        <ChangeItem pull="12322">
+          Fixes an issue where the WebSocket connection to the control plane was
+          lost under load.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-02-02")}>
         <ChangeItem pull="11625">

@@ -52,6 +52,10 @@ export default function Apple() {
           Re-establishes the WebSocket connection to the control plane if it
           becomes unresponsive.
         </ChangeItem>
+        <ChangeItem pull="12322">
+          Fixes an issue where the WebSocket connection to the control plane was
+          lost under load.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.13" date={new Date("2026-01-30")}>
         <ChangeItem pull="11901">
