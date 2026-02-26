@@ -454,7 +454,7 @@ impl Io {
         #[cfg(target_os = "linux")]
         let mut tun_packets = self.tun_gso_queue.packets();
         #[cfg(not(target_os = "linux"))]
-        let mut tun_packets = self.outbound_packet_buffer.iter();
+        let mut tun_packets = std::iter::from_fn(|| self.outbound_packet_buffer.pop_front());
 
         loop {
             // First, check if we can send more packets.
@@ -473,9 +473,6 @@ impl Io {
                 .send(packet)
                 .context("Failed to send IP packet to TUN device")?;
         }
-
-        #[cfg(not(target_os = "linux"))]
-        self.outbound_packet_buffer.clear();
 
         if any_pending {
             return Poll::Pending;
