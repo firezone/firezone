@@ -568,6 +568,7 @@ where
             tracing::info!(
                 target: "relay",
                 %sender,
+                port = %allocation.port,
                 first_relay_address = field::display(first_relay_address),
                 second_relay_address = field::display(second_relay_addr),
                 lifetime = field::debug(effective_lifetime.lifetime()),
@@ -577,6 +578,7 @@ where
             tracing::info!(
                 target: "relay",
                 %sender,
+                port = %allocation.port,
                 first_relay_address = field::display(first_relay_address),
                 lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
