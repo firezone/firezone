@@ -15,33 +15,50 @@ pub mod linux;
 pub mod unix;
 
 /// Represents one or more IP packets to be sent to a TUN device.
-/// On Linux, this can represent a batch of packets (segment_size > 0).
-/// On other platforms, only single packets are used (segment_size = 0).
+/// On Linux, this represents a GSO batch with separate header and payloads.
+/// On other platforms, only single packets are used (payloads contains full packet).
 pub struct IpPacketOut {
-    /// Buffer containing one or more IP packet payloads
-    pub packet: Buffer<BytesMut>,
-    /// Size of each segment in the buffer. 0 means single packet (no GSO).
+    /// Header bytes (IP + L4 header) - included once
+    /// Empty for non-Linux single packets
+    pub header: Vec<u8>,
+    /// Buffer containing concatenated payload bodies (without headers)
+    /// For non-Linux single packets, contains the full packet (header + payload)
+    pub payloads: Buffer<BytesMut>,
+    /// Size of each payload segment
     pub segment_size: usize,
 }
 
 impl IpPacketOut {
-    /// Returns true if this represents a GSO batch (multiple segments)
+    /// Returns true if this represents a GSO batch
     pub fn is_gso(&self) -> bool {
-        self.segment_size > 0
+        !self.header.is_empty()
     }
 
     /// Returns the number of segments in this packet/batch
     pub fn segment_count(&self) -> usize {
-        if self.segment_size == 0 {
+        if self.header.is_empty() {
+            // Non-Linux single packet
             1
         } else {
-            self.packet.len() / self.segment_size
+            // Linux GSO batch
+            self.payloads.len() / self.segment_size
         }
     }
 
-    /// Returns the total size of the buffer
+    /// Returns the header length
+    pub fn header_len(&self) -> usize {
+        self.header.len()
+    }
+
+    /// Returns the total size (header + all payloads)
     pub fn total_len(&self) -> usize {
-        self.packet.len()
+        if self.header.is_empty() {
+            // Non-Linux single packet: payloads contains the full packet
+            self.payloads.len()
+        } else {
+            // Linux GSO batch: header once + concatenated payloads
+            self.header.len() + self.payloads.len()
+        }
     }
 }
 

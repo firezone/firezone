@@ -11,23 +11,126 @@ use tun::IpPacketOut;
 use super::MAX_INBOUND_PACKET_BATCH;
 
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
+const MAX_HEADER_SIZE: usize = 60 + 60; // Max IP header (60) + max TCP header (60)
 
-/// Key for grouping packets that can be coalesced via GSO
-/// Only used for batchable packets (TCP/UDP with valid ports)
-#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
-struct FlowKey {
-    src_addr: IpAddr, // Source IP
-    dst_addr: IpAddr, // Destination IP
-    src_port: u16,    // Source port
-    dst_port: u16,    // Destination port
-    protocol: u8,     // IP protocol number (6=TCP, 17=UDP)
+/// Canonical header that groups packets for GSO batching.
+/// This represents the IP + L4 header with variable fields normalized.
+/// For TCP: sequence numbers, checksums are ignored
+/// For UDP: length, checksums are ignored
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone)]
+struct CanonicalHeader {
+    /// The actual header bytes with variable fields zeroed out
+    header_bytes: Vec<u8>,
+    /// Length of the header (IP + L4)
+    header_len: usize,
+}
+
+impl CanonicalHeader {
+    /// Extract canonical header from an IP packet
+    /// Returns None if the packet cannot be batched (not TCP/UDP, or parse failure)
+    fn from_packet(packet: &IpPacket) -> Option<Self> {
+        let packet_bytes = packet.packet();
+
+        // Calculate IP header length
+        let ip_header_len = if packet.source().is_ipv4() {
+            (packet_bytes[0] & 0x0F) as usize * 4
+        } else {
+            40 // IPv6 header is always 40 bytes
+        };
+
+        // Only TCP and UDP can be batched
+        if let Some(tcp) = packet.as_tcp() {
+            // TCP packet - header is IP + TCP
+            let tcp_header_len = (tcp.data_offset() as usize) * 4;
+            let header_len = ip_header_len + tcp_header_len;
+
+            if header_len > packet_bytes.len() {
+                return None;
+            }
+
+            let mut header_bytes = vec![0u8; header_len];
+            header_bytes.copy_from_slice(&packet_bytes[..header_len]);
+
+            // Normalize variable fields in IP header
+            if packet.source().is_ipv4() {
+                header_bytes[2] = 0; // Total length
+                header_bytes[3] = 0;
+                header_bytes[10] = 0; // Checksum
+                header_bytes[11] = 0;
+            } else {
+                header_bytes[4] = 0; // Payload length
+                header_bytes[5] = 0;
+            }
+
+            // Zero out TCP sequence number and checksum
+            let tcp_offset = ip_header_len;
+            header_bytes[tcp_offset + 4] = 0; // Sequence number
+            header_bytes[tcp_offset + 5] = 0;
+            header_bytes[tcp_offset + 6] = 0;
+            header_bytes[tcp_offset + 7] = 0;
+            header_bytes[tcp_offset + 16] = 0; // Checksum
+            header_bytes[tcp_offset + 17] = 0;
+
+            return Some(CanonicalHeader {
+                header_bytes,
+                header_len,
+            });
+        }
+
+        if let Some(_udp) = packet.as_udp() {
+            // UDP packet - header is IP + UDP (8 bytes)
+            let header_len = ip_header_len + 8;
+
+            if header_len > packet_bytes.len() {
+                return None;
+            }
+
+            let mut header_bytes = vec![0u8; header_len];
+            header_bytes.copy_from_slice(&packet_bytes[..header_len]);
+
+            // Normalize variable fields in IP header
+            if packet.source().is_ipv4() {
+                header_bytes[2] = 0; // Total length
+                header_bytes[3] = 0;
+                header_bytes[10] = 0; // Checksum
+                header_bytes[11] = 0;
+            } else {
+                header_bytes[4] = 0; // Payload length
+                header_bytes[5] = 0;
+            }
+
+            // Zero out UDP length and checksum
+            let udp_offset = ip_header_len;
+            header_bytes[udp_offset + 4] = 0; // Length
+            header_bytes[udp_offset + 5] = 0;
+            header_bytes[udp_offset + 6] = 0; // Checksum
+            header_bytes[udp_offset + 7] = 0;
+
+            return Some(CanonicalHeader {
+                header_bytes,
+                header_len,
+            });
+        }
+
+        // Not TCP or UDP - cannot batch
+        None
+    }
+}
+
+/// A batch of payloads that can be sent with GSO
+struct PayloadBatch {
+    /// The size of each payload segment
+    segment_size: usize,
+    /// Concatenated payload bodies (without headers)
+    payloads: Buffer<BytesMut>,
 }
 
 /// Holds IP packets that need to be sent, indexed by flow and segment size.
 /// On Linux, packets are batched by flow for GSO. On other platforms, this
 /// queue exists but is not used.
 pub struct TunGsoQueue {
-    inner: BTreeMap<FlowKey, VecDeque<(usize, Buffer<BytesMut>)>>,
+    /// Map from canonical header to batches of payloads
+    inner: BTreeMap<CanonicalHeader, VecDeque<PayloadBatch>>,
     buffer_pool: BufferPool<BytesMut>,
 }
 
@@ -49,33 +152,53 @@ impl TunGsoQueue {
     /// Enqueue a packet for batching.
     /// Returns Err(NotBatchable) if the packet cannot be batched (ICMP, malformed TCP/UDP, etc.)
     pub fn enqueue(&mut self, packet: &IpPacket) -> Result<(), NotBatchable> {
-        let payload_len = packet.packet().len();
-        let packet_bytes = packet.packet();
+        // Try to extract canonical header for batchable packets
+        let canonical_header = CanonicalHeader::from_packet(packet).ok_or(NotBatchable)?;
 
-        // Try to extract flow key for batchable packets
-        let key = extract_flow_key(packet).ok_or(NotBatchable)?;
+        // Extract payload using the appropriate accessor
+        let payload = if let Some(tcp) = packet.as_tcp() {
+            tcp.payload()
+        } else if let Some(udp) = packet.as_udp() {
+            udp.payload()
+        } else {
+            return Err(NotBatchable);
+        };
 
-        // Get or create batch for this flow
-        let batches = self.inner.entry(key).or_default();
+        let payload_len = payload.len();
+
+        // Get or create batch list for this header
+        let batches = self.inner.entry(canonical_header).or_default();
 
         // Check if we can append to existing batch
-        let Some((batch_size, buffer)) = batches.back_mut() else {
+        let Some(batch) = batches.back_mut() else {
             // No existing batch, create new one
-            batches.push_back((payload_len, self.buffer_pool.pull_initialised(packet_bytes)));
+            let mut buffer = self.buffer_pool.pull();
+            buffer.clear();
+            buffer.extend_from_slice(payload);
+            batches.push_back(PayloadBatch {
+                segment_size: payload_len,
+                payloads: buffer,
+            });
             return Ok(());
         };
 
-        let batch_size = *batch_size;
-        let batch_is_ongoing = buffer.len() % batch_size == 0;
+        // Check if payloads are being accumulated (buffer is multiple of segment_size)
+        let batch_is_ongoing = batch.payloads.len() % batch.segment_size == 0;
 
-        // Can only batch packets of same size
-        if batch_is_ongoing && payload_len <= batch_size {
-            buffer.extend_from_slice(packet_bytes);
+        // Can only batch packets of same payload size
+        if batch_is_ongoing && payload_len <= batch.segment_size {
+            batch.payloads.extend_from_slice(payload);
             return Ok(());
         }
 
         // Different size, start new batch
-        batches.push_back((payload_len, self.buffer_pool.pull_initialised(packet_bytes)));
+        let mut buffer = self.buffer_pool.pull();
+        buffer.clear();
+        buffer.extend_from_slice(payload);
+        batches.push_back(PayloadBatch {
+            segment_size: payload_len,
+            payloads: buffer,
+        });
 
         Ok(())
     }
@@ -89,44 +212,6 @@ impl TunGsoQueue {
     }
 }
 
-/// Extract flow key from IP packet for batching
-/// Returns Some for batchable packets (TCP/UDP with valid ports)
-/// Returns None for non-batchable packets (ICMP, malformed TCP/UDP, etc.)
-fn extract_flow_key(packet: &IpPacket) -> Option<FlowKey> {
-    // Get source and destination IPs
-    let src_addr = packet.source();
-    let dst_addr = packet.destination();
-
-    // Get protocol number
-    let protocol = packet.next_header().0;
-
-    // Extract ports for TCP/UDP only - other protocols are not batchable
-    let (src_port, dst_port) = match protocol {
-        6 => {
-            // TCP
-            let tcp = packet.as_tcp()?;
-            (tcp.source_port(), tcp.destination_port())
-        }
-        17 => {
-            // UDP
-            let udp = packet.as_udp()?;
-            (udp.source_port(), udp.destination_port())
-        }
-        _ => {
-            // Other protocols (ICMP, ESP, etc.) - not batchable
-            return None;
-        }
-    };
-
-    Some(FlowKey {
-        src_addr,
-        dst_addr,
-        src_port,
-        dst_port,
-        protocol,
-    })
-}
-
 struct DrainPacketsIter<'a> {
     queue: &'a mut TunGsoQueue,
 }
@@ -137,21 +222,22 @@ impl Iterator for DrainPacketsIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let mut entry = self.queue.inner.first_entry()?;
-            let Some((segment_size, buffer)) = entry.get_mut().pop_front() else {
+
+            // Clone the header data before borrowing mutably
+            let header_bytes = entry.key().header_bytes.clone();
+            let header_len = entry.key().header_len;
+
+            let Some(batch) = entry.get_mut().pop_front() else {
                 entry.remove();
                 continue;
             };
 
-            // If buffer contains only one segment, this is not a GSO batch
-            let actual_segment_size = if buffer.len() == segment_size {
-                0 // Single packet, no GSO
-            } else {
-                segment_size // Multiple segments, GSO batch
-            };
-
+            // Always return header and payloads separately
+            // TUN device can handle batches of 1 just fine
             return Some(IpPacketOut {
-                packet: buffer,
-                segment_size: actual_segment_size,
+                header: header_bytes,
+                payloads: batch.payloads,
+                segment_size: batch.segment_size,
             });
         }
     }
@@ -164,10 +250,10 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     #[test]
-    fn test_enqueue_icmp_returns_error() {
+    fn icmp_returns_error() {
         let mut queue = TunGsoQueue::new();
 
-        let packet = make::icmp_request_packet(
+        let icmp = make::icmp_request_packet(
             Ipv4Addr::new(10, 0, 0, 1).into(),
             Ipv4Addr::new(8, 8, 8, 8),
             1,
@@ -176,20 +262,15 @@ mod tests {
         )
         .unwrap();
 
-        let result = queue.enqueue(&packet);
-
-        assert!(result.is_err(), "ICMP should return NotBatchable error");
-
-        // Verify no packets in iterator
-        let mut packets = queue.packets();
-        assert!(packets.next().is_none());
+        assert!(queue.enqueue(&icmp).is_err());
+        assert!(queue.packets().next().is_none());
     }
 
     #[test]
-    fn test_enqueue_tcp_succeeds() {
+    fn single_tcp_packet_is_batch_of_one() {
         let mut queue = TunGsoQueue::new();
 
-        let packet = make::tcp_packet(
+        let tcp = make::tcp_packet(
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::new(192, 168, 1, 1),
             8080,
@@ -199,23 +280,21 @@ mod tests {
         )
         .unwrap();
 
-        let result = queue.enqueue(&packet);
+        queue.enqueue(&tcp).unwrap();
 
-        assert!(result.is_ok(), "TCP should be batchable");
+        let mut iter = queue.packets();
+        let out = iter.next().unwrap();
 
-        // Verify packet appears in iterator
-        let mut packets = queue.packets();
-        let out = packets.next().expect("Should have one packet");
-        assert!(!out.is_gso(), "Single packet should not be GSO");
+        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 1);
-        assert!(packets.next().is_none());
+        assert_eq!(&out.payloads[..], &[1, 2, 3, 4]);
+        assert!(iter.next().is_none());
     }
 
     #[test]
-    fn test_same_size_tcp_packets_batch_together() {
+    fn same_flow_same_size_batches() {
         let mut queue = TunGsoQueue::new();
 
-        // Add two TCP packets from same flow with same payload size
         let tcp1 = make::tcp_packet(
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::new(192, 168, 1, 1),
@@ -225,7 +304,6 @@ mod tests {
             vec![1, 2, 3, 4],
         )
         .unwrap();
-        let tcp1_len = tcp1.packet().len();
 
         let tcp2 = make::tcp_packet(
             Ipv4Addr::new(10, 0, 0, 1),
@@ -236,26 +314,28 @@ mod tests {
             vec![5, 6, 7, 8],
         )
         .unwrap();
-        let tcp2_len = tcp2.packet().len();
 
         queue.enqueue(&tcp1).unwrap();
         queue.enqueue(&tcp2).unwrap();
 
-        // Should get one batched packet
-        let mut packets = queue.packets();
-        let out = packets.next().expect("Should have batched packet");
-        assert!(out.is_gso(), "Should be GSO batch");
-        assert_eq!(out.segment_count(), 2, "Should have 2 segments");
-        assert_eq!(out.segment_size, tcp1_len);
-        assert_eq!(out.total_len(), tcp1_len + tcp2_len);
-        assert!(packets.next().is_none());
+        let mut iter = queue.packets();
+        let out = iter.next().unwrap();
+
+        // Should be batched
+        assert!(out.is_gso());
+        assert_eq!(out.segment_count(), 2);
+
+        // Verify payloads concatenated correctly
+        assert_eq!(&out.payloads[0..4], &[1, 2, 3, 4]);
+        assert_eq!(&out.payloads[4..8], &[5, 6, 7, 8]);
+
+        assert!(iter.next().is_none());
     }
 
     #[test]
-    fn test_different_size_packets_dont_batch() {
+    fn different_size_creates_separate_batches() {
         let mut queue = TunGsoQueue::new();
 
-        // Add two TCP packets from same flow with different payload sizes
         let tcp1 = make::tcp_packet(
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::new(192, 168, 1, 1),
@@ -272,31 +352,30 @@ mod tests {
             8080,
             443,
             Default::default(),
-            vec![5, 6, 7, 8, 9, 10], // Different size
+            vec![5, 6, 7, 8, 9, 10],
         )
         .unwrap();
 
         queue.enqueue(&tcp1).unwrap();
         queue.enqueue(&tcp2).unwrap();
 
-        // Should get two separate packets
-        let mut packets = queue.packets();
-        let out1 = packets.next().expect("Should have first packet");
-        assert!(!out1.is_gso(), "Different sizes shouldn't batch");
+        // Should get two separate batches of 1
+        let mut iter = queue.packets();
+        let out1 = iter.next().unwrap();
+        assert!(out1.is_gso());
         assert_eq!(out1.segment_count(), 1);
 
-        let out2 = packets.next().expect("Should have second packet");
-        assert!(!out2.is_gso(), "Different sizes shouldn't batch");
+        let out2 = iter.next().unwrap();
+        assert!(out2.is_gso());
         assert_eq!(out2.segment_count(), 1);
 
-        assert!(packets.next().is_none());
+        assert!(iter.next().is_none());
     }
 
     #[test]
-    fn test_different_flows_dont_batch() {
+    fn different_flow_creates_separate_batches() {
         let mut queue = TunGsoQueue::new();
 
-        // Same size but different destination port
         let tcp1 = make::tcp_packet(
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::new(192, 168, 1, 1),
@@ -311,7 +390,7 @@ mod tests {
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::new(192, 168, 1, 1),
             8080,
-            8443, // Different port
+            8443, // Different port = different flow
             Default::default(),
             vec![5, 6, 7, 8],
         )
@@ -320,19 +399,47 @@ mod tests {
         queue.enqueue(&tcp1).unwrap();
         queue.enqueue(&tcp2).unwrap();
 
-        // Should get two separate packets (different flows)
-        let mut packets = queue.packets();
-        let out1 = packets.next().expect("Should have first packet");
-        assert!(!out1.is_gso(), "Different flows shouldn't batch");
+        // Should get two separate batches of 1
+        let mut iter = queue.packets();
+        let out1 = iter.next().unwrap();
+        assert!(out1.is_gso());
+        assert_eq!(out1.segment_count(), 1);
 
-        let out2 = packets.next().expect("Should have second packet");
-        assert!(!out2.is_gso(), "Different flows shouldn't batch");
+        let out2 = iter.next().unwrap();
+        assert!(out2.is_gso());
+        assert_eq!(out2.segment_count(), 1);
 
-        assert!(packets.next().is_none());
+        assert!(iter.next().is_none());
     }
 
     #[test]
-    fn test_ipv6_tcp_can_batch() {
+    fn three_packets_same_size_batch_together() {
+        let mut queue = TunGsoQueue::new();
+
+        for payload in [[1, 2], [3, 4], [5, 6]] {
+            let tcp = make::tcp_packet(
+                Ipv4Addr::new(10, 0, 0, 1),
+                Ipv4Addr::new(192, 168, 1, 1),
+                8080,
+                443,
+                Default::default(),
+                payload.to_vec(),
+            )
+            .unwrap();
+            queue.enqueue(&tcp).unwrap();
+        }
+
+        let mut iter = queue.packets();
+        let out = iter.next().unwrap();
+
+        assert!(out.is_gso());
+        assert_eq!(out.segment_count(), 3);
+        assert_eq!(&out.payloads[..], &[1, 2, 3, 4, 5, 6]);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn ipv6_tcp_batches() {
         let mut queue = TunGsoQueue::new();
 
         let tcp1 = make::tcp_packet(
@@ -358,18 +465,53 @@ mod tests {
         queue.enqueue(&tcp1).unwrap();
         queue.enqueue(&tcp2).unwrap();
 
-        let mut packets = queue.packets();
-        let out = packets.next().expect("Should have batched packet");
-        assert!(out.is_gso(), "IPv6 TCP should batch");
+        let mut iter = queue.packets();
+        let out = iter.next().unwrap();
+
+        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 2);
-        assert!(packets.next().is_none());
+        assert!(iter.next().is_none());
     }
 
     #[test]
-    fn test_clear_empties_queue() {
+    fn udp_same_flow_batches() {
         let mut queue = TunGsoQueue::new();
 
-        let packet = make::tcp_packet(
+        let udp1 = make::udp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            5000,
+            53,
+            vec![1, 2, 3, 4],
+        )
+        .unwrap();
+
+        let udp2 = make::udp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            5000,
+            53,
+            vec![5, 6, 7, 8],
+        )
+        .unwrap();
+
+        queue.enqueue(&udp1).unwrap();
+        queue.enqueue(&udp2).unwrap();
+
+        let mut iter = queue.packets();
+        let out = iter.next().unwrap();
+
+        assert!(out.is_gso());
+        assert_eq!(out.segment_count(), 2);
+        assert_eq!(&out.payloads[..], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn clear_empties_queue() {
+        let mut queue = TunGsoQueue::new();
+
+        let tcp = make::tcp_packet(
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::new(192, 168, 1, 1),
             8080,
@@ -379,10 +521,9 @@ mod tests {
         )
         .unwrap();
 
-        queue.enqueue(&packet).unwrap();
+        queue.enqueue(&tcp).unwrap();
         queue.clear();
 
-        let mut packets = queue.packets();
-        assert!(packets.next().is_none());
+        assert!(queue.packets().next().is_none());
     }
 }

@@ -460,7 +460,8 @@ impl Io {
                 let pool = BufferPool::<BytesMut>::new(packet_bytes.len(), "unbatched");
                 let buffer = pool.pull_initialised(packet_bytes);
                 tun::IpPacketOut {
-                    packet: buffer,
+                    header: Vec::new(), // Single packet case: header is in payloads
+                    payloads: buffer,
                     segment_size: 0, // Single packet, no GSO
                 }
             })

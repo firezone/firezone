@@ -803,16 +803,17 @@ impl tun::Tun for Tun {
     }
 
     fn send(&mut self, packet: tun::IpPacketOut) -> io::Result<()> {
-        // For now, just handle the packet data directly
-        // TODO: In Phase 6/7, properly handle batched packets with GSO
+        // For now, just handle single packets
+        // TODO: In Phase 7, properly handle batched packets with GSO
 
-        // Extract the single packet from IpPacketOut
-        let packet_buf = packet.packet.clone();
-        let len = if packet.segment_size == 0 {
-            packet_buf.len()
-        } else {
-            packet.segment_size
-        };
+        if packet.segment_size != 0 {
+            tracing::warn!("GSO batched packets not yet supported, dropping");
+            return Ok(());
+        }
+
+        // Single packet: payloads contains the full packet
+        let packet_buf = packet.payloads.clone();
+        let len = packet_buf.len();
 
         // Create IpPacket from the buffer
         let mut ip_packet_buf = ip_packet::IpPacketBuf::new();
