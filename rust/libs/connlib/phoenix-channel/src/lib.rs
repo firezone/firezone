@@ -572,7 +572,10 @@ where
                     Poll::Ready(Ok(stream)) => {
                         self.state = State::Connected(Connected {
                             stream,
-                            heartbeat: tokio::time::interval(HEARTBEAT_INTERVAL),
+                            heartbeat: tokio::time::interval_at(
+                                tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
+                                HEARTBEAT_INTERVAL,
+                            ),
                             inflight_heartbeats: Default::default(),
                             pending_heartbeat: Default::default(),
                             pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),

@@ -398,7 +398,7 @@ async fn sends_heartbeats_regardless_of_messages() {
 
     tokio::time::sleep(Duration::from_secs(25)).await;
 
-    assert_eq!(num_heartbeats.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert_eq!(num_heartbeats.load(std::sync::atomic::Ordering::SeqCst), 2);
 
     client.abort();
     server.abort();
