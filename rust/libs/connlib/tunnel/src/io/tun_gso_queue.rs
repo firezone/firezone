@@ -13,12 +13,13 @@ use super::MAX_INBOUND_PACKET_BATCH;
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
 
 /// Key for grouping packets that can be coalesced via GSO
+/// Only used for batchable packets (TCP/UDP with valid ports)
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
 struct FlowKey {
     src_addr: IpAddr, // Source IP
     dst_addr: IpAddr, // Destination IP
-    src_port: u16,    // Source port (0 for non-TCP/UDP)
-    dst_port: u16,    // Destination port (0 for non-TCP/UDP)
+    src_port: u16,    // Source port
+    dst_port: u16,    // Destination port
     protocol: u8,     // IP protocol number (6=TCP, 17=UDP)
 }
 
@@ -27,6 +28,9 @@ struct FlowKey {
 /// queue exists but is not used.
 pub struct TunGsoQueue {
     inner: BTreeMap<FlowKey, VecDeque<(usize, Buffer<BytesMut>)>>,
+    /// Queue for non-batchable packets (ICMP, malformed TCP/UDP, etc.)
+    /// These are sent individually with segment_size = 0
+    non_batchable: VecDeque<Buffer<BytesMut>>,
     buffer_pool: BufferPool<BytesMut>,
 }
 
@@ -38,6 +42,7 @@ impl TunGsoQueue {
                 MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH,
                 "tun-gso-queue",
             ),
+            non_batchable: VecDeque::new(),
         }
     }
 
@@ -45,8 +50,13 @@ impl TunGsoQueue {
         let payload_len = packet.packet().len();
         let packet_bytes = packet.packet();
 
-        // Extract flow key - this works for all protocols (TCP/UDP/ICMP/etc)
-        let key = extract_flow_key(&packet);
+        // Try to extract flow key for batchable packets
+        let Some(key) = extract_flow_key(&packet) else {
+            // Not batchable (ICMP, malformed TCP/UDP, etc.) - queue separately
+            self.non_batchable
+                .push_back(self.buffer_pool.pull_initialised(packet_bytes));
+            return;
+        };
 
         // Get or create batch for this flow
         let batches = self.inner.entry(key).or_default();
@@ -81,8 +91,9 @@ impl TunGsoQueue {
 }
 
 /// Extract flow key from IP packet for batching
-/// Always returns a key so all packets can be sent, even if they can't be batched effectively.
-fn extract_flow_key(packet: &IpPacket) -> FlowKey {
+/// Returns Some for batchable packets (TCP/UDP with valid ports)
+/// Returns None for non-batchable packets (ICMP, malformed TCP/UDP, etc.)
+fn extract_flow_key(packet: &IpPacket) -> Option<FlowKey> {
     // Get source and destination IPs
     let src_addr = packet.source();
     let dst_addr = packet.destination();
@@ -90,41 +101,31 @@ fn extract_flow_key(packet: &IpPacket) -> FlowKey {
     // Get protocol number
     let protocol = packet.next_header().0;
 
-    // Extract ports for TCP/UDP, use 0 for other protocols
-    // For protocols where parsing fails (malformed packets), we still return a key
-    // with ports = 0 so the packet can be sent (just not batched effectively)
+    // Extract ports for TCP/UDP only - other protocols are not batchable
     let (src_port, dst_port) = match protocol {
         6 => {
             // TCP
-            if let Some(tcp) = packet.as_tcp() {
-                (tcp.source_port(), tcp.destination_port())
-            } else {
-                tracing::debug!("Failed to parse TCP packet, sending without port info");
-                (0, 0)
-            }
+            let tcp = packet.as_tcp()?;
+            (tcp.source_port(), tcp.destination_port())
         }
         17 => {
             // UDP
-            if let Some(udp) = packet.as_udp() {
-                (udp.source_port(), udp.destination_port())
-            } else {
-                tracing::debug!("Failed to parse UDP packet, sending without port info");
-                (0, 0)
-            }
+            let udp = packet.as_udp()?;
+            (udp.source_port(), udp.destination_port())
         }
         _ => {
-            // Other protocols (ICMP, ESP, etc.) - no ports
-            (0, 0)
+            // Other protocols (ICMP, ESP, etc.) - not batchable
+            return None;
         }
     };
 
-    FlowKey {
+    Some(FlowKey {
         src_addr,
         dst_addr,
         src_port,
         dst_port,
         protocol,
-    }
+    })
 }
 
 struct DrainPacketsIter<'a> {
@@ -135,6 +136,15 @@ impl Iterator for DrainPacketsIter<'_> {
     type Item = IpPacketOut;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // First, drain non-batchable packets
+        if let Some(buffer) = self.queue.non_batchable.pop_front() {
+            return Some(IpPacketOut {
+                packet: buffer,
+                segment_size: 0, // Single packet, no GSO
+            });
+        }
+
+        // Then drain batchable packets
         loop {
             let mut entry = self.queue.inner.first_entry()?;
             let Some((segment_size, buffer)) = entry.get_mut().pop_front() else {
@@ -153,27 +163,164 @@ impl Iterator for DrainPacketsIter<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
+    use ip_packet::make;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
-    fn test_flow_key_different_for_different_ips() {
-        // Verify that FlowKey correctly distinguishes different IPs
-        let key1 = FlowKey {
-            src_addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            dst_addr: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
-            src_port: 8080,
-            dst_port: 443,
-            protocol: 6,
-        };
+    fn test_extract_flow_key_tcp() {
+        let packet = make::tcp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            8080,
+            443,
+            Default::default(),
+            vec![1, 2, 3, 4],
+        )
+        .unwrap();
 
-        let key2 = FlowKey {
-            src_addr: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
-            dst_addr: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
-            src_port: 8080,
-            dst_port: 443,
-            protocol: 6,
-        };
+        let key = extract_flow_key(&packet).expect("Should extract TCP flow key");
 
-        assert_ne!(key1, key2);
+        assert_eq!(key.src_addr, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)));
+        assert_eq!(key.dst_addr, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+        assert_eq!(key.src_port, 8080);
+        assert_eq!(key.dst_port, 443);
+        assert_eq!(key.protocol, 6); // TCP
+    }
+
+    #[test]
+    fn test_extract_flow_key_udp() {
+        let packet = make::udp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            5353,
+            53,
+            vec![1, 2, 3, 4],
+        )
+        .unwrap();
+
+        let key = extract_flow_key(&packet).expect("Should extract UDP flow key");
+
+        assert_eq!(key.src_addr, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)));
+        assert_eq!(key.dst_addr, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+        assert_eq!(key.src_port, 5353);
+        assert_eq!(key.dst_port, 53);
+        assert_eq!(key.protocol, 17); // UDP
+    }
+
+    #[test]
+    fn test_extract_flow_key_icmp_returns_none() {
+        let packet = make::icmp_request_packet(
+            Ipv4Addr::new(10, 0, 0, 1).into(),
+            Ipv4Addr::new(8, 8, 8, 8),
+            1,
+            1,
+            &[1, 2, 3, 4],
+        )
+        .unwrap();
+
+        let key = extract_flow_key(&packet);
+
+        assert!(key.is_none(), "ICMP packets should not be batchable");
+    }
+
+    #[test]
+    fn test_enqueue_icmp_goes_to_non_batchable() {
+        let mut queue = TunGsoQueue::new();
+
+        let packet = make::icmp_request_packet(
+            Ipv4Addr::new(10, 0, 0, 1).into(),
+            Ipv4Addr::new(8, 8, 8, 8),
+            1,
+            1,
+            &[1, 2, 3, 4],
+        )
+        .unwrap();
+
+        queue.enqueue(packet);
+
+        assert_eq!(queue.non_batchable.len(), 1);
+        assert_eq!(queue.inner.len(), 0);
+    }
+
+    #[test]
+    fn test_enqueue_tcp_goes_to_batchable() {
+        let mut queue = TunGsoQueue::new();
+
+        let packet = make::tcp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            8080,
+            443,
+            Default::default(),
+            vec![1, 2, 3, 4],
+        )
+        .unwrap();
+
+        queue.enqueue(packet);
+
+        assert_eq!(queue.non_batchable.len(), 0);
+        assert_eq!(queue.inner.len(), 1);
+    }
+
+    #[test]
+    fn test_drain_non_batchable_first() {
+        let mut queue = TunGsoQueue::new();
+
+        // Add ICMP packet (non-batchable)
+        let icmp = make::icmp_request_packet(
+            Ipv4Addr::new(10, 0, 0, 1).into(),
+            Ipv4Addr::new(8, 8, 8, 8),
+            1,
+            1,
+            &[1, 2, 3],
+        )
+        .unwrap();
+
+        // Add TCP packet (batchable)
+        let tcp = make::tcp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            8080,
+            443,
+            Default::default(),
+            vec![4, 5, 6],
+        )
+        .unwrap();
+
+        queue.enqueue(icmp);
+        queue.enqueue(tcp);
+
+        let mut iter = queue.packets();
+        let first = iter.next().expect("Should have first packet");
+
+        // Non-batchable packet should come first and have segment_size = 0
+        assert_eq!(first.segment_size, 0);
+    }
+
+    #[test]
+    fn test_ipv6_tcp_flow_key() {
+        let packet = make::tcp_packet(
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2),
+            8080,
+            443,
+            Default::default(),
+            vec![1, 2, 3, 4],
+        )
+        .unwrap();
+
+        let key = extract_flow_key(&packet).expect("Should extract IPv6 TCP flow key");
+
+        assert_eq!(
+            key.src_addr,
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))
+        );
+        assert_eq!(
+            key.dst_addr,
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2))
+        );
+        assert_eq!(key.src_port, 8080);
+        assert_eq!(key.dst_port, 443);
+        assert_eq!(key.protocol, 6);
     }
 }
