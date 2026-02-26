@@ -64,8 +64,12 @@ defmodule PortalAPI.Client.Channel do
 
     # Track client's presence with session metadata for client-to-client signaling
     session_meta = %{
-      ipv4: socket.assigns.client.ipv4_address && socket.assigns.client.ipv4_address.address,
-      ipv6: socket.assigns.client.ipv6_address && socket.assigns.client.ipv6_address.address,
+      ipv4:
+        socket.assigns.client.ipv4_address &&
+          socket.assigns.client.ipv4_address.address.address,
+      ipv6:
+        socket.assigns.client.ipv6_address &&
+          socket.assigns.client.ipv6_address.address.address,
       public_key: socket.assigns.session.public_key,
       psk_base: socket.assigns.client.psk_base
     }
