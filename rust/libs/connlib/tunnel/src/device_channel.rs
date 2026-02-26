@@ -4,7 +4,7 @@ use std::task::{Context, Poll, Waker};
 use tun::Tun;
 
 #[cfg(target_os = "linux")]
-use tun::IpPacketOut;
+use tun::IpPacketBatch;
 
 pub struct Device {
     tun: Option<Box<dyn Tun>>,
@@ -54,13 +54,6 @@ impl Device {
         tun.poll_send_ready(cx)
     }
 
-    #[cfg(target_os = "linux")]
-    pub fn send(&mut self, packet: IpPacketOut) -> io::Result<()> {
-        self.tun()?.send(packet)?;
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "linux"))]
     pub fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         debug_assert!(
             !packet.is_fz_p2p_control(),
@@ -69,6 +62,12 @@ impl Device {
 
         self.tun()?.send(packet)?;
 
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn send_batch(&mut self, batch: IpPacketBatch) -> io::Result<()> {
+        self.tun()?.send_batch(batch)?;
         Ok(())
     }
 

@@ -1,124 +1,162 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    net::IpAddr,
-};
+use std::collections::{BTreeMap, VecDeque};
 
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::IpPacket;
-use tun::IpPacketOut;
+use tun::IpPacketBatch;
 
 use super::MAX_INBOUND_PACKET_BATCH;
 
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
-const MAX_HEADER_SIZE: usize = 60 + 60; // Max IP header (60) + max TCP header (60)
+
+/// GSO header for batching (parsed form)
+#[derive(Debug, Clone)]
+enum GsoHeader {
+    Ipv4Tcp {
+        ipv4: ip_packet::Ipv4Header,
+        tcp: ip_packet::TcpHeader,
+    },
+    Ipv6Tcp {
+        ipv6: ip_packet::Ipv6Header,
+        tcp: ip_packet::TcpHeader,
+    },
+    Ipv4Udp {
+        ipv4: ip_packet::Ipv4Header,
+        udp: ip_packet::UdpHeader,
+    },
+    Ipv6Udp {
+        ipv6: ip_packet::Ipv6Header,
+        udp: ip_packet::UdpHeader,
+    },
+}
+
+impl GsoHeader {
+    /// Serialize the header into a GsoHeaderBuf
+    fn serialize(&self) -> std::io::Result<tun::GsoHeaderBuf> {
+        let mut buf = tun::GsoHeaderBuf::new();
+        match self {
+            Self::Ipv4Tcp { ipv4, tcp } => {
+                ipv4.write_raw(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                tcp.write(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            }
+            Self::Ipv6Tcp { ipv6, tcp } => {
+                ipv6.write(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                tcp.write(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            }
+            Self::Ipv4Udp { ipv4, udp } => {
+                ipv4.write_raw(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                udp.write(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            }
+            Self::Ipv6Udp { ipv6, udp } => {
+                ipv6.write(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                udp.write(&mut buf)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            }
+        }
+        Ok(buf)
+    }
+}
 
 /// Canonical header that groups packets for GSO batching.
 /// This represents the IP + L4 header with variable fields normalized.
-/// For TCP: sequence numbers, checksums are ignored
-/// For UDP: length, checksums are ignored
+/// For TCP: sequence numbers, checksums are zeroed
+/// For UDP: length, checksums are zeroed
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone)]
-struct CanonicalHeader {
-    /// The actual header bytes with variable fields zeroed out
-    header_bytes: Vec<u8>,
-    /// Length of the header (IP + L4)
-    header_len: usize,
+struct CanonicalHeaderKey {
+    /// Serialized header bytes with variable fields zeroed out
+    bytes: Vec<u8>,
 }
 
-impl CanonicalHeader {
+impl CanonicalHeaderKey {
     /// Extract canonical header from an IP packet
     /// Returns None if the packet cannot be batched (not TCP/UDP, or parse failure)
-    fn from_packet(packet: &IpPacket) -> Option<Self> {
-        let packet_bytes = packet.packet();
-
-        // Calculate IP header length
-        let ip_header_len = if packet.source().is_ipv4() {
-            (packet_bytes[0] & 0x0F) as usize * 4
-        } else {
-            40 // IPv6 header is always 40 bytes
+    fn from_packet(packet: &IpPacket) -> Option<(CanonicalHeaderKey, GsoHeader)> {
+        // Pattern match on (IP version, L4 protocol) to handle all cases
+        let header = match (
+            packet.ipv4_header(),
+            packet.ipv6_header(),
+            packet.as_tcp(),
+            packet.as_udp(),
+        ) {
+            // IPv4 + TCP
+            (Some(ipv4), None, Some(tcp), None) => GsoHeader::Ipv4Tcp {
+                ipv4: ip_packet::Ipv4Header {
+                    total_len: 0,       // Variable: will change per segment
+                    header_checksum: 0, // Variable: will be recalculated
+                    ..ipv4
+                },
+                tcp: ip_packet::TcpHeader {
+                    sequence_number: 0, // Variable: will change per segment
+                    checksum: 0,        // Variable: will be calculated with GSO
+                    ..tcp.to_header()
+                },
+            },
+            // IPv6 + TCP
+            (None, Some(ipv6), Some(tcp), None) => GsoHeader::Ipv6Tcp {
+                ipv6: ip_packet::Ipv6Header {
+                    payload_length: 0, // Variable: will change per segment
+                    ..ipv6
+                },
+                tcp: ip_packet::TcpHeader {
+                    sequence_number: 0, // Variable: will change per segment
+                    checksum: 0,        // Variable: will be calculated with GSO
+                    ..tcp.to_header()
+                },
+            },
+            // IPv4 + UDP
+            (Some(ipv4), None, None, Some(udp)) => GsoHeader::Ipv4Udp {
+                ipv4: ip_packet::Ipv4Header {
+                    total_len: 0,       // Variable: will change per segment
+                    header_checksum: 0, // Variable: will be recalculated
+                    ..ipv4
+                },
+                udp: ip_packet::UdpHeader {
+                    length: 0,   // Variable: will change per segment
+                    checksum: 0, // Variable: will be calculated with GSO
+                    ..udp.to_header()
+                },
+            },
+            // IPv6 + UDP
+            (None, Some(ipv6), None, Some(udp)) => GsoHeader::Ipv6Udp {
+                ipv6: ip_packet::Ipv6Header {
+                    payload_length: 0, // Variable: will change per segment
+                    ..ipv6
+                },
+                udp: ip_packet::UdpHeader {
+                    length: 0,   // Variable: will change per segment
+                    checksum: 0, // Variable: will be calculated with GSO
+                    ..udp.to_header()
+                },
+            },
+            // Everything else (ICMP, malformed packets, etc.) cannot be batched
+            _ => return None,
         };
 
-        // Only TCP and UDP can be batched
-        if let Some(tcp) = packet.as_tcp() {
-            // TCP packet - header is IP + TCP
-            let tcp_header_len = (tcp.data_offset() as usize) * 4;
-            let header_len = ip_header_len + tcp_header_len;
+        // Serialize to bytes for use as map key
+        let mut bytes = Vec::new();
+        header
+            .serialize()
+            .ok()?
+            .as_bytes()
+            .iter()
+            .for_each(|&b| bytes.push(b));
+        let key = CanonicalHeaderKey { bytes };
 
-            if header_len > packet_bytes.len() {
-                return None;
-            }
-
-            let mut header_bytes = vec![0u8; header_len];
-            header_bytes.copy_from_slice(&packet_bytes[..header_len]);
-
-            // Normalize variable fields in IP header
-            if packet.source().is_ipv4() {
-                header_bytes[2] = 0; // Total length
-                header_bytes[3] = 0;
-                header_bytes[10] = 0; // Checksum
-                header_bytes[11] = 0;
-            } else {
-                header_bytes[4] = 0; // Payload length
-                header_bytes[5] = 0;
-            }
-
-            // Zero out TCP sequence number and checksum
-            let tcp_offset = ip_header_len;
-            header_bytes[tcp_offset + 4] = 0; // Sequence number
-            header_bytes[tcp_offset + 5] = 0;
-            header_bytes[tcp_offset + 6] = 0;
-            header_bytes[tcp_offset + 7] = 0;
-            header_bytes[tcp_offset + 16] = 0; // Checksum
-            header_bytes[tcp_offset + 17] = 0;
-
-            return Some(CanonicalHeader {
-                header_bytes,
-                header_len,
-            });
-        }
-
-        if let Some(_udp) = packet.as_udp() {
-            // UDP packet - header is IP + UDP (8 bytes)
-            let header_len = ip_header_len + 8;
-
-            if header_len > packet_bytes.len() {
-                return None;
-            }
-
-            let mut header_bytes = vec![0u8; header_len];
-            header_bytes.copy_from_slice(&packet_bytes[..header_len]);
-
-            // Normalize variable fields in IP header
-            if packet.source().is_ipv4() {
-                header_bytes[2] = 0; // Total length
-                header_bytes[3] = 0;
-                header_bytes[10] = 0; // Checksum
-                header_bytes[11] = 0;
-            } else {
-                header_bytes[4] = 0; // Payload length
-                header_bytes[5] = 0;
-            }
-
-            // Zero out UDP length and checksum
-            let udp_offset = ip_header_len;
-            header_bytes[udp_offset + 4] = 0; // Length
-            header_bytes[udp_offset + 5] = 0;
-            header_bytes[udp_offset + 6] = 0; // Checksum
-            header_bytes[udp_offset + 7] = 0;
-
-            return Some(CanonicalHeader {
-                header_bytes,
-                header_len,
-            });
-        }
-
-        // Not TCP or UDP - cannot batch
-        None
+        Some((key, header))
     }
 }
 
 /// A batch of payloads that can be sent with GSO
 struct PayloadBatch {
+    /// The canonical header (stored to avoid re-parsing)
+    header: GsoHeader,
     /// The size of each payload segment
     segment_size: usize,
     /// Concatenated payload bodies (without headers)
@@ -129,8 +167,8 @@ struct PayloadBatch {
 /// On Linux, packets are batched by flow for GSO. On other platforms, this
 /// queue exists but is not used.
 pub struct TunGsoQueue {
-    /// Map from canonical header to batches of payloads
-    inner: BTreeMap<CanonicalHeader, VecDeque<PayloadBatch>>,
+    /// Map from canonical header key to batches of payloads
+    inner: BTreeMap<CanonicalHeaderKey, VecDeque<PayloadBatch>>,
     buffer_pool: BufferPool<BytesMut>,
 }
 
@@ -153,7 +191,7 @@ impl TunGsoQueue {
     /// Returns Err(NotBatchable) if the packet cannot be batched (ICMP, malformed TCP/UDP, etc.)
     pub fn enqueue(&mut self, packet: &IpPacket) -> Result<(), NotBatchable> {
         // Try to extract canonical header for batchable packets
-        let canonical_header = CanonicalHeader::from_packet(packet).ok_or(NotBatchable)?;
+        let (key, header) = CanonicalHeaderKey::from_packet(packet).ok_or(NotBatchable)?;
 
         // Extract payload using the appropriate accessor
         let payload = if let Some(tcp) = packet.as_tcp() {
@@ -167,7 +205,7 @@ impl TunGsoQueue {
         let payload_len = payload.len();
 
         // Get or create batch list for this header
-        let batches = self.inner.entry(canonical_header).or_default();
+        let batches = self.inner.entry(key).or_default();
 
         // Check if we can append to existing batch
         let Some(batch) = batches.back_mut() else {
@@ -176,6 +214,7 @@ impl TunGsoQueue {
             buffer.clear();
             buffer.extend_from_slice(payload);
             batches.push_back(PayloadBatch {
+                header,
                 segment_size: payload_len,
                 payloads: buffer,
             });
@@ -196,6 +235,7 @@ impl TunGsoQueue {
         buffer.clear();
         buffer.extend_from_slice(payload);
         batches.push_back(PayloadBatch {
+            header,
             segment_size: payload_len,
             payloads: buffer,
         });
@@ -203,7 +243,7 @@ impl TunGsoQueue {
         Ok(())
     }
 
-    pub fn packets(&mut self) -> impl Iterator<Item = IpPacketOut> + '_ {
+    pub fn packets(&mut self) -> impl Iterator<Item = IpPacketBatch> + '_ {
         DrainPacketsIter { queue: self }
     }
 
@@ -217,28 +257,31 @@ struct DrainPacketsIter<'a> {
 }
 
 impl Iterator for DrainPacketsIter<'_> {
-    type Item = IpPacketOut;
+    type Item = IpPacketBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let mut entry = self.queue.inner.first_entry()?;
-
-            // Clone the header data before borrowing mutably
-            let header_bytes = entry.key().header_bytes.clone();
-            let header_len = entry.key().header_len;
 
             let Some(batch) = entry.get_mut().pop_front() else {
                 entry.remove();
                 continue;
             };
 
-            // Always return header and payloads separately
-            // TUN device can handle batches of 1 just fine
-            return Some(IpPacketOut {
-                header: header_bytes,
-                payloads: batch.payloads,
-                segment_size: batch.segment_size,
-            });
+            // Serialize header and return GSO batch
+            let gso_header = match batch.header.serialize() {
+                Ok(buf) => buf,
+                Err(e) => {
+                    tracing::warn!("Failed to serialize GSO header: {e}");
+                    continue;
+                }
+            };
+
+            return Some(IpPacketBatch::new(
+                gso_header,
+                batch.payloads,
+                batch.segment_size,
+            ));
         }
     }
 }
@@ -285,9 +328,8 @@ mod tests {
         let mut iter = queue.packets();
         let out = iter.next().unwrap();
 
-        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 1);
-        assert_eq!(&out.payloads[..], &[1, 2, 3, 4]);
+        assert_eq!(out.payload_bytes(), &[1, 2, 3, 4]);
         assert!(iter.next().is_none());
     }
 
@@ -322,12 +364,12 @@ mod tests {
         let out = iter.next().unwrap();
 
         // Should be batched
-        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 2);
 
         // Verify payloads concatenated correctly
-        assert_eq!(&out.payloads[0..4], &[1, 2, 3, 4]);
-        assert_eq!(&out.payloads[4..8], &[5, 6, 7, 8]);
+        let payloads = out.payload_bytes();
+        assert_eq!(&payloads[0..4], &[1, 2, 3, 4]);
+        assert_eq!(&payloads[4..8], &[5, 6, 7, 8]);
 
         assert!(iter.next().is_none());
     }
@@ -362,11 +404,9 @@ mod tests {
         // Should get two separate batches of 1
         let mut iter = queue.packets();
         let out1 = iter.next().unwrap();
-        assert!(out1.is_gso());
         assert_eq!(out1.segment_count(), 1);
 
         let out2 = iter.next().unwrap();
-        assert!(out2.is_gso());
         assert_eq!(out2.segment_count(), 1);
 
         assert!(iter.next().is_none());
@@ -402,11 +442,9 @@ mod tests {
         // Should get two separate batches of 1
         let mut iter = queue.packets();
         let out1 = iter.next().unwrap();
-        assert!(out1.is_gso());
         assert_eq!(out1.segment_count(), 1);
 
         let out2 = iter.next().unwrap();
-        assert!(out2.is_gso());
         assert_eq!(out2.segment_count(), 1);
 
         assert!(iter.next().is_none());
@@ -432,9 +470,8 @@ mod tests {
         let mut iter = queue.packets();
         let out = iter.next().unwrap();
 
-        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 3);
-        assert_eq!(&out.payloads[..], &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(out.payload_bytes(), &[1, 2, 3, 4, 5, 6]);
         assert!(iter.next().is_none());
     }
 
@@ -468,7 +505,6 @@ mod tests {
         let mut iter = queue.packets();
         let out = iter.next().unwrap();
 
-        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 2);
         assert!(iter.next().is_none());
     }
@@ -501,9 +537,8 @@ mod tests {
         let mut iter = queue.packets();
         let out = iter.next().unwrap();
 
-        assert!(out.is_gso());
         assert_eq!(out.segment_count(), 2);
-        assert_eq!(&out.payloads[..], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(out.payload_bytes(), &[1, 2, 3, 4, 5, 6, 7, 8]);
         assert!(iter.next().is_none());
     }
 

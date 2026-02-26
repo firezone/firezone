@@ -21,6 +21,7 @@ use netlink_packet_route::rule::RuleAction;
 use rtnetlink::sys::AsyncSocket;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{collections::BTreeSet, path::Path};
@@ -692,6 +693,7 @@ const QUEUE_SIZE: usize = 10_000;
 #[derive(Debug)]
 pub struct Tun {
     outbound_tx: PollSender<IpPacket>,
+    outbound_batch_tx: PollSender<tun::IpPacketBatch>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -701,9 +703,17 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (outbound_batch_tx, outbound_batch_rx) = mpsc::channel(QUEUE_SIZE);
 
         tokio::spawn(otel::metrics::periodic_system_queue_length(
             outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        ));
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            outbound_batch_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
@@ -726,7 +736,13 @@ impl Tun {
 
                 move || {
                     logging::unwrap_or_warn!(
-                        tun::linux::tun_send(fd, outbound_rx, write),
+                        tun_send(
+                            fd,
+                            outbound_rx,
+                            outbound_batch_rx,
+                            write_single,
+                            write_batch
+                        ),
                         "Failed to send to TUN device: {}"
                     )
                 }
@@ -744,6 +760,7 @@ impl Tun {
 
         Ok(Self {
             outbound_tx: PollSender::new(outbound_tx),
+            outbound_batch_tx: PollSender::new(outbound_batch_tx),
             inbound_rx,
         })
     }
@@ -802,29 +819,17 @@ impl tun::Tun for Tun {
             .map_err(io::Error::other)
     }
 
-    fn send(&mut self, packet: tun::IpPacketOut) -> io::Result<()> {
-        // For now, just handle single packets
-        // TODO: In Phase 7, properly handle batched packets with GSO
-
-        if packet.segment_size != 0 {
-            tracing::warn!("GSO batched packets not yet supported, dropping");
-            return Ok(());
-        }
-
-        // Single packet: payloads contains the full packet
-        let packet_buf = packet.payloads.clone();
-        let len = packet_buf.len();
-
-        // Create IpPacket from the buffer
-        let mut ip_packet_buf = ip_packet::IpPacketBuf::new();
-        let buf = ip_packet_buf.buf();
-        buf[..len].copy_from_slice(&packet_buf[..len]);
-
-        let ip_packet = IpPacket::new(ip_packet_buf, len)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         self.outbound_tx
-            .start_send_unpin(ip_packet)
+            .start_send_unpin(packet)
+            .map_err(io::Error::other)?;
+
+        Ok(())
+    }
+
+    fn send_batch(&mut self, batch: tun::IpPacketBatch) -> io::Result<()> {
+        self.outbound_batch_tx
+            .start_send_unpin(batch)
             .map_err(io::Error::other)?;
 
         Ok(())
@@ -842,6 +847,58 @@ impl tun::Tun for Tun {
     fn name(&self) -> &str {
         TunDeviceManager::IFACE_NAME
     }
+}
+
+/// Custom tun_send that handles both single packets and batches from separate channels
+fn tun_send<T>(
+    fd: T,
+    mut outbound_rx: mpsc::Receiver<IpPacket>,
+    mut outbound_batch_rx: mpsc::Receiver<tun::IpPacketBatch>,
+    write_single: impl Fn(RawFd, &IpPacket) -> io::Result<usize>,
+    write_batch: impl Fn(RawFd, &tun::IpPacketBatch) -> io::Result<usize>,
+) -> Result<()>
+where
+    T: AsRawFd + Clone,
+{
+    use tokio::io::unix::AsyncFd;
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("Failed to create runtime")?
+        .block_on(async move {
+            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+
+            loop {
+                tokio::select! {
+                    Some(packet) = outbound_rx.recv() => {
+                        if let Err(e) = fd
+                            .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
+                                write_single(fd_ref.as_raw_fd(), &packet)
+                            })
+                            .await
+                        {
+                            tracing::warn!("Failed to write single packet to TUN FD: {e}");
+                        }
+                    }
+                    Some(batch) = outbound_batch_rx.recv() => {
+                        if let Err(e) = fd
+                            .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
+                                write_batch(fd_ref.as_raw_fd(), &batch)
+                            })
+                            .await
+                        {
+                            tracing::warn!("Failed to write batch to TUN FD: {e}");
+                        }
+                    }
+                    else => break,
+                }
+            }
+
+            anyhow::Ok(())
+        })?;
+
+    anyhow::Ok(())
 }
 
 fn get_last_error() -> io::Error {
@@ -895,12 +952,9 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
 }
 
 /// Write the packet to the given file descriptor.
-fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
-    let buf = packet.packet();
-
-    // Empty vnet header (all zeros means no offloading for TX)
-    // flags = 0, gso_type = 0 (VIRTIO_NET_HDR_GSO_NONE), all other fields = 0
+fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     let vnet_hdr = [0u8; tun::linux::VIRTIO_NET_HDR_SIZE];
+    let packet_bytes = packet.packet();
 
     let iov = [
         libc::iovec {
@@ -908,8 +962,8 @@ fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
             iov_len: vnet_hdr.len(),
         },
         libc::iovec {
-            iov_base: buf.as_ptr() as *mut libc::c_void,
-            iov_len: buf.len(),
+            iov_base: packet_bytes.as_ptr() as *mut libc::c_void,
+            iov_len: packet_bytes.len(),
         },
     ];
 
@@ -918,4 +972,107 @@ fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize - tun::linux::VIRTIO_NET_HDR_SIZE),
     }
+}
+
+fn write_batch(fd: RawFd, batch: &tun::IpPacketBatch) -> io::Result<usize> {
+    let vnet_hdr = build_vnet_header(batch);
+    let header_bytes = batch.header_bytes();
+    let payload_bytes = batch.payload_bytes();
+
+    let iov = [
+        libc::iovec {
+            iov_base: vnet_hdr.as_ptr() as *mut libc::c_void,
+            iov_len: vnet_hdr.len(),
+        },
+        libc::iovec {
+            iov_base: header_bytes.as_ptr() as *mut libc::c_void,
+            iov_len: header_bytes.len(),
+        },
+        libc::iovec {
+            iov_base: payload_bytes.as_ptr() as *mut libc::c_void,
+            iov_len: payload_bytes.len(),
+        },
+    ];
+
+    // Safety: Within this module, the file descriptor is always valid.
+    match unsafe { libc::writev(fd, iov.as_ptr(), 3) } {
+        -1 => Err(io::Error::last_os_error()),
+        n => Ok(n as usize - tun::linux::VIRTIO_NET_HDR_SIZE),
+    }
+}
+
+/// Build virtio_net_hdr for a batch by parsing the serialized header
+fn build_vnet_header(batch: &tun::IpPacketBatch) -> [u8; tun::linux::VIRTIO_NET_HDR_SIZE] {
+    let mut vnet_hdr = [0u8; tun::linux::VIRTIO_NET_HDR_SIZE];
+
+    let header_bytes = batch.header_bytes();
+    let header_len = header_bytes.len() as u16;
+    let segment_size = batch.segment_size() as u16;
+
+    // Determine IP version and protocol from header bytes
+    let ip_version = header_bytes[0] >> 4;
+
+    let (gso_type, csum_start, csum_offset) = if ip_version == 4 {
+        // IPv4: IHL in lower 4 bits of first byte
+        let ip_header_len = ((header_bytes[0] & 0x0F) as u16) * 4;
+        // Protocol at offset 9 in IPv4 header
+        let protocol = header_bytes[9];
+
+        match protocol {
+            6 => {
+                // TCP
+                let gso_type = 1; // VIRTIO_NET_HDR_GSO_TCPV4
+                let csum_start = ip_header_len;
+                let csum_offset = 16; // TCP checksum at offset 16
+                (gso_type, csum_start, csum_offset)
+            }
+            17 => {
+                // UDP
+                let gso_type = 5; // VIRTIO_NET_HDR_GSO_UDP_L4
+                let csum_start = ip_header_len;
+                let csum_offset = 6; // UDP checksum at offset 6
+                (gso_type, csum_start, csum_offset)
+            }
+            _ => (0u8, 0u16, 0u16), // Should not happen for GSO batches
+        }
+    } else {
+        // IPv6: always 40 bytes, protocol at offset 6
+        let ip_header_len = 40u16;
+        let protocol = header_bytes[6];
+
+        match protocol {
+            6 => {
+                // TCP
+                let gso_type = 4; // VIRTIO_NET_HDR_GSO_TCPV6
+                let csum_start = ip_header_len;
+                let csum_offset = 16; // TCP checksum at offset 16
+                (gso_type, csum_start, csum_offset)
+            }
+            17 => {
+                // UDP
+                let gso_type = 5; // VIRTIO_NET_HDR_GSO_UDP_L4
+                let csum_start = ip_header_len;
+                let csum_offset = 6; // UDP checksum at offset 6
+                (gso_type, csum_start, csum_offset)
+            }
+            _ => (0u8, 0u16, 0u16), // Should not happen for GSO batches
+        }
+    };
+
+    // flags: request checksum offload
+    vnet_hdr[0] = 1; // VIRTIO_NET_HDR_F_NEEDS_CSUM
+    // gso_type
+    vnet_hdr[1] = gso_type;
+    // hdr_len (little-endian u16)
+    vnet_hdr[2..4].copy_from_slice(&header_len.to_le_bytes());
+    // gso_size (little-endian u16)
+    vnet_hdr[4..6].copy_from_slice(&segment_size.to_le_bytes());
+    // csum_start (little-endian u16)
+    vnet_hdr[6..8].copy_from_slice(&csum_start.to_le_bytes());
+    // csum_offset (little-endian u16)
+    vnet_hdr[8..10].copy_from_slice(&csum_offset.to_le_bytes());
+    // num_buffers (little-endian u16) - not used for TX
+    vnet_hdr[10..12].copy_from_slice(&0u16.to_le_bytes());
+
+    vnet_hdr
 }

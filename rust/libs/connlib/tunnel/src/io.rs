@@ -449,43 +449,36 @@ impl Io {
         }
 
         #[cfg(target_os = "linux")]
-        let batched_packets = self.tun_gso_queue.packets();
-
-        #[cfg(target_os = "linux")]
-        let unbatched_packets = std::iter::from_fn(|| {
-            self.outbound_packet_buffer.pop_front().map(|packet| {
-                use bufferpool::BufferPool;
-                use bytes::BytesMut;
-                let packet_bytes = packet.packet();
-                let pool = BufferPool::<BytesMut>::new(packet_bytes.len(), "unbatched");
-                let buffer = pool.pull_initialised(packet_bytes);
-                tun::IpPacketOut {
-                    header: Vec::new(), // Single packet case: header is in payloads
-                    payloads: buffer,
-                    segment_size: 0, // Single packet, no GSO
+        {
+            // Send batched packets using send_batch
+            let mut batched_packets = self.tun_gso_queue.packets();
+            loop {
+                if self.tun.poll_send_ready(cx)?.is_pending() {
+                    any_pending = true;
+                    break;
                 }
-            })
-        });
 
-        #[cfg(target_os = "linux")]
-        let mut tun_packets = batched_packets.chain(unbatched_packets);
+                let Some(batch) = batched_packets.next() else {
+                    break;
+                };
 
-        #[cfg(not(target_os = "linux"))]
-        let mut tun_packets = std::iter::from_fn(|| self.outbound_packet_buffer.pop_front());
+                self.tun
+                    .send_batch(batch)
+                    .context("Failed to send IP packet batch to TUN device")?;
+            }
+        }
 
+        // Send unbatched packets using send
         loop {
-            // First, check if we can send more packets.
             if self.tun.poll_send_ready(cx)?.is_pending() {
                 any_pending = true;
                 break;
             }
 
-            // Second, check if we have any packets.
-            let Some(packet) = tun_packets.next() else {
-                break; // No more packets? All done.
+            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
+                break;
             };
 
-            // Third, send the packet.
             self.tun
                 .send(packet)
                 .context("Failed to send IP packet to TUN device")?;
@@ -866,13 +859,12 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
-        #[cfg(target_os = "linux")]
-        fn send(&mut self, _: tun::IpPacketOut) -> io::Result<()> {
+        fn send(&mut self, _: IpPacket) -> io::Result<()> {
             Ok(())
         }
 
-        #[cfg(not(target_os = "linux"))]
-        fn send(&mut self, _: IpPacket) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        fn send_batch(&mut self, _: tun::IpPacketBatch) -> io::Result<()> {
             Ok(())
         }
 

@@ -10,38 +10,6 @@ const MAX_GSO_BUFFER_SIZE: usize = 65536 + VIRTIO_NET_HDR_SIZE;
 
 pub const VIRTIO_NET_HDR_SIZE: usize = 12;
 
-pub fn tun_send<T>(
-    fd: T,
-    mut outbound_rx: mpsc::Receiver<IpPacket>,
-    write: impl Fn(i32, &IpPacket) -> std::result::Result<usize, io::Error>,
-) -> Result<()>
-where
-    T: AsRawFd + Clone,
-{
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
-
-            while let Some(packet) = outbound_rx.recv().await {
-                if let Err(e) = fd
-                    .async_io(tokio::io::Interest::WRITABLE, |fd| {
-                        write(fd.as_raw_fd(), &packet)
-                    })
-                    .await
-                {
-                    tracing::warn!("Failed to write to TUN FD: {e}");
-                }
-            }
-
-            anyhow::Ok(())
-        })?;
-
-    anyhow::Ok(())
-}
-
 pub fn tun_recv<T>(
     fd: T,
     inbound_tx: mpsc::Sender<IpPacket>,

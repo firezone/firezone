@@ -54,6 +54,11 @@ impl tun::Tun for Tun {
         todo!()
     }
 
+    #[cfg(target_os = "linux")]
+    fn send_batch(&mut self, _: tun::IpPacketBatch) -> io::Result<()> {
+        todo!()
+    }
+
     fn poll_recv_many(
         &mut self,
         _: &mut std::task::Context,
