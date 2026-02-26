@@ -19,6 +19,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
+  import Portal.FeaturesFixtures
 
   defp join_channel(client, subject, opts \\ []) do
     client_version =
@@ -4207,6 +4208,112 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
       assert client.id == client_id
+    end
+  end
+
+  describe "handle_in/3 request_device_access" do
+    test "sends denied with :disabled when client_to_client feature is off", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      push(socket, "request_device_access", %{"ipv4" => "100.64.0.2"})
+
+      assert_push "client_device_access_denied", %{ipv4: "100.64.0.2", reason: :disabled}
+    end
+
+    test "sends denied with :not_found when target IP is not in presence", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # No other client is tracking this IP in presence
+      unknown_ip = "100.96.200.1"
+      push(socket, "request_device_access", %{"ipv4" => unknown_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^unknown_ip, reason: :not_found}
+      refute Presence.Clients.Account.find_by_ipv4(account.id, {100, 96, 200, 1})
+    end
+
+    test "sends authorized to both clients when target IP is found in presence", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+
+      target_subject =
+        subject_fixture(
+          account: account,
+          actor: target_actor,
+          type: :client,
+          user_agent: "Linux/24.04 connlib/1.3.0"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      _target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
+      target_client_id = target_client.id
+      initiating_client_id = client.id
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      # Initiating client receives authorized as the controlling peer
+      assert_push "client_device_access_authorized", %{
+        client_id: ^target_client_id,
+        ice_role: :controlling
+      }
+
+      # Target client receives authorized as the controlled peer
+      assert_push "client_device_access_authorized", %{
+        client_id: ^initiating_client_id,
+        ice_role: :controlled
+      }
+    end
+
+    test "does not find clients from other accounts", %{
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account)
+      other_client = client_fixture(account: other_account, actor: other_actor)
+
+      other_subject =
+        subject_fixture(
+          account: other_account,
+          actor: other_actor,
+          type: :client,
+          user_agent: "Linux/24.04 connlib/1.3.0"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      _other_socket = join_channel(other_client, other_subject)
+      assert_push "init", _
+
+      other_ip = Portal.Types.INET.to_string(other_client.ipv4_address.address)
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => other_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^other_ip, reason: :not_found}
     end
   end
 

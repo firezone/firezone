@@ -738,10 +738,8 @@ defmodule PortalAPI.Client.Channel do
          %{
            client_id: client.id,
            client_public_key: client_public_key,
-           client_ipv4:
-             client.ipv4_address && %Postgrex.INET{address: client.ipv4_address.address},
-           client_ipv6:
-             client.ipv6_address && %Postgrex.INET{address: client.ipv6_address.address},
+           client_ipv4: client.ipv4_address && client.ipv4_address.address,
+           client_ipv6: client.ipv6_address && client.ipv6_address.address,
            preshared_key: preshared_key,
            local_ice_credentials: ice_credentials.receiver,
            remote_ice_credentials: ice_credentials.initiator,
