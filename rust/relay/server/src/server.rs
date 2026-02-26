@@ -10,6 +10,7 @@ use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Non
 use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
+use bimap::BiMap;
 use bytecodec::EncodeExt;
 use core::fmt;
 use hex_display::HexDisplayExt as _;
@@ -55,6 +56,12 @@ pub struct Server<R> {
 
     /// All client allocations, indexed by client's socket address.
     allocations: BTreeMap<ClientSocket, Allocation>,
+
+    /// Bi-directional mapping between allocations and usernames.
+    ///
+    /// We only allow a single allocation per user in order to clean up lingering allocations in case the sender roams.
+    allocations_by_username: BiMap<Username, AllocationPort>,
+
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
     /// Redundant mapping so we can look route data with a single lookup.
     channel_and_client_by_port_and_peer:
@@ -193,6 +200,7 @@ where
         Self {
             public_address: public_address.into(),
             allocations: Default::default(),
+            allocations_by_username: Default::default(),
             clients_by_allocation: Default::default(),
             listen_port,
             ports,
@@ -524,6 +532,13 @@ where
             error_response
         })?;
 
+        if let Some((_, previous_allocation)) =
+            self.allocations_by_username.remove_by_left(&username)
+        {
+            tracing::info!(target: "relay", %previous_allocation, %sender, "Username already has an allocation");
+            self.delete_allocation(previous_allocation);
+        }
+
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
         let effective_lifetime = request.effective_lifetime();
@@ -585,6 +600,8 @@ where
         }
 
         self.clients_by_allocation.insert(allocation.port, sender);
+        self.allocations_by_username
+            .insert(username, allocation.port);
         self.allocations.insert(sender, allocation);
         self.allocations_up_down_counter.add(1, &[]);
 
@@ -1018,6 +1035,7 @@ where
             .allocations
             .remove(&client)
             .expect("internal state mismatch");
+        self.allocations_by_username.remove_by_right(&port);
 
         let port = allocation.port;
 
@@ -1052,7 +1070,7 @@ where
                     allocation_port: c.allocation,
                 });
 
-            tracing::info!(%peer, %number, allocation = %port, "Deleted channel binding");
+            tracing::info!(target: "relay", %peer, %number, allocation = %port, "Deleted channel binding");
         }
 
         self.allocations_up_down_counter.add(-1, &[]);

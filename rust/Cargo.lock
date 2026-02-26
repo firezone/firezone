@@ -2577,6 +2577,7 @@ dependencies = [
  "aya-log",
  "backoff",
  "base64 0.22.1",
+ "bimap",
  "bin-shared",
  "bytecodec",
  "bytes",
