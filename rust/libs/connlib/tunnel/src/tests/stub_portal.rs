@@ -340,7 +340,7 @@ impl StubPortal {
             .map(|(id, (ipv4, ipv6))| {
                 (
                     Just(*id),
-                    ref_client_host(Just(*ipv4), Just(*ipv6), system_dns.clone()),
+                    ref_client_host(*id, Just(*ipv4), Just(*ipv6), system_dns.clone()),
                 )
             })
             .collect::<Vec<_>>()

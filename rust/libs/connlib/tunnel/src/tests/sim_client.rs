@@ -16,7 +16,7 @@ use crate::{
     messages::Interface,
 };
 use chrono::{DateTime, Utc};
-use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -34,6 +34,8 @@ use std::{
 
 /// Simulation state for a particular client.
 pub(crate) struct SimClient {
+    id: ClientId,
+
     pub(crate) sut: ClientState,
 
     /// The DNS records created on the client as a result of received DNS responses.
@@ -77,8 +79,9 @@ pub(crate) struct SimClient {
 }
 
 impl SimClient {
-    pub(crate) fn new(sut: ClientState, now: Instant) -> Self {
+    pub(crate) fn new(id: ClientId, sut: ClientState, now: Instant) -> Self {
         Self {
+            id,
             sut,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -368,7 +371,7 @@ impl SimClient {
     ) {
         self.sut.update_relays(
             to_remove.collect(),
-            map_explode(to_add, "client").collect(),
+            map_explode(to_add, format!("client_{}", self.id)).collect(),
             now,
         )
     }
@@ -412,6 +415,8 @@ impl SimClient {
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
 #[derive(Clone, derive_more::Debug)]
 pub struct RefClient {
+    id: ClientId,
+
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
@@ -511,7 +516,7 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(client_state, now)
+        SimClient::new(self.id, client_state, now)
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -1261,6 +1266,7 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 }
 
 pub(crate) fn ref_client_host(
+    id: ClientId,
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
@@ -1268,12 +1274,13 @@ pub(crate) fn ref_client_host(
     host(
         any_ip_stack(),
         listening_port(),
-        ref_client(tunnel_ip4s, tunnel_ip6s, system_dns),
+        ref_client(id, tunnel_ip4s, tunnel_ip6s, system_dns),
         latency(250), // TODO: Increase with #6062.
     )
 }
 
 fn ref_client(
+    id: ClientId,
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
@@ -1288,6 +1295,7 @@ fn ref_client(
         .prop_map(
             move |(tunnel_ip4, tunnel_ip6, system_dns_resolvers, internet_resource_active, key)| {
                 RefClient {
+                    id,
                     key,
                     tunnel_ip4,
                     tunnel_ip6,
