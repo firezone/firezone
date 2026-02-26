@@ -194,6 +194,18 @@ defmodule Portal.AuthenticationTest do
       assert authenticate(".invalid", context) == {:error, :invalid_token}
     end
 
+    test "returns error when token payload contains nil fragment" do
+      token = client_token_fixture()
+      context = build_context(type: :client)
+
+      config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt) <> "client"
+      encoded_fragment = Plug.Crypto.sign(key_base, salt, {token.account_id, token.id, nil})
+
+      assert authenticate("n." <> encoded_fragment, context) == {:error, :invalid_token}
+    end
+
     test "returns error for empty token" do
       context = build_context(type: :client)
       assert authenticate("", context) == {:error, :invalid_token}
