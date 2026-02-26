@@ -118,6 +118,10 @@ struct Args {
     #[arg(long, env, hide = true, default_value = "127.0.0.1:9999")]
     control_endpoint: SocketAddr,
 
+    /// How many worker threads to use.
+    #[arg(long, env, hide = true, default_value = "2")]
+    num_worker_threads: usize,
+
     /// Enable sentry.io crash-reporting agent.
     #[arg(long, env = "TELEMETRY", default_value_t = false)]
     telemetry: bool,
@@ -137,7 +141,8 @@ fn main() {
 
     let args = Args::parse();
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(args.num_worker_threads)
         .enable_all()
         .build()
         .expect("Failed to build tokio runtime");
