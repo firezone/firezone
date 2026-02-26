@@ -656,8 +656,6 @@ where
                         match stream.start_send_unpin(Message::Text(join.clone().into())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %join);
-
-                                heartbeat.reset()
                             }
                             Err(e) => {
                                 pending_joins.push_front(join);
@@ -679,8 +677,6 @@ where
                             {
                                 Ok(()) => {
                                     tracing::trace!(target: "wire::api::send", msg = %serialized_msg);
-
-                                    heartbeat.reset()
                                 }
                                 Err(e) => {
                                     pending_messages.push_front(msg);
