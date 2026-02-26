@@ -69,8 +69,6 @@ impl io::Write for GsoHeaderBuf {
 
 #[cfg(target_family = "unix")]
 pub mod ioctl;
-#[cfg(target_os = "linux")]
-pub mod linux;
 #[cfg(target_family = "unix")]
 pub mod unix;
 
