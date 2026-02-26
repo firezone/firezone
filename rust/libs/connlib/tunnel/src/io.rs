@@ -452,48 +452,30 @@ impl Io {
         }
 
         #[cfg(target_os = "linux")]
-        {
-            let mut tun_packets = self.tun_gso_queue.packets();
+        let mut tun_packets = self.tun_gso_queue.packets();
+        #[cfg(not(target_os = "linux"))]
+        let mut tun_packets = self.outbound_packet_buffer.iter();
 
-            loop {
-                // First, check if we can send more packets.
-                if self.tun.poll_send_ready(cx)?.is_pending() {
-                    any_pending = true;
-                    break;
-                }
-
-                // Second, check if we have any batched packets.
-                let Some(packet) = tun_packets.next() else {
-                    break; // No more packets? All done.
-                };
-
-                // Third, send the packet.
-                self.tun
-                    .send(packet)
-                    .context("Failed to send IP packet to TUN device")?;
+        loop {
+            // First, check if we can send more packets.
+            if self.tun.poll_send_ready(cx)?.is_pending() {
+                any_pending = true;
+                break;
             }
+
+            // Second, check if we have any packets.
+            let Some(packet) = tun_packets.next() else {
+                break; // No more packets? All done.
+            };
+
+            // Third, send the packet.
+            self.tun
+                .send(packet)
+                .context("Failed to send IP packet to TUN device")?;
         }
 
         #[cfg(not(target_os = "linux"))]
-        {
-            loop {
-                // First, check if we can send more packets.
-                if self.tun.poll_send_ready(cx)?.is_pending() {
-                    any_pending = true;
-                    break;
-                }
-
-                // Second, check if we have any buffer packets.
-                let Some(packet) = self.outbound_packet_buffer.pop_front() else {
-                    break; // No more packets? All done.
-                };
-
-                // Third, send the packet.
-                self.tun
-                    .send(packet)
-                    .context("Failed to send IP packet to TUN device")?;
-            }
-        }
+        self.outbound_packet_buffer.clear();
 
         if any_pending {
             return Poll::Pending;
