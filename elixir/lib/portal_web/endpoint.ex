@@ -3,13 +3,17 @@ defmodule PortalWeb.Endpoint do
 
   # NOTE: This is only used for the LiveView session. We store per-account cookies to allow
   # multiple accounts to be logged in simultaneously. See PortalWeb.Cookie.Session.
+  #
+  # `secure` must be a literal boolean here — Plug.Session passes it directly to
+  # put_resp_cookie/4 without resolving MFA tuples, so a tuple would always be
+  # truthy. PortalWeb is always served over HTTPS, so this is always true.
   @session_cookie [
     store: :cookie,
     key: "_firezone_key",
     same_site: "Lax",
     max_age: 8 * 60 * 60,
     sign: true,
-    secure: {__MODULE__, :cookie_secure, []},
+    secure: true,
     signing_salt: {__MODULE__, :cookie_signing_salt, []}
   ]
 
@@ -98,10 +102,6 @@ defmodule PortalWeb.Endpoint do
   def clients do
     Portal.Config.fetch_env!(:portal, :private_clients)
     |> Enum.map(&to_string/1)
-  end
-
-  def cookie_secure do
-    Portal.Config.fetch_env!(:portal, :cookie_secure)
   end
 
   def cookie_signing_salt do
