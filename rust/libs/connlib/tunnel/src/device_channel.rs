@@ -3,6 +3,9 @@ use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
 
+#[cfg(target_os = "linux")]
+use tun::IpPacketOut;
+
 pub struct Device {
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
@@ -51,32 +54,20 @@ impl Device {
         tun.poll_send_ready(cx)
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn send(&mut self, packet: IpPacketOut) -> io::Result<()> {
+        self.tun()?.send(packet)?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
     pub fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         debug_assert!(
             !packet.is_fz_p2p_control(),
             "FZ p2p control protocol packets should never leave `connlib`"
         );
 
-        #[cfg(target_os = "linux")]
-        {
-            // On Linux, wrap the packet in IpPacketOut with segment_size = 0 (single packet)
-            // In Phase 4, we'll route through TunGsoQueue instead
-            let packet_bytes = packet.packet();
-            let mut buffer = bufferpool::BufferPool::<bytes::BytesMut>::new(packet_bytes.len(), "temp").pull();
-            buffer.extend_from_slice(packet_bytes);
-
-            let packet_out = tun::IpPacketOut {
-                packet: buffer,
-                segment_size: 0,
-            };
-            self.tun()?.send(packet_out)?;
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            // On non-Linux, send directly (no change)
-            self.tun()?.send(packet)?;
-        }
+        self.tun()?.send(packet)?;
 
         Ok(())
     }
