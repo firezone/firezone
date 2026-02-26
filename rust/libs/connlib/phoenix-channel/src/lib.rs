@@ -84,7 +84,7 @@ struct Connected<TOutboundMsg> {
 
     heartbeat: tokio::time::Interval,
     inflight_heartbeats: HashSet<OutboundRequestId>,
-    pending_heartbeat: Option<(OutboundRequestId, String)>,
+    pending_heartbeat: Option<String>,
 
     pending_joins: VecDeque<String>,
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
@@ -643,11 +643,9 @@ where
             // Priority 2: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    if let Some((hb_id, heartbeat)) = pending_heartbeat.take() {
+                    if let Some(heartbeat) = pending_heartbeat.take() {
                         match stream.start_send_unpin(Message::Text(heartbeat.clone().into())) {
                             Ok(()) => {
-                                // Only track the heartbeat as inflight once it is actually sent.
-                                inflight_heartbeats.insert(hb_id);
                                 tracing::trace!(target: "wire::api::send", %heartbeat);
                             }
                             Err(e) => {
@@ -877,11 +875,8 @@ where
                         EgressControlMessage::<()>::Heartbeat(Empty {}),
                     );
 
-                    // Store the ID alongside the message. The ID is only moved into
-                    // inflight_heartbeats when the message is actually sent (Priority 2).
-                    // This prevents orphaned IDs accumulating when the sink is backpressured
-                    // and pending_heartbeat gets replaced by subsequent ticks.
-                    pending_heartbeat.replace((id, heartbeat));
+                    pending_heartbeat.replace(heartbeat);
+                    inflight_heartbeats.insert(id);
 
                     continue;
                 }
