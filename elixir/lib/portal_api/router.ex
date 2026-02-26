@@ -10,6 +10,7 @@ defmodule PortalAPI.Router do
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
+    plug PortalAPI.Plugs.ValidateUUIDParams
   end
 
   pipeline :public do

@@ -25,6 +25,16 @@ defmodule PortalAPI.GatewayControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns 400 for invalid UUID site_id", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/null/gateways")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
     test "lists all gateways for a site", %{
       conn: conn,
       account: account,

@@ -132,15 +132,15 @@ defmodule Portal.Safe do
     fun.()
   rescue
     error in Ecto.Query.CastError ->
-      Logger.error("Query cast error", error: error)
+      Logger.info("Query cast error", error: error)
       nil
 
     error in Ecto.CastError ->
-      Logger.error("Cast error", error: error)
+      Logger.info("Cast error", error: error)
       nil
 
     error in ArgumentError ->
-      Logger.error("Argument error", error: error)
+      Logger.info("Argument error", error: error)
       nil
   end
 
@@ -148,15 +148,15 @@ defmodule Portal.Safe do
     fun.()
   rescue
     error in Ecto.Query.CastError ->
-      Logger.error("Query cast error", error: error)
+      Logger.info("Query cast error", error: error)
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
 
     error in Ecto.CastError ->
-      Logger.error("Cast error", error: error)
+      Logger.info("Cast error", error: error)
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
 
     error in ArgumentError ->
-      Logger.error("Argument error", error: error)
+      Logger.info("Argument error", error: error)
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
   end
 
