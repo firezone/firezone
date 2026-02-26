@@ -198,7 +198,11 @@ config :geolix,
     %{
       id: :city,
       adapter: Geolix.Adapter.MMDB2,
-      source: Path.expand("../priv/geoip/GeoLite2-City.mmdb", __DIR__)
+      source:
+        System.get_env(
+          "MAXMIND_DB_PATH",
+          Path.expand("../priv/geoip/GeoLite2-City.mmdb", __DIR__)
+        )
     }
   ]
 
