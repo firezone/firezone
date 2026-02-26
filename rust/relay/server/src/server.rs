@@ -13,7 +13,6 @@ use anyhow::Result;
 use bimap::BiMap;
 use bytecodec::EncodeExt;
 use core::fmt;
-use hex_display::HexDisplayExt as _;
 use logging::err_with_src;
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, UpDownCounter};
@@ -470,12 +469,11 @@ where
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_binding_request(&mut self, request: &Binding, sender: ClientSocket) {
         let mut message = success_response(BINDING, request.transaction_id());
         message.add_attribute(XorMappedAddress::new(sender.0));
 
-        tracing::info!("Handled BINDING request");
+        tracing::info!(%sender, "Handled BINDING request");
 
         self.send_message(
             AuthenticatedMessage::new_dangerous_unauthenticated(message),
@@ -584,6 +582,7 @@ where
             tracing::info!(
                 target: "relay",
                 %sender,
+                port = %allocation.port,
                 first_relay_address = field::display(first_relay_address),
                 second_relay_address = field::display(second_relay_addr),
                 lifetime = field::debug(effective_lifetime.lifetime()),
@@ -593,6 +592,7 @@ where
             tracing::info!(
                 target: "relay",
                 %sender,
+                port = %allocation.port,
                 first_relay_address = field::display(first_relay_address),
                 lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
@@ -671,7 +671,7 @@ where
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
-            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
+            tracing::info!(target: "relay", %sender, "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
         };
@@ -684,7 +684,7 @@ where
         if !allocation.can_relay_to(peer_address) {
             let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
-            tracing::warn!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
+            tracing::warn!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
 
             return Err(error_response);
         }
@@ -697,7 +697,7 @@ where
         {
             let (error_response, msg) = make_error_response(BadRequest, request);
 
-            tracing::warn!(target: "relay", existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
+            tracing::warn!(target: "relay", %sender, existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
 
             return Err(error_response);
         }
@@ -710,7 +710,7 @@ where
             if channel.peer_address != peer_address {
                 let (error_response, msg) = make_error_response(BadRequest, request);
 
-                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Channel is already bound to a different peer");
+                tracing::warn!(target: "relay", %sender, existing_peer = %channel.peer_address, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Channel is already bound to a different peer");
 
                 return Err(error_response);
             }
@@ -733,7 +733,7 @@ where
                     allocation_port: channel.allocation,
                 });
 
-            tracing::info!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
+            tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
             self.authenticate_and_send(
                 &username,
@@ -759,7 +759,7 @@ where
             sender,
         );
 
-        tracing::info!(target: "relay", allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
+        tracing::info!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
 
         Ok(())
     }

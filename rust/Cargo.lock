@@ -2587,7 +2587,6 @@ dependencies = [
  "ebpf-shared",
  "futures",
  "hex",
- "hex-display",
  "logging",
  "mio",
  "once_cell",

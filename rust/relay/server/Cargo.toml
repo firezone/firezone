@@ -20,7 +20,6 @@ clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
 futures = { workspace = true }
 hex = { workspace = true }
-hex-display = { workspace = true }
 logging = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
