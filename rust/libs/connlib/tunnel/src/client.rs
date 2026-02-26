@@ -972,7 +972,7 @@ impl ClientState {
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_client))]
+    #[tracing::instrument(level = "debug", skip_all, fields(client = %disconnected_client))]
     fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
         self.clients.remove(disconnected_client);
     }
