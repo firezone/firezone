@@ -655,7 +655,7 @@ where
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
-            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
+            tracing::info!(target: "relay", %sender, "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
         };
@@ -668,7 +668,7 @@ where
         if !allocation.can_relay_to(peer_address) {
             let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
-            tracing::warn!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
+            tracing::warn!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
 
             return Err(error_response);
         }
@@ -681,7 +681,7 @@ where
         {
             let (error_response, msg) = make_error_response(BadRequest, request);
 
-            tracing::warn!(target: "relay", existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
+            tracing::warn!(target: "relay", %sender, existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
 
             return Err(error_response);
         }
@@ -694,7 +694,7 @@ where
             if channel.peer_address != peer_address {
                 let (error_response, msg) = make_error_response(BadRequest, request);
 
-                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Channel is already bound to a different peer");
+                tracing::warn!(target: "relay", %sender, existing_peer = %channel.peer_address, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Channel is already bound to a different peer");
 
                 return Err(error_response);
             }
@@ -717,7 +717,7 @@ where
                     allocation_port: channel.allocation,
                 });
 
-            tracing::info!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
+            tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
             self.authenticate_and_send(
                 &username,
@@ -743,7 +743,7 @@ where
             sender,
         );
 
-        tracing::info!(target: "relay", allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
+        tracing::info!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
 
         Ok(())
     }
