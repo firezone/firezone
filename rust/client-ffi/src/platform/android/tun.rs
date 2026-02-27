@@ -129,6 +129,9 @@ fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
 
 /// Write the packet to the given file descriptor.
 fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
+    #[cfg(debug_assertions)]
+    tracing::trace!(target: "wire::dev::send", ?packet);
+
     let buf = packet.packet();
 
     // Safety: Within this module, the file descriptor is always valid.
