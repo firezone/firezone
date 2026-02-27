@@ -103,4 +103,33 @@ defmodule PortalWeb.Live.ActorsTest do
       assert html =~ "Actor not found"
     end
   end
+
+  describe "handle_event create_user" do
+    test "enforces users_count limit", %{account: account, actor: actor, conn: conn} do
+      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{users_count: 1})
+      |> Repo.update!()
+
+      actor_with_email_fixture(type: :account_user, account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_user")
+
+      html =
+        lv
+        |> form("#user-form",
+          actor: %{
+            "name" => "Another User",
+            "email" => "another-user@example.com",
+            "type" => "account_user",
+            "allow_email_otp_sign_in" => "true"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "User limit reached for your account"
+      refute Repo.get_by(Portal.Actor, account_id: account.id, email: "another-user@example.com")
+    end
+  end
 end

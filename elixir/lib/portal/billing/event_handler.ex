@@ -664,7 +664,7 @@ defmodule Portal.Billing.EventHandler do
 
     def slug_exists?(slug) do
       from(a in Portal.Account, where: a.slug == ^slug)
-      |> Safe.unscoped()
+      |> Safe.unscoped(:replica)
       |> Safe.exists?()
     end
 

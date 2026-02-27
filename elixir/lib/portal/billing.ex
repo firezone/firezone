@@ -446,6 +446,49 @@ defmodule Portal.Billing do
     end
   end
 
+  @doc """
+  Provisions a Stripe customer and subscription for a new account before it is
+  created in the database. Called during sign-up so that Stripe failures are
+  detected upfront rather than inside a database transaction.
+
+  Returns `{:ok, stripe_info}` on success (map with customer_id, billing_email,
+  and subscription_id), `{:ok, nil}` when billing is disabled, or
+  `{:error, :retry_later}` on Stripe failure.
+  """
+  @spec provision_stripe_for_signup(String.t(), String.t(), String.t()) ::
+          {:ok, map() | nil} | {:error, :retry_later}
+  def provision_stripe_for_signup(account_id, legal_name, email) do
+    if enabled?() do
+      secret_key = fetch_config!(:secret_key)
+      default_price_id = fetch_config!(:default_price_id)
+
+      with {:ok, %{"id" => customer_id, "email" => billing_email}} <-
+             APIClient.create_customer(secret_key, legal_name, email, %{
+               account_id: account_id,
+               account_name: legal_name
+             }),
+           {:ok, %{"id" => subscription_id}} <-
+             APIClient.create_subscription(secret_key, customer_id, default_price_id) do
+        {:ok,
+         %{
+           customer_id: customer_id,
+           billing_email: billing_email,
+           subscription_id: subscription_id
+         }}
+      else
+        {:error, reason} ->
+          :ok =
+            Logger.error("Cannot provision Stripe account for signup",
+              reason: inspect(reason)
+            )
+
+          {:error, :retry_later}
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
   def provision_account(%Portal.Account{} = account) do
     with true <- enabled?(),
          true <- not account_provisioned?(account),
@@ -561,37 +604,37 @@ defmodule Portal.Billing do
       |> Safe.update()
     end
 
-    def count_users_for_account(%Account{} = account) do
+    def count_users_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
-    def count_service_accounts_for_account(%Account{} = account) do
+    def count_service_accounts_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
-    def count_account_admin_users_for_account(%Account{} = account) do
+    def count_account_admin_users_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
-    def count_1m_active_users_for_account(%Account{} = account) do
+    def count_1m_active_users_for_account(%Account{} = account, repo \\ :replica) do
       from(c in Client, as: :clients)
       |> where([clients: c], c.account_id == ^account.id)
       |> join(:inner, [clients: c], s in Portal.ClientSession,
@@ -607,35 +650,35 @@ defmodule Portal.Billing do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
-    def count_sites_for_account(account) do
+    def count_sites_for_account(account, repo \\ :replica) do
       from(g in Portal.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
-    def count_api_clients_for_account(%Account{} = account) do
+    def count_api_clients_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type == :api_client
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
-    def count_api_tokens_for_actor(%Actor{} = actor) do
+    def count_api_tokens_for_actor(%Actor{} = actor, repo \\ :replica) do
       from(t in Portal.APIToken,
         where: t.actor_id == ^actor.id,
         where: t.account_id == ^actor.account_id
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped(repo)
       |> Safe.aggregate(:count)
     end
 
