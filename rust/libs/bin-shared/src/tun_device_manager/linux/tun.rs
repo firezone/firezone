@@ -230,6 +230,9 @@ where
                     Some(OutboundPacket::Single(packet)) => {
                         if let Err(e) = fd
                             .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
+                                #[cfg(debug_assertions)]
+                                tracing::trace!(target: "wire::dev::send", ?packet);
+
                                 write_single(fd_ref.as_raw_fd(), &packet)
                             })
                             .await
@@ -253,6 +256,9 @@ where
 
                         if let Err(e) = fd
                             .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
+                                #[cfg(debug_assertions)]
+                                tracing::trace!(target: "wire::dev::send", num_packets = %batch.num_packets());
+
                                 write_batch(fd_ref.as_raw_fd(), &batch)
                             })
                             .await
@@ -325,9 +331,6 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     let vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
     let packet_bytes = packet.packet();
 
-    #[cfg(debug_assertions)]
-    tracing::trace!(target: "wire::dev::send::single", ?packet);
-
     let iov = [
         libc::iovec {
             iov_base: vnet_hdr.as_ptr() as *mut libc::c_void,
@@ -348,9 +351,6 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
 
 /// Write a batch of IP packets to the TUN device using `writev`.
 fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
-    #[cfg(debug_assertions)]
-    tracing::trace!(target: "wire::dev::send::batch", num_packets = %batch.num_packets());
-
     let vnet_hdr = build_vnet_hdr(&batch.header, batch.segment_size as u16);
     let (ipv4, ipv4_len) = batch
         .header
@@ -502,10 +502,16 @@ fn parse_vnet_packet(hdr: &VirtioNetHdr, ip_data: &[u8]) -> Result<Vec<IpPacket>
 
         let packet = IpPacket::new(buf, ip_data.len()).context("Failed to parse IP packet")?;
 
+        #[cfg(debug_assertions)]
+        tracing::trace!(target: "wire::dev::recv", ?packet);
+
         return Ok(vec![packet]);
     }
 
     let packets = segment_packet(hdr, ip_data)?;
+
+    #[cfg(debug_assertions)]
+    tracing::trace!(target: "wire::dev::recv", num_packets = %packets.len());
 
     Ok(packets)
 }
