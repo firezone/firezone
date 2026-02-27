@@ -21,6 +21,9 @@ where
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
 
             while let Some(packet) = outbound_rx.recv().await {
+                #[cfg(debug_assertions)]
+                tracing::trace!(target: "wire::dev::send", ?packet);
+
                 if let Err(e) = fd
                     .async_io(tokio::io::Interest::WRITABLE, |fd| {
                         write(fd.as_raw_fd(), &packet)
@@ -74,6 +77,9 @@ where
                 match next_inbound_packet.context("Failed to read from TUN FD") {
                     Ok(None) => bail!("TUN file descriptor is closed"),
                     Ok(Some(packet)) => {
+                        #[cfg(debug_assertions)]
+                        tracing::trace!(target: "wire::dev::recv", ?packet);
+
                         if inbound_tx.send(packet).await.is_err() {
                             tracing::debug!("Inbound packet receiver gone, shutting down task");
 

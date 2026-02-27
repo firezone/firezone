@@ -164,6 +164,9 @@ fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
 }
 
 fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
+    #[cfg(debug_assertions)]
+    tracing::trace!(target: "wire::dev::send", packet = ?src);
+
     let af = match src.version() {
         IpVersion::V4 => AF_INET,
         IpVersion::V6 => AF_INET6,

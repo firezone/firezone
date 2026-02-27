@@ -437,6 +437,8 @@ fn start_send_thread(
                         pkt.bytes_mut().copy_from_slice(bytes);
                         // `send_packet` cannot fail to enqueue the packet, since we already allocated
                         // space in the ring buffer.
+                        #[cfg(debug_assertions)]
+                        tracing::trace!(target: "wire::dev::send", ?packet);
                         session.send_packet(pkt);
 
                         if attempt > 0 {
@@ -519,6 +521,9 @@ fn start_recv_thread(
                         continue;
                     }
                 };
+
+                #[cfg(debug_assertions)]
+                tracing::trace!(target: "wire::dev::recv", ?pkt);
 
                 // Use `blocking_send` so that if connlib is behind by a few packets,
                 // Wintun will queue up new packets in its ring buffer while we
