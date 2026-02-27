@@ -4,7 +4,8 @@
 <dict>
 	<key>com.apple.developer.networking.networkextension</key>
 	<array>
-		<string>packet-tunnel-provider-systemextension</string>
+		<!-- "-systemextension" is needed for standalone distribution -->
+		<string>packet-tunnel-provider$(PACKET_TUNNEL_PROVIDER_SUFFIX)</string>
 	</array>
 	<key>com.apple.developer.system-extension.install</key>
 	<true/>
