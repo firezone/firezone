@@ -1,8 +1,7 @@
-use std::collections::{BTreeMap, VecDeque};
-
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::{IpPacket, Ipv4Header, Ipv6Header, TcpHeader, UdpHeader};
+use std::collections::{BTreeMap, VecDeque};
 
 const MAX_INBOUND_PACKET_BATCH: usize = 32;
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
@@ -35,7 +34,7 @@ pub enum GsoHeader {
 }
 
 impl GsoHeader {
-    /// Parse from packet and zero out variable fields, then serialize to bytes
+    /// Parse from packet and zero out length and checksum fields.
     fn from_packet(packet: &IpPacket) -> Option<Self> {
         match (
             packet.ipv4_header(),
@@ -50,7 +49,6 @@ impl GsoHeader {
                     ..ipv4
                 };
                 let tcp = ip_packet::TcpHeader {
-                    sequence_number: 0,
                     checksum: 0,
                     ..tcp.to_header()
                 };
@@ -63,7 +61,6 @@ impl GsoHeader {
                     ..ipv6
                 };
                 let tcp = ip_packet::TcpHeader {
-                    sequence_number: 0,
                     checksum: 0,
                     ..tcp.to_header()
                 };
@@ -158,42 +155,45 @@ impl GsoHeader {
         }
     }
 
-    pub fn with_payload_length(self, payload: usize) -> Self {
+    /// Finalizes the [`GsoHeader`] by setting the total payload length and pseudo-checksum.
+    pub fn finalize(self, segment_length: usize) -> Self {
         match self {
-            GsoHeader::Ipv4Tcp { ipv4, tcp } => GsoHeader::Ipv4Tcp {
-                ipv4: Ipv4Header {
-                    total_len: (ipv4.header_len() + tcp.header_len() + payload) as u16,
-                    ..ipv4
-                },
-                tcp,
-            },
-            GsoHeader::Ipv6Tcp { ipv6, tcp } => GsoHeader::Ipv6Tcp {
-                ipv6: Ipv6Header {
-                    payload_length: (tcp.header_len() + payload) as u16,
-                    ..ipv6
-                },
-                tcp,
-            },
-            GsoHeader::Ipv4Udp { ipv4, udp } => GsoHeader::Ipv4Udp {
-                ipv4: Ipv4Header {
-                    total_len: (ipv4.header_len() + udp.header_len() + payload) as u16,
-                    ..ipv4
-                },
-                udp: UdpHeader {
-                    length: (udp.header_len() + payload) as u16,
-                    ..udp
-                },
-            },
-            GsoHeader::Ipv6Udp { ipv6, udp } => GsoHeader::Ipv6Udp {
-                ipv6: Ipv6Header {
-                    payload_length: (udp.header_len() + payload) as u16,
-                    ..ipv6
-                },
-                udp: UdpHeader {
-                    length: (udp.header_len() + payload) as u16,
-                    ..udp
-                },
-            },
+            GsoHeader::Ipv4Tcp { mut ipv4, mut tcp } => {
+                ipv4.total_len = (ipv4.header_len() + tcp.header_len() + segment_length) as u16;
+                ipv4.header_checksum = ipv4.calc_header_checksum();
+                tcp.checksum = tcp
+                    .calc_checksum_ipv4(&ipv4, &[])
+                    .expect("empty slice is never too big");
+
+                GsoHeader::Ipv4Tcp { ipv4, tcp }
+            }
+            GsoHeader::Ipv6Tcp { mut ipv6, mut tcp } => {
+                ipv6.payload_length = (tcp.header_len() + segment_length) as u16;
+                tcp.checksum = tcp
+                    .calc_checksum_ipv6(&ipv6, &[])
+                    .expect("empty slice is never too big");
+
+                GsoHeader::Ipv6Tcp { ipv6, tcp }
+            }
+            GsoHeader::Ipv4Udp { mut ipv4, mut udp } => {
+                ipv4.total_len = (ipv4.header_len() + udp.header_len() + segment_length) as u16;
+                ipv4.header_checksum = ipv4.calc_header_checksum();
+                udp.length = (udp.header_len() + segment_length) as u16;
+                udp.checksum = udp
+                    .calc_checksum_ipv4(&ipv4, &[])
+                    .expect("empty slice is never too big");
+
+                GsoHeader::Ipv4Udp { ipv4, udp }
+            }
+            GsoHeader::Ipv6Udp { mut ipv6, mut udp } => {
+                ipv6.payload_length = (udp.header_len() + segment_length) as u16;
+                udp.length = (udp.header_len() + segment_length) as u16;
+                udp.checksum = udp
+                    .calc_checksum_ipv6(&ipv6, &[])
+                    .expect("empty slice is never too big");
+
+                GsoHeader::Ipv6Udp { ipv6, udp }
+            }
         }
     }
 
@@ -245,6 +245,10 @@ impl TunGsoQueue {
 
         let payload_len = payload.len();
 
+        if payload_len == 0 {
+            return Err(NotBatchable);
+        }
+
         // Get or create batch list for this flow (use header as key)
         let batches = self.inner.entry(header).or_default();
 
@@ -289,7 +293,7 @@ impl Iterator for DrainPacketsIter<'_> {
                 continue;
             };
 
-            let header = entry.key().clone().with_payload_length(buffer.len());
+            let header = entry.key().clone().finalize(batch_size);
 
             return Some(IpPacketBatch {
                 header,
