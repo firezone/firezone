@@ -63,18 +63,22 @@
   }
 
   @MainActor
-  class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
+  public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
     SystemExtensionManagerProtocol
   {
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
+
+    public override init() {
+      super.init()
+    }
 
     // MARK: - OSSystemExtensionRequestDelegate
 
     // Delegate callbacks are non-async and nonisolated.
     // Use Task { @MainActor in } to safely hop to our actor.
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
@@ -87,7 +91,7 @@
       }
     }
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       foundProperties properties: [OSSystemExtensionProperties]
     ) {
@@ -135,7 +139,7 @@
       }
     }
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       didFailWithError error: Error
     ) {
@@ -144,11 +148,11 @@
       }
     }
 
-    nonisolated func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
+    nonisolated public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
       // We assume this state until we receive a success response.
     }
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       actionForReplacingExtension existing: OSSystemExtensionProperties,
       withExtension ext: OSSystemExtensionProperties
@@ -158,7 +162,7 @@
 
     // MARK: - SystemExtensionManagerProtocol
 
-    func check() async throws -> SystemExtensionStatus {
+    public func check() async throws -> SystemExtensionStatus {
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .check,
@@ -168,7 +172,7 @@
       }
     }
 
-    func tryInstall() async throws -> SystemExtensionStatus {
+    public func tryInstall() async throws -> SystemExtensionStatus {
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .install,
