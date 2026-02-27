@@ -845,7 +845,6 @@ dependencies = [
  "bytes",
  "clap",
  "dashmap",
- "derive_more 2.1.1",
  "dns-types",
  "futures",
  "gat-lending-iterator",
