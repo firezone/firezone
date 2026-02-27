@@ -5,11 +5,14 @@ defmodule PortalWeb.OIDCController do
 
   alias __MODULE__.Database
 
+  alias PortalWeb.OIDC.IdentityProfile
   alias PortalWeb.Session.Redirector
 
   require Logger
 
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+  @oidc_auth_ttl :timer.minutes(5)
+  @oidc_state_session_key :oidc_state_binding
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -20,9 +23,8 @@ defmodule PortalWeb.OIDCController do
 
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code}) do
-    # Check if this is a verification operation (state starts with "oidc-verification:")
-    case String.split(state, ":", parts: 2) do
-      ["oidc-verification", verification_token] ->
+    case parse_callback_state(state) do
+      {:oidc_verification, verification_token} ->
         handle_verification_callback(conn, verification_token, code)
 
       _ ->
@@ -32,12 +34,12 @@ defmodule PortalWeb.OIDCController do
 
   # Handle Entra admin consent callback (returns admin_consent & tenant instead of code)
   def callback(conn, %{"state" => state, "admin_consent" => _, "tenant" => _} = params) do
-    case String.split(state, ":", parts: 2) do
-      ["entra-verification", verification_token] ->
-        handle_entra_verification_callback(conn, verification_token, params)
+    case parse_callback_state(state) do
+      {:entra_verification, verification_token} ->
+        handle_entra_verification_callback(conn, verification_token, params, "auth_provider")
 
-      ["entra-admin-consent", verification_token] ->
-        handle_entra_verification_callback(conn, verification_token, params)
+      {:entra_admin_consent, verification_token} ->
+        handle_entra_verification_callback(conn, verification_token, params, "directory_sync")
 
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
@@ -47,28 +49,59 @@ defmodule PortalWeb.OIDCController do
   def callback(conn, params) do
     Logger.info("OIDC callback called with invalid params", params: Map.keys(params))
 
-    conn
-    |> PortalWeb.Cookie.OIDC.delete()
-    |> handle_error({:error, :invalid_callback_params})
+    handle_error(conn, {:error, :invalid_callback_params})
   end
 
   defp handle_authentication_callback(conn, state, code) do
-    with {:ok, cookie} <- fetch_oidc_cookie(conn),
-         conn = PortalWeb.Cookie.OIDC.delete(conn),
-         :ok <- verify_state(cookie.state, state),
-         context_type = context_type(cookie.params),
-         account = Database.get_account_by_id_or_slug!(cookie.account_id),
-         provider = get_provider!(account, cookie),
-         :ok <- validate_context(provider, context_type),
-         false <- client_sign_in_restricted?(account, context_type),
-         {:ok, tokens} <-
-           PortalWeb.OIDC.exchange_code(provider, code, cookie.verifier),
+    case load_auth_context(conn, state) do
+      {:ok, auth_context} ->
+        run_authentication_flow(auth_context, code)
+
+      error ->
+        handle_error(conn, error)
+    end
+  end
+
+  defp load_auth_context(conn, state) do
+    with {:ok, auth_state} <- fetch_oidc_auth_state(state),
+         :ok <- verify_oidc_state_session_binding(conn, auth_state) do
+      conn = put_oidc_error_context(conn, auth_state)
+      params = auth_state.params || %{}
+      context_type = context_type(params)
+      account = Database.get_account_by_id_or_slug!(auth_state.account_id)
+      provider = get_provider!(account, auth_state)
+
+      {:ok,
+       %{
+         conn: conn,
+         params: params,
+         verifier: auth_state.verifier,
+         context_type: context_type,
+         account: account,
+         provider: provider
+       }}
+    end
+  end
+
+  defp run_authentication_flow(auth_context, code) do
+    %{
+      conn: conn,
+      params: params,
+      verifier: verifier,
+      context_type: context_type,
+      account: account,
+      provider: provider
+    } = auth_context
+
+    with :ok <- validate_context(provider, context_type),
+         :ok <- ensure_client_sign_in_allowed(account, context_type),
+         {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
          {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
          {:ok, session_or_token} <-
-           create_session_or_token(conn, identity, provider, cookie.params) do
+           create_session_or_token(conn, identity, provider, params) do
       signed_in(
         conn,
         context_type,
@@ -77,90 +110,89 @@ defmodule PortalWeb.OIDCController do
         session_or_token,
         provider,
         tokens,
-        cookie.params
+        params
       )
     else
       error -> handle_error(conn, error)
     end
   end
 
-  defp fetch_oidc_cookie(conn) do
-    case PortalWeb.Cookie.OIDC.fetch(conn) do
-      %PortalWeb.Cookie.OIDC{} = cookie -> {:ok, cookie}
-      nil -> {:error, :oidc_cookie_not_found}
-    end
-  end
-
-  defp verify_state(cookie_state, callback_state) do
-    if Plug.Crypto.secure_compare(cookie_state, callback_state) do
-      :ok
-    else
-      {:error, :state_mismatch}
+  defp fetch_oidc_auth_state(state) do
+    case Portal.AuthenticationCache.pop(Portal.AuthenticationCache.oidc_auth_key(state)) do
+      {:ok, auth_state} -> {:ok, normalize_auth_state(auth_state)}
+      :error -> {:error, :oidc_state_not_found}
     end
   end
 
   defp handle_verification_callback(conn, verification_token, code) do
+    :ok =
+      Portal.AuthenticationCache.put(
+        Portal.AuthenticationCache.verification_key(verification_token),
+        %{
+          "type" => "oidc",
+          "token" => verification_token,
+          "code" => code
+        }
+      )
+
     # Store OIDC verification info in session for the LiveView to pick up
     conn
     |> put_session(:verification, %{
       "type" => "oidc",
-      "token" => verification_token,
-      "code" => code
+      "token" => verification_token
     })
     |> redirect(to: ~p"/verification")
   end
 
-  defp handle_entra_verification_callback(conn, verification_token, params) do
-    # Determine Entra verification subtype from state prefix
-    # NOTE: The callback routing (lines 35-46) only routes to this function
-    # when state starts with "entra-verification:" or "entra-admin-consent:",
-    # so these are the only two cases we need to handle here.
-    entra_type =
-      case String.split(params["state"], ":", parts: 2) do
-        ["entra-admin-consent", _] -> "directory_sync"
-        ["entra-verification", _] -> "auth_provider"
-      end
+  defp handle_entra_verification_callback(conn, verification_token, params, entra_type) do
+    :ok =
+      Portal.AuthenticationCache.put(
+        Portal.AuthenticationCache.verification_key(verification_token),
+        %{
+          "type" => "entra",
+          "entra_type" => entra_type,
+          "token" => verification_token,
+          "admin_consent" => params["admin_consent"],
+          "tenant_id" => params["tenant"],
+          "error" => params["error"],
+          "error_description" => params["error_description"]
+        }
+      )
 
-    # Store Entra admin consent info in session for the LiveView to pick up
+    # Store only minimal reference in session for the LiveView to pick up
     conn
     |> put_session(:verification, %{
       "type" => "entra",
-      "entra_type" => entra_type,
-      "token" => verification_token,
-      "admin_consent" => params["admin_consent"],
-      "tenant_id" => params["tenant"],
-      "error" => params["error"],
-      "error_description" => params["error_description"]
+      "token" => verification_token
     })
     |> redirect(to: ~p"/verification")
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    opts =
-      if provider.__struct__ in [
-           Portal.Google.AuthProvider,
-           Portal.Entra.AuthProvider,
-           Portal.Okta.AuthProvider
-         ] do
-        [additional_params: %{prompt: "select_account"}]
-      else
-        []
-      end
+    {conn, session_binding} = ensure_oidc_state_session_binding(conn)
+
+    opts = authorization_opts(provider)
 
     case PortalWeb.OIDC.authorization_uri(provider, opts) do
       {:ok, uri, state, verifier} ->
-        cookie = %PortalWeb.Cookie.OIDC{
+        auth_state = %{
           auth_provider_type: params["auth_provider_type"],
           auth_provider_id: params["auth_provider_id"],
           account_id: account.id,
           account_slug: account.slug,
-          state: state,
           verifier: verifier,
+          session_binding: session_binding,
           params: sanitize(params)
         }
 
+        :ok =
+          Portal.AuthenticationCache.put(
+            Portal.AuthenticationCache.oidc_auth_key(state),
+            auth_state,
+            ttl: @oidc_auth_ttl
+          )
+
         conn
-        |> PortalWeb.Cookie.OIDC.put(cookie)
         |> redirect(external: uri)
 
       {:error, reason} ->
@@ -168,47 +200,42 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp handle_authorization_uri_error(conn, account, provider, %Req.TransportError{reason: reason}) do
-    Logger.warning("OIDC authorization URI error",
-      account_id: account.id,
-      provider_id: provider.id,
-      reason: inspect(reason)
-    )
-
-    error = transport_error_message(reason)
-
-    conn
-    |> put_flash(:error, error)
-    |> redirect(to: ~p"/#{account.slug}")
-  end
-
-  defp handle_authorization_uri_error(conn, account, provider, {status, _body})
-       when is_integer(status) do
-    Logger.warning("OIDC authorization URI error",
-      account_id: account.id,
-      provider_id: provider.id,
-      reason: "HTTP #{status}"
-    )
-
-    error = discovery_http_error_message(status)
-
-    conn
-    |> put_flash(:error, error)
-    |> redirect(to: ~p"/#{account.slug}")
-  end
-
   defp handle_authorization_uri_error(conn, account, provider, reason) do
     Logger.warning("OIDC authorization URI error",
       account_id: account.id,
       provider_id: provider.id,
-      reason: inspect(reason)
+      reason: authorization_error_reason(reason)
     )
 
-    error = discovery_error_message(reason)
+    error = authorization_error_message(reason)
 
     conn
     |> put_flash(:error, error)
     |> redirect(to: ~p"/#{account.slug}")
+  end
+
+  defp authorization_error_reason(%Req.TransportError{reason: reason}), do: inspect(reason)
+  defp authorization_error_reason({status, _body}) when is_integer(status), do: "HTTP #{status}"
+  defp authorization_error_reason(reason), do: inspect(reason)
+
+  defp authorization_error_message(%Req.TransportError{reason: reason}),
+    do: transport_error_message(reason)
+
+  defp authorization_error_message({status, _body}) when is_integer(status),
+    do: discovery_http_error_message(status)
+
+  defp authorization_error_message(reason), do: discovery_error_message(reason)
+
+  defp authorization_opts(provider) do
+    if provider.__struct__ in [
+         Portal.Google.AuthProvider,
+         Portal.Entra.AuthProvider,
+         Portal.Okta.AuthProvider
+       ] do
+      [additional_params: %{prompt: "select_account"}]
+    else
+      []
+    end
   end
 
   defp transport_error_message(:nxdomain),
@@ -237,28 +264,23 @@ defmodule PortalWeb.OIDCController do
     do:
       "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
 
-  defp discovery_error_message({:unexpected_end, _}),
-    do: @invalid_json_error_message
-
-  defp discovery_error_message({:invalid_byte, _, _}),
-    do: @invalid_json_error_message
-
-  defp discovery_error_message({:unexpected_sequence, _, _}),
-    do: @invalid_json_error_message
-
   defp discovery_error_message(:invalid_discovery_document_uri),
     do: "The Discovery Document URI is invalid. Please check your provider configuration."
 
-  defp discovery_error_message(reason),
-    do:
+  defp discovery_error_message(reason) do
+    if invalid_json_reason?(reason) do
+      @invalid_json_error_message
+    else
       "Unable to connect to the identity provider: #{inspect(reason)}. Please try again or contact your administrator."
+    end
+  end
 
   defp get_provider!(account, %{"auth_provider_type" => type, "auth_provider_id" => id}) do
     Database.get_provider!(account.id, type, id)
   end
 
-  defp get_provider!(account, %PortalWeb.Cookie.OIDC{} = cookie) do
-    Database.get_provider!(account.id, cookie.auth_provider_type, cookie.auth_provider_id)
+  defp get_provider!(account, %{auth_provider_type: type, auth_provider_id: id}) do
+    Database.get_provider!(account.id, type, id)
   end
 
   defp fetch_userinfo(provider, access_token) do
@@ -269,114 +291,29 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp upsert_identity(account, claims, userinfo) do
-    email = claims["email"]
-    idp_id = claims["oid"] || claims["sub"]
-    issuer = claims["iss"]
-    email_verified = (claims["email_verified"] || userinfo["email_verified"]) == true
-    profile_attrs = extract_profile_attrs(claims, userinfo)
+    with {:ok, identity_profile} <- IdentityProfile.build(claims, userinfo, account.id) do
+      maybe_log_unverified_email(account, identity_profile)
 
-    # In production, admins should hopefully ensure emails are verified.
-    # If this does not occur regularly we might consider enforcing it in the future.
-    unless email_verified do
-      Logger.info("OIDC identity email not verified",
-        account_id: account.id,
-        account_slug: account.slug,
-        issuer: issuer
+      Database.upsert_identity(
+        account.id,
+        identity_profile.email,
+        identity_profile.issuer,
+        identity_profile.idp_id,
+        identity_profile.profile_attrs
       )
     end
-
-    # Validate attributes first
-    attrs =
-      profile_attrs
-      |> Map.put("account_id", account.id)
-      |> Map.put("email", email)
-      |> Map.put("issuer", issuer)
-      |> Map.put("idp_id", idp_id)
-
-    with %{valid?: true} <- validate_upsert_attrs(attrs) do
-      Database.upsert_identity(account.id, email, issuer, idp_id, profile_attrs)
-    else
-      changeset -> {:error, changeset}
-    end
   end
 
-  defp validate_upsert_attrs(attrs) do
-    import Ecto.Changeset
+  defp maybe_log_unverified_email(_account, %{email_verified: true}), do: :ok
 
-    idp_fields = ~w[
-      email
-      issuer
-      idp_id
-      name
-      given_name
-      family_name
-      middle_name
-      nickname
-      preferred_username
-      profile
-      picture
-    ]a
-
-    %Portal.ExternalIdentity{}
-    |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
-    |> validate_required(~w[email issuer idp_id name account_id]a)
-    |> validate_length(:email, max: 255)
-    |> validate_length(:issuer, max: 2048)
-    |> validate_length(:idp_id, max: 255)
-    |> validate_length(:name, max: 255)
-    |> validate_length(:given_name, max: 255)
-    |> validate_length(:family_name, max: 255)
-    |> validate_length(:middle_name, max: 255)
-    |> validate_length(:nickname, max: 255)
-    |> validate_length(:preferred_username, max: 255)
-    |> validate_length(:profile, max: 2048)
-    |> validate_length(:picture, max: 2048)
-  end
-
-  defp extract_profile_attrs(claims, userinfo) do
-    Map.merge(claims, userinfo)
-    |> Map.take([
-      "email",
-      "name",
-      "given_name",
-      "family_name",
-      "middle_name",
-      "nickname",
-      "preferred_username",
-      "profile",
-      "picture"
-    ])
-    |> sanitize_string_fields()
-    |> maybe_populate_name()
-  end
-
-  # Ensure all profile fields are strings or nil - some IdPs may return unexpected types
-  defp sanitize_string_fields(attrs) do
-    Map.new(attrs, fn {k, v} -> {k, if(is_binary(v), do: v, else: nil)} end)
-  end
-
-  defp maybe_populate_name(attrs) do
-    name =
-      with nil <- present(attrs["name"]),
-           nil <- given_family_name(attrs["given_name"], attrs["family_name"]),
-           nil <- present(attrs["preferred_username"]),
-           nil <- present(attrs["nickname"]) do
-        attrs["email"]
-      end
-
-    Map.put(attrs, "name", name)
-  end
-
-  defp present(nil), do: nil
-  defp present(s), do: if(String.trim(s) == "", do: nil, else: s)
-
-  defp given_family_name(given, family) do
-    case {present(given), present(family)} do
-      {nil, nil} -> nil
-      {g, nil} -> g
-      {nil, f} -> f
-      {g, f} -> "#{g} #{f}"
-    end
+  defp maybe_log_unverified_email(account, %{email_verified: false, issuer: issuer}) do
+    # In production, admins should hopefully ensure emails are verified.
+    # If this does not occur regularly we might consider enforcing it in the future.
+    Logger.info("OIDC identity email not verified",
+      account_id: account.id,
+      account_slug: account.slug,
+      issuer: issuer
+    )
   end
 
   defp check_admin(
@@ -404,12 +341,16 @@ defmodule PortalWeb.OIDCController do
 
   defp validate_context(_provider, _context_type), do: {:error, :invalid_context}
 
-  defp client_sign_in_restricted?(account, context_type)
+  defp ensure_client_sign_in_allowed(account, context_type)
        when context_type in [:gui_client, :headless_client] do
-    Portal.Billing.client_sign_in_restricted?(account)
+    if Portal.Billing.client_sign_in_restricted?(account) do
+      {:error, :client_sign_in_restricted}
+    else
+      :ok
+    end
   end
 
-  defp client_sign_in_restricted?(_account, _context_type), do: false
+  defp ensure_client_sign_in_allowed(_account, _context_type), do: :ok
 
   defp create_session_or_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
@@ -422,17 +363,7 @@ defmodule PortalWeb.OIDCController do
     schema = provider.__struct__
 
     # Determine session lifetime based on context type
-    session_lifetime_secs =
-      case type do
-        :gui_client ->
-          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
-
-        :headless_client ->
-          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
-
-        :portal ->
-          provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
-      end
+    session_lifetime_secs = session_lifetime_secs(provider, schema, type)
 
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
@@ -446,29 +377,33 @@ defmodule PortalWeb.OIDCController do
         )
 
       :gui_client ->
-        attrs = %{
-          secret_nonce: params["nonce"],
-          account_id: identity.account_id,
-          actor_id: identity.actor_id,
-          auth_provider_id: provider.id,
-          identity_id: identity.id,
-          expires_at: expires_at
-        }
-
-        Portal.Authentication.create_gui_client_token(attrs)
+        create_client_token(identity, provider, expires_at, params["nonce"])
 
       :headless_client ->
-        attrs = %{
-          secret_nonce: "",
-          account_id: identity.account_id,
-          actor_id: identity.actor_id,
-          auth_provider_id: provider.id,
-          identity_id: identity.id,
-          expires_at: expires_at
-        }
-
-        Portal.Authentication.create_gui_client_token(attrs)
+        create_client_token(identity, provider, expires_at, "")
     end
+  end
+
+  defp create_client_token(identity, provider, expires_at, nonce) do
+    attrs = %{
+      secret_nonce: nonce,
+      account_id: identity.account_id,
+      actor_id: identity.actor_id,
+      auth_provider_id: provider.id,
+      identity_id: identity.id,
+      expires_at: expires_at
+    }
+
+    Portal.Authentication.create_gui_client_token(attrs)
+  end
+
+  defp session_lifetime_secs(provider, schema, type)
+       when type in [:gui_client, :headless_client] do
+    provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+  end
+
+  defp session_lifetime_secs(provider, schema, :portal) do
+    provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
   end
 
   # Context: :portal
@@ -509,144 +444,61 @@ defmodule PortalWeb.OIDCController do
   defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
 
-  defp handle_error(conn, {:error, :oidc_cookie_not_found}) do
-    {account_slug, original_params} = fetch_error_context(conn)
+  defp handle_error(conn, {:error, reason})
+       when reason in [:oidc_state_not_found, :oidc_state_session_mismatch] do
     error = "Your sign-in session has timed out. Please try again."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
-  end
-
-  defp handle_error(conn, {:error, :state_mismatch}) do
-    {account_slug, original_params} = fetch_error_context(conn)
-    error = "Your sign-in session is invalid. Please try again."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp handle_error(conn, {:error, :not_admin}) do
-    {account_slug, original_params} = fetch_error_context(conn)
     error = "This action requires admin privileges."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp handle_error(conn, {:error, :actor_not_found}) do
-    {account_slug, original_params} = fetch_error_context(conn)
     error = "Unable to sign you in. Please contact your administrator."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp handle_error(conn, {:error, :invalid_context}) do
-    {account_slug, original_params} = fetch_error_context(conn)
     error = "This authentication method is not available for your sign-in context."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
-  defp handle_error(conn, true) do
-    {account_slug, original_params} = fetch_error_context(conn)
-
+  defp handle_error(conn, {:error, :client_sign_in_restricted}) do
     error =
       "This account is temporarily suspended from client authentication " <>
         "due to exceeding billing limits. Please contact your administrator to add more seats."
 
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp handle_error(conn, {:error, :invalid_callback_params}) do
-    {account_slug, original_params} = fetch_error_context(conn)
     error = "Invalid sign-in request. Please try again."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   # Transport errors (network issues)
   defp handle_error(conn, {:error, %Req.TransportError{reason: reason}}) do
-    {account_slug, original_params} = fetch_error_context(conn)
-
-    error =
-      case reason do
-        :nxdomain ->
-          "Unable to reach identity provider: DNS lookup failed. Please verify the provider's domain is correct."
-
-        :econnrefused ->
-          "Unable to reach identity provider: Connection refused. The provider may be down or blocking requests."
-
-        :timeout ->
-          "Unable to reach identity provider: Connection timed out. Please try again."
-
-        _ ->
-          "Unable to reach identity provider: #{inspect(reason)}. Please check your network connection and try again."
-      end
-
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-    redirect_for_error(conn, error, path)
-  end
-
-  # HTTP protocol errors
-  defp handle_error(conn, {:error, %Req.HTTPError{protocol: protocol, reason: reason}}) do
-    {account_slug, original_params} = fetch_error_context(conn)
-    error = "Identity provider returned a #{protocol} protocol error: #{inspect(reason)}."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, identity_provider_transport_error_message(reason))
   end
 
   # HTTP error status codes from token endpoint
   defp handle_error(conn, {:error, {status, body}}) when is_integer(status) do
-    {account_slug, original_params} = fetch_error_context(conn)
-
-    error =
-      case {status, body} do
-        {401, _} ->
-          "Identity provider rejected the credentials. Please verify your Client ID and Client Secret are correct."
-
-        {400, %{"error" => "invalid_grant"}} ->
-          "The authorization code has expired or was already used. Please try signing in again."
-
-        {400, %{"error" => "invalid_client"}} ->
-          "Identity provider rejected the client credentials. Please verify your Client ID and Client Secret."
-
-        {400, %{"error" => error_code}} ->
-          "Identity provider returned an error: #{error_code}. Please try again."
-
-        {status, _} when status in 500..599 ->
-          "Identity provider returned a server error (HTTP #{status}). Please try again later."
-
-        {status, _} ->
-          "Identity provider returned an error (HTTP #{status}). Please try again."
-      end
-
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, token_exchange_error_message(status, body))
   end
 
   # JWT verification failures
   defp handle_error(conn, {:error, {:invalid_jwt, reason}}) do
-    {account_slug, original_params} = fetch_error_context(conn)
     error = "Failed to verify identity token: #{reason}. Please try signing in again."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp handle_error(conn, {:error, %Ecto.Changeset{} = changeset}) do
-    {account_slug, original_params} = fetch_error_context(conn)
-
     account_id = Ecto.Changeset.get_field(changeset, :account_id)
     idp_id = Ecto.Changeset.get_field(changeset, :idp_id)
 
-    cookie = PortalWeb.Cookie.OIDC.fetch(conn)
-    provider_id = if cookie, do: cookie.auth_provider_id
+    provider_id = get_in(conn.assigns, [:oidc_error_context, :auth_provider_id])
 
     for {field, _errors} <- changeset.errors do
       value = Ecto.Changeset.get_field(changeset, field)
@@ -664,24 +516,117 @@ defmodule PortalWeb.OIDCController do
     error =
       "Your identity provider returned invalid profile data. Please contact your administrator."
 
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp handle_error(conn, {:error, reason}) do
     Logger.warning("OIDC sign-in error", reason: reason)
-    {account_slug, original_params} = fetch_error_context(conn)
     error = "An unexpected error occurred while signing you in. Please try again."
-    path = ~p"/#{account_slug}?#{sanitize(original_params)}"
-
-    redirect_for_error(conn, error, path)
+    redirect_with_error_context(conn, error)
   end
 
   defp fetch_error_context(conn) do
-    case PortalWeb.Cookie.OIDC.fetch(conn) do
-      %PortalWeb.Cookie.OIDC{account_slug: slug, params: params} -> {slug, params || %{}}
+    case conn.assigns[:oidc_error_context] do
+      %{account_slug: slug, params: params} -> {slug, params || %{}}
       nil -> {"", %{}}
+    end
+  end
+
+  defp put_oidc_error_context(conn, auth_state) do
+    Plug.Conn.assign(conn, :oidc_error_context, %{
+      account_slug: auth_state.account_slug,
+      params: auth_state.params || %{},
+      auth_provider_id: auth_state.auth_provider_id
+    })
+  end
+
+  defp parse_callback_state(state) do
+    case String.split(state, ":", parts: 2) do
+      ["oidc-verification", token] -> {:oidc_verification, token}
+      ["entra-verification", token] -> {:entra_verification, token}
+      ["entra-admin-consent", token] -> {:entra_admin_consent, token}
+      _ -> :authentication
+    end
+  end
+
+  defp ensure_oidc_state_session_binding(conn) do
+    case get_session(conn, @oidc_state_session_key) do
+      binding when is_binary(binding) ->
+        {conn, binding}
+
+      _ ->
+        binding = Portal.Crypto.random_token(32)
+        {put_session(conn, @oidc_state_session_key, binding), binding}
+    end
+  end
+
+  defp verify_oidc_state_session_binding(conn, %{session_binding: expected_binding})
+       when is_binary(expected_binding) do
+    case get_session(conn, @oidc_state_session_key) do
+      ^expected_binding -> :ok
+      _ -> {:error, :oidc_state_session_mismatch}
+    end
+  end
+
+  defp verify_oidc_state_session_binding(_conn, _auth_state),
+    do: {:error, :oidc_state_session_mismatch}
+
+  defp identity_provider_transport_error_message(:nxdomain),
+    do:
+      "Unable to reach identity provider: DNS lookup failed. Please verify the provider's domain is correct."
+
+  defp identity_provider_transport_error_message(:econnrefused),
+    do:
+      "Unable to reach identity provider: Connection refused. The provider may be down or blocking requests."
+
+  defp identity_provider_transport_error_message(:timeout),
+    do: "Unable to reach identity provider: Connection timed out. Please try again."
+
+  defp identity_provider_transport_error_message(reason),
+    do:
+      "Unable to reach identity provider: #{inspect(reason)}. Please check your network connection and try again."
+
+  defp token_exchange_error_message(401, _body),
+    do:
+      "Identity provider rejected the credentials. Please verify your Client ID and Client Secret are correct."
+
+  defp token_exchange_error_message(400, %{"error" => "invalid_grant"}),
+    do: "The authorization code has expired or was already used. Please try signing in again."
+
+  defp token_exchange_error_message(400, %{"error" => "invalid_client"}),
+    do:
+      "Identity provider rejected the client credentials. Please verify your Client ID and Client Secret."
+
+  defp token_exchange_error_message(400, %{"error" => error_code}),
+    do: "Identity provider returned an error: #{error_code}. Please try again."
+
+  defp token_exchange_error_message(status, _body) when status in 500..599,
+    do: "Identity provider returned a server error (HTTP #{status}). Please try again later."
+
+  defp token_exchange_error_message(status, _body),
+    do: "Identity provider returned an error (HTTP #{status}). Please try again."
+
+  defp invalid_json_reason?(reason) do
+    match?({:unexpected_end, _}, reason) or
+      match?({tag, _, _} when tag in [:invalid_byte, :unexpected_sequence], reason)
+  end
+
+  defp normalize_auth_state(auth_state) do
+    %{
+      auth_provider_type: auth_state_value(auth_state, :auth_provider_type),
+      auth_provider_id: auth_state_value(auth_state, :auth_provider_id),
+      account_id: auth_state_value(auth_state, :account_id),
+      account_slug: auth_state_value(auth_state, :account_slug),
+      verifier: auth_state_value(auth_state, :verifier),
+      session_binding: auth_state_value(auth_state, :session_binding),
+      params: auth_state_value(auth_state, :params) || %{}
+    }
+  end
+
+  defp auth_state_value(auth_state, key) do
+    case Map.get(auth_state, key) do
+      nil -> Map.get(auth_state, Atom.to_string(key))
+      value -> value
     end
   end
 
@@ -691,6 +636,13 @@ defmodule PortalWeb.OIDCController do
     |> redirect(to: path)
     |> halt()
   end
+
+  defp redirect_with_error_context(conn, error) do
+    {account_slug, original_params} = fetch_error_context(conn)
+    redirect_for_error(conn, error, error_path(account_slug, original_params))
+  end
+
+  defp error_path(account_slug, params), do: ~p"/#{account_slug}?#{sanitize(params)}"
 
   defp sanitize(params) do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
