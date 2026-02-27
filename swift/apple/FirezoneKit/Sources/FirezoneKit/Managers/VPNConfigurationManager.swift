@@ -80,7 +80,7 @@ public final class VPNConfigurationManager {
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
-  init(manager: any TunnelProviderManager) async throws {
+  public init(manager: any TunnelProviderManager) async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
 
     // Seed with defaults (and any forced overrides) but don't mark migrated;
@@ -102,7 +102,7 @@ public final class VPNConfigurationManager {
     self.manager = manager
   }
 
-  static func load(using factory: TunnelProviderManagerFactory) async throws
+  public static func load(using factory: TunnelProviderManagerFactory) async throws
     -> VPNConfigurationManager?
   {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
@@ -118,13 +118,13 @@ public final class VPNConfigurationManager {
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
   // each start attempt in order to reactivate our configuration.
-  func enable() async throws {
+  public func enable() async throws {
     manager.isEnabled = true
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
 
-  func session() -> (any TunnelSessionProtocol)? {
+  public func session() -> (any TunnelSessionProtocol)? {
     return manager.tunnelSession
   }
 
