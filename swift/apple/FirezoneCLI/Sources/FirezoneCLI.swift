@@ -8,7 +8,6 @@ import ArgumentParser
 import Foundation
 import FirezoneKit
 import NetworkExtension
-import SystemExtensions
 
 @main
 struct FirezoneCLI: AsyncParsableCommand {
@@ -54,18 +53,18 @@ struct FirezoneCLI: AsyncParsableCommand {
     return "\(version) (\(build))"
   }
 
+  @MainActor
   mutating func run() async throws {
     let apiURL =
       self.apiUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_API_URL"]
       ?? "wss://api.firezone.dev/"
 
-    let firezoneName =
-      self.firezoneName
+    // TODO: Wire firezoneName and firezoneId into TunnelConfiguration
+    _ = self.firezoneName
       ?? ProcessInfo.processInfo.environment["FIREZONE_NAME"]
 
-    let firezoneId =
-      self.firezoneId
+    _ = self.firezoneId
       ?? ProcessInfo.processInfo.environment["FIREZONE_ID"]
       ?? Self.getOrCreateDeviceId()
 
@@ -73,8 +72,8 @@ struct FirezoneCLI: AsyncParsableCommand {
       self.activateInternetResource
       || ProcessInfo.processInfo.environment["FIREZONE_ACTIVATE_INTERNET_RESOURCE"] == "1"
 
-    let noTelemetry =
-      self.noTelemetry
+    // TODO: Wire noTelemetry into TunnelConfiguration
+    _ = self.noTelemetry
       || ProcessInfo.processInfo.environment["FIREZONE_NO_TELEMETRY"] == "1"
 
     // Load token: env var first, then Keychain
@@ -96,8 +95,10 @@ struct FirezoneCLI: AsyncParsableCommand {
       return
     }
 
+    #if SYSTEM_EXTENSION
     // Check/install system extension
     try await installSystemExtensionIfNeeded()
+    #endif
 
     // Load or create VPN configuration
     let vpnManager: VPNConfigurationManager
@@ -128,25 +129,28 @@ struct FirezoneCLI: AsyncParsableCommand {
     Log.info("Tunnel started")
 
     // Subscribe to VPN status updates
-    IPCClient.subscribeToVPNStatusUpdates(session: session) { status in
-      switch status {
-      case .connected:
-        Log.info("Tunnel connected")
-        if self.exit {
-          Foundation.exit(0)
+    let shouldExitOnConnect = self.exit
+    Task {
+      for await status in IPCClient.vpnStatusUpdates(session: session) {
+        switch status {
+        case .connected:
+          Log.info("Tunnel connected")
+          if shouldExitOnConnect {
+            Foundation.exit(0)
+          }
+        case .disconnected:
+          Log.info("Tunnel disconnected")
+        case .connecting:
+          Log.info("Tunnel connecting...")
+        case .reasserting:
+          Log.info("Tunnel reasserting...")
+        case .disconnecting:
+          Log.info("Tunnel disconnecting...")
+        case .invalid:
+          Log.warning("Tunnel status invalid")
+        @unknown default:
+          Log.warning("Unknown tunnel status: \(status.rawValue)")
         }
-      case .disconnected:
-        Log.info("Tunnel disconnected")
-      case .connecting:
-        Log.info("Tunnel connecting...")
-      case .reasserting:
-        Log.info("Tunnel reasserting...")
-      case .disconnecting:
-        Log.info("Tunnel disconnecting...")
-      case .invalid:
-        Log.warning("Tunnel status invalid")
-      @unknown default:
-        Log.warning("Unknown tunnel status: \(status.rawValue)")
       }
     }
 
@@ -202,34 +206,22 @@ struct FirezoneCLI: AsyncParsableCommand {
     return newId
   }
 
+  #if SYSTEM_EXTENSION
+  @MainActor
   private func installSystemExtensionIfNeeded() async throws {
     let manager = SystemExtensionManager()
-
-    let status = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-      manager.sendRequest(
-        requestType: .check,
-        identifier: VPNConfigurationManager.bundleIdentifier,
-        continuation: continuation
-      )
-    }
+    let status = try await manager.check()
 
     switch status {
     case .installed:
       Log.info("System extension is up to date")
     case .needsInstall, .needsReplacement:
       Log.info("Installing system extension...")
-      let _ = try await withCheckedThrowingContinuation {
-        (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-        manager.sendRequest(
-          requestType: .install,
-          identifier: VPNConfigurationManager.bundleIdentifier,
-          continuation: continuation
-        )
-      }
+      _ = try await manager.tryInstall()
       Log.info("System extension installed")
     }
   }
+  #endif
 }
 
 // MARK: - Subcommands
