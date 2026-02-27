@@ -115,12 +115,12 @@ pub fn tcp_packet<IP>(
 where
     IP: Into<IpAddr>,
 {
-    let TcpFlags { rst } = flags;
+    let TcpFlags { rst, seq } = flags;
 
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let mut packet =
-                PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
+                PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, seq, 128);
 
             if rst {
                 packet = packet.rst();
@@ -130,7 +130,7 @@ where
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let mut packet =
-                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
+                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, seq, 128);
 
             if rst {
                 packet = packet.rst();
@@ -145,6 +145,7 @@ where
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TcpFlags {
     pub rst: bool,
+    pub seq: u32,
 }
 
 pub fn udp_packet<SIP, DIP>(

@@ -315,7 +315,7 @@ impl Iterator for DrainPacketsIter<'_> {
                 continue;
             };
 
-            let header = entry.key().clone().finalize(batch_size);
+            let header = entry.key().finalize(batch_size);
 
             return Some(IpPacketBatch {
                 header,
@@ -460,5 +460,54 @@ mod tests {
         let batches = queue.packets().collect::<Vec<_>>();
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].payloads.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn tcp_flow_with_sequence_numbers() {
+        let _guard = logging::test("trace");
+
+        let mut queue = TunGsoQueue::new();
+
+        let tcp1 = make::tcp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            8080,
+            443,
+            ip_packet::make::TcpFlags {
+                seq: 1000,
+                ..ip_packet::make::TcpFlags::default()
+            },
+            vec![1, 2, 3, 4],
+        )
+        .unwrap();
+
+        let tcp2 = make::tcp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(192, 168, 1, 1),
+            8080,
+            443,
+            ip_packet::make::TcpFlags {
+                seq: 1004,
+                ..ip_packet::make::TcpFlags::default()
+            },
+            vec![5, 6, 7, 8],
+        )
+        .unwrap();
+
+        queue.enqueue(&tcp1).unwrap();
+        queue.enqueue(&tcp2).unwrap();
+
+        let mut batches = queue.packets().collect::<Vec<_>>();
+        let batch = batches.remove(0);
+        assert_eq!(batch.segment_size, 4);
+        assert_eq!(batch.payloads.as_ref(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+
+        let header = batch.header.finalize(4);
+
+        let GsoHeader::Ipv4Tcp { tcp, .. } = header else {
+            panic!("Expected Ipv4Tcp header");
+        };
+
+        assert_eq!(tcp.sequence_number, 1000);
     }
 }
