@@ -45,6 +45,7 @@ libc = { workspace = true }
 netlink-packet-core = { workspace = true }
 netlink-packet-route = { workspace = true }
 nix = { workspace = true, features = ["socket"] }
+opentelemetry = { workspace = true }
 resolv-conf = { workspace = true }
 rtnetlink = { workspace = true }
 tokio-util = { workspace = true }

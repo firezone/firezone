@@ -1,6 +1,6 @@
 //! TUN device implementation for Linux with GSO batching support
 
-use crate::tun_device_manager::linux::tun_gso_queue::IpPacketBatch;
+use crate::tun_device_manager::linux::tun_gso_queue::{GsoHeader, IpPacketBatch};
 
 use super::tun_gso_queue;
 use anyhow::{Context as _, ErrorExt, Result, bail};
@@ -216,6 +216,8 @@ where
 {
     use tokio::io::unix::AsyncFd;
 
+    let batch_histogram = telemetry::otel::metrics::system_network_packets_batch_count();
+
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -236,6 +238,19 @@ where
                         }
                     }
                     Some(OutboundPacket::Batch(batch)) => {
+                        batch_histogram.record(
+                            batch.num_packets() as u64,
+                            &[
+                                match batch.header {
+                                    GsoHeader::Ipv4Tcp { .. } => otel::attr::network_type_ipv4(),
+                                    GsoHeader::Ipv6Tcp { .. } => otel::attr::network_type_ipv6(),
+                                    GsoHeader::Ipv4Udp { .. } => otel::attr::network_type_ipv4(),
+                                    GsoHeader::Ipv6Udp { .. } => otel::attr::network_type_ipv6(),
+                                },
+                                telemetry::otel::attr::network_io_direction_transmit(),
+                            ],
+                        );
+
                         if let Err(e) = fd
                             .async_io(tokio::io::Interest::WRITABLE, |fd_ref| {
                                 write_batch(fd_ref.as_raw_fd(), &batch)
@@ -310,6 +325,9 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     let vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
     let packet_bytes = packet.packet();
 
+    #[cfg(debug_assertions)]
+    tracing::trace!(target: "wire::dev::send::single", ?packet);
+
     let iov = [
         libc::iovec {
             iov_base: vnet_hdr.as_ptr() as *mut libc::c_void,
@@ -330,12 +348,16 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
 
 /// Write a batch of IP packets to the TUN device using `writev`.
 fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
+    #[cfg(debug_assertions)]
+    tracing::trace!(target: "wire::dev::send::batch", num_packets = %batch.num_packets());
+
+    let vnet_hdr = build_vnet_hdr(&batch.header, batch.segment_size as u16);
     let (l3, l4) = batch.header.header_slices();
 
     let iov = [
         libc::iovec {
-            iov_base: batch.vnet_hdr.as_ptr() as *mut libc::c_void,
-            iov_len: batch.vnet_hdr.len(),
+            iov_base: vnet_hdr.as_ptr() as *mut libc::c_void,
+            iov_len: vnet_hdr.len(),
         },
         libc::iovec {
             iov_base: l3.as_ptr() as *mut libc::c_void,
@@ -370,6 +392,8 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
 
+            let batch_histogram = telemetry::otel::metrics::system_network_packets_batch_count();
+
             // Reusable buffer for reading GSO packets (vnet header + packet data)
             let mut read_buffer = vec![0u8; MAX_GSO_BUFFER_SIZE];
 
@@ -390,10 +414,22 @@ where
                         };
 
                         let packet_len = total_len - VIRTIO_NET_HDR_SIZE;
+                        let hdr = VirtioNetHdr::from_buf(*vnet_hdr_buf);
 
-                        let packets = parse_vnet_packet(vnet_hdr_buf, &ip_data[..packet_len])
+                        let packets = parse_vnet_packet(&hdr, &ip_data[..packet_len])
                             .context("Failed to parse packet with vnet header")
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+                        // All packets are the same IP version.
+                        if let Some(first) = packets.first() {
+                            batch_histogram.record(
+                                packets.len() as u64,
+                                &[
+                                    otel::attr::network_type_for_packet(first),
+                                    telemetry::otel::attr::network_io_direction_transmit(),
+                                ],
+                            );
+                        }
 
                         Ok(packets)
                     })
@@ -430,20 +466,7 @@ where
 }
 
 /// Parse a packet with virtio_net_hdr and handle GSO/USO segmentation
-fn parse_vnet_packet(
-    vnet_hdr: &[u8; VIRTIO_NET_HDR_SIZE],
-    ip_data: &[u8],
-) -> Result<Vec<IpPacket>> {
-    let hdr = VirtioNetHdr {
-        flags: vnet_hdr[0],
-        gso_type: vnet_hdr[1],
-        hdr_len: u16::from_le_bytes([vnet_hdr[2], vnet_hdr[3]]),
-        gso_size: u16::from_le_bytes([vnet_hdr[4], vnet_hdr[5]]),
-        csum_start: u16::from_le_bytes([vnet_hdr[6], vnet_hdr[7]]),
-        csum_offset: u16::from_le_bytes([vnet_hdr[8], vnet_hdr[9]]),
-        num_buffers: u16::from_le_bytes([vnet_hdr[10], vnet_hdr[11]]),
-    };
-
+fn parse_vnet_packet(hdr: &VirtioNetHdr, ip_data: &[u8]) -> Result<Vec<IpPacket>> {
     if hdr.gso_type == VIRTIO_NET_HDR_GSO_NONE {
         // Regular packet - copy to a new IpPacketBuf
         let mut buf = ip_packet::IpPacketBuf::new();
@@ -455,12 +478,31 @@ fn parse_vnet_packet(
         return Ok(vec![packet]);
     }
 
-    let packets = segment_packet(ip_data, &hdr)?;
+    let packets = segment_packet(hdr, ip_data)?;
 
     Ok(packets)
 }
 
-fn segment_packet(data: &[u8], hdr: &VirtioNetHdr) -> Result<Vec<IpPacket>> {
+/// Build virtio_net_hdr from GSO info
+fn build_vnet_hdr(header: &GsoHeader, segment_size: u16) -> [u8; VIRTIO_NET_HDR_SIZE] {
+    let mut vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
+
+    vnet_hdr[0] = 1; // VIRTIO_NET_HDR_F_NEEDS_CSUM
+    vnet_hdr[1] = match header {
+        GsoHeader::Ipv4Tcp { .. } => VIRTIO_NET_HDR_GSO_TCPV4,
+        GsoHeader::Ipv6Tcp { .. } => VIRTIO_NET_HDR_GSO_TCPV6,
+        GsoHeader::Ipv4Udp { .. } | GsoHeader::Ipv6Udp { .. } => VIRTIO_NET_HDR_GSO_UDP_L4,
+    };
+    vnet_hdr[2..4].copy_from_slice(&header.header_len().to_le_bytes());
+    vnet_hdr[4..6].copy_from_slice(&segment_size.to_le_bytes());
+    vnet_hdr[6..8].copy_from_slice(&header.csum_start().to_le_bytes());
+    vnet_hdr[8..10].copy_from_slice(&header.csum_offset().to_le_bytes());
+    vnet_hdr[10..12].copy_from_slice(&0u16.to_le_bytes());
+
+    vnet_hdr
+}
+
+fn segment_packet(hdr: &VirtioNetHdr, data: &[u8]) -> Result<Vec<IpPacket>> {
     anyhow::ensure!(
         hdr.hdr_len as usize <= data.len(),
         "Header length {} exceeds packet size {}",
@@ -565,6 +607,20 @@ struct VirtioNetHdr {
     csum_start: u16,
     csum_offset: u16,
     num_buffers: u16,
+}
+
+impl VirtioNetHdr {
+    fn from_buf(buf: [u8; VIRTIO_NET_HDR_SIZE]) -> Self {
+        VirtioNetHdr {
+            flags: buf[0],
+            gso_type: buf[1],
+            hdr_len: u16::from_le_bytes([buf[2], buf[3]]),
+            gso_size: u16::from_le_bytes([buf[4], buf[5]]),
+            csum_start: u16::from_le_bytes([buf[6], buf[7]]),
+            csum_offset: u16::from_le_bytes([buf[8], buf[9]]),
+            num_buffers: u16::from_le_bytes([buf[10], buf[11]]),
+        }
+    }
 }
 
 // GSO types

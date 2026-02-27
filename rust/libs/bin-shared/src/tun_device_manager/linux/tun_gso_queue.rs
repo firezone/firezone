@@ -8,25 +8,21 @@ use ip_packet::IpPacket;
 const MAX_INBOUND_PACKET_BATCH: usize = 32;
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
 
-/// Size of virtio_net_hdr_v1
-const VIRTIO_NET_HDR_SIZE: usize = 12;
-
-// GSO type constants for virtio_net_hdr
-const VIRTIO_NET_HDR_GSO_TCPV4: u8 = 1;
-const VIRTIO_NET_HDR_GSO_TCPV6: u8 = 4;
-const VIRTIO_NET_HDR_GSO_UDP_L4: u8 = 5;
-
 /// A batch of IP packets ready to be sent with GSO
 #[derive(Debug)]
 pub struct IpPacketBatch {
-    /// Pre-built virtio_net_hdr (12 bytes)
-    pub vnet_hdr: [u8; VIRTIO_NET_HDR_SIZE],
     /// Canonical header (parsed, with variable fields zeroed)
     pub header: GsoHeader,
     /// Concatenated payload bodies (without headers)
     pub payloads: Buffer<BytesMut>,
     /// Size of each payload segment
     pub segment_size: usize,
+}
+
+impl IpPacketBatch {
+    pub fn num_packets(&self) -> usize {
+        self.payloads.len() / self.segment_size
+    }
 }
 
 /// Parsed header info needed for GSO batching (with variable fields zeroed)
@@ -62,13 +58,13 @@ impl GsoHeader {
         ) {
             (Some(ipv4), None, Some(tcp), None) => {
                 let ipv4 = ip_packet::Ipv4Header {
-                    total_len: 0,       // Variable: zeroed for canonical form
-                    header_checksum: 0, // Variable: zeroed for canonical form
+                    total_len: 0,
+                    header_checksum: 0,
                     ..ipv4
                 };
                 let tcp = ip_packet::TcpHeader {
-                    sequence_number: 0, // Variable: zeroed for canonical form
-                    checksum: 0,        // Variable: zeroed for canonical form
+                    sequence_number: 0,
+                    checksum: 0,
                     ..tcp.to_header()
                 };
 
@@ -79,12 +75,12 @@ impl GsoHeader {
             }
             (None, Some(ipv6), Some(tcp), None) => {
                 let ipv6 = ip_packet::Ipv6Header {
-                    payload_length: 0, // Variable: zeroed for canonical form
+                    payload_length: 0,
                     ..ipv6
                 };
                 let tcp = ip_packet::TcpHeader {
-                    sequence_number: 0, // Variable: zeroed for canonical form
-                    checksum: 0,        // Variable: zeroed for canonical form
+                    sequence_number: 0,
+                    checksum: 0,
                     ..tcp.to_header()
                 };
 
@@ -95,13 +91,13 @@ impl GsoHeader {
             }
             (Some(ipv4), None, None, Some(udp)) => {
                 let ipv4 = ip_packet::Ipv4Header {
-                    total_len: 0,       // Variable: zeroed for canonical form
-                    header_checksum: 0, // Variable: zeroed for canonical form
+                    total_len: 0,
+                    header_checksum: 0,
                     ..ipv4
                 };
                 let udp = ip_packet::UdpHeader {
-                    length: 0,   // Variable: zeroed for canonical form
-                    checksum: 0, // Variable: zeroed for canonical form
+                    length: 0,
+                    checksum: 0,
                     ..udp.to_header()
                 };
 
@@ -112,12 +108,12 @@ impl GsoHeader {
             }
             (None, Some(ipv6), None, Some(udp)) => {
                 let ipv6 = ip_packet::Ipv6Header {
-                    payload_length: 0, // Variable: zeroed for canonical form
+                    payload_length: 0,
                     ..ipv6
                 };
                 let udp = ip_packet::UdpHeader {
-                    length: 0,   // Variable: zeroed for canonical form
-                    checksum: 0, // Variable: zeroed for canonical form
+                    length: 0,
+                    checksum: 0,
                     ..udp.to_header()
                 };
 
@@ -130,17 +126,8 @@ impl GsoHeader {
         }
     }
 
-    /// Get GSO type for virtio header
-    fn gso_type(&self) -> u8 {
-        match self {
-            Self::Ipv4Tcp { .. } => VIRTIO_NET_HDR_GSO_TCPV4,
-            Self::Ipv6Tcp { .. } => VIRTIO_NET_HDR_GSO_TCPV6,
-            Self::Ipv4Udp { .. } | Self::Ipv6Udp { .. } => VIRTIO_NET_HDR_GSO_UDP_L4,
-        }
-    }
-
     /// Get header length
-    fn header_len(&self) -> u16 {
+    pub fn header_len(&self) -> u16 {
         let (l3, l4) = self.header_slices();
 
         (l3.len() + l4.len()) as u16
@@ -156,7 +143,7 @@ impl GsoHeader {
     }
 
     /// Get checksum start offset
-    fn csum_start(&self) -> u16 {
+    pub fn csum_start(&self) -> u16 {
         match self {
             Self::Ipv4Tcp { ipv4, .. } | Self::Ipv4Udp { ipv4, .. } => ipv4.len() as u16,
             Self::Ipv6Tcp { ipv6, .. } | Self::Ipv6Udp { ipv6, .. } => ipv6.len() as u16,
@@ -164,27 +151,12 @@ impl GsoHeader {
     }
 
     /// Get checksum offset within L4 header
-    fn csum_offset(&self) -> u16 {
+    pub fn csum_offset(&self) -> u16 {
         match self {
             Self::Ipv4Tcp { .. } | Self::Ipv6Tcp { .. } => 16, // TCP checksum
             Self::Ipv4Udp { .. } | Self::Ipv6Udp { .. } => 6,  // UDP checksum
         }
     }
-}
-
-/// Build virtio_net_hdr from GSO info
-fn build_vnet_hdr(header: &GsoHeader, segment_size: u16) -> [u8; VIRTIO_NET_HDR_SIZE] {
-    let mut vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
-
-    vnet_hdr[0] = 1; // VIRTIO_NET_HDR_F_NEEDS_CSUM
-    vnet_hdr[1] = header.gso_type();
-    vnet_hdr[2..4].copy_from_slice(&header.header_len().to_le_bytes());
-    vnet_hdr[4..6].copy_from_slice(&segment_size.to_le_bytes());
-    vnet_hdr[6..8].copy_from_slice(&header.csum_start().to_le_bytes());
-    vnet_hdr[8..10].copy_from_slice(&header.csum_offset().to_le_bytes());
-    vnet_hdr[10..12].copy_from_slice(&0u16.to_le_bytes());
-
-    vnet_hdr
 }
 
 /// Holds IP packets that need to be sent, indexed by flow.
@@ -246,10 +218,7 @@ impl TunGsoQueue {
         buffer.clear();
         buffer.extend_from_slice(payload);
 
-        let vnet_hdr = build_vnet_hdr(&header, payload_len as u16);
-
         batches.push_back(IpPacketBatch {
-            vnet_hdr,
             header,
             payloads: buffer,
             segment_size: payload_len,
