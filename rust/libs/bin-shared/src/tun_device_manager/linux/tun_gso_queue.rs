@@ -93,6 +93,7 @@ impl GsoHeader {
             packet.as_udp(),
         ) {
             (Some(ipv4), None, Some(tcp), None) => {
+                let original_seq = tcp.sequence_number();
                 let ipv4 = ip_packet::Ipv4Header {
                     total_len: 0,
                     header_checksum: 0,
@@ -100,22 +101,33 @@ impl GsoHeader {
                 };
                 let tcp = ip_packet::TcpHeader {
                     checksum: 0,
+                    sequence_number: 0,
                     ..tcp.to_header()
                 };
 
-                Some(Self::Ipv4Tcp { ipv4, tcp })
+                Some(Self::Ipv4Tcp {
+                    ipv4,
+                    tcp,
+                    original_seq,
+                })
             }
             (None, Some(ipv6), Some(tcp), None) => {
+                let original_seq = tcp.sequence_number();
                 let ipv6 = ip_packet::Ipv6Header {
                     payload_length: 0,
                     ..ipv6
                 };
                 let tcp = ip_packet::TcpHeader {
                     checksum: 0,
+                    sequence_number: 0,
                     ..tcp.to_header()
                 };
 
-                Some(Self::Ipv6Tcp { ipv6, tcp })
+                Some(Self::Ipv6Tcp {
+                    ipv6,
+                    tcp,
+                    original_seq,
+                })
             }
             (Some(ipv4), None, None, Some(udp)) => {
                 let ipv4 = ip_packet::Ipv4Header {
@@ -208,22 +220,40 @@ impl GsoHeader {
     /// Finalizes the [`GsoHeader`] by setting the total payload length and pseudo-checksum.
     pub fn finalize(self, segment_length: usize) -> Self {
         match self {
-            GsoHeader::Ipv4Tcp { mut ipv4, mut tcp } => {
+            GsoHeader::Ipv4Tcp {
+                mut ipv4,
+                mut tcp,
+                original_seq,
+            } => {
                 ipv4.total_len = (ipv4.header_len() + tcp.header_len() + segment_length) as u16;
                 ipv4.header_checksum = ipv4.calc_header_checksum();
+                tcp.sequence_number = original_seq;
                 tcp.checksum = tcp
                     .calc_checksum_ipv4(&ipv4, &[])
                     .expect("empty slice is never too big");
 
-                GsoHeader::Ipv4Tcp { ipv4, tcp }
+                GsoHeader::Ipv4Tcp {
+                    ipv4,
+                    tcp,
+                    original_seq,
+                }
             }
-            GsoHeader::Ipv6Tcp { mut ipv6, mut tcp } => {
+            GsoHeader::Ipv6Tcp {
+                mut ipv6,
+                mut tcp,
+                original_seq,
+            } => {
                 ipv6.payload_length = (tcp.header_len() + segment_length) as u16;
+                tcp.sequence_number = original_seq;
                 tcp.checksum = tcp
                     .calc_checksum_ipv6(&ipv6, &[])
                     .expect("empty slice is never too big");
 
-                GsoHeader::Ipv6Tcp { ipv6, tcp }
+                GsoHeader::Ipv6Tcp {
+                    ipv6,
+                    tcp,
+                    original_seq,
+                }
             }
             GsoHeader::Ipv4Udp { mut ipv4, mut udp } => {
                 ipv4.total_len = (ipv4.header_len() + udp.header_len() + segment_length) as u16;
