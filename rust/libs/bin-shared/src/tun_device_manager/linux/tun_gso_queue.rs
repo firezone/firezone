@@ -158,6 +158,45 @@ impl GsoHeader {
         }
     }
 
+    pub fn with_payload_length(self, payload: usize) -> Self {
+        match self {
+            GsoHeader::Ipv4Tcp { ipv4, tcp } => GsoHeader::Ipv4Tcp {
+                ipv4: Ipv4Header {
+                    total_len: (ipv4.header_len() + tcp.header_len() + payload) as u16,
+                    ..ipv4
+                },
+                tcp,
+            },
+            GsoHeader::Ipv6Tcp { ipv6, tcp } => GsoHeader::Ipv6Tcp {
+                ipv6: Ipv6Header {
+                    payload_length: (tcp.header_len() + payload) as u16,
+                    ..ipv6
+                },
+                tcp,
+            },
+            GsoHeader::Ipv4Udp { ipv4, udp } => GsoHeader::Ipv4Udp {
+                ipv4: Ipv4Header {
+                    total_len: (ipv4.header_len() + udp.header_len() + payload) as u16,
+                    ..ipv4
+                },
+                udp: UdpHeader {
+                    length: (udp.header_len() + payload) as u16,
+                    ..udp
+                },
+            },
+            GsoHeader::Ipv6Udp { ipv6, udp } => GsoHeader::Ipv6Udp {
+                ipv6: Ipv6Header {
+                    payload_length: (udp.header_len() + payload) as u16,
+                    ..ipv6
+                },
+                udp: UdpHeader {
+                    length: (udp.header_len() + payload) as u16,
+                    ..udp
+                },
+            },
+        }
+    }
+
     /// Get checksum start offset
     pub fn csum_start(&self) -> u16 {
         match self {
@@ -250,8 +289,10 @@ impl Iterator for DrainPacketsIter<'_> {
                 continue;
             };
 
+            let header = entry.key().clone().with_payload_length(buffer.len());
+
             return Some(IpPacketBatch {
-                header: entry.key().clone(),
+                header,
                 payloads: buffer,
                 segment_size: batch_size,
             });
