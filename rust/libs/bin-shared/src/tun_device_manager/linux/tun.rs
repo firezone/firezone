@@ -352,7 +352,26 @@ fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
     tracing::trace!(target: "wire::dev::send::batch", num_packets = %batch.num_packets());
 
     let vnet_hdr = build_vnet_hdr(&batch.header, batch.segment_size as u16);
-    let (l3, l4) = batch.header.header_slices();
+    let (ipv4, ipv4_len) = batch
+        .header
+        .ipv4_header()
+        .map(|h| (h.to_bytes(), h.header_len()))
+        .unwrap_or_else(|| (Default::default(), 0));
+    let (ipv6, ipv6_len) = batch
+        .header
+        .ipv6_header()
+        .map(|h| (h.to_bytes(), h.header_len()))
+        .unwrap_or_else(|| ([0u8; _], 0));
+    let (udp, udp_len) = batch
+        .header
+        .udp_header()
+        .map(|h| (h.to_bytes(), h.header_len()))
+        .unwrap_or_else(|| ([0u8; _], 0));
+    let (tcp, tcp_len) = batch
+        .header
+        .tcp_header()
+        .map(|h| (h.to_bytes(), h.header_len()))
+        .unwrap_or_else(|| (Default::default(), 0));
 
     let iov = [
         libc::iovec {
@@ -360,12 +379,20 @@ fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
             iov_len: vnet_hdr.len(),
         },
         libc::iovec {
-            iov_base: l3.as_ptr() as *mut libc::c_void,
-            iov_len: l3.len(),
+            iov_base: ipv4.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: ipv4_len,
         },
         libc::iovec {
-            iov_base: l4.as_ptr() as *mut libc::c_void,
-            iov_len: l4.len(),
+            iov_base: ipv6.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: ipv6_len,
+        },
+        libc::iovec {
+            iov_base: udp.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: udp_len,
+        },
+        libc::iovec {
+            iov_base: tcp.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: tcp_len,
         },
         libc::iovec {
             iov_base: batch.payloads.as_ref().as_ptr() as *mut libc::c_void,
@@ -374,7 +401,7 @@ fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
     ];
 
     // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::writev(fd, iov.as_ptr(), 4) } {
+    match unsafe { libc::writev(fd, iov.as_ptr(), 6) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize - VIRTIO_NET_HDR_SIZE),
     }
