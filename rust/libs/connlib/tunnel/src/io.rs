@@ -165,7 +165,7 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            outbound_packet_buffer: VecDeque::default(),
+            outbound_packet_buffer: VecDeque::with_capacity(0x400),
             timeout: None,
             sockets,
             nameservers: NameserverSet::new(
