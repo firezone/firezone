@@ -257,6 +257,7 @@ type_complexity = "allow" # Don't care.
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
+etherparse = { path = "/home/thomas/src/github.com/JulianSchmid/etherparse/etherparse" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 dimpl = { git = "https://github.com/algesten/dimpl", branch = "main" }

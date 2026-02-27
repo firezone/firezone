@@ -845,6 +845,7 @@ dependencies = [
  "bytes",
  "clap",
  "dashmap",
+ "derive_more 2.1.1",
  "dns-types",
  "futures",
  "gat-lending-iterator",
@@ -2280,8 +2281,6 @@ dependencies = [
 [[package]]
 name = "etherparse"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b119b9796ff800751a220394b8b3613f26dd30c48f254f6837e64c464872d1c7"
 dependencies = [
  "arrayvec",
 ]
