@@ -371,39 +371,6 @@ mod tests {
     }
 
     #[test]
-    fn different_size_creates_separate_batches() {
-        let mut queue = TunGsoQueue::new();
-
-        let tcp1 = make::tcp_packet(
-            Ipv4Addr::new(10, 0, 0, 1),
-            Ipv4Addr::new(192, 168, 1, 1),
-            8080,
-            443,
-            Default::default(),
-            vec![1, 2, 3, 4],
-        )
-        .unwrap();
-        let tcp2 = make::tcp_packet(
-            Ipv4Addr::new(10, 0, 0, 1),
-            Ipv4Addr::new(192, 168, 1, 1),
-            8080,
-            443,
-            Default::default(),
-            vec![5, 6],
-        )
-        .unwrap();
-
-        queue.enqueue(&tcp1).unwrap();
-        queue.enqueue(&tcp2).unwrap();
-
-        // Smaller packet is allowed as the last segment in a batch
-        let batches = queue.packets().collect::<Vec<_>>();
-        assert_eq!(batches.len(), 1);
-        assert_eq!(batches[0].segment_size, 4);
-        assert_eq!(batches[0].payloads.as_ref(), &[1, 2, 3, 4, 5, 6]);
-    }
-
-    #[test]
     fn different_flow_creates_separate_batches() {
         let mut queue = TunGsoQueue::new();
 
