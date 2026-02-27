@@ -452,7 +452,7 @@ mod tests {
     #[test_strategy::proptest]
     fn outgoing_tcp_rst_removes_nat_mapping(
         #[strategy(tcp_packet(Just(TcpFlags::default())))] req: IpPacket,
-        #[strategy(tcp_packet(Just(TcpFlags { rst: true })))] mut rst: IpPacket,
+        #[strategy(tcp_packet(Just(TcpFlags { rst: true, seq: 0 })))] mut rst: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
     ) {
         let _guard = logging::test("trace");
