@@ -51,6 +51,7 @@ admx-macro = { path = "gui-client/src-admx-macro" }
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
+arrayvec = "0.7.6"
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
 axum = { version = "0.8.8", default-features = false }

@@ -329,42 +329,8 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
 }
 
 /// Write a batch of IP packets to the TUN device using `writev`.
-///
-/// Despite the variability of IPv4 / IPv6 and TCP / UDP, all of which have different header lengths,
-/// we want to do this in an efficient way.
-/// The trick here is to use `writev` and always pass a fixed length of slices to it
-/// but selectively "activate" them by passing either a length of 0
-/// or the actual length of the header.
 fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
-    let (ip4_header, ip4_len) = match &batch.header {
-        tun_gso_queue::GsoHeader::Ipv4Tcp { ipv4, .. }
-        | tun_gso_queue::GsoHeader::Ipv4Udp { ipv4, .. } => (ipv4.to_bytes(), ipv4.header_len()),
-        tun_gso_queue::GsoHeader::Ipv6Tcp { .. } | tun_gso_queue::GsoHeader::Ipv6Udp { .. } => {
-            (Default::default(), 0)
-        }
-    };
-    let (ip6_header, ip6_len) = match &batch.header {
-        tun_gso_queue::GsoHeader::Ipv6Tcp { ipv6, .. }
-        | tun_gso_queue::GsoHeader::Ipv6Udp { ipv6, .. } => (ipv6.to_bytes(), ipv6.header_len()),
-        tun_gso_queue::GsoHeader::Ipv4Tcp { .. } | tun_gso_queue::GsoHeader::Ipv4Udp { .. } => {
-            ([0u8; _], 0)
-        }
-    };
-
-    let (tcp_header, tcp_len) = match &batch.header {
-        tun_gso_queue::GsoHeader::Ipv4Tcp { tcp, .. }
-        | tun_gso_queue::GsoHeader::Ipv6Tcp { tcp, .. } => (tcp.to_bytes(), tcp.header_len()),
-        tun_gso_queue::GsoHeader::Ipv4Udp { .. } | tun_gso_queue::GsoHeader::Ipv6Udp { .. } => {
-            (Default::default(), 0)
-        }
-    };
-    let (udp_header, udp_len) = match &batch.header {
-        tun_gso_queue::GsoHeader::Ipv4Udp { udp, .. }
-        | tun_gso_queue::GsoHeader::Ipv6Udp { udp, .. } => (udp.to_bytes(), udp.header_len()),
-        tun_gso_queue::GsoHeader::Ipv4Tcp { .. } | tun_gso_queue::GsoHeader::Ipv6Tcp { .. } => {
-            ([0u8; 8], 0)
-        }
-    };
+    let (l3, l4) = batch.header.header_slices();
 
     let iov = [
         libc::iovec {
@@ -372,20 +338,12 @@ fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
             iov_len: batch.vnet_hdr.len(),
         },
         libc::iovec {
-            iov_base: ip4_header.as_slice().as_ptr() as *mut libc::c_void,
-            iov_len: ip4_len,
+            iov_base: l3.as_ptr() as *mut libc::c_void,
+            iov_len: l3.len(),
         },
         libc::iovec {
-            iov_base: ip6_header.as_slice().as_ptr() as *mut libc::c_void,
-            iov_len: ip6_len,
-        },
-        libc::iovec {
-            iov_base: tcp_header.as_slice().as_ptr() as *mut libc::c_void,
-            iov_len: tcp_len,
-        },
-        libc::iovec {
-            iov_base: udp_header.as_ptr() as *mut libc::c_void,
-            iov_len: udp_len,
+            iov_base: l4.as_ptr() as *mut libc::c_void,
+            iov_len: l4.len(),
         },
         libc::iovec {
             iov_base: batch.payloads.as_ref().as_ptr() as *mut libc::c_void,
@@ -394,7 +352,7 @@ fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
     ];
 
     // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::writev(fd, iov.as_ptr(), 6) } {
+    match unsafe { libc::writev(fd, iov.as_ptr(), 4) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize - VIRTIO_NET_HDR_SIZE),
     }

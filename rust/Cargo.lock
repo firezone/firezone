@@ -838,6 +838,7 @@ name = "bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "arrayvec",
  "atomicwrites",
  "axum",
  "bufferpool",

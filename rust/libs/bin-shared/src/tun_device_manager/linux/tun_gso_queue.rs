@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 
+use arrayvec::ArrayVec;
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::IpPacket;
@@ -29,28 +30,29 @@ pub struct IpPacketBatch {
 }
 
 /// Parsed header info needed for GSO batching (with variable fields zeroed)
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Stores serialized header bytes ready for writev
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GsoHeader {
     Ipv4Tcp {
-        ipv4: ip_packet::Ipv4Header,
-        tcp: ip_packet::TcpHeader,
+        ipv4: ArrayVec<u8, 60>,
+        tcp: ArrayVec<u8, 60>,
     },
     Ipv6Tcp {
-        ipv6: ip_packet::Ipv6Header,
-        tcp: ip_packet::TcpHeader,
+        ipv6: [u8; 40],
+        tcp: ArrayVec<u8, 60>,
     },
     Ipv4Udp {
-        ipv4: ip_packet::Ipv4Header,
-        udp: ip_packet::UdpHeader,
+        ipv4: ArrayVec<u8, 60>,
+        udp: [u8; 8],
     },
     Ipv6Udp {
-        ipv6: ip_packet::Ipv6Header,
-        udp: ip_packet::UdpHeader,
+        ipv6: [u8; 40],
+        udp: [u8; 8],
     },
 }
 
 impl GsoHeader {
-    /// Parse from packet and zero out variable fields
+    /// Parse from packet and zero out variable fields, then serialize to bytes
     fn from_packet(packet: &IpPacket) -> Option<Self> {
         match (
             packet.ipv4_header(),
@@ -58,52 +60,72 @@ impl GsoHeader {
             packet.as_tcp(),
             packet.as_udp(),
         ) {
-            (Some(ipv4), None, Some(tcp), None) => Some(Self::Ipv4Tcp {
-                ipv4: ip_packet::Ipv4Header {
+            (Some(ipv4), None, Some(tcp), None) => {
+                let ipv4 = ip_packet::Ipv4Header {
                     total_len: 0,       // Variable: zeroed for canonical form
                     header_checksum: 0, // Variable: zeroed for canonical form
                     ..ipv4
-                },
-                tcp: ip_packet::TcpHeader {
+                };
+                let tcp = ip_packet::TcpHeader {
                     sequence_number: 0, // Variable: zeroed for canonical form
                     checksum: 0,        // Variable: zeroed for canonical form
                     ..tcp.to_header()
-                },
-            }),
-            (None, Some(ipv6), Some(tcp), None) => Some(Self::Ipv6Tcp {
-                ipv6: ip_packet::Ipv6Header {
+                };
+
+                Some(Self::Ipv4Tcp {
+                    ipv4: ipv4.to_bytes(),
+                    tcp: tcp.to_bytes(),
+                })
+            }
+            (None, Some(ipv6), Some(tcp), None) => {
+                let ipv6 = ip_packet::Ipv6Header {
                     payload_length: 0, // Variable: zeroed for canonical form
                     ..ipv6
-                },
-                tcp: ip_packet::TcpHeader {
+                };
+                let tcp = ip_packet::TcpHeader {
                     sequence_number: 0, // Variable: zeroed for canonical form
                     checksum: 0,        // Variable: zeroed for canonical form
                     ..tcp.to_header()
-                },
-            }),
-            (Some(ipv4), None, None, Some(udp)) => Some(Self::Ipv4Udp {
-                ipv4: ip_packet::Ipv4Header {
+                };
+
+                Some(Self::Ipv6Tcp {
+                    ipv6: ipv6.to_bytes(),
+                    tcp: tcp.to_bytes(),
+                })
+            }
+            (Some(ipv4), None, None, Some(udp)) => {
+                let ipv4 = ip_packet::Ipv4Header {
                     total_len: 0,       // Variable: zeroed for canonical form
                     header_checksum: 0, // Variable: zeroed for canonical form
                     ..ipv4
-                },
-                udp: ip_packet::UdpHeader {
+                };
+                let udp = ip_packet::UdpHeader {
                     length: 0,   // Variable: zeroed for canonical form
                     checksum: 0, // Variable: zeroed for canonical form
                     ..udp.to_header()
-                },
-            }),
-            (None, Some(ipv6), None, Some(udp)) => Some(Self::Ipv6Udp {
-                ipv6: ip_packet::Ipv6Header {
+                };
+
+                Some(Self::Ipv4Udp {
+                    ipv4: ipv4.to_bytes(),
+                    udp: udp.to_bytes(),
+                })
+            }
+            (None, Some(ipv6), None, Some(udp)) => {
+                let ipv6 = ip_packet::Ipv6Header {
                     payload_length: 0, // Variable: zeroed for canonical form
                     ..ipv6
-                },
-                udp: ip_packet::UdpHeader {
+                };
+                let udp = ip_packet::UdpHeader {
                     length: 0,   // Variable: zeroed for canonical form
                     checksum: 0, // Variable: zeroed for canonical form
                     ..udp.to_header()
-                },
-            }),
+                };
+
+                Some(Self::Ipv6Udp {
+                    ipv6: ipv6.to_bytes(),
+                    udp: udp.to_bytes(),
+                })
+            }
             _ => None,
         }
     }
@@ -119,19 +141,25 @@ impl GsoHeader {
 
     /// Get header length
     fn header_len(&self) -> u16 {
+        let (l3, l4) = self.header_slices();
+
+        (l3.len() + l4.len()) as u16
+    }
+
+    pub fn header_slices(&self) -> (&[u8], &[u8]) {
         match self {
-            Self::Ipv4Tcp { ipv4, tcp } => ipv4.header_len() as u16 + tcp.data_offset() as u16 * 4,
-            Self::Ipv6Tcp { tcp, .. } => 40 + tcp.data_offset() as u16 * 4,
-            Self::Ipv4Udp { ipv4, .. } => ipv4.header_len() as u16 + 8,
-            Self::Ipv6Udp { .. } => 40 + 8,
+            GsoHeader::Ipv4Tcp { ipv4, tcp } => (ipv4.as_slice(), tcp.as_slice()),
+            GsoHeader::Ipv6Tcp { ipv6, tcp } => (ipv6.as_slice(), tcp.as_slice()),
+            GsoHeader::Ipv4Udp { ipv4, udp } => (ipv4.as_slice(), udp.as_slice()),
+            GsoHeader::Ipv6Udp { ipv6, udp } => (ipv6.as_slice(), udp.as_slice()),
         }
     }
 
     /// Get checksum start offset
     fn csum_start(&self) -> u16 {
         match self {
-            Self::Ipv4Tcp { ipv4, .. } | Self::Ipv4Udp { ipv4, .. } => ipv4.header_len() as u16,
-            Self::Ipv6Tcp { .. } | Self::Ipv6Udp { .. } => 40,
+            Self::Ipv4Tcp { ipv4, .. } | Self::Ipv4Udp { ipv4, .. } => ipv4.len() as u16,
+            Self::Ipv6Tcp { ipv6, .. } | Self::Ipv6Udp { ipv6, .. } => ipv6.len() as u16,
         }
     }
 
