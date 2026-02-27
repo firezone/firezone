@@ -355,76 +355,25 @@ fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
     }
 }
 
-/// Build virtio_net_hdr for a batch by parsing the serialized header
-fn build_vnet_header(batch: &IpPacketBatch) -> [u8; VIRTIO_NET_HDR_SIZE] {
+/// Build virtio_net_hdr for a batch using precomputed metadata
+fn build_vnet_header(batch: &tun_gso_queue::IpPacketBatch) -> [u8; VIRTIO_NET_HDR_SIZE] {
     let mut vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
 
-    let header_bytes = batch.header_bytes();
-    let header_len = header_bytes.len() as u16;
+    let metadata = batch.metadata();
     let segment_size = batch.segment_size() as u16;
-
-    // Determine IP version and protocol from header bytes
-    let ip_version = header_bytes[0] >> 4;
-
-    let (gso_type, csum_start, csum_offset) = if ip_version == 4 {
-        // IPv4: IHL in lower 4 bits of first byte
-        let ip_header_len = ((header_bytes[0] & 0x0F) as u16) * 4;
-        // Protocol at offset 9 in IPv4 header
-        let protocol = header_bytes[9];
-
-        match protocol {
-            6 => {
-                // TCP
-                let gso_type = 1; // VIRTIO_NET_HDR_GSO_TCPV4
-                let csum_start = ip_header_len;
-                let csum_offset = 16; // TCP checksum at offset 16
-                (gso_type, csum_start, csum_offset)
-            }
-            17 => {
-                // UDP
-                let gso_type = 5; // VIRTIO_NET_HDR_GSO_UDP_L4
-                let csum_start = ip_header_len;
-                let csum_offset = 6; // UDP checksum at offset 6
-                (gso_type, csum_start, csum_offset)
-            }
-            _ => (0u8, 0u16, 0u16), // Should not happen for GSO batches
-        }
-    } else {
-        // IPv6: always 40 bytes, protocol at offset 6
-        let ip_header_len = 40u16;
-        let protocol = header_bytes[6];
-
-        match protocol {
-            6 => {
-                // TCP
-                let gso_type = 4; // VIRTIO_NET_HDR_GSO_TCPV6
-                let csum_start = ip_header_len;
-                let csum_offset = 16; // TCP checksum at offset 16
-                (gso_type, csum_start, csum_offset)
-            }
-            17 => {
-                // UDP
-                let gso_type = 5; // VIRTIO_NET_HDR_GSO_UDP_L4
-                let csum_start = ip_header_len;
-                let csum_offset = 6; // UDP checksum at offset 6
-                (gso_type, csum_start, csum_offset)
-            }
-            _ => (0u8, 0u16, 0u16), // Should not happen for GSO batches
-        }
-    };
 
     // flags: request checksum offload
     vnet_hdr[0] = 1; // VIRTIO_NET_HDR_F_NEEDS_CSUM
     // gso_type
-    vnet_hdr[1] = gso_type;
+    vnet_hdr[1] = metadata.gso_type;
     // hdr_len (little-endian u16)
-    vnet_hdr[2..4].copy_from_slice(&header_len.to_le_bytes());
+    vnet_hdr[2..4].copy_from_slice(&metadata.header_len.to_le_bytes());
     // gso_size (little-endian u16)
     vnet_hdr[4..6].copy_from_slice(&segment_size.to_le_bytes());
     // csum_start (little-endian u16)
-    vnet_hdr[6..8].copy_from_slice(&csum_start.to_le_bytes());
+    vnet_hdr[6..8].copy_from_slice(&metadata.csum_start.to_le_bytes());
     // csum_offset (little-endian u16)
-    vnet_hdr[8..10].copy_from_slice(&csum_offset.to_le_bytes());
+    vnet_hdr[8..10].copy_from_slice(&metadata.csum_offset.to_le_bytes());
     // num_buffers (little-endian u16) - not used for TX
     vnet_hdr[10..12].copy_from_slice(&0u16.to_le_bytes());
 
