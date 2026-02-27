@@ -338,8 +338,6 @@ defmodule PortalWeb.SignUp do
 
       case register_account(socket, registration) do
         {:ok, %{account: account, provider: provider, actor: actor}} ->
-          {:ok, account} = Portal.Billing.provision_account(account)
-
           socket =
             assign(socket,
               account: account,
@@ -390,6 +388,14 @@ defmodule PortalWeb.SignUp do
           new_changeset = Ecto.Changeset.put_change(changeset, :account, error_changeset)
           form = to_form(new_changeset)
           {:noreply, assign(socket, form: form)}
+
+        {:error, :stripe_provision} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "We encountered a temporary error creating your account. Please try again."
+           )}
       end
     else
       {:noreply, assign(socket, form: to_form(changeset))}
@@ -399,7 +405,7 @@ defmodule PortalWeb.SignUp do
   defp create_account_changeset(attrs) do
     import Ecto.Changeset
 
-    %Portal.Account{}
+    %Portal.Account{id: Map.get(attrs, :id)}
     |> cast(attrs, [:name, :legal_name, :slug])
     |> maybe_default_legal_name()
     |> maybe_generate_slug()
@@ -471,16 +477,34 @@ defmodule PortalWeb.SignUp do
   end
 
   defp register_account(socket, registration) do
-    Database.register_account(
-      registration,
-      &create_account_changeset/1,
-      &create_everyone_group_changeset/1,
-      &create_site_changeset/2,
-      &create_internet_site_changeset/1,
-      &create_internet_resource_changeset/2,
-      socket.assigns.user_agent,
-      socket.assigns.real_ip
-    )
+    account_id = Ecto.UUID.generate()
+
+    case Portal.Billing.provision_stripe_for_signup(
+           account_id,
+           registration.account.name,
+           registration.email
+         ) do
+      {:ok, stripe_info} ->
+        changeset_fns = %{
+          account: &create_account_changeset/1,
+          everyone_group: &create_everyone_group_changeset/1,
+          site: &create_site_changeset/2,
+          internet_site: &create_internet_site_changeset/1,
+          internet_resource: &create_internet_resource_changeset/2
+        }
+
+        Database.register_account(
+          registration,
+          account_id,
+          stripe_info,
+          changeset_fns,
+          socket.assigns.user_agent,
+          socket.assigns.real_ip
+        )
+
+      {:error, _reason} ->
+        {:error, :stripe_provision}
+    end
   end
 
   defp create_site_changeset(account, attrs) do
@@ -533,28 +557,29 @@ defmodule PortalWeb.SignUp do
     }
 
     # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
-    @dialyzer {:no_opaque, [register_account: 8, create_email_provider: 1]}
+    @dialyzer {:no_opaque, [register_account: 6, create_email_provider: 1]}
     def register_account(
           registration,
-          account_changeset_fn,
-          everyone_group_changeset_fn,
-          site_changeset_fn,
-          internet_site_changeset_fn,
-          internet_resource_changeset_fn,
+          account_id,
+          stripe_info,
+          changeset_fns,
           user_agent,
           real_ip
         ) do
+      stripe_metadata = stripe_info || %{billing_email: registration.email}
+
       Ecto.Multi.new()
       |> Ecto.Multi.run(:account, fn _repo, _changes ->
         %{
+          id: account_id,
           name: registration.account.name,
-          metadata: %{stripe: %{billing_email: registration.email}}
+          metadata: %{stripe: stripe_metadata}
         }
-        |> account_changeset_fn.()
+        |> changeset_fns.account.()
         |> insert()
       end)
       |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
-        everyone_group_changeset_fn.(account)
+        changeset_fns.everyone_group.(account)
         |> insert()
       end)
       |> Ecto.Multi.run(:provider, fn _repo, %{account: account} ->
@@ -564,16 +589,16 @@ defmodule PortalWeb.SignUp do
         create_admin(account, registration.email, registration.actor.name)
       end)
       |> Ecto.Multi.run(:default_site, fn _repo, %{account: account} ->
-        site_changeset_fn.(account, %{name: "Default Site"})
+        changeset_fns.site.(account, %{name: "Default Site"})
         |> insert()
       end)
       |> Ecto.Multi.run(:internet_site, fn _repo, %{account: account} ->
-        internet_site_changeset_fn.(account)
+        changeset_fns.internet_site.(account)
         |> insert()
       end)
       |> Ecto.Multi.run(:internet_resource, fn _repo,
                                                %{account: account, internet_site: internet_site} ->
-        internet_resource_changeset_fn.(account, internet_site)
+        changeset_fns.internet_resource.(account, internet_site)
         |> insert()
       end)
       |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, actor: actor} ->
@@ -638,8 +663,9 @@ defmodule PortalWeb.SignUp do
     def slug_exists?(slug) do
       import Ecto.Query
 
-      query = from(a in Portal.Account, where: a.slug == ^slug, select: count(a.id))
-      Safe.unscoped(query) |> Safe.exists?()
+      from(a in Portal.Account, where: a.slug == ^slug)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
     end
   end
 end

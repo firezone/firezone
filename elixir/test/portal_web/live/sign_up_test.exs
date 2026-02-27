@@ -417,6 +417,45 @@ defmodule PortalWeb.SignUpTest do
 
       assert html =~ "rate limited"
     end
+
+    test "shows error and does not create account when Stripe provisioning fails", %{conn: conn} do
+      Req.Test.stub(APIClient, fn conn ->
+        case {conn.method, conn.request_path} do
+          {"POST", "/v1/customers"} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(
+              500,
+              JSON.encode!(%{"error" => %{"message" => "Internal server error"}})
+            )
+
+          _ ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(404, JSON.encode!(%{"error" => "not_found"}))
+        end
+      end)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      unique_name = "Stripe Failure Co #{System.unique_integer([:positive])}"
+      email = "stripe-failure-#{System.unique_integer([:positive])}@example.com"
+
+      html =
+        lv
+        |> element("form[phx-submit=submit]")
+        |> render_submit(%{
+          registration: %{
+            email: email,
+            account: %{name: unique_name},
+            actor: %{name: "Failed User"}
+          }
+        })
+
+      assert html =~ "temporary error creating your account"
+      refute Portal.Repo.get_by(Portal.Account, name: unique_name)
+      refute Portal.Repo.get_by(Portal.Actor, email: email)
+    end
   end
 
   describe "render/1" do

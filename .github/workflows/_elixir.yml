@@ -77,25 +77,8 @@ jobs:
       - name: Compile Application
         run: mix compile --warnings-as-errors
 
-      - name: Restore PLT cache
-        id: plt_cache
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: elixir/priv/plts
-          key: plt-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('elixir/mix.lock') }}
-          # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
-          restore-keys: plt-ubuntu-24.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-
-
       - name: Create PLTs
-        # Always run to incrementally update PLT if restored from cache with different mix.lock
         run: mix dialyzer --plt
-
-      - name: Save PLT cache
-        if: github.ref_name == 'main'
-        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          key: ${{ steps.plt_cache.outputs.cache-primary-key }}
-          path: elixir/priv/plts
 
       - name: Run Dialyzer
         run: mix dialyzer --format dialyxir

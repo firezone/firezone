@@ -181,6 +181,32 @@ defmodule PortalAPI.ActorControllerTest do
       assert resp == %{"error" => %{"reason" => "Users limit reached"}}
     end
 
+    test "returns error when users limit hit for admin user", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{users_count: 1})
+      |> Repo.update!()
+
+      actor_with_email_fixture(type: :account_user, account: account)
+
+      attrs = %{
+        "name" => "Test Admin",
+        "email" => "admin@example.com",
+        "type" => "account_admin_user"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert resp = json_response(conn, 403)
+      assert resp == %{"error" => %{"reason" => "Users limit reached"}}
+    end
+
     test "returns error when service accounts limit hit", %{
       conn: conn,
       account: account,
