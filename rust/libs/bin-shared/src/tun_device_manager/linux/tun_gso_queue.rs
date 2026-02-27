@@ -159,11 +159,8 @@ impl GsoHeader {
     }
 }
 
-/// Holds IP packets that need to be sent, indexed by flow.
-/// Packets are batched by flow for GSO.
 pub struct TunGsoQueue {
-    /// Map from canonical header to batches of payloads
-    inner: BTreeMap<GsoHeader, VecDeque<IpPacketBatch>>,
+    inner: BTreeMap<GsoHeader, VecDeque<(usize, Buffer<BytesMut>)>>,
     buffer_pool: BufferPool<BytesMut>,
 }
 
@@ -182,8 +179,6 @@ impl TunGsoQueue {
         }
     }
 
-    /// Enqueue a packet for batching.
-    /// Returns Err(NotBatchable) if the packet cannot be batched (ICMP, malformed TCP/UDP, etc.)
     pub fn enqueue(&mut self, packet: &IpPacket) -> Result<(), NotBatchable> {
         // Parse header (already has variable fields zeroed)
         let header = GsoHeader::from_packet(packet).ok_or(NotBatchable)?;
@@ -196,26 +191,24 @@ impl TunGsoQueue {
         let payload_len = payload.len();
 
         // Get or create batch list for this flow (use header as key)
-        let batches = self.inner.entry(header.clone()).or_default();
+        let batches = self.inner.entry(header).or_default();
 
-        // Check if we can append to existing batch
-        if let Some(batch) = batches.back_mut() {
-            let batch_is_ongoing = batch.payloads.len() % batch.segment_size == 0;
+        let Some((batch_size, buffer)) = batches.back_mut() else {
+            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+            return Ok(());
+        };
 
-            // Can batch packets of same or smaller payload size (last segment can be smaller)
-            if batch_is_ongoing && payload_len <= batch.segment_size {
-                batch.payloads.extend_from_slice(payload);
-                return Ok(());
-            }
+        let batch_size = *batch_size;
+
+        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
+        let batch_is_ongoing = buffer.len() % batch_size == 0;
+
+        if batch_is_ongoing && payload_len <= batch_size {
+            buffer.extend_from_slice(payload);
+            return Ok(());
         }
 
-        let buffer = self.buffer_pool.pull_initialised(payload);
-
-        batches.push_back(IpPacketBatch {
-            header,
-            payloads: buffer,
-            segment_size: payload_len,
-        });
+        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
 
         Ok(())
     }
@@ -236,13 +229,16 @@ impl Iterator for DrainPacketsIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let mut entry = self.queue.inner.first_entry()?;
-
-            let Some(batch) = entry.get_mut().pop_front() else {
+            let Some((batch_size, buffer)) = entry.get_mut().pop_front() else {
                 entry.remove();
                 continue;
             };
 
-            return Some(batch);
+            return Some(IpPacketBatch {
+                header: entry.key().clone(),
+                payloads: buffer,
+                segment_size: batch_size,
+            });
         }
     }
 }
