@@ -328,56 +328,76 @@ fn write_single(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
     }
 }
 
+/// Write a batch of IP packets to the TUN device using `writev`.
+///
+/// Despite the variability of IPv4 / IPv6 and TCP / UDP, all of which have different header lengths,
+/// we want to do this in an efficient way.
+/// The trick here is to use `writev` and always pass a fixed length of slices to it
+/// but selectively "activate" them by passing either a length of 0
+/// or the actual length of the header.
 fn write_batch(fd: RawFd, batch: &IpPacketBatch) -> io::Result<usize> {
-    let vnet_hdr = build_vnet_header(batch);
-    let header_bytes = batch.header_bytes();
-    let payload_bytes = batch.payload_bytes();
+    let (ip4_header, ip4_len) = match &batch.header {
+        tun_gso_queue::GsoHeader::Ipv4Tcp { ipv4, .. }
+        | tun_gso_queue::GsoHeader::Ipv4Udp { ipv4, .. } => (ipv4.to_bytes(), ipv4.header_len()),
+        tun_gso_queue::GsoHeader::Ipv6Tcp { .. } | tun_gso_queue::GsoHeader::Ipv6Udp { .. } => {
+            (Default::default(), 0)
+        }
+    };
+    let (ip6_header, ip6_len) = match &batch.header {
+        tun_gso_queue::GsoHeader::Ipv6Tcp { ipv6, .. }
+        | tun_gso_queue::GsoHeader::Ipv6Udp { ipv6, .. } => (ipv6.to_bytes(), ipv6.header_len()),
+        tun_gso_queue::GsoHeader::Ipv4Tcp { .. } | tun_gso_queue::GsoHeader::Ipv4Udp { .. } => {
+            ([0u8; _], 0)
+        }
+    };
+
+    let (tcp_header, tcp_len) = match &batch.header {
+        tun_gso_queue::GsoHeader::Ipv4Tcp { tcp, .. }
+        | tun_gso_queue::GsoHeader::Ipv6Tcp { tcp, .. } => (tcp.to_bytes(), tcp.header_len()),
+        tun_gso_queue::GsoHeader::Ipv4Udp { .. } | tun_gso_queue::GsoHeader::Ipv6Udp { .. } => {
+            (Default::default(), 0)
+        }
+    };
+    let (udp_header, udp_len) = match &batch.header {
+        tun_gso_queue::GsoHeader::Ipv4Udp { udp, .. }
+        | tun_gso_queue::GsoHeader::Ipv6Udp { udp, .. } => (udp.to_bytes(), udp.header_len()),
+        tun_gso_queue::GsoHeader::Ipv4Tcp { .. } | tun_gso_queue::GsoHeader::Ipv6Tcp { .. } => {
+            ([0u8; 8], 0)
+        }
+    };
 
     let iov = [
         libc::iovec {
-            iov_base: vnet_hdr.as_ptr() as *mut libc::c_void,
-            iov_len: vnet_hdr.len(),
+            iov_base: batch.vnet_hdr.as_ptr() as *mut libc::c_void,
+            iov_len: batch.vnet_hdr.len(),
         },
         libc::iovec {
-            iov_base: header_bytes.as_ptr() as *mut libc::c_void,
-            iov_len: header_bytes.len(),
+            iov_base: ip4_header.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: ip4_len,
         },
         libc::iovec {
-            iov_base: payload_bytes.as_ptr() as *mut libc::c_void,
-            iov_len: payload_bytes.len(),
+            iov_base: ip6_header.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: ip6_len,
+        },
+        libc::iovec {
+            iov_base: tcp_header.as_slice().as_ptr() as *mut libc::c_void,
+            iov_len: tcp_len,
+        },
+        libc::iovec {
+            iov_base: udp_header.as_ptr() as *mut libc::c_void,
+            iov_len: udp_len,
+        },
+        libc::iovec {
+            iov_base: batch.payloads.as_ref().as_ptr() as *mut libc::c_void,
+            iov_len: batch.payloads.as_ref().len(),
         },
     ];
 
     // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::writev(fd, iov.as_ptr(), 3) } {
+    match unsafe { libc::writev(fd, iov.as_ptr(), 6) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize - VIRTIO_NET_HDR_SIZE),
     }
-}
-
-/// Build virtio_net_hdr for a batch using precomputed metadata
-fn build_vnet_header(batch: &tun_gso_queue::IpPacketBatch) -> [u8; VIRTIO_NET_HDR_SIZE] {
-    let mut vnet_hdr = [0u8; VIRTIO_NET_HDR_SIZE];
-
-    let metadata = batch.metadata();
-    let segment_size = batch.segment_size() as u16;
-
-    // flags: request checksum offload
-    vnet_hdr[0] = 1; // VIRTIO_NET_HDR_F_NEEDS_CSUM
-    // gso_type
-    vnet_hdr[1] = metadata.gso_type;
-    // hdr_len (little-endian u16)
-    vnet_hdr[2..4].copy_from_slice(&metadata.header_len.to_le_bytes());
-    // gso_size (little-endian u16)
-    vnet_hdr[4..6].copy_from_slice(&segment_size.to_le_bytes());
-    // csum_start (little-endian u16)
-    vnet_hdr[6..8].copy_from_slice(&metadata.csum_start.to_le_bytes());
-    // csum_offset (little-endian u16)
-    vnet_hdr[8..10].copy_from_slice(&metadata.csum_offset.to_le_bytes());
-    // num_buffers (little-endian u16) - not used for TX
-    vnet_hdr[10..12].copy_from_slice(&0u16.to_le_bytes());
-
-    vnet_hdr
 }
 
 /// Receive packets from TUN device
