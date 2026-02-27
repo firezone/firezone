@@ -6,6 +6,15 @@ use std::collections::{BTreeMap, VecDeque};
 const MAX_INBOUND_PACKET_BATCH: usize = 32;
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
 
+pub struct TunGsoQueue {
+    inner: BTreeMap<GsoHeader, VecDeque<(usize, Buffer<BytesMut>)>>,
+    buffer_pool: BufferPool<BytesMut>,
+}
+
+/// Error returned when a packet cannot be batched
+#[derive(Debug)]
+pub struct NotBatchable;
+
 /// A batch of IP packets ready to be sent with GSO
 #[derive(Debug)]
 pub struct IpPacketBatch {
@@ -17,12 +26,6 @@ pub struct IpPacketBatch {
     pub segment_size: usize,
 }
 
-impl IpPacketBatch {
-    pub fn num_packets(&self) -> usize {
-        self.payloads.len() / self.segment_size
-    }
-}
-
 /// Parsed header info needed for GSO batching (with variable fields zeroed)
 /// Stores serialized header bytes ready for writev
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -31,6 +34,61 @@ pub enum GsoHeader {
     Ipv6Tcp { ipv6: Ipv6Header, tcp: TcpHeader },
     Ipv4Udp { ipv4: Ipv4Header, udp: UdpHeader },
     Ipv6Udp { ipv6: Ipv6Header, udp: UdpHeader },
+}
+
+impl TunGsoQueue {
+    pub fn new() -> Self {
+        Self {
+            inner: Default::default(),
+            buffer_pool: BufferPool::new(
+                MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH,
+                "tun-gso-queue",
+            ),
+        }
+    }
+
+    pub fn enqueue(&mut self, packet: &IpPacket) -> Result<(), NotBatchable> {
+        // Parse header (already has variable fields zeroed)
+        let header = GsoHeader::from_packet(packet).ok_or(NotBatchable)?;
+
+        let maybe_tcp = packet.as_tcp().map(|t| t.payload());
+        let maybe_udp = packet.as_udp().map(|u| u.payload());
+
+        let payload = maybe_tcp.or(maybe_udp).ok_or(NotBatchable)?;
+
+        let payload_len = payload.len();
+
+        if payload_len == 0 {
+            return Err(NotBatchable);
+        }
+
+        // Get or create batch list for this flow (use header as key)
+        let batches = self.inner.entry(header).or_default();
+
+        let Some((batch_size, buffer)) = batches.back_mut() else {
+            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+            return Ok(());
+        };
+
+        let batch_size = *batch_size;
+
+        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
+        let batch_is_ongoing = buffer.len() % batch_size == 0;
+
+        if batch_is_ongoing && payload_len <= batch_size {
+            buffer.extend_from_slice(payload);
+            return Ok(());
+        }
+
+        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+
+        Ok(())
+    }
+
+    /// Drain all batches from the queue
+    pub fn packets(&mut self) -> impl Iterator<Item = IpPacketBatch> + '_ {
+        DrainPacketsIter { queue: self }
+    }
 }
 
 impl GsoHeader {
@@ -214,67 +272,9 @@ impl GsoHeader {
     }
 }
 
-pub struct TunGsoQueue {
-    inner: BTreeMap<GsoHeader, VecDeque<(usize, Buffer<BytesMut>)>>,
-    buffer_pool: BufferPool<BytesMut>,
-}
-
-/// Error returned when a packet cannot be batched
-#[derive(Debug)]
-pub struct NotBatchable;
-
-impl TunGsoQueue {
-    pub fn new() -> Self {
-        Self {
-            inner: Default::default(),
-            buffer_pool: BufferPool::new(
-                MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH,
-                "tun-gso-queue",
-            ),
-        }
-    }
-
-    pub fn enqueue(&mut self, packet: &IpPacket) -> Result<(), NotBatchable> {
-        // Parse header (already has variable fields zeroed)
-        let header = GsoHeader::from_packet(packet).ok_or(NotBatchable)?;
-
-        let maybe_tcp = packet.as_tcp().map(|t| t.payload());
-        let maybe_udp = packet.as_udp().map(|u| u.payload());
-
-        let payload = maybe_tcp.or(maybe_udp).ok_or(NotBatchable)?;
-
-        let payload_len = payload.len();
-
-        if payload_len == 0 {
-            return Err(NotBatchable);
-        }
-
-        // Get or create batch list for this flow (use header as key)
-        let batches = self.inner.entry(header).or_default();
-
-        let Some((batch_size, buffer)) = batches.back_mut() else {
-            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
-            return Ok(());
-        };
-
-        let batch_size = *batch_size;
-
-        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
-        let batch_is_ongoing = buffer.len() % batch_size == 0;
-
-        if batch_is_ongoing && payload_len <= batch_size {
-            buffer.extend_from_slice(payload);
-            return Ok(());
-        }
-
-        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
-
-        Ok(())
-    }
-
-    /// Drain all batches from the queue
-    pub fn packets(&mut self) -> impl Iterator<Item = IpPacketBatch> + '_ {
-        DrainPacketsIter { queue: self }
+impl IpPacketBatch {
+    pub fn num_packets(&self) -> usize {
+        self.payloads.len() / self.segment_size
     }
 }
 

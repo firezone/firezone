@@ -173,7 +173,6 @@ impl tun::Tun for Tun {
     }
 
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        // Try to batch the packet, fall back to direct send if not batchable
         if self.gso_queue.enqueue(&packet).is_err() {
             self.outbound_tx
                 .start_send_unpin(OutboundPacket::Single(packet))
