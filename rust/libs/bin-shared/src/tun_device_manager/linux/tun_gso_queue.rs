@@ -58,6 +58,8 @@ impl TunGsoQueue {
         let batches = self.inner.entry(header).or_default();
 
         let Some((batch_size, buffer)) = batches.back_mut() else {
+            tracing::trace!(batch_size = %payload_len, ?header, "Starting new batch");
+
             batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
             return Ok(());
         };
@@ -68,9 +70,13 @@ impl TunGsoQueue {
         let batch_is_ongoing = buffer.len() % batch_size == 0;
 
         if batch_is_ongoing && payload_len <= batch_size {
+            tracing::trace!(%batch_size, ?header, "Continuing batch");
+
             buffer.extend_from_slice(payload);
             return Ok(());
         }
+
+        tracing::trace!(%batch_size, ?header, "Starting new batch");
 
         batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
 
