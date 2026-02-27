@@ -13,11 +13,11 @@ defmodule PortalWeb.Verification do
 
   def handle_params(_params, _uri, socket) do
     case socket.assigns.verification do
-      %{"type" => "oidc", "token" => token, "code" => code} ->
-        handle_oidc_verification(token, code, socket)
+      %{"type" => "oidc", "token" => token} ->
+        handle_oidc_verification(token, socket)
 
-      %{"type" => "entra"} = verification ->
-        handle_entra_verification(verification, socket)
+      %{"type" => "entra", "token" => token} ->
+        handle_entra_verification(token, socket)
 
       _ ->
         {:noreply,
@@ -29,40 +29,91 @@ defmodule PortalWeb.Verification do
     end
   end
 
-  defp handle_oidc_verification(verification_token, verification_code, socket) do
+  defp handle_oidc_verification(verification_token, socket) do
     socket = assign(socket, page_title: "Verification", verified: false, error: nil)
 
     # Only broadcast on WebSocket connection, not initial HTTP request
-    if connected?(socket) do
-      # Broadcast to authentication LiveView
-      Portal.PubSub.broadcast(
-        "oidc-verification:#{verification_token}",
-        {:oidc_verify, self(), verification_code, verification_token}
-      )
+    cond do
+      socket.assigns[:verification_started] ->
+        {:noreply, socket}
 
-      # Set a 5-second timeout for verification
-      Process.send_after(self(), :timeout, 5_000)
+      connected?(socket) ->
+        case Portal.AuthenticationCache.pop(
+               Portal.AuthenticationCache.verification_key(verification_token)
+             ) do
+          {:ok, %{"code" => verification_code, "token" => token}}
+          when token == verification_token ->
+            socket = assign(socket, verification_started: true)
+
+            # Broadcast to authentication LiveView
+            Portal.PubSub.broadcast(
+              "oidc-verification:#{verification_token}",
+              {:oidc_verify, self(), verification_code, verification_token}
+            )
+
+            # Set a 5-second timeout for verification
+            Process.send_after(self(), :timeout, 5_000)
+
+            {:noreply, socket}
+
+          :error ->
+            {:noreply, assign(socket, error: "Missing or expired verification information")}
+
+          _ ->
+            {:noreply, assign(socket, error: "Invalid verification information")}
+        end
+
+      true ->
+        {:noreply, socket}
     end
-
-    {:noreply, socket}
   end
 
-  defp handle_entra_verification(verification, socket) do
-    token = verification["token"]
-    admin_consent = verification["admin_consent"]
-    tenant_id = verification["tenant_id"]
-    entra_type = verification["entra_type"]
-    error_param = verification["error"]
-    error_description = verification["error_description"]
+  defp handle_entra_verification(verification_token, socket) do
+    socket = assign(socket, page_title: "Verification", verified: false, error: nil)
 
-    error = detect_consent_error(admin_consent, tenant_id, token, error_param, error_description)
+    cond do
+      socket.assigns[:verification_started] ->
+        {:noreply, socket}
 
-    socket = assign(socket, page_title: "Verification", verified: false, error: error)
+      connected?(socket) ->
+        case Portal.AuthenticationCache.pop(
+               Portal.AuthenticationCache.verification_key(verification_token)
+             ) do
+          {:ok, %{"type" => "entra", "token" => token} = verification}
+          when token == verification_token ->
+            socket = assign(socket, verification_started: true)
+            admin_consent = verification["admin_consent"]
+            tenant_id = verification["tenant_id"]
+            entra_type = verification["entra_type"]
+            error_param = verification["error"]
+            error_description = verification["error_description"]
 
-    if token && tenant_id && !error && entra_type do
-      dispatch_entra_verification(socket, entra_type, token, tenant_id)
-    else
-      {:noreply, socket}
+            error =
+              detect_consent_error(
+                admin_consent,
+                tenant_id,
+                token,
+                error_param,
+                error_description
+              )
+
+            socket = assign(socket, error: error)
+
+            if token && tenant_id && !error && entra_type do
+              dispatch_entra_verification(socket, entra_type, token, tenant_id)
+            else
+              {:noreply, socket}
+            end
+
+          {:ok, _} ->
+            {:noreply, assign(socket, error: "Invalid verification information")}
+
+          :error ->
+            {:noreply, assign(socket, error: "Missing or expired verification information")}
+        end
+
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -166,14 +217,14 @@ defmodule PortalWeb.Verification do
   end
 
   defp format_entra_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
-    error_message = get_in(body, ["error", "message"])
+    error_message = entra_error_message(body)
 
     "Unauthorized: #{error_message || "Invalid credentials"}. " <>
       "Ensure the application has the required API permissions."
   end
 
   defp format_entra_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
-    error_message = get_in(body, ["error", "message"]) || "forbidden"
+    error_message = entra_error_message(body) || "forbidden"
 
     "Access denied: #{error_message}. " <>
       "Ensure the application has Directory.Read.All and Group.Read.All permissions with admin consent. " <>
@@ -182,13 +233,19 @@ defmodule PortalWeb.Verification do
 
   defp format_entra_verification_error({:ok, %Req.Response{status: status, body: body}})
        when status >= 400 do
-    error_message = get_in(body, ["error", "message"]) || body["error_description"]
+    error_message = entra_error_message(body) || body["error_description"]
     "Verification failed (HTTP #{status}): #{error_message || "Unknown error"}"
   end
 
   defp format_entra_verification_error({:error, reason}) do
     "Failed to verify directory access: #{inspect(reason)}"
   end
+
+  defp entra_error_message(%{"error" => %{"message" => message}}) when is_binary(message),
+    do: message
+
+  defp entra_error_message(%{"error" => error}) when is_binary(error), do: error
+  defp entra_error_message(_), do: nil
 
   def render(assigns) do
     ~H"""

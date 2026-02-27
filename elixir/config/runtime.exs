@@ -243,7 +243,10 @@ if config_env() == :prod do
     {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
 
     # Delete expired portal sessions every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions}
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
+
+    # Delete expired authentication cache entries every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredAuthenticationCacheEntries}
   ]
 
   config :portal, Oban,
