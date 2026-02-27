@@ -188,14 +188,10 @@ impl TunGsoQueue {
         // Parse header (already has variable fields zeroed)
         let header = GsoHeader::from_packet(packet).ok_or(NotBatchable)?;
 
-        // Extract payload
-        let payload = if let Some(tcp) = packet.as_tcp() {
-            tcp.payload()
-        } else if let Some(udp) = packet.as_udp() {
-            udp.payload()
-        } else {
-            return Err(NotBatchable);
-        };
+        let maybe_tcp = packet.as_tcp().map(|t| t.payload());
+        let maybe_udp = packet.as_udp().map(|u| u.payload());
+
+        let payload = maybe_tcp.or(maybe_udp).ok_or(NotBatchable)?;
 
         let payload_len = payload.len();
 
@@ -213,10 +209,7 @@ impl TunGsoQueue {
             }
         }
 
-        // Start new batch - build vnet header immediately
-        let mut buffer = self.buffer_pool.pull();
-        buffer.clear();
-        buffer.extend_from_slice(payload);
+        let buffer = self.buffer_pool.pull_initialised(payload);
 
         batches.push_back(IpPacketBatch {
             header,
@@ -241,25 +234,16 @@ impl Iterator for DrainPacketsIter<'_> {
     type Item = IpPacketBatch;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Iterate over all flows
-        while let Some(mut entry) = self.queue.inner.first_entry() {
-            let batches = entry.get_mut();
+        loop {
+            let mut entry = self.queue.inner.first_entry()?;
 
-            // Pop the first batch from this flow
-            if let Some(batch) = batches.pop_front() {
-                // If no more batches for this flow, remove the entry
-                if batches.is_empty() {
-                    entry.remove();
-                }
+            let Some(batch) = entry.get_mut().pop_front() else {
+                entry.remove();
+                continue;
+            };
 
-                return Some(batch);
-            }
-
-            // No batches left for this flow, remove it
-            entry.remove();
+            return Some(batch);
         }
-
-        None
     }
 }
 
