@@ -453,7 +453,7 @@ where
                                 packets.len() as u64,
                                 &[
                                     otel::attr::network_type_for_packet(first),
-                                    telemetry::otel::attr::network_io_direction_transmit(),
+                                    telemetry::otel::attr::network_io_direction_receive(),
                                 ],
                             );
                         }
