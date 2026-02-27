@@ -1,6 +1,7 @@
 //! TUN device implementation for Linux with GSO batching support
 
-use crate::tun_device_manager::linux::tun_gso_queue::{GsoHeader, IpPacketBatch};
+use crate::tun_device_manager::linux::gso_header::GsoHeader;
+use crate::tun_device_manager::linux::tun_gso_queue::IpPacketBatch;
 
 use super::tun_gso_queue;
 use anyhow::{Context as _, ErrorExt, Result, bail};

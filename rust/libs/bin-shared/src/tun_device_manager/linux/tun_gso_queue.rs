@@ -3,6 +3,8 @@ use bytes::BytesMut;
 use ip_packet::{IpPacket, Ipv4Header, Ipv6Header, TcpHeader, UdpHeader};
 use std::collections::{BTreeMap, VecDeque};
 
+use crate::tun_device_manager::linux::gso_header::GsoHeader;
+
 const MAX_INBOUND_PACKET_BATCH: usize = 32;
 const MAX_SEGMENT_SIZE: usize = ip_packet::MAX_IP_SIZE;
 
@@ -24,16 +26,6 @@ pub struct IpPacketBatch {
     pub payloads: Buffer<BytesMut>,
     /// Size of each payload segment
     pub segment_size: usize,
-}
-
-/// Parsed header info needed for GSO batching (with variable fields zeroed)
-/// Stores serialized header bytes ready for writev
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum GsoHeader {
-    Ipv4Tcp { ipv4: Ipv4Header, tcp: TcpHeader },
-    Ipv6Tcp { ipv6: Ipv6Header, tcp: TcpHeader },
-    Ipv4Udp { ipv4: Ipv4Header, udp: UdpHeader },
-    Ipv6Udp { ipv6: Ipv6Header, udp: UdpHeader },
 }
 
 impl TunGsoQueue {
