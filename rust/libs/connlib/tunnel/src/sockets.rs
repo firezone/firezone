@@ -268,75 +268,72 @@ impl ThreadedUdpSocket {
                     let socket = socket.clone();
 
                     async move {
-                        let mut packets_since_yield = 0;
-                        while let Some(datagram) = outbound_rx.recv().await {
-                            if let Err(e) = socket.send(datagram).await {
-                                if let Some(io) = e.any_downcast_ref::<io::Error>() {
-                                    io_error_counter.add(
-                                        1,
-                                        &[
-                                            otel::attr::network_io_direction_transmit(),
-                                            otel::attr::network_type_for_addr(preferred_addr),
-                                            otel::attr::io_error_type(io),
-                                            otel::attr::io_error_code(io),
-                                        ],
-                                    );
-                                }
-
-                                // We use the inbound_tx channel to send the error back to the main thread.
-                                if inbound_tx.send(Err(e)).await.is_err() {
+                        'recv: loop {
+                            for _ in 0..PACKETS_PER_YIELD {
+                                let Some(datagram) = outbound_rx.recv().await else {
                                     tracing::debug!(
-                                        "Channel for inbound datagrams closed; exiting UDP thread"
+                                        "Channel for outbound datagrams closed; exiting UDP thread"
                                     );
-                                    break;
-                                }
-                            };
+                                    break 'recv;
+                                };
 
-                            packets_since_yield += 1;
-                            if packets_since_yield >= PACKETS_PER_YIELD {
-                                tokio::task::yield_now().await;
-                                packets_since_yield = 0;
+                                if let Err(e) = socket.send(datagram).await {
+                                    if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                                        io_error_counter.add(
+                                            1,
+                                            &[
+                                                otel::attr::network_io_direction_transmit(),
+                                                otel::attr::network_type_for_addr(preferred_addr),
+                                                otel::attr::io_error_type(io),
+                                                otel::attr::io_error_code(io),
+                                            ],
+                                        );
+                                    }
+
+                                    // We use the inbound_tx channel to send the error back to the main thread.
+                                    if inbound_tx.send(Err(e)).await.is_err() {
+                                        tracing::debug!(
+                                            "Channel for inbound datagrams closed; exiting UDP thread"
+                                        );
+                                        break 'recv;
+                                    }
+                                };
                             }
-                        }
 
-                        tracing::debug!(
-                            "Channel for outbound datagrams closed; exiting UDP thread"
-                        );
+                            tokio::task::yield_now().await;
+                        };
                     }
                 });
                 let receive = runtime.spawn(async move {
-                    let mut packets_since_yield = 0;
-                    loop {
-                        let result = socket.recv_from().await;
+                    'send: loop {
+                        for _ in 0..PACKETS_PER_YIELD {
+                            let result = socket.recv_from().await;
 
-                        if let Some(io) = result
-                            .as_ref()
-                            .err()
-                            .and_then(|e| e.any_downcast_ref::<io::Error>())
-                        {
-                            io_error_counter.add(
-                                1,
-                                &[
-                                    otel::attr::network_io_direction_receive(),
-                                    otel::attr::network_type_for_addr(preferred_addr),
-                                    otel::attr::io_error_type(io),
-                                    otel::attr::io_error_code(io),
-                                ],
-                            );
+                            if let Some(io) = result
+                                .as_ref()
+                                .err()
+                                .and_then(|e| e.any_downcast_ref::<io::Error>())
+                            {
+                                io_error_counter.add(
+                                    1,
+                                    &[
+                                        otel::attr::network_io_direction_receive(),
+                                        otel::attr::network_type_for_addr(preferred_addr),
+                                        otel::attr::io_error_type(io),
+                                        otel::attr::io_error_code(io),
+                                    ],
+                                );
+                            }
+
+                            if inbound_tx.send(result).await.is_err() {
+                                tracing::debug!(
+                                    "Channel for inbound datagrams closed; exiting UDP thread"
+                                );
+                                break 'send;
+                            }
                         }
 
-                        if inbound_tx.send(result).await.is_err() {
-                            tracing::debug!(
-                                "Channel for inbound datagrams closed; exiting UDP thread"
-                            );
-                            break;
-                        }
-
-                        packets_since_yield += 1;
-                        if packets_since_yield >= PACKETS_PER_YIELD {
-                            tokio::task::yield_now().await;
-                            packets_since_yield = 0;
-                        }
+                        tokio::task::yield_now().await;
                     }
                 });
 
