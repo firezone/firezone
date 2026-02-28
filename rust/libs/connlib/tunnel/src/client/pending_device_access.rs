@@ -134,7 +134,7 @@ mod tests {
             Ipv4Addr::LOCALHOST,
             1,
             1,
-            vec![payload], // We need to vary the payload because identical packets don't get buffered.
+            &[payload], // We need to vary the payload because identical packets don't get buffered.
         )
         .unwrap()
     }

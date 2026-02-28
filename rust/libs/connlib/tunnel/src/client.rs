@@ -1379,12 +1379,13 @@ impl ClientState {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
 
+                let response_bytes = response.into_bytes(MAX_UDP_PAYLOAD);
                 let maybe_packet = ip_packet::make::udp_packet(
                     packet.destination(),
                     packet.source(),
                     datagram.destination_port(),
                     datagram.source_port(),
-                    response.into_bytes(MAX_UDP_PAYLOAD),
+                    &response_bytes,
                 )
                 .inspect_err(|e| {
                     tracing::debug!("Failed to create LLMNR DNS response packet: {e:#}");
@@ -1972,15 +1973,10 @@ fn into_udp_dns_packet(
     dst: SocketAddr,
     message: dns_types::Response,
 ) -> Option<IpPacket> {
-    ip_packet::make::udp_packet(
-        from.ip(),
-        dst.ip(),
-        from.port(),
-        dst.port(),
-        message.into_bytes(MAX_UDP_PAYLOAD),
-    )
-    .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
-    .ok()
+    let bytes = message.into_bytes(MAX_UDP_PAYLOAD);
+    ip_packet::make::udp_packet(from.ip(), dst.ip(), from.port(), dst.port(), &bytes)
+        .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
+        .ok()
 }
 
 pub struct IpProvider {

@@ -184,8 +184,9 @@ impl SimClient {
 
         match dns_transport {
             DnsTransport::Udp { local_port } => {
+                let query_bytes = query.into_bytes();
                 let packet =
-                    ip_packet::make::udp_packet(src, sentinel, local_port, 53, query.into_bytes())
+                    ip_packet::make::udp_packet(src, sentinel, local_port, 53, &query_bytes)
                         .unwrap();
 
                 self.sent_udp_dns_queries

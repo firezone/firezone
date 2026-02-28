@@ -59,6 +59,7 @@ impl UdpDnsServerResource {
             let query = dns_types::Query::parse(udp.payload()).unwrap();
 
             let response = handle_dns_query(&query, global_dns_records, now);
+            let response_bytes = response.into_bytes(MAX_UDP_PAYLOAD);
 
             self.outbound_packets.push_back(
                 ip_packet::make::udp_packet(
@@ -66,7 +67,7 @@ impl UdpDnsServerResource {
                     packet.source(),
                     udp.destination_port(),
                     udp.source_port(),
-                    response.into_bytes(MAX_UDP_PAYLOAD),
+                    &response_bytes,
                 )
                 .expect("src and dst are retrieved from the same packet"),
             )
