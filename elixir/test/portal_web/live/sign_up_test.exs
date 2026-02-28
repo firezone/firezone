@@ -58,6 +58,17 @@ defmodule PortalWeb.SignUpTest do
       assert %{email: ["is an invalid email address"]} = errors_on(changeset)
     end
 
+    test "requires at least one dot in email host" do
+      changeset =
+        PortalWeb.SignUp.Registration.changeset(%{
+          email: "user@localhost",
+          email_confirmation: "user@localhost"
+        })
+
+      refute changeset.valid?
+      assert %{email: ["is an invalid email address"]} = errors_on(changeset)
+    end
+
     test "validates email confirmation" do
       changeset =
         PortalWeb.SignUp.Registration.changeset(%{
