@@ -171,6 +171,17 @@ memory allocation, file and network usage, graphics rendering, and energy
 consumption. Instruments uses a timeline view to show events in apps like CPU
 usage spikes, memory leaks, and UI responsiveness issues.
 
+#### To profile the network extension
+
+1. Go to Product menu -> Build For -> Profile.
+1. Product -> Show Build Folder in Finder.
+1. Find the built Firezone.app in `Products/Profile/Firezone.app` in the Finder
+   window that opens.
+1. Launch it.
+1. Sign in to Firezone.
+1. Open Instruments.app and attach to the running
+   `dev.firezone.firezone.network-extension` process.
+
 #### What to look for in Instruments
 
 ##### network extension memory usage
