@@ -766,11 +766,90 @@ defmodule Portal.Safe do
   end
 
   defp apply_schema_changeset(changeset, schema) do
-    if function_exported?(schema, :changeset, 1) do
-      schema.changeset(changeset)
+    changeset =
+      if function_exported?(schema, :changeset, 1) do
+        schema.changeset(changeset)
+      else
+        changeset
+      end
+
+    if function_exported?(schema, :__schema__, 1) do
+      validate_binary_id_changes(changeset, schema)
     else
       changeset
     end
+  end
+
+  defp validate_binary_id_changes(changeset, schema) do
+    changeset
+    |> validate_current_binary_id_changes(schema)
+    |> validate_nested_binary_id_changes()
+  end
+
+  defp validate_current_binary_id_changes(changeset, schema) do
+    schema
+    |> binary_id_fields()
+    |> Enum.reduce(changeset, fn field, changeset ->
+      case fetch_change(changeset, field) do
+        {:ok, nil} ->
+          changeset
+
+        {:ok, value} ->
+          if valid_binary_id_change?(value) or has_invalid_error?(changeset, field) do
+            changeset
+          else
+            add_error(changeset, field, "is invalid", validation: :binary_id)
+          end
+
+        :error ->
+          changeset
+      end
+    end)
+  end
+
+  defp validate_nested_binary_id_changes(changeset) do
+    Enum.reduce(changeset.changes, changeset, fn {field, value}, changeset ->
+      validated_value = validate_nested_change(value)
+
+      if validated_value == value do
+        changeset
+      else
+        put_change(changeset, field, validated_value)
+      end
+    end)
+  end
+
+  defp validate_nested_change(%Ecto.Changeset{} = nested_changeset) do
+    schema = get_schema_module(nested_changeset.data)
+
+    if function_exported?(schema, :__schema__, 1) do
+      validate_binary_id_changes(nested_changeset, schema)
+    else
+      nested_changeset
+    end
+  end
+
+  defp validate_nested_change(list) when is_list(list) do
+    Enum.map(list, &validate_nested_change/1)
+  end
+
+  defp validate_nested_change(value), do: value
+
+  defp binary_id_fields(schema) do
+    Enum.filter(schema.__schema__(:fields), fn field ->
+      schema.__schema__(:type, field) == :binary_id
+    end)
+  end
+
+  defp valid_binary_id_change?(value) do
+    match?({:ok, _}, Ecto.UUID.cast(value))
+  end
+
+  defp has_invalid_error?(changeset, field) do
+    Enum.any?(changeset.errors, fn
+      {^field, {_message, opts}} when is_list(opts) -> opts[:validation] == :binary_id
+      _ -> false
+    end)
   end
 
   def get_schema_module(%Ecto.Query{from: %{source: {_table, schema}}}), do: schema

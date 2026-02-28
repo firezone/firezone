@@ -165,6 +165,27 @@ defmodule PortalAPI.PolicyControllerTest do
                }
     end
 
+    test "returns validation error for malformed group_id value", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: %{"group_id" => "<no value>", "resource_id" => resource.id})
+
+      assert json_response(conn, 422) == %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{"group_id" => ["is invalid"]}
+               }
+             }
+    end
+
     test "creates a policy with valid attrs", %{conn: conn, account: account, actor: actor} do
       resource = resource_fixture(account: account)
       group = group_fixture(account: account)
@@ -249,6 +270,27 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["description"] == attrs["description"]
+    end
+
+    test "returns validation error for invalid group_id value", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"group_id" => "<no value>"})
+
+      assert json_response(conn, 422) == %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{"group_id" => ["is invalid"]}
+               }
+             }
     end
 
     test "updates group_idp_id when changing to a synced group", %{
