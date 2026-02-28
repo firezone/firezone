@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="12355">
+          Reduces CPU overhead by processing UDP packets in batches of 64 before
+          yielding to the scheduler.
+        </ChangeItem>
         <ChangeItem pull="12251">
           Gracefully handles WebSocket closes from the portal instead of logging
           a deserialization error.

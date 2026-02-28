@@ -260,6 +260,7 @@ impl ThreadedUdpSocket {
                 };
 
                 let socket = Arc::new(socket);
+                const PACKETS_PER_YIELD: usize = 16;
 
                 let send = runtime.spawn({
                     let io_error_counter = io_error_counter.clone();
@@ -267,9 +268,8 @@ impl ThreadedUdpSocket {
                     let socket = socket.clone();
 
                     async move {
+                        let mut packets_since_yield = 0;
                         while let Some(datagram) = outbound_rx.recv().await {
-                            tokio::task::yield_now().await;
-
                             if let Err(e) = socket.send(datagram).await {
                                 if let Some(io) = e.any_downcast_ref::<io::Error>() {
                                     io_error_counter.add(
@@ -291,6 +291,12 @@ impl ThreadedUdpSocket {
                                     break;
                                 }
                             };
+
+                            packets_since_yield += 1;
+                            if packets_since_yield >= PACKETS_PER_YIELD {
+                                tokio::task::yield_now().await;
+                                packets_since_yield = 0;
+                            }
                         }
 
                         tracing::debug!(
@@ -299,9 +305,8 @@ impl ThreadedUdpSocket {
                     }
                 });
                 let receive = runtime.spawn(async move {
+                    let mut packets_since_yield = 0;
                     loop {
-                        tokio::task::yield_now().await;
-
                         let result = socket.recv_from().await;
 
                         if let Some(io) = result
@@ -325,6 +330,12 @@ impl ThreadedUdpSocket {
                                 "Channel for inbound datagrams closed; exiting UDP thread"
                             );
                             break;
+                        }
+
+                        packets_since_yield += 1;
+                        if packets_since_yield >= PACKETS_PER_YIELD {
+                            tokio::task::yield_now().await;
+                            packets_since_yield = 0;
                         }
                     }
                 });
