@@ -121,6 +121,13 @@ else
     BUILD_DIR="debug"
 fi
 
+# Keep full symbols when using the dedicated Xcode Profile configuration.
+# This gives us optimized connlib with symbolication support.
+if [ "$CONFIGURATION" = "Profile" ]; then
+    export CARGO_PROFILE_RELEASE_DEBUG=full
+    export CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
+fi
+
 # Ensure RUSTUP_HOME is set
 if [ -z "${RUSTUP_HOME:-}" ] && [ -d "$HOME/.rustup" ]; then
     export RUSTUP_HOME="$HOME/.rustup"
