@@ -44,7 +44,7 @@ where
                     let packet = &pending_packets[idx];
 
                     // Try and write the current packet.
-                    match guard.try_io(|inner_fd| write(inner_fd.as_raw_fd(), packet)) {
+                    match guard.try_io(|fd| write(fd.as_raw_fd(), packet)) {
                         Err(_would_block) => {
                             // Renew the guard if fd is no longer writable.
                             guard = match fd.writable().await {
@@ -104,13 +104,11 @@ where
                     }
                 };
 
-                loop {
-                    let result = guard.try_io(|inner_fd| read_packet(&read, inner_fd.as_raw_fd()));
-
-                    match result {
-                        Err(_would_block) => break,
-                        Ok(Ok(None)) => bail!("TUN file descriptor is closed"),
-                        Ok(Ok(Some(packet))) => {
+                // `try_io` returns an `Err` only if the fd is not readable anymore.
+                // In that case we want to loop around and .await a new read guard.
+                while let Ok(res) = guard.try_io(|fd| read_packet(&read, fd.as_raw_fd())) {
+                    match res.context("Failed to read from TUN fd") {
+                        Ok(Some(packet)) => {
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
@@ -119,7 +117,13 @@ where
                                 return anyhow::Ok(());
                             }
                         }
-                        Ok(Err(e)) => log_read_error(e),
+                        Ok(None) => bail!("TUN file descriptor is closed"),
+                        Err(e) if e.any_is::<ip_packet::Fragmented>() => {
+                            tracing::debug!("{e:#}"); // Log on debug to be less noisy.
+                        }
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                        }
                     }
                 }
             }
@@ -144,16 +148,6 @@ fn read_packet(
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
     Ok(Some(packet))
-}
-
-fn log_read_error(error: io::Error) {
-    let error = anyhow::Error::new(error).context("Failed to read from TUN FD");
-
-    if error.any_is::<ip_packet::Fragmented>() {
-        tracing::debug!("{error:#}"); // Log on debug to be less noisy.
-    } else {
-        tracing::warn!("{error:#}");
-    }
 }
 
 #[cfg(test)]
