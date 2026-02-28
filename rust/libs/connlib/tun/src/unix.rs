@@ -19,46 +19,61 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
-            let mut pending_packet = None;
+            let mut pending_packets = Vec::with_capacity(128);
 
-            loop {
-                let mut packet =
-                    match next_outbound_packet(&mut pending_packet, &mut outbound_rx).await {
-                        Some(packet) => packet,
-                        None => return anyhow::Ok(()),
-                    };
+            'read: loop {
+                // Read a batch of packets.
+                let num_read = outbound_rx.recv_many(&mut pending_packets, 128).await;
 
+                if num_read == 0 {
+                    return anyhow::Ok(());
+                }
+
+                // Wait until fd is writable.
                 let mut guard = match fd.writable().await {
                     Ok(guard) => guard,
                     Err(e) => {
                         tracing::warn!("Failed to await TUN fd writability: {e}");
-                        pending_packet = Some(packet);
-                        continue;
+                        continue 'read;
                     }
                 };
 
-                loop {
-                    #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::dev::send", ?packet);
+                let mut idx = 0;
 
-                    match guard.try_io(|inner_fd| write(inner_fd.as_raw_fd(), &packet)) {
+                'write: while idx < num_read {
+                    let packet = &pending_packets[idx];
+
+                    // Try and write the current packet.
+                    match guard.try_io(|inner_fd| write(inner_fd.as_raw_fd(), packet)) {
                         Err(_would_block) => {
-                            pending_packet = Some(packet);
-                            break;
+                            // Renew the guard if fd is no longer writable.
+                            guard = match fd.writable().await {
+                                Ok(guard) => guard,
+                                Err(e) => {
+                                    // Temporary(?) IO error when waiting for writablility.
+                                    // Loop around to try and write the same packet again.
+                                    // Most likely, we will end up in this branch again as a result.
+                                    tracing::warn!("Failed to await TUN fd writability: {e}");
+                                    continue 'write;
+                                }
+                            };
                         }
-                        Ok(Ok(_bytes_written)) => match next_queued_packet(&mut outbound_rx) {
-                            Some(next_packet) => packet = next_packet,
-                            None => break,
-                        },
+                        Ok(Ok(_bytes_written)) => {
+                            #[cfg(debug_assertions)]
+                            tracing::trace!(target: "wire::dev::send", ?packet);
+
+                            idx += 1; // We sent the packet, go to the next one.
+                        }
                         Ok(Err(e)) => {
-                            tracing::warn!("Failed to write to TUN FD: {e}");
-                            match next_queued_packet(&mut outbound_rx) {
-                                Some(next_packet) => packet = next_packet,
-                                None => break,
-                            }
+                            tracing::warn!(?packet, "Failed to write to TUN FD: {e}");
+
+                            idx += 1; // We failed to send the packet, go to the next one.
                         }
                     }
                 }
+
+                // Clear the buffer for the next batch.
+                pending_packets.clear();
             }
         })?;
 
@@ -111,25 +126,6 @@ where
         })?;
 
     anyhow::Ok(())
-}
-
-async fn next_outbound_packet(
-    pending_packet: &mut Option<IpPacket>,
-    outbound_rx: &mut mpsc::Receiver<IpPacket>,
-) -> Option<IpPacket> {
-    if let Some(packet) = pending_packet.take() {
-        return Some(packet);
-    }
-
-    outbound_rx.recv().await
-}
-
-fn next_queued_packet(outbound_rx: &mut mpsc::Receiver<IpPacket>) -> Option<IpPacket> {
-    match outbound_rx.try_recv() {
-        Ok(packet) => Some(packet),
-        Err(mpsc::error::TryRecvError::Empty) => None,
-        Err(mpsc::error::TryRecvError::Disconnected) => None,
-    }
 }
 
 fn read_packet(
