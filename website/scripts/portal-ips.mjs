@@ -4,10 +4,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REGION_HOSTS = [
+  "australiaeast-app.firezone.dev",
+  "australiaeast-api.firezone.dev",
   "centralus-app.firezone.dev",
   "centralus-api.firezone.dev",
-  "eastasia-app.firezone.dev",
-  "eastasia-api.firezone.dev",
   "northeurope-app.firezone.dev",
   "northeurope-api.firezone.dev",
 ];
@@ -77,7 +77,7 @@ async function computePortalIps() {
 
   return {
     generated_at: new Date().toISOString(),
-    regions: ["centralus", "eastasia", "northeurope"],
+    regions: ["centralus", "australiaeast", "northeurope"],
     regional_hosts: regionalHosts,
     endpoints: {
       "app.firezone.dev": {
@@ -109,7 +109,9 @@ function writeSnapshot(payload) {
 
 function printDiff(current, snapshot) {
   console.error("DNS resolution does not match src/data/portal-ips.json");
-  console.error("Run `pnpm update:portal-ips` to refresh public/portal-ips.json.");
+  console.error(
+    "Run `pnpm update:portal-ips` to refresh public/portal-ips.json."
+  );
 
   const endpoints = ["app.firezone.dev", "api.firezone.dev"];
   const families = ["ipv4", "ipv6"];
