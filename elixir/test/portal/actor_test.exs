@@ -24,6 +24,17 @@ defmodule Portal.ActorTest do
       changeset = build_changeset(%{name: String.duplicate("a", 256)})
       assert %{name: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
+
+    test "rejects email host without a dot" do
+      changeset =
+        build_changeset(%{
+          name: "Test Actor",
+          type: :account_user,
+          email: "user@localhost"
+        })
+
+      assert %{email: ["is an invalid email address"]} = errors_on(changeset)
+    end
   end
 
   describe "changeset/1 association constraints" do

@@ -295,6 +295,7 @@ defmodule Portal.Google.DirectoryTest do
         "not-an-email",
         "@example.com",
         "user@",
+        "user@localhost",
         "user name@example.com"
       ]
 

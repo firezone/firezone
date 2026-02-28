@@ -252,6 +252,29 @@ defmodule PortalAPI.ActorControllerTest do
       assert resp["data"]["email"] == attrs["email"]
       assert resp["data"]["type"] == attrs["type"]
     end
+
+    test "returns validation error when email host has no dot", %{conn: conn, actor: api_actor} do
+      attrs = %{
+        "name" => "Test User",
+        "email" => "test_user@localhost",
+        "type" => "account_user"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{
+                   "email" => ["is an invalid email address"]
+                 }
+               }
+             } = json_response(conn, 422)
+    end
   end
 
   describe "update/2" do
