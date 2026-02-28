@@ -63,7 +63,7 @@ defmodule Portal.Okta.AuthProvider do
     |> validate_acceptance(:is_verified)
     |> put_discovery_document_uri()
     |> validate_required(:discovery_document_uri)
-    |> validate_uri(:discovery_document_uri)
+    |> validate_uri(:discovery_document_uri, block_private_ips: true)
     |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_fqdn(:okta_domain)
     |> validate_length(:issuer, min: 1, max: 2_000)

@@ -80,7 +80,8 @@ defmodule PortalWeb.OIDC do
   - Other params merged into OIDC params
   """
   def authorization_uri(provider, opts \\ []) do
-    with {:ok, config} <- config_for_provider(provider) do
+    with {:ok, config} <- config_for_provider(provider),
+         :ok <- maybe_validate_public_host(provider, config) do
       state = Keyword.get(opts, :state, Portal.Crypto.random_token(32))
       verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
       challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
@@ -229,7 +230,8 @@ defmodule PortalWeb.OIDC do
       prompt: prompt
     }
 
-    with {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
+    with :ok <- validate_public_host(config[:discovery_document_uri]),
+         {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
       {:ok,
        %{
          token: token,
@@ -252,6 +254,29 @@ defmodule PortalWeb.OIDC do
       {:ok, claims}
     end
   end
+
+  defp maybe_validate_public_host(%OIDC.AuthProvider{}, config),
+    do: validate_public_host(config[:discovery_document_uri])
+
+  defp maybe_validate_public_host(%Okta.AuthProvider{}, config),
+    do: validate_public_host(config[:discovery_document_uri])
+
+  defp maybe_validate_public_host(%Entra.AuthProvider{}, config),
+    do: validate_public_host(config[:discovery_document_uri])
+
+  defp maybe_validate_public_host(_provider, _config), do: :ok
+
+  defp validate_public_host(uri_string) when is_binary(uri_string) do
+    case URI.parse(uri_string) do
+      %URI{host: host} when is_binary(host) and host != "" ->
+        if Portal.Changeset.public_host?(host), do: :ok, else: {:error, :private_ip_blocked}
+
+      _ ->
+        {:error, :invalid_discovery_document_uri}
+    end
+  end
+
+  defp validate_public_host(nil), do: :ok
 
   defp callback_url, do: url(~p"/auth/oidc/callback")
 

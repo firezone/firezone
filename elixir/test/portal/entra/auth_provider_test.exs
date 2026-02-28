@@ -256,6 +256,64 @@ defmodule Portal.Entra.AuthProviderTest do
     end
   end
 
+  describe "changeset/1 issuer IP blocking" do
+    setup do
+      account = account_fixture()
+      %{account: account}
+    end
+
+    test "rejects private IP in issuer (169.254.169.254)", %{account: account} do
+      changeset =
+        %AuthProvider{account_id: account.id}
+        |> Ecto.Changeset.cast(
+          %{
+            name: "Test Entra",
+            context: :clients_and_portal,
+            issuer: "http://169.254.169.254",
+            is_verified: true
+          },
+          [:name, :context, :issuer, :is_verified]
+        )
+        |> AuthProvider.changeset()
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).issuer
+    end
+
+    test "rejects private IP in issuer (192.168.1.1)", %{account: account} do
+      changeset =
+        %AuthProvider{account_id: account.id}
+        |> Ecto.Changeset.cast(
+          %{
+            name: "Test Entra",
+            context: :clients_and_portal,
+            issuer: "http://192.168.1.1",
+            is_verified: true
+          },
+          [:name, :context, :issuer, :is_verified]
+        )
+        |> AuthProvider.changeset()
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).issuer
+    end
+
+    test "rejects FQDN that resolves to a private IP", %{account: account} do
+      changeset =
+        %AuthProvider{account_id: account.id}
+        |> Ecto.Changeset.cast(
+          %{
+            name: "Test Entra",
+            context: :clients_and_portal,
+            issuer: "http://localhost",
+            is_verified: true
+          },
+          [:name, :context, :issuer, :is_verified]
+        )
+        |> AuthProvider.changeset()
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).issuer
+    end
+  end
+
   describe "default_portal_session_lifetime_secs/0" do
     test "returns the default portal session lifetime" do
       assert AuthProvider.default_portal_session_lifetime_secs() == 28_800

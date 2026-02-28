@@ -1349,6 +1349,44 @@ defmodule PortalWeb.OIDCControllerTest do
       assert log =~ "OIDC authorization URI error"
     end
 
+    test "redirects with error when discovery document URI is a private IP", %{conn: conn} do
+      account = account_fixture()
+
+      # Bypass changeset validation to insert a provider with a private IP URI
+      auth_provider = auth_provider_fixture(type: :oidc, account: account)
+      unique_num = System.unique_integer([:positive, :monotonic])
+
+      provider =
+        %Portal.OIDC.AuthProvider{id: auth_provider.id}
+        |> Ecto.Changeset.change(%{
+          name: "Private IP OIDC #{unique_num}",
+          context: :clients_and_portal,
+          client_id: "test-client-#{unique_num}",
+          client_secret: "test-secret-#{unique_num}",
+          discovery_document_uri: "https://10.0.0.1/.well-known/openid-configuration",
+          issuer: "https://auth.example.com",
+          is_verified: true,
+          is_disabled: false,
+          client_session_lifetime_secs: 604_800,
+          portal_session_lifetime_secs: 28_800
+        })
+        |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
+        |> Ecto.Changeset.put_assoc(:account, account)
+        |> Portal.Repo.insert!()
+
+      log =
+        capture_log(fn ->
+          conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          assert flash(conn, :error) ==
+                   "The Discovery Document URI must not point to a private or reserved IP address."
+        end)
+
+      assert log =~ "OIDC authorization URI error"
+    end
+
     test "redirects with descriptive error when discovery document times out", %{conn: conn} do
       account = account_fixture()
 
@@ -1412,7 +1450,7 @@ defmodule PortalWeb.OIDCControllerTest do
           assert redirected_to(conn) == "/#{account.slug}"
 
           assert flash(conn, :error) ==
-                   "Unable to fetch discovery document: :closed. Please check the Discovery Document URI."
+                   "Unable to fetch discovery document. Please check the Discovery Document URI."
         end)
 
       assert log =~ "OIDC authorization URI error"
@@ -1440,6 +1478,64 @@ defmodule PortalWeb.OIDCControllerTest do
         end)
 
       assert log =~ "OIDC authorization URI error"
+    end
+
+    test "preserves client params on transient discovery errors and succeeds on retry", %{
+      conn: conn
+    } do
+      account = account_fixture()
+      %{provider: provider} = setup_oidc_provider(account)
+
+      for params <- [
+            %{
+              "as" => "client",
+              "state" => "client-state",
+              "nonce" => "client-nonce",
+              "redirect_to" => "/sites/site-1"
+            },
+            %{
+              "as" => "gui-client",
+              "state" => "gui-state",
+              "nonce" => "gui-nonce"
+            },
+            %{
+              "as" => "headless-client",
+              "state" => "headless-state"
+            }
+          ] do
+        OpenIDConnect.Document.Cache.clear()
+        Mocks.OIDC.stub_connection_refused()
+
+        failed_conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", params)
+        failed_location = redirected_to(failed_conn)
+
+        assert String.starts_with?(failed_location, "/#{account.slug}?")
+
+        failed_query = failed_location |> URI.parse() |> Map.get(:query) |> URI.decode_query()
+
+        assert failed_query["as"] == params["as"]
+        assert failed_query["state"] == params["state"]
+        assert failed_query["nonce"] == params["nonce"]
+        assert failed_query["redirect_to"] == params["redirect_to"]
+
+        Mocks.OIDC.stub_discovery_document()
+
+        retry_conn =
+          get(
+            recycle(conn),
+            "/#{account.id}/sign_in/oidc/#{provider.id}",
+            failed_query
+          )
+
+        retry_state = auth_state_from_redirect(retry_conn)
+
+        assert redirected_to(retry_conn) =~ "/authorize"
+        assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(retry_state))
+        assert auth_state["params"]["as"] == params["as"]
+        assert auth_state["params"]["state"] == params["state"]
+        assert auth_state["params"]["nonce"] == params["nonce"]
+        assert auth_state["params"]["redirect_to"] == params["redirect_to"]
+      end
     end
   end
 

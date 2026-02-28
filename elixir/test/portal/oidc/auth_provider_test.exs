@@ -23,6 +23,68 @@ defmodule Portal.OIDC.AuthProviderTest do
     |> AuthProvider.changeset()
   end
 
+  describe "changeset/1 discovery_document_uri IP blocking" do
+    test "rejects literal IPv4 private IPs" do
+      for ip <- ["10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "127.0.0.1"] do
+        changeset =
+          build_changeset(%{
+            discovery_document_uri: "https://#{ip}/.well-known/openid-configuration"
+          })
+
+        assert "must not be a private or reserved IP address" in errors_on(changeset).discovery_document_uri,
+               "Expected #{ip} to be rejected"
+      end
+    end
+
+    test "rejects literal IPv6 private IPs" do
+      for {ip, bracket} <- [{"::1", "[::1]"}, {"fe80::1", "[fe80::1]"}, {"fc00::1", "[fc00::1]"}] do
+        changeset =
+          build_changeset(%{
+            discovery_document_uri: "https://#{bracket}/.well-known/openid-configuration"
+          })
+
+        assert "must not be a private or reserved IP address" in errors_on(changeset).discovery_document_uri,
+               "Expected #{ip} to be rejected"
+      end
+    end
+
+    test "rejects IPv4-mapped IPv6 private IPs" do
+      changeset =
+        build_changeset(%{
+          discovery_document_uri: "https://[::ffff:127.0.0.1]/.well-known/openid-configuration"
+        })
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).discovery_document_uri
+    end
+
+    test "rejects FQDN that resolves to a private IP" do
+      changeset =
+        build_changeset(%{
+          discovery_document_uri: "https://localhost/.well-known/openid-configuration"
+        })
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).discovery_document_uri
+    end
+
+    test "accepts domain names" do
+      changeset =
+        build_changeset(%{
+          discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+        })
+
+      refute :discovery_document_uri in Keyword.keys(changeset.errors)
+    end
+
+    test "accepts public IP" do
+      changeset =
+        build_changeset(%{
+          discovery_document_uri: "https://8.8.8.8/.well-known/openid-configuration"
+        })
+
+      refute :discovery_document_uri in Keyword.keys(changeset.errors)
+    end
+  end
+
   describe "changeset/1 basic validations" do
     test "inserts client_id at maximum length" do
       provider = oidc_provider_fixture(client_id: String.duplicate("a", 255))
