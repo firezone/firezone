@@ -155,6 +155,26 @@ defmodule PortalAPI.MembershipControllerTest do
       assert [%{"actor" => ["does not exist"]}] = memberships
     end
 
+    test "returns validation error for malformed actor uuid", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = group_fixture(account: account)
+      attrs = %{"add" => ["<no value>"]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
+
+      resp = json_response(conn, 422)
+      assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
+      assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
+      assert [%{"actor_id" => ["is invalid"]}] = memberships
+    end
+
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
       group = group_fixture(account: account)
       actor1 = actor_fixture(account: account)
@@ -245,6 +265,26 @@ defmodule PortalAPI.MembershipControllerTest do
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
+    test "returns validation error for malformed actor uuid", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = group_fixture(account: account)
+      attrs = [%{"actor_id" => "<no value>"}]
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}/memberships", memberships: attrs)
+
+      resp = json_response(conn, 422)
+      assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
+      assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
+      assert [%{"actor_id" => ["is invalid"]}] = memberships
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
