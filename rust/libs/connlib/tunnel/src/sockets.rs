@@ -277,7 +277,7 @@ impl ThreadedUdpSocket {
                                 tracing::debug!(
                                     "Channel for outbound datagrams closed; exiting UDP send task"
                                 );
-                                break;
+                                return;
                             }
 
                             for datagram in pending_datagrams.drain(..) {
@@ -299,7 +299,7 @@ impl ThreadedUdpSocket {
                                         tracing::debug!(
                                             "Channel for inbound datagrams closed; exiting UDP send task"
                                         );
-                                        break;
+                                        return;
                                     }
                                 };
                             }
@@ -330,7 +330,7 @@ impl ThreadedUdpSocket {
                             tracing::debug!(
                                 "Channel for inbound datagrams closed; exiting UDP recv task"
                             );
-                            break;
+                            return;
                         }
                     }
                 });
