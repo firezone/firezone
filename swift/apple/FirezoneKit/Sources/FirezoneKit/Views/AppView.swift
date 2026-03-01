@@ -39,7 +39,9 @@ public struct AppView: View {
           }
 
           // Close window for day to day use
-          if vpnStatus != .invalid && systemExtensionStatus == .installed && launchedBefore() {
+          if vpnStatus != .invalid && systemExtensionStatus == .installed
+            && launchedBefore(userDefaults: store.userDefaults)
+          {
             WindowDefinition.main.window()?.close()
           }
         })
@@ -79,9 +81,9 @@ public struct AppView: View {
       }
     }
 
-    private static func launchedBefore() -> Bool {
-      let bool = UserDefaults.standard.bool(forKey: "launchedBefore")
-      UserDefaults.standard.set(true, forKey: "launchedBefore")
+    private static func launchedBefore(userDefaults: UserDefaults) -> Bool {
+      let bool = userDefaults.bool(forKey: "launchedBefore")
+      userDefaults.set(true, forKey: "launchedBefore")
 
       return bool
     }

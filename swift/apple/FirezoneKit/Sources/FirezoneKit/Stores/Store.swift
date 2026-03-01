@@ -18,7 +18,7 @@ import UserNotifications
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
   @Published private(set) var actorName: String
-  @Published private(set) var favorites = Favorites()
+  @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
@@ -58,6 +58,9 @@ public final class Store: ObservableObject {
   // Track which unreachable resource notifications we have already shown
   private var unreachableResources: Set<UnreachableResource> = []
 
+  /// UserDefaults instance for persisting GUI state.
+  let userDefaults: UserDefaults
+
   // Task consuming VPN status updates; its presence means observers are active.
   private var vpnStatusTask: CancellableTask?
 
@@ -65,25 +68,31 @@ public final class Store: ObservableObject {
     public init(
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
-      systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil
+      systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
+      userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.updateChecker = UpdateChecker(configuration: configuration)
+      self.updateChecker = UpdateChecker(configuration: configuration, userDefaults: userDefaults)
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
-      self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
-      self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
+      self.userDefaults = userDefaults
+      self.favorites = Favorites(userDefaults: userDefaults)
+      self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
+      self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
   #else
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification()
+      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
       self.sessionNotification = sessionNotification
-      self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
-      self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
+      self.userDefaults = userDefaults
+      self.favorites = Favorites(userDefaults: userDefaults)
+      self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
+      self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
   #endif
@@ -385,7 +394,7 @@ public final class Store: ObservableObject {
 
     // This is only shown in the GUI, cache it here
     self.actorName = actorName
-    UserDefaults.standard.set(actorName, forKey: "actorName")
+    userDefaults.set(actorName, forKey: "actorName")
 
     configuration.accountSlug = accountSlug
 
@@ -393,7 +402,7 @@ public final class Store: ObservableObject {
 
     // Clear shown alerts when starting a new session so user can see new errors
     shownAlertIds.removeAll()
-    UserDefaults.standard.removeObject(forKey: "shownAlertIds")
+    userDefaults.removeObject(forKey: "shownAlertIds")
 
     // Clear notified unreachable resources for fresh session
     unreachableResources.removeAll()
@@ -426,7 +435,7 @@ public final class Store: ObservableObject {
 
   private func fetchAndCacheFirezoneId() {
     // Skip IPC if we already have a cached Firezone ID for this session
-    if UserDefaults.standard.string(forKey: "encodedFirezoneId") != nil {
+    if userDefaults.string(forKey: "encodedFirezoneId") != nil {
       return
     }
 
@@ -436,7 +445,7 @@ public final class Store: ObservableObject {
           let firezoneId = try await IPCClient.fetchEncodedFirezoneId(session: session)
         else { return }
 
-        UserDefaults.standard.set(firezoneId, forKey: "encodedFirezoneId")
+        userDefaults.set(firezoneId, forKey: "encodedFirezoneId")
         Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
       } catch {
         Log.error(error)
@@ -446,7 +455,7 @@ public final class Store: ObservableObject {
 
   private func markAlertAsShown(_ id: String) {
     shownAlertIds.insert(id)
-    UserDefaults.standard.set(Array(shownAlertIds), forKey: "shownAlertIds")
+    userDefaults.set(Array(shownAlertIds), forKey: "shownAlertIds")
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
