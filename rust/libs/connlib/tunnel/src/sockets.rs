@@ -260,17 +260,18 @@ impl ThreadedUdpSocket {
                 };
 
                 let socket = Arc::new(socket);
-                const BATCHES_PER_YIELD: usize = 16;
 
                 let send = runtime.spawn({
                     let io_error_counter = io_error_counter.clone();
                     let inbound_tx = inbound_tx.clone();
                     let socket = socket.clone();
-                    let mut pending_datagrams = Vec::with_capacity(BATCHES_PER_YIELD);
+
+                    let mut pending_datagrams = Vec::with_capacity(16);
+                    let limit = pending_datagrams.capacity();
 
                     async move {
                         loop {
-                            let num_batches = outbound_rx.recv_many(&mut pending_datagrams, BATCHES_PER_YIELD).await;
+                            let num_batches = outbound_rx.recv_many(&mut pending_datagrams, limit).await;
 
                             if num_batches == 0 {
                                 tracing::debug!(
