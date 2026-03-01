@@ -269,11 +269,11 @@ impl ThreadedUdpSocket {
                     let mut pending_datagrams = Vec::with_capacity(BATCHES_PER_YIELD);
 
                     async move {
-                        'recv: loop {
+                        loop {
                             let num_batches = outbound_rx.recv_many(&mut pending_datagrams, BATCHES_PER_YIELD).await;
 
                             if num_batches == 0 {
-                                break 'recv;
+                                break;
                             }
 
                             for datagram in pending_datagrams.drain(..) {
@@ -295,45 +295,39 @@ impl ThreadedUdpSocket {
                                         tracing::debug!(
                                             "Channel for inbound datagrams closed; exiting UDP thread"
                                         );
-                                        break 'recv;
+                                        break;
                                     }
                                 };
                             }
-
-                            tokio::task::yield_now().await;
                         };
                     }
                 });
                 let receive = runtime.spawn(async move {
-                    'send: loop {
-                        for _ in 0..BATCHES_PER_YIELD {
-                            let result = socket.recv_from().await;
+                    loop {
+                        let result = socket.recv_from().await;
 
-                            if let Some(io) = result
-                                .as_ref()
-                                .err()
-                                .and_then(|e| e.any_downcast_ref::<io::Error>())
-                            {
-                                io_error_counter.add(
-                                    1,
-                                    &[
-                                        otel::attr::network_io_direction_receive(),
-                                        otel::attr::network_type_for_addr(preferred_addr),
-                                        otel::attr::io_error_type(io),
-                                        otel::attr::io_error_code(io),
-                                    ],
-                                );
-                            }
-
-                            if inbound_tx.send(result).await.is_err() {
-                                tracing::debug!(
-                                    "Channel for inbound datagrams closed; exiting UDP thread"
-                                );
-                                break 'send;
-                            }
+                        if let Some(io) = result
+                            .as_ref()
+                            .err()
+                            .and_then(|e| e.any_downcast_ref::<io::Error>())
+                        {
+                            io_error_counter.add(
+                                1,
+                                &[
+                                    otel::attr::network_io_direction_receive(),
+                                    otel::attr::network_type_for_addr(preferred_addr),
+                                    otel::attr::io_error_type(io),
+                                    otel::attr::io_error_code(io),
+                                ],
+                            );
                         }
 
-                        tokio::task::yield_now().await;
+                        if inbound_tx.send(result).await.is_err() {
+                            tracing::debug!(
+                                "Channel for inbound datagrams closed; exiting UDP thread"
+                            );
+                            break;
+                        }
                     }
                 });
 
