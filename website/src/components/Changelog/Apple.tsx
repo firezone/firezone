@@ -26,8 +26,8 @@ export default function Apple() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="12355">
-          Reduces CPU overhead by processing up to 16 UDP datagram batches before
-          yielding to the scheduler.
+          Reduces CPU overhead by processing up to 16 UDP datagram batches
+          before yielding to the scheduler.
         </ChangeItem>
         <ChangeItem pull="12236">
           Fixes an issue on macOS where the app could get stuck on the loading
