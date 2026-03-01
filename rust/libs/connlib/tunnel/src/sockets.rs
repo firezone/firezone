@@ -273,6 +273,9 @@ impl ThreadedUdpSocket {
                             let num_batches = outbound_rx.recv_many(&mut pending_datagrams, BATCHES_PER_YIELD).await;
 
                             if num_batches == 0 {
+                                tracing::debug!(
+                                    "Channel for outbound datagrams closed; exiting UDP send task"
+                                );
                                 break;
                             }
 
@@ -293,7 +296,7 @@ impl ThreadedUdpSocket {
                                     // We use the inbound_tx channel to send the error back to the main thread.
                                     if inbound_tx.send(Err(e)).await.is_err() {
                                         tracing::debug!(
-                                            "Channel for inbound datagrams closed; exiting UDP thread"
+                                            "Channel for inbound datagrams closed; exiting UDP send task"
                                         );
                                         break;
                                     }
@@ -324,7 +327,7 @@ impl ThreadedUdpSocket {
 
                         if inbound_tx.send(result).await.is_err() {
                             tracing::debug!(
-                                "Channel for inbound datagrams closed; exiting UDP thread"
+                                "Channel for inbound datagrams closed; exiting UDP recv task"
                             );
                             break;
                         }
