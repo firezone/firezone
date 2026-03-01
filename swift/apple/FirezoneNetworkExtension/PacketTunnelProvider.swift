@@ -30,7 +30,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private var logExportState: LogExportState = .idle
   private var tunnelConfiguration: TunnelConfiguration?
-  // swiftlint:disable:next no_userdefaults_standard
+  // swiftlint:disable:next no_userdefaults_standard - NetworkExtension DI entry point uses shared UserDefaults store
   private let defaults = UserDefaults.standard
 
   override init() {
