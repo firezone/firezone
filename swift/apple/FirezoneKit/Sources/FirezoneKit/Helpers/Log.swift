@@ -79,11 +79,11 @@ public final class Log {
   }()
 
   private static func sentryLog(severity: LogWriter.Severity, message: String) {
-    let attrs = sentryLock.withLock {
-      guard _streamingActive else { return nil as [String: Any]? }
+    let attrs: [String: Any] = sentryLock.withLock {
+      guard _streamingActive else { return [:] }
       return _sentryAttributes
     }
-    guard let attrs else { return }
+    guard !attrs.isEmpty else { return }
     switch severity {
     case .trace: return  // we don't bother sending trace-level logs to Sentry
     case .debug: SentrySDK.logger.debug(message, attributes: attrs)
