@@ -260,19 +260,21 @@ impl ThreadedUdpSocket {
                 };
 
                 let socket = Arc::new(socket);
-                const PACKETS_PER_YIELD: usize = 16;
+                const BATCHES_PER_YIELD: usize = 16;
 
                 let send = runtime.spawn({
                     let io_error_counter = io_error_counter.clone();
                     let inbound_tx = inbound_tx.clone();
                     let socket = socket.clone();
-                    let mut pending_datagrams = Vec::with_capacity(PACKETS_PER_YIELD);
+                    let mut pending_datagrams = Vec::with_capacity(BATCHES_PER_YIELD);
 
                     async move {
+                        let mut batches_since_yield = 0;
                         'recv: loop {
-                            let num_packets = outbound_rx.recv_many(&mut pending_datagrams, PACKETS_PER_YIELD).await;
+                            let num_batches =
+                                outbound_rx.recv_many(&mut pending_datagrams, BATCHES_PER_YIELD).await;
 
-                            if num_packets == 0 {
+                            if num_batches == 0 {
                                 break 'recv;
                             }
 
@@ -300,13 +302,17 @@ impl ThreadedUdpSocket {
                                 };
                             }
 
-                            tokio::task::yield_now().await;
+                            batches_since_yield += num_batches;
+                            if batches_since_yield >= BATCHES_PER_YIELD {
+                                tokio::task::yield_now().await;
+                                batches_since_yield -= BATCHES_PER_YIELD;
+                            }
                         };
                     }
                 });
                 let receive = runtime.spawn(async move {
                     'send: loop {
-                        for _ in 0..PACKETS_PER_YIELD {
+                        for _ in 0..BATCHES_PER_YIELD {
                             let result = socket.recv_from().await;
 
                             if let Some(io) = result
