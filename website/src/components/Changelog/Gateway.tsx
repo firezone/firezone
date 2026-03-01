@@ -24,7 +24,7 @@ export default function Gateway() {
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
         <ChangeItem pull="12355">
-          Reduces CPU overhead by processing UDP packets in batches of 64 before
+          Reduces CPU overhead by processing up to 16 UDP datagram batches before
           yielding to the scheduler.
         </ChangeItem>
         <ChangeItem pull="12251">
