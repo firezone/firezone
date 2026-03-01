@@ -155,7 +155,7 @@ custom_rules:
     severity: error
   no_userdefaults_standard:
     name: "Prefer injected UserDefaults"
-    regex: 'UserDefaults\.standard'
+    regex: '(UserDefaults\.standard|:\s*UserDefaults\s*=\s*\.standard)'
     message: "Use injected userDefaults instead of .standard for testability. If this is a DI entry point or view code, add swiftlint:disable:next."
     severity: error
 
