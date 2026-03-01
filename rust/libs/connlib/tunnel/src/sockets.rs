@@ -266,17 +266,17 @@ impl ThreadedUdpSocket {
                     let io_error_counter = io_error_counter.clone();
                     let inbound_tx = inbound_tx.clone();
                     let socket = socket.clone();
+                    let mut pending_datagrams = Vec::with_capacity(PACKETS_PER_YIELD);
 
                     async move {
                         'recv: loop {
-                            for _ in 0..PACKETS_PER_YIELD {
-                                let Some(datagram) = outbound_rx.recv().await else {
-                                    tracing::debug!(
-                                        "Channel for outbound datagrams closed; exiting UDP thread"
-                                    );
-                                    break 'recv;
-                                };
+                            let num_packets = outbound_rx.recv_many(&mut pending_datagrams, PACKETS_PER_YIELD).await;
 
+                            if num_packets == 0 {
+                                break 'recv;
+                            }
+
+                            for datagram in pending_datagrams.drain(..) {
                                 if let Err(e) = socket.send(datagram).await {
                                     if let Some(io) = e.any_downcast_ref::<io::Error>() {
                                         io_error_counter.add(
