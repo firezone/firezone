@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@docsearch/react':
-        specifier: ^4.5.4
-        version: 4.5.4(@algolia/client-search@5.46.2)(@types/react@19.2.14)(algoliasearch@5.46.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(search-insights@2.14.0)
+        specifier: ^4.6.0
+        version: 4.6.0(@algolia/client-search@5.46.2)(@types/react@19.2.14)(algoliasearch@5.46.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(search-insights@2.14.0)
       '@mdx-js/loader':
         specifier: ^3.1.1
         version: 3.1.1
@@ -297,8 +297,8 @@ packages:
   '@corex/deepmerge@4.0.43':
     resolution: {integrity: sha512-N8uEMrMPL0cu/bdboEWpQYb/0i2K5Qn8eCsxzOmxSggJbbQte7ljMRoXm917AbntqTGOzdTu+vP3KOOzoC70HQ==}
 
-  '@docsearch/core@4.5.4':
-    resolution: {integrity: sha512-DbkfZbJyYAPFJtF71eAFOTQSy5z5c/hdSN0UrErORKDwXKLTJBR0c+5WxE5l+IKZx4xIaEa8RkrL7T28DTCOYw==}
+  '@docsearch/core@4.6.0':
+    resolution: {integrity: sha512-IqG3oSd529jVRQ4dWZQKwZwQLVd//bWJTz2HiL0LkiHrI4U/vLrBasKB7lwQB/69nBAcCgs3TmudxTZSLH/ZQg==}
     peerDependencies:
       '@types/react': '>= 16.8.0 < 20.0.0'
       react: '>= 16.8.0 < 20.0.0'
@@ -311,11 +311,11 @@ packages:
       react-dom:
         optional: true
 
-  '@docsearch/css@4.5.4':
-    resolution: {integrity: sha512-gzO4DJwyM9c4YEPHwaLV1nUCDC2N6yoh0QJj44dce2rcfN71mB+jpu3+F+Y/KMDF1EKV0C3m54leSWsraE94xg==}
+  '@docsearch/css@4.6.0':
+    resolution: {integrity: sha512-YlcAimkXclvqta47g47efzCM5CFxDwv2ClkDfEs/fC/Ak0OxPH2b3czwa4o8O1TRBf+ujFF2RiUwszz2fPVNJQ==}
 
-  '@docsearch/react@4.5.4':
-    resolution: {integrity: sha512-iBNFfvWoUFRUJmGQ/r+0AEp2OJgJMoYIKRiRcTDON0hObBRSLlrv2ktb7w3nc1MeNm1JIpbPA99i59TiIR49fA==}
+  '@docsearch/react@4.6.0':
+    resolution: {integrity: sha512-j8H5B4ArGxBPBWvw3X0J0Rm/Pjv2JDa2rV5OE0DLTp5oiBCptIJ/YlNOhZxuzbO2nwge+o3Z52nJRi3hryK9cA==}
     peerDependencies:
       '@types/react': '>= 16.8.0 < 20.0.0'
       react: '>= 16.8.0 < 20.0.0'
@@ -3370,19 +3370,19 @@ snapshots:
 
   '@corex/deepmerge@4.0.43': {}
 
-  '@docsearch/core@4.5.4(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@docsearch/core@4.6.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     optionalDependencies:
       '@types/react': 19.2.14
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
 
-  '@docsearch/css@4.5.4': {}
+  '@docsearch/css@4.6.0': {}
 
-  '@docsearch/react@4.5.4(@algolia/client-search@5.46.2)(@types/react@19.2.14)(algoliasearch@5.46.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(search-insights@2.14.0)':
+  '@docsearch/react@4.6.0(@algolia/client-search@5.46.2)(@types/react@19.2.14)(algoliasearch@5.46.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(search-insights@2.14.0)':
     dependencies:
       '@algolia/autocomplete-core': 1.19.2(@algolia/client-search@5.46.2)(algoliasearch@5.46.2)(search-insights@2.14.0)
-      '@docsearch/core': 4.5.4(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@docsearch/css': 4.5.4
+      '@docsearch/core': 4.6.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@docsearch/css': 4.6.0
     optionalDependencies:
       '@types/react': 19.2.14
       react: 19.2.4
