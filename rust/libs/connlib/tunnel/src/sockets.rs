@@ -269,10 +269,8 @@ impl ThreadedUdpSocket {
                     let mut pending_datagrams = Vec::with_capacity(BATCHES_PER_YIELD);
 
                     async move {
-                        let mut batches_since_yield = 0;
                         'recv: loop {
-                            let num_batches =
-                                outbound_rx.recv_many(&mut pending_datagrams, BATCHES_PER_YIELD).await;
+                            let num_batches = outbound_rx.recv_many(&mut pending_datagrams, BATCHES_PER_YIELD).await;
 
                             if num_batches == 0 {
                                 break 'recv;
@@ -302,11 +300,7 @@ impl ThreadedUdpSocket {
                                 };
                             }
 
-                            batches_since_yield += num_batches;
-                            if batches_since_yield >= BATCHES_PER_YIELD {
-                                tokio::task::yield_now().await;
-                                batches_since_yield -= BATCHES_PER_YIELD;
-                            }
+                            tokio::task::yield_now().await;
                         };
                     }
                 });
