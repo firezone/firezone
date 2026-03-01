@@ -29,23 +29,24 @@ public struct ConnlibState: Encodable, Decodable {
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
-  /// Decodes a ConnlibState from data and returns the fields and hash
+  public struct DecodedState {
+    public let resources: [FirezoneKit.Resource]?  // swiftlint:disable:this discouraged_optional_collection
+    public let unreachableResources: [UnreachableResource]
+    public let isLogStreamingActive: Bool
+    public let hash: Data
+  }
+
+  /// Decodes a ConnlibState from data and returns the fields and hash.
   /// - Parameter data: The encoded data to decode
-  /// - Returns: A tuple containing the resources, unreachable resources, log streaming flag, and hash
   /// - Throws: If decoding fails
-  public static func decode(
-    from data: Data
-  ) throws -> (
-    resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
-    unreachableResources: [UnreachableResource],
-    isLogStreamingActive: Bool,
-    hash: Data
-  ) {
+  public static func decode(from data: Data) throws -> DecodedState {
     let hash = Data(SHA256.hash(data: data))
     let state = try Self.decoder.decode(ConnlibState.self, from: data)
-    return (
-      resources: state.resources, unreachableResources: state.unreachableResources,
-      isLogStreamingActive: state.isLogStreamingActive, hash: hash
+    return DecodedState(
+      resources: state.resources,
+      unreachableResources: state.unreachableResources,
+      isLogStreamingActive: state.isLogStreamingActive,
+      hash: hash
     )
   }
 

@@ -28,12 +28,12 @@ struct ConnlibStateTests {
     )
 
     let unwrappedData = try #require(data)
-    let (resources, unreachableResources, _, hash) = try ConnlibState.decode(from: unwrappedData)
+    let decoded = try ConnlibState.decode(from: unwrappedData)
 
-    #expect(hash.count == 32)  // SHA256 hash size
-    #expect(resources?.count == 1)
-    #expect(resources?[0].id == "1")
-    #expect(unreachableResources.count == 1)
+    #expect(decoded.hash.count == 32)  // SHA256 hash size
+    #expect(decoded.resources?.count == 1)
+    #expect(decoded.resources?[0].id == "1")
+    #expect(decoded.unreachableResources.count == 1)
   }
 
   @Test("decode() produces same hash for identical content")
@@ -56,10 +56,10 @@ struct ConnlibStateTests {
 
     let unwrappedData1 = try #require(data1)
     let unwrappedData2 = try #require(data2)
-    let (_, _, _, hash1) = try ConnlibState.decode(from: unwrappedData1)
-    let (_, _, _, hash2) = try ConnlibState.decode(from: unwrappedData2)
+    let decoded1 = try ConnlibState.decode(from: unwrappedData1)
+    let decoded2 = try ConnlibState.decode(from: unwrappedData2)
 
-    #expect(hash1 == hash2)
+    #expect(decoded1.hash == decoded2.hash)
   }
 
   @Test("decode() produces different hash for different content")
@@ -83,10 +83,10 @@ struct ConnlibStateTests {
 
     let unwrappedData1 = try #require(data1)
     let unwrappedData2 = try #require(data2)
-    let (_, _, _, hash1) = try ConnlibState.decode(from: unwrappedData1)
-    let (_, _, _, hash2) = try ConnlibState.decode(from: unwrappedData2)
+    let decoded1 = try ConnlibState.decode(from: unwrappedData1)
+    let decoded2 = try ConnlibState.decode(from: unwrappedData2)
 
-    #expect(hash1 != hash2)
+    #expect(decoded1.hash != decoded2.hash)
   }
 
   // MARK: - encodeIfChanged() Tests
@@ -105,14 +105,14 @@ struct ConnlibStateTests {
     )
 
     let unwrappedData = try #require(data)
-    let (_, _, _, hash) = try ConnlibState.decode(from: unwrappedData)
+    let decoded = try ConnlibState.decode(from: unwrappedData)
 
     // Now try to encode again with the same hash
     let result = try ConnlibState.encodeIfChanged(
       resources: [resource],
       unreachableResources: [unreachable],
       isLogStreamingActive: false,
-      comparedTo: hash
+      comparedTo: decoded.hash
     )
 
     #expect(result == nil)
@@ -132,22 +132,22 @@ struct ConnlibStateTests {
     )
 
     let unwrappedData1 = try #require(data1)
-    let (_, _, _, hash1) = try ConnlibState.decode(from: unwrappedData1)
+    let decoded1 = try ConnlibState.decode(from: unwrappedData1)
 
     // Try to encode different state with first hash
     let result = try ConnlibState.encodeIfChanged(
       resources: [resource2],
       unreachableResources: [],
       isLogStreamingActive: false,
-      comparedTo: hash1
+      comparedTo: decoded1.hash
     )
 
     #expect(result != nil)
 
     let unwrappedResult = try #require(result)
-    let (resources, _, _, _) = try ConnlibState.decode(from: unwrappedResult)
-    #expect(resources?.count == 1)
-    #expect(resources?[0].id == "2")
+    let decoded = try ConnlibState.decode(from: unwrappedResult)
+    #expect(decoded.resources?.count == 1)
+    #expect(decoded.resources?[0].id == "2")
   }
 
   @Test("encodeIfChanged() handles nil resources")
@@ -162,9 +162,9 @@ struct ConnlibStateTests {
     #expect(result != nil)
 
     let unwrappedResult = try #require(result)
-    let (resources, unreachableResources, _, _) = try ConnlibState.decode(from: unwrappedResult)
-    #expect(resources == nil)
-    #expect(unreachableResources.isEmpty)
+    let decoded = try ConnlibState.decode(from: unwrappedResult)
+    #expect(decoded.resources == nil)
+    #expect(decoded.unreachableResources.isEmpty)
   }
 
   // MARK: - isLogStreamingActive Tests
@@ -179,9 +179,9 @@ struct ConnlibStateTests {
     )
 
     let unwrapped = try #require(data)
-    let (_, _, isActive, _) = try ConnlibState.decode(from: unwrapped)
+    let decoded = try ConnlibState.decode(from: unwrapped)
 
-    #expect(isActive == true)
+    #expect(decoded.isLogStreamingActive == true)
   }
 
   @Test("encodeIfChanged() detects isLogStreamingActive change")
@@ -194,14 +194,14 @@ struct ConnlibStateTests {
     )
 
     let unwrapped = try #require(data)
-    let (_, _, _, hash) = try ConnlibState.decode(from: unwrapped)
+    let decoded = try ConnlibState.decode(from: unwrapped)
 
     // Same resources, different streaming flag — should return data
     let result = try ConnlibState.encodeIfChanged(
       resources: nil,
       unreachableResources: [],
       isLogStreamingActive: true,
-      comparedTo: hash
+      comparedTo: decoded.hash
     )
 
     #expect(result != nil)

@@ -535,27 +535,26 @@ public final class Store: ObservableObject {
     }
 
     // Decode state and compute hash
-    let (resources, unreachableResources, isLogStreamingActive, hash) =
-      try ConnlibState.decode(from: data)
+    let decoded = try ConnlibState.decode(from: data)
 
     // Update both hash and resource list
-    self.connlibStateHash = hash
+    self.connlibStateHash = decoded.hash
 
     // Propagate log streaming state from the NE to the main app process
-    Log.setStreamingActive(isLogStreamingActive)
+    Log.setStreamingActive(decoded.isLogStreamingActive)
 
-    if let resources = resources {
+    if let resources = decoded.resources {
       resourceList = ResourceList.loaded(resources)
     }
 
-    let newlyUnreachableResources = Set(unreachableResources).subtracting(self.unreachableResources)
+    let newlyUnreachableResources = Set(decoded.unreachableResources).subtracting(self.unreachableResources)
 
     await showNotificationsForUnreachableResources(
       unreachableResources: newlyUnreachableResources,
-      resources: resources ?? []
+      resources: decoded.resources ?? []
     )
 
-    self.unreachableResources = Set(unreachableResources)
+    self.unreachableResources = Set(decoded.unreachableResources)
   }
 
   private func showNotificationsForUnreachableResources(
