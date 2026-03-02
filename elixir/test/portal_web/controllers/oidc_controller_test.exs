@@ -482,7 +482,8 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) == "/#{account.slug}"
 
-      assert flash(conn, :error) =~ "Failed to verify identity token:"
+      assert flash(conn, :error) ==
+               "Unable to verify your identity token. Please try signing in again."
     end
 
     test "redirects with descriptive error when token endpoint is unreachable (transport error)",
@@ -552,7 +553,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{account.slug}"
 
       assert flash(conn, :error) ==
-               "Unable to reach identity provider: :closed. Please check your network connection and try again."
+               "Unable to reach identity provider. Please check your network connection and try again."
     end
 
     test "redirects with descriptive error when token endpoint returns invalid JSON", %{
@@ -610,7 +611,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{account.slug}"
 
       assert flash(conn, :error) ==
-               "Identity provider returned an error: invalid_request. Please try again."
+               "Identity provider returned an error while signing you in. Please try again."
     end
 
     test "redirects with descriptive error when token exchange returns unhandled status", %{
@@ -1474,7 +1475,9 @@ defmodule PortalWeb.OIDCControllerTest do
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
           assert redirected_to(conn) == "/#{account.slug}"
-          assert flash(conn, :error) =~ "Unable to connect to the identity provider:"
+
+          assert flash(conn, :error) ==
+                   "Unable to connect to the identity provider. Please try again or contact your administrator."
         end)
 
       assert log =~ "OIDC authorization URI error"
