@@ -18,6 +18,7 @@ use tokio_util::sync::PollSender;
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+const UDP_SEND_BATCH_LIMIT: usize = 16;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -266,42 +267,49 @@ impl ThreadedUdpSocket {
                     let inbound_tx = inbound_tx.clone();
                     let socket = socket.clone();
 
+                    let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
+
                     async move {
-                        while let Some(datagram) = outbound_rx.recv().await {
-                            tokio::task::yield_now().await;
+                        loop {
+                            let num_batches = outbound_rx
+                                .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
+                                .await;
 
-                            if let Err(e) = socket.send(datagram).await {
-                                if let Some(io) = e.any_downcast_ref::<io::Error>() {
-                                    io_error_counter.add(
-                                        1,
-                                        &[
-                                            otel::attr::network_io_direction_transmit(),
-                                            otel::attr::network_type_for_addr(preferred_addr),
-                                            otel::attr::io_error_type(io),
-                                            otel::attr::io_error_code(io),
-                                        ],
-                                    );
-                                }
+                            if num_batches == 0 {
+                                tracing::debug!(
+                                    "Channel for outbound datagrams closed; exiting UDP send task"
+                                );
+                                return;
+                            }
 
-                                // We use the inbound_tx channel to send the error back to the main thread.
-                                if inbound_tx.send(Err(e)).await.is_err() {
-                                    tracing::debug!(
-                                        "Channel for inbound datagrams closed; exiting UDP thread"
-                                    );
-                                    break;
-                                }
-                            };
-                        }
+                            for datagram in pending_datagrams.drain(..) {
+                                if let Err(e) = socket.send(datagram).await {
+                                    if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                                        io_error_counter.add(
+                                            1,
+                                            &[
+                                                otel::attr::network_io_direction_transmit(),
+                                                otel::attr::network_type_for_addr(preferred_addr),
+                                                otel::attr::io_error_type(io),
+                                                otel::attr::io_error_code(io),
+                                            ],
+                                        );
+                                    }
 
-                        tracing::debug!(
-                            "Channel for outbound datagrams closed; exiting UDP thread"
-                        );
+                                    // We use the inbound_tx channel to send the error back to the main thread.
+                                    if inbound_tx.send(Err(e)).await.is_err() {
+                                        tracing::debug!(
+                                            "Channel for inbound datagrams closed; exiting UDP send task"
+                                        );
+                                        return;
+                                    }
+                                };
+                            }
+                        };
                     }
                 });
                 let receive = runtime.spawn(async move {
                     loop {
-                        tokio::task::yield_now().await;
-
                         let result = socket.recv_from().await;
 
                         if let Some(io) = result
@@ -322,9 +330,9 @@ impl ThreadedUdpSocket {
 
                         if inbound_tx.send(result).await.is_err() {
                             tracing::debug!(
-                                "Channel for inbound datagrams closed; exiting UDP thread"
+                                "Channel for inbound datagrams closed; exiting UDP recv task"
                             );
-                            break;
+                            return;
                         }
                     }
                 });
