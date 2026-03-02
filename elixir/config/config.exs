@@ -375,6 +375,10 @@ config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
   capacity: 200
 
+config :portal, PortalWeb.RateLimit,
+  refill_rate: 10,
+  capacity: 200
+
 ###############################
 ##### Third-party configs #####
 ###############################

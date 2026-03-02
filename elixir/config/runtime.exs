@@ -316,6 +316,10 @@ if config_env() == :prod do
         signing_salt: env_var_to_config!(:live_view_signing_salt)
       ]
 
+    config :portal, PortalWeb.RateLimit,
+      refill_rate: env_var_to_config!(:web_refill_rate),
+      capacity: env_var_to_config!(:web_capacity)
+
     config :portal, api_url_override: env_var_to_config!(:api_url_override)
   end
 

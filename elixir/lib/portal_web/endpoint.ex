@@ -65,6 +65,8 @@ defmodule PortalWeb.Endpoint do
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
+  plug PortalWeb.Plugs.RateLimit
+
   plug Plug.Session, @session_cookie
 
   plug PortalWeb.Plugs.FetchUserAgent
