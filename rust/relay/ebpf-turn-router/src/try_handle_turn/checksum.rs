@@ -157,7 +157,7 @@ mod tests {
             old_dst_ip,
             old_src_port,
             old_dst_port,
-            old_udp_payload.to_vec(),
+            &old_udp_payload,
         )
         .unwrap();
         let incoming_checksum = incoming_ip_packet.as_udp().unwrap().checksum();
@@ -175,7 +175,7 @@ mod tests {
             new_dst_ip,
             new_src_port,
             new_dst_port,
-            new_udp_payload.to_vec(),
+            &new_udp_payload,
         )
         .unwrap();
         let outgoing_checksum = outgoing_ip_packet.as_udp().unwrap().checksum();

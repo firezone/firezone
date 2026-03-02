@@ -372,7 +372,7 @@ mod tests {
 
         // Should buffer packets if we are coming from `Failed`.
         let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet =
@@ -397,7 +397,7 @@ mod tests {
             .unwrap();
 
         let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet = dns_resource_nat.handle_outgoing(
@@ -457,7 +457,7 @@ mod tests {
             .unwrap();
 
         let app_packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet = dns_resource_nat.handle_outgoing(
@@ -535,7 +535,7 @@ mod tests {
         now += Duration::from_secs(2);
 
         let app_packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet =

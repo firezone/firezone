@@ -5,10 +5,10 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 pub fn udp_packet() -> impl Strategy<Value = IpPacket> {
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
-            crate::make::udp_packet(saddr, daddr, sport, dport, Vec::new()).unwrap()
+            crate::make::udp_packet(saddr, daddr, sport, dport, &[]).unwrap()
         }),
         (ip6_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
-            crate::make::udp_packet(saddr, daddr, sport, dport, Vec::new()).unwrap()
+            crate::make::udp_packet(saddr, daddr, sport, dport, &[]).unwrap()
         }),
     ]
 }
@@ -19,12 +19,12 @@ pub fn tcp_packet(
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>(), flags.clone()).prop_map(
             |((saddr, daddr), sport, dport, flags)| {
-                crate::make::tcp_packet(saddr, daddr, sport, dport, flags, Vec::new()).unwrap()
+                crate::make::tcp_packet(saddr, daddr, sport, dport, flags, &[]).unwrap()
             }
         ),
         (ip6_tuple(), any::<u16>(), any::<u16>(), flags).prop_map(
             |((saddr, daddr), sport, dport, flags)| {
-                crate::make::tcp_packet(saddr, daddr, sport, dport, flags, Vec::new()).unwrap()
+                crate::make::tcp_packet(saddr, daddr, sport, dport, flags, &[]).unwrap()
             }
         ),
     ]

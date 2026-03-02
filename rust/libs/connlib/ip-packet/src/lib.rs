@@ -1021,14 +1021,9 @@ mod tests {
 
     #[test]
     fn udp_packet_payload() {
-        let udp_packet = crate::make::udp_packet(
-            Ipv4Addr::LOCALHOST,
-            Ipv4Addr::LOCALHOST,
-            0,
-            0,
-            b"foobar".to_vec(),
-        )
-        .unwrap();
+        let udp_packet =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, b"foobar")
+                .unwrap();
 
         let ip_payload = udp_packet.payload();
         let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
@@ -1038,8 +1033,8 @@ mod tests {
 
     #[test]
     fn ipv4_ecn() {
-        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
-            .unwrap();
+        let p =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
         assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
@@ -1049,8 +1044,8 @@ mod tests {
 
     #[test]
     fn ipv6_ecn() {
-        let p = crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, vec![])
-            .unwrap();
+        let p =
+            crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
         assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
@@ -1060,8 +1055,8 @@ mod tests {
 
     #[test]
     fn ip4_checksum_after_ecn_is_correct() {
-        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
-            .unwrap();
+        let p =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         let p_with_ecn = p.with_ecn(Ecn::Ect0);
         let ip4_header = p_with_ecn.ipv4_header().unwrap();
@@ -1074,7 +1069,7 @@ mod tests {
 
     #[test]
     fn ecn_from_transport_happy_path() {
-        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
             .unwrap()
             .with_ecn(Ecn::Ect0);
 
@@ -1085,7 +1080,7 @@ mod tests {
 
     #[test]
     fn ecn_from_transport_no_clear_ect() {
-        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
             .unwrap()
             .with_ecn(Ecn::Ect0);
 
@@ -1103,8 +1098,8 @@ mod tests {
     /// One possibility for the future might be to use dedicated `Error` types.
     #[test]
     fn all_as_functions_should_return_option() {
-        let mut p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
-            .unwrap();
+        let mut p =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         let _: Option<_> = p.as_udp();
         let _: Option<_> = p.as_udp_mut();
@@ -1119,8 +1114,8 @@ mod tests {
 
     #[test]
     fn src_is_updated() {
-        let mut p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
-            .unwrap();
+        let mut p =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         p.set_src(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
 
@@ -1129,8 +1124,8 @@ mod tests {
 
     #[test]
     fn dst_is_updated() {
-        let mut p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
-            .unwrap();
+        let mut p =
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         p.set_dst(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
 

@@ -38,15 +38,16 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
 
     let mut packet_buf = IpPacketBuf::new();
 
-    let mut payload_buf = vec![0u8; 8 + control_payload.len()];
+    // Assemble header + payload on the stack, bounded by the already-checked `MAX_IP_SIZE`.
+    let mut payload_buf = [0u8; MAX_IP_SIZE];
     payload_buf[..8].copy_from_slice(&header);
-    payload_buf[8..].copy_from_slice(control_payload);
+    payload_buf[8..ip_payload_size].copy_from_slice(control_payload);
 
     builder
         .write(
             &mut std::io::Cursor::new(packet_buf.buf()),
             crate::fz_p2p_control::IP_NUMBER,
-            &payload_buf,
+            &payload_buf[..ip_payload_size],
         )
         .with_context(|| {
             format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
@@ -110,7 +111,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     flags: TcpFlags,
-    payload: Vec<u8>,
+    payload: &[u8],
 ) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
@@ -152,7 +153,7 @@ pub fn udp_packet<SIP, DIP>(
     daddr: DIP,
     sport: u16,
     dport: u16,
-    payload: Vec<u8>,
+    payload: &[u8],
 ) -> Result<IpPacket>
 where
     SIP: Into<IpAddr>,
@@ -284,7 +285,7 @@ mod tests {
             Ipv4Addr::LOCALHOST,
             0,
             0,
-            payload,
+            &payload,
         )
         .unwrap();
 
@@ -307,7 +308,7 @@ mod tests {
             Ipv6Addr::LOCALHOST,
             0,
             0,
-            payload,
+            &payload,
         )
         .unwrap();
 
