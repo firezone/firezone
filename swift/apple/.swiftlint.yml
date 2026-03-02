@@ -153,5 +153,10 @@ custom_rules:
     regex: '(handle|fileHandle)\.write\((?!contentsOf:)'
     message: "'write' can throw uncatchable NSExceptions  - prefer `.write(contentsOf:)`"
     severity: error
+  no_userdefaults_standard:
+    name: "Prefer injected UserDefaults"
+    regex: 'UserDefaults\.standard'
+    message: "Use injected userDefaults instead of .standard for testability. If this is a DI entry point or view code, add swiftlint:disable:next."
+    severity: error
 
 reporter: xcode
