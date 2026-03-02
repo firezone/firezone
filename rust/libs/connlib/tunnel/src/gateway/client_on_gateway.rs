@@ -744,7 +744,7 @@ mod tests {
             5401,
             80,
             TcpFlags::default(),
-            vec![0; 100],
+            &[0u8; 100],
         )
         .unwrap();
 
@@ -753,7 +753,7 @@ mod tests {
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
-            vec![0; 100],
+            &[0u8; 100],
         )
         .unwrap();
 
@@ -806,7 +806,7 @@ mod tests {
             5401,
             80,
             TcpFlags::default(),
-            vec![0; 100],
+            &[0u8; 100],
         )
         .unwrap();
 
@@ -816,7 +816,7 @@ mod tests {
             80,
             5401,
             TcpFlags::default(),
-            vec![0; 100],
+            &[0u8; 100],
         )
         .unwrap();
 
@@ -852,7 +852,7 @@ mod tests {
             bar_contained_ip(),
             1,
             bar_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -863,7 +863,7 @@ mod tests {
             bar_contained_ip(),
             1,
             foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -877,7 +877,7 @@ mod tests {
             proxy_ip4_1(),
             1,
             bar_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -891,7 +891,7 @@ mod tests {
             proxy_ip4_1(),
             1,
             foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -921,7 +921,7 @@ mod tests {
             proxy_ip4_1(),
             1,
             foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -932,7 +932,7 @@ mod tests {
             proxy_ip4_1(),
             1,
             600,
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -946,7 +946,7 @@ mod tests {
             "1.1.1.1".parse::<Ipv4Addr>().unwrap(),
             1,
             600,
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -977,7 +977,7 @@ mod tests {
             proxy_ip4_1(),
             1,
             foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -993,7 +993,7 @@ mod tests {
             client_tun_ipv4(),
             foo_allowed_port(),
             1,
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -1007,7 +1007,7 @@ mod tests {
             client_tun_ipv4(),
             foo_allowed_port(),
             1,
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -1051,7 +1051,7 @@ mod tests {
                 proxy_ip4_1(),
                 1,
                 foo_allowed_port(),
-                vec![0, 0, 0, 0, 0, 0, 0, 0],
+                &[0, 0, 0, 0, 0, 0, 0, 0],
             )
             .unwrap();
 
@@ -1076,7 +1076,7 @@ mod tests {
                 client_tun_ipv4(),
                 foo_allowed_port(),
                 1,
-                vec![0, 0, 0, 0, 0, 0, 0, 0],
+                &[0, 0, 0, 0, 0, 0, 0, 0],
             )
             .unwrap();
 
@@ -1089,7 +1089,7 @@ mod tests {
                 proxy_ip4_1(),
                 2, // Using a new source port
                 foo_allowed_port(),
-                vec![0, 0, 0, 0, 0, 0, 0, 0],
+                &[0, 0, 0, 0, 0, 0, 0, 0],
             )
             .unwrap();
 
@@ -1110,7 +1110,7 @@ mod tests {
                 client_tun_ipv4(),
                 foo_allowed_port(),
                 2,
-                vec![0, 0, 0, 0, 0, 0, 0, 0],
+                &[0, 0, 0, 0, 0, 0, 0, 0],
             )
             .unwrap();
 
@@ -1145,7 +1145,7 @@ mod tests {
             proxy_ip4_1(),
             1,
             foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -1201,7 +1201,7 @@ mod tests {
             proxy_ip6_1(),
             1,
             foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
+            &[0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
 
@@ -1233,7 +1233,7 @@ mod tests {
         );
 
         let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
-            &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, vec![])
+            &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
                 .unwrap(),
         )
         .unwrap();
@@ -1453,15 +1453,10 @@ mod proptests {
             };
 
             let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(
-                    src,
-                    *dest,
-                    sport,
-                    *dport,
-                    TcpFlags::default(),
-                    payload.clone(),
-                ),
-                Protocol::Udp { dport } => udp_packet(src, *dest, sport, *dport, payload.clone()),
+                Protocol::Tcp { dport } => {
+                    tcp_packet(src, *dest, sport, *dport, TcpFlags::default(), &payload)
+                }
+                Protocol::Udp { dport } => udp_packet(src, *dest, sport, *dport, &payload),
                 Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
             }
             .unwrap();
@@ -1516,15 +1511,10 @@ mod proptests {
 
         for (_, protocol) in protocol_config {
             let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(
-                    src,
-                    dest,
-                    sport,
-                    dport,
-                    TcpFlags::default(),
-                    payload.clone(),
-                ),
-                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Tcp { dport } => {
+                    tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
+                }
+                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
             .unwrap();
@@ -1566,9 +1556,9 @@ mod proptests {
         );
         let packet = match protocol {
             Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), payload)
+                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
             }
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();
@@ -1624,24 +1614,19 @@ mod proptests {
         );
 
         let packet_allowed = match protocol_allowed {
-            Protocol::Tcp { dport } => tcp_packet(
-                src,
-                dest,
-                sport,
-                dport,
-                TcpFlags::default(),
-                payload.clone(),
-            ),
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+            Protocol::Tcp { dport } => {
+                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
+            }
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();
 
         let packet_rejected = match protocol_removed {
             Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), payload)
+                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
             }
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();

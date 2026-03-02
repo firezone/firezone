@@ -94,7 +94,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         let payload = message.into_bytes();
 
         let ip_packet =
-            ip_packet::make::udp_packet(local_ip, server.ip(), local_port, server.port(), payload)
+            ip_packet::make::udp_packet(local_ip, server.ip(), local_port, server.port(), &payload)
                 .context("Failed to make IP packet")?;
 
         self.scheduled_queries.push_back(ip_packet);

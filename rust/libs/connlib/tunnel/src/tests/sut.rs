@@ -290,14 +290,9 @@ impl TunnelTest {
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
-                let packet = ip_packet::make::udp_packet(
-                    src,
-                    dst,
-                    sport.0,
-                    dport.0,
-                    payload.to_be_bytes().to_vec(),
-                )
-                .unwrap();
+                let packet =
+                    ip_packet::make::udp_packet(src, dst, sport.0, dport.0, &payload.to_be_bytes())
+                        .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
