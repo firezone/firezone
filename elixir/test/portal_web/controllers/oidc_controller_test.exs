@@ -6,7 +6,7 @@ defmodule PortalWeb.OIDCControllerTest do
   import Portal.AuthProviderFixtures
   import ExUnit.CaptureLog
 
-  alias Portal.AuthenticationCache
+  alias PortalWeb.Cookie
   alias PortalWeb.Mocks
 
   setup do
@@ -44,10 +44,9 @@ defmodule PortalWeb.OIDCControllerTest do
       %{provider: provider} = setup_oidc_provider(account)
 
       conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
-      state = auth_state_from_redirect(conn)
 
       assert redirected_to(conn) =~ "/authorize"
-      assert {:ok, _auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
+      assert oidc_cookie_from_response(conn) != nil
     end
 
     test "accepts account slug instead of id", %{conn: conn} do
@@ -59,38 +58,22 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) =~ "/authorize"
     end
 
-    test "stores OIDC auth state in AuthenticationCache with correct provider info", %{conn: conn} do
+    test "stores OIDC auth state in cookie with correct provider info", %{conn: conn} do
       account = account_fixture()
       %{provider: provider} = setup_oidc_provider(account)
 
       conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
-      state = auth_state_from_redirect(conn)
+      cookie = oidc_cookie_from_response(conn)
 
-      assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
-      assert auth_state["auth_provider_type"] == "oidc"
-      assert auth_state["auth_provider_id"] == provider.id
-      assert auth_state["account_id"] == account.id
-      assert auth_state["account_slug"] == account.slug
-      assert is_binary(auth_state["session_binding"])
+      assert cookie.auth_provider_type == "oidc"
+      assert cookie.auth_provider_id == provider.id
+      assert cookie.account_id == account.id
+      assert cookie.account_slug == account.slug
+      assert is_binary(cookie.state)
+      assert is_binary(cookie.verifier)
     end
 
-    test "reuses existing oidc state binding from session", %{conn: conn} do
-      account = account_fixture()
-      %{provider: provider} = setup_oidc_provider(account)
-      existing_binding = "existing-oidc-binding"
-
-      conn =
-        conn
-        |> init_test_session(%{})
-        |> put_session(:oidc_state_binding, existing_binding)
-        |> get("/#{account.id}/sign_in/oidc/#{provider.id}")
-
-      state = auth_state_from_redirect(conn)
-      assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
-      assert auth_state["session_binding"] == existing_binding
-    end
-
-    test "stores per-session binding and rejects callback replay from a different browser session",
+    test "rejects callback replay from a different browser (no oidc cookie)",
          %{
            conn: conn
          } do
@@ -121,29 +104,6 @@ defmodule PortalWeb.OIDCControllerTest do
 
     test "redirects with error when OIDC state not found", %{conn: conn} do
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => "test-state", "code" => "test-code"})
-
-      assert redirected_to(conn) == "/"
-      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
-    end
-
-    test "redirects with error when cached auth state is missing session binding", %{
-      conn: conn,
-      account: account,
-      provider: provider
-    } do
-      state = Ecto.UUID.generate()
-
-      :ok =
-        AuthenticationCache.put(oidc_auth_cache_key(state), %{
-          auth_provider_type: "oidc",
-          auth_provider_id: provider.id,
-          account_id: account.id,
-          account_slug: account.slug,
-          verifier: "test-verifier",
-          params: %{}
-        })
-
-      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
       assert redirected_to(conn) == "/"
       assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
@@ -258,82 +218,135 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) == "Invalid sign-in request. Please try again."
     end
 
-    test "redirects to verification for entra-verification state", %{conn: conn} do
+    test "redirects to /verification/entra for entra-auth-provider state", %{conn: conn} do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+
       params = %{
-        "state" => "entra-verification:test-token",
+        "state" => state,
         "admin_consent" => "True",
         "tenant" => "test-tenant-id"
       }
 
       conn = get(conn, ~p"/auth/oidc/callback", params)
 
-      assert redirected_to(conn) == "/verification"
-
-      verification = get_session(conn, :verification)
-      assert verification["type"] == "entra"
-      assert verification["token"] == "test-token"
-      assert {:ok, cached} = AuthenticationCache.get(verification_cache_key("test-token"))
-      assert cached["entra_type"] == "auth_provider"
-      assert cached["admin_consent"] == "True"
-      assert cached["tenant_id"] == "test-tenant-id"
+      assert redirected_to(conn) =~ "/verification/entra"
     end
 
-    test "redirects to verification for entra-admin-consent state", %{conn: conn} do
+    test "redirects to /verification/entra for entra-directory-sync state", %{conn: conn} do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+
       params = %{
-        "state" => "entra-admin-consent:test-token",
+        "state" => state,
         "admin_consent" => "True",
         "tenant" => "test-tenant-id"
       }
 
       conn = get(conn, ~p"/auth/oidc/callback", params)
 
-      assert redirected_to(conn) == "/verification"
-
-      verification = get_session(conn, :verification)
-      assert verification["type"] == "entra"
-      assert verification["token"] == "test-token"
-      assert {:ok, cached} = AuthenticationCache.get(verification_cache_key("test-token"))
-      assert cached["entra_type"] == "directory_sync"
+      assert redirected_to(conn) =~ "/verification/entra"
     end
 
-    test "passes through error params from Entra", %{conn: conn} do
+    test "redirects to /verification/entra when admin_consent callback omits tenant", %{
+      conn: conn
+    } do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+
       params = %{
-        "state" => "entra-verification:test-token",
+        "state" => state,
         "admin_consent" => "False",
-        "tenant" => "test-tenant-id",
-        "error" => "access_denied",
-        "error_description" => "The user denied consent"
+        "error" => "access_denied"
       }
 
       conn = get(conn, ~p"/auth/oidc/callback", params)
 
-      assert redirected_to(conn) == "/verification"
-
-      verification = get_session(conn, :verification)
-      assert verification["token"] == "test-token"
-      assert {:ok, cached} = AuthenticationCache.get(verification_cache_key("test-token"))
-      assert cached["error"] == "access_denied"
-      assert cached["error_description"] == "The user denied consent"
+      assert redirected_to(conn) =~ "/verification/entra"
     end
   end
 
   describe "callback/2 with OIDC verification state" do
-    test "redirects to verification page for oidc-verification state", %{conn: conn} do
-      params = %{
-        "state" => "oidc-verification:test-token",
-        "code" => "authorization-code"
-      }
+    test "exchanges code and redirects to /verification/oidc with signed result on success", %{
+      conn: conn
+    } do
+      id_token = Mocks.OIDC.sign_openid_connect_token(Mocks.OIDC.default_claims())
 
-      conn = get(conn, ~p"/auth/oidc/callback", params)
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      })
 
-      assert redirected_to(conn) == "/verification"
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification, %{config: oidc_config(), verifier: "test-verifier"}}
+              )
+          end
+        end)
 
-      verification = get_session(conn, :verification)
-      assert verification["type"] == "oidc"
-      assert verification["token"] == "test-token"
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
-      assert {:ok, cached} = AuthenticationCache.get(verification_cache_key("test-token"))
-      assert cached["code"] == "authorization-code"
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+      refute redirect_url =~ "code="
+    end
+
+    test "redirects to /verification/oidc with failure result when code exchange fails", %{
+      conn: conn
+    } do
+      Mocks.OIDC.set_token_error(400, %{"error" => "invalid_grant"})
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification, %{config: oidc_config(), verifier: "test-verifier"}}
+              )
+          end
+        end)
+
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "bad-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert error =~ "authorization code has expired"
+    end
+
+    test "redirects to /verification/oidc with failure result when LV does not respond", %{
+      conn: conn
+    } do
+      # Use a dead PID — no process listening, so request_pending_verification times out
+      dead_pid = spawn(fn -> :ok end)
+      lv_pid_string = dead_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "any-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert error =~ "session was not found or has expired"
     end
   end
 
@@ -892,6 +905,52 @@ defmodule PortalWeb.OIDCControllerTest do
       # Portal sign-in should still be allowed so admins can manage billing
       assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
     end
+
+    test "redirects with error when OIDC callback state does not match cookie state", ctx do
+      auth_state = build_oidc_auth_state(ctx.account, ctx.provider)
+
+      cookie = %Cookie.AuthenticationState{
+        auth_provider_type: auth_state.auth_provider_type,
+        auth_provider_id: auth_state.auth_provider_id,
+        account_id: auth_state.account_id,
+        account_slug: auth_state.account_slug,
+        verifier: auth_state.verifier,
+        params: auth_state.params,
+        state: "original-state"
+      }
+
+      conn =
+        ctx.conn
+        |> with_endpoint_key_base()
+        |> Cookie.AuthenticationState.put(cookie)
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => "tampered-state", "code" => "test-code"})
+
+      assert redirected_to(conn) == "/"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
+
+    test "redirects with error when OIDC cookie state is nil (verify_state catch-all)", ctx do
+      cookie = %Cookie.AuthenticationState{
+        auth_provider_type: "oidc",
+        auth_provider_id: ctx.provider.id,
+        account_id: ctx.account.id,
+        account_slug: ctx.account.slug,
+        verifier: "test-verifier",
+        params: %{},
+        state: nil
+      }
+
+      conn =
+        ctx.conn
+        |> with_endpoint_key_base()
+        |> Cookie.AuthenticationState.put(cookie)
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => "some-state", "code" => "test-code"})
+
+      assert redirected_to(conn) == "/"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
   end
 
   describe "callback/2 with userinfo fetch failure" do
@@ -1147,10 +1206,10 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
-  describe "callback/2 with unknown Entra state prefix" do
-    test "redirects with error when state has unknown entra prefix", %{conn: conn} do
+  describe "callback/2 with unknown Entra state" do
+    test "redirects with error when state is unknown", %{conn: conn} do
       params = %{
-        "state" => "entra-unknown:test-token",
+        "state" => "entra-unknown",
         "admin_consent" => "True",
         "tenant" => "test-tenant-id"
       }
@@ -1174,10 +1233,9 @@ defmodule PortalWeb.OIDCControllerTest do
           "nonce" => "client-nonce"
         })
 
-      state = auth_state_from_redirect(conn)
       assert redirected_to(conn) =~ "/authorize"
-      assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
-      assert auth_state["params"]["as"] == "client"
+      cookie = oidc_cookie_from_response(conn)
+      assert cookie.params["as"] == "client"
     end
 
     test "preserves redirect_to param for client auth", %{conn: conn} do
@@ -1190,10 +1248,9 @@ defmodule PortalWeb.OIDCControllerTest do
           "redirect_to" => "/some/path"
         })
 
-      state = auth_state_from_redirect(conn)
       assert redirected_to(conn) =~ "/authorize"
-      assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
-      assert auth_state["params"]["redirect_to"] == "/some/path"
+      cookie = oidc_cookie_from_response(conn)
+      assert cookie.params["redirect_to"] == "/some/path"
     end
 
     test "redirects to IdP with headless-client params", %{conn: conn} do
@@ -1206,10 +1263,9 @@ defmodule PortalWeb.OIDCControllerTest do
           "state" => "headless-state"
         })
 
-      state = auth_state_from_redirect(conn)
       assert redirected_to(conn) =~ "/authorize"
-      assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
-      assert auth_state["params"]["as"] == "headless-client"
+      cookie = oidc_cookie_from_response(conn)
+      assert cookie.params["as"] == "headless-client"
     end
 
     test "redirects to IdP with gui-client params", %{conn: conn} do
@@ -1223,10 +1279,9 @@ defmodule PortalWeb.OIDCControllerTest do
           "nonce" => "gui-nonce"
         })
 
-      state = auth_state_from_redirect(conn)
       assert redirected_to(conn) =~ "/authorize"
-      assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(state))
-      assert auth_state["params"]["as"] == "gui-client"
+      cookie = oidc_cookie_from_response(conn)
+      assert cookie.params["as"] == "gui-client"
     end
   end
 
@@ -1457,6 +1512,43 @@ defmodule PortalWeb.OIDCControllerTest do
       assert log =~ "OIDC authorization URI error"
     end
 
+    test "redirects with descriptive error when discovery document URI is structurally invalid",
+         %{conn: conn} do
+      account = account_fixture()
+      auth_provider = auth_provider_fixture(type: :oidc, account: account)
+      unique_num = System.unique_integer([:positive, :monotonic])
+
+      provider =
+        %Portal.OIDC.AuthProvider{id: auth_provider.id}
+        |> Ecto.Changeset.change(%{
+          name: "Invalid URI OIDC #{unique_num}",
+          context: :clients_and_portal,
+          client_id: "test-client-#{unique_num}",
+          client_secret: "test-secret-#{unique_num}",
+          discovery_document_uri: "not-a-valid-url",
+          issuer: "https://auth.example.com",
+          is_verified: true,
+          is_disabled: false,
+          client_session_lifetime_secs: 604_800,
+          portal_session_lifetime_secs: 28_800
+        })
+        |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
+        |> Ecto.Changeset.put_assoc(:account, account)
+        |> Portal.Repo.insert!()
+
+      log =
+        capture_log(fn ->
+          conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
+
+          assert redirected_to(conn) == "/#{account.slug}"
+
+          assert flash(conn, :error) ==
+                   "The Discovery Document URI is invalid. Please check your provider configuration."
+        end)
+
+      assert log =~ "OIDC authorization URI error"
+    end
+
     test "redirects with descriptive error for unexpected discovery document shape", %{
       conn: conn
     } do
@@ -1530,14 +1622,12 @@ defmodule PortalWeb.OIDCControllerTest do
             failed_query
           )
 
-        retry_state = auth_state_from_redirect(retry_conn)
-
         assert redirected_to(retry_conn) =~ "/authorize"
-        assert {:ok, auth_state} = AuthenticationCache.get(oidc_auth_cache_key(retry_state))
-        assert auth_state["params"]["as"] == params["as"]
-        assert auth_state["params"]["state"] == params["state"]
-        assert auth_state["params"]["nonce"] == params["nonce"]
-        assert auth_state["params"]["redirect_to"] == params["redirect_to"]
+        cookie = oidc_cookie_from_response(retry_conn)
+        assert cookie.params["as"] == params["as"]
+        assert cookie.params["state"] == params["state"]
+        assert cookie.params["nonce"] == params["nonce"]
+        assert cookie.params["redirect_to"] == params["redirect_to"]
       end
     end
   end
@@ -1552,7 +1642,7 @@ defmodule PortalWeb.OIDCControllerTest do
     %{provider: provider}
   end
 
-  # Builds OIDC auth state for AuthenticationCache-backed callbacks.
+  # Builds an OIDC auth state map for cookie-backed callbacks.
   defp build_oidc_auth_state(account, provider, opts \\ []) do
     %{
       auth_provider_type: "oidc",
@@ -1560,81 +1650,46 @@ defmodule PortalWeb.OIDCControllerTest do
       account_id: account.id,
       account_slug: account.slug,
       verifier: Keyword.get(opts, :verifier, "test-verifier"),
-      session_binding: Keyword.get(opts, :session_binding),
       params: Keyword.get(opts, :params, %{})
     }
   end
 
-  # Performs OIDC callback by defaulting to the real sign_in flow to seed auth state.
+  # Performs OIDC callback by putting auth state into the oidc cookie and calling the callback.
+  # The `seed_via_sign_in` option is accepted for backward compatibility but ignored —
+  # the cookie approach doesn't require going through the sign_in endpoint first.
   defp perform_callback(conn, auth_state, opts \\ []) do
     code = Keyword.get(opts, :code, "test-code")
-    seed_via_sign_in? = Keyword.get(opts, :seed_via_sign_in, true)
+    state = Keyword.get(opts, :state, Ecto.UUID.generate())
 
-    {conn, state} =
-      if seed_via_sign_in? do
-        conn =
-          get(
-            conn,
-            "/#{auth_state.account_id}/sign_in/#{auth_state.auth_provider_type}/#{auth_state.auth_provider_id}",
-            auth_state.params || %{}
-          )
-
-        state = Keyword.get(opts, :state, auth_state_from_redirect(conn))
-
-        if is_binary(state) do
-          {recycle(conn), state}
-        else
-          fallback_state = Ecto.UUID.generate()
-
-          {conn, session_binding} = ensure_oidc_state_binding(conn)
-          auth_state = Map.put(auth_state, :session_binding, session_binding)
-
-          :ok = AuthenticationCache.put(oidc_auth_cache_key(fallback_state), auth_state)
-          {recycle(conn), fallback_state}
-        end
-      else
-        state = Keyword.get(opts, :state, Ecto.UUID.generate())
-        {conn, session_binding} = ensure_oidc_state_binding(conn, opts)
-        auth_state = Map.put(auth_state, :session_binding, session_binding)
-
-        :ok = AuthenticationCache.put(oidc_auth_cache_key(state), auth_state)
-        {conn, state}
-      end
+    cookie = %Cookie.AuthenticationState{
+      auth_provider_type: auth_state.auth_provider_type,
+      auth_provider_id: auth_state.auth_provider_id,
+      account_id: auth_state.account_id,
+      account_slug: auth_state.account_slug,
+      verifier: auth_state.verifier,
+      params: auth_state.params || %{},
+      state: state
+    }
 
     conn
+    |> with_endpoint_key_base()
+    |> Cookie.AuthenticationState.put(cookie)
+    |> recycle()
     |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => code})
   end
 
-  defp ensure_oidc_state_binding(conn, opts \\ []) do
-    binding_override = Keyword.get(opts, :session_binding)
-
-    cond do
-      is_binary(binding_override) ->
-        put_session_binding(conn, binding_override)
-
-      is_binary(get_session(conn, :oidc_state_binding)) ->
-        {conn, get_session(conn, :oidc_state_binding)}
-
-      true ->
-        put_session_binding(conn, Ecto.UUID.generate())
-    end
+  # Reads the oidc cookie from a response conn by recycling it to make cookies readable.
+  defp oidc_cookie_from_response(conn) do
+    conn
+    |> recycle()
+    |> with_endpoint_key_base()
+    |> Cookie.AuthenticationState.fetch()
   end
 
-  defp put_session_binding(conn, binding) do
-    conn =
-      if conn.state in [:unset, :set] do
-        conn
-      else
-        conn
-        |> recycle()
-        |> init_test_session(%{})
-      end
-
-    {put_session(conn, :oidc_state_binding, binding), binding}
+  # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
+  defp with_endpoint_key_base(conn) do
+    Map.put(conn, :secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
   end
-
-  defp verification_cache_key(token), do: AuthenticationCache.verification_key(token)
-  defp oidc_auth_cache_key(state), do: AuthenticationCache.oidc_auth_key(state)
 
   defp auth_state_from_redirect(conn) do
     uri = redirected_to(conn) |> URI.parse()
@@ -1643,6 +1698,19 @@ defmodule PortalWeb.OIDCControllerTest do
       nil -> nil
       query -> query |> URI.decode_query() |> Map.get("state")
     end
+  end
+
+  defp oidc_verification_result_from_redirect(redirect_url) do
+    result_token =
+      redirect_url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+      |> Map.fetch!("result")
+
+    Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-result", result_token,
+      max_age: 60
+    )
   end
 
   # Sets up mocks for a successful authentication flow.
@@ -1776,5 +1844,16 @@ defmodule PortalWeb.OIDCControllerTest do
     refute conn.resp_cookies["client_auth"]
 
     conn
+  end
+
+  defp oidc_config do
+    Application.fetch_env!(:portal, Portal.OIDC.AuthProvider)
+    |> Keyword.merge(
+      discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+      client_id: "test-client",
+      client_secret: "test-secret",
+      redirect_uri: PortalWeb.OIDC.callback_url()
+    )
+    |> Enum.into(%{})
   end
 end

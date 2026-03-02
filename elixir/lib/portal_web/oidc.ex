@@ -163,86 +163,102 @@ defmodule PortalWeb.OIDC do
 
   @doc """
   Sets up OIDC verification for a new provider being created.
-  Returns a map with verification data: token, url, verifier, config.
+  Returns {:ok, %{config: config}}.
+
+  Provider types:
+  - "google", "okta", "oidc" — OIDC authorization code + PKCE flow
+  - "entra" — Entra auth_provider admin consent flow
+  - "entra_directory_sync" — Entra directory_sync admin consent flow
 
   Options:
   - :okta_domain - Required for Okta providers
   - :client_id - Required for Okta and generic OIDC providers
   - :client_secret - Required for Okta and generic OIDC providers
   - :discovery_document_uri - Required for generic OIDC providers
-  - :prompt - OIDC prompt parameter (default: "login")
   """
-  def setup_verification("entra", opts) do
-    # For Entra, use admin consent endpoint to pre-check organization-wide consent
-    # We route through /auth/oidc/callback so admins only need to configure one redirect URI
-    token = Portal.Crypto.random_token(32)
-    state = "entra-verification:#{token}"
-
-    config = verification_config_for_type("entra", opts)
-    client_id = config[:client_id]
-
-    # Build admin consent URL pointing to our unified OIDC callback
-    redirect_uri = callback_url()
-    scope = "openid email profile"
-
-    params = %{
-      client_id: client_id,
-      state: state,
-      redirect_uri: redirect_uri,
-      scope: scope
-    }
-
-    query_string = URI.encode_query(params)
-
-    admin_consent_url =
-      "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{query_string}"
-
-    # Generate PKCE verifier for later token exchange
-    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-
-    {:ok,
-     %{
-       token: token,
-       url: admin_consent_url,
-       verifier: verifier,
-       config: config
-     }}
+  def setup_verification("entra_directory_sync", _opts) do
+    config = Portal.Config.fetch_env!(:portal, Portal.Entra.APIClient) |> Enum.into(%{})
+    {:ok, %{config: config}}
   end
 
   def setup_verification(provider_type, opts) do
-    # Generate verification token for OIDC callback
-    token = Portal.Crypto.random_token(32)
+    config = verification_config_for_type(provider_type, opts)
+    {:ok, %{config: config}}
+  end
 
-    # Generate PKCE verifier and challenge
-    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+  @doc """
+  Signs a short-lived token encoding the LV pid and verification type for use as
+  the OAuth state parameter. Verified by the callback with a 5-minute TTL.
+  """
+  def sign_verification_state(lv_pid_string, type_string) do
+    Phoenix.Token.sign(
+      PortalWeb.Endpoint,
+      "oidc-verification-state",
+      %{type: type_string, lv_pid: lv_pid_string}
+    )
+  end
+
+  @doc """
+  Verifies a signed verification state token.
+  Returns {:ok, %{type: type, lv_pid: lv_pid}} or {:error, reason}.
+  """
+  def verify_verification_state(state) do
+    Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: 5 * 60)
+  end
+
+  def deserialize_pid(nil), do: nil
+
+  def deserialize_pid(pid_string) when is_binary(pid_string) do
+    pid_string |> String.to_charlist() |> :erlang.list_to_pid()
+  rescue
+    _ -> nil
+  end
+
+  @doc """
+  Builds the IdP URI for the verification flow. For OIDC types this is an
+  authorization URI with PKCE; for Entra types it is an admin consent URI.
+  The state_token (from sign_verification_state/2) is passed through the IdP unchanged.
+  Returns {:ok, uri} or {:error, reason}.
+  """
+  def build_verification_uri(type, config, verifier, state_token)
+      when type in ["google", "okta", "oidc"] do
     challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
 
-    state = "oidc-verification:#{token}"
-    config = verification_config_for_type(provider_type, opts)
-
-    # Allow custom prompt parameter
-    prompt = Keyword.get(opts, :prompt, "login")
-
     oidc_params = %{
-      state: state,
+      state: state_token,
       code_challenge_method: :S256,
       code_challenge: challenge,
-      prompt: prompt
+      prompt: "login"
     }
 
-    with :ok <- validate_public_host(config[:discovery_document_uri]),
-         {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
-      {:ok,
-       %{
-         token: token,
-         url: uri,
-         verifier: verifier,
-         config: config
-       }}
-    else
-      {:error, reason} -> {:error, reason}
+    discovery_document_uri = config[:discovery_document_uri] || config["discovery_document_uri"]
+
+    with :ok <- validate_public_host(discovery_document_uri) do
+      OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
     end
   end
+
+  def build_verification_uri("entra", config, _verifier, state_token) do
+    build_entra_adminconsent_uri(config, state_token, "openid email profile")
+  end
+
+  def build_verification_uri("entra_directory_sync", config, _verifier, state_token) do
+    build_entra_adminconsent_uri(
+      config,
+      state_token,
+      "https://graph.microsoft.com/.default"
+    )
+  end
+
+  def build_verification_uri(type, _config, _verifier, _state_token) do
+    {:error, "Unknown verification type: #{type}"}
+  end
+
+  @doc """
+  Returns the OIDC callback URL. Public so controllers can use it without
+  duplicating the endpoint configuration.
+  """
+  def callback_url, do: url(~p"/auth/oidc/callback")
 
   @doc """
   Performs the complete OIDC verification flow: exchange code for tokens and verify ID token.
@@ -278,14 +294,12 @@ defmodule PortalWeb.OIDC do
 
   defp validate_public_host(nil), do: :ok
 
-  defp callback_url, do: url(~p"/auth/oidc/callback")
-
   # Maintain existing callback URL for legacy providers
   defp callback_url(%{is_legacy: true} = provider) do
     url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
   end
 
-  defp callback_url(_provider), do: url(~p"/auth/oidc/callback")
+  defp callback_url(_provider), do: callback_url()
 
   # TODO: This can be refactored to reduce duplication with config_for_provider/1
 
@@ -313,5 +327,17 @@ defmodule PortalWeb.OIDC do
     config
     |> Keyword.merge(opts)
     |> Enum.into(%{redirect_uri: callback_url()})
+  end
+
+  defp build_entra_adminconsent_uri(config, state, scope) do
+    params = %{
+      client_id: config[:client_id] || config["client_id"],
+      state: state,
+      redirect_uri: callback_url(),
+      scope: scope
+    }
+
+    {:ok,
+     "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{URI.encode_query(params)}"}
   end
 end

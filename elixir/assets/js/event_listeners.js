@@ -81,3 +81,26 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
   }
 });
+
+window.addEventListener("DOMContentLoaded", () => {
+  const autoCloseWindowElement = document.querySelector(
+    "[data-auto-close-window-after-ms]"
+  );
+
+  if (!autoCloseWindowElement) {
+    return;
+  }
+
+  const timeoutMs = Number.parseInt(
+    autoCloseWindowElement.dataset.autoCloseWindowAfterMs || "",
+    10
+  );
+
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    window.close();
+  }, timeoutMs);
+});

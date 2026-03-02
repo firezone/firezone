@@ -24,32 +24,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     %{account: account, actor: actor}
   end
 
-  # Waits for async verification error to appear in the LiveView
-  defp wait_for_verification_error(lv, expected_message, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, 10_000)
-    interval = Keyword.get(opts, :interval, 100)
-    deadline = System.monotonic_time(:millisecond) + timeout
-
-    wait_for_verification_error_loop(lv, expected_message, deadline, interval)
-  end
-
-  defp wait_for_verification_error_loop(lv, expected_message, deadline, interval) do
-    html = render(lv)
-
-    if html =~ expected_message do
-      html
-    else
-      if System.monotonic_time(:millisecond) >= deadline do
-        flunk(
-          "Timed out waiting for verification error: #{expected_message}\n\nLast HTML contained: #{String.slice(html, 0, 500)}..."
-        )
-      else
-        Process.sleep(interval)
-        wait_for_verification_error_loop(lv, expected_message, deadline, interval)
-      end
-    end
-  end
-
   # =============================================================================
   # Basic Page Rendering Tests
   # =============================================================================
@@ -2161,6 +2135,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
   describe "start_verification error handling" do
     test "handles connection refused error", %{account: account, actor: actor, conn: conn} do
+      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_connection_refused()
 
       {:ok, lv, _html} =
@@ -2181,10 +2156,12 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Unable to fetch discovery document: Connection refused")
+      html = render(lv)
+      assert html =~ "Unable to fetch discovery document: :econnrefused."
     end
 
     test "handles HTTP 404 error", %{account: account, actor: actor, conn: conn} do
+      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(404, "Not Found")
 
       {:ok, lv, _html} =
@@ -2205,10 +2182,12 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Discovery document not found (HTTP 404)")
+      html = render(lv)
+      assert html =~ "Failed to fetch discovery document (HTTP 404)"
     end
 
     test "handles HTTP 500 error", %{account: account, actor: actor, conn: conn} do
+      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(500, "Internal Server Error")
 
       {:ok, lv, _html} =
@@ -2229,7 +2208,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Identity provider returned a server error (HTTP 500)")
+      html = render(lv)
+      assert html =~ "Failed to fetch discovery document (HTTP 500)"
     end
 
     test "handles invalid JSON in discovery document", %{
@@ -2237,7 +2217,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      Mocks.OIDC.stub_invalid_json("this is not json{")
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_invalid_json()
 
       {:ok, lv, _html} =
         conn
@@ -2257,7 +2238,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
+      html = render(lv)
+      assert html =~ "Failed to start verification."
     end
 
     test "validates okta_domain must be a valid FQDN", %{
@@ -2847,17 +2829,12 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       # Get the LiveView pid to send a message to it
       lv_pid = lv.pid
 
-      # Simulate the PubSub message with a mismatched token
-      send(lv_pid, {:oidc_verify, self(), "test_code", "wrong_token"})
-
-      # Should receive an error since the token doesn't match
-      assert_receive {:error, :token_mismatch}, 1000
-
+      send(lv_pid, {:oidc_verify_failed, :token_mismatch})
       html = render(lv)
-      assert html =~ "token mismatch"
+      assert html =~ "Failed to verify"
     end
 
-    test "handles entra_admin_consent message", %{
+    test "handles entra_directory_sync_complete message", %{
       account: account,
       actor: actor,
       conn: conn
@@ -2876,14 +2853,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv_pid = lv.pid
 
-      # Simulate the PubSub message with mismatched token
-      send(
-        lv_pid,
-        {:entra_admin_consent, self(), "https://issuer.example.com", "tenant123", "wrong_token"}
-      )
-
-      # Should receive an error since the token doesn't match
-      assert_receive {:error, :token_mismatch}, 1000
+      send(lv_pid, {:verification_failed, "Admin consent error"})
+      html = render(lv)
+      assert html =~ "Verification failed"
     end
 
     test "oidc_verify handles verification callback error", %{
@@ -2958,7 +2930,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      Mocks.OIDC.stub_discovery_error(403, ~s({"error": "forbidden"}))
+      Mocks.OIDC.stub_discovery_document()
 
       {:ok, lv, _html} =
         conn
@@ -2978,7 +2950,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 403)")
+      html = render(lv)
+      # Discovery document errors now happen in the new tab (begin_verification controller)
+      assert html =~ "Awaiting verification"
     end
   end
 
@@ -3052,7 +3026,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "successful PubSub verification completion" do
-    test "entra_admin_consent with matching token marks provider verified", %{
+    test "entra_directory_sync_complete with matching token marks provider verified", %{
       account: account,
       actor: actor,
       conn: conn
@@ -3100,14 +3074,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       # Start verification
       lv |> element("#verify-button") |> render_click()
 
-      # Send mismatched token message
       lv_pid = lv.pid
-      send(lv_pid, {:oidc_verify, self(), "code", "mismatched_token"})
-
-      assert_receive {:error, :token_mismatch}, 1000
-
+      send(lv_pid, {:oidc_verify_failed, :token_mismatch})
       html = render(lv)
-      assert html =~ "Failed to verify provider: token mismatch"
+      assert html =~ "Failed to verify"
     end
   end
 
@@ -3159,10 +3129,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      Mocks.OIDC.stub_discovery_error(
-        400,
-        ~s({"error": "invalid_request", "error_description": "Bad request"})
-      )
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_discovery_error(418, JSON.encode!(%{"error" => "teapot"}))
 
       {:ok, lv, _html} =
         conn
@@ -3182,7 +3150,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 400)")
+      html = render(lv)
+      assert html =~ "Failed to fetch discovery document (HTTP 418)"
     end
 
     test "handles malformed JSON in discovery document", %{
@@ -3190,7 +3159,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      Mocks.OIDC.stub_invalid_json("this is not valid json {{{")
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_invalid_json("{")
 
       {:ok, lv, _html} =
         conn
@@ -3210,7 +3180,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
+      html = render(lv)
+      assert html =~ "Failed to start verification."
     end
 
     test "handles connection refused error", %{
@@ -3218,6 +3189,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
+      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_connection_refused()
 
       {:ok, lv, _html} =
@@ -3238,7 +3210,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Unable to fetch discovery document: Connection refused")
+      html = render(lv)
+      assert html =~ "Unable to fetch discovery document: :econnrefused."
     end
 
     test "handles nxdomain error for invalid domain", %{
@@ -3246,6 +3219,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
+      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_dns_error()
 
       {:ok, lv, _html} =
@@ -3266,7 +3240,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Unable to fetch discovery document: DNS lookup failed")
+      html = render(lv)
+      assert html =~ "Unable to fetch discovery document: :nxdomain."
     end
 
     test "handles HTTP 418 error", %{
@@ -3274,7 +3249,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      Mocks.OIDC.stub_discovery_error(418, ~s({"message": "I'm a teapot"}))
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_discovery_error(418, "I'm a teapot")
 
       {:ok, lv, _html} =
         conn
@@ -3294,7 +3270,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 418)")
+      html = render(lv)
+      assert html =~ "Failed to fetch discovery document (HTTP 418)"
     end
   end
 
@@ -3303,7 +3280,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "PubSub verification success paths" do
-    test "entra_admin_consent with matching token marks provider as verified", %{
+    test "entra_directory_sync_complete with matching token marks provider as verified", %{
       account: account,
       actor: actor,
       conn: conn
@@ -3324,27 +3301,16 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       html = render(lv)
       assert html =~ "Awaiting verification"
 
-      # Get the token from the socket via the open_url push event
-      # The state parameter is "entra-verification:{token}"
-      # We'll extract it by subscribing to all entra-verification topics
-      # Since we can't directly access socket.assigns, we'll use a different approach:
-      # The LiveView should have received the verification setup, so we can
-      # simulate the successful callback by matching any token
       lv_pid = lv.pid
 
-      # Subscribe to receive verification messages
-      # For Entra, the verification comes via admin consent callback
-      # We need to extract the token - let's use a pattern that gets called
-
-      # Send a matching message (we need to somehow get the actual token)
-      # Since we can't, let's test the token mismatch path more thoroughly
       send(
         lv_pid,
-        {:entra_admin_consent, self(), "https://login.microsoftonline.com/tenant", "test_tenant",
-         "mismatched_token"}
+        {:entra_verify_complete, "https://login.microsoftonline.com/test_tenant/v2.0",
+         "test_tenant"}
       )
 
-      assert_receive {:error, :token_mismatch}, 1000
+      html = render(lv)
+      assert html =~ "Verified"
     end
 
     test "oidc_verify with callback error shows verification error", %{
@@ -3375,14 +3341,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       html = render(lv)
       assert html =~ "Awaiting verification"
 
-      # Test the token mismatch path
       lv_pid = lv.pid
-      send(lv_pid, {:oidc_verify, self(), "test_code", "wrong_token"})
-
-      assert_receive {:error, :token_mismatch}, 1000
-
+      send(lv_pid, {:oidc_verify_failed, :token_exchange_failed})
       html = render(lv)
-      assert html =~ "Failed to verify provider: token mismatch"
+      assert html =~ "Failed to verify"
     end
   end
 
@@ -3486,8 +3448,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      # Truncated JSON - missing closing brace
-      Mocks.OIDC.stub_invalid_json(~s({"issuer": "https://example.com"))
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_invalid_json("{")
 
       {:ok, lv, _html} =
         conn
@@ -3507,7 +3469,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
+      html = render(lv)
+      assert html =~ "Failed to start verification."
     end
 
     test "handles JSON with invalid byte sequences", %{
@@ -3515,8 +3478,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      # Invalid UTF-8 byte sequence in JSON
-      Mocks.OIDC.stub_invalid_json("{\"issuer\": \"test\xFF\"}")
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_invalid_json(<<255, 254, 253>>)
 
       {:ok, lv, _html} =
         conn
@@ -3536,7 +3499,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Discovery document contains invalid JSON")
+      html = render(lv)
+      assert html =~ "Failed to start verification."
     end
 
     test "handles HTTP 401 error", %{
@@ -3544,10 +3508,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      Mocks.OIDC.stub_discovery_error(
-        401,
-        ~s({"error": "unauthorized_client", "error_description": "Client not authorized"})
-      )
+      OpenIDConnect.Document.Cache.clear()
+      Mocks.OIDC.stub_discovery_error(401, "Unauthorized")
 
       {:ok, lv, _html} =
         conn
@@ -3567,7 +3529,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Failed to fetch discovery document (HTTP 401)")
+      html = render(lv)
+      assert html =~ "Failed to fetch discovery document (HTTP 401)"
     end
 
     test "handles Okta DNS lookup failure", %{
@@ -3575,6 +3538,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
+      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_dns_error()
 
       {:ok, lv, _html} =
@@ -3595,7 +3559,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv |> element("#verify-button") |> render_click()
 
-      wait_for_verification_error(lv, "Unable to fetch discovery document: DNS lookup failed")
+      html = render(lv)
+      assert html =~ "Unable to fetch discovery document: :nxdomain."
     end
   end
 end

@@ -5,14 +5,13 @@ defmodule PortalWeb.OIDCController do
 
   alias __MODULE__.Database
 
+  alias PortalWeb.Cookie
   alias PortalWeb.OIDC.IdentityProfile
   alias PortalWeb.Session.Redirector
 
   require Logger
 
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
-  @oidc_auth_ttl :timer.minutes(5)
-  @oidc_state_session_key :oidc_state_binding
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -24,22 +23,22 @@ defmodule PortalWeb.OIDCController do
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code}) do
     case parse_callback_state(state) do
-      {:oidc_verification, verification_token} ->
-        handle_verification_callback(conn, verification_token, code)
+      {:oidc_verification, lv_pid_string} ->
+        handle_oidc_verification(conn, code, lv_pid_string)
 
       _ ->
         handle_authentication_callback(conn, state, code)
     end
   end
 
-  # Handle Entra admin consent callback (returns admin_consent & tenant instead of code)
-  def callback(conn, %{"state" => state, "admin_consent" => _, "tenant" => _} = params) do
+  # Handle Entra admin consent callback (returns admin_consent and may include tenant)
+  def callback(conn, %{"state" => state, "admin_consent" => _} = params) do
     case parse_callback_state(state) do
-      {:entra_verification, verification_token} ->
-        handle_entra_verification_callback(conn, verification_token, params, "auth_provider")
+      {:entra_auth_provider, _lv_pid_string} ->
+        redirect(conn, to: ~p"/verification/entra?#{params}")
 
-      {:entra_admin_consent, verification_token} ->
-        handle_entra_verification_callback(conn, verification_token, params, "directory_sync")
+      {:entra_directory_sync, _lv_pid_string} ->
+        redirect(conn, to: ~p"/verification/entra?#{params}")
 
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
@@ -63,25 +62,40 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp load_auth_context(conn, state) do
-    with {:ok, auth_state} <- fetch_oidc_auth_state(state),
-         :ok <- verify_oidc_state_session_binding(conn, auth_state) do
-      conn = put_oidc_error_context(conn, auth_state)
-      params = auth_state.params || %{}
+    with %Cookie.AuthenticationState{} = cookie <- Cookie.AuthenticationState.fetch(conn),
+         :ok <- verify_state(cookie.state, state) do
+      conn = Cookie.AuthenticationState.delete(conn)
+      conn = put_oidc_error_context(conn, cookie)
+      params = cookie.params || %{}
       context_type = context_type(params)
-      account = Database.get_account_by_id_or_slug!(auth_state.account_id)
-      provider = get_provider!(account, auth_state)
+      account = Database.get_account_by_id_or_slug!(cookie.account_id)
+      provider = get_provider!(account, cookie)
 
       {:ok,
        %{
          conn: conn,
          params: params,
-         verifier: auth_state.verifier,
+         verifier: cookie.verifier,
          context_type: context_type,
          account: account,
          provider: provider
        }}
+    else
+      nil -> {:error, :oidc_state_not_found}
+      {:error, :state_mismatch} -> {:error, :oidc_state_session_mismatch}
     end
   end
+
+  defp verify_state(cookie_state, callback_state)
+       when is_binary(cookie_state) and is_binary(callback_state) do
+    if Plug.Crypto.secure_compare(cookie_state, callback_state) do
+      :ok
+    else
+      {:error, :state_mismatch}
+    end
+  end
+
+  defp verify_state(_cookie_state, _callback_state), do: {:error, :state_mismatch}
 
   defp run_authentication_flow(auth_context, code) do
     %{
@@ -117,82 +131,23 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp fetch_oidc_auth_state(state) do
-    case Portal.AuthenticationCache.pop(Portal.AuthenticationCache.oidc_auth_key(state)) do
-      {:ok, auth_state} -> {:ok, normalize_auth_state(auth_state)}
-      :error -> {:error, :oidc_state_not_found}
-    end
-  end
-
-  defp handle_verification_callback(conn, verification_token, code) do
-    :ok =
-      Portal.AuthenticationCache.put(
-        Portal.AuthenticationCache.verification_key(verification_token),
-        %{
-          "type" => "oidc",
-          "token" => verification_token,
-          "code" => code
-        }
-      )
-
-    # Store OIDC verification info in session for the LiveView to pick up
-    conn
-    |> put_session(:verification, %{
-      "type" => "oidc",
-      "token" => verification_token
-    })
-    |> redirect(to: ~p"/verification")
-  end
-
-  defp handle_entra_verification_callback(conn, verification_token, params, entra_type) do
-    :ok =
-      Portal.AuthenticationCache.put(
-        Portal.AuthenticationCache.verification_key(verification_token),
-        %{
-          "type" => "entra",
-          "entra_type" => entra_type,
-          "token" => verification_token,
-          "admin_consent" => params["admin_consent"],
-          "tenant_id" => params["tenant"],
-          "error" => params["error"],
-          "error_description" => params["error_description"]
-        }
-      )
-
-    # Store only minimal reference in session for the LiveView to pick up
-    conn
-    |> put_session(:verification, %{
-      "type" => "entra",
-      "token" => verification_token
-    })
-    |> redirect(to: ~p"/verification")
-  end
-
   defp provider_redirect(conn, account, provider, params) do
-    {conn, session_binding} = ensure_oidc_state_session_binding(conn)
-
     opts = authorization_opts(provider)
 
     case PortalWeb.OIDC.authorization_uri(provider, opts) do
       {:ok, uri, state, verifier} ->
-        auth_state = %{
+        cookie = %Cookie.AuthenticationState{
           auth_provider_type: params["auth_provider_type"],
           auth_provider_id: params["auth_provider_id"],
           account_id: account.id,
           account_slug: account.slug,
+          state: state,
           verifier: verifier,
-          session_binding: session_binding,
           params: sanitize(params)
         }
 
-        :ok =
-          Portal.AuthenticationCache.put(
-            Portal.AuthenticationCache.oidc_auth_key(state),
-            auth_state,
-            ttl: @oidc_auth_ttl
-          )
-
         conn
+        |> Cookie.AuthenticationState.put(cookie)
         |> redirect(external: uri)
 
       {:error, reason} ->
@@ -535,44 +490,81 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp put_oidc_error_context(conn, auth_state) do
+  defp put_oidc_error_context(conn, %Cookie.AuthenticationState{} = cookie) do
     Plug.Conn.assign(conn, :oidc_error_context, %{
-      account_slug: auth_state.account_slug,
-      params: auth_state.params || %{},
-      auth_provider_id: auth_state.auth_provider_id
+      account_slug: cookie.account_slug,
+      params: cookie.params || %{},
+      auth_provider_id: cookie.auth_provider_id
     })
   end
 
+  defp handle_oidc_verification(conn, code, lv_pid_string) do
+    result =
+      case request_pending_verification(PortalWeb.OIDC.deserialize_pid(lv_pid_string)) do
+        {:ok, %{config: config, verifier: verifier}} ->
+          case PortalWeb.OIDC.verify_callback(config, code, verifier) do
+            {:ok, claims} ->
+              %{ok: true, issuer: claims["iss"], lv_pid: lv_pid_string}
+
+            {:error, reason} ->
+              Logger.warning("OIDC verification failed", reason: inspect(reason))
+              %{ok: false, error: verification_error_message(reason), lv_pid: lv_pid_string}
+          end
+
+        {:error, reason} ->
+          %{ok: false, error: pending_verification_error_message(reason), lv_pid: lv_pid_string}
+      end
+
+    token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
+    redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+  end
+
+  defp request_pending_verification(nil), do: {:error, :no_pid}
+
+  defp request_pending_verification(lv_pid) do
+    send(lv_pid, {:get_pending_verification, self()})
+
+    receive do
+      {:pending_verification, pending} when is_map(pending) -> {:ok, pending}
+      {:pending_verification, _} -> {:error, :not_found}
+    after
+      5_000 -> {:error, :timeout}
+    end
+  end
+
+  defp pending_verification_error_message(reason)
+       when reason in [:no_pid, :not_found, :timeout] do
+    "Verification session was not found or has expired. Please retry verification."
+  end
+
+  defp pending_verification_error_message(_reason) do
+    "Unable to load verification session. Please retry verification."
+  end
+
+  defp verification_error_message(%Req.TransportError{reason: reason}) do
+    identity_provider_transport_error_message(reason)
+  end
+
+  defp verification_error_message({status, body}) when is_integer(status) do
+    token_exchange_error_message(status, body)
+  end
+
+  defp verification_error_message({:invalid_jwt, _reason}) do
+    "Unable to verify your identity token. Please try again."
+  end
+
+  defp verification_error_message(_reason) do
+    "Verification failed. Please try again."
+  end
+
   defp parse_callback_state(state) do
-    case String.split(state, ":", parts: 2) do
-      ["oidc-verification", token] -> {:oidc_verification, token}
-      ["entra-verification", token] -> {:entra_verification, token}
-      ["entra-admin-consent", token] -> {:entra_admin_consent, token}
-      _ -> :authentication
+    case PortalWeb.OIDC.verify_verification_state(state) do
+      {:ok, %{type: "oidc-auth-provider", lv_pid: lv_pid}} -> {:oidc_verification, lv_pid}
+      {:ok, %{type: "entra-auth-provider", lv_pid: lv_pid}} -> {:entra_auth_provider, lv_pid}
+      {:ok, %{type: "entra-directory-sync", lv_pid: lv_pid}} -> {:entra_directory_sync, lv_pid}
+      {:error, _} -> :authentication
     end
   end
-
-  defp ensure_oidc_state_session_binding(conn) do
-    case get_session(conn, @oidc_state_session_key) do
-      binding when is_binary(binding) ->
-        {conn, binding}
-
-      _ ->
-        binding = Portal.Crypto.random_token(32)
-        {put_session(conn, @oidc_state_session_key, binding), binding}
-    end
-  end
-
-  defp verify_oidc_state_session_binding(conn, %{session_binding: expected_binding})
-       when is_binary(expected_binding) do
-    case get_session(conn, @oidc_state_session_key) do
-      ^expected_binding -> :ok
-      _ -> {:error, :oidc_state_session_mismatch}
-    end
-  end
-
-  defp verify_oidc_state_session_binding(_conn, _auth_state),
-    do: {:error, :oidc_state_session_mismatch}
 
   defp identity_provider_transport_error_message(:nxdomain),
     do:
@@ -611,25 +603,6 @@ defmodule PortalWeb.OIDCController do
   defp invalid_json_reason?(reason) do
     match?({:unexpected_end, _}, reason) or
       match?({tag, _, _} when tag in [:invalid_byte, :unexpected_sequence], reason)
-  end
-
-  defp normalize_auth_state(auth_state) do
-    %{
-      auth_provider_type: auth_state_value(auth_state, :auth_provider_type),
-      auth_provider_id: auth_state_value(auth_state, :auth_provider_id),
-      account_id: auth_state_value(auth_state, :account_id),
-      account_slug: auth_state_value(auth_state, :account_slug),
-      verifier: auth_state_value(auth_state, :verifier),
-      session_binding: auth_state_value(auth_state, :session_binding),
-      params: auth_state_value(auth_state, :params) || %{}
-    }
-  end
-
-  defp auth_state_value(auth_state, key) do
-    case Map.get(auth_state, key) do
-      nil -> Map.get(auth_state, Atom.to_string(key))
-      value -> value
-    end
   end
 
   defp redirect_for_error(conn, error, path) do

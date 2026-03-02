@@ -44,8 +44,6 @@ defmodule PortalWeb.Settings.Authentication do
       @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified is_legacy]a
   }
 
-  @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the URI returns valid OpenID Connect configuration."
-
   def mount(_params, _session, socket) do
     socket = assign(socket, page_title: "Authentication")
 
@@ -134,26 +132,22 @@ defmodule PortalWeb.Settings.Authentication do
         []
       end
 
-    with {:ok, verification} <- PortalWeb.OIDC.setup_verification(type, opts) do
-      # Subscribe to verification PubSub topic if connected
-      # For Entra, use "entra-verification:" topic; for others use "oidc-verification:"
-      topic =
-        if type == "entra" do
-          "entra-verification:#{verification.token}"
-        else
-          "oidc-verification:#{verification.token}"
-        end
+    with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(type, opts),
+         verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
+         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         state_token <-
+           PortalWeb.OIDC.sign_verification_state(lv_pid_string, verification_state_string(type)),
+         {:ok, uri} <- PortalWeb.OIDC.build_verification_uri(type, config, verifier, state_token) do
+      socket =
+        assign(socket,
+          pending_verification: %{config: config, verifier: verifier}
+        )
 
-      :ok = Portal.PubSub.subscribe(topic)
-
-      socket = assign(socket, verification: verification)
-
-      # Push JS to open verification URL in new tab
-      {:noreply, push_event(socket, "open_url", %{url: verification.url})}
+      {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
-      error ->
-        field = if(type == "okta", do: :okta_domain, else: :discovery_document_uri)
-        {:noreply, handle_verification_setup_error(error, field, socket)}
+      {:error, reason} ->
+        error = verification_start_error_message(reason)
+        {:noreply, assign(socket, verification_error: error)}
     end
   end
 
@@ -292,72 +286,89 @@ defmodule PortalWeb.Settings.Authentication do
     assign_default_provider(provider_id, socket)
   end
 
-  # Sent by the Entra admin consent verification process from another browser tab
-  def handle_info({:entra_admin_consent, pid, issuer, _tenant_id, state_token}, socket) do
-    :ok = Portal.PubSub.unsubscribe("entra-verification:#{state_token}")
-
-    stored_token = socket.assigns.verification.token
-
-    # Verify the state token matches
-    if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
-      send(pid, :success)
-
-      attrs = %{
-        "is_verified" => true,
-        "issuer" => issuer
-      }
-
-      changeset =
-        socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(attrs, socket)
-
-      {:noreply, assign(socket, form: to_form(changeset))}
-    else
-      send(pid, {:error, :token_mismatch})
-      {:noreply, socket}
-    end
+  # Sent by VerificationController/OIDCController to fetch config+verifier for code exchange
+  def handle_info({:get_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, assign(socket, pending_verification: nil)}
   end
 
-  # Sent by the OIDC verification process from another browser tab
-  def handle_info({:oidc_verify, pid, code, state_token}, socket) do
-    :ok = Portal.PubSub.unsubscribe("oidc-verification:#{state_token}")
+  # Sent directly by the OIDC verification controller after code exchange succeeds
+  def handle_info({:oidc_verify_complete, issuer, ack_to}, socket) do
+    attrs = %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
 
-    stored_token = socket.assigns.verification.token
+    changeset =
+      socket.assigns.form.source
+      |> apply_changes()
+      |> changeset(attrs, socket)
 
-    # Verify the state token matches
-    if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
-      code_verifier = socket.assigns.verification.verifier
-      config = socket.assigns.verification.config
-
-      case PortalWeb.OIDC.verify_callback(config, code, code_verifier) do
-        {:ok, claims} ->
-          send(pid, :success)
-
-          attrs = %{
-            "is_verified" => true,
-            "is_legacy" => false,
-            "issuer" => claims["iss"]
-          }
-
-          changeset =
-            socket.assigns.form.source
-            |> apply_changes()
-            |> changeset(attrs, socket)
-
-          {:noreply, assign(socket, form: to_form(changeset))}
-
-        {:error, reason} ->
-          send(pid, {:error, reason})
-          error = "Failed to verify provider: #{inspect(reason)}"
-          {:noreply, assign(socket, verification_error: error)}
-      end
-    else
-      send(pid, {:error, :token_mismatch})
-      error = "Failed to verify provider: token mismatch"
-      {:noreply, assign(socket, verification_error: error)}
-    end
+    maybe_send_verification_ack(ack_to)
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
+
+  def handle_info({:oidc_verify_complete, issuer}, socket) do
+    handle_info({:oidc_verify_complete, issuer, nil}, socket)
+  end
+
+  # Sent directly by the OIDC verification controller when code exchange fails
+  def handle_info({:oidc_verify_failed, reason}, socket) do
+    error = "Failed to verify: #{format_verification_error_reason(reason)}"
+    {:noreply, assign(socket, verification_error: error)}
+  end
+
+  # Sent directly by the Entra auth_provider verification controller
+  def handle_info({:entra_verify_complete, issuer, _tenant_id, ack_to}, socket) do
+    attrs = %{"is_verified" => true, "issuer" => issuer}
+
+    changeset =
+      socket.assigns.form.source
+      |> apply_changes()
+      |> changeset(attrs, socket)
+
+    maybe_send_verification_ack(ack_to)
+    {:noreply, assign(socket, form: to_form(changeset))}
+  end
+
+  def handle_info({:entra_verify_complete, issuer, _tenant_id}, socket) do
+    handle_info({:entra_verify_complete, issuer, nil, nil}, socket)
+  end
+
+  # Sent directly by the verification controller on any failure
+  def handle_info({:verification_failed, reason}, socket) do
+    error = "Verification failed: #{format_verification_error_reason(reason)}"
+    {:noreply, assign(socket, verification_error: error)}
+  end
+
+  defp verification_state_string("entra"), do: "entra-auth-provider"
+  defp verification_state_string(_), do: "oidc-auth-provider"
+
+  defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
+    send(pid, {:verification_ack, ref})
+    :ok
+  end
+
+  defp maybe_send_verification_ack(_), do: :ok
+
+  defp format_verification_error_reason(reason) when is_binary(reason), do: reason
+  defp format_verification_error_reason(reason), do: inspect(reason)
+
+  defp verification_start_error_message(:invalid_discovery_document_uri) do
+    "The Discovery Document URI is invalid. Please check your provider configuration."
+  end
+
+  defp verification_start_error_message(:private_ip_blocked) do
+    "The Discovery Document URI must not point to a private or reserved IP address."
+  end
+
+  defp verification_start_error_message({status, _body}) when is_integer(status) do
+    "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
+  end
+
+  defp verification_start_error_message(%Req.TransportError{reason: reason}) do
+    "Unable to fetch discovery document: #{inspect(reason)}."
+  end
+
+  defp verification_start_error_message(reason) when is_binary(reason), do: reason
+  defp verification_start_error_message(_reason), do: "Failed to start verification."
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
     schema = changeset.data.__struct__
@@ -1199,104 +1210,6 @@ defmodule PortalWeb.Settings.Authentication do
     else
       get_field(form.source, :is_verified) == true
     end
-  end
-
-  # Transport errors (network issues)
-  defp handle_verification_setup_error(
-         {:error, %Req.TransportError{reason: reason}},
-         field,
-         socket
-       ) do
-    msg =
-      case reason do
-        :nxdomain ->
-          "Unable to fetch discovery document: DNS lookup failed. Please verify the domain is correct."
-
-        :econnrefused ->
-          "Unable to fetch discovery document: Connection refused. The identity provider may be down."
-
-        :timeout ->
-          "Unable to fetch discovery document: Connection timed out. Please try again."
-
-        _ ->
-          "Unable to fetch discovery document. Please check your network connection."
-      end
-
-    add_verification_error(msg, field, socket)
-  end
-
-  # HTTP protocol errors
-  defp handle_verification_setup_error(
-         {:error, %Req.HTTPError{protocol: _protocol, reason: _reason}},
-         field,
-         socket
-       ) do
-    msg = "Identity provider returned an unexpected protocol error. Please try again."
-    add_verification_error(msg, field, socket)
-  end
-
-  # HTTP error status codes
-  defp handle_verification_setup_error({:error, {status, body}}, field, socket)
-       when is_integer(status) do
-    msg =
-      case {status, body} do
-        {404, _} ->
-          "Discovery document not found (HTTP 404). Please verify the Discovery Document URI is correct."
-
-        {status, _} when status in 500..599 ->
-          "Identity provider returned a server error (HTTP #{status}). Please try again later."
-
-        {status, _} ->
-          "Failed to fetch discovery document (HTTP #{status}). Please verify your configuration."
-      end
-
-    add_verification_error(msg, field, socket)
-  end
-
-  # JSON decode errors
-  defp handle_verification_setup_error({:error, {:unexpected_end, _offset}}, field, socket) do
-    add_verification_error(@invalid_json_error_message, field, socket)
-  end
-
-  defp handle_verification_setup_error({:error, {:invalid_byte, _offset, _byte}}, field, socket) do
-    add_verification_error(@invalid_json_error_message, field, socket)
-  end
-
-  defp handle_verification_setup_error(
-         {:error, {:unexpected_sequence, _offset, _bytes}},
-         field,
-         socket
-       ) do
-    add_verification_error(@invalid_json_error_message, field, socket)
-  end
-
-  # Invalid URI
-  defp handle_verification_setup_error({:error, :invalid_discovery_document_uri}, field, socket) do
-    msg = "The Discovery Document URI is invalid. Please enter a valid URL."
-    add_verification_error(msg, field, socket)
-  end
-
-  # Private IP blocked
-  defp handle_verification_setup_error({:error, :private_ip_blocked}, field, socket) do
-    msg = "The Discovery Document URI must not point to a private or reserved IP address."
-    add_verification_error(msg, field, socket)
-  end
-
-  # Catch-all for unexpected errors
-  defp handle_verification_setup_error({:error, reason}, field, socket) do
-    Logger.info(
-      "Unexpected error during OIDC verification setup",
-      subject: socket.assigns.subject,
-      reason: reason
-    )
-
-    msg = "An unexpected error occurred. Please try again or contact support."
-    add_verification_error(msg, field, socket)
-  end
-
-  defp add_verification_error(msg, field, socket) do
-    changeset = add_error(socket.assigns.form.source, field, msg)
-    assign(socket, form: to_form(changeset))
   end
 
   defp provider_type(module) do

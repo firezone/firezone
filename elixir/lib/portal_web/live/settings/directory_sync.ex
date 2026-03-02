@@ -309,38 +309,68 @@ defmodule PortalWeb.Settings.DirectorySync do
     start_verification(socket)
   end
 
-  def handle_info({:entra_admin_consent, pid, _issuer, tenant_id, state_token}, socket) do
-    :ok = Portal.PubSub.unsubscribe("entra-admin-consent:#{state_token}")
-    stored_token = socket.assigns.verification.token
+  # Sent directly by the Entra directory_sync verification controller
+  def handle_info({:entra_directory_sync_complete, tenant_id, ack_to}, socket) do
+    # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
+    # For NEW: Entra has no programmatically set fields, so .data works here too.
+    changeset = socket.assigns.form.source
 
-    # Verify the state token matches
-    if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
-      send(pid, :success)
+    attrs =
+      changeset.changes
+      |> Map.put(:is_verified, true)
+      |> Map.put(:tenant_id, tenant_id)
 
-      # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
-      # For NEW: Entra has no programmatically set fields, so .data works here too.
-      changeset = socket.assigns.form.source
+    changeset = changeset(changeset.data, attrs)
+    maybe_send_verification_ack(ack_to)
 
-      attrs =
-        changeset.changes
-        |> Map.put(:is_verified, true)
-        |> Map.put(:tenant_id, tenant_id)
+    {:noreply,
+     assign(socket, form: to_form(changeset), verification_error: nil, verification: nil)}
+  end
 
-      changeset = changeset(changeset.data, attrs)
+  def handle_info({:entra_directory_sync_complete, tenant_id}, socket) do
+    handle_info({:entra_directory_sync_complete, tenant_id, nil}, socket)
+  end
 
-      {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
-    else
-      send(pid, {:error, :token_mismatch})
-      error = "Failed to verify directory: token mismatch"
-      {:noreply, assign(socket, verification_error: error)}
-    end
+  # Sent directly by the verification controller on any failure
+  def handle_info({:verification_failed, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       verification_error: format_verification_error_reason(reason),
+       verification: nil
+     )}
   end
 
   def handle_info(:directories_changed, socket) do
     {:noreply, init(socket)}
   end
 
+  def handle_info({:get_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, assign(socket, pending_verification: nil)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
+    send(pid, {:verification_ack, ref})
+    :ok
+  end
+
+  defp maybe_send_verification_ack(_), do: :ok
+
+  defp format_verification_error_reason(reason) when is_binary(reason), do: reason
+  defp format_verification_error_reason(reason), do: inspect(reason)
+
+  defp verification_start_error_message({status, _body}) when is_integer(status) do
+    "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
+  end
+
+  defp verification_start_error_message(%Req.TransportError{reason: reason}) do
+    "Unable to fetch discovery document: #{inspect(reason)}."
+  end
+
+  defp verification_start_error_message(reason) when is_binary(reason), do: reason
+  defp verification_start_error_message(_reason), do: "Failed to start verification."
 
   def render(assigns) do
     ~H"""
@@ -1384,45 +1414,28 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp start_verification(%{assigns: %{type: "entra"}} = socket) do
-    # For Entra directory sync, we use the admin consent endpoint which pre-checks
-    # "Consent on behalf of your organization" and grants application permissions:
-    # - Directory.Read.All: Read users, groups, and directory data
-    # - Application.Read.All: Read service principal and app role assignments (for group assignment)
-    #
-    # IMPORTANT: Use the .default scope to request all application permissions
-    # configured in the app registration. This is the correct way to request
-    # application permissions (not delegated) via the admin consent endpoint.
+    with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
+         verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
+         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         state_token <-
+           PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync"),
+         {:ok, uri} <-
+           PortalWeb.OIDC.build_verification_uri(
+             "entra_directory_sync",
+             config,
+             verifier,
+             state_token
+           ) do
+      socket =
+        assign(socket,
+          verification: %{}
+        )
 
-    token = Portal.Crypto.random_token(32)
-    state = "entra-admin-consent:#{token}"
-
-    config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
-    client_id = config[:client_id]
-
-    # Build admin consent URL - route through /auth/oidc/callback so admins only need one redirect URI
-    redirect_uri = url(~p"/auth/oidc/callback")
-
-    # Use .default scope to request all configured application permissions
-    params = %{
-      client_id: client_id,
-      state: state,
-      redirect_uri: redirect_uri,
-      scope: "https://graph.microsoft.com/.default"
-    }
-
-    query_string = URI.encode_query(params)
-
-    admin_consent_url =
-      "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{query_string}"
-
-    :ok = Portal.PubSub.subscribe("entra-admin-consent:#{token}")
-
-    verification = %{token: token, url: admin_consent_url}
-
-    {:noreply,
-     socket
-     |> assign(verification: verification)
-     |> push_event("open_url", %{url: admin_consent_url})}
+      {:noreply, push_event(socket, "open_url", %{url: uri})}
+    else
+      {:error, reason} ->
+        {:noreply, assign(socket, verification_error: verification_start_error_message(reason))}
+    end
   end
 
   defp start_verification(%{assigns: %{type: "okta"}} = socket) do
