@@ -21,7 +21,7 @@ where
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
             let mut pending_packets = Vec::with_capacity(128);
 
-            'read: loop {
+            loop {
                 // Read a batch of packets.
                 let num_read = outbound_rx.recv_many(&mut pending_packets, 128).await;
 
@@ -30,11 +30,12 @@ where
                 }
 
                 // Wait until fd is writable.
-                let mut guard = match fd.writable().await {
-                    Ok(guard) => guard,
-                    Err(e) => {
-                        tracing::warn!("Failed to await TUN fd writability: {e}");
-                        continue 'read;
+                let mut guard = loop {
+                    match fd.writable().await {
+                        Ok(guard) => break guard,
+                        Err(e) => {
+                            tracing::warn!("Failed to await TUN fd writability: {e}");
+                        }
                     }
                 };
 
