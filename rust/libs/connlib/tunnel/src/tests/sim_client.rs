@@ -20,7 +20,7 @@ use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Si
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools as _;
 use proptest::prelude::*;
 use snownet::Transmit;
@@ -29,7 +29,7 @@ use std::{
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Simulation state for a particular client.
@@ -65,10 +65,16 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), IpPacket>,
+    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), (Instant, IpPacket)>,
     pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
 
-    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), IpPacket>,
+    /// The received ICMP packets, indexed by our custom ICMP payload.
+    pub(crate) received_icmp_requests: BTreeMap<u64, (Instant, IpPacket)>,
+
+    /// The received UDP packets, indexed by our custom UDP payload.
+    pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
+
+    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), (Instant, IpPacket)>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
@@ -91,6 +97,8 @@ impl SimClient {
             received_tcp_dns_responses: Default::default(),
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
+            received_icmp_requests: Default::default(),
+            received_udp_requests: Default::default(),
             sent_udp_requests: Default::default(),
             received_udp_replies: Default::default(),
             routes: Default::default(),
@@ -209,7 +217,7 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
-        self.update_sent_requests(&packet);
+        self.update_sent_requests(&packet, now);
 
         let Some(transmit) = self.sut.handle_tun_input(packet, now) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
@@ -234,12 +242,12 @@ impl SimClient {
         }
     }
 
-    fn update_sent_requests(&mut self, packet: &IpPacket) {
+    fn update_sent_requests(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
             self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
             return;
         }
 
@@ -247,19 +255,19 @@ impl SimClient {
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
             self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
             return;
         }
 
         if let Some(udp) = packet.as_udp() {
             self.sent_udp_requests.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
-                packet.clone(),
+                (now, packet.clone()),
             );
         }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
         let Some(packet) = self.sut.handle_network_input(
             transmit.dst,
             transmit.src.unwrap(),
@@ -267,14 +275,20 @@ impl SimClient {
             now,
         ) else {
             self.sut.handle_timeout(now);
-            return;
+            return None;
         };
 
-        self.on_received_packet(packet);
+        let transmit = self.on_received_packet(packet, now)?;
+
+        Some(transmit)
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(&mut self, packet: IpPacket) {
+    pub(crate) fn on_received_packet(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
             Ok(Some((failed_packet, _))) => {
                 match failed_packet.layer4_protocol() {
@@ -295,7 +309,7 @@ impl SimClient {
                     }
                 }
 
-                return;
+                return None;
             }
             Ok(None) => {}
             Err(e) => {
@@ -312,7 +326,7 @@ impl SimClient {
                 let sentinel = packet.source();
                 let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(sentinel) else {
                     tracing::error!(%sentinel, mapping = ?self.dns_by_sentinel, "Unknown DNS server");
-                    return;
+                    return None;
                 };
 
                 self.received_udp_dns_responses.insert(
@@ -324,24 +338,48 @@ impl SimClient {
                     self.handle_dns_response(&response);
                 }
 
-                return;
+                return None;
             }
 
             self.received_udp_replies.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
                 packet.clone(),
             );
-            return;
+            return None;
         }
 
         if self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
-            return;
+            return None;
         }
 
         if self.tcp_client.accepts(&packet) {
             self.tcp_client.handle_inbound(packet);
-            return;
+            return None;
+        }
+
+        if let Some(icmp) = packet.as_icmpv4()
+            && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
+        {
+            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
+            tracing::debug!(%packet_id, "Received ICMP request");
+            self.received_icmp_requests
+                .insert(packet_id, (now, packet.clone()));
+            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
+
+            return Some(transmit);
+        }
+
+        if let Some(icmp) = packet.as_icmpv6()
+            && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
+        {
+            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
+            tracing::debug!(%packet_id, "Received ICMP request");
+            self.received_icmp_requests
+                .insert(packet_id, (now, packet.clone()));
+            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
+
+            return Some(transmit);
         }
 
         if let Some(icmp) = packet.as_icmpv4()
@@ -349,7 +387,7 @@ impl SimClient {
         {
             self.received_icmp_replies
                 .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-            return;
+            return None;
         }
 
         if let Some(icmp) = packet.as_icmpv6()
@@ -357,10 +395,12 @@ impl SimClient {
         {
             self.received_icmp_replies
                 .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-            return;
+            return None;
         }
 
         tracing::error!(?packet, "Unhandled packet");
+
+        None
     }
 
     pub(crate) fn update_relays<'a>(
@@ -406,6 +446,27 @@ impl SimClient {
         for ips in self.dns_records.values_mut() {
             ips.sort()
         }
+    }
+
+    fn handle_icmp_request(
+        &mut self,
+        packet: &IpPacket,
+        echo: IcmpEchoHeader,
+        payload: &[u8],
+        now: Instant,
+    ) -> Option<Transmit> {
+        let reply = ip_packet::make::icmp_reply_packet(
+            packet.destination(),
+            packet.source(),
+            echo.seq,
+            echo.id,
+            payload,
+        )
+        .expect("src and dst are taken from incoming packet");
+
+        let transmit = self.sut.handle_tun_input(reply, now)?;
+
+        Some(transmit)
     }
 }
 
@@ -462,15 +523,25 @@ pub struct RefClient {
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
 
-    /// The expected ICMP handshakes.
+    /// The expected ICMP handshakes with Gateways.
     #[debug(skip)]
-    pub(crate) expected_icmp_handshakes:
+    pub(crate) expected_gateway_icmp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
 
-    /// The expected UDP handshakes.
+    /// The expected ICMP handshakes with Clients.
     #[debug(skip)]
-    pub(crate) expected_udp_handshakes:
+    pub(crate) expected_client_icmp_handshakes:
+        BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
+
+    /// The expected UDP handshakes with Gateways.
+    #[debug(skip)]
+    pub(crate) expected_gateway_udp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
+
+    /// The expected UDP handshakes with Clients.
+    #[debug(skip)]
+    pub(crate) expected_client_udp_handshakes:
+        BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
     /// The expected TCP connections.
     #[debug(skip)]
@@ -482,6 +553,9 @@ pub struct RefClient {
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
+
+    #[debug(skip)]
+    connection_resets: Vec<Instant>,
 }
 
 impl RefClient {
@@ -618,16 +692,18 @@ impl RefClient {
         table
     }
 
-    pub(crate) fn restart(&mut self, key: PrivateKey) {
+    pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
 
         self.key = key;
 
-        self.reset_connections();
+        self.reset_connections(now);
         self.readd_all_resources();
     }
 
-    pub(crate) fn reset_connections(&mut self) {
+    pub(crate) fn reset_connections(&mut self, now: Instant) {
+        self.connection_resets.push(now);
+
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
@@ -747,6 +823,20 @@ impl RefClient {
         }
     }
 
+    pub(crate) fn on_icmp_packet_to_device(
+        &mut self,
+        remote_client: ClientId,
+        dst: Destination,
+        seq: Seq,
+        identifier: Identifier,
+        payload: u64,
+    ) {
+        self.expected_client_icmp_handshakes
+            .entry(remote_client)
+            .or_default()
+            .insert(payload, (dst, seq, identifier));
+    }
+
     pub(crate) fn on_icmp_packet(
         &mut self,
         dst: Destination,
@@ -759,7 +849,7 @@ impl RefClient {
         self.on_packet(
             dst.clone(),
             (dst, seq, identifier),
-            |ref_client| &mut ref_client.expected_icmp_handshakes,
+            |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
             payload,
             gateway_by_resource,
             gateway_by_ip,
@@ -778,7 +868,7 @@ impl RefClient {
         self.on_packet(
             dst.clone(),
             (dst, sport, dport),
-            |ref_client| &mut ref_client.expected_udp_handshakes,
+            |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
             payload,
             gateway_by_resource,
             gateway_by_ip,
@@ -1007,18 +1097,32 @@ impl RefClient {
         identifier: &Identifier,
         payload: &u64,
     ) -> bool {
-        self.expected_icmp_handshakes.values().flatten().all(
-            |(existig_payload, (_, existing_seq, existing_identifier))| {
-                existing_seq != seq
-                    && existing_identifier != identifier
-                    && existig_payload != payload
-            },
-        )
+        let not_an_existing_gateway_handshake = self
+            .expected_gateway_icmp_handshakes
+            .values()
+            .flatten()
+            .all(
+                |(existig_payload, (_, existing_seq, existing_identifier))| {
+                    existing_seq != seq
+                        && existing_identifier != identifier
+                        && existig_payload != payload
+                },
+            );
+        let not_an_existing_client_handshake =
+            self.expected_client_icmp_handshakes.values().flatten().all(
+                |(existig_payload, (_, existing_seq, existing_identifier))| {
+                    existing_seq != seq
+                        && existing_identifier != identifier
+                        && existig_payload != payload
+                },
+            );
+
+        not_an_existing_gateway_handshake && not_an_existing_client_handshake
     }
 
     /// An UDP packet is valid if we didn't yet send an UDP packet with the same sport, dport and payload.
     pub(crate) fn is_valid_udp_packet(&self, sport: &SPort, dport: &DPort, payload: &u64) -> bool {
-        self.expected_udp_handshakes.values().flatten().all(
+        self.expected_gateway_udp_handshakes.values().flatten().all(
             |(existig_payload, (_, existing_sport, existing_dport))| {
                 existing_dport != dport && existing_sport != sport && existig_payload != payload
             },
@@ -1242,6 +1346,16 @@ impl RefClient {
             .iter()
             .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
     }
+
+    /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
+    pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
+        let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?
+
+        self.connection_resets
+            .iter()
+            .copied()
+            .any(|t| (t..t + ice_timeout).contains(&at))
+    }
 }
 
 // This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
@@ -1306,14 +1420,17 @@ fn ref_client(
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
-                    expected_icmp_handshakes: Default::default(),
-                    expected_udp_handshakes: Default::default(),
+                    expected_gateway_icmp_handshakes: Default::default(),
+                    expected_client_icmp_handshakes: Default::default(),
+                    expected_gateway_udp_handshakes: Default::default(),
+                    expected_client_udp_handshakes: Default::default(),
                     expected_tcp_connections: Default::default(),
                     expected_udp_dns_handshakes: Default::default(),
                     expected_tcp_dns_handshakes: Default::default(),
                     resources: Default::default(),
                     routes: Default::default(),
                     site_status: Default::default(),
+                    connection_resets: Default::default(),
                 }
             },
         )

@@ -204,6 +204,7 @@ jobs:
             "State change \(got new possible\): Disconnected -> Checking"
             "Initiating graceful shutdown"
             "Connection closed proactively \(sent goodbye\)"
+            "New device access authorized"
           )
 
           missing_patterns=$(
