@@ -178,6 +178,13 @@ config :portal, PortalWeb.Endpoint,
   url: [port: 13_100],
   server: true
 
+# Keep the endpoint limiter effectively disabled in general tests to avoid
+# cross-test interference from shared localhost IPs. Dedicated rate-limit tests
+# override this config with strict values.
+config :portal, PortalWeb.RateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
