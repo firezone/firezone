@@ -59,7 +59,7 @@ defmodule Portal.Application do
     # 1) Portal.Cluster sends goodbye while DB/PubSub are healthy.
     # 2) Replication managers disconnect while BEAM is still fully alive.
     # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
-    # 4) PortalAPI.RateLimit stops after endpoint traffic has ceased.
+    # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
       client_session_buffer() ++
       gateway_session_buffer() ++
@@ -159,7 +159,9 @@ defmodule Portal.Application do
 
   defp rate_limit do
     case Portal.Config.get_env(:portal, :node_type, "portal") do
-      type when type in ["api", "portal"] -> [PortalAPI.RateLimit]
+      "api" -> [PortalAPI.RateLimit]
+      "web" -> [PortalWeb.RateLimit]
+      "portal" -> [PortalAPI.RateLimit, PortalWeb.RateLimit]
       _ -> []
     end
   end

@@ -135,6 +135,16 @@ defmodule Portal.Config.Definitions do
   defconfig(:api_capacity, :integer, default: 200)
 
   @doc """
+  The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
+  """
+  defconfig(:web_refill_rate, :integer, default: 10)
+
+  @doc """
+  The Web rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
+  """
+  defconfig(:web_capacity, :integer, default: 200)
+
+  @doc """
   Enable or disable requiring secure cookies. Required for HTTPS.
   """
   defconfig(:phoenix_secure_cookies, :boolean, default: true)
