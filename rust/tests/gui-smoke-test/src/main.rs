@@ -44,20 +44,20 @@ fn main() -> Result<()> {
     dump_syms().context("Failed to run `dump_syms`")?;
 
     // Run normal smoke test
-    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
+    let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
     std::thread::sleep(Duration::from_millis(500)); // Wait for tunnel service to boot to write firezone-id.json
 
-    let mut gui = app
+    let gui = app
         .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
-        .popen()?;
+        .start()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
 
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     // Force the GUI to crash
-    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
-    let mut gui = app.gui_command(&["--crash"])?.popen()?;
+    let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
+    let gui = app.gui_command(&["--crash"])?.start()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
@@ -73,11 +73,11 @@ fn main() -> Result<()> {
 fn manual_tests(app: &App) -> Result<()> {
     // Replicate #6791
     app.gui_command(&["debug", "replicate6791"])?
-        .popen()?
+        .start()?
         .wait()?;
 
-    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
-    let mut gui = app.gui_command(&["--quit-after", "10"])?.popen()?;
+    let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
+    let gui = app.gui_command(&["--quit-after", "10"])?.start()?;
 
     // Expect exit codes of 0
     gui.wait()?.fz_exit_ok().context("GUI process")?;
@@ -99,7 +99,7 @@ impl App {
 
         // Create the firezone group if needed
         Exec::cmd("sudo")
-            .args(&[
+            .args([
                 "groupadd", "--force", // Exit with success if the group already exists
                 FZ_GROUP,
             ])
@@ -108,7 +108,7 @@ impl App {
 
         // Add ourself to the firezone group
         Exec::cmd("sudo")
-            .args(&["usermod", "--append", "--groups", FZ_GROUP, &username])
+            .args(["usermod", "--append", "--groups", FZ_GROUP, &username])
             .join()?
             .fz_exit_ok()?;
 
@@ -134,7 +134,7 @@ impl App {
         tracing::debug!(?xvfb);
 
         let cmd = Exec::cmd("sudo") // We need `sudo` to run `su`
-            .args(&[
+            .args([
                 "--preserve-env",
                 "su",      // We need `su` to get a login shell as ourself
                 "--login", // And we need a login shell so that the group membership will take effect immediately
@@ -180,7 +180,7 @@ impl App {
 // Get debug symbols from the exe / pdb
 fn dump_syms() -> Result<()> {
     Exec::cmd("dump_syms")
-        .args(&[
+        .args([
             debug_db_path().as_os_str(),
             gui_path().as_os_str(),
             OsStr::new("--output"),
@@ -210,7 +210,7 @@ fn debug_db_path() -> PathBuf {
 
 #[cfg(target_os = "linux")]
 fn tunnel_service_command() -> Exec {
-    Exec::cmd("sudo").args(&[
+    Exec::cmd("sudo").args([
         "--preserve-env",
         "runuser", // The `runuser` looks redundant but CI will complain if we use `sudo` directly, not sure why
         "-u",
