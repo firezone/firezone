@@ -119,6 +119,7 @@ public class Configuration: ObservableObject {
 
   private var defaults: UserDefaults
 
+  // swiftlint:disable:next no_userdefaults_standard - DI entry point
   init(userDefaults: UserDefaults = UserDefaults.standard) {
     defaults = userDefaults
 
