@@ -1424,6 +1424,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
+      # Use a small non-zero debounce to avoid timing races in presence_diff handling.
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
+
       relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
       :ok = Portal.Presence.Relays.connect(relay1)
 
@@ -1465,7 +1468,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [relay1_id],
                     connected: [relay_view1, relay_view2]
                   },
-                  100
+                  200
 
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
@@ -1477,6 +1480,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
+      # Use a small non-zero debounce to make presence updates deterministic.
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
+
       relay = relay_fixture(%{lat: 37.0, lon: -120.0})
 
       session = build_gateway_session(gateway, token)
@@ -1501,7 +1507,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: [relay_view, _relay_view]
                   },
-                  100
+                  200
 
       assert %{
                addr: _,
@@ -1523,7 +1529,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: _connected
                   },
-                  100
+                  200
 
       # Now connect a third relay - should NOT receive relays_presence since we have >= 2 relays
       third_relay = relay_fixture(%{lat: 37.0, lon: -120.0})
@@ -1536,7 +1542,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: [%{id: ^third_relay_id} | _]
                   },
-                  100
+                  200
     end
 
     test "relay credentials are stable across reconnects", %{
@@ -2252,6 +2258,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
+      # Use a non-zero debounce so disconnect + reconnect with the same relay ID
+      # are coalesced into a single presence check.
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
+
       relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
 
       :ok = Portal.Presence.Relays.connect(relay1)
@@ -2284,7 +2294,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   %{
                     disconnected_ids: [^relay_id]
                   },
-                  100
+                  200
     end
 
     test "sends disconnect when relay reconnects with different stamp secret", %{
