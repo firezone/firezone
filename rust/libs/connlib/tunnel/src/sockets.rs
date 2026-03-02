@@ -18,6 +18,7 @@ use tokio_util::sync::PollSender;
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+const UDP_SEND_BATCH_LIMIT: usize = 16;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -266,12 +267,13 @@ impl ThreadedUdpSocket {
                     let inbound_tx = inbound_tx.clone();
                     let socket = socket.clone();
 
-                    let mut pending_datagrams = Vec::with_capacity(16);
-                    let limit = pending_datagrams.capacity();
+                    let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
 
                     async move {
                         loop {
-                            let num_batches = outbound_rx.recv_many(&mut pending_datagrams, limit).await;
+                            let num_batches = outbound_rx
+                                .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
+                                .await;
 
                             if num_batches == 0 {
                                 tracing::debug!(
