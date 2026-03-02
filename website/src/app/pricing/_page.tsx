@@ -491,16 +491,6 @@ export default function Page() {
                 to request the discount.
               </AccordionContent>
             </AccordionPanel>
-            <AccordionPanel>
-              <AccordionTitle>
-                What payment methods are available?
-              </AccordionTitle>
-              <AccordionContent>
-                The Starter plan is free and does not require a credit card to
-                get started. Team and Enterprise plans can be paid via credit
-                card, ACH, or wire transfer.
-              </AccordionContent>
-            </AccordionPanel>
           </Accordion>
         </div>
       </section>
