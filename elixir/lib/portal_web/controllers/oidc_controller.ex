@@ -273,7 +273,7 @@ defmodule PortalWeb.OIDCController do
     if invalid_json_reason?(reason) do
       @invalid_json_error_message
     else
-      "Unable to connect to the identity provider: #{inspect(reason)}. Please try again or contact your administrator."
+      "Unable to connect to the identity provider. Please try again or contact your administrator."
     end
   end
 
@@ -492,7 +492,8 @@ defmodule PortalWeb.OIDCController do
 
   # JWT verification failures
   defp handle_error(conn, {:error, {:invalid_jwt, reason}}) do
-    error = "Failed to verify identity token: #{reason}. Please try signing in again."
+    Logger.warning("OIDC token verification failed", reason: reason)
+    error = "Unable to verify your identity token. Please try signing in again."
     redirect_with_error_context(conn, error)
   end
 
@@ -584,9 +585,8 @@ defmodule PortalWeb.OIDCController do
   defp identity_provider_transport_error_message(:timeout),
     do: "Unable to reach identity provider: Connection timed out. Please try again."
 
-  defp identity_provider_transport_error_message(reason),
-    do:
-      "Unable to reach identity provider: #{inspect(reason)}. Please check your network connection and try again."
+  defp identity_provider_transport_error_message(_reason),
+    do: "Unable to reach identity provider. Please check your network connection and try again."
 
   defp token_exchange_error_message(401, _body),
     do:
@@ -599,8 +599,8 @@ defmodule PortalWeb.OIDCController do
     do:
       "Identity provider rejected the client credentials. Please verify your Client ID and Client Secret."
 
-  defp token_exchange_error_message(400, %{"error" => error_code}),
-    do: "Identity provider returned an error: #{error_code}. Please try again."
+  defp token_exchange_error_message(400, %{"error" => _error_code}),
+    do: "Identity provider returned an error while signing you in. Please try again."
 
   defp token_exchange_error_message(status, _body) when status in 500..599,
     do: "Identity provider returned a server error (HTTP #{status}). Please try again later."
