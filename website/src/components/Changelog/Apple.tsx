@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="12355">
+          Reduces CPU overhead by processing up to 16 UDP datagram batches at a
+          time.
+        </ChangeItem>
         <ChangeItem pull="12236">
           Fixes an issue on macOS where the app could get stuck on the loading
           spinner if the system extension was not ready at startup.
