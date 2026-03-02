@@ -11,6 +11,7 @@ use itertools::Itertools;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
     hash::Hash,
+    iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
@@ -37,9 +38,11 @@ pub(crate) fn assert_icmp_packets_properties(
         sim_gateways,
         global_dns_records,
         |sim_client| &sim_client.sent_icmp_requests,
-        |ref_client| &ref_client.expected_icmp_handshakes,
+        |ref_client| &ref_client.expected_gateway_icmp_handshakes,
+        |ref_client| &ref_client.expected_client_icmp_handshakes,
         |sim_client| &sim_client.received_icmp_replies,
         |sim_gateway| &sim_gateway.received_icmp_requests,
+        |sim_client| &sim_client.received_icmp_requests,
         "ICMP",
         |seq, identifier| tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier),
     );
@@ -63,9 +66,11 @@ pub(crate) fn assert_udp_packets_properties(
         sim_gateways,
         global_dns_records,
         |sim_client| &sim_client.sent_udp_requests,
-        |ref_client| &ref_client.expected_udp_handshakes,
+        |ref_client| &ref_client.expected_gateway_udp_handshakes,
+        |ref_client| &ref_client.expected_client_udp_handshakes,
         |sim_client| &sim_client.received_udp_replies,
         |sim_gateway| &sim_gateway.received_udp_requests,
+        |sim_client| &sim_client.received_udp_requests,
         "UDP",
         |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
     );
@@ -76,12 +81,18 @@ fn assert_packets_properties<T, U>(
     sim_clients: &BTreeMap<ClientId, &SimClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
-    get_sent_requests: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
-    get_expected_handshakes: impl Fn(
+    get_sent_requests: impl Fn(&SimClient) -> &BTreeMap<(T, U), (Instant, IpPacket)>,
+    get_expected_gateway_handshakes: impl Fn(
         &RefClient,
-    ) -> &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
+    )
+        -> &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
+    get_expected_client_handshakes: impl Fn(
+        &RefClient,
+    )
+        -> &BTreeMap<ClientId, BTreeMap<u64, (Destination, T, U)>>,
     get_received_replies: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
-    get_received_requests: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
+    get_received_requests_on_gateway: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
+    get_received_requests_on_client: impl Fn(&SimClient) -> &BTreeMap<u64, (Instant, IpPacket)>,
     packet_protocol: &str,
     make_span: impl Fn(T, U) -> Span,
 ) where
@@ -98,18 +109,18 @@ fn assert_packets_properties<T, U>(
         })
         .collect::<BTreeMap<_, _>>();
 
-    let all_expected_handshakes = ref_clients
+    let all_expected_gateway_handshakes = ref_clients
         .iter()
         .flat_map(|(cid, ref_client)| {
-            get_expected_handshakes(ref_client)
-                .iter()
-                .flat_map(move |(gateway_id, handshakes)| {
+            get_expected_gateway_handshakes(ref_client).iter().flat_map(
+                move |(gateway_id, handshakes)| {
                     handshakes
                         .iter()
                         .map(move |(payload, (destination, t, u))| {
                             (*gateway_id, *payload, (*cid, destination.clone(), *t, *u))
                         })
-                })
+                },
+            )
         })
         .fold(
             BTreeMap::<_, BTreeMap<_, _>>::new(),
@@ -119,7 +130,28 @@ fn assert_packets_properties<T, U>(
             },
         );
 
-    let all_received_replies = sim_clients
+    let all_expected_client_handshakes = ref_clients
+        .iter()
+        .flat_map(|(cid, ref_client)| {
+            get_expected_client_handshakes(ref_client).iter().flat_map(
+                move |(client_id, handshakes)| {
+                    handshakes
+                        .iter()
+                        .map(move |(payload, (destination, t, u))| {
+                            (*client_id, *payload, (*cid, destination.clone(), *t, *u))
+                        })
+                },
+            )
+        })
+        .fold(
+            BTreeMap::<_, BTreeMap<_, _>>::new(),
+            |mut acc, (client_id, payload, value)| {
+                acc.entry(client_id).or_default().insert(payload, value);
+                acc
+            },
+        );
+
+    let all_received_replies_on_client = sim_clients
         .iter()
         .flat_map(|(cid, sim_client)| {
             get_received_replies(sim_client)
@@ -128,9 +160,13 @@ fn assert_packets_properties<T, U>(
         })
         .collect::<BTreeMap<_, _>>();
 
-    let received_requests = sim_gateways
+    let received_requests_by_gateway = sim_gateways
         .iter()
-        .map(|(g, s)| (*g, get_received_requests(s)))
+        .map(|(g, s)| (*g, get_received_requests_on_gateway(s)))
+        .collect::<BTreeMap<_, _>>();
+    let received_requests_by_client = sim_clients
+        .iter()
+        .map(|(g, s)| (*g, get_received_requests_on_client(s)))
         .collect::<BTreeMap<_, _>>();
     let dns_query_timestamps = sim_gateways
         .iter()
@@ -138,13 +174,16 @@ fn assert_packets_properties<T, U>(
         .collect::<BTreeMap<_, _>>();
 
     let unexpected_replies = find_unexpected_entries(
-        &all_expected_handshakes.values().flatten().collect(),
-        &all_received_replies,
+        &iter::empty()
+            .chain(all_expected_gateway_handshakes.values().flatten())
+            .chain(all_expected_client_handshakes.values().flatten())
+            .collect(),
+        &all_received_replies_on_client,
         |(_, (_, _, t_a, u_a)), (_, b)| (*t_a, *u_a) == b.reply_to(),
     );
 
     if !unexpected_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_replies, ?all_expected_handshakes, ?all_received_replies, "❌ Unexpected {packet_protocol} replies on client");
+        tracing::error!(target: "assertions", ?unexpected_replies, ?all_expected_gateway_handshakes, ?all_received_replies_on_client, "❌ Unexpected {packet_protocol} replies on client");
     }
 
     let mut mappings = HashMap::new();
@@ -152,8 +191,8 @@ fn assert_packets_properties<T, U>(
     // Assert properties of the individual handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
     // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
-    for (gateway, expected_handshakes) in &all_expected_handshakes {
-        let received_requests_for_gateway = received_requests.get(gateway).unwrap();
+    for (gateway, expected_handshakes) in &all_expected_gateway_handshakes {
+        let received_requests_for_gateway = received_requests_by_gateway.get(gateway).unwrap();
         let dns_query_timestamps_for_gateway = dns_query_timestamps.get(gateway).unwrap();
 
         let mut num_expected_handshakes = expected_handshakes.len();
@@ -163,12 +202,12 @@ fn assert_packets_properties<T, U>(
 
             let ref_client = ref_clients.get(cid).unwrap();
 
-            let Some(client_sent_request) = all_sent_requests.get(&(*cid, (*t, *u))) else {
+            let Some((_, client_sent_request)) = all_sent_requests.get(&(*cid, (*t, *u))) else {
                 tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
                 continue;
             };
             let Some(client_received_reply) =
-                all_received_replies.get(&(*cid, (*t, *u).reply_to()))
+                all_received_replies_on_client.get(&(*cid, (*t, *u).reply_to()))
             else {
                 tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} reply on client");
                 continue;
@@ -249,6 +288,63 @@ fn assert_packets_properties<T, U>(
             tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gateway, "❌ Unexpected {packet_protocol} requests");
         } else {
             tracing::info!(target: "assertions", %num_expected_handshakes, %gateway, "✅ Performed the expected {packet_protocol} handshakes");
+        }
+    }
+
+    for (dst_client_id, expected_handshakes) in &all_expected_client_handshakes {
+        let mut num_expected_handshakes = expected_handshakes.len();
+
+        let received_requests_for_client = received_requests_by_client.get(dst_client_id).unwrap();
+
+        for (payload, (src_client_id, _, t, u)) in expected_handshakes {
+            let _guard = make_span(*t, *u).entered();
+
+            let src_ref_client = ref_clients.get(src_client_id).unwrap();
+            let dst_ref_client = ref_clients.get(dst_client_id).unwrap();
+
+            let Some((sent_at, client_sent_request)) =
+                all_sent_requests.get(&(*src_client_id, (*t, *u)))
+            else {
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
+                continue;
+            };
+            let Some(client_received_reply) =
+                all_received_replies_on_client.get(&(*src_client_id, (*t, *u).reply_to()))
+            else {
+                // If the request was made after we reset our connections, missing a reply is okay.
+                if dst_ref_client.has_reset_connections_within_ice_timeout(*sent_at) {
+                    tracing::debug!(target: "assertions", %dst_client_id, "Destination client reset its connections and packet got lost");
+                    num_expected_handshakes -= 1;
+                    continue;
+                }
+
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} reply on client");
+                continue;
+            };
+            assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+
+            let Some((_, client_received_request)) = received_requests_for_client.get(payload)
+            else {
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
+                continue;
+            };
+
+            {
+                let expected = src_ref_client.tunnel_ip_for(client_received_request.source());
+                let actual = client_received_request.source();
+
+                if expected != actual {
+                    tracing::error!(target: "assertions", %src_client_id, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
+                }
+            }
+        }
+
+        let num_actual_handshakes = received_requests_for_client.len();
+
+        if num_expected_handshakes != num_actual_handshakes {
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %dst_client_id, "❌ Unexpected {packet_protocol} requests");
+        } else {
+            tracing::info!(target: "assertions", %num_expected_handshakes, %dst_client_id, "✅ Performed the expected {packet_protocol} handshakes");
         }
     }
 }

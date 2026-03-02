@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 boringtun = { workspace = true }
+derive_more = { workspace = true, features = ["from"] }
 ip_network = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 str0m = { workspace = true }

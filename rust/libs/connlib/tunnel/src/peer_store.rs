@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::client::GatewayOnClient;
+use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
@@ -124,6 +124,16 @@ impl Peer for GatewayOnClient {
 
     fn tun_ipv6(&self) -> Ipv6Addr {
         self.gateway_tun().v6
+    }
+}
+
+impl Peer for ClientOnClient {
+    fn tun_ipv4(&self) -> Ipv4Addr {
+        self.remote_tun().v4
+    }
+
+    fn tun_ipv6(&self) -> Ipv6Addr {
+        self.remote_tun().v6
     }
 }
 

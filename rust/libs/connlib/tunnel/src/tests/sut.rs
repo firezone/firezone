@@ -17,7 +17,7 @@ use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
 use bufferpool::BufferPool;
-use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
@@ -246,6 +246,29 @@ impl TunnelTest {
                 let packet = ip_packet::make::icmp_request_packet(
                     src,
                     dst,
+                    seq.0,
+                    identifier.0,
+                    &payload.to_be_bytes(),
+                )
+                .unwrap();
+
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+
+                buffered_transmits.push_from(transmit, client, now);
+            }
+            Transition::SendIcmpPacketToDevice {
+                client_id,
+                src,
+                dst,
+                seq,
+                identifier,
+                payload,
+                ..
+            } => {
+                let packet = ip_packet::make::icmp_request_packet(
+                    src,
+                    IpAddr::V4(dst),
                     seq.0,
                     identifier.0,
                     &payload.to_be_bytes(),
@@ -638,24 +661,22 @@ impl TunnelTest {
             if let Some((client_id, event)) = client_event {
                 match self.on_client_event(client_id, event, &ref_state.portal) {
                     Ok(()) => {}
-                    Err(AuthorizeFlowError::Client(e)) => {
+                    Err(ClientEventError::Client { id, error: e }) => {
                         tracing::debug!("Failed to handle ClientEvent: {e}");
 
                         // Simulate WebSocket reconnect ...
-                        let client = self.clients.get_mut(&client_id).unwrap();
+                        let client = self.clients.get_mut(&id).unwrap();
                         client.exec_mut(|c| {
                             c.update_relays(iter::empty(), self.relays.iter(), now);
                         });
                     }
-                    Err(AuthorizeFlowError::Gateway(e)) => {
+                    Err(ClientEventError::Gateway { id, error: e }) => {
                         tracing::debug!("Failed to handle GatewayEvent: {e}");
 
                         // Simulate WebSocket reconnect ...
-                        for gateway in self.gateways.values_mut() {
-                            gateway.exec_mut(|g| {
-                                g.update_relays(iter::empty(), self.relays.iter(), now)
-                            })
-                        }
+                        let gateway = self.gateways.get_mut(&id).unwrap();
+                        gateway
+                            .exec_mut(|g| g.update_relays(iter::empty(), self.relays.iter(), now))
                     }
                 }
                 continue;
@@ -740,11 +761,17 @@ impl TunnelTest {
             }
 
             for client in self.clients.values_mut() {
-                client.exec_mut(|sim| {
-                    while let Some(packet) = sim.sut.poll_packets() {
-                        sim.on_received_packet(packet)
-                    }
-                });
+                let Some(packet) = client.exec_mut(|sim| sim.sut.poll_packets()) else {
+                    continue;
+                };
+
+                let Some(transmit) = client.exec_mut(|sim| sim.on_received_packet(packet, now))
+                else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(transmit, client, now);
+                continue 'outer;
             }
 
             self.drain_transmits(buffered_transmits, now);
@@ -828,7 +855,11 @@ impl TunnelTest {
 
             // Handle the client's `Transmit`s.
             while let Some(transmit) = client.poll_inbox(now) {
-                client.exec_mut(|c| c.receive(transmit, now))
+                let Some(transmit) = client.exec_mut(|c| c.receive(transmit, now)) else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(transmit, client, now)
             }
 
             client.exec_mut(|c| c.handle_timeout(now));
@@ -942,13 +973,13 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         portal: &StubPortal,
-    ) -> Result<(), AuthorizeFlowError> {
+    ) -> Result<(), ClientEventError> {
         let now = self.flux_capacitor.now();
 
         match event {
             ClientEvent::AddedIceCandidates {
                 candidates,
-                conn_id,
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -962,7 +993,7 @@ impl TunnelTest {
             }
             ClientEvent::RemovedIceCandidates {
                 candidates,
-                conn_id,
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -974,7 +1005,35 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::ConnectionIntent {
+            ClientEvent::AddedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(conn_id),
+                candidates,
+            } => {
+                let client = self.clients.get_mut(&conn_id).expect("unknown client");
+
+                client.exec_mut(|c| {
+                    for candidate in candidates {
+                        c.sut.add_ice_candidate(src, candidate, now);
+                    }
+                });
+
+                Ok(())
+            }
+            ClientEvent::RemovedIceCandidates {
+                conn_id: ClientOrGatewayId::Client(conn_id),
+                candidates,
+            } => {
+                let client = self.clients.get_mut(&conn_id).expect("unknown client");
+
+                client.exec_mut(|c| {
+                    for candidate in candidates {
+                        c.sut.remove_ice_candidate(src, candidate, now);
+                    }
+                });
+
+                Ok(())
+            }
+            ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
             } => {
@@ -1019,12 +1078,15 @@ impl TunnelTest {
                             now,
                         )
                     })
-                    .map_err(AuthorizeFlowError::Gateway)?;
+                    .map_err(|error| ClientEventError::Gateway {
+                        id: gateway_id,
+                        error,
+                    })?;
 
                 let client = self.clients.get_mut(&src).unwrap();
                 client
                     .exec_mut(|c| {
-                        c.sut.handle_flow_created(
+                        c.sut.handle_resource_access_authorized(
                             resource_id,
                             gateway_id,
                             gateway_key,
@@ -1041,7 +1103,79 @@ impl TunnelTest {
 
                         Ok(())
                     })
-                    .map_err(AuthorizeFlowError::Client)?;
+                    .map_err(|error| ClientEventError::Client { id: src, error })?;
+
+                Ok(())
+            }
+            ClientEvent::DeviceConnectionIntent { ipv4 } => {
+                let src_client = self.clients.get(&src).expect("unknown source client");
+
+                let src_key = src_client.inner().sut.public_key();
+                let src_tun = src_client.inner().sut.tunnel_ip_config().unwrap();
+
+                let maybe_remote_client = self.clients.iter_mut().find(|(_, client)| {
+                    client
+                        .inner()
+                        .sut
+                        .tunnel_ip_config()
+                        .is_some_and(|tun| tun.v4 == ipv4)
+                });
+
+                match maybe_remote_client {
+                    Some((remote_id, remote_client)) => {
+                        let remote_id = *remote_id;
+                        let remote_tun = remote_client.inner().sut.tunnel_ip_config().unwrap();
+                        let remote_key = remote_client.inner().sut.public_key();
+
+                        let (preshared_key, local_client_ice, remote_client_ice) =
+                            make_preshared_key_and_ice(src_key, remote_key);
+
+                        remote_client.exec_mut(|c| {
+                            c.sut
+                                .handle_client_device_access_authorized(
+                                    src,
+                                    src_key,
+                                    src_tun,
+                                    preshared_key.clone(),
+                                    remote_client_ice.clone(),
+                                    local_client_ice.clone(),
+                                    crate::messages::IceRole::Controlled,
+                                    now,
+                                )
+                                .map_err(|error| ClientEventError::Client {
+                                    id: remote_id,
+                                    error,
+                                })?;
+
+                            Ok(())
+                        })?;
+
+                        let local_client =
+                            self.clients.get_mut(&src).expect("unknown source client");
+
+                        local_client.exec_mut(|c| {
+                            c.sut
+                                .handle_client_device_access_authorized(
+                                    remote_id,
+                                    remote_key,
+                                    remote_tun,
+                                    preshared_key,
+                                    local_client_ice,
+                                    remote_client_ice,
+                                    crate::messages::IceRole::Controlling,
+                                    now,
+                                )
+                                .map_err(|error| ClientEventError::Client { id: src, error })?;
+
+                            Ok(())
+                        })?;
+                    }
+                    None => self
+                        .clients
+                        .get_mut(&src)
+                        .expect("unknown source client")
+                        .exec_mut(|c| c.sut.set_client_offline(ipv4)),
+                }
 
                 Ok(())
             }
@@ -1143,9 +1277,9 @@ impl TunnelTest {
     }
 }
 
-enum AuthorizeFlowError {
-    Client(NoTurnServers),
-    Gateway(NoTurnServers),
+enum ClientEventError {
+    Client { id: ClientId, error: NoTurnServers },
+    Gateway { id: GatewayId, error: NoTurnServers },
 }
 
 fn address_from_destination(

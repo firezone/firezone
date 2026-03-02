@@ -71,6 +71,22 @@ impl From<IceCredentials> for snownet::Credentials {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum IceRole {
+    Controlling,
+    Controlled,
+}
+
+impl From<IceRole> for snownet::IceRole {
+    fn from(value: IceRole) -> snownet::IceRole {
+        match value {
+            IceRole::Controlling => snownet::IceRole::Controlling,
+            IceRole::Controlled => snownet::IceRole::Controlled,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum DnsServer {
