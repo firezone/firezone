@@ -1,8 +1,9 @@
 defmodule Portal.Telemetry.Sentry do
-  @ignored_message_patterns [
+  @ignored_message_regexes [
     # This happens when libcluster loses connection to a node, which is normal during deploys.
-    "Node ~p not responding **~n** Removing (timedout) connection",
-    "[libcluster:default] unable to connect to"
+    ~r/Node ~p not responding \*\*~n\*\* Removing \(timedout\) connection/,
+    ~r/\[libcluster:default\] unable to connect to/,
+    ~r/^'global' at node '.+' disconnected node '.+' in order to prevent overlapping partitions$/
   ]
 
   def before_send(%{original_exception: %{skip_sentry: skip_sentry}}) when skip_sentry do
@@ -21,9 +22,12 @@ defmodule Portal.Telemetry.Sentry do
 
   def before_send(%{message: %{formatted: formatted_message}} = event)
       when is_binary(formatted_message) do
-    if Enum.any?(@ignored_message_patterns, fn p ->
-         String.contains?(formatted_message, p)
-       end) do
+    ignored_by_regex? =
+      Enum.any?(@ignored_message_regexes, fn regex ->
+        Regex.match?(regex, formatted_message)
+      end)
+
+    if ignored_by_regex? do
       nil
     else
       event
