@@ -8,9 +8,9 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: firezone_dev
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      POSTGRES_DB: ${DATABASE_NAME:-firezone_dev}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       start_period: 20s
@@ -18,7 +18,7 @@ services:
       retries: 5
       timeout: 5s
     ports:
-      - 5432:5432/tcp
+      - ${DATABASE_PORT:-5432}:5432/tcp
     networks:
       - app-internal
 
@@ -55,10 +55,10 @@ services:
       # Database
       RUN_MANUAL_MIGRATIONS: "true"
       DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: firezone_dev
-      DATABASE_USER: postgres
-      DATABASE_PASSWORD: postgres
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${DATABASE_NAME:-firezone_dev}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       # Feature flags
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
