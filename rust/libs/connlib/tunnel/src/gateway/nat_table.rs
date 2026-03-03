@@ -338,7 +338,7 @@ pub enum TranslateIncomingResult {
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
-    use ip_packet::{IpPacket, make::TcpFlags, proptest::*};
+    use ip_packet::{IpPacket, make::TcpArgs, proptest::*};
     use proptest::prelude::*;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
@@ -451,8 +451,8 @@ mod tests {
 
     #[test_strategy::proptest]
     fn outgoing_tcp_rst_removes_nat_mapping(
-        #[strategy(tcp_packet(Just(TcpFlags::default())))] req: IpPacket,
-        #[strategy(tcp_packet(Just(TcpFlags { rst: true })))] mut rst: IpPacket,
+        #[strategy(tcp_packet(Just(TcpArgs::default())))] req: IpPacket,
+        #[strategy(tcp_packet(Just(TcpArgs { rst: true, seq: 0 })))] mut rst: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
     ) {
         let _guard = logging::test("trace");

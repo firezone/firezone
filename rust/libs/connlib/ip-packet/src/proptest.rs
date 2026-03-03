@@ -1,4 +1,4 @@
-use crate::{IpPacket, make::TcpFlags};
+use crate::{IpPacket, make::TcpArgs};
 use proptest::{arbitrary::any, prelude::Just, prop_oneof, strategy::Strategy};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -14,7 +14,7 @@ pub fn udp_packet() -> impl Strategy<Value = IpPacket> {
 }
 
 pub fn tcp_packet(
-    flags: impl Strategy<Value = TcpFlags> + Clone,
+    flags: impl Strategy<Value = TcpArgs> + Clone,
 ) -> impl Strategy<Value = IpPacket> {
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>(), flags.clone()).prop_map(
@@ -44,7 +44,7 @@ pub fn icmp_request_packet() -> impl Strategy<Value = IpPacket> {
 pub fn udp_or_tcp_or_icmp_packet() -> impl Strategy<Value = IpPacket> {
     prop_oneof![
         udp_packet(),
-        tcp_packet(Just(TcpFlags::default())),
+        tcp_packet(Just(TcpArgs::default())),
         icmp_request_packet()
     ]
 }
