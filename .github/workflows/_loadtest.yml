@@ -48,8 +48,6 @@ jobs:
           fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
 
       - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.target }}
 
       - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:

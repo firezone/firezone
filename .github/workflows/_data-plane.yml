@@ -124,8 +124,6 @@ jobs:
           ref: ${{ inputs.sha }}
           fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.target }}
       - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:
           key: ${{ matrix.package }}-${{ inputs.stage }}-${{ inputs.profile }}
@@ -238,8 +236,6 @@ jobs:
         with:
           target: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust-nightly
         if: matrix.name.package == 'firezone-relay'
       - uses: ./.github/actions/setup-rust-target-workspace-cache
