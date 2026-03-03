@@ -428,6 +428,38 @@ export default function Page() {
             </AccordionPanel>
             <AccordionPanel>
               <AccordionTitle>
+                What happens if I increase seats on the Team plan?
+              </AccordionTitle>
+              <AccordionContent>
+                Changes are effective immediately. You will be charged a
+                prorated increase that reflects the additional seat count for
+                the remainder of the billing cycle.
+                <p className="mt-2">
+                  For example, if you are on a yearly Team plan and at month 6
+                  you add 5 seats, the prorated charge is{" "}
+                  <code>5 * 50 * 0.5 = $125</code> and is billed when you make
+                  the change.
+                </p>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
+                What happens if I decrease seats on the Team plan?
+              </AccordionTitle>
+              <AccordionContent>
+                Seat decreases are applied only at the end of your current
+                billing cycle (monthly or yearly). If you remove 5 seats, those
+                seats remain paid through the end of the cycle and can be
+                reassigned to other users.
+                <p className="mt-2">
+                  We do not process refunds for seat-count decreases. Instead,
+                  the removed seats function as account credit until your
+                  billing cycle renews.
+                </p>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 What happens to my data with Firezone enabled?
               </AccordionTitle>
               <AccordionContent>
@@ -462,6 +494,16 @@ export default function Page() {
               <AccordionContent>
                 The Team plan is billed monthly on the same day you start
                 service until canceled. Enterprise plans are billed annually.
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
+                How does the annual billing discount work on the Team plan?
+              </AccordionTitle>
+              <AccordionContent>
+                The annual discount is already included in the yearly Team
+                price. To use annual billing, select annual when upgrading to
+                Team in your Firezone admin portal.
               </AccordionContent>
             </AccordionPanel>
             <AccordionPanel>
