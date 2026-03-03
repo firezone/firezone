@@ -7,7 +7,7 @@
 import Foundation
 
 // TEMP: trigger swiftlint warning for problem matcher test
-let triggerSwiftlintWarning = true;
+let triggerSwiftlintWarning = Optional("test")!
 
 public struct LogChunk: Codable {
   public var done: Bool
