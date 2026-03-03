@@ -9,43 +9,65 @@ import Foundation
 
 public struct ConnlibState: Encodable, Decodable {
   // swiftlint:disable:next discouraged_optional_collection
-  private let resources: [FirezoneKit.Resource]?
-  private let unreachableResources: [UnreachableResource]
+  public let resources: [FirezoneKit.Resource]?
+  public let unreachableResources: [UnreachableResource]
+  public let isLogStreamingActive: Bool
+
+  private enum CodingKeys: String, CodingKey {
+    case resources
+    case unreachableResources
+    case isLogStreamingActive
+  }
+
+  private init(
+    resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
+    unreachableResources: [UnreachableResource],
+    isLogStreamingActive: Bool
+  ) {
+    self.resources = resources
+    self.unreachableResources = unreachableResources
+    self.isLogStreamingActive = isLogStreamingActive
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    resources = try container.decodeIfPresent([FirezoneKit.Resource].self, forKey: .resources)
+    unreachableResources = try container.decode(
+      [UnreachableResource].self, forKey: .unreachableResources)
+    isLogStreamingActive =
+      try container.decodeIfPresent(Bool.self, forKey: .isLogStreamingActive) ?? false
+  }
 
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
-  /// Decodes a ConnlibState from data and returns the fields and hash
+  /// Decodes a ConnlibState from data and returns the state and its SHA256 hash.
   /// - Parameter data: The encoded data to decode
-  /// - Returns: A tuple containing the resources, unreachable resources, and hash
+  /// - Returns: A tuple of the decoded state and its hash
   /// - Throws: If decoding fails
-  public static func decode(
-    from data: Data
-  ) throws -> (
-    resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
-    unreachableResources: [UnreachableResource],
-    hash: Data
-  ) {
+  public static func decode(from data: Data) throws -> (ConnlibState, Data) {
     let hash = Data(SHA256.hash(data: data))
     let state = try Self.decoder.decode(ConnlibState.self, from: data)
-    return (
-      resources: state.resources, unreachableResources: state.unreachableResources, hash: hash
-    )
+    return (state, hash)
   }
 
   /// Creates a ConnlibState from resources and returns encoded data only if different from currentHash
   /// - Parameters:
   ///   - resources: Optional array of resources
   ///   - unreachableResources: Set of unreachable resources
+  ///   - isLogStreamingActive: Whether the NE has log streaming enabled
   ///   - currentHash: The hash to compare against
   /// - Returns: The encoded data if the hash differs, nil otherwise
   /// - Throws: If encoding fails
   public static func encodeIfChanged(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
     unreachableResources: [UnreachableResource],
+    isLogStreamingActive: Bool,
     comparedTo currentHash: Data
   ) throws -> Data? {
-    let state = ConnlibState(resources: resources, unreachableResources: unreachableResources)
+    let state = ConnlibState(
+      resources: resources, unreachableResources: unreachableResources,
+      isLogStreamingActive: isLogStreamingActive)
     let encodedData = try Self.encoder.encode(state)
     let newHash = Data(SHA256.hash(data: encodedData))
 

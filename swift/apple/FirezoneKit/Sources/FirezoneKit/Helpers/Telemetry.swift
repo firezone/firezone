@@ -7,8 +7,10 @@
 import Sentry
 
 public enum Telemetry {
-  /// Sets the Sentry user from the firezone device ID and account slug.
+  /// Sets the Sentry user on both the scope (for error events) and log attributes.
   public static func setUser(firezoneId: String, accountSlug: String) {
+    Log.info("Configuring Sentry user: firezone_id=\(firezoneId), account_slug=\(accountSlug)")
+    Log.setUser(firezoneId: firezoneId, accountSlug: accountSlug)
     SentrySDK.configureScope { scope in
       let user = User(userId: firezoneId)
       user.data = ["account_slug": accountSlug]
@@ -24,6 +26,7 @@ public enum Telemetry {
       options.releaseName = releaseName()
       options.dist = distributionType()
       options.enableAppHangTracking = enableAppHangTracking
+      options.enableLogs = true
     }
   }
 
@@ -44,6 +47,7 @@ public enum Telemetry {
       return
     }
 
+    Log.setEnvironment(environment)
     SentrySDK.configureScope { configuration in
       configuration.setEnvironment(environment)
     }

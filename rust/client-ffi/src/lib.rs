@@ -639,6 +639,12 @@ pub fn hash_device_id(id: String) -> String {
     telemetry::hash_device_id(id)
 }
 
+/// Returns whether log streaming is currently active.
+#[uniffi::export]
+pub fn is_log_streaming_active() -> bool {
+    telemetry::feature_flags::stream_logs_active()
+}
+
 impl From<connlib_model::ResourceView> for Resource {
     fn from(resource: connlib_model::ResourceView) -> Self {
         match resource {
