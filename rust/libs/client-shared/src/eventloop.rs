@@ -578,15 +578,9 @@ impl Eventloop {
                 ipv4: client_ipv4,
                 reason,
             }) => {
-                tracing::debug!(%client_ipv4, "Failed to access device: {reason:?}");
-
-                match reason {
-                    FailReason::Offline => tunnel.state_mut().set_client_offline(client_ipv4),
-                    FailReason::NotFound => {}
-                    FailReason::VersionMismatch => {}
-                    FailReason::Forbidden => {}
-                    FailReason::Unknown => {}
-                }
+                tunnel
+                    .state_mut()
+                    .handle_client_device_access_denied(client_ipv4, reason);
             }
         }
 

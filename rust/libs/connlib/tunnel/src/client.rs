@@ -15,6 +15,7 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
+use crate::messages::client::FailReason;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
@@ -254,7 +255,9 @@ impl ClientState {
         self.resource_list.update(self.resources());
     }
 
-    pub fn set_client_offline(&mut self, ipv4: Ipv4Addr) {
+    pub fn handle_client_device_access_denied(&mut self, ipv4: Ipv4Addr, reason: FailReason) {
+        tracing::debug!(%ipv4, "Failed to access device: {reason:?}");
+
         self.pending_device_access.remove(&ipv4);
 
         // TODO: Update resource list with offline client.
