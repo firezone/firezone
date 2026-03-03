@@ -56,6 +56,8 @@ jobs:
       - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
           install_args: --cd swift/apple
+      - run: echo "::add-matcher::.github/matchers/swiftlint.json"
+        name: Register swiftlint problem matcher
       - name: Check Swift formatting and linting
         run: mise run //swift/apple:check
 

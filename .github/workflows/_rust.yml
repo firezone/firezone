@@ -48,6 +48,8 @@ jobs:
         with:
           tool: bpf-linker
 
+      - run: echo "::add-matcher::.github/matchers/rust.json"
+        name: Register clippy problem matcher
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
