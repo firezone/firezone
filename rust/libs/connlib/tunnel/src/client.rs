@@ -255,12 +255,23 @@ impl ClientState {
         self.resource_list.update(self.resources());
     }
 
-    pub fn handle_client_device_access_denied(&mut self, ipv4: Ipv4Addr, reason: FailReason) {
-        tracing::debug!(%ipv4, "Failed to access device: {reason:?}");
+    pub fn handle_client_device_access_denied(
+        &mut self,
+        ipv4: Ipv4Addr,
+        reason: FailReason,
+        now: Instant,
+    ) {
+        tracing::debug!(%ipv4, "Device access denied: {reason:?}");
 
         self.pending_device_access.remove(&ipv4);
-
         // TODO: Update resource list with offline client.
+
+        let Some((id, _)) = self.clients.peer_by_ip(ipv4) else {
+            return;
+        };
+        self.clients.remove(&id);
+        self.node
+            .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {

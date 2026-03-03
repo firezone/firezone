@@ -1171,8 +1171,11 @@ impl TunnelTest {
                         .get_mut(&src)
                         .expect("unknown source client")
                         .exec_mut(|c| {
-                            c.sut
-                                .handle_client_device_access_denied(ipv4, FailReason::NotFound)
+                            c.sut.handle_client_device_access_denied(
+                                ipv4,
+                                FailReason::NotFound,
+                                now,
+                            )
                         }),
                 }
 

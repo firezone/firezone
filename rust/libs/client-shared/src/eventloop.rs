@@ -578,9 +578,11 @@ impl Eventloop {
                 ipv4: client_ipv4,
                 reason,
             }) => {
-                tunnel
-                    .state_mut()
-                    .handle_client_device_access_denied(client_ipv4, reason);
+                tunnel.state_mut().handle_client_device_access_denied(
+                    client_ipv4,
+                    reason,
+                    Instant::now(),
+                );
             }
         }
 
