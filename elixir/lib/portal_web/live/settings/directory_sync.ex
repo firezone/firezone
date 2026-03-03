@@ -401,7 +401,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             <!-- Blurred preview content -->
             <div class="blur-xs pointer-events-none select-none opacity-60">
               <div class="flex flex-wrap gap-4">
-                <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+                <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center flex-1 min-w-0">
                       <.provider_icon type="google" class="w-7 h-7 mr-2 shrink-0" />
@@ -422,7 +422,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     </div>
                   </div>
                 </div>
-                <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+                <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center flex-1 min-w-0">
                       <.provider_icon type="entra" class="w-7 h-7 mr-2 shrink-0" />
@@ -610,7 +610,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     assigns = assign(assigns, :toggle_disabled, toggle_disabled)
 
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+    <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 shrink-0" />

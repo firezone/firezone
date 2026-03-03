@@ -3,3 +3,9 @@
 @plugin "@tailwindcss/forms";
 @plugin "flowbite/plugin";
 @import "./scrollbar.css";
+
+@layer utilities {
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+}
