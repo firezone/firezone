@@ -157,8 +157,8 @@ config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
+    "style-src 'self'",
+    "script-src 'self' https://cdn.tailwindcss.com/"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`

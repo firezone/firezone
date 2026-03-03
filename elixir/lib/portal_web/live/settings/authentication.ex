@@ -613,7 +613,7 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp provider_card(assigns) do
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+    <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0 gap-2">
           <.provider_icon type={@type} class="w-7 h-7 shrink-0" />
