@@ -9,9 +9,9 @@ import Foundation
 
 public struct ConnlibState: Encodable, Decodable {
   // swiftlint:disable:next discouraged_optional_collection
-  private let resources: [FirezoneKit.Resource]?
-  private let unreachableResources: [UnreachableResource]
-  private let isLogStreamingActive: Bool
+  public let resources: [FirezoneKit.Resource]?
+  public let unreachableResources: [UnreachableResource]
+  public let isLogStreamingActive: Bool
 
   private enum CodingKeys: String, CodingKey {
     case resources
@@ -19,35 +19,36 @@ public struct ConnlibState: Encodable, Decodable {
     case isLogStreamingActive
   }
 
+  private init(
+    resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
+    unreachableResources: [UnreachableResource],
+    isLogStreamingActive: Bool
+  ) {
+    self.resources = resources
+    self.unreachableResources = unreachableResources
+    self.isLogStreamingActive = isLogStreamingActive
+  }
+
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     resources = try container.decodeIfPresent([FirezoneKit.Resource].self, forKey: .resources)
-    unreachableResources = try container.decode([UnreachableResource].self, forKey: .unreachableResources)
-    isLogStreamingActive = try container.decodeIfPresent(Bool.self, forKey: .isLogStreamingActive) ?? false
+    unreachableResources = try container.decode(
+      [UnreachableResource].self, forKey: .unreachableResources)
+    isLogStreamingActive =
+      try container.decodeIfPresent(Bool.self, forKey: .isLogStreamingActive) ?? false
   }
 
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
-  public struct DecodedState {
-    public let resources: [FirezoneKit.Resource]?  // swiftlint:disable:this discouraged_optional_collection
-    public let unreachableResources: [UnreachableResource]
-    public let isLogStreamingActive: Bool
-    public let hash: Data
-  }
-
-  /// Decodes a ConnlibState from data and returns the fields and hash.
+  /// Decodes a ConnlibState from data and returns the state and its SHA256 hash.
   /// - Parameter data: The encoded data to decode
+  /// - Returns: A tuple of the decoded state and its hash
   /// - Throws: If decoding fails
-  public static func decode(from data: Data) throws -> DecodedState {
+  public static func decode(from data: Data) throws -> (ConnlibState, Data) {
     let hash = Data(SHA256.hash(data: data))
     let state = try Self.decoder.decode(ConnlibState.self, from: data)
-    return DecodedState(
-      resources: state.resources,
-      unreachableResources: state.unreachableResources,
-      isLogStreamingActive: state.isLogStreamingActive,
-      hash: hash
-    )
+    return (state, hash)
   }
 
   /// Creates a ConnlibState from resources and returns encoded data only if different from currentHash

@@ -43,8 +43,8 @@ actor Adapter {
 
   /// How often the NE polls Rust for the log-streaming feature flag.
   /// Shorter than `RE_EVAL_DURATION` (5 min) on the Rust side so the NE
-  /// picks up a flag change within ~1 minute of PostHog re-evaluation.
-  private static let featureFlagPollInterval: Duration = .seconds(60)
+  /// picks up a flag change soon after PostHog re-evaluation.
+  private static let featureFlagPollInterval: Duration = .seconds(5)
 
   // Our local copy of the accountSlug
   private let accountSlug: String
