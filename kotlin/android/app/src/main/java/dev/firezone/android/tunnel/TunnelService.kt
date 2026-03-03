@@ -317,11 +317,11 @@ class TunnelService : VpnService() {
                             startDisconnectMonitoring()
                             startLogCleanup()
 
-                            eventLoop(session, commandChannel!!)
+                            val stopReason = eventLoop(session, commandChannel!!)
 
-                            Log.i(TAG, "Event-loop finished")
+                            Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            if (startedByUser) {
+                            if (startedByUser && stopReason != StopReason::ExplicitDisconnect) {
                                 // Show dismissable disconnected notification
                                 TunnelNotification.showDisconnectedNotification(context)
                             }
@@ -518,6 +518,14 @@ class TunnelService : VpnService() {
         data object Reset : TunnelCommand()
     }
 
+    enum class StopReason {
+        ExplicitDisconnect,
+        Disconnected,
+        EventChannelClosed,
+        CommandChannelClosed,
+        Error,
+    }
+
     private fun resourceById(resourceId: String): Pair<Resource, Site>? {
         val resource = _tunnelResources.find { it.id == resourceId } ?: return null
         val site = resource.sites?.firstOrNull() ?: return null
@@ -534,7 +542,7 @@ class TunnelService : VpnService() {
     private suspend fun eventLoop(
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
-    ) {
+    ): StopReason {
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
@@ -542,111 +550,122 @@ class TunnelService : VpnService() {
                 }
             }
 
-        var running = true
+        var explicitDisconnect = false
 
-        while (running) {
-            try {
-                select<Unit> {
-                    commandChannel.onReceive { command ->
-                        when (command) {
-                            is TunnelCommand.Disconnect -> {
-                                session.disconnect()
-                                // Sending disconnect will close the event-stream which will exit this loop
+        val stopReason =
+            run loop@{
+                while (true) {
+                    try {
+                        select<Unit> {
+                            commandChannel.onReceive { command ->
+                                when (command) {
+                                    is TunnelCommand.Disconnect -> {
+                                        explicitDisconnect = true
+                                        session.disconnect()
+                                        // Sending disconnect will close the event-stream which will exit this loop
+                                    }
+
+                                    is TunnelCommand.SetInternetResourceState -> {
+                                        session.setInternetResourceState(command.active)
+                                    }
+
+                                    is TunnelCommand.SetDns -> {
+                                        session.setDns(command.dnsServers)
+                                    }
+
+                                    is TunnelCommand.SetLogDirectives -> {
+                                        session.setLogDirectives(command.directives)
+                                    }
+
+                                    is TunnelCommand.SetTun -> {
+                                        session.setTun(command.fd)
+                                    }
+
+                                    is TunnelCommand.Reset -> {
+                                        session.reset("roam")
+                                    }
+                                }
                             }
+                            eventChannel.onReceive { event ->
+                                event.use { event ->
+                                    when (event) {
+                                        is Event.ResourcesUpdated -> {
+                                            tunnelResources = event.resources.map { convertResource(it) }
+                                            resourcesUpdated()
+                                        }
 
-                            is TunnelCommand.SetInternetResourceState -> {
-                                session.setInternetResourceState(command.active)
-                            }
+                                        is Event.TunInterfaceUpdated -> {
+                                            tunnelDnsAddresses = event.dns.toMutableList()
+                                            tunnelSearchDomain = event.searchDomain
+                                            tunnelIpv4Address = event.ipv4
+                                            tunnelIpv6Address = event.ipv6
+                                            tunnelRoutes.clear()
+                                            tunnelRoutes.addAll(
+                                                event.ipv4Routes.map { cidr ->
+                                                    Cidr(
+                                                        address = cidr.address,
+                                                        prefix = cidr.prefix.toInt(),
+                                                    )
+                                                },
+                                            )
+                                            tunnelRoutes.addAll(
+                                                event.ipv6Routes.map { cidr ->
+                                                    Cidr(
+                                                        address = cidr.address,
+                                                        prefix = cidr.prefix.toInt(),
+                                                    )
+                                                },
+                                            )
+                                            buildVpnService()
+                                        }
 
-                            is TunnelCommand.SetDns -> {
-                                session.setDns(command.dnsServers)
-                            }
+                                        is Event.Disconnected -> {
+                                            // Clear any user tokens and actorNames
+                                            repo.clearToken()
+                                            repo.clearActorName()
 
-                            is TunnelCommand.SetLogDirectives -> {
-                                session.setLogDirectives(command.directives)
-                            }
+                                            return@loop StopReason.Disconnected
+                                        }
 
-                            is TunnelCommand.SetTun -> {
-                                session.setTun(command.fd)
-                            }
+                                        is Event.GatewayVersionMismatch -> {
+                                            val (resource, site) = resourceById(event.resourceId) ?: return@use
 
-                            is TunnelCommand.Reset -> {
-                                session.reset("roam")
+                                            showErrorNotification(
+                                                "Failed to connect to '${resource.name}'",
+                                                "Your Firezone Client is incompatible with all Gateways in the site '${site.name}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
+                                            )
+                                        }
+
+                                        is Event.AllGatewaysOffline -> {
+                                            val (resource, site) = resourceById(event.resourceId) ?: return@use
+
+                                            showErrorNotification(
+                                                "Failed to connect to '${resource.name}'",
+                                                "All Gateways in the site '${site.name}' are offline. Contact your administrator to resolve this issue.",
+                                            )
+                                        }
+
+                                        null -> {
+                                            Log.i(TAG, "Event channel closed")
+                                            return@loop StopReason.EventChannelClosed
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
-                    eventChannel.onReceive { event ->
-                        event.use { event ->
-                            when (event) {
-                                is Event.ResourcesUpdated -> {
-                                    tunnelResources = event.resources.map { convertResource(it) }
-                                    resourcesUpdated()
-                                }
-
-                                is Event.TunInterfaceUpdated -> {
-                                    tunnelDnsAddresses = event.dns.toMutableList()
-                                    tunnelSearchDomain = event.searchDomain
-                                    tunnelIpv4Address = event.ipv4
-                                    tunnelIpv6Address = event.ipv6
-                                    tunnelRoutes.clear()
-                                    tunnelRoutes.addAll(
-                                        event.ipv4Routes.map { cidr ->
-                                            Cidr(
-                                                address = cidr.address,
-                                                prefix = cidr.prefix.toInt(),
-                                            )
-                                        },
-                                    )
-                                    tunnelRoutes.addAll(
-                                        event.ipv6Routes.map { cidr ->
-                                            Cidr(
-                                                address = cidr.address,
-                                                prefix = cidr.prefix.toInt(),
-                                            )
-                                        },
-                                    )
-                                    buildVpnService()
-                                }
-
-                                is Event.Disconnected -> {
-                                    // Clear any user tokens and actorNames
-                                    repo.clearToken()
-                                    repo.clearActorName()
-
-                                    running = false
-                                }
-
-                                is Event.GatewayVersionMismatch -> {
-                                    val (resource, site) = resourceById(event.resourceId) ?: return@use
-
-                                    showErrorNotification(
-                                        "Failed to connect to '${resource.name}'",
-                                        "Your Firezone Client is incompatible with all Gateways in the site '${site.name}'. Please update your Client to the latest version and contact your administrator if the issue persists.",
-                                    )
-                                }
-
-                                is Event.AllGatewaysOffline -> {
-                                    val (resource, site) = resourceById(event.resourceId) ?: return@use
-
-                                    showErrorNotification(
-                                        "Failed to connect to '${resource.name}'",
-                                        "All Gateways in the site '${site.name}' are offline. Contact your administrator to resolve this issue.",
-                                    )
-                                }
-
-                                null -> {
-                                    Log.i(TAG, "Event channel closed")
-                                    running = false
-                                }
-                            }
-                        }
+                    } catch (e: ClosedReceiveChannelException) {
+                        return@loop StopReason.CommandChannelClosed
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in event loop", e)
+                        return@loop StopReason.Error
                     }
                 }
-            } catch (e: ClosedReceiveChannelException) {
-                running = false
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in event loop", e)
             }
+
+        return if (explicitDisconnect) {
+            StopReason.ExplicitDisconnect
+        } else {
+            stopReason
         }
     }
 
@@ -706,7 +725,8 @@ class TunnelService : VpnService() {
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
 
-        private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+        private val MANAGED_CONFIGURATIONS =
+            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
