@@ -5,12 +5,12 @@
       "fileLocation": ["relative", "rust"],
       "pattern": [
         {
-          "regexp": "^(warning|error)(\\[.+\\])?: (.+)$",
+          "regexp": "^(?:\\x1b\\[[\\d;]+m)*(warning|error)(?:\\x1b\\[[\\d;]+m)*(\\[.+?\\])?(?:\\x1b\\[[\\d;]+m)*:(?:\\x1b\\[[\\d;]+m)* (.+?)(?:\\x1b\\[[\\d;]+m)*$",
           "severity": 1,
           "message": 3
         },
         {
-          "regexp": "^\\s+--> (.+):(\\d+):(\\d+)$",
+          "regexp": "^\\s*(?:\\x1b\\[[\\d;]+m)*\\s*--> (?:\\x1b\\[[\\d;]+m)*(.+):(\\d+):(\\d+)(?:\\x1b\\[[\\d;]+m)*$",
           "file": 1,
           "line": 2,
           "column": 3
