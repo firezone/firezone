@@ -39,6 +39,7 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
+        // Working config that gets modified during editing
         private var config =
             Config(
                 authUrl = "",
@@ -49,16 +50,20 @@ internal class SettingsViewModel
                 connectOnStart = false,
             )
 
+        // StateFlow that emits config only on load/reset, not during editing
+        private val _configStateFlow = MutableStateFlow<Config?>(null)
+        val configStateFlow: StateFlow<Config?> = _configStateFlow
+
+        private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
+        val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
+
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
+                    _configStateFlow.value = it
+                    _managedStatusStateFlow.value = repo.getManagedStatus()
                     onFieldUpdated()
-                    actionMutableStateFlow.value =
-                        ViewAction.FillSettings(
-                            it,
-                            managedStatus = repo.getManagedStatus(),
-                        )
                 }
             }
         }
@@ -174,12 +179,9 @@ internal class SettingsViewModel
         fun resetSettingsToDefaults() {
             config = repo.getDefaultConfigSync()
             repo.resetFavorites()
+            _configStateFlow.value = config
+            _managedStatusStateFlow.value = repo.getManagedStatus()
             onFieldUpdated()
-            actionMutableStateFlow.value =
-                ViewAction.FillSettings(
-                    config = config,
-                    managedStatus = repo.getManagedStatus(),
-                )
         }
 
         fun clearAction() {
@@ -246,10 +248,5 @@ internal class SettingsViewModel
 
         internal sealed class ViewAction {
             data object NavigateBack : ViewAction()
-
-            data class FillSettings(
-                val config: Config,
-                val managedStatus: ManagedConfigStatus,
-            ) : ViewAction()
         }
     }
