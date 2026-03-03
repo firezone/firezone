@@ -17,7 +17,7 @@ struct FavoritesTests {
 
   @Test("Starts empty when no prior data exists")
   func startsEmpty() {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let favorites = Favorites(userDefaults: defaults)
 
     #expect(favorites.isEmpty())
@@ -25,7 +25,7 @@ struct FavoritesTests {
 
   @Test("Add makes resource ID contained")
   func addMakesContained() {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let favorites = Favorites(userDefaults: defaults)
 
     favorites.add("resource-1")
@@ -36,7 +36,7 @@ struct FavoritesTests {
 
   @Test("Adding same ID twice is idempotent")
   func addIdempotent() {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let favorites = Favorites(userDefaults: defaults)
 
     favorites.add("resource-1")
@@ -50,7 +50,7 @@ struct FavoritesTests {
 
   @Test("Remove makes resource ID no longer contained")
   func removeWorks() {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let favorites = Favorites(userDefaults: defaults)
 
     favorites.add("resource-1")
@@ -62,7 +62,7 @@ struct FavoritesTests {
 
   @Test("Reset clears all favorites")
   func resetClearsAll() {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let favorites = Favorites(userDefaults: defaults)
 
     favorites.add("resource-1")
@@ -80,7 +80,7 @@ struct FavoritesTests {
 
   @Test("Favorites persist across instances")
   func favoritesPersistedAcrossInstances() {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
 
     // First instance adds favorites
     let favorites1 = Favorites(userDefaults: defaults)
@@ -98,7 +98,7 @@ struct FavoritesTests {
   @Test("Add triggers objectWillChange")
   @MainActor
   func addTriggersChange() async throws {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let favorites = Favorites(userDefaults: defaults)
 
     await confirmation("objectWillChange fires on add") { confirm in
@@ -111,18 +111,6 @@ struct FavoritesTests {
       // Keep cancellable alive
       _ = cancellable
     }
-  }
-
-  // MARK: - Private Helpers
-
-  /// Creates an isolated UserDefaults instance for each test.
-  private func makeTestDefaults() -> UserDefaults {
-    let suiteName = "dev.firezone.firezone.tests.\(UUID().uuidString)"
-    guard let defaults = UserDefaults(suiteName: suiteName) else {
-      fatalError("Failed to create UserDefaults with suite: \(suiteName)")
-    }
-    defaults.removePersistentDomain(forName: suiteName)
-    return defaults
   }
 
 }
