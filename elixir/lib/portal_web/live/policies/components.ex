@@ -854,12 +854,12 @@ defmodule PortalWeb.Policies.Components do
         )
 
       # Combine all providers from different tables using Safe
-      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (okta_query |> Safe.scoped(subject) |> Safe.all())
+      (userpass_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject, :replica) |> Safe.all())
     end
 
     # Inlined from PortalWeb.Groups.Components
@@ -938,7 +938,7 @@ defmodule PortalWeb.Policies.Components do
           query
         end
 
-      groups = query |> Safe.scoped(subject) |> Safe.all()
+      groups = query |> Safe.scoped(subject, :replica) |> Safe.all()
 
       # For metadata, we'll return a simple count
       metadata = %{limit: 25, count: length(groups)}
