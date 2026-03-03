@@ -60,4 +60,28 @@ struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
   static func == (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
     return lhs.major == rhs.major && lhs.minor == rhs.minor && lhs.patch == rhs.patch
   }
+
+  func save(to userDefaults: UserDefaults, forKey key: String) {
+    let encoder = PropertyListEncoder()
+
+    do {
+      let data = try encoder.encode(self)
+      userDefaults.setValue(data, forKey: key)
+    } catch {
+      Log.error(error)
+    }
+  }
+
+  init?(from userDefaults: UserDefaults, forKey key: String) {
+    guard let data = userDefaults.object(forKey: key) as? Data else { return nil }
+
+    let decoder = PropertyListDecoder()
+
+    do {
+      self = try decoder.decode(SemanticVersion.self, from: data)
+    } catch {
+      Log.error(error)
+      return nil
+    }
+  }
 }

@@ -23,19 +23,36 @@
     return defaults
   }
 
-  // BUG: loadVersion ignores its `key` parameter and always reads from
-  // `lastDismissedVersionKey`. This test documents that broken behaviour.
-  @Test("setVersion/loadVersion round-trip is broken — loadVersion ignores key")
-  func roundTripIsBroken() throws {
+  @Test("save/init round-trips with the given key")
+  func roundTripsWithGivenKey() throws {
     let defaults = makeTestDefaults()
     let version = try SemanticVersion("1.2.3")
 
-    setVersion(key: "myKey", version: version, userDefaults: defaults)
+      version.save(to: defaults, forKey: "myKey")
 
-    // loadVersion should return `version` for "myKey", but it reads from the
-    // wrong key internally, so it returns nil.
-    let loaded = loadVersion(key: "myKey", userDefaults: defaults)
-    #expect(loaded == nil, "loadVersion ignores its key and reads lastDismissedVersionKey")
+      let loaded = SemanticVersion(from: defaults, forKey: "myKey")
+      #expect(loaded == version)
+    }
+
+  @Test("Different keys store independent values")
+  func differentKeysAreIndependent() throws {
+    let defaults = makeTestDefaults()
+    let versionA = try SemanticVersion("1.0.0")
+    let versionB = try SemanticVersion("2.0.0")
+
+      versionA.save(to: defaults, forKey: "keyA")
+      versionB.save(to: defaults, forKey: "keyB")
+
+      #expect(SemanticVersion(from: defaults, forKey: "keyA") == versionA)
+      #expect(SemanticVersion(from: defaults, forKey: "keyB") == versionB)
+    }
+
+  @Test("Returns nil for missing key")
+  func returnsNilForMissingKey() {
+    let defaults = makeTestDefaults()
+
+      #expect(SemanticVersion(from: defaults, forKey: "nonexistent") == nil)
+    }
   }
 
 #endif

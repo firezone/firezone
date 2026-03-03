@@ -245,47 +245,19 @@
   private let lastNotifiedVersionKey = "lastNotifiedVersion"
 
   private func setLastDismissedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
-    setVersion(key: lastDismissedVersionKey, version: version, userDefaults: userDefaults)
+    version.save(to: userDefaults, forKey: lastDismissedVersionKey)
   }
 
   private func setLastNotifiedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
-    setVersion(key: lastNotifiedVersionKey, version: version, userDefaults: userDefaults)
+    version.save(to: userDefaults, forKey: lastNotifiedVersionKey)
   }
 
   private func getLastDismissedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
-    loadVersion(key: lastDismissedVersionKey, userDefaults: userDefaults)
+    SemanticVersion(from: userDefaults, forKey: lastDismissedVersionKey)
   }
 
   private func getLastNotifiedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
-    loadVersion(key: lastNotifiedVersionKey, userDefaults: userDefaults)
-  }
-
-  func setVersion(key: String, version: SemanticVersion, userDefaults: UserDefaults) {
-    let encoder = PropertyListEncoder()
-
-    do {
-      let data = try encoder.encode(version)
-      userDefaults.setValue(data, forKey: key)
-    } catch {
-      Log.error(error)
-    }
-  }
-
-  func loadVersion(key: String, userDefaults: UserDefaults) -> SemanticVersion? {
-    let decoder = PropertyListDecoder()
-
-    guard let data = userDefaults.object(forKey: lastDismissedVersionKey) as? Data
-    else { return nil }
-
-    do {
-      let version = try decoder.decode(SemanticVersion.self, from: data)
-
-      return version
-    } catch {
-      Log.error(error)
-
-      return nil
-    }
+    SemanticVersion(from: userDefaults, forKey: lastNotifiedVersionKey)
   }
 
 #endif
