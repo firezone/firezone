@@ -27,14 +27,14 @@ macro_rules! build {
 pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacket> {
     let ip_payload_size = header.len() + control_payload.len();
 
-    anyhow::ensure!(ip_payload_size <= crate::MAX_IP_SIZE);
-
     let builder = etherparse::PacketBuilder::ipv6(
         crate::fz_p2p_control::ADDR.octets(),
         crate::fz_p2p_control::ADDR.octets(),
         0,
     );
     let packet_size = builder.size(ip_payload_size);
+
+    anyhow::ensure!(packet_size <= crate::MAX_IP_SIZE);
 
     let mut packet_buf = IpPacketBuf::new();
 
