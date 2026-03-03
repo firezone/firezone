@@ -436,8 +436,8 @@ public final class Store: ObservableObject {
   // MARK: Private functions
 
   private func fetchAndCacheFirezoneId() {
-    // Skip IPC if we already have a cached Firezone ID for this session
-    if userDefaults.string(forKey: "encodedFirezoneId") != nil {
+    if let firezoneId = userDefaults.string(forKey: "encodedFirezoneId") {
+      Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
       return
     }
 
@@ -514,6 +514,7 @@ public final class Store: ObservableObject {
     resourceList = ResourceList.loading
     connlibStateHash = Data()
     unreachableResources.removeAll()
+    Log.setStreamingActive(false)
   }
 
   /// Fetches state from the tunnel provider, using hash-based optimisation.
@@ -534,23 +535,27 @@ public final class Store: ObservableObject {
     }
 
     // Decode state and compute hash
-    let (resources, unreachableResources, hash) = try ConnlibState.decode(from: data)
+    let (state, hash) = try ConnlibState.decode(from: data)
 
     // Update both hash and resource list
     self.connlibStateHash = hash
 
-    if let resources = resources {
+    // Propagate log streaming state from the NE to the main app process
+    Log.setStreamingActive(state.isLogStreamingActive)
+
+    if let resources = state.resources {
       resourceList = ResourceList.loaded(resources)
     }
 
-    let newlyUnreachableResources = Set(unreachableResources).subtracting(self.unreachableResources)
+    let newlyUnreachableResources = Set(state.unreachableResources).subtracting(
+      self.unreachableResources)
 
     await showNotificationsForUnreachableResources(
       unreachableResources: newlyUnreachableResources,
-      resources: resources ?? []
+      resources: state.resources ?? []
     )
 
-    self.unreachableResources = Set(unreachableResources)
+    self.unreachableResources = Set(state.unreachableResources)
   }
 
   private func showNotificationsForUnreachableResources(

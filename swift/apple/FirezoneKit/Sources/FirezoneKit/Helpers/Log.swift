@@ -6,22 +6,62 @@
 
 import Foundation
 import OSLog
+import Sentry
 import SystemPackage
 
 public final class Log {
-  private static let logger: Logger = {
-    switch Bundle.main.bundleIdentifier {
-    case "dev.firezone.firezone":
-      return Logger(subsystem: "dev.firezone.firezone", category: "app")
-    case "dev.firezone.firezone.network-extension":
-      return Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
-    default:
-      // Test environment or unknown bundle - use generic logger with "unknown" category
-      let bundleId = Bundle.main.bundleIdentifier ?? "nil"
-      Logger(subsystem: "dev.firezone.firezone", category: "unknown")
-        .warning("Unknown bundle identifier: \(bundleId). Using generic logger.")
-      return Logger(subsystem: "dev.firezone.firezone", category: "unknown")
+  private static let sentryLock = NSLock()
+  nonisolated(unsafe) private static var _streamingActive = false
+  nonisolated(unsafe) private static var _sentryAttributes: [String: Any] = [
+    "process": processName
+  ]
+
+  public static var isStreamingActive: Bool {
+    sentryLock.withLock { _streamingActive }
+  }
+
+  public static func setStreamingActive(_ active: Bool) {
+    let changed = sentryLock.withLock {
+      let old = _streamingActive
+      _streamingActive = active
+      return old != active
     }
+    if changed {
+      // The flag is already flipped, so the "enabled" message is
+      // itself streamed to Sentry, but "disabled" is not.
+      debug("Log streaming \(active ? "enabled" : "disabled")")
+    }
+  }
+
+  public static func setUser(firezoneId: String, accountSlug: String) {
+    sentryLock.withLock {
+      _sentryAttributes["user.id"] = firezoneId
+      _sentryAttributes["user.account_slug"] = accountSlug
+    }
+  }
+
+  public static func setEnvironment(_ environment: String) {
+    sentryLock.withLock {
+      _sentryAttributes["environment"] = environment
+    }
+  }
+
+  private static let processName: String = {
+    switch Bundle.main.bundleIdentifier {
+    case "dev.firezone.firezone": return "app"
+    case "dev.firezone.firezone.network-extension": return "tunnel"
+    default: return "unknown"
+    }
+  }()
+
+  private static let logger: Logger = {
+    let category = processName
+    if category == "unknown" {
+      let bundleId = Bundle.main.bundleIdentifier ?? "nil"
+      Logger(subsystem: "dev.firezone.firezone", category: category)
+        .warning("Unknown bundle identifier: \(bundleId). Using generic logger.")
+    }
+    return Logger(subsystem: "dev.firezone.firezone", category: category)
   }()
 
   private static let logWriter: LogWriter? = {
@@ -38,6 +78,21 @@ public final class Log {
     return LogWriter(folderURL: folderURL, logger: logger)
   }()
 
+  private static func sentryLog(severity: LogWriter.Severity, message: String) {
+    let attrs: [String: Any] = sentryLock.withLock {
+      guard _streamingActive else { return [:] }
+      return _sentryAttributes
+    }
+    guard !attrs.isEmpty else { return }
+    switch severity {
+    case .trace: return  // we don't bother sending trace-level logs to Sentry
+    case .debug: SentrySDK.logger.debug(message, attributes: attrs)
+    case .info: SentrySDK.logger.info(message, attributes: attrs)
+    case .warning: SentrySDK.logger.warn(message, attributes: attrs)
+    case .error: SentrySDK.logger.error(message, attributes: attrs)
+    }
+  }
+
   public static func log(_ message: String) {
     debug(message)
   }
@@ -45,26 +100,35 @@ public final class Log {
   public static func trace(_ message: String) {
     logger.trace("\(message, privacy: .public)")
     logWriter?.write(severity: .trace, message: message)
+    sentryLog(severity: .trace, message: message)
   }
 
   public static func debug(_ message: String) {
     self.logger.debug("\(message, privacy: .public)")
     logWriter?.write(severity: .debug, message: message)
+    sentryLog(severity: .debug, message: message)
   }
 
   public static func info(_ message: String) {
     logger.info("\(message, privacy: .public)")
     logWriter?.write(severity: .info, message: message)
+    sentryLog(severity: .info, message: message)
   }
 
   public static func warning(_ message: String) {
     logger.warning("\(message, privacy: .public)")
     logWriter?.write(severity: .warning, message: message)
+    sentryLog(severity: .warning, message: message)
+  }
+
+  public static func error(_ message: String) {
+    self.logger.error("\(message, privacy: .public)")
+    logWriter?.write(severity: .error, message: message)
+    sentryLog(severity: .error, message: message)
   }
 
   public static func error(_ err: Error) {
-    self.logger.error("\(err.localizedDescription, privacy: .public)")
-    logWriter?.write(severity: .error, message: err.localizedDescription)
+    error(err.localizedDescription)
 
     if shouldCaptureError(err) {
       Telemetry.capture(err)
