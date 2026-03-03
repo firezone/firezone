@@ -7,6 +7,7 @@
 import Combine
 import NetworkExtension
 import OSLog
+import SystemPackage
 import UserNotifications
 
 #if os(macOS)
@@ -41,7 +42,7 @@ public final class Store: ObservableObject {
 
   private(set) var sessionNotification: SessionNotificationProtocol
   #if os(macOS)
-    let updateChecker: UpdateChecker
+    let updateChecker: any UpdateCheckerProtocol
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
@@ -49,7 +50,6 @@ public final class Store: ObservableObject {
   private var stateUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
-  private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
 
   // Track which session expired alerts have been shown to prevent duplicates
@@ -61,19 +61,28 @@ public final class Store: ObservableObject {
   /// UserDefaults instance for persisting GUI state.
   let userDefaults: UserDefaults
 
+  private let vpnConfigProvider: VPNConfigurationProtocol
+
+  private let ipcClient = IPCClient()
+
+  var currentSession: TunnelSessionProtocol?
+
   // Task consuming VPN status updates; its presence means observers are active.
   private var vpnStatusTask: CancellableTask?
 
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
+      vpnConfigProvider: VPNConfigurationProtocol = RealVPNConfigurationProvider(),
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      updateChecker: (any UpdateCheckerProtocol)? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.updateChecker = UpdateChecker(configuration: configuration, userDefaults: userDefaults)
+      self.updateChecker = updateChecker ?? UpdateChecker(configuration: configuration, userDefaults: userDefaults)
+      self.vpnConfigProvider = vpnConfigProvider
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.userDefaults = userDefaults
@@ -85,11 +94,13 @@ public final class Store: ObservableObject {
   #else
     public init(
       configuration: Configuration? = nil,
+      vpnConfigProvider: VPNConfigurationProtocol = RealVPNConfigurationProvider(),
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
+      self.vpnConfigProvider = vpnConfigProvider
       self.sessionNotification = sessionNotification
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
@@ -103,37 +114,6 @@ public final class Store: ObservableObject {
     self.sessionNotification.signInHandler = {
       do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
     }
-
-    // We monitor for any configuration changes and tell the tunnel service about them
-    self.configuration.objectWillChange
-      .receive(on: DispatchQueue.main)
-      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // These happen quite frequently
-      .sink(receiveValue: { [weak self] _ in
-        guard let self = self else { return }
-        let current = self.configuration.toTunnelConfiguration()
-
-        if self.vpnConfigurationManager == nil {
-          // No manager yet, nothing to update
-          return
-        }
-
-        if self.lastSavedConfiguration == current {
-          // No changes
-          return
-        }
-
-        self.lastSavedConfiguration = current
-
-        Task {
-          do {
-            guard let session = try self.manager().session() else { return }
-            try await IPCClient.setConfiguration(session: session, current)
-          } catch {
-            Log.error(error)
-          }
-        }
-      })
-      .store(in: &cancellables)
 
     // Forward favorites changes to Store's objectWillChange so SwiftUI redraws.
     // This is necessary because Favorites is a separate ObservableObject, and SwiftUI
@@ -158,12 +138,47 @@ public final class Store: ObservableObject {
       }
       .store(in: &cancellables)
 
-    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
-    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
+    // Monitor configuration changes and propagate to tunnel service
+    setupConfigurationObserver()
+
+    // Run the startup sequence: configure telemetry, check system extension (macOS),
+    // load VPN configuration, set up observers, and auto-connect if enabled.
     Task {
       await startupSequence()
       await initNotifications()
     }
+  }
+
+  // MARK: - Configuration Observer
+
+  /// Sets up the configuration change observer with debouncing.
+  private func setupConfigurationObserver() {
+    self.configuration.objectWillChange
+      .receive(on: DispatchQueue.main)
+      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // These happen quite frequently
+      .sink(receiveValue: { [weak self] _ in
+        guard let self = self else { return }
+        let current = self.configuration.toTunnelConfiguration()
+
+        if self.lastSavedConfiguration == current {
+          // No changes
+          return
+        }
+
+        self.lastSavedConfiguration = current
+
+        Task { [weak self] in
+          guard let self else { return }
+          do {
+            let session = try self.requireSession()
+            try await self.ipcClient.setConfiguration(session: session, current)
+          } catch {
+            // Session not ready yet - this is expected during startup
+            Log.debug("Config change ignored: \(error)")
+          }
+        }
+      })
+      .store(in: &cancellables)
   }
 
   #if os(macOS)
@@ -204,30 +219,6 @@ public final class Store: ObservableObject {
     }
   #endif
 
-  private func setupTunnelObservers() async throws {
-    guard vpnStatusTask == nil else {
-      Log.debug("Tunnel observers already set up, skipping")
-      return
-    }
-
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-
-    let statusStream = IPCClient.vpnStatusUpdates(session: session)
-
-    vpnStatusTask = CancellableTask { [weak self] in
-      for await status in statusStream {
-        do { try await self?.handleVPNStatusChange(newVPNStatus: status) } catch {
-          Log.error(error)
-        }
-      }
-    }
-
-    // Handle initial status to ensure resources start loading if already connected
-    try await handleVPNStatusChange(newVPNStatus: session.status)
-  }
-
   private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
     self.vpnStatus = newVPNStatus
 
@@ -242,25 +233,22 @@ public final class Store: ObservableObject {
       // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
       // from the tunnel process, because the UI process is not guaranteed to be alive.
       if vpnStatus == .disconnected {
-        do {
-          try manager().session()?.fetchLastDisconnectError { error in
-            if let nsError = error as NSError?,
-              nsError.domain == ConnlibError.errorDomain,
-              nsError.code == 0,  // sessionExpired error code
-              let reason = nsError.userInfo["reason"] as? String,
-              let id = nsError.userInfo["id"] as? String
-            {
-              // Only show the alert if we haven't shown this specific error before
-              Task { @MainActor in
-                if !self.shownAlertIds.contains(id) {
-                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
-                  self.markAlertAsShown(id)
-                }
+        currentSession?.fetchLastDisconnectError { [weak self] error in
+          guard let self = self else { return }
+          if let nsError = error as NSError?,
+            nsError.domain == ConnlibError.errorDomain,
+            nsError.code == 0,  // sessionExpired error code
+            let reason = nsError.userInfo["reason"] as? String,
+            let id = nsError.userInfo["id"] as? String
+          {
+            // Only show the alert if we haven't shown this specific error before
+            Task { @MainActor in
+              if !self.shownAlertIds.contains(id) {
+                await self.sessionNotification.showSignedOutAlertMacOS(reason)
+                self.markAlertAsShown(id)
               }
             }
           }
-        } catch {
-          Log.error(error)
         }
       }
 
@@ -292,7 +280,7 @@ public final class Store: ObservableObject {
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
         Log.debug("Startup: setupTunnelObservers")
-        try await setupTunnelObservers()
+        setupTunnelObservers()
         Log.debug("Startup: maybeAutoConnect")
         try await maybeAutoConnect()
         return
@@ -344,38 +332,53 @@ public final class Store: ObservableObject {
   }
 
   private func initVPNConfiguration() async throws {
-    // Try to load existing configuration
-    if let manager = try await VPNConfigurationManager.load() {
-      try await manager.maybeMigrateConfiguration()
-      self.vpnConfigurationManager = manager
+    let loaded = try await vpnConfigProvider.loadConfiguration()
+    if loaded {
+      self.currentSession = vpnConfigProvider.session()
     } else {
       self.vpnStatus = .invalid
     }
   }
 
+  /// Sets up VPN status observation. Must be called after initVPNConfiguration()
+  /// so that currentSession is available.
+  func setupTunnelObservers() {
+    guard vpnStatusTask == nil else {
+      Log.debug("Status observers already active, skipping")
+      return
+    }
+    guard let session = currentSession else { return }
+    let statusStream = session.statusUpdates
+    vpnStatusTask = CancellableTask { [weak self] in
+      for await status in statusStream {
+        do { try await self?.handleVPNStatusChange(newVPNStatus: status) } catch {
+          Log.error(error)
+        }
+      }
+    }
+
+    // Handle initial status to ensure resources start loading if already connected
+    let initialStatus = session.status
+    Task {
+      do {
+        try await handleVPNStatusChange(newVPNStatus: initialStatus)
+      } catch {
+        Log.error(error)
+      }
+    }
+  }
+
   private func maybeAutoConnect() async throws {
     if configuration.connectOnStart {
-      try await manager().enable()
-      guard let session = try manager().session() else {
-        throw VPNConfigurationManagerError.managerNotInitialized
-      }
-      try IPCClient.start(session: session, configuration: configuration.toTunnelConfiguration())
+      try await vpnConfigProvider.enable()
+      let session = try requireSession()
+      try ipcClient.start(session: session, configuration: configuration.toTunnelConfiguration())
     }
   }
+
   func installVPNConfiguration() async throws {
-    // Create a new VPN configuration in system settings.
-    self.vpnConfigurationManager = try await VPNConfigurationManager()
-
-    try await setupTunnelObservers()
-  }
-
-  func manager() throws -> VPNConfigurationManager {
-    guard let vpnConfigurationManager
-    else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-
-    return vpnConfigurationManager
+    try await vpnConfigProvider.installConfiguration()
+    self.currentSession = vpnConfigProvider.session()
   }
 
   func grantNotifications() async throws {
@@ -383,11 +386,7 @@ public final class Store: ObservableObject {
   }
 
   public func stop() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-
-    session.stopTunnel()
+    currentSession?.stopTunnel()
   }
 
   func signIn(authResponse: AuthResponse) async throws {
@@ -400,8 +399,6 @@ public final class Store: ObservableObject {
 
     configuration.accountSlug = accountSlug
 
-    try await manager().enable()
-
     // Clear shown alerts when starting a new session so user can see new errors
     shownAlertIds.removeAll()
     userDefaults.removeObject(forKey: "shownAlertIds")
@@ -409,28 +406,43 @@ public final class Store: ObservableObject {
     // Clear notified unreachable resources for fresh session
     unreachableResources.removeAll()
 
-    // Bring the tunnel up and send it a token and configuration to start
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try IPCClient.start(
+    // Enable and start the tunnel with the auth token
+    try await vpnConfigProvider.enable()
+    let session = try requireSession()
+    try ipcClient.start(
       session: session, token: authResponse.token,
-      configuration: configuration.toTunnelConfiguration()
-    )
+      configuration: configuration.toTunnelConfiguration())
   }
 
   func signOut() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.signOut(session: session)
+    let session = try requireSession()
+    try await ipcClient.signOut(session: session)
   }
 
   func clearLogs() async throws {
-    guard let session = try manager().session() else {
+    let session = try requireSession()
+    try await ipcClient.clearLogs(session: session)
+  }
+
+  #if os(macOS)
+    func getLogFolderSize() async throws -> Int64 {
+      let session = try requireSession()
+      return try await ipcClient.getLogFolderSize(session: session)
+    }
+
+    func exportLogs(fd: FileDescriptor) async throws {
+      let session = try requireSession()
+      try await ipcClient.exportLogs(session: session, fd: fd)
+    }
+  #endif
+
+  // MARK: - Session Management
+
+  func requireSession() throws -> TunnelSessionProtocol {
+    guard let currentSession else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try await IPCClient.clearLogs(session: session)
+    return currentSession
   }
 
   // MARK: Private functions
@@ -443,8 +455,8 @@ public final class Store: ObservableObject {
 
     Task {
       do {
-        guard let session = try manager().session(),
-          let firezoneId = try await IPCClient.fetchEncodedFirezoneId(session: session)
+        let session = try requireSession()
+        guard let firezoneId = try await ipcClient.fetchEncodedFirezoneId(session: session)
         else { return }
 
         userDefaults.set(firezoneId, forKey: "encodedFirezoneId")
@@ -469,16 +481,16 @@ public final class Store: ObservableObject {
       return
     }
 
-    // Define the Timer's closure
-    let updateState: @Sendable (Timer) -> Void = { _ in
+    // Note: Strong capture of self is intentional — timer is invalidated in endUpdatingState()
+    // when VPN disconnects, preventing retain cycles.
+    let updateState: @Sendable (Timer) -> Void = { [self] _ in
       Task {
         await MainActor.run {
           self.stateUpdateTask?.cancel()
           self.stateUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                guard let session = try self.manager().session() else { return }
-                try await self.fetchState(session: session)
+                try await self.fetchResources()
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
@@ -521,15 +533,14 @@ public final class Store: ObservableObject {
   ///
   /// If the hash matches what the provider has, state is unchanged.
   /// Otherwise, fetches and caches the new state.
-  ///
-  /// - Parameter session: The tunnel provider session to communicate with
-  /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchState(session: NETunnelProviderSession) async throws {
+  /// Internal for `@testable` access.
+  func fetchResources() async throws {
     // Capture current hash before IPC call
     let currentHash = self.connlibStateHash
+    let session = try requireSession()
 
     // If no data returned, state hasn't changed - no update needed
-    guard let data = try await IPCClient.fetchState(session: session, currentHash: currentHash)
+    guard let data = try await ipcClient.fetchState(session: session, currentHash: currentHash)
     else {
       return
     }
