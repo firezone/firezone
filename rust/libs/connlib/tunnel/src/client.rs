@@ -255,6 +255,12 @@ impl ClientState {
         self.resource_list.update(self.resources());
     }
 
+    /// Handles cases where access to a device is denied.
+    ///
+    /// This can happen in several cases:
+    ///
+    /// 1. During initial setup of the access, i.e. when we are trying to connect to another device.
+    /// 2. When access is revoked after it has been established.
     pub fn handle_client_device_access_denied(
         &mut self,
         ipv4: Ipv4Addr,
