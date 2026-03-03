@@ -78,14 +78,18 @@ where
         self.peer_by_id.get_mut(id)
     }
 
-    pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<&P> {
+    pub(crate) fn peer_by_ip(&self, ip: impl Into<IpAddr>) -> Option<&P> {
+        let ip = ip.into();
+
         let id = self.id_by_ip.get(&ip)?;
         let peer = self.peer_by_id.get(id)?;
 
         Some(peer)
     }
 
-    pub(crate) fn peer_by_ip_mut(&mut self, ip: IpAddr) -> Option<&mut P> {
+    pub(crate) fn peer_by_ip_mut(&mut self, ip: impl Into<IpAddr>) -> Option<&mut P> {
+        let ip = ip.into();
+
         let id = self.id_by_ip.get(&ip)?;
         let peer = self.peer_by_id.get_mut(id)?;
 
@@ -179,13 +183,7 @@ mod tests {
             DummyPeer::new(0, Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST)
         });
 
-        assert_eq!(
-            peer_storage
-                .peer_by_ip(Ipv4Addr::LOCALHOST.into())
-                .unwrap()
-                .id,
-            0
-        );
+        assert_eq!(peer_storage.peer_by_ip(Ipv4Addr::LOCALHOST).unwrap().id, 0);
     }
 
     #[test]
@@ -197,11 +195,7 @@ mod tests {
         peer_storage.remove(&0);
 
         assert!(peer_storage.peer_by_id(&0).is_none());
-        assert!(
-            peer_storage
-                .peer_by_ip(Ipv4Addr::LOCALHOST.into())
-                .is_none()
-        )
+        assert!(peer_storage.peer_by_ip(Ipv4Addr::LOCALHOST).is_none())
     }
 
     #[test]
@@ -215,10 +209,6 @@ mod tests {
         });
 
         assert!(peer_storage.peer_by_id(&0).is_some());
-        assert!(
-            peer_storage
-                .peer_by_ip("1.1.1.1".parse().unwrap())
-                .is_none()
-        )
+        assert!(peer_storage.peer_by_ip(Ipv4Addr::new(1, 1, 1, 1)).is_none())
     }
 }
