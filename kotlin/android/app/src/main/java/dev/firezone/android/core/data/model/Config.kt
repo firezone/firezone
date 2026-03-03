@@ -2,10 +2,10 @@
 package dev.firezone.android.core.data.model
 
 data class Config(
-    var authUrl: String,
-    var apiUrl: String,
-    var logFilter: String,
-    var accountSlug: String,
-    var startOnLogin: Boolean,
-    var connectOnStart: Boolean,
+    val authUrl: String,
+    val apiUrl: String,
+    val logFilter: String,
+    val accountSlug: String,
+    val startOnLogin: Boolean,
+    val connectOnStart: Boolean,
 )

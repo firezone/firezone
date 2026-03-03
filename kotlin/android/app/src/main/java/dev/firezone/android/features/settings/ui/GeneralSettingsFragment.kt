@@ -63,11 +63,9 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     viewModel.configStateFlow.collect { config ->
-                        config?.let {
-                            binding.etAccountSlugInput.setText(it.accountSlug)
-                            binding.switchStartOnLogin.isChecked = it.startOnLogin
-                            binding.switchConnectOnStart.isChecked = it.connectOnStart
-                        }
+                        binding.etAccountSlugInput.setText(config.accountSlug)
+                        binding.switchStartOnLogin.isChecked = config.startOnLogin
+                        binding.switchConnectOnStart.isChecked = config.connectOnStart
                     }
                 }
 

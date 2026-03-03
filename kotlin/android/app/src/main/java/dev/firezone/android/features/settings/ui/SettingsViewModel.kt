@@ -39,7 +39,7 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        // Working config that gets modified during editing
+        // Working config that gets modified during editing using immutable copy
         private var config =
             Config(
                 authUrl = "",
@@ -51,8 +51,8 @@ internal class SettingsViewModel
             )
 
         // StateFlow that emits config only on load/reset, not during editing
-        private val _configStateFlow = MutableStateFlow<Config?>(null)
-        val configStateFlow: StateFlow<Config?> = _configStateFlow
+        private val _configStateFlow = MutableStateFlow(config)
+        val configStateFlow: StateFlow<Config> = _configStateFlow
 
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
@@ -96,32 +96,32 @@ internal class SettingsViewModel
         }
 
         fun onValidateAuthUrl(authUrl: String) {
-            this.config.authUrl = authUrl
+            config = config.copy(authUrl = authUrl)
             onFieldUpdated()
         }
 
         fun onValidateApiUrl(apiUrl: String) {
-            this.config.apiUrl = apiUrl
+            config = config.copy(apiUrl = apiUrl)
             onFieldUpdated()
         }
 
         fun onValidateLogFilter(logFilter: String) {
-            this.config.logFilter = logFilter
+            config = config.copy(logFilter = logFilter)
             onFieldUpdated()
         }
 
         fun onValidateAccountSlug(accountSlug: String) {
-            this.config.accountSlug = accountSlug
+            config = config.copy(accountSlug = accountSlug)
             onFieldUpdated()
         }
 
         fun onStartOnLoginChanged(isChecked: Boolean) {
-            this.config.startOnLogin = isChecked
+            config = config.copy(startOnLogin = isChecked)
             onFieldUpdated()
         }
 
         fun onConnectOnStartChanged(isChecked: Boolean) {
-            this.config.connectOnStart = isChecked
+            config = config.copy(connectOnStart = isChecked)
             onFieldUpdated()
         }
 

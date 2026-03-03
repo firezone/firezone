@@ -72,11 +72,9 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     viewModel.configStateFlow.collect { config ->
-                        config?.let {
-                            binding.etAuthUrlInput.setText(it.authUrl)
-                            binding.etApiUrlInput.setText(it.apiUrl)
-                            binding.etLogFilterInput.setText(it.logFilter)
-                        }
+                        binding.etAuthUrlInput.setText(config.authUrl)
+                        binding.etApiUrlInput.setText(config.apiUrl)
+                        binding.etLogFilterInput.setText(config.logFilter)
                     }
                 }
 
