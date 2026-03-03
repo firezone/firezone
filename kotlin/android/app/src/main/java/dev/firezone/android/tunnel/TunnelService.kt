@@ -321,7 +321,7 @@ class TunnelService : VpnService() {
 
                             Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            if (startedByUser && stopReason != StopReason::ExplicitDisconnect) {
+                            if (startedByUser && stopReason != StopReason.ExplicitDisconnect) {
                                 // Show dismissable disconnected notification
                                 TunnelNotification.showDisconnectedNotification(context)
                             }
