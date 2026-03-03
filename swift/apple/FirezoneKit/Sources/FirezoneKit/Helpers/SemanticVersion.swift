@@ -66,14 +66,14 @@ struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
 
     do {
       let data = try encoder.encode(self)
-      userDefaults.setValue(data, forKey: key)
+      userDefaults.set(data, forKey: key)
     } catch {
       Log.error(error)
     }
   }
 
   init?(from userDefaults: UserDefaults, forKey key: String) {
-    guard let data = userDefaults.object(forKey: key) as? Data else { return nil }
+    guard let data = userDefaults.data(forKey: key) else { return nil }
 
     let decoder = PropertyListDecoder()
 
