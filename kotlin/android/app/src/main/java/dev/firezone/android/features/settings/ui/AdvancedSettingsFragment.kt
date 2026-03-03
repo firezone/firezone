@@ -70,28 +70,30 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
     private fun setupActionObservers() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.actionStateFlow.collect { action ->
-                    action?.let {
-                        viewModel.clearAction()
-                        when (it) {
-                            is SettingsViewModel.ViewAction.NavigateBack -> {
-                                requireActivity().finish()
-                            }
+                launch {
+                    viewModel.configStateFlow.collect { config ->
+                        binding.etAuthUrlInput.setText(config.authUrl)
+                        binding.etApiUrlInput.setText(config.apiUrl)
+                        binding.etLogFilterInput.setText(config.logFilter)
+                    }
+                }
 
-                            is SettingsViewModel.ViewAction.FillSettings -> {
-                                binding.etAuthUrlInput.apply {
-                                    setText(it.config.authUrl)
+                launch {
+                    viewModel.managedStatusStateFlow.collect { managedStatus ->
+                        managedStatus?.let {
+                            applyManagedStatus(it)
+                        }
+                    }
+                }
+
+                launch {
+                    viewModel.actionStateFlow.collect { action ->
+                        action?.let {
+                            viewModel.clearAction()
+                            when (it) {
+                                is SettingsViewModel.ViewAction.NavigateBack -> {
+                                    requireActivity().finish()
                                 }
-
-                                binding.etApiUrlInput.apply {
-                                    setText(it.config.apiUrl)
-                                }
-
-                                binding.etLogFilterInput.apply {
-                                    setText(it.config.logFilter)
-                                }
-
-                                applyManagedStatus(it.managedStatus)
                             }
                         }
                     }

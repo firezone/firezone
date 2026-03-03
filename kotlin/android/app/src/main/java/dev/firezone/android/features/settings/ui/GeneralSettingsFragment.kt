@@ -61,28 +61,30 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
     private fun setupActionObservers() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.actionStateFlow.collect { action ->
-                    action?.let {
-                        viewModel.clearAction()
-                        when (it) {
-                            is SettingsViewModel.ViewAction.NavigateBack -> {
-                                requireActivity().finish()
-                            }
+                launch {
+                    viewModel.configStateFlow.collect { config ->
+                        binding.etAccountSlugInput.setText(config.accountSlug)
+                        binding.switchStartOnLogin.isChecked = config.startOnLogin
+                        binding.switchConnectOnStart.isChecked = config.connectOnStart
+                    }
+                }
 
-                            is SettingsViewModel.ViewAction.FillSettings -> {
-                                binding.etAccountSlugInput.apply {
-                                    setText(it.config.accountSlug)
+                launch {
+                    viewModel.managedStatusStateFlow.collect { managedStatus ->
+                        managedStatus?.let {
+                            applyManagedStatus(it)
+                        }
+                    }
+                }
+
+                launch {
+                    viewModel.actionStateFlow.collect { action ->
+                        action?.let {
+                            viewModel.clearAction()
+                            when (it) {
+                                is SettingsViewModel.ViewAction.NavigateBack -> {
+                                    requireActivity().finish()
                                 }
-
-                                binding.switchStartOnLogin.apply {
-                                    isChecked = it.config.startOnLogin
-                                }
-
-                                binding.switchConnectOnStart.apply {
-                                    isChecked = it.config.connectOnStart
-                                }
-
-                                applyManagedStatus(it.managedStatus)
                             }
                         }
                     }
