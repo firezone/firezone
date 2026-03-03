@@ -115,12 +115,10 @@ impl GatewayState {
 
         anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
 
-        let peer = self
+        let (cid, peer) = self
             .peers
             .peer_by_ip_mut(dst)
             .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
-
-        let cid = peer.id();
 
         flow_tracker::inbound_tun::record_client(cid);
 
