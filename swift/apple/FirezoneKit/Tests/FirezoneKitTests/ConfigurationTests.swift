@@ -13,23 +13,12 @@ import Testing
 @Suite("Configuration Tests")
 struct ConfigurationTests {
 
-  // Each call creates a unique suite for proper test isolation
-  private func makeTestDefaults() -> UserDefaults {
-    let suiteName = "dev.firezone.firezone.tests.\(UUID().uuidString)"
-    guard let defaults = UserDefaults(suiteName: suiteName) else {
-      fatalError("Failed to create UserDefaults with suite: \(suiteName)")
-    }
-    // Clear any existing values (shouldn't be any with UUID-based name)
-    defaults.removePersistentDomain(forName: suiteName)
-    return defaults
-  }
-
   // MARK: - Default Values
 
   @Test("Returns default values when UserDefaults is empty")
   @MainActor
   func defaultValues() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     #expect(config.authURL == Configuration.defaultAuthURL)
@@ -48,7 +37,7 @@ struct ConfigurationTests {
   @Test("String defaults use fallback when key is missing")
   @MainActor
   func stringDefaultsFallback() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     // Verify the fallback logic works - string(forKey:) returns nil, so ?? kicks in
@@ -69,7 +58,7 @@ struct ConfigurationTests {
   @Test("String properties persist to UserDefaults")
   @MainActor
   func stringPropertiesPersist() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     config.authURL = "https://custom.auth.url"
@@ -95,7 +84,7 @@ struct ConfigurationTests {
   @Test("Boolean properties persist to UserDefaults")
   @MainActor
   func booleanPropertiesPersist() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     config.connectOnStart = true
@@ -126,7 +115,7 @@ struct ConfigurationTests {
   @Test("toTunnelConfiguration returns correct values")
   @MainActor
   func tunnelConfiguration() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     config.apiURL = "wss://test.api"
@@ -174,7 +163,7 @@ struct ConfigurationTests {
   @Test("Published properties initialized from UserDefaults")
   @MainActor
   func publishedPropertiesInitialized() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
 
     // Set values before creating Configuration
     defaults.set(true, forKey: "internetResourceEnabled")
@@ -194,7 +183,7 @@ struct ConfigurationTests {
   @Test("Published properties update when regular properties change")
   @MainActor
   func publishedPropertiesUpdateReactively() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     // Initially false
@@ -219,7 +208,7 @@ struct ConfigurationTests {
   @Test("Published properties update when UserDefaults changes externally")
   @MainActor
   func publishedPropertiesUpdateFromExternalChanges() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     // Initially false
@@ -245,7 +234,7 @@ struct ConfigurationTests {
   @Test("objectWillChange emits when properties change")
   @MainActor
   func objectWillChangeEmits() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config = Configuration(userDefaults: defaults)
 
     // Wait for objectWillChange to emit and verify state changed correctly
@@ -273,7 +262,7 @@ struct ConfigurationTests {
   @Test("Configuration reads pre-existing UserDefaults values")
   @MainActor
   func readsPreExistingValues() async {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
 
     // Set values before creating Configuration
     defaults.set("https://preset.auth", forKey: "authURL")
@@ -297,7 +286,7 @@ struct ConfigurationTests {
   @Test("Multiple Configuration instances share same UserDefaults")
   @MainActor
   func sharedUserDefaults() async throws {
-    let defaults = makeTestDefaults()
+    let defaults = UserDefaults.makeTestDefaults()
     let config1 = Configuration(userDefaults: defaults)
     let config2 = Configuration(userDefaults: defaults)
 
