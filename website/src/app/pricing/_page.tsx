@@ -498,7 +498,7 @@ export default function Page() {
             </AccordionPanel>
             <AccordionPanel>
               <AccordionTitle>
-                How does annual billing discount work on the Team plan?
+                How does the annual billing discount work on the Team plan?
               </AccordionTitle>
               <AccordionContent>
                 The annual discount is already included in the yearly Team
