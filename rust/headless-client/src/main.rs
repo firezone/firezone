@@ -41,7 +41,7 @@ mod platform;
 mod platform;
 
 /// Command-line args for the headless Client
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     // Needed to preserve CLI arg compatibility
@@ -161,7 +161,7 @@ impl Cli {
     }
 }
 
-#[derive(clap::Subcommand, Clone)]
+#[derive(clap::Subcommand, Clone, Debug)]
 enum Cmd {
     #[clap(hide = true)]
     Standalone,
@@ -263,6 +263,16 @@ fn try_main() -> Result<()> {
         false,
     )
     .context("Failed to set up logging")?;
+
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
+        system_uptime = bin_shared::uptime::get().map(tracing::field::debug),
+        "`headless-client` started logging"
+    );
+
+    tracing::debug!(?cli);
 
     // Start background log cleanup if file logging is enabled
     let _cleanup_handle = cli
