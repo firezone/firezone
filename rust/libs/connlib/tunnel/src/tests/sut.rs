@@ -10,6 +10,7 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
+use crate::messages::client::FailReason;
 use crate::messages::gateway::{Client, Subject};
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
@@ -1169,7 +1170,13 @@ impl TunnelTest {
                         .clients
                         .get_mut(&src)
                         .expect("unknown source client")
-                        .exec_mut(|c| c.sut.set_client_offline(ipv4)),
+                        .exec_mut(|c| {
+                            c.sut.handle_client_device_access_denied(
+                                ipv4,
+                                FailReason::NotFound,
+                                now,
+                            )
+                        }),
                 }
 
                 Ok(())
