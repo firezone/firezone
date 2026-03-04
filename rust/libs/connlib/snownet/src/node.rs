@@ -315,7 +315,7 @@ where
 
         if let Some(existing) = existing {
             let current_local = existing.agent.local_credentials();
-            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, %index, "Replacing existing connection");
+            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, current_index = %existing.index, new_index = %index, "Replacing existing connection");
         } else {
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
