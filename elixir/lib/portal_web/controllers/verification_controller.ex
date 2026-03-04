@@ -78,8 +78,12 @@ defmodule PortalWeb.VerificationController do
         issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
 
         case notify_and_await_ack(lv_pid, {:entra_verify_complete, issuer, tenant_id}) do
-          :ok -> render(conn, :success)
-          {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+          :ok ->
+            render(conn, :success)
+
+          {:error, _reason} ->
+            if lv_pid, do: send(lv_pid, {:verification_failed, @verification_ack_error})
+            render(conn, :failure, error: @verification_ack_error)
         end
 
       {:error, reason} ->
@@ -97,8 +101,12 @@ defmodule PortalWeb.VerificationController do
         case verify_directory_access(tenant_id) do
           {:ok, :verified} ->
             case notify_and_await_ack(lv_pid, {:entra_directory_sync_complete, tenant_id}) do
-              :ok -> render(conn, :success)
-              {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+              :ok ->
+                render(conn, :success)
+
+              {:error, _reason} ->
+                if lv_pid, do: send(lv_pid, {:verification_failed, @verification_ack_error})
+                render(conn, :failure, error: @verification_ack_error)
             end
 
           error ->

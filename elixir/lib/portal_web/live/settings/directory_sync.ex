@@ -323,8 +323,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset = changeset(changeset.data, attrs)
     maybe_send_verification_ack(ack_to)
 
-    {:noreply,
-     assign(socket, form: to_form(changeset), verification_error: nil, verification: nil)}
+    {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
   end
 
   def handle_info({:entra_directory_sync_complete, tenant_id}, socket) do
@@ -333,11 +332,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   # Sent directly by the verification controller on any failure
   def handle_info({:verification_failed, reason}, socket) do
-    {:noreply,
-     assign(socket,
-       verification_error: format_verification_error_reason(reason),
-       verification: nil
-     )}
+    {:noreply, assign(socket, verification_error: format_verification_error_reason(reason))}
   end
 
   def handle_info(:directories_changed, socket) do
@@ -1415,7 +1410,6 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp start_verification(%{assigns: %{type: "entra"}} = socket) do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
-         verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync"),
@@ -1423,14 +1417,9 @@ defmodule PortalWeb.Settings.DirectorySync do
            PortalWeb.OIDC.build_verification_uri(
              "entra_directory_sync",
              config,
-             verifier,
+             "",
              state_token
            ) do
-      socket =
-        assign(socket,
-          verification: %{}
-        )
-
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
       {:error, reason} ->

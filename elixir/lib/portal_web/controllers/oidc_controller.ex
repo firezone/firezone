@@ -500,23 +500,28 @@ defmodule PortalWeb.OIDCController do
 
   defp handle_oidc_verification(conn, code, lv_pid_string) do
     result =
-      case request_pending_verification(PortalWeb.OIDC.deserialize_pid(lv_pid_string)) do
-        {:ok, %{config: config, verifier: verifier}} ->
-          case PortalWeb.OIDC.verify_callback(config, code, verifier) do
-            {:ok, claims} ->
-              %{ok: true, issuer: claims["iss"], lv_pid: lv_pid_string}
-
-            {:error, reason} ->
-              Logger.warning("OIDC verification failed", reason: inspect(reason))
-              %{ok: false, error: verification_error_message(reason), lv_pid: lv_pid_string}
-          end
-
-        {:error, reason} ->
-          %{ok: false, error: pending_verification_error_message(reason), lv_pid: lv_pid_string}
-      end
+      lv_pid_string
+      |> PortalWeb.OIDC.deserialize_pid()
+      |> request_pending_verification()
+      |> verify_oidc_callback(code, lv_pid_string)
 
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+  end
+
+  defp verify_oidc_callback({:ok, %{config: config, verifier: verifier}}, code, lv_pid_string) do
+    case PortalWeb.OIDC.verify_callback(config, code, verifier) do
+      {:ok, claims} ->
+        %{ok: true, issuer: claims["iss"], lv_pid: lv_pid_string}
+
+      {:error, reason} ->
+        Logger.warning("OIDC verification failed", reason: inspect(reason))
+        %{ok: false, error: verification_error_message(reason), lv_pid: lv_pid_string}
+    end
+  end
+
+  defp verify_oidc_callback({:error, reason}, _code, lv_pid_string) do
+    %{ok: false, error: pending_verification_error_message(reason), lv_pid: lv_pid_string}
   end
 
   defp request_pending_verification(nil), do: {:error, :no_pid}
