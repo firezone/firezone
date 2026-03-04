@@ -206,6 +206,16 @@ defmodule PortalWeb.OIDC do
     Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: 5 * 60)
   end
 
+  @doc """
+  Returns the signed state type for a verification provider type.
+  This keeps provider type and signed state type mapping in one place.
+  """
+  def verification_state_type("entra"), do: "entra-auth-provider"
+  def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
+
+  def verification_state_type(type) when type in ["google", "okta", "oidc"],
+    do: "oidc-auth-provider"
+
   def deserialize_pid(nil), do: nil
 
   def deserialize_pid(pid_string) when is_binary(pid_string) do

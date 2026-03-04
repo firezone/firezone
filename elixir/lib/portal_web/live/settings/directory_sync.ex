@@ -1407,7 +1407,10 @@ defmodule PortalWeb.Settings.DirectorySync do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
          lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
          state_token <-
-           PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync"),
+           PortalWeb.OIDC.sign_verification_state(
+             lv_pid_string,
+             PortalWeb.OIDC.verification_state_type("entra_directory_sync")
+           ),
          {:ok, uri} <-
            PortalWeb.OIDC.build_verification_uri(
              "entra_directory_sync",

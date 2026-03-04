@@ -136,7 +136,10 @@ defmodule PortalWeb.Settings.Authentication do
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
          state_token <-
-           PortalWeb.OIDC.sign_verification_state(lv_pid_string, verification_state_string(type)),
+           PortalWeb.OIDC.sign_verification_state(
+             lv_pid_string,
+             PortalWeb.OIDC.verification_state_type(type)
+           ),
          {:ok, uri} <- PortalWeb.OIDC.build_verification_uri(type, config, verifier, state_token) do
       socket =
         assign(socket,
@@ -338,9 +341,6 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, assign(socket, verification_error: error)}
   end
 
-  defp verification_state_string("entra"), do: "entra-auth-provider"
-  defp verification_state_string(_), do: "oidc-auth-provider"
-
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
     send(pid, {:verification_ack, ref})
     :ok
@@ -359,13 +359,28 @@ defmodule PortalWeb.Settings.Authentication do
     "The Discovery Document URI must not point to a private or reserved IP address."
   end
 
-  defp verification_start_error_message({status, _body}) when is_integer(status) do
-    "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
-  end
+  defp verification_start_error_message({404, _body}),
+    do: "Discovery document not found (HTTP 404). Please verify the Discovery Document URI."
 
-  defp verification_start_error_message(%Req.TransportError{reason: reason}) do
-    "Unable to fetch discovery document: #{inspect(reason)}."
-  end
+  defp verification_start_error_message({status, _body}) when status >= 500,
+    do: "Identity provider is unavailable (HTTP #{status}). Please try again shortly."
+
+  defp verification_start_error_message({status, _body}) when is_integer(status),
+    do:
+      "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
+
+  defp verification_start_error_message(%Req.TransportError{reason: :nxdomain}),
+    do:
+      "Unable to fetch discovery document: DNS lookup failed. Please verify the provider domain."
+
+  defp verification_start_error_message(%Req.TransportError{reason: :econnrefused}),
+    do: "Unable to fetch discovery document: Connection refused by the remote server."
+
+  defp verification_start_error_message(%Req.TransportError{reason: :timeout}),
+    do: "Unable to fetch discovery document: Connection timed out."
+
+  defp verification_start_error_message(%Req.TransportError{}),
+    do: "Unable to fetch discovery document due to a network error."
 
   defp verification_start_error_message(reason) when is_binary(reason), do: reason
   defp verification_start_error_message(_reason), do: "Failed to start verification."

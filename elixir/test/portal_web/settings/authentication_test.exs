@@ -2157,7 +2157,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Unable to fetch discovery document: :econnrefused."
+
+      assert html =~
+               "Unable to fetch discovery document: Connection refused by the remote server."
     end
 
     test "handles HTTP 404 error", %{account: account, actor: actor, conn: conn} do
@@ -2183,7 +2185,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Failed to fetch discovery document (HTTP 404)"
+      assert html =~ "Discovery document not found (HTTP 404)"
     end
 
     test "handles HTTP 500 error", %{account: account, actor: actor, conn: conn} do
@@ -2209,7 +2211,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Failed to fetch discovery document (HTTP 500)"
+      assert html =~ "Identity provider is unavailable (HTTP 500)"
     end
 
     test "handles invalid JSON in discovery document", %{
@@ -2239,7 +2241,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Failed to start verification."
+      assert html =~ "discovery document"
     end
 
     test "validates okta_domain must be a valid FQDN", %{
@@ -3181,7 +3183,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Failed to start verification."
+      assert html =~ "discovery document"
     end
 
     test "handles connection refused error", %{
@@ -3211,7 +3213,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Unable to fetch discovery document: :econnrefused."
+
+      assert html =~
+               "Unable to fetch discovery document: Connection refused by the remote server."
     end
 
     test "handles nxdomain error for invalid domain", %{
@@ -3241,7 +3245,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Unable to fetch discovery document: :nxdomain."
+
+      assert html =~
+               "Unable to fetch discovery document: DNS lookup failed. Please verify the provider domain."
     end
 
     test "handles HTTP 418 error", %{
@@ -3470,7 +3476,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Failed to start verification."
+      assert html =~ "discovery document"
     end
 
     test "handles JSON with invalid byte sequences", %{
@@ -3560,7 +3566,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Unable to fetch discovery document: :nxdomain."
+
+      assert html =~
+               "Unable to fetch discovery document: DNS lookup failed. Please verify the provider domain."
     end
   end
 end
