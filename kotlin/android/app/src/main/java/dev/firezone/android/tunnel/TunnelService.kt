@@ -551,18 +551,19 @@ class TunnelService : VpnService() {
             }
 
         var explicitDisconnect = false
+        var stopReason: StopReason? = null
 
-        val stopReason =
-            run loop@{
-                while (true) {
-                    try {
-                        select<Unit> {
+        while (stopReason == null) {
+            try {
+                select<Unit> {
                             commandChannel.onReceive { command ->
                                 when (command) {
                                     is TunnelCommand.Disconnect -> {
                                         explicitDisconnect = true
                                         session.disconnect()
-                                        // Sending disconnect will close the event-stream which will exit this loop
+
+                                        // Sending disconnect will close the event-stream which will exit this loop.
+                                        // We don't want to bail out here right away to allow connlib to clean up after itself.
                                     }
 
                                     is TunnelCommand.SetInternetResourceState -> {
@@ -624,7 +625,7 @@ class TunnelService : VpnService() {
                                             repo.clearToken()
                                             repo.clearActorName()
 
-                                            return@loop StopReason.Disconnected
+                                            stopReason = StopReason.Disconnected
                                         }
 
                                         is Event.GatewayVersionMismatch -> {
@@ -647,18 +648,17 @@ class TunnelService : VpnService() {
 
                                         null -> {
                                             Log.i(TAG, "Event channel closed")
-                                            return@loop StopReason.EventChannelClosed
+                                            stopReason = StopReason.EventChannelClosed
                                         }
                                     }
                                 }
                             }
                         }
-                    } catch (e: ClosedReceiveChannelException) {
-                        return@loop StopReason.CommandChannelClosed
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error in event loop", e)
-                        return@loop StopReason.Error
-                    }
+                } catch (e: ClosedReceiveChannelException) {
+                    stopReason = StopReason.CommandChannelClosed
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in event loop", e)
+                    stopReason = StopReason.Error
                 }
             }
 
