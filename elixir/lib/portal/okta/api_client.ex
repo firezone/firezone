@@ -328,12 +328,7 @@ defmodule Portal.Okta.APIClient do
               next_cursor = extract_next_cursor(headers)
               # Wrap each item in {:ok, item}
               ok_items = Enum.map(items, &{:ok, &1})
-
-              if next_cursor do
-                {ok_items, {request, next_cursor}}
-              else
-                {ok_items, :halt}
-              end
+              {ok_items, if(next_cursor, do: {request, next_cursor}, else: :halt)}
 
             %{status: status} = response when status in [401, 403] ->
               {[{:error, response}], :halt}

@@ -16,22 +16,29 @@ defmodule Portal.Policies.Evaluator do
       )
       when is_list(conditions) do
     conditions
-    |> Enum.reduce({[], nil}, fn condition, {violated_properties, min_expires_at} ->
-      if condition.property in violated_properties do
-        {violated_properties, min_expires_at}
-      else
-        case fetch_conformation_expiration(condition, client, session, auth_provider_id) do
-          {:ok, expires_at} ->
-            {violated_properties, min_expires_at(expires_at, min_expires_at)}
-
-          :error ->
-            {[condition.property | violated_properties], min_expires_at}
-        end
-      end
+    |> Enum.reduce({[], nil}, fn condition, acc ->
+      check_condition(condition, acc, client, session, auth_provider_id)
     end)
     |> case do
       {[], expires_at} -> {:ok, expires_at}
       {violated_properties, _expires_at} -> {:error, Enum.reverse(violated_properties)}
+    end
+  end
+
+  defp check_condition(
+         condition,
+         {violated_properties, min_expires_at},
+         client,
+         session,
+         auth_provider_id
+       ) do
+    if condition.property in violated_properties do
+      {violated_properties, min_expires_at}
+    else
+      case fetch_conformation_expiration(condition, client, session, auth_provider_id) do
+        {:ok, expires_at} -> {violated_properties, min_expires_at(expires_at, min_expires_at)}
+        :error -> {[condition.property | violated_properties], min_expires_at}
+      end
     end
   end
 
@@ -258,19 +265,20 @@ defmodule Portal.Policies.Evaluator do
   def parse_days_of_week_time_ranges(dows_time_ranges) do
     Enum.reduce_while(dows_time_ranges, {:ok, %{}}, fn dow_time_ranges, {:ok, acc} ->
       case parse_day_of_week_time_ranges(dow_time_ranges) do
-        {:ok, {day, dow_time_ranges}} ->
-          {_current_value, acc} =
-            Map.get_and_update(acc, day, fn
-              nil -> {nil, dow_time_ranges}
-              current_value -> {current_value, current_value ++ dow_time_ranges}
-            end)
-
-          {:cont, {:ok, acc}}
-
-        {:error, reason} ->
-          {:halt, {:error, reason}}
+        {:ok, day_and_ranges} -> {:cont, {:ok, merge_day_time_ranges(acc, day_and_ranges)}}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp merge_day_time_ranges(acc, {day, time_ranges}) do
+    {_current_value, acc} =
+      Map.get_and_update(acc, day, fn
+        nil -> {nil, time_ranges}
+        current_value -> {current_value, current_value ++ time_ranges}
+      end)
+
+    acc
   end
 
   def parse_day_of_week_time_ranges(dow_time_ranges) do

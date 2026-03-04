@@ -240,20 +240,7 @@ defmodule PortalWeb.Settings.Authentication do
           changes: inspect(changeset.changes)
         )
 
-        error_message =
-          case Keyword.get(changeset.errors, :is_disabled) do
-            {msg, _} ->
-              msg
-
-            nil ->
-              # Get the first error message if is_disabled is not the issue
-              case changeset.errors do
-                [{_field, {msg, _}} | _] -> msg
-                [] -> "Failed to update authentication provider."
-              end
-          end
-
-        {:noreply, put_flash(socket, :error, error_message)}
+        {:noreply, put_flash(socket, :error, extract_disable_error(changeset))}
 
       {:error, reason} ->
         Logger.info("Failed to toggle authentication provider", reason: inspect(reason))
@@ -1194,6 +1181,20 @@ defmodule PortalWeb.Settings.Authentication do
     |> schema.changeset()
   end
 
+  defp extract_disable_error(changeset) do
+    case Keyword.get(changeset.errors, :is_disabled) do
+      {msg, _} ->
+        msg
+
+      nil ->
+        # Get the first error message if is_disabled is not the issue
+        case changeset.errors do
+          [{_field, {msg, _}} | _] -> msg
+          [] -> "Failed to update authentication provider."
+        end
+    end
+  end
+
   defp validate_not_disabling_default_provider(changeset) do
     # Only run this validation if is_disabled is being changed
     case get_change(changeset, :is_disabled) do
@@ -1376,17 +1377,21 @@ defmodule PortalWeb.Settings.Authentication do
 
     defp clear_all_defaults(providers, subject) do
       Enum.reduce_while(providers, :ok, fn p, _acc ->
-        if Map.has_key?(p, :is_default) && p.is_default do
-          changeset = change(p, is_default: false)
-
-          case changeset |> Safe.scoped(subject) |> Safe.update() do
-            {:ok, _} -> {:cont, :ok}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-        else
-          {:cont, :ok}
-        end
+        try_clear_default(p, subject)
       end)
+    end
+
+    defp try_clear_default(p, subject) do
+      if Map.has_key?(p, :is_default) && p.is_default do
+        changeset = change(p, is_default: false)
+
+        case changeset |> Safe.scoped(subject) |> Safe.update() do
+          {:ok, _} -> {:cont, :ok}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      else
+        {:cont, :ok}
+      end
     end
 
     def enrich_with_session_counts(providers, subject) do

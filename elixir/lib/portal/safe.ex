@@ -160,6 +160,18 @@ defmodule Portal.Safe do
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
   end
 
+  defp fetch_with_fallback(nil, true, query), do: safe_repo(fn -> Repo.one(query) end)
+  defp fetch_with_fallback(result, _, _query), do: result
+
+  defp fetch_with_fallback!(nil, true, query), do: safe_repo!(fn -> Repo.one!(query) end, query)
+  defp fetch_with_fallback!(nil, _, query), do: raise(Ecto.NoResultsError, queryable: query)
+  defp fetch_with_fallback!(result, _, _query), do: result
+
+  defp exists_with_fallback?(false, true, query),
+    do: safe_repo(fn -> Repo.exists?(query) end) || false
+
+  defp exists_with_fallback?(result, _, _query), do: result
+
   # Query operations
 
   # one/1
@@ -198,11 +210,8 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-
-      case {safe_repo(fn -> repo.one(filtered_query) end), opts[:fallback_to_primary]} do
-        {nil, true} -> safe_repo(fn -> Repo.one(filtered_query) end)
-        {result, _} -> result
-      end
+      result = safe_repo(fn -> repo.one(filtered_query) end)
+      fetch_with_fallback(result, opts[:fallback_to_primary], filtered_query)
     end
   end
 
@@ -251,12 +260,8 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-
-      case {safe_repo(fn -> repo.one(filtered_query) end), opts[:fallback_to_primary]} do
-        {nil, true} -> safe_repo!(fn -> Repo.one!(filtered_query) end, filtered_query)
-        {nil, _} -> raise Ecto.NoResultsError, queryable: filtered_query
-        {result, _} -> result
-      end
+      result = safe_repo(fn -> repo.one(filtered_query) end)
+      fetch_with_fallback!(result, opts[:fallback_to_primary], filtered_query)
     end
   end
 
@@ -334,12 +339,8 @@ defmodule Portal.Safe do
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-
-      case {safe_repo(fn -> repo.exists?(filtered_query) end) || false,
-            opts[:fallback_to_primary]} do
-        {false, true} -> safe_repo(fn -> Repo.exists?(filtered_query) end) || false
-        {result, _} -> result
-      end
+      result = safe_repo(fn -> repo.exists?(filtered_query) end) || false
+      exists_with_fallback?(result, opts[:fallback_to_primary], filtered_query)
     end
   end
 
@@ -787,24 +788,25 @@ defmodule Portal.Safe do
   end
 
   defp validate_current_binary_id_changes(changeset, schema) do
-    schema
-    |> binary_id_fields()
-    |> Enum.reduce(changeset, fn field, changeset ->
-      case fetch_change(changeset, field) do
-        {:ok, nil} ->
-          changeset
+    binary_id_fields(schema)
+    |> Enum.reduce(changeset, &validate_binary_id_field(&2, &1))
+  end
 
-        {:ok, value} ->
-          if valid_binary_id_change?(value) or has_invalid_error?(changeset, field) do
-            changeset
-          else
-            add_error(changeset, field, "is invalid", validation: :binary_id)
-          end
+  defp validate_binary_id_field(changeset, field) do
+    case fetch_change(changeset, field) do
+      {:ok, nil} ->
+        changeset
 
-        :error ->
+      {:ok, value} ->
+        if valid_binary_id_change?(value) or has_invalid_error?(changeset, field) do
           changeset
-      end
-    end)
+        else
+          add_error(changeset, field, "is invalid", validation: :binary_id)
+        end
+
+      :error ->
+        changeset
+    end
   end
 
   defp validate_nested_binary_id_changes(changeset) do

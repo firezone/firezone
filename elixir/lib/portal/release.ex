@@ -83,11 +83,13 @@ defmodule Portal.Release do
           :ok
 
         migrations ->
-          # Count pending migrations (status = :down)
-          Enum.count(migrations, fn {status, _, _} -> status == :down end)
-          |> maybe_log_error()
+          count_pending(migrations) |> maybe_log_error()
       end
     end
+  end
+
+  defp count_pending(migrations) do
+    Enum.count(migrations, fn {status, _, _} -> status == :down end)
   end
 
   defp maybe_log_error(0), do: nil

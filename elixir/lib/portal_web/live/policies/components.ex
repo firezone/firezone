@@ -230,16 +230,7 @@ defmodule PortalWeb.Policies.Components do
 
         ranges
         |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
-        |> Enum.map(fn {dow, time_ranges} ->
-          time_ranges_by_timezone =
-            time_ranges
-            |> Enum.reduce(%{}, fn {starts_at, ends_at, timezone}, acc ->
-              range = {starts_at, ends_at}
-              Map.update(acc, timezone, [range], fn ranges -> [range | ranges] end)
-            end)
-
-          {dow, time_ranges_by_timezone}
-        end)
+        |> Enum.map(fn {dow, time_ranges} -> {dow, group_ranges_by_timezone(time_ranges)} end)
         |> Enum.sort_by(fn {dow, _time_ranges_by_timezone} -> day_of_week_index(dow) end)
       end)
 
@@ -271,6 +262,13 @@ defmodule PortalWeb.Policies.Components do
 
   for {{code, _name}, index} <- Enum.with_index(@days_of_week) do
     def day_of_week_index(unquote(code)), do: unquote(index)
+  end
+
+  defp group_ranges_by_timezone(time_ranges) do
+    Enum.reduce(time_ranges, %{}, fn {starts_at, ends_at, timezone}, acc ->
+      range = {starts_at, ends_at}
+      Map.update(acc, timezone, [range], fn ranges -> [range | ranges] end)
+    end)
   end
 
   defp condition_operator_option_name(:contains), do: "contains"

@@ -477,13 +477,7 @@ defmodule Portal.Cache.Client do
             {cached_resource.site, false}
 
           true ->
-            site =
-              case Database.get_site_by_id(site_id_bytes, subject) do
-                %Portal.Site{} = site -> Portal.Cache.Cacheable.to_cache(site)
-                nil -> nil
-              end
-
-            {site, not is_nil(cached_resource.site)}
+            {fetch_site_for_resource(site_id_bytes, subject), not is_nil(cached_resource.site)}
         end
 
       resource = %{resource | site: site}
@@ -498,6 +492,13 @@ defmodule Portal.Cache.Client do
       recompute_connectable_resources(cache, client, session, subject, toggle: toggle)
     else
       {:ok, [], [], cache}
+    end
+  end
+
+  defp fetch_site_for_resource(site_id_bytes, subject) do
+    case Database.get_site_by_id(site_id_bytes, subject) do
+      %Portal.Site{} = site -> Portal.Cache.Cacheable.to_cache(site)
+      nil -> nil
     end
   end
 
