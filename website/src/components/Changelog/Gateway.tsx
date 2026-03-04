@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="12430">
+          Improves tunnel event-loop fairness so outbound backpressure no longer
+          starves inbound packet processing under latency.
+        </ChangeItem>
         <ChangeItem pull="12355">
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
           time.
