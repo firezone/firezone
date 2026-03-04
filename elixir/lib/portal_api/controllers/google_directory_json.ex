@@ -22,6 +22,8 @@ defmodule PortalAPI.GoogleDirectoryJSON do
       synced_at: directory.synced_at,
       error_message: directory.error_message,
       errored_at: directory.errored_at,
+      group_sync_mode: directory.group_sync_mode,
+      orgunit_sync_enabled: directory.orgunit_sync_enabled,
       inserted_at: directory.inserted_at,
       updated_at: directory.updated_at
     }

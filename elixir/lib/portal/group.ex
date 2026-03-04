@@ -12,6 +12,7 @@ defmodule Portal.Group do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     field :name, :string
+    field :email, :string
     field :type, Ecto.Enum, values: ~w[managed static]a, default: :static
     field :entity_type, Ecto.Enum, values: ~w[group org_unit]a, default: :group
 
