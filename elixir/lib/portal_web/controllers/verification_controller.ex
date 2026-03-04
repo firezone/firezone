@@ -72,21 +72,12 @@ defmodule PortalWeb.VerificationController do
   defp handle_entra_auth_provider(conn, params, lv_pid_string) do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
-    case extract_tenant_id(params) do
-      {:ok, tenant_id} ->
-        issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+    case run_entra_auth_provider_verification(params, lv_pid) do
+      :ok ->
+        render(conn, :success)
 
-        case notify_and_await_ack(lv_pid, {:entra_verify_complete, issuer, tenant_id}) do
-          :ok ->
-            render(conn, :success)
-
-          {:error, _reason} ->
-            render(conn, :failure, error: @verification_ack_error)
-        end
-
-      {:error, reason} ->
-        error_message = format_consent_error(reason, params)
-        if lv_pid, do: send(lv_pid, {:verification_failed, error_message})
+      {:error, error_message, notify_lv?} ->
+        if notify_lv? and lv_pid, do: send(lv_pid, {:verification_failed, error_message})
         render(conn, :failure, error: error_message)
     end
   end
@@ -94,30 +85,62 @@ defmodule PortalWeb.VerificationController do
   defp handle_entra_directory_sync(conn, params, lv_pid_string) do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
-    case extract_tenant_id(params) do
-      {:ok, tenant_id} ->
-        case verify_directory_access(tenant_id) do
-          {:ok, :verified} ->
-            case notify_and_await_ack(lv_pid, {:entra_directory_sync_complete, tenant_id}) do
-              :ok ->
-                render(conn, :success)
+    case run_entra_directory_sync_verification(params, lv_pid) do
+      :ok ->
+        render(conn, :success)
 
-              {:error, _reason} ->
-                render(conn, :failure, error: @verification_ack_error)
-            end
-
-          error ->
-            error_message = format_entra_verification_error(error)
-            if lv_pid, do: send(lv_pid, {:verification_failed, error_message})
-            render(conn, :failure, error: error_message)
-        end
-
-      {:error, reason} ->
-        error_message = format_consent_error(reason, params)
-        if lv_pid, do: send(lv_pid, {:verification_failed, error_message})
+      {:error, error_message, notify_lv?} ->
+        if notify_lv? and lv_pid, do: send(lv_pid, {:verification_failed, error_message})
         render(conn, :failure, error: error_message)
     end
   end
+
+  defp run_entra_auth_provider_verification(params, lv_pid) do
+    with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
+         issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0",
+         :ok <- notify_and_await_ack(lv_pid, {:entra_verify_complete, issuer, tenant_id}) do
+      :ok
+    else
+      {:error, reason} when reason in [:ack_timeout, :no_receiver] ->
+        ack_failure_result()
+
+      {:error, {:consent_error, reason}} ->
+        {:error, format_consent_error(reason, params), true}
+    end
+  end
+
+  defp run_entra_directory_sync_verification(params, lv_pid) do
+    with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
+         {:ok, :verified} <- verify_directory_access_for_verification(tenant_id),
+         :ok <- notify_and_await_ack(lv_pid, {:entra_directory_sync_complete, tenant_id}) do
+      :ok
+    else
+      {:error, reason} when reason in [:ack_timeout, :no_receiver] ->
+        ack_failure_result()
+
+      {:error, {:consent_error, reason}} ->
+        {:error, format_consent_error(reason, params), true}
+
+      {:error, {:directory_verification_error, reason}} ->
+        {:error, format_entra_verification_error(reason), true}
+    end
+  end
+
+  defp extract_tenant_id_for_verification(params) do
+    case extract_tenant_id(params) do
+      {:ok, tenant_id} -> {:ok, tenant_id}
+      {:error, reason} -> {:error, {:consent_error, reason}}
+    end
+  end
+
+  defp verify_directory_access_for_verification(tenant_id) do
+    case verify_directory_access(tenant_id) do
+      {:ok, :verified} = result -> result
+      error -> {:error, {:directory_verification_error, error}}
+    end
+  end
+
+  defp ack_failure_result, do: {:error, @verification_ack_error, false}
 
   defp extract_tenant_id(%{"admin_consent" => "True", "tenant" => tenant_id})
        when is_binary(tenant_id) and tenant_id != "" do

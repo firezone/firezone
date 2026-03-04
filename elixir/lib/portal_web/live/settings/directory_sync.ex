@@ -339,11 +339,6 @@ defmodule PortalWeb.Settings.DirectorySync do
     {:noreply, init(socket)}
   end
 
-  def handle_info({:get_pending_verification, from}, socket) do
-    send(from, {:pending_verification, socket.assigns[:pending_verification]})
-    {:noreply, assign(socket, pending_verification: nil)}
-  end
-
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
