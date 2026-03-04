@@ -22,7 +22,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 use tracing::Level;
@@ -264,9 +264,11 @@ impl Io {
             impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
         >,
     > {
-        if let Err(e) = ready!(self.flush(cx)) {
-            return Poll::Ready(Input::error(e));
-        }
+        let flush_pending = match self.flush(cx) {
+            Poll::Ready(Ok(())) => false,
+            Poll::Ready(Err(e)) => return Poll::Ready(Input::error(e)),
+            Poll::Pending => true,
+        };
 
         let mut error = TunnelError::default();
 
@@ -398,7 +400,8 @@ impl Io {
             self.timeout = None;
         }
 
-        if !timeout
+        if flush_pending
+            && !timeout
             && device.is_pending()
             && network.is_pending()
             && tcp_dns_queries.is_empty()
