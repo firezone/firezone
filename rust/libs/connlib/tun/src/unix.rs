@@ -42,7 +42,15 @@ where
                 let mut idx = 0;
 
                 'write: while idx < num_read {
-                    let packet = &pending_packets[idx];
+                    let Some(packet) = pending_packets.get(idx) else {
+                        tracing::warn!(
+                            idx,
+                            num_read,
+                            pending_packets_len = pending_packets.len(),
+                            "Missing pending packet while writing batch"
+                        );
+                        break 'write;
+                    };
 
                     // Try and write the current packet.
                     match guard.try_io(|fd| write(fd.as_raw_fd(), packet)) {
