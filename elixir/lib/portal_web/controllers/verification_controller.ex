@@ -29,7 +29,6 @@ defmodule PortalWeb.VerificationController do
             render(conn, :success)
 
           {:error, _reason} ->
-            if lv_pid, do: send(lv_pid, {:verification_failed, @verification_ack_error})
             render(conn, :failure, error: @verification_ack_error)
         end
 
@@ -82,7 +81,6 @@ defmodule PortalWeb.VerificationController do
             render(conn, :success)
 
           {:error, _reason} ->
-            if lv_pid, do: send(lv_pid, {:verification_failed, @verification_ack_error})
             render(conn, :failure, error: @verification_ack_error)
         end
 
@@ -105,7 +103,6 @@ defmodule PortalWeb.VerificationController do
                 render(conn, :success)
 
               {:error, _reason} ->
-                if lv_pid, do: send(lv_pid, {:verification_failed, @verification_ack_error})
                 render(conn, :failure, error: @verification_ack_error)
             end
 
