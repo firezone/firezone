@@ -59,7 +59,7 @@ where
                             guard = match fd.writable().await {
                                 Ok(guard) => guard,
                                 Err(e) => {
-                                    // Temporary(?) IO error when waiting for writablility.
+                                    // Temporary(?) IO error when waiting for writability.
                                     // Loop around to try and write the same packet again.
                                     // Most likely, we will end up in this branch again as a result.
                                     tracing::warn!("Failed to await TUN fd writability: {e}");
