@@ -742,17 +742,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client: client,
       resource: resource,
       gateway: gateway,
-      relay: relay,
       site: site,
       token: token,
       subject: subject,
       group: group
     } do
-      :ok = Portal.Presence.Relays.connect(relay)
-
       socket = join_channel(gateway, site, token)
 
-      # Consume init and any relays_presence messages from join + relay connect
+      # Consume init message from join
       assert_push "init", _init_payload
 
       channel_pid = self()
@@ -819,7 +816,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client: client,
            resource: resource,
            gateway: gateway,
-           relay: relay,
            site: site,
            token: token,
            subject: subject,
@@ -832,8 +828,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
-
-      :ok = Portal.Presence.Relays.connect(relay)
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1712,7 +1706,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client: client,
            gateway: gateway,
            resource: resource,
-           relay: relay,
            site: site,
            token: token,
            subject: subject,
@@ -1727,8 +1720,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
       preshared_key = "PSK"
       public_key = Portal.ClientFixtures.generate_public_key()
-
-      :ok = Portal.Presence.Relays.connect(relay)
 
       policy_authorization =
         policy_authorization_fixture(
