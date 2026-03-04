@@ -103,6 +103,7 @@ defmodule PortalAPI.GroupControllerTest do
                "data" => %{
                  "id" => group.id,
                  "name" => group.name,
+                 "email" => nil,
                  "entity_type" => "group",
                  "directory_id" => nil,
                  "idp_id" => nil,
@@ -130,6 +131,7 @@ defmodule PortalAPI.GroupControllerTest do
                "data" => %{
                  "id" => group.id,
                  "name" => group.name,
+                 "email" => nil,
                  "entity_type" => "group",
                  "directory_id" => group.directory_id,
                  "idp_id" => group.idp_id,
@@ -295,6 +297,7 @@ defmodule PortalAPI.GroupControllerTest do
                "data" => %{
                  "id" => group.id,
                  "name" => group.name,
+                 "email" => nil,
                  "entity_type" => "group",
                  "directory_id" => nil,
                  "idp_id" => nil,

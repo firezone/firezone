@@ -471,6 +471,12 @@ defmodule PortalWeb.Groups do
                   {get_idp_id(@group.idp_id)}
                 </p>
               </div>
+              <div :if={@group.email}>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Email</p>
+                <p class="text-sm text-neutral-900 truncate" title={@group.email}>
+                  {@group.email}
+                </p>
+              </div>
             </div>
           </div>
 

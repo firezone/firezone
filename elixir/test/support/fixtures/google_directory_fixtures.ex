@@ -19,7 +19,8 @@ defmodule Portal.GoogleDirectoryFixtures do
       domain: "example#{unique_num}.com",
       name: "Google Directory #{unique_num}",
       impersonation_email: "admin#{unique_num}@example#{unique_num}.com",
-      is_verified: true
+      is_verified: true,
+      orgunit_sync_enabled: true
     })
   end
 
@@ -75,7 +76,9 @@ defmodule Portal.GoogleDirectoryFixtures do
         :is_disabled,
         :disabled_reason,
         :error_message,
-        :error_email_count
+        :error_email_count,
+        :group_sync_mode,
+        :orgunit_sync_enabled
       ])
       |> Portal.Google.Directory.changeset()
       |> Portal.Repo.insert()

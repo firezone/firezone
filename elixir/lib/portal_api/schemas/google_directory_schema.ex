@@ -25,6 +25,15 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
           format: :datetime,
           description: "Error email timestamp"
         },
+        group_sync_mode: %Schema{
+          type: :string,
+          enum: ["all", "filtered", "disabled"],
+          description: "Group sync mode"
+        },
+        orgunit_sync_enabled: %Schema{
+          type: :boolean,
+          description: "Whether org unit sync is enabled"
+        },
         inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :datetime, description: "Update timestamp"}
       },
