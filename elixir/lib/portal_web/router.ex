@@ -78,21 +78,19 @@ defmodule PortalWeb.Router do
     get "/oidc/callback", OIDCController, :callback
   end
 
+  scope "/verification", PortalWeb do
+    pipe_through :public
+
+    get "/oidc", VerificationController, :oidc
+    get "/entra", VerificationController, :entra
+  end
+
   # Legacy OIDC callback - must be outside RedirectIfAuthenticated scope
   # because IdP redirects don't include as=client param
   scope "/:account_id_or_slug", PortalWeb do
     pipe_through :public
 
     get "/sign_in/providers/:auth_provider_id/handle_callback", OIDCController, :callback
-  end
-
-  scope "/", PortalWeb do
-    pipe_through :public
-
-    live_session :verification,
-      on_mount: [PortalWeb.LiveHooks.AllowEctoSandbox] do
-      live "/verification", Verification
-    end
   end
 
   scope "/:account_id_or_slug", PortalWeb do
