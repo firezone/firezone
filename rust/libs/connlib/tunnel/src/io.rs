@@ -24,7 +24,7 @@ use std::{
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 use tracing::Level;
@@ -266,7 +266,7 @@ impl Io {
             impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
         >,
     > {
-        if let Err(e) = ready!(self.flush(cx)) {
+        if let Poll::Ready(Err(e)) = self.flush(cx) {
             return Poll::Ready(Input::error(e));
         }
 
