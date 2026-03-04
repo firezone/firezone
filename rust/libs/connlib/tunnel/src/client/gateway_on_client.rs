@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
-use connlib_model::{GatewayId, ResourceId};
+use connlib_model::ResourceId;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -12,7 +12,6 @@ use crate::{IpConfig, NotAllowedResource};
 
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
-    id: GatewayId,
     gateway_tun: IpConfig,
     allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
 }
@@ -63,9 +62,8 @@ impl GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn new(id: GatewayId, gateway_tun: IpConfig) -> GatewayOnClient {
+    pub(crate) fn new(gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
-            id,
             allowed_ips: IpNetworkTable::new(),
             gateway_tun,
         }
@@ -85,9 +83,5 @@ impl GatewayOnClient {
         }
 
         Ok(())
-    }
-
-    pub fn id(&self) -> GatewayId {
-        self.id
     }
 }

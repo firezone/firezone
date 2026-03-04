@@ -29,6 +29,15 @@ export default function Apple() {
           Processes TUN reads and writes in a hot loop until the file descriptor
           would block, reducing per-packet scheduler wakeups.
         </ChangeItem>
+        <ChangeItem pull="12407">
+          Fixes update notification dismissal on macOS where dismissing one
+          version could be ignored due to reading from the wrong UserDefaults
+          key.
+        </ChangeItem>
+        <ChangeItem pull="12355">
+          Reduces CPU overhead by processing up to 16 UDP datagram batches at a
+          time.
+        </ChangeItem>
         <ChangeItem pull="12236">
           Fixes an issue on macOS where the app could get stuck on the loading
           spinner if the system extension was not ready at startup.

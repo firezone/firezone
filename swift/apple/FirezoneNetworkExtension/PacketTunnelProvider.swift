@@ -30,6 +30,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private var logExportState: LogExportState = .idle
   private var tunnelConfiguration: TunnelConfiguration?
+  // swiftlint:disable:next no_userdefaults_standard - NetworkExtension DI entry point uses shared UserDefaults store
   private let defaults = UserDefaults.standard
 
   override init() {
@@ -49,7 +50,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
     migrateFirezoneId()
-    self.tunnelConfiguration = TunnelConfiguration.tryLoad()
+    self.tunnelConfiguration = TunnelConfiguration.tryLoad(from: defaults)
   }
 
   override func startTunnel(
@@ -76,7 +77,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let decoder = PropertyListDecoder()
         let configFromOptions = try decoder.decode(TunnelConfiguration.self, from: configData)
         // Save it for future fallback (e.g., system-initiated restarts)
-        configFromOptions.save()
+        configFromOptions.save(to: defaults)
         self.tunnelConfiguration = configFromOptions
       } catch {
         Log.error(error)
@@ -104,7 +105,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     handleTokenSave(token)
 
     // The firezone id should be initialized by now
-    guard let rawId = UserDefaults.standard.string(forKey: "firezoneId")
+    guard let rawId = defaults.string(forKey: "firezoneId")
     else {
       completionHandler(PacketTunnelProviderError.firezoneIdIsInvalid)
       return
@@ -217,7 +218,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       switch providerMessage {
 
       case .setConfiguration(let tunnelConfiguration):
-        tunnelConfiguration.save()
+        tunnelConfiguration.save(to: defaults)
         self.tunnelConfiguration = tunnelConfiguration
 
         let adapter = self.adapter
@@ -243,7 +244,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           completionHandler?(connlibState)
         }
       case .getEncodedFirezoneId:
-        guard let rawId = UserDefaults.standard.string(forKey: "firezoneId") else {
+        guard let rawId = defaults.string(forKey: "firezoneId") else {
           Log.error(PacketTunnelProviderError.firezoneIdIsInvalid)
           completionHandler?(nil)
           return
@@ -514,7 +515,7 @@ private final class PacketTunnelProviderActorBridge: @unchecked Sendable {
 
 // Increase usefulness of TunnelConfiguration now that we're over the IPC barrier
 extension TunnelConfiguration {
-  func save() {
+  func save(to userDefaults: UserDefaults) {
     let key = "configurationCache"
 
     let dict: [String: Any] = [
@@ -524,13 +525,13 @@ extension TunnelConfiguration {
       "internetResourceEnabled": internetResourceEnabled,
     ]
 
-    UserDefaults.standard.set(dict, forKey: key)
+    userDefaults.set(dict, forKey: key)
   }
 
-  static func tryLoad() -> TunnelConfiguration? {
+  static func tryLoad(from userDefaults: UserDefaults) -> TunnelConfiguration? {
     let key = "configurationCache"
 
-    guard let dict = UserDefaults.standard.dictionary(forKey: key)
+    guard let dict = userDefaults.dictionary(forKey: key)
     else {
       return nil
     }

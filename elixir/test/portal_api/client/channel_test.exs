@@ -1341,6 +1341,7 @@ defmodule PortalAPI.Client.ChannelTest do
       account: account
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       updated_account = %{account | config: %{account.config | search_domain: "new.example.com"}}
 
       change = %Changes.Change{
@@ -1382,6 +1383,7 @@ defmodule PortalAPI.Client.ChannelTest do
            subject: subject
          } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       group = group_fixture(account: account)
       identity_fixture(actor: actor, account: account)
 
@@ -1440,6 +1442,7 @@ defmodule PortalAPI.Client.ChannelTest do
            subject: subject
          } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       group = group_fixture(account: account)
       identity_fixture(actor: actor, account: account)
 
@@ -1495,6 +1498,7 @@ defmodule PortalAPI.Client.ChannelTest do
            subject: subject
          } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
 
       # Create two groups
       group_1 = group_fixture(account: account)
@@ -1712,6 +1716,7 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
       site = site_fixture(account: account)
@@ -1771,6 +1776,7 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -1823,6 +1829,7 @@ defmodule PortalAPI.Client.ChannelTest do
            actor: actor
          } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -1916,6 +1923,7 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -1971,6 +1979,7 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -2029,6 +2038,7 @@ defmodule PortalAPI.Client.ChannelTest do
            actor: actor
          } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -2103,6 +2113,7 @@ defmodule PortalAPI.Client.ChannelTest do
            actor: actor
          } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group_1 = group_fixture(account: account)
       group_2 = group_fixture(account: account)
@@ -2198,6 +2209,7 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -2256,6 +2268,7 @@ defmodule PortalAPI.Client.ChannelTest do
       actor: actor
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
 
@@ -2312,6 +2325,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       candidates = ["foo", "bar"]
 
       send(
@@ -2335,6 +2349,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       candidates = ["foo", "bar"]
 
       send(
@@ -2354,6 +2369,7 @@ defmodule PortalAPI.Client.ChannelTest do
   describe "handle_in/3 create_flow" do
     test "returns error when resource is not found", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       resource_id = Ecto.UUID.generate()
 
       push(socket, "create_flow", %{
@@ -2371,6 +2387,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
 
       push(socket, "create_flow", %{
@@ -2388,6 +2405,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       resource = resource_fixture(account: account)
 
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
@@ -2417,6 +2435,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -2482,6 +2501,7 @@ defmodule PortalAPI.Client.ChannelTest do
       dns_resource: resource
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       gateway = gateway_fixture(account: account) |> Repo.preload(:site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
@@ -2633,6 +2653,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
 
@@ -2978,6 +2999,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
@@ -3025,6 +3047,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
@@ -3085,6 +3108,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = Channels.register_gateway(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)

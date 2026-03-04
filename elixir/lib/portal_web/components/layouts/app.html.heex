@@ -109,7 +109,7 @@
     Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
   </.flash>
 
-  <% banner = Portal.Repo.one(Portal.Banner) %>
+  <% banner = Portal.Safe.unscoped(Portal.Banner, :replica) |> Portal.Safe.one() %>
   <div
     :if={banner}
     id="banner"

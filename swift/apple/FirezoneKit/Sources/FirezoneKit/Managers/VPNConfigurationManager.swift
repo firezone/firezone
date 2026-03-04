@@ -108,6 +108,7 @@ public final class VPNConfigurationManager {
     let configuration = Configuration.shared
 
     if let actorName = legacyConfiguration["actorName"] {
+      // swiftlint:disable:next no_userdefaults_standard - legacy migration, runs before DI is available
       UserDefaults.standard.set(actorName, forKey: "actorName")
     }
 

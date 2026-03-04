@@ -4,8 +4,8 @@ defmodule PortalOps.Router do
   import Phoenix.LiveDashboard.Router
 
   @csp "default-src 'self'; " <>
-         "script-src 'self' 'unsafe-inline'; " <>
-         "style-src 'self' 'unsafe-inline'; " <>
+         "script-src 'self'; " <>
+         "style-src 'self'; " <>
          "img-src 'self' data:; " <>
          "font-src 'self' data:; " <>
          "connect-src 'self' ws: wss:; " <>

@@ -207,6 +207,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       expired_policy_authorization =
         policy_authorization_fixture(
@@ -284,6 +285,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       expired_policy_authorization =
         policy_authorization_fixture(
@@ -502,6 +504,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -633,6 +636,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -822,6 +826,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -1003,6 +1008,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1070,6 +1076,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -1155,6 +1162,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1229,6 +1237,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       _socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       # The resource is already connected to the gateway via the setup
       # No policy authorizations exist yet, so the resource isn't in the cache
@@ -1373,6 +1382,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
@@ -1577,6 +1587,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       candidates = ["foo", "bar"]
 
@@ -1600,6 +1611,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       candidates = ["foo", "bar"]
 
@@ -1628,6 +1640,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1706,6 +1719,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -1783,6 +1797,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1880,6 +1895,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()

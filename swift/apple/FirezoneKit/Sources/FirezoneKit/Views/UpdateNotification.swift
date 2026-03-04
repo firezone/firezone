@@ -24,17 +24,20 @@
     }
 
     private var timerCancellable: AnyCancellable?
-    private let notificationAdapter: NotificationAdapter = NotificationAdapter()
+    private let notificationAdapter: NotificationAdapter
     private let versionCheckUrl: URL
     private let marketingVersion: SemanticVersion
     private let configuration: Configuration
+    private let userDefaults: UserDefaults
 
     private var cancellables: Set<AnyCancellable> = []
 
     @Published private(set) var updateAvailable: Bool = false
 
-    init(configuration: Configuration? = nil) {
+    init(configuration: Configuration? = nil, userDefaults: UserDefaults) {
       self.configuration = configuration ?? Configuration.shared
+      self.userDefaults = userDefaults
+      self.notificationAdapter = NotificationAdapter(userDefaults: userDefaults)
 
       guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
         let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
@@ -105,7 +108,8 @@
             await MainActor.run {
               self.updateAvailable = true
 
-              if let lastDismissedVersion = getLastDismissedVersion(),
+              if let lastDismissedVersion = getLastDismissedVersion(
+                userDefaults: self.userDefaults),
                 lastDismissedVersion >= latestVersion
               {
                 return
@@ -131,7 +135,10 @@
     static let notificationIdentifier = "UPDATE_CATEGORY"
     static let dismissIdentifier = "DISMISS_ACTION"
 
-    override public init() {
+    let userDefaults: UserDefaults
+
+    init(userDefaults: UserDefaults) {
+      self.userDefaults = userDefaults
       super.init()
 
       let notificationCenter = UNUserNotificationCenter.current()
@@ -169,7 +176,7 @@
 
     @MainActor func showUpdateNotification(version: SemanticVersion) {
       let content = UNMutableNotificationContent()
-      setLastNotifiedVersion(version: version)
+      setLastNotifiedVersion(version: version, userDefaults: userDefaults)
       content.title = "Update Firezone"
       content.body = "New version available"
       content.sound = .default
@@ -195,9 +202,9 @@
     ) {
       if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
         // User dismissed this notification
-        if let lastNotifiedVersion = getLastNotifiedVersion() {
+        if let lastNotifiedVersion = getLastNotifiedVersion(userDefaults: userDefaults) {
           // Don't notify them again for this version
-          setLastDismissedVersion(version: lastNotifiedVersion)
+          setLastDismissedVersion(version: lastNotifiedVersion, userDefaults: userDefaults)
         }
 
         completionHandler()
@@ -237,48 +244,20 @@
   private let lastDismissedVersionKey = "lastDismissedVersion"
   private let lastNotifiedVersionKey = "lastNotifiedVersion"
 
-  private func setLastDismissedVersion(version: SemanticVersion) {
-    setVersion(key: lastDismissedVersionKey, version: version)
+  private func setLastDismissedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
+    version.save(to: userDefaults, forKey: lastDismissedVersionKey)
   }
 
-  private func setLastNotifiedVersion(version: SemanticVersion) {
-    setVersion(key: lastNotifiedVersionKey, version: version)
+  private func setLastNotifiedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
+    version.save(to: userDefaults, forKey: lastNotifiedVersionKey)
   }
 
-  private func getLastDismissedVersion() -> SemanticVersion? {
-    loadVersion(key: lastDismissedVersionKey)
+  private func getLastDismissedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
+    SemanticVersion(from: userDefaults, forKey: lastDismissedVersionKey)
   }
 
-  private func getLastNotifiedVersion() -> SemanticVersion? {
-    loadVersion(key: lastNotifiedVersionKey)
-  }
-
-  func setVersion(key: String, version: SemanticVersion) {
-    let encoder = PropertyListEncoder()
-
-    do {
-      let data = try encoder.encode(version)
-      UserDefaults.standard.setValue(data, forKey: key)
-    } catch {
-      Log.error(error)
-    }
-  }
-
-  func loadVersion(key: String) -> SemanticVersion? {
-    let decoder = PropertyListDecoder()
-
-    guard let data = UserDefaults.standard.object(forKey: lastDismissedVersionKey) as? Data
-    else { return nil }
-
-    do {
-      let version = try decoder.decode(SemanticVersion.self, from: data)
-
-      return version
-    } catch {
-      Log.error(error)
-
-      return nil
-    }
+  private func getLastNotifiedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
+    SemanticVersion(from: userDefaults, forKey: lastNotifiedVersionKey)
   }
 
 #endif

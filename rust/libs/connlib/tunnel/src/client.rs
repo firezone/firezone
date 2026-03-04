@@ -15,6 +15,7 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
+use crate::messages::client::FailReason;
 use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
@@ -254,10 +255,29 @@ impl ClientState {
         self.resource_list.update(self.resources());
     }
 
-    pub fn set_client_offline(&mut self, ipv4: Ipv4Addr) {
-        self.pending_device_access.remove(&ipv4);
+    /// Handles cases where access to a device is denied.
+    ///
+    /// This can happen in several cases:
+    ///
+    /// 1. During initial setup of the access, i.e. when we are trying to connect to another device.
+    /// 2. When access is revoked after it has been established.
+    pub fn handle_client_device_access_denied(
+        &mut self,
+        ipv4: Ipv4Addr,
+        reason: FailReason,
+        now: Instant,
+    ) {
+        tracing::debug!(%ipv4, "Device access denied: {reason:?}");
 
+        self.pending_device_access.remove(&ipv4);
         // TODO: Update resource list with offline client.
+
+        let Some((id, _)) = self.clients.peer_by_ip(ipv4) else {
+            return;
+        };
+        self.clients.remove(&id);
+        self.node
+            .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -602,12 +622,12 @@ impl ClientState {
     ) -> Option<(ClientOrGatewayId, IpPacket)> {
         let dst = packet.destination();
 
-        if let Some(gateway) = self.gateways.peer_by_ip(dst) {
-            return Some((ClientOrGatewayId::Gateway(gateway.id()), packet));
+        if let Some((id, _)) = self.gateways.peer_by_ip(dst) {
+            return Some((ClientOrGatewayId::Gateway(id), packet));
         }
 
-        if let Some(client) = self.clients.peer_by_ip(dst) {
-            return Some((ClientOrGatewayId::Client(client.id()), packet));
+        if let Some((id, _)) = self.clients.peer_by_ip(dst) {
+            return Some((ClientOrGatewayId::Client(id), packet));
         }
 
         let ipv4_addr = match dst {
@@ -632,14 +652,14 @@ impl ClientState {
             return None;
         };
 
-        let Some(peer) =
+        let Some((gid, _)) =
             peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
         else {
             self.on_not_connected_resource(resource, packet, now);
             return None;
         };
 
-        Some((ClientOrGatewayId::Gateway(peer.id()), packet))
+        Some((ClientOrGatewayId::Gateway(gid), packet))
     }
 
     pub fn add_ice_candidate(
@@ -711,7 +731,7 @@ impl ClientState {
 
         let peer = self
             .gateways
-            .upsert(gid, || GatewayOnClient::new(gid, gateway_tun));
+            .upsert(gid, || GatewayOnClient::new(gateway_tun));
 
         // Deal with buffered packets
 
@@ -793,8 +813,7 @@ impl ClientState {
             now,
         )?;
 
-        self.clients
-            .upsert(cid, || ClientOnClient::new(cid, client_tun));
+        self.clients.upsert(cid, || ClientOnClient::new(client_tun));
 
         if let Some(pending_client_access) = pending_device_access {
             for packet in pending_client_access.into_buffered_packets() {
@@ -1446,7 +1465,7 @@ impl ClientState {
                 });
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
-                let Some(gateway) =
+                let Some((_, gateway)) =
                     peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
                 else {
                     self.on_not_connected_resource(
@@ -1872,7 +1891,8 @@ impl ClientState {
 
         self.pending_flows.remove(&id);
 
-        let Some(peer) = peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
+        let Some((_, peer)) =
+            peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
         else {
             return;
         };
@@ -1961,11 +1981,11 @@ fn peer_by_resource_mut<'p>(
     resources_gateways: &HashMap<ResourceId, GatewayId>,
     peers: &'p mut PeerStore<GatewayId, GatewayOnClient>,
     resource: ResourceId,
-) -> Option<&'p mut GatewayOnClient> {
+) -> Option<(GatewayId, &'p mut GatewayOnClient)> {
     let gateway_id = resources_gateways.get(&resource)?;
     let peer = peers.peer_by_id_mut(gateway_id)?;
 
-    Some(peer)
+    Some((*gateway_id, peer))
 }
 
 fn into_udp_dns_packet(
@@ -2058,9 +2078,7 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state
-            .gateways
-            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
+        state.gateways.upsert(GatewayId::from_u128(30), peer);
 
         let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
 
@@ -2086,9 +2104,7 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state
-            .gateways
-            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
+        state.gateways.upsert(GatewayId::from_u128(30), peer);
         state
             .authorized_resources
             .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
@@ -2166,14 +2182,11 @@ mod tests {
         }
     }
 
-    fn peer(id: GatewayId) -> GatewayOnClient {
-        GatewayOnClient::new(
-            id,
-            IpConfig {
-                v4: Ipv4Addr::LOCALHOST,
-                v6: Ipv6Addr::LOCALHOST,
-            },
-        )
+    fn peer() -> GatewayOnClient {
+        GatewayOnClient::new(IpConfig {
+            v4: Ipv4Addr::LOCALHOST,
+            v6: Ipv6Addr::LOCALHOST,
+        })
     }
 }
 

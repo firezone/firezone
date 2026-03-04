@@ -39,6 +39,12 @@ actor Adapter {
   private var eventLoopTask: CancellableTask?
   private var eventConsumerTask: CancellableTask?
   private var pathMonitorTask: CancellableTask?
+  private var featureFlagPollTask: CancellableTask?
+
+  /// How often the NE polls Rust for the log-streaming feature flag.
+  /// Shorter than `RE_EVAL_DURATION` (5 min) on the Rust side so the NE
+  /// picks up a flag change soon after PostHog re-evaluation.
+  private static let featureFlagPollInterval: Duration = .seconds(5)
 
   // Our local copy of the accountSlug
   private let accountSlug: String
@@ -238,6 +244,15 @@ actor Adapter {
       }
     }
 
+    // Poll Rust feature flag to enable/disable native Swift log streaming to Sentry
+    featureFlagPollTask = CancellableTask { @Sendable in
+      while !Task.isCancelled {
+        let active = isLogStreamingActive()
+        Log.setStreamingActive(active)
+        try? await Task.sleep(for: Adapter.featureFlagPollInterval)
+      }
+    }
+
     // Wait for tunnel to be ready (first tunInterfaceUpdated event)
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
@@ -274,6 +289,10 @@ actor Adapter {
     // -> onTermination -> monitor.cancel()
     pathMonitorTask = nil
 
+    // Stop feature flag polling and disable log streaming
+    featureFlagPollTask = nil
+    Log.setStreamingActive(false)
+
     // Tasks will finish naturally after disconnect command is processed
     // No need to cancel them here - they'll clean up via their defer blocks
   }
@@ -287,6 +306,7 @@ actor Adapter {
       return try ConnlibState.encodeIfChanged(
         resources: self.resources?.map { self.convertResource($0) },
         unreachableResources: self.unreachableResources,
+        isLogStreamingActive: Log.isStreamingActive,
         comparedTo: hash
       )
     } catch {

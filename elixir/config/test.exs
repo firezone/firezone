@@ -189,8 +189,8 @@ config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self'",
+    "script-src 'self'"
   ]
 
 config :portal, :constant_execution_time, 1
