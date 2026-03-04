@@ -90,8 +90,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
-       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
-       {worker_dev_schedule, Portal.Workers.DeleteExpiredAuthenticationCacheEntries}
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions}
      ]}
   ],
   queues: [
