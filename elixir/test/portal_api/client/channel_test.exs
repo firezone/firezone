@@ -3671,9 +3671,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       ref = push(socket, "reuse_connection", attrs)
 
-      assert_reply ref, :error, %{
-        reason: :not_found
-      }
+      assert_reply ref,
+                   :error,
+                   %{
+                     reason: :not_found
+                   },
+                   1_000
     end
 
     test "returns error when client has no policy allowing access to resource", %{
