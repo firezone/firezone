@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull={12332}>
+          Processes TUN reads and writes in a hot loop until the file descriptor
+          would block, reducing per-packet scheduler wakeups.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.1" date={new Date("2026-03-16")}>
         <ChangeItem pull={12355}>
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
