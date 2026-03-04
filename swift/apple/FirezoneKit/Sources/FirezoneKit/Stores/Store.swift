@@ -89,7 +89,7 @@ public final class Store: ObservableObject {
     public init(
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
-      tunnelManagerFactory: TunnelProviderManagerFactory = NetworkExtensionManagerFactory(),
+      tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
