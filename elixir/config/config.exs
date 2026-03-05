@@ -84,6 +84,7 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     gateway_tokens
     policies
     resources
+    static_device_pool_members
     client_tokens
     one_time_passcodes
     portal_sessions
@@ -134,6 +135,7 @@ config :portal, Portal.Changes.ReplicationConnection,
     sites
     policies
     resources
+    static_device_pool_members
     client_tokens
     google_auth_providers
     entra_auth_providers

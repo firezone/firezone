@@ -182,6 +182,27 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["type"] == attrs["type"]
       assert resp["data"]["ip_stack"] == attrs["ip_stack"]
     end
+
+    test "creates a static device pool without site_id or address", %{
+      conn: conn,
+      actor: actor
+    } do
+      attrs = %{
+        "name" => "Shared Devices",
+        "type" => "static_device_pool"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["name"] == attrs["name"]
+      assert resp["data"]["type"] == attrs["type"]
+      assert resp["data"]["address"] == nil
+    end
   end
 
   describe "update/2" do

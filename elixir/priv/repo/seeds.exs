@@ -262,7 +262,8 @@ defmodule Portal.Repo.Seeds do
         traffic_filters: true,
         idp_sync: true,
         rest_api: true,
-        internet_resource: true
+        internet_resource: true,
+        client_to_client: true
       })
       |> put_change(:metadata, %{
         stripe: %{

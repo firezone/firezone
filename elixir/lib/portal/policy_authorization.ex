@@ -10,7 +10,8 @@ defmodule Portal.PolicyAuthorization do
           id: Ecto.UUID.t(),
           policy_id: Ecto.UUID.t(),
           client_id: Ecto.UUID.t(),
-          gateway_id: Ecto.UUID.t(),
+          receiving_client_id: Ecto.UUID.t() | nil,
+          gateway_id: Ecto.UUID.t() | nil,
           resource_id: Ecto.UUID.t(),
           token_id: Ecto.UUID.t(),
           # nil for "Everyone" group policies which have no explicit membership
@@ -18,7 +19,7 @@ defmodule Portal.PolicyAuthorization do
           account_id: Ecto.UUID.t(),
           client_remote_ip: Portal.Types.IP.t(),
           client_user_agent: String.t(),
-          gateway_remote_ip: Portal.Types.IP.t(),
+          gateway_remote_ip: Portal.Types.IP.t() | nil,
           expires_at: DateTime.t(),
           inserted_at: DateTime.t()
         }
@@ -29,6 +30,7 @@ defmodule Portal.PolicyAuthorization do
 
     belongs_to :policy, Portal.Policy
     belongs_to :client, Portal.Client
+    belongs_to :receiving_client, Portal.Client
     belongs_to :gateway, Portal.Gateway
     belongs_to :resource, Portal.Resource
     belongs_to :token, Portal.ClientToken
@@ -49,6 +51,7 @@ defmodule Portal.PolicyAuthorization do
     |> assoc_constraint(:token)
     |> assoc_constraint(:policy)
     |> assoc_constraint(:client)
+    |> assoc_constraint(:receiving_client)
     |> assoc_constraint(:gateway)
     |> assoc_constraint(:resource)
     |> assoc_constraint(:account)

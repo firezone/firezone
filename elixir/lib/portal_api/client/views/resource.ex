@@ -50,6 +50,17 @@ defmodule PortalAPI.Client.Views.Resource do
     }
   end
 
+  defp render_resource(%{type: :static_device_pool} = resource) do
+    %{
+      id: resource.id,
+      type: :static_device_pool,
+      name: resource.name,
+      # Device pools do not require gateway groups.
+      gateway_groups: [],
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
+    }
+  end
+
   defp render_resource(%{} = resource) do
     %{
       id: resource.id,

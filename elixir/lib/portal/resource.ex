@@ -17,7 +17,7 @@ defmodule Portal.Resource do
           address: String.t(),
           address_description: String.t() | nil,
           name: String.t(),
-          type: :cidr | :ip | :dns | :internet,
+          type: :cidr | :ip | :dns | :internet | :static_device_pool,
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
           account_id: Ecto.UUID.t(),
@@ -34,7 +34,8 @@ defmodule Portal.Resource do
     field :address_description, :string
     field :name, :string
 
-    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet]
+    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet, :static_device_pool]
+
     field :ip_stack, Ecto.Enum, values: [:ipv4_only, :ipv6_only, :dual]
 
     embeds_many :filters, Filter, on_replace: :delete, primary_key: false do
@@ -47,6 +48,8 @@ defmodule Portal.Resource do
     has_many :policies, Portal.Policy, references: :id
     has_many :groups, through: [:policies, :group]
 
+    has_many :static_pool_members, Portal.StaticDevicePoolMember, references: :id
+
     timestamps()
   end
 
@@ -58,6 +61,7 @@ defmodule Portal.Resource do
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 255)
     |> maybe_put_default_ip_stack()
+    |> validate_device_pool_site_id()
     |> validate_address_format()
     |> check_constraint(:ip_stack,
       name: :resources_ip_stack_not_null,
@@ -110,6 +114,7 @@ defmodule Portal.Resource do
       {_, :cidr} -> validate_cidr_address(changeset)
       {_, :ip} -> validate_ip_address(changeset)
       {_, :internet} -> put_change(changeset, :address, nil)
+      {_, :static_device_pool} -> put_change(changeset, :address, nil)
       _ -> changeset
     end
   end
@@ -302,6 +307,16 @@ defmodule Portal.Resource do
         []
       end
     end)
+  end
+
+  defp validate_device_pool_site_id(changeset) do
+    case fetch_field(changeset, :type) do
+      {_, :static_device_pool} ->
+        put_change(changeset, :site_id, nil)
+
+      _ ->
+        changeset
+    end
   end
 
   defp maybe_put_default_ip_stack(changeset) do

@@ -250,4 +250,55 @@ defmodule Portal.Cache.ClientTest do
       assert cached.name == "Updated Name"
     end
   end
+
+  describe "authorize_device_access/2" do
+    test "allows access when target client belongs to an authorized static device pool" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      client = client_fixture(account: account, actor: actor)
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      policy_fixture(account: account, group: group, resource: resource)
+
+      session = %Portal.ClientSession{
+        client_id: client.id,
+        account_id: client.account_id,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip
+      }
+
+      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+
+      target_ipv4 = target_client.ipv4_address.address.address
+
+      assert :ok = Cache.authorize_device_access(cache, target_ipv4)
+    end
+
+    test "rejects access when target client is not in an authorized static device pool" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      client = client_fixture(account: account, actor: actor)
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+
+      session = %Portal.ClientSession{
+        client_id: client.id,
+        account_id: client.account_id,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip
+      }
+
+      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+
+      target_ipv4 = target_client.ipv4_address.address.address
+
+      assert {:error, :forbidden} = Cache.authorize_device_access(cache, target_ipv4)
+    end
+  end
 end

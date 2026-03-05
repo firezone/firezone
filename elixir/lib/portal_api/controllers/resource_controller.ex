@@ -153,11 +153,19 @@ defmodule PortalAPI.ResourceController do
   end
 
   defp create_changeset(attrs, subject) do
-    %Portal.Resource{}
-    |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
-    |> Portal.Resource.changeset()
-    |> Ecto.Changeset.validate_required(~w[name type site_id]a)
-    |> Ecto.Changeset.put_change(:account_id, subject.account.id)
+    changeset =
+      %Portal.Resource{account_id: subject.account.id}
+      |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
+      |> Portal.Resource.changeset()
+
+    required =
+      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
+        ~w[name type]a
+      else
+        ~w[name type site_id]a
+      end
+
+    Ecto.Changeset.validate_required(changeset, required)
   end
 
   defmodule Database do
@@ -203,12 +211,20 @@ defmodule PortalAPI.ResourceController do
 
     defp changeset(resource, attrs, _subject) do
       update_fields = ~w[address address_description name type ip_stack site_id]a
-      required_fields = ~w[name type site_id]a
 
-      resource
-      |> Ecto.Changeset.cast(attrs, update_fields)
-      |> Ecto.Changeset.validate_required(required_fields)
-      |> Portal.Resource.changeset()
+      changeset =
+        resource
+        |> Ecto.Changeset.cast(attrs, update_fields)
+        |> Portal.Resource.changeset()
+
+      required_fields =
+        if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
+          ~w[name type]a
+        else
+          ~w[name type site_id]a
+        end
+
+      Ecto.Changeset.validate_required(changeset, required_fields)
     end
 
     def cursor_fields do
