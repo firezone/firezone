@@ -627,7 +627,11 @@ defmodule Portal.Google.Sync do
           count: length(members)
         )
 
-        user_members = Enum.filter(members, fn m -> m["type"] == "USER" end)
+        user_members =
+          Enum.filter(members, fn m ->
+            m["type"] == "USER" and member_in_domain?(m, directory.domain)
+          end)
+
         group_members = Enum.filter(members, fn m -> m["type"] == "GROUP" end)
 
         user_tuples =
@@ -655,6 +659,16 @@ defmodule Portal.Google.Sync do
     |> then(fn {user_acc, sub_group_acc} ->
       {Enum.reverse(user_acc), Enum.reverse(sub_group_acc)}
     end)
+  end
+
+  defp member_in_domain?(member, domain) do
+    case member["email"] do
+      email when is_binary(email) ->
+        String.ends_with?(String.downcase(email), "@#{String.downcase(domain)}")
+
+      _ ->
+        false
+    end
   end
 
   # Phase 3: org unit member sync
