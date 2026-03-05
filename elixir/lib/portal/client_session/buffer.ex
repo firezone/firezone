@@ -4,7 +4,7 @@ defmodule Portal.ClientSession.Buffer do
   alias __MODULE__.Database
   require Logger
 
-  @flush_interval :timer.seconds(60)
+  @flush_interval :timer.seconds(5)
   @flush_threshold 1_000
 
   @drop_keys [:__struct__, :__meta__, :account, :client, :client_token]
