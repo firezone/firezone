@@ -88,7 +88,40 @@ The impersonation email should be:
   read users, groups, and organizational units).
 - An active account that will not be deleted or suspended.
 
-### Step 4: Verify and save
+### Step 4: Configure group filtering (optional)
+
+Use **Group sync mode** to control which Google groups are imported into
+Firezone:
+
+- **All groups** (default): Sync every Google group.
+- **Filtered groups**: Sync only groups that match at least one of these
+  prefixes:
+  - Group **name** starts with `[firezone-sync]`
+  - Group **email** starts with `firezone-sync`
+- **Disabled**: Do not sync Google groups.
+
+In **Filtered groups** mode, nested groups are also synced. For example, create
+`firezone-sync@company.com` and add any other groups and/or users you want to
+sync.
+
+<Alert color="info">
+  <p>
+    When using **Filtered groups** or **Disabled**, groups that were previously
+    synced but are no longer selected by the current mode are removed from
+    Firezone on the next sync.
+  </p>
+  <p>
+    If **Sync Organization Units** is disabled, previously synced org units are
+    also removed from Firezone on the next sync.
+  </p>
+  <p>
+    Users originally created from this directory may also be removed if they are
+    no longer included by your current sync settings (synced groups and/or
+    synced org units).
+  </p>
+</Alert>
+
+### Step 5: Verify and save
 
 Click **Verify Now** to test the connection. Firezone will attempt to
 impersonate the specified admin and read your directory.

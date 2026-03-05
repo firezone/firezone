@@ -197,7 +197,6 @@ On the **General** tab, click **Edit** in the **Client Credentials** section.
 
 Select **Public key / Private key** for the **Client authentication** method.
 
-
 Under the **PUBLIC KEYS** section, click **Add key**.
 
 <Link
@@ -241,7 +240,6 @@ Click **Save** to save your changes.
   />
 </Link>
 
-
 #### Configure General Settings
 
 In the **General Settings** section, ensure **Require Demonstrating Proof of
@@ -258,7 +256,6 @@ Possession (DPoP) header in token requests** is checked.
     height={1200}
   />
 </Link>
-
 
 #### Grant API scopes
 
@@ -336,6 +333,11 @@ Once all fields are filled out, click **Verify Now**.
 Firezone will attempt to connect to Okta and verify the configuration. If
 successful, you'll see a confirmation message and can click **Create** to
 complete the setup.
+
+<Alert color="info">
+  Users originally created from this directory may be removed if they no longer
+  belong to any synced groups.
+</Alert>
 
 <Alert color="success">
 
