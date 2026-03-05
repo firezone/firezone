@@ -825,6 +825,81 @@ defmodule Portal.Google.SyncTest do
       assert length(memberships) == 1
     end
 
+    test "skips type=USER members whose email belongs to a different domain" do
+      # Regression: Google groups can contain external users (from other Google Workspace
+      # domains or personal Gmail accounts) that the Admin SDK returns with type="USER"
+      # (the documented EXTERNAL type is marked "not currently used"). Calling users.get
+      # for these IDs returns 403 Forbidden because the service account's domain-wide
+      # delegation only covers the customer's own domain. We must filter them out
+      # before passing IDs to batch_get_users.
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Groups → group1
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
+          ]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. Group members: internal user1, external user appearing as type=USER with
+      #    a foreign domain email (this is what Google actually returns in production),
+      #    and an external user with the documented-but-unused EXTERNAL type.
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => "extuser", "type" => "USER", "email" => "extuser@otherdomain.com"},
+            %{"id" => "extuser2", "type" => "EXTERNAL", "email" => "extuser2@otherdomain.com"}
+          ]
+        })
+      end)
+
+      # 5. batch_get_users — must only contain user1; extuser must NOT be included
+      #    (if it were, Google would return 403, failing the entire sync)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        {:ok, body, _conn} = Plug.Conn.read_body(conn)
+        assert String.contains?(body, "user1")
+        refute String.contains?(body, "extuser")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          }
+        ])
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Only the internal domain user has an identity
+      identities = Repo.all(Portal.ExternalIdentity)
+      assert length(identities) == 1
+      assert hd(identities).idp_id == "user1"
+
+      # Only user1 has a membership
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 1
+    end
+
     test "syncs transitive sub-groups recursively and creates memberships at each level" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
