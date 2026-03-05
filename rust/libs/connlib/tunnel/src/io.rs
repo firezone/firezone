@@ -8,7 +8,7 @@ use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
 use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
-use futures::FutureExt as _;
+use futures::{FutureExt as _, task::noop_waker_ref};
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
@@ -264,10 +264,10 @@ impl Io {
             impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
         >,
     > {
-        let flush_pending = match self.flush(cx) {
-            Poll::Ready(Ok(())) => false,
+        match self.flush(cx) {
+            Poll::Ready(Ok(())) => {}
             Poll::Ready(Err(e)) => return Poll::Ready(Input::error(e)),
-            Poll::Pending => true,
+            Poll::Pending => return Poll::Pending,
         };
 
         let mut error = TunnelError::default();
@@ -400,8 +400,7 @@ impl Io {
             self.timeout = None;
         }
 
-        if flush_pending
-            && !timeout
+        if !timeout
             && device.is_pending()
             && network.is_pending()
             && tcp_dns_queries.is_empty()
@@ -443,18 +442,18 @@ impl Io {
         }
 
         loop {
-            // First, check if we can send more packets.
+            // Short-circuit if there's nothing to flush.
+            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
+                break;
+            };
+
+            // Check if we can send.
             if self.tun.poll_send_ready(cx)?.is_pending() {
+                self.outbound_packet_buffer.push_front(packet);
                 any_pending = true;
                 break;
             }
 
-            // Second, check if we have any buffer packets.
-            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
-                break; // No more packets? All done.
-            };
-
-            // Third, send the packet.
             self.tun
                 .send(packet)
                 .context("Failed to send IP packet to TUN device")?;
@@ -479,6 +478,26 @@ impl Io {
                 otel::attr::network_io_direction_transmit(),
             ],
         );
+
+        // If there are already buffered packets, maintain ordering by buffering too.
+        if !self.outbound_packet_buffer.is_empty() {
+            self.outbound_packet_buffer.push_back(packet);
+            return;
+        }
+
+        // Try to send directly without buffering when the TUN channel has capacity.
+        let noop_cx = &mut Context::from_waker(noop_waker_ref());
+        match self.tun.poll_send_ready(noop_cx) {
+            Poll::Ready(Ok(())) => {
+                // Channel has capacity; send directly. If send fails (e.g. channel closed),
+                // the packet is dropped here and the error will be surfaced by the next flush().
+                if let Err(e) = self.tun.send(packet) {
+                    tracing::warn!("Failed to send IP packet to TUN device: {e}");
+                }
+                return;
+            }
+            Poll::Ready(Err(_)) | Poll::Pending => {}
+        }
 
         self.outbound_packet_buffer.push_back(packet);
     }
@@ -655,7 +674,6 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use futures::task::noop_waker_ref;
     use std::{future::poll_fn, net::Ipv4Addr, ptr::addr_of_mut};
 
     use super::*;
