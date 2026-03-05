@@ -56,5 +56,9 @@ defmodule Portal.PolicyAuthorization do
     |> assoc_constraint(:resource)
     |> assoc_constraint(:account)
     |> assoc_constraint(:membership)
+    |> check_constraint(:gateway_id,
+      name: :policy_authorizations_gateway_or_receiving_client_required,
+      message: "either gateway_id or receiving_client_id must be set"
+    )
   end
 end

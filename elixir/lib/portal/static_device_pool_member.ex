@@ -25,5 +25,8 @@ defmodule Portal.StaticDevicePoolMember do
     |> assoc_constraint(:account)
     |> assoc_constraint(:resource)
     |> assoc_constraint(:client)
+    |> unique_constraint([:account_id, :resource_id, :client_id],
+      name: :static_device_pool_members_account_id_resource_id_client_id_index
+    )
   end
 end

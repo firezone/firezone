@@ -4,6 +4,7 @@ defmodule PortalAPI.ResourceControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.FeaturesFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
@@ -185,8 +186,12 @@ defmodule PortalAPI.ResourceControllerTest do
 
     test "creates a static device pool without site_id or address", %{
       conn: conn,
+      account: account,
       actor: actor
     } do
+      enable_feature(:client_to_client)
+      update_account(account, features: %{client_to_client: true})
+
       attrs = %{
         "name" => "Shared Devices",
         "type" => "static_device_pool"
@@ -202,6 +207,33 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
       assert resp["data"]["address"] == nil
+    end
+
+    test "returns 422 when creating static_device_pool with feature disabled", %{
+      conn: conn,
+      actor: actor
+    } do
+      attrs = %{
+        "name" => "Shared Devices",
+        "type" => "static_device_pool"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert resp = json_response(conn, 422)
+
+      assert resp == %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{
+                   "type" => ["device pools are not enabled for this account"]
+                 }
+               }
+             }
     end
   end
 
@@ -276,6 +308,32 @@ defmodule PortalAPI.ResourceControllerTest do
 
       assert json_response(conn, 403) == %{
                "error" => %{"reason" => "Internet Resource cannot be modified"}
+             }
+    end
+
+    test "returns 422 when updating resource to static_device_pool type with feature disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"type" => "static_device_pool"})
+
+      assert resp = json_response(conn, 422)
+
+      assert resp == %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{
+                   "type" => ["device pools are not enabled for this account"]
+                 }
+               }
              }
     end
   end

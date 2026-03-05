@@ -604,7 +604,11 @@ defmodule PortalWeb.Resources.Components do
           }
         end)
 
-      case Safe.scoped(subject) |> Safe.insert_all(StaticDevicePoolMember, entries) do
+      case Safe.scoped(subject)
+           |> Safe.insert_all(StaticDevicePoolMember, entries,
+             on_conflict: :nothing,
+             conflict_target: [:account_id, :resource_id, :client_id]
+           ) do
         {:error, reason} -> {:error, reason}
         {_, _} -> :ok
       end

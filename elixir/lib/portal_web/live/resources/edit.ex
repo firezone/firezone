@@ -54,7 +54,7 @@ defmodule PortalWeb.Resources.Edit do
               <p class="mb-2 text-sm text-neutral-900">
                 Type
               </p>
-              <ul class="grid w-full gap-6 md:grid-cols-4">
+              <ul class={"grid w-full gap-6 #{if @client_to_client_enabled?, do: "md:grid-cols-4", else: "md:grid-cols-3"}"}>
                 <li class="flex flex-col">
                   <.input
                     id="resource-type--dns"
@@ -417,7 +417,7 @@ defmodule PortalWeb.Resources.Edit do
       |> where([resources: r], r.id == ^id)
       |> preload([:site, static_pool_members: [client: [:ipv4_address, :ipv6_address]]])
       |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def update_resource(changeset, selected_clients, subject) do
