@@ -164,6 +164,7 @@ if config_env() == :prod do
     internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 
   config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
+  config :portal, country_code_blocklist: env_var_to_config!(:country_code_blocklist)
 
   config :portal,
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)

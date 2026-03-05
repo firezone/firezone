@@ -700,6 +700,13 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:maxmind_city_db_path, :string, default: nil)
 
+  @doc """
+  Comma-separated list of ISO 3166-1 alpha-2 country codes to block at the endpoint.
+
+  Requests are denied with HTTP 403 when the resolved remote IP country matches one of these codes.
+  """
+  defconfig(:country_code_blocklist, {:array, ",", :string}, default: [])
+
   ##############################################
   ## Outbound Email Settings
   ##############################################

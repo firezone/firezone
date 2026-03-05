@@ -23,6 +23,8 @@ defmodule PortalAPI.Endpoint do
     proxies: {__MODULE__, :external_trusted_proxies, []},
     clients: {__MODULE__, :clients, []}
 
+  plug Portal.Plugs.CountryCodeBlocklist
+
   plug Plug.RequestId
   # TODO: Rework LoggerJSON to use Telemetry and integrate it
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
