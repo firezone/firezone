@@ -165,12 +165,14 @@ defmodule PortalAPI.ResourceController do
         ~w[name type site_id]a
       end
 
-    Ecto.Changeset.validate_required(changeset, required)
+    changeset
+    |> Ecto.Changeset.validate_required(required)
+    |> Database.validate_static_device_pool_feature_enabled(subject.account)
   end
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Features, Safe}
 
     def list_resources(subject, opts \\ []) do
       from(r in Portal.Resource, as: :resources)
@@ -191,6 +193,29 @@ defmodule PortalAPI.ResourceController do
       end
     end
 
+    def validate_static_device_pool_feature_enabled(changeset, account) do
+      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool and
+           not client_to_client_enabled?(account) do
+        Ecto.Changeset.add_error(
+          changeset,
+          :type,
+          "device pools are not enabled for this account"
+        )
+      else
+        changeset
+      end
+    end
+
+    def client_to_client_enabled?(account) do
+      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
+
+      account_feature_enabled? =
+        account.features &&
+          Map.get(account.features, :client_to_client, false)
+
+      Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
+    end
+
     def update_resource(resource, attrs, subject) do
       resource
       |> changeset(attrs, subject)
@@ -209,7 +234,7 @@ defmodule PortalAPI.ResourceController do
       |> Safe.insert()
     end
 
-    defp changeset(resource, attrs, _subject) do
+    defp changeset(resource, attrs, subject) do
       update_fields = ~w[address address_description name type ip_stack site_id]a
 
       changeset =
@@ -224,7 +249,9 @@ defmodule PortalAPI.ResourceController do
           ~w[name type site_id]a
         end
 
-      Ecto.Changeset.validate_required(changeset, required_fields)
+      changeset
+      |> Ecto.Changeset.validate_required(required_fields)
+      |> validate_static_device_pool_feature_enabled(subject.account)
     end
 
     def cursor_fields do

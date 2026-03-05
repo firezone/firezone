@@ -26,7 +26,8 @@ defmodule PortalAPI.Schemas.Resource do
         },
         site_id: %Schema{
           title: "Site ID",
-          description: "Site to connect the Resource to",
+          description:
+            "Site to connect the Resource to. Required for all types except `static_device_pool`.",
           type: :string
         }
       },
@@ -48,7 +49,8 @@ defmodule PortalAPI.Schemas.Resource do
 
     OpenApiSpex.schema(%{
       title: "ResourceRequest",
-      description: "POST body for creating a Resource",
+      description:
+        "POST body for creating a Resource. `site_id` is required unless `type` is `static_device_pool`.",
       type: :object,
       properties: %{
         resource: %Schema{properties: Resource.Schema.schema().properties}

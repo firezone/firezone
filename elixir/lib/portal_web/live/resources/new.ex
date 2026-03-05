@@ -44,7 +44,7 @@ defmodule PortalWeb.Resources.New do
               <p class="mb-2 text-sm text-neutral-900">
                 Type
               </p>
-              <ul class="grid w-full gap-6 md:grid-cols-4">
+              <ul class={"grid w-full gap-6 #{if @client_to_client_enabled?, do: "md:grid-cols-4", else: "md:grid-cols-3"}"}>
                 <li class="flex flex-col">
                   <.input
                     id="resource-type--dns"
