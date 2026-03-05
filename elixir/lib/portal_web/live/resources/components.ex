@@ -364,10 +364,16 @@ defmodule PortalWeb.Resources.Components do
             phx-value-client_id={client.id}
             class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
           >
-            <div class="space-y-0.5">
-              <div class="text-sm font-medium text-neutral-900">{client.name}</div>
-              <div class="text-xs text-neutral-500">
-                {client_details(client)}
+            <div class="flex items-center gap-2">
+              <div class={[
+                "w-2 h-2 rounded-full flex-shrink-0",
+                if(client.online?, do: "bg-green-500", else: "bg-red-500")
+              ]} />
+              <div class="space-y-0.5 min-w-0">
+                <div class="text-sm font-medium text-neutral-900">{client.name}</div>
+                <div class="text-xs text-neutral-500">
+                  {client_details(client)}
+                </div>
               </div>
             </div>
           </button>
@@ -499,8 +505,13 @@ defmodule PortalWeb.Resources.Components do
         |> limit(10)
 
       case query |> Safe.scoped(subject, :replica) |> Safe.all() do
-        {:error, _} -> []
-        clients -> clients
+        {:error, _} ->
+          []
+
+        clients ->
+          clients
+          |> Portal.Presence.Clients.preload_clients_presence()
+          |> Enum.sort_by(&if &1.online?, do: 0, else: 1)
       end
     end
 
