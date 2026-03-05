@@ -86,7 +86,13 @@ defmodule PortalAPI.Client.Channel do
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
     push(socket, "init", %{
-      resources: Views.Resource.render_many(resources),
+      # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+      resources:
+        resources
+        |> Enum.reject(&(&1.type == :static_device_pool))
+        |> Views.Resource.render_many(),
+      # TODO: Re-enable after verifying compatibility with older clients
+      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
         Views.Relay.render_many(
           relays,
@@ -145,11 +151,12 @@ defmodule PortalAPI.Client.Channel do
         socket.assigns.subject
       )
 
+    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
     end
 
-    for resource <- added_resources do
+    for resource <- added_resources, resource.type != :static_device_pool do
       push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
 
@@ -348,7 +355,8 @@ defmodule PortalAPI.Client.Channel do
 
   def handle_info({:client_device_access_authorized, payload}, socket) do
     push(socket, "client_device_access_authorized", payload)
-    {:noreply, socket}
+    cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
+    {:noreply, assign(socket, cache: cache)}
   end
 
   def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
@@ -718,10 +726,11 @@ defmodule PortalAPI.Client.Channel do
   def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
     account_id = socket.assigns.client.account_id
 
-    with true <- client_to_client_enabled?(),
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
          {:ok, ipv4_tuple} <- parse_ipv4(ipv4_string),
-         {target_client_id, target_meta} <-
-           Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) || :not_found do
+         :ok <- Cache.Client.authorize_device_access(socket.assigns.cache, ipv4_tuple),
+         {:ok, target_client_id, target_meta} <-
+           find_online_client_by_ipv4(account_id, ipv4_tuple) do
       client = socket.assigns.client
       client_public_key = socket.assigns.session.public_key
       target_client = %Portal.Client{id: target_client_id, psk_base: target_meta.psk_base}
@@ -783,8 +792,12 @@ defmodule PortalAPI.Client.Channel do
 
         {:noreply, socket}
 
-      :not_found ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :not_found})
+      :offline ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :offline})
+        {:noreply, socket}
+
+      {:error, :forbidden} ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :forbidden})
         {:noreply, socket}
     end
   end
@@ -816,7 +829,7 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(),
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
          :ok <-
            Channels.send_to_client(
              target_client_id,
@@ -844,7 +857,7 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(),
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
          :ok <-
            Channels.send_to_client(
              target_client_id,
@@ -908,7 +921,7 @@ defmodule PortalAPI.Client.Channel do
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
-  defp client_to_client_enabled?, do: Database.client_to_client_enabled?()
+  defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
 
   defp parse_ipv4(ipv4_string) when is_binary(ipv4_string) do
     case :inet.parse_address(String.to_charlist(ipv4_string)) do
@@ -916,6 +929,21 @@ defmodule PortalAPI.Client.Channel do
       _ -> {:error, :invalid_ipv4}
     end
   end
+
+  defp find_online_client_by_ipv4(account_id, ipv4_tuple) do
+    case Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) do
+      {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
+      nil -> :offline
+    end
+  end
+
+  # TODO: Re-enable after verifying compatibility with older clients
+  # defp render_ipv4s(ipv4s) do
+  #   ipv4s
+  #   |> Enum.map(&:inet.ntoa/1)
+  #   |> Enum.map(&to_string/1)
+  #   |> Enum.sort()
+  # end
 
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
@@ -1205,6 +1233,39 @@ defmodule PortalAPI.Client.Channel do
     |> push_resource_updates(socket)
   end
 
+  # STATIC DEVICE POOL MEMBERS
+
+  defp handle_change(
+         %Change{op: :insert, struct: %Portal.StaticDevicePoolMember{} = member},
+         socket
+       ) do
+    {:ok, cache} =
+      Cache.Client.add_static_device_pool_member(
+        socket.assigns.cache,
+        member,
+        socket.assigns.subject
+      )
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.StaticDevicePoolMember{} = member},
+         socket
+       ) do
+    {:ok, ipv4, cache} =
+      Cache.Client.delete_static_device_pool_member(socket.assigns.cache, member)
+
+    if ipv4 do
+      push(socket, "client_device_access_denied", %{
+        ipv4: to_string(:inet.ntoa(ipv4)),
+        reason: :forbidden
+      })
+    end
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
   defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
@@ -1216,7 +1277,8 @@ defmodule PortalAPI.Client.Channel do
       push(socket, "resource_deleted", resource_id)
     end
 
-    for resource <- added_resources do
+    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+    for resource <- added_resources, resource.type != :static_device_pool do
       push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
 
@@ -1228,11 +1290,14 @@ defmodule PortalAPI.Client.Channel do
 
     alias Portal.Features
 
-    def client_to_client_enabled? do
+    def client_to_client_enabled?(account) do
       query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
 
-      Portal.Safe.unscoped(query, :replica)
-      |> Portal.Safe.exists?()
+      account_feature_enabled? =
+        account.features &&
+          Map.get(account.features, :client_to_client, false)
+
+      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
     end
 
     def all_compatible_gateways_for_client_and_resource(
@@ -1418,7 +1483,8 @@ defmodule PortalAPI.Client.Channel do
   defp create_policy_authorization_changeset(attrs) do
     import Ecto.Changeset
 
-    fields = ~w[id token_id policy_id client_id gateway_id resource_id membership_id
+    fields =
+      ~w[id token_id policy_id client_id receiving_client_id gateway_id resource_id membership_id
                 account_id
                 expires_at
                 client_remote_ip client_user_agent
@@ -1426,7 +1492,9 @@ defmodule PortalAPI.Client.Channel do
 
     %Portal.PolicyAuthorization{}
     |> cast(attrs, fields)
-    |> validate_required(fields -- [:membership_id])
+    |> validate_required(
+      fields -- [:membership_id, :receiving_client_id, :gateway_id, :gateway_remote_ip]
+    )
     |> Portal.PolicyAuthorization.changeset()
   end
 

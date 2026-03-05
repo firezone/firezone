@@ -9,6 +9,7 @@ defmodule Portal.Accounts.Features do
     field :idp_sync, :boolean
     field :rest_api, :boolean
     field :internet_resource, :boolean
+    field :client_to_client, :boolean
   end
 
   def changeset(features \\ %__MODULE__{}, attrs) do
@@ -18,6 +19,7 @@ defmodule Portal.Accounts.Features do
       idp_sync
       rest_api
       internet_resource
+      client_to_client
     ]a
 
     features

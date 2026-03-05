@@ -950,6 +950,11 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Resource, :api_client), do: :ok
   def permit(:read, Portal.Resource, _), do: :ok
 
+  # StaticDevicePoolMember permissions
+  def permit(_action, Portal.StaticDevicePoolMember, :account_admin_user), do: :ok
+  def permit(_action, Portal.StaticDevicePoolMember, :api_client), do: :ok
+  def permit(:read, Portal.StaticDevicePoolMember, _), do: :ok
+
   # Policy permissions
   def permit(_action, Portal.Policy, :account_admin_user), do: :ok
   def permit(_action, Portal.Policy, :api_client), do: :ok

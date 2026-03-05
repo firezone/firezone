@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Warning.CrossModuleDatabaseCall
 defmodule PortalWeb.Resources.New do
   use PortalWeb, :live_view
   import PortalWeb.Resources.Components
@@ -6,11 +7,16 @@ defmodule PortalWeb.Resources.New do
   def mount(params, _session, socket) do
     sites = Database.all_sites(socket.assigns.subject)
     changeset = Database.new_resource(socket.assigns.account)
+    client_to_client_enabled? = Database.client_to_client_enabled?(socket.assigns.account)
 
     socket =
       assign(
         socket,
         sites: sites,
+        selected_clients: [],
+        client_search_results: nil,
+        client_search: "",
+        client_to_client_enabled?: client_to_client_enabled?,
         address_description_changed?: false,
         name_changed?: false,
         form: to_form(changeset),
@@ -18,7 +24,7 @@ defmodule PortalWeb.Resources.New do
         page_title: "New Resource"
       )
 
-    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -38,8 +44,8 @@ defmodule PortalWeb.Resources.New do
               <p class="mb-2 text-sm text-neutral-900">
                 Type
               </p>
-              <ul class="grid w-full gap-6 md:grid-cols-3">
-                <li>
+              <ul class="grid w-full gap-6 md:grid-cols-4">
+                <li class="flex flex-col">
                   <.input
                     id="resource-type--dns"
                     type="radio_button_group"
@@ -49,22 +55,20 @@ defmodule PortalWeb.Resources.New do
                     required
                   />
                   <label for="resource-type--dns" class={~w[
-                    inline-flex items-center justify-between w-full
-                    p-5 text-neutral-500 bg-white border border-neutral-200
+                    flex flex-1 flex-col justify-between w-full
+                    p-4 text-neutral-500 bg-white border border-neutral-200
                     rounded-sm cursor-pointer peer-checked:border-accent-500
                     peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
                   ]}>
-                    <div class="block">
-                      <div class="w-full font-semibold mb-3">
-                        <.icon name="hero-globe-alt" class="w-5 h-5 mr-1" /> DNS
-                      </div>
-                      <div class="w-full text-sm">
-                        Manage access to an application or service by DNS address.
-                      </div>
+                    <div class="font-semibold mb-2 whitespace-nowrap">
+                      <.icon name="hero-globe-alt" class="w-5 h-5 mr-1" /> DNS
+                    </div>
+                    <div class="text-sm">
+                      Manage access to an application or service by DNS address.
                     </div>
                   </label>
                 </li>
-                <li>
+                <li class="flex flex-col">
                   <.input
                     id="resource-type--ip"
                     type="radio_button_group"
@@ -74,22 +78,20 @@ defmodule PortalWeb.Resources.New do
                     required
                   />
                   <label for="resource-type--ip" class={~w[
-                    inline-flex items-center justify-between w-full
-                    p-5 text-neutral-500 bg-white border border-neutral-200
+                    flex flex-1 flex-col justify-between w-full
+                    p-4 text-neutral-500 bg-white border border-neutral-200
                     rounded-sm cursor-pointer peer-checked:border-accent-600
                     peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
                   ]}>
-                    <div class="block">
-                      <div class="w-full font-semibold mb-3">
-                        <.icon name="hero-server" class="w-5 h-5 mr-1" /> IP
-                      </div>
-                      <div class="w-full text-sm">
-                        Manage access to a specific host by IP address.
-                      </div>
+                    <div class="font-semibold mb-2 whitespace-nowrap">
+                      <.icon name="hero-server" class="w-5 h-5 mr-1" /> IP
+                    </div>
+                    <div class="text-sm">
+                      Manage access to a specific host by IP address.
                     </div>
                   </label>
                 </li>
-                <li>
+                <li class="flex flex-col">
                   <.input
                     id="resource-type--cidr"
                     type="radio_button_group"
@@ -99,25 +101,46 @@ defmodule PortalWeb.Resources.New do
                     required
                   />
                   <label for="resource-type--cidr" class={~w[
-                    inline-flex items-center justify-between w-full
-                    p-5 text-neutral-500 bg-white border border-neutral-200
+                    flex flex-1 flex-col justify-between w-full
+                    p-4 text-neutral-500 bg-white border border-neutral-200
                     rounded-sm cursor-pointer peer-checked:border-accent-500
                     peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
                   ]}>
-                    <div class="block">
-                      <div class="w-full font-semibold mb-3">
-                        <.icon name="hero-server-stack" class="w-5 h-5 mr-1" /> CIDR
-                      </div>
-                      <div class="w-full text-sm">
-                        Manage access to a network, VPC or subnet by CIDR address.
-                      </div>
+                    <div class="font-semibold mb-2 whitespace-nowrap">
+                      <.icon name="hero-server-stack" class="w-5 h-5 mr-1" /> CIDR
+                    </div>
+                    <div class="text-sm">
+                      Manage access to a network, VPC or subnet by CIDR address.
+                    </div>
+                  </label>
+                </li>
+                <li :if={@client_to_client_enabled?} class="flex flex-col">
+                  <.input
+                    id="resource-type--static-device-pool"
+                    type="radio_button_group"
+                    field={@form[:type]}
+                    value="static_device_pool"
+                    checked={@form[:type].value == :static_device_pool}
+                    required
+                  />
+                  <label for="resource-type--static-device-pool" class={~w[
+                    flex flex-1 flex-col justify-between w-full
+                    p-4 text-neutral-500 bg-white border border-neutral-200
+                    rounded-sm cursor-pointer peer-checked:border-accent-500
+                    peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                  ]}>
+                    <div class="font-semibold mb-2 whitespace-nowrap">
+                      <.icon name="hero-computer-desktop" class="w-5 h-5 mr-1" /> Device Pool
+                    </div>
+                    <div class="text-sm">
+                      Direct access to other Firezone devices without a Gateway.
                     </div>
                   </label>
                 </li>
               </ul>
             </div>
 
-            <div>
+            <div :if={@form[:type].value != :static_device_pool}>
               <.input
                 field={@form[:address]}
                 autocomplete="off"
@@ -168,7 +191,7 @@ defmodule PortalWeb.Resources.New do
               </div>
             </div>
 
-            <div>
+            <div :if={@form[:type].value != :static_device_pool}>
               <.input
                 field={@form[:address_description]}
                 type="text"
@@ -179,6 +202,18 @@ defmodule PortalWeb.Resources.New do
               <p class="mt-2 text-xs text-neutral-500">
                 Optional description or URL to show in Clients to help users access this Resource.
               </p>
+            </div>
+
+            <div :if={@form[:type].value == :static_device_pool}>
+              <legend class="text-xl mb-2">Devices</legend>
+              <p class="text-sm text-neutral-500 mb-4">
+                Select clients to include in this pool. Search by name, IPv4, IPv6, id, serial, UUID, and other identifiers.
+              </p>
+              <.client_picker
+                selected_clients={@selected_clients}
+                client_search={@client_search}
+                client_search_results={@client_search_results}
+              />
             </div>
 
             <.input
@@ -195,7 +230,7 @@ defmodule PortalWeb.Resources.New do
             <.filters_form account={@account} form={@form[:filters]} />
 
             <.site_form
-              :if={is_nil(@params["site_id"])}
+              :if={is_nil(@params["site_id"]) and @form[:type].value != :static_device_pool}
               form={@form}
               sites={@sites}
             />
@@ -246,7 +281,7 @@ defmodule PortalWeb.Resources.New do
       |> map_filters_form_attrs(socket.assigns.account)
       |> maybe_put_site_id(socket.assigns.params)
 
-    case Database.create_resource(attrs, socket.assigns.subject) do
+    case Database.create_resource(attrs, socket.assigns.selected_clients, socket.assigns.subject) do
       {:ok, resource} ->
         socket = put_flash(socket, :success, "Resource #{resource.name} created successfully")
 
@@ -271,6 +306,66 @@ defmodule PortalWeb.Resources.New do
     end
   end
 
+  def handle_event("focus_client_search", _params, socket) do
+    results =
+      Database.search_clients(
+        socket.assigns.client_search,
+        socket.assigns.subject,
+        socket.assigns.selected_clients
+      )
+
+    {:noreply, assign(socket, client_search_results: results)}
+  end
+
+  def handle_event("blur_client_search", _params, socket) do
+    {:noreply, assign(socket, client_search_results: nil)}
+  end
+
+  def handle_event("search_client", %{"client_search" => search}, socket) do
+    results =
+      Database.search_clients(search, socket.assigns.subject, socket.assigns.selected_clients)
+
+    {:noreply,
+     assign(socket,
+       client_search: search,
+       client_search_results: results
+     )}
+  end
+
+  def handle_event("add_client", %{"client_id" => client_id}, socket) do
+    case Database.get_client(client_id, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
+      client ->
+        selected_clients = Enum.uniq_by([client | socket.assigns.selected_clients], & &1.id)
+
+        {:noreply,
+         assign(socket,
+           selected_clients: selected_clients,
+           client_search: "",
+           client_search_results: nil
+         )}
+    end
+  end
+
+  def handle_event("remove_client", %{"client_id" => client_id}, socket) do
+    selected_clients = Enum.reject(socket.assigns.selected_clients, &(&1.id == client_id))
+
+    results =
+      Database.search_clients(
+        socket.assigns.client_search,
+        socket.assigns.subject,
+        selected_clients
+      )
+
+    {:noreply,
+     assign(socket,
+       selected_clients: selected_clients,
+       client_search_results: results
+     )}
+  end
+
   defp maybe_put_default_name(attrs, name_changed? \\ true)
 
   defp maybe_put_default_name(attrs, true) do
@@ -282,6 +377,14 @@ defmodule PortalWeb.Resources.New do
   end
 
   defp maybe_put_site_id(attrs, params) do
+    if attrs["type"] == "static_device_pool" do
+      Map.delete(attrs, "site_id")
+    else
+      maybe_put_site_id_for_non_static_pool(attrs, params)
+    end
+  end
+
+  defp maybe_put_site_id_for_non_static_pool(attrs, params) do
     if site_id = params["site_id"] do
       Map.put(attrs, "site_id", site_id)
     else
@@ -290,33 +393,59 @@ defmodule PortalWeb.Resources.New do
   end
 
   defmodule Database do
-    import Ecto.Query
     import Ecto.Changeset
     alias Portal.{Safe, Resource}
+    alias PortalWeb.Resources.Components
 
-    def all_sites(subject) do
-      from(g in Portal.Site, as: :sites)
-      |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.all()
-    end
+    defdelegate client_to_client_enabled?(account), to: Components.Database
+    defdelegate all_sites(subject), to: Components.Database
+    defdelegate get_client(client_id, subject), to: Components.Database
+    defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
 
     # TODO: Keep all changeset logic out of the DB module
     def new_resource(account, attrs \\ %{}) do
-      %Resource{}
-      |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
-      |> validate_required([:name, :address])
-      |> put_change(:account_id, account.id)
-      |> Resource.changeset()
+      changeset =
+        %Resource{account_id: account.id}
+        |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
+        |> Resource.changeset()
+
+      if get_field(changeset, :type) == :static_device_pool do
+        validate_required(changeset, [:name])
+      else
+        validate_required(changeset, [:name, :address])
+      end
     end
 
-    def create_resource(attrs, subject) do
+    def create_resource(attrs, selected_clients, subject) do
       changeset =
         new_resource(subject.account, attrs)
-        |> validate_required([:site_id])
+        |> maybe_validate_required_fields()
+        |> Components.Database.validate_static_device_pool_feature_enabled(subject.account)
 
-      Safe.scoped(changeset, subject)
-      |> Safe.insert()
+      with {:ok, selected_clients} <-
+             Components.Database.validate_selected_clients(selected_clients, subject),
+           {:ok, resource} <- Safe.scoped(changeset, subject) |> Safe.insert(),
+           :ok <-
+             Components.Database.sync_static_pool_members(resource, selected_clients, subject) do
+        {:ok, resource}
+      else
+        {:error, %Ecto.Changeset{} = changeset} ->
+          {:error, changeset}
+
+        {:error, :invalid_clients} ->
+          {:error, add_error(changeset, :name, "one or more selected clients are invalid")}
+
+        {:error, :unauthorized} ->
+          {:error, add_error(changeset, :name, "you are not authorized to perform this action")}
+      end
+    end
+
+    defp maybe_validate_required_fields(changeset) do
+      if get_field(changeset, :type) == :static_device_pool do
+        validate_required(changeset, [:name])
+      else
+        validate_required(changeset, [:site_id])
+      end
     end
   end
 end

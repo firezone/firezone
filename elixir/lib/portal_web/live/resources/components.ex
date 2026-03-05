@@ -6,7 +6,8 @@ defmodule PortalWeb.Resources.Components do
     internet: %{index: 1, label: nil},
     dns: %{index: 2, label: "DNS"},
     ip: %{index: 3, label: "IP"},
-    cidr: %{index: 4, label: "CIDR"}
+    cidr: %{index: 4, label: "CIDR"},
+    static_device_pool: %{index: 5, label: "Device Pools"}
   }
 
   def fetch_resource_option(id, subject) do
@@ -328,6 +329,93 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :selected_clients, :list, required: true
+  attr :client_search_results, :any, default: nil
+  attr :client_search, :string, default: ""
+
+  def client_picker(assigns) do
+    ~H"""
+    <div class="border border-neutral-200 rounded-sm">
+      <div
+        class="p-3 bg-neutral-50 border-b border-neutral-200 relative"
+        phx-click-away="blur_client_search"
+      >
+        <input
+          type="text"
+          name="client_search"
+          value={@client_search}
+          placeholder="Search clients to add..."
+          phx-change="search_client"
+          phx-debounce="300"
+          phx-focus="focus_client_search"
+          autocomplete="off"
+          data-1p-ignore
+          class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
+        />
+
+        <div
+          :if={@client_search_results != nil}
+          class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-md shadow-md max-h-48 overflow-y-auto"
+        >
+          <button
+            :for={client <- @client_search_results}
+            type="button"
+            phx-click="add_client"
+            phx-value-client_id={client.id}
+            class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
+          >
+            <div class="space-y-0.5">
+              <div class="text-sm font-medium text-neutral-900">{client.name}</div>
+              <div class="text-xs text-neutral-500">
+                {client_details(client)}
+              </div>
+            </div>
+          </button>
+          <div
+            :if={@client_search_results == []}
+            class="px-3 py-4 text-center text-sm text-neutral-500"
+          >
+            No clients found
+          </div>
+        </div>
+      </div>
+
+      <ul :if={@selected_clients != []} class="divide-y divide-neutral-200 max-h-64 overflow-y-auto">
+        <li :for={client <- @selected_clients} class="p-3 flex items-center justify-between">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-neutral-900 truncate">{client.name}</p>
+            <p class="text-xs text-neutral-500 truncate">{client_details(client)}</p>
+          </div>
+          <button
+            type="button"
+            phx-click="remove_client"
+            phx-value-client_id={client.id}
+            class="text-xs text-red-600 hover:text-red-700"
+          >
+            Remove
+          </button>
+        </li>
+      </ul>
+
+      <div :if={@selected_clients == []} class="p-4 text-sm text-neutral-500">
+        No devices selected.
+      </div>
+    </div>
+    """
+  end
+
+  defp client_details(client) do
+    [
+      client.ipv4_address && Portal.Types.INET.to_string(client.ipv4_address.address),
+      client.ipv6_address && Portal.Types.INET.to_string(client.ipv6_address.address),
+      client.device_serial,
+      client.device_uuid,
+      client.id
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" | ")
+  end
+
   @known_recommendations %{
     "mongodb.net" => "ipv4_only"
   }
@@ -343,7 +431,7 @@ defmodule PortalWeb.Resources.Components do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Resource}
+    alias Portal.{Features, Safe, Resource, StaticDevicePoolMember}
 
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
@@ -356,6 +444,170 @@ defmodule PortalWeb.Resources.Components do
       from(r in Resource, as: :resources)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(Database.ListQuery, opts)
+    end
+
+    def client_to_client_enabled?(account) do
+      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
+
+      account_feature_enabled? =
+        account.features &&
+          Map.get(account.features, :client_to_client, false)
+
+      Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
+    end
+
+    def all_sites(subject) do
+      from(s in Portal.Site, as: :sites)
+      |> where([sites: s], s.managed_by != :system)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+    end
+
+    def get_client(client_id, subject) do
+      from(c in Portal.Client, as: :clients)
+      |> where([clients: c], c.id == ^client_id)
+      |> preload([:ipv4_address, :ipv6_address])
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
+    end
+
+    def search_clients(search_term, _subject, _selected_clients) when search_term in [nil, ""],
+      do: nil
+
+    def search_clients(search_term, subject, selected_clients) do
+      selected_ids = Enum.map(selected_clients, & &1.id)
+      pattern = "%#{search_term}%"
+
+      query =
+        from(c in Portal.Client, as: :clients)
+        |> join(:left, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
+        |> join(:left, [clients: c], ipv6 in assoc(c, :ipv6_address), as: :ipv6)
+        |> where([clients: c], c.id not in ^selected_ids)
+        |> where(
+          [clients: c, ipv4: ipv4, ipv6: ipv6],
+          ilike(c.name, ^pattern) or
+            ilike(type(c.id, :string), ^pattern) or
+            ilike(coalesce(c.external_id, ""), ^pattern) or
+            ilike(coalesce(c.device_serial, ""), ^pattern) or
+            ilike(coalesce(c.device_uuid, ""), ^pattern) or
+            ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or
+            ilike(coalesce(c.firebase_installation_id, ""), ^pattern) or
+            ilike(type(ipv4.address, :string), ^pattern) or
+            ilike(type(ipv6.address, :string), ^pattern)
+        )
+        |> preload([:ipv4_address, :ipv6_address])
+        |> limit(10)
+
+      case query |> Safe.scoped(subject, :replica) |> Safe.all() do
+        {:error, _} -> []
+        clients -> clients
+      end
+    end
+
+    def validate_selected_clients([], _subject), do: {:ok, []}
+
+    def validate_selected_clients(selected_clients, subject) do
+      ids =
+        selected_clients
+        |> Enum.map(& &1.id)
+        |> Enum.uniq()
+
+      from(c in Portal.Client, as: :clients)
+      |> where([clients: c], c.id in ^ids)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          {:error, :invalid_clients}
+
+        clients when length(clients) == length(ids) ->
+          {:ok, clients}
+
+        _ ->
+          {:error, :invalid_clients}
+      end
+    end
+
+    def validate_static_device_pool_feature_enabled(changeset, account) do
+      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool and
+           not client_to_client_enabled?(account) do
+        Ecto.Changeset.add_error(
+          changeset,
+          :type,
+          "device pools are not enabled for this account"
+        )
+      else
+        changeset
+      end
+    end
+
+    def sync_static_pool_members(
+          %Portal.Resource{type: :static_device_pool} = resource,
+          clients,
+          subject
+        ) do
+      selected_client_ids = clients |> Enum.map(& &1.id) |> Enum.uniq()
+
+      existing_client_ids =
+        from(m in StaticDevicePoolMember,
+          where: m.resource_id == ^resource.id,
+          select: m.client_id
+        )
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+        |> case do
+          {:error, _} -> []
+          ids -> ids
+        end
+
+      to_remove = existing_client_ids -- selected_client_ids
+      to_add = selected_client_ids -- existing_client_ids
+
+      with :ok <- maybe_delete_pool_members(resource, to_remove, subject),
+           :ok <- maybe_insert_pool_members(resource, to_add, subject) do
+        :ok
+      end
+    end
+
+    def sync_static_pool_members(%Portal.Resource{} = resource, _clients, subject) do
+      case from(m in StaticDevicePoolMember, where: m.resource_id == ^resource.id)
+           |> Safe.scoped(subject)
+           |> Safe.delete_all() do
+        {:error, reason} -> {:error, reason}
+        {_, _} -> :ok
+      end
+    end
+
+    defp maybe_delete_pool_members(_resource, [], _subject), do: :ok
+
+    defp maybe_delete_pool_members(resource, to_remove, subject) do
+      case from(m in StaticDevicePoolMember,
+             where: m.resource_id == ^resource.id and m.client_id in ^to_remove
+           )
+           |> Safe.scoped(subject)
+           |> Safe.delete_all() do
+        {:error, reason} -> {:error, reason}
+        {_, _} -> :ok
+      end
+    end
+
+    defp maybe_insert_pool_members(_resource, [], _subject), do: :ok
+
+    defp maybe_insert_pool_members(resource, to_add, subject) do
+      entries =
+        Enum.map(to_add, fn client_id ->
+          %{
+            account_id: resource.account_id,
+            resource_id: resource.id,
+            client_id: client_id,
+            id: Ecto.UUID.generate()
+          }
+        end)
+
+      case Safe.scoped(subject) |> Safe.insert_all(StaticDevicePoolMember, entries) do
+        {:error, reason} -> {:error, reason}
+        {_, _} -> :ok
+      end
     end
   end
 

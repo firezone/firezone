@@ -71,14 +71,22 @@ defmodule Portal.Cache.Client do
     # 1. The resource is authorized based on policies and conditions
     # 2. The resource is compatible with the client (i.e. the client can connect to it)
     # 3. The resource has at least one site associated with it
-    :connectable_resources
+    :connectable_resources,
+
+    # Map of client_id => IPv4 tuple for all clients in currently connectable static device pools.
+    :connectable_devices,
+
+    # IPv4 addresses of clients previously authorized to connect to this client.
+    :authorized_device_ipv4s
   ]
 
   @type t :: %__MODULE__{
           policies: %{Cache.Cacheable.uuid_binary() => Portal.Cache.Cacheable.Policy.t()},
           resources: %{Cache.Cacheable.uuid_binary() => Portal.Cache.Cacheable.Resource.t()},
           memberships: %{Cache.Cacheable.uuid_binary() => Cache.Cacheable.uuid_binary()},
-          connectable_resources: [Cache.Cacheable.Resource.t()]
+          connectable_resources: [Cache.Cacheable.Resource.t()],
+          connectable_devices: %{Ecto.UUID.t() => {byte(), byte(), byte(), byte()}},
+          authorized_device_ipv4s: MapSet.t({byte(), byte(), byte(), byte()})
         }
 
   @doc """
@@ -143,6 +151,27 @@ defmodule Portal.Cache.Client do
     end
   end
 
+  @spec authorize_device_access(t(), {byte(), byte(), byte(), byte()}) ::
+          :ok | {:error, :forbidden}
+  def authorize_device_access(cache, {_, _, _, _} = target_ipv4) do
+    if Enum.any?(cache.connectable_devices, fn {_, ipv4} -> ipv4 == target_ipv4 end),
+      do: :ok,
+      else: {:error, :forbidden}
+  end
+
+  @spec track_authorized_device_ipv4(t(), Postgrex.INET.t() | nil) :: t()
+  def track_authorized_device_ipv4(cache, nil), do: cache
+
+  def track_authorized_device_ipv4(cache, %Postgrex.INET{address: ipv4_tuple}) do
+    %{cache | authorized_device_ipv4s: MapSet.put(cache.authorized_device_ipv4s, ipv4_tuple)}
+  end
+
+  @spec device_ipv4_relevant?(t(), {byte(), byte(), byte(), byte()}) :: boolean()
+  def device_ipv4_relevant?(cache, {_, _, _, _} = ipv4) do
+    MapSet.member?(cache.authorized_device_ipv4s, ipv4) or
+      Enum.any?(cache.connectable_devices, fn {_, v} -> v == ipv4 end)
+  end
+
   @doc """
     Recomputes the list of connectable resources, returning the newly connectable resources
     and the IDs of resources that are no longer connectable so that the client may update its
@@ -185,7 +214,17 @@ defmodule Portal.Cache.Client do
         load!(r.id)
       end
 
-    cache = %{cache | connectable_resources: connectable_resources}
+    connectable_devices =
+      connectable_resources
+      |> Enum.filter(&(&1.type == :static_device_pool))
+      |> Enum.map(&load!(&1.id))
+      |> Database.all_member_ipv4s(subject)
+
+    cache = %{
+      cache
+      | connectable_resources: connectable_resources,
+        connectable_devices: connectable_devices
+    }
 
     {:ok, added, removed_ids, cache}
   end
@@ -462,6 +501,35 @@ defmodule Portal.Cache.Client do
     end
   end
 
+  @spec add_static_device_pool_member(
+          t(),
+          Portal.StaticDevicePoolMember.t(),
+          Authentication.Subject.t()
+        ) :: {:ok, t()}
+  def add_static_device_pool_member(cache, %Portal.StaticDevicePoolMember{} = member, subject) do
+    if connectable_resource?(cache, member.resource_id) do
+      ipv4 = Database.get_client_ipv4(member.client_id, subject)
+
+      updated =
+        if ipv4 do
+          Map.put(cache.connectable_devices, member.client_id, ipv4)
+        else
+          cache.connectable_devices
+        end
+
+      {:ok, %{cache | connectable_devices: updated}}
+    else
+      {:ok, cache}
+    end
+  end
+
+  @spec delete_static_device_pool_member(t(), Portal.StaticDevicePoolMember.t()) ::
+          {:ok, {byte(), byte(), byte(), byte()} | nil, t()}
+  def delete_static_device_pool_member(cache, %Portal.StaticDevicePoolMember{} = member) do
+    {ipv4, updated} = Map.pop(cache.connectable_devices, member.client_id)
+    {:ok, ipv4, %{cache | connectable_devices: updated}}
+  end
+
   defp hydrate(client, subject) do
     attributes = %{
       actor_id: client.actor_id
@@ -489,6 +557,8 @@ defmodule Portal.Cache.Client do
       cache
       |> Map.put(:memberships, memberships)
       |> Map.put(:connectable_resources, [])
+      |> Map.put(:connectable_devices, %{})
+      |> Map.put(:authorized_device_ipv4s, Database.authorized_ipv4s(client.id, subject))
     end
   end
 
@@ -496,9 +566,22 @@ defmodule Portal.Cache.Client do
     for id <- conforming_resource_ids,
         adapted_resource = Map.get(resources, id) |> adapt(session),
         not is_nil(adapted_resource),
-        not is_nil(adapted_resource.site) do
+        resource_connectable_without_gateway?(adapted_resource) or
+          not is_nil(adapted_resource.site) do
       adapted_resource
     end
+  end
+
+  defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{
+         type: :static_device_pool
+       }),
+       do: true
+
+  defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{}), do: false
+
+  defp connectable_resource?(cache, resource_id) do
+    resource_id_bytes = dump!(resource_id)
+    Enum.any?(cache.connectable_resources, &(&1.id == resource_id_bytes))
   end
 
   defp adapt(resource, session) do
@@ -694,6 +777,7 @@ defmodule Portal.Cache.Client do
     def fetch_resource_by_id(id, subject) do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
+        |> preload([:site])
         |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
@@ -724,6 +808,70 @@ defmodule Portal.Cache.Client do
       from(s in Portal.Site, where: s.id == ^id)
       |> Safe.scoped(subject, :replica)
       |> Safe.one()
+    end
+
+    def all_member_ipv4s([], _subject), do: %{}
+
+    def all_member_ipv4s(resource_ids, subject) do
+      from(r in Portal.Resource, as: :resources)
+      |> where([resources: r], r.id in ^resource_ids)
+      |> join(:inner, [resources: r], m in assoc(r, :static_pool_members), as: :members)
+      |> join(:inner, [members: m], c in assoc(m, :client), as: :clients)
+      |> join(:inner, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
+      |> select([members: m, ipv4: ipv4], {m.client_id, ipv4.address})
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, :unauthorized} ->
+          %{}
+
+        rows ->
+          Map.new(rows, fn {client_id, ipv4} -> {Ecto.UUID.cast!(client_id), ipv4.address} end)
+      end
+    end
+
+    def get_client_ipv4(client_id, subject) do
+      from(c in Portal.Client, where: c.id == ^client_id)
+      |> join(:inner, [c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
+      |> select([ipv4: ipv4], ipv4.address)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        %Postgrex.INET{address: tuple} ->
+          tuple
+
+        nil ->
+          Logger.error("IPv4 address not found for client", client_id: client_id)
+          nil
+
+        {:error, reason} ->
+          Logger.error("Failed to fetch IPv4 for client",
+            client_id: client_id,
+            reason: inspect(reason)
+          )
+
+          nil
+      end
+    end
+
+    def authorized_ipv4s(client_id, subject) do
+      now = DateTime.utc_now()
+
+      from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.receiving_client_id == ^client_id)
+      |> where([policy_authorizations: pa], pa.expires_at > ^now)
+      |> join(:inner, [policy_authorizations: pa], c in Portal.Client,
+        on: c.id == pa.client_id,
+        as: :clients
+      )
+      |> join(:inner, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
+      |> select([ipv4: ipv4], ipv4.address)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, :unauthorized} -> MapSet.new()
+        rows -> MapSet.new(rows, & &1.address)
+      end
     end
   end
 end

@@ -123,6 +123,14 @@ defmodule PortalWeb.Resources.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>
+              Type
+            </:label>
+            <:value>
+              {format_resource_type(@resource.type)}
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={@resource.type != :static_device_pool}>
+            <:label>
               Address
             </:label>
             <:value>
@@ -134,7 +142,7 @@ defmodule PortalWeb.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={@resource.type != :static_device_pool}>
             <:label>
               Address Description
             </:label>
@@ -165,7 +173,7 @@ defmodule PortalWeb.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={@resource.type != :static_device_pool}>
             <:label>
               Site
             </:label>
@@ -181,6 +189,41 @@ defmodule PortalWeb.Resources.Show do
               </.link>
               <span :if={is_nil(@resource.site)}>
                 Not linked to a site
+              </span>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={@resource.type == :static_device_pool}>
+            <:label>
+              Devices
+            </:label>
+            <:value>
+              <span :if={@resource.static_pool_members == []} class="text-neutral-500 text-sm">
+                No devices in pool
+              </span>
+              <ul :if={@resource.static_pool_members != []} class="space-y-1">
+                <li
+                  :for={member <- Enum.take(@resource.static_pool_members, 5)}
+                  class="flex items-center gap-2"
+                >
+                  <.link navigate={~p"/#{@account}/clients/#{member.client_id}"} class={link_style()}>
+                    {(member.client && member.client.name) || member.client_id}
+                  </.link>
+                  <span
+                    :if={member.client && member.client.ipv4_address}
+                    class="text-xs text-neutral-400"
+                  >
+                    {Portal.Types.INET.to_string(member.client.ipv4_address.address)}
+                  </span>
+                </li>
+              </ul>
+              <span
+                :if={length(@resource.static_pool_members) > 5}
+                class="text-xs text-neutral-500 mt-1 block"
+              >
+                and {length(@resource.static_pool_members) - 5} more —
+                <.link navigate={~p"/#{@account}/resources/#{@resource.id}/edit"} class={link_style()}>
+                  view all
+                </.link>
               </span>
             </:value>
           </.vertical_table_row>
@@ -415,6 +458,12 @@ defmodule PortalWeb.Resources.Show do
   defp format_ip_stack(:ipv4_only), do: "IPv4 only"
   defp format_ip_stack(:ipv6_only), do: "IPv6 only"
 
+  defp format_resource_type(:internet), do: "Internet"
+  defp format_resource_type(:dns), do: "DNS"
+  defp format_resource_type(:ip), do: "IP"
+  defp format_resource_type(:cidr), do: "CIDR"
+  defp format_resource_type(:static_device_pool), do: "Device Pool"
+
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
@@ -423,7 +472,7 @@ defmodule PortalWeb.Resources.Show do
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
-      |> preload([:site, :policies])
+      |> preload([:site, :policies, static_pool_members: [client: [:ipv4_address]]])
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end
