@@ -674,12 +674,13 @@ defmodule PortalAPI.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Portal.Resource{filters: old_filters},
-           struct: %Portal.Resource{filters: filters} = resource
+           old_struct: %Portal.Resource{filters: old_filters, type: old_type},
+           struct: %Portal.Resource{filters: filters, type: type} = resource
          },
          socket
        )
-       when old_filters != filters do
+       when old_filters != filters and type != :static_device_pool and
+              old_type != :static_device_pool do
     # Send regardless of cache state - if the Gateway has no policy_authorizations for this resource,
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
