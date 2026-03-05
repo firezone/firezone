@@ -4,6 +4,13 @@
 @plugin "flowbite/plugin";
 @import "./scrollbar.css";
 
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]):not([disabled]) {
+    cursor: pointer;
+  }
+}
+
 @layer utilities {
   .scrollbar-gutter-stable {
     scrollbar-gutter: stable;
