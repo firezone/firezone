@@ -1423,6 +1423,36 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
+    test "does not send resource_updated for static_device_pool filter changes", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      account: account
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      resource = static_device_pool_resource_fixture(account: account)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "name" => resource.name,
+        "type" => "static_device_pool",
+        "filters" => [],
+        "ip_stack" => nil
+      }
+
+      filters = [%{"protocol" => "tcp", "ports" => ["80"]}]
+      data = Map.put(old_data, "filters", filters)
+
+      Changes.Hooks.Resources.on_update(100, old_data, data)
+
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "resource_updated", _
+    end
+
     test "subscribes for relays presence", %{
       gateway: gateway,
       site: site,
