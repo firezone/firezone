@@ -5,7 +5,7 @@ mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
 
-pub use device::Device;
+pub use device::{Device, TunChannelClosed};
 
 use crate::{TunnelError, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
