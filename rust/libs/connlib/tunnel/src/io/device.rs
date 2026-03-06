@@ -8,11 +8,21 @@ use std::task::ready;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
 
+/// How many packets we at most expect to buffer on the stack.
+///
+/// Assuming the channel to our TUN send thread is completely full, we should at most get one more batch of packets from the UDP thread.
+/// How many packets we get there in one batch is platform-dependent but even on platforms like Linux where GSO is well supported,
+/// it shouldn't be more than 64 (32 for each IP version).
+///
+/// Using 128 here is already conservative and in case we exceed it, `SmallVec` will just allocate and not panic.
+/// Thus, in the happy path, this will be very efficient and only use stack-space.
+const MAX_BUFFERED_PACKETS: usize = 128;
+
 pub struct Device {
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
-    outbound_buffer: SmallVec<[IpPacket; 256]>,
+    outbound_buffer: SmallVec<[IpPacket; MAX_BUFFERED_PACKETS]>,
     flush_future: Option<BoxFuture<'static, Result<()>>>,
 }
 
