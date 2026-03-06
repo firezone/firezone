@@ -11,7 +11,7 @@
   import Cocoa
 
   @MainActor
-  class UpdateChecker {
+  class UpdateChecker: UpdateCheckerProtocol {
     enum UpdateError: Error {
       case invalidVersion(String)
 

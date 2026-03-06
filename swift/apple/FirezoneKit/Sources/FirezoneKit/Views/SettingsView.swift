@@ -622,12 +622,9 @@ public struct SettingsView: View {
 
         Task {
           do {
-            guard let session = try store.manager().session() else {
-              throw VPNConfigurationManagerError.managerNotInitialized
-            }
             try await LogExporter.export(
               to: destinationURL,
-              session: session
+              store: store
             )
 
             window.contentViewController?.presentingViewController?.dismiss(self)
@@ -710,10 +707,7 @@ public struct SettingsView: View {
 
     do {
       #if os(macOS)
-        guard let session = try store.manager().session() else {
-          throw VPNConfigurationManagerError.managerNotInitialized
-        }
-        let providerLogFolderSize = try await IPCClient.getLogFolderSize(session: session)
+        let providerLogFolderSize = try await store.getLogFolderSize()
         let totalSize = logFolderSize + providerLogFolderSize
       #else
         let totalSize = logFolderSize

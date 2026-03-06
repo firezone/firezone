@@ -8,9 +8,8 @@ import Foundation
 @preconcurrency import NetworkExtension
 import SystemPackage
 
-// TODO: Use a more abstract IPC protocol to make this less terse
-
-enum IPCClient {
+@MainActor
+public final class IPCClient {
   enum Error: Swift.Error {
     case decodeIPCDataFailed
     case noIPCData
@@ -28,14 +27,15 @@ enum IPCClient {
     }
   }
 
-  // Encoder used to send messages to the tunnel
-  private static let encoder = PropertyListEncoder()
-  private static let decoder = PropertyListDecoder()
+  private let encoder = PropertyListEncoder()
+  private let decoder = PropertyListDecoder()
 
-  // Auto-connect
-  @MainActor
-  static func start(
-    session: NETunnelProviderSession, configuration: TunnelConfiguration
+  public init() {}
+
+  // MARK: - Public API
+
+  public func start(
+    session: TunnelSessionProtocol, configuration: TunnelConfiguration
   ) throws {
     let configData = try encoder.encode(configuration)
     let options: [String: NSObject] = [
@@ -44,141 +44,101 @@ enum IPCClient {
     try session.startTunnel(options: options)
   }
 
-  // Sign in
-  @MainActor
-  static func start(
-    session: NETunnelProviderSession, token: String, configuration: TunnelConfiguration
+  public func start(
+    session: TunnelSessionProtocol, token: String, configuration: TunnelConfiguration
   ) throws {
     let configData = try encoder.encode(configuration)
     let options: [String: NSObject] = [
       "token": token as NSObject,
       "configuration": configData as NSObject,
     ]
-
     try session.startTunnel(options: options)
   }
 
-  @MainActor
-  static func signOut(session: NETunnelProviderSession) async throws {
+  public func signOut(session: TunnelSessionProtocol) async throws {
     let message = ProviderMessage.signOut
     _ = try await sendProviderMessage(session: session, message: message)
-
     session.stopTunnel()
   }
 
-  @MainActor
-  static func fetchState(
-    session: NETunnelProviderSession, currentHash: Data
+  public func fetchState(
+    session: TunnelSessionProtocol, currentHash: Data
   ) async throws -> Data? {
     let message = ProviderMessage.getState(currentHash)
-
-    // Get data from the provider - if hash matches, provider returns nil
     return try await sendProviderMessage(session: session, message: message)
   }
 
-  @MainActor
-  static func setConfiguration(
-    session: NETunnelProviderSession, _ configuration: TunnelConfiguration
+  public func setConfiguration(
+    session: TunnelSessionProtocol, _ configuration: TunnelConfiguration
   ) async throws {
     let message = ProviderMessage.setConfiguration(configuration)
     _ = try await sendProviderMessage(session: session, message: message)
   }
 
-  // MARK: - Low-level IPC operations
-
-  @MainActor
-  static func clearLogs(session: NETunnelProviderSession) async throws {
+  public func clearLogs(session: TunnelSessionProtocol) async throws {
     let message = ProviderMessage.clearLogs
     _ = try await sendProviderMessage(session: session, message: message)
   }
 
-  @MainActor
-  static func getLogFolderSize(session: NETunnelProviderSession) async throws -> Int64 {
-    let message = ProviderMessage.getLogFolderSize
-    guard let data = try await sendProviderMessage(session: session, message: message)
-    else {
-      throw Error.noIPCData
-    }
-
-    return data.withUnsafeBytes { rawBuffer in
-      rawBuffer.load(as: Int64.self)
-    }
-  }
-
-  @MainActor
-  static func fetchEncodedFirezoneId(session: NETunnelProviderSession) async throws -> String? {
+  public func fetchEncodedFirezoneId(session: TunnelSessionProtocol) async throws -> String? {
     guard let data = try await sendProviderMessage(session: session, message: .getEncodedFirezoneId)
     else { return nil }
     return String(data: data, encoding: .utf8)
   }
 
-  @MainActor
-  static func exportLogs(session: NETunnelProviderSession, fd: FileDescriptor) async throws {
-    let isCycleStart = try await maybeCycleStart(session)
-    defer {
-      if isCycleStart { session.stopTunnel() }
-    }
+  #if os(macOS)
+    public func getLogFolderSize(session: TunnelSessionProtocol) async throws -> Int64 {
+      let message = ProviderMessage.getLogFolderSize
+      guard let data = try await sendProviderMessage(session: session, message: message)
+      else {
+        throw Error.noIPCData
+      }
 
-    let message = ProviderMessage.exportLogs
-    let encodedMessage = try encoder.encode(message)
-
-    func nextChunk() async throws -> LogChunk {
-      try await withCheckedThrowingContinuation { continuation in
-        do {
-          try session.sendProviderMessage(encodedMessage) { data in
-            guard let data else {
-              return continuation.resume(throwing: Error.noIPCData)
-            }
-            guard let chunk = try? decoder.decode(LogChunk.self, from: data) else {
-              return continuation.resume(throwing: Error.decodeIPCDataFailed)
-            }
-            continuation.resume(returning: chunk)
-          }
-        } catch {
-          continuation.resume(throwing: error)
-        }
+      return data.withUnsafeBytes { rawBuffer in
+        rawBuffer.load(as: Int64.self)
       }
     }
 
-    while true {
-      let chunk = try await nextChunk()
+    public func exportLogs(session: TunnelSessionProtocol, fd: FileDescriptor) async throws {
+      let isCycleStart = try await maybeCycleStart(session)
+      defer {
+        if isCycleStart { session.stopTunnel() }
+      }
 
-      try fd.writeAll(chunk.data)
+      let message = ProviderMessage.exportLogs
+      let encodedMessage = try encoder.encode(message)
 
-      if chunk.done { break }
-    }
-  }
-
-  /// Returns a stream of VPN status updates for the given session.
-  ///
-  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
-  /// The caller is responsible for consuming the stream in a task they manage.
-  static func vpnStatusUpdates(
-    session: NETunnelProviderSession
-  ) -> AsyncStream<NEVPNStatus> {
-    AsyncStream { continuation in
-      let task = Task {
-        for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange)
-        {
-          guard let notificationSession = notification.object as? NETunnelProviderSession
-          else {
-            return
-          }
-
-          if notificationSession === session {
-            continuation.yield(notificationSession.status)
+      func nextChunk() async throws -> LogChunk {
+        try await withCheckedThrowingContinuation { continuation in
+          do {
+            try session.sendProviderMessage(encodedMessage) { data in
+              guard let data else {
+                return continuation.resume(throwing: Error.noIPCData)
+              }
+              guard let chunk = try? self.decoder.decode(LogChunk.self, from: data) else {
+                return continuation.resume(throwing: Error.decodeIPCDataFailed)
+              }
+              continuation.resume(returning: chunk)
+            }
+          } catch {
+            continuation.resume(throwing: error)
           }
         }
-        continuation.finish()
       }
-      continuation.onTermination = { _ in task.cancel() }
-    }
-  }
 
-  private static func sendProviderMessage(
-    session: NETunnelProviderSession,
-    message: ProviderMessage,
+      while true {
+        let chunk = try await nextChunk()
+        try fd.writeAll(chunk.data)
+        if chunk.done { break }
+      }
+    }
+  #endif
+
+  // MARK: - Private
+
+  private func sendProviderMessage(
+    session: TunnelSessionProtocol,
+    message: ProviderMessage
   ) async throws -> Data? {
     let isCycleStart = try await maybeCycleStart(session)
 
@@ -200,7 +160,7 @@ enum IPCClient {
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
   /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
   /// so that the caller may stop the tunnel afterwards.
-  private static func maybeCycleStart(_ session: NETunnelProviderSession) async throws -> Bool {
+  private func maybeCycleStart(_ session: TunnelSessionProtocol) async throws -> Bool {
     if session.status == .invalid {
       throw Error.invalidStatus(session.status)
     }
@@ -221,5 +181,19 @@ enum IPCClient {
     #endif
 
     return false
+  }
+}
+
+// MARK: - Legacy static method for VPNConfigurationManager migration
+
+extension IPCClient {
+  /// Static convenience for use during legacy configuration migration only.
+  /// VPNConfigurationManager.maybeMigrateConfiguration() uses this because it operates
+  /// on a concrete NETunnelProviderSession before Store/DI is available.
+  @MainActor
+  static func setConfigurationForMigration(
+    session: NETunnelProviderSession, _ configuration: TunnelConfiguration
+  ) async throws {
+    try await IPCClient().setConfiguration(session: session, configuration)
   }
 }

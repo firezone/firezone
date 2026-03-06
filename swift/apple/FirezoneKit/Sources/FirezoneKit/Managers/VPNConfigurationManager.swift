@@ -16,7 +16,7 @@ enum VPNConfigurationManagerError: Error {
   var localizedDescription: String {
     switch self {
     case .managerNotInitialized:
-      return "NETunnelProviderManager is not yet initialized. Race condition?"
+      return "VPN configuration is not yet loaded. Is the tunnel session available?"
     }
   }
 }
@@ -27,9 +27,13 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: NETunnelProviderManager
 
-  // App cannot run without bundle identifier - force unwrap is safe
-  // swiftlint:disable:next force_unwrapping
-  public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
+  nonisolated public static var bundleIdentifier: String {
+    guard let mainBundleId = Bundle.main.bundleIdentifier else {
+      // Return a placeholder for test environment where main bundle has no identifier
+      return "dev.firezone.firezone.network-extension"
+    }
+    return "\(mainBundleId).network-extension"
+  }
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
@@ -136,7 +140,7 @@ public final class VPNConfigurationManager {
       configuration.internetResourceEnabled = internetResourceEnabled == "true"
     }
 
-    try await IPCClient.setConfiguration(session: session, configuration.toTunnelConfiguration())
+    try await IPCClient.setConfigurationForMigration(session: session, configuration.toTunnelConfiguration())
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {
