@@ -2,7 +2,7 @@ use anyhow::Result;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use ip_packet::IpPacket;
-use std::collections::VecDeque;
+use smallvec::SmallVec;
 use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
@@ -12,7 +12,7 @@ pub struct Device {
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
-    outbound_buffer: VecDeque<IpPacket>,
+    outbound_buffer: SmallVec<[IpPacket; 256]>,
     flush_future: Option<BoxFuture<'static, Result<()>>>,
 }
 
@@ -21,7 +21,7 @@ impl Device {
         Self {
             tun: None,
             waker: None,
-            outbound_buffer: VecDeque::new(),
+            outbound_buffer: SmallVec::new(),
             flush_future: None,
         }
     }
@@ -62,9 +62,9 @@ impl Device {
                 return Poll::Ready(Ok(()));
             }
 
-            // We have packets to send. Create a reserve_many future that sends them.
             let packets = mem::take(&mut self.outbound_buffer);
             let tx = tun.sender().clone();
+
             self.flush_future = Some(
                 async move {
                     let permits = tx
@@ -104,7 +104,7 @@ impl Device {
         // Try to send immediately if channel has capacity.
         if let Err(packet) = tun.sender().try_send(packet).map_err(|e| e.into_inner()) {
             // On error, buffer the packet.
-            self.outbound_buffer.push_back(packet);
+            self.outbound_buffer.push(packet);
         }
     }
 }
@@ -132,7 +132,7 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1234, 5678, &[])
                 .unwrap();
 
-        device.outbound_buffer.push_back(packet);
+        device.send(packet);
 
         let err = std::future::poll_fn(|cx| device.poll_flush(cx))
             .await

@@ -8531,6 +8531,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha2",
+ "smallvec",
  "snownet",
  "socket-factory",
  "socket2 0.6.2",
