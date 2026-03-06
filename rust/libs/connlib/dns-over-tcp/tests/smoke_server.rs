@@ -103,11 +103,12 @@ impl Eventloop {
 
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
-            ready!(self.tun.poll_send_ready(cx)).unwrap();
-
-            if let Some(packet) = self.dns_server.poll_outbound() {
-                self.tun.send(packet).unwrap();
-                continue;
+            // Try to send outbound packets
+            while let Some(packet) = self.dns_server.poll_outbound() {
+                if self.tun.sender().try_send(packet).is_err() {
+                    // Channel full, try again later
+                    break;
+                }
             }
 
             if let Some(query) = self.dns_server.poll_queries() {
@@ -122,7 +123,9 @@ impl Eventloop {
             }
 
             let mut buf = Vec::with_capacity(1);
-            ready!(self.tun.poll_recv_many(cx, &mut buf, 1));
+            if ready!(self.tun.receiver().poll_recv_many(cx, &mut buf, 1)) == 0 {
+                continue;
+            }
             let ip_packet = buf.remove(0);
 
             if self.dns_server.accepts(&ip_packet) {

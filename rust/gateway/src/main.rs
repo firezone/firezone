@@ -408,55 +408,12 @@ struct ValidateChecksumAdapter {
 }
 
 impl Tun for ValidateChecksumAdapter {
-    fn poll_send_ready(
-        &mut self,
-        cx: &mut std::task::Context,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        self.inner.poll_send_ready(cx)
+    fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+        self.inner.sender()
     }
 
-    fn send(&mut self, packet: IpPacket) -> std::io::Result<()> {
-        if let Some(ipv4) = packet.ipv4_header() {
-            let expected = ipv4.calc_header_checksum();
-            let actual = ipv4.header_checksum;
-
-            if expected != actual {
-                tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
-            }
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            let actual = udp.checksum();
-            let expected = packet
-                .calculate_udp_checksum()
-                .map_err(std::io::Error::other)?;
-
-            if expected != actual {
-                tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
-            }
-        }
-
-        if let Some(tcp) = packet.as_tcp() {
-            let actual = tcp.checksum();
-            let expected = packet
-                .calculate_tcp_checksum()
-                .map_err(std::io::Error::other)?;
-
-            if expected != actual {
-                tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
-            }
-        }
-
-        self.inner.send(packet)
-    }
-
-    fn poll_recv_many(
-        &mut self,
-        cx: &mut std::task::Context,
-        buf: &mut Vec<IpPacket>,
-        max: usize,
-    ) -> std::task::Poll<usize> {
-        self.inner.poll_recv_many(cx, buf, max)
+    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+        self.inner.receiver()
     }
 
     fn name(&self) -> &str {

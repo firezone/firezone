@@ -1,10 +1,13 @@
+mod device;
 mod doh;
 mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
 
-use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
+pub use device::Device;
+
+use crate::{TunnelError, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
 use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
@@ -17,7 +20,7 @@ use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     io,
     net::{IpAddr, SocketAddr},
     pin::Pin,
@@ -67,7 +70,6 @@ pub struct Io {
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
     tun: Device,
-    outbound_packet_buffer: VecDeque<IpPacket>,
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
@@ -163,7 +165,6 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            outbound_packet_buffer: VecDeque::default(),
             timeout: None,
             sockets,
             nameservers: NameserverSet::new(
@@ -439,22 +440,8 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        loop {
-            // First, check if we can send more packets.
-            if self.tun.poll_send_ready(cx)?.is_pending() {
-                any_pending = true;
-                break;
-            }
-
-            // Second, check if we have any buffer packets.
-            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
-                break; // No more packets? All done.
-            };
-
-            // Third, send the packet.
-            self.tun
-                .send(packet)
-                .context("Failed to send IP packet to TUN device")?;
+        if self.tun.poll_flush(cx)?.is_pending() {
+            any_pending = true;
         }
 
         if any_pending {
@@ -477,7 +464,7 @@ impl Io {
             ],
         );
 
-        self.outbound_packet_buffer.push_back(packet);
+        self.tun.send(packet);
     }
 
     pub fn reset(&mut self) {
@@ -773,7 +760,7 @@ mod tests {
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
             );
-            io.set_tun(Box::new(DummyTun));
+            io.set_tun(Box::new(DummyTun::new()));
 
             io
         }
@@ -810,24 +797,25 @@ mod tests {
         }
     }
 
-    struct DummyTun;
+    struct DummyTun {
+        tx: tokio::sync::mpsc::Sender<IpPacket>,
+        rx: tokio::sync::mpsc::Receiver<IpPacket>,
+    }
+
+    impl DummyTun {
+        fn new() -> Self {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            Self { tx, rx }
+        }
+    }
 
     impl Tun for DummyTun {
-        fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
+        fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+            &self.tx
         }
 
-        fn send(&mut self, _: IpPacket) -> io::Result<()> {
-            Ok(())
-        }
-
-        fn poll_recv_many(
-            &mut self,
-            _: &mut Context,
-            _: &mut Vec<IpPacket>,
-            _: usize,
-        ) -> Poll<usize> {
-            Poll::Pending
+        fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+            &mut self.rx
         }
 
         fn name(&self) -> &str {

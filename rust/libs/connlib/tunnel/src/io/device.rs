@@ -1,0 +1,168 @@
+use anyhow::Result;
+use futures::FutureExt;
+use futures::future::BoxFuture;
+use ip_packet::IpPacket;
+use std::collections::VecDeque;
+use std::mem;
+use std::task::ready;
+use std::task::{Context, Poll, Waker};
+use tun::Tun;
+
+pub struct Device {
+    tun: Option<Box<dyn Tun>>,
+    waker: Option<Waker>,
+
+    outbound_buffer: VecDeque<IpPacket>,
+    flush_future: Option<BoxFuture<'static, Result<()>>>,
+}
+
+impl Device {
+    pub(crate) fn new() -> Self {
+        Self {
+            tun: None,
+            waker: None,
+            outbound_buffer: VecDeque::new(),
+            flush_future: None,
+        }
+    }
+
+    pub(crate) fn set_tun(&mut self, tun: Box<dyn Tun>) {
+        tracing::debug!(name = %tun.name(), "Initializing TUN device");
+
+        self.tun = Some(tun);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+    }
+
+    pub(crate) fn poll_read_many(
+        &mut self,
+        cx: &mut Context<'_>,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        let Some(tun) = self.tun.as_mut() else {
+            self.waker = Some(cx.waker().clone());
+            return Poll::Pending;
+        };
+
+        let n = ready!(tun.receiver().poll_recv_many(cx, buf, max));
+
+        Poll::Ready(n)
+    }
+
+    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        let Some(tun) = self.tun.as_ref() else {
+            return Poll::Ready(Ok(()));
+        };
+
+        let Some(fut) = self.flush_future.as_mut() else {
+            if self.outbound_buffer.is_empty() {
+                return Poll::Ready(Ok(()));
+            }
+
+            // We have packets to send. Create a reserve_many future that sends them.
+            let packets = mem::take(&mut self.outbound_buffer);
+            let tx = tun.sender().clone();
+            self.flush_future = Some(
+                async move {
+                    let permits = tx
+                        .reserve_many(packets.len())
+                        .await
+                        .map_err(|_| TunChannelClosed)?;
+
+                    for (permit, packet) in permits.zip(packets) {
+                        permit.send(packet);
+                    }
+
+                    Ok(())
+                }
+                .fuse()
+                .boxed(),
+            );
+
+            // Poll the future we just created.
+            return self.poll_flush(cx);
+        };
+
+        ready!(fut.poll_unpin(cx))?;
+
+        Poll::Ready(Ok(()))
+    }
+
+    pub fn send(&mut self, packet: IpPacket) {
+        debug_assert!(
+            !packet.is_fz_p2p_control(),
+            "FZ p2p control protocol packets should never leave `connlib`"
+        );
+
+        let Some(tun) = self.tun.as_ref() else {
+            return;
+        };
+
+        // Try to send immediately if channel has capacity.
+        if let Err(packet) = tun.sender().try_send(packet).map_err(|e| e.into_inner()) {
+            // On error, buffer the packet.
+            self.outbound_buffer.push_back(packet);
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Channel to TUN device thread is closed")]
+pub struct TunChannelClosed;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::ErrorExt;
+    use std::net::Ipv4Addr;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn flush_returns_error_when_sender_channel_closed() {
+        let mut device = Device::new();
+        let mut test_tun = TestTun::new();
+        let _rx = std::mem::replace(&mut test_tun.rx, mpsc::channel(1).1);
+        drop(_rx);
+        device.set_tun(Box::new(test_tun));
+
+        let packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1234, 5678, &[])
+                .unwrap();
+
+        device.outbound_buffer.push_back(packet);
+
+        let err = std::future::poll_fn(|cx| device.poll_flush(cx))
+            .await
+            .unwrap_err();
+        assert!(err.any_is::<TunChannelClosed>());
+    }
+
+    struct TestTun {
+        tx: mpsc::Sender<IpPacket>,
+        rx: mpsc::Receiver<IpPacket>,
+    }
+
+    impl TestTun {
+        fn new() -> Self {
+            let (tx, rx) = mpsc::channel(1);
+            Self { tx, rx }
+        }
+    }
+
+    impl Tun for TestTun {
+        fn sender(&self) -> &mpsc::Sender<IpPacket> {
+            &self.tx
+        }
+
+        fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+            &mut self.rx
+        }
+
+        fn name(&self) -> &str {
+            "test"
+        }
+    }
+}
