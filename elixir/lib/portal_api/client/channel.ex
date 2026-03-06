@@ -1293,9 +1293,7 @@ defmodule PortalAPI.Client.Channel do
     def client_to_client_enabled?(account) do
       query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
 
-      account_feature_enabled? =
-        account.features &&
-          Map.get(account.features, :client_to_client, false)
+      account_feature_enabled? = account.features.client_to_client == true
 
       Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
     end
