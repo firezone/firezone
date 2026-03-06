@@ -299,7 +299,7 @@ impl Io {
         let device = self
             .tun
             .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
-            .map(|num_packets| {
+            .map_ok(|num_packets| {
                 let num_ipv4 = buffers.ip[..num_packets]
                     .iter()
                     .filter(|p| p.ipv4_header().is_some())
@@ -414,7 +414,7 @@ impl Io {
             now: Instant::now(),
             now_utc: Utc::now(),
             timeout,
-            device: poll_to_option(device),
+            device: poll_result_to_option(device, &mut error),
             network: poll_result_to_option(network, &mut error),
             tcp_dns_queries,
             udp_dns_queries,

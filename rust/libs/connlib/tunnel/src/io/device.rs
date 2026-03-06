@@ -51,7 +51,7 @@ impl Device {
         cx: &mut Context<'_>,
         buf: &mut Vec<IpPacket>,
         max: usize,
-    ) -> Poll<usize> {
+    ) -> Poll<Result<usize>> {
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
@@ -59,7 +59,11 @@ impl Device {
 
         let n = ready!(tun.receiver().poll_recv_many(cx, buf, max));
 
-        Poll::Ready(n)
+        if n == 0 {
+            return Poll::Ready(Err(anyhow::Error::new(TunChannelClosed)));
+        }
+
+        Poll::Ready(Ok(n))
     }
 
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
