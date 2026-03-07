@@ -3,6 +3,7 @@ defmodule Portal.OpsTest do
   import Portal.Ops
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.OutboundEmailTestHelpers
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.ClientFixtures
@@ -100,6 +101,82 @@ defmodule Portal.OpsTest do
 
     test "succeeds even when no banners exist" do
       assert {0, nil} = clear_banner()
+    end
+  end
+
+  describe "queue_admin_email/4" do
+    test "queues one batched email per account with enabled admins" do
+      account1 = account_fixture()
+      account2 = account_fixture()
+
+      admin1 = admin_actor_fixture(account: account1)
+      disabled_admin = admin_actor_fixture(account: account1)
+      admin2 = admin_actor_fixture(account: account2)
+
+      disabled_admin
+      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      assert :ok =
+               queue_admin_email(
+                 [account1.id, account2.id],
+                 "Admin Subject",
+                 "<p>Admin HTML</p>",
+                 "Admin Text"
+               )
+
+      assert collect_queued_emails(account1.id) == [
+               %{
+                 subject: "Admin Subject",
+                 html_body: "<p>Admin HTML</p>",
+                 text_body: "Admin Text",
+                 to: [],
+                 bcc: [{"", admin1.email}]
+               }
+             ]
+
+      assert collect_queued_emails(account2.id) == [
+               %{
+                 subject: "Admin Subject",
+                 html_body: "<p>Admin HTML</p>",
+                 text_body: "Admin Text",
+                 to: [],
+                 bcc: [{"", admin2.email}]
+               }
+             ]
+    end
+
+    test "skips disabled accounts when queuing for :all" do
+      enabled_account = account_fixture()
+      disabled_account = account_fixture()
+
+      enabled_admin = admin_actor_fixture(account: enabled_account)
+      _disabled_admin = admin_actor_fixture(account: disabled_account)
+
+      update_account(disabled_account, %{
+        disabled_at: DateTime.utc_now(),
+        disabled_reason: "Testing"
+      })
+
+      assert :ok =
+               queue_admin_email(
+                 :all,
+                 "Admin Subject",
+                 "<p>Admin HTML</p>",
+                 "Admin Text"
+               )
+
+      assert collect_queued_emails(enabled_account.id) == [
+               %{
+                 subject: "Admin Subject",
+                 html_body: "<p>Admin HTML</p>",
+                 text_body: "Admin Text",
+                 to: [],
+                 bcc: [{"", enabled_admin.email}]
+               }
+             ]
+
+      assert collect_queued_emails(disabled_account.id) == []
     end
   end
 end

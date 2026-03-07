@@ -3,6 +3,7 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.OutboundEmailTestHelpers
 
   setup do
     account = account_fixture()
@@ -84,7 +85,7 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "request to join"
 
-    assert_email_sent(fn email ->
+    assert_email_queued(account.id, fn email ->
       assert email.subject == "REST API Beta Request - #{account.id}"
       assert email.text_body =~ "REST API Beta Request"
       assert email.text_body =~ "#{account.id}"

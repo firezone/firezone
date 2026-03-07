@@ -71,7 +71,7 @@
                     Account Limits Exceeded
                   </h1>
                   <p style="margin: 0; line-height: 24px">
-                    Your Firezone account <strong><%= @account.slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account.id %></code>) has exceeded the following limits:
+                    Your Firezone account <strong><%= @account_slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account_id %></code>) has exceeded the following limits:
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
                   <div style="margin: 0; padding: 16px; background-color: #fef2f2; border-radius: 4px; color: #991b1b; font-weight: 500; line-height: 24px">

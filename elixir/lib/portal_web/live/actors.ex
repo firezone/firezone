@@ -525,8 +525,8 @@ defmodule PortalWeb.Actors do
         socket.assigns.subject
       )
       |> Portal.Mailer.deliver_with_rate_limit(
-        rate_limit: 3,
         rate_limit_key: {:welcome_email, actor.id},
+        rate_limit: 3,
         rate_limit_interval: :timer.minutes(3)
       )
       |> case do

@@ -63,6 +63,10 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
+config :portal, Portal.Workers.OutboundEmail,
+  rate_limit_per_minute: 30,
+  rate_limit_per_hour: 100
+
 config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
@@ -219,6 +223,7 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 ##### Third-party configs #####
 ###############################
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
+config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
 
 # Allow asserting on info logs and higher
 config :logger, level: :info

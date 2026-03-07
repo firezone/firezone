@@ -1,6 +1,6 @@
 Account Limits Exceeded
 
-Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has exceeded the following limits:
+Your Firezone account "<%= @account_slug %>" (<%= @account_id %>) has exceeded the following limits:
 
 <%= @warning %>
 
