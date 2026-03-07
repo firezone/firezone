@@ -28,7 +28,7 @@ defmodule Portal.Mailer.RateLimiter do
 
   @impl true
   def handle_info(:prune_expired_counters, %{prune_interval: prune_interval} = state) do
-    _ = prune_expired_counters()
+    prune_expired_counters()
     :ok = schedule_tick(prune_interval)
     {:noreply, state}
   end
@@ -47,7 +47,7 @@ defmodule Portal.Mailer.RateLimiter do
 
   @doc false
   def prune(ets_table_name \\ @default_ets_table_name) do
-    _ = :ets.delete_all_objects(ets_table_name)
+    :ets.delete_all_objects(ets_table_name)
     :ok
   end
 
@@ -82,7 +82,7 @@ defmodule Portal.Mailer.RateLimiter do
   end
 
   def reset_rate_limit(key, ets_table_name \\ @default_ets_table_name) do
-    _ = delete_counter(ets_table_name, key)
+    delete_counter(ets_table_name, key)
     :ok
   end
 

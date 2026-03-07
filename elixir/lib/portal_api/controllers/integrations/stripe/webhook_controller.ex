@@ -8,7 +8,7 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
 
   def handle_webhook(conn, _params) do
     with [signature_header] <- get_req_header(conn, "stripe-signature"),
-         {:ok, body, conn} <- read_body(conn),
+         {:ok, body, conn} <- read_body(conn, length: 1_000_000),
          {:ok, {timestamp, signatures}} <- fetch_timestamp_and_signatures(signature_header),
          :ok <- verify_timestamp(timestamp, @tolerance),
          secret = Billing.fetch_webhook_signing_secret!(),
@@ -19,6 +19,9 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
     else
       [] ->
         send_resp(conn, 400, "Bad Request: missing signature header")
+
+      {:error, :too_large} ->
+        send_resp(conn, 413, "Request Entity Too Large")
 
       {:error, :missing_timestamp} ->
         send_resp(conn, 400, "Bad Request: missing timestamp")

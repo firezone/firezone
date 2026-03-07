@@ -1,10 +1,14 @@
 defmodule Portal.Workers.OutdatedGatewaysTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
   import Portal.ClientSessionFixtures
+  import Portal.GatewayFixtures
+  import Portal.OutboundEmailTestHelpers
+  import Portal.SiteFixtures
 
   alias Portal.Workers.OutdatedGateways
 
@@ -126,6 +130,46 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       )
 
       assert OutdatedGateways.Database.count_incompatible_for(account, "1.3.0") == 0
+    end
+  end
+
+  describe "perform/1" do
+    test "enqueues outdated gateway notifications instead of delivering inline" do
+      account =
+        account_fixture(
+          config: %{
+            notifications: %{
+              outdated_gateway: %{enabled: true}
+            }
+          }
+        )
+
+      admin = admin_actor_fixture(account: account)
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_version: "0.9.0"
+        )
+
+      assert :ok =
+               Portal.Presence.Gateways.connect(
+                 gateway,
+                 gateway.latest_session.gateway_token_id
+               )
+
+      assert Map.has_key?(Portal.Presence.Gateways.Site.list(site.id), gateway.id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      assert_email_queued(account.id, fn email ->
+        assert email.subject == "Firezone Gateway Upgrade Available"
+        assert email.bcc == [{"", admin.email}]
+      end)
+
+      refute_email_sent()
     end
   end
 end

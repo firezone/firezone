@@ -114,7 +114,7 @@ defmodule PortalWeb.Settings.Account do
       socket.assigns.account,
       socket.assigns.subject
     )
-    |> Portal.Mailer.deliver()
+    |> Portal.Mailer.enqueue()
 
     socket =
       socket

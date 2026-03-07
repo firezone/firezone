@@ -88,6 +88,8 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     client_tokens
     one_time_passcodes
     portal_sessions
+    outbound_emails
+    outbound_email_deliveries
     ipv4_addresses
     ipv6_addresses
     api_tokens
@@ -418,6 +420,13 @@ config :swoosh, :api_client, Swoosh.ApiClient.Req
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
   from_email: "test@firez.one"
+
+config :portal, Portal.Mailer.Secondary,
+  adapter: Portal.Mailer.NoopAdapter,
+  from_email: "test@firez.one",
+  req_opts: [retry: :transient]
+
+config :portal, Portal.AzureCommunicationServices, event_grid_webhook_secret: nil
 
 config :esbuild,
   version: "0.25.4",

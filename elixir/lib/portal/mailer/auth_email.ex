@@ -22,6 +22,7 @@ defmodule Portal.Mailer.AuthEmail do
     default_email()
     |> subject("Welcome to Firezone")
     |> to(actor.email)
+    |> with_account_id(account.id)
     |> render_body(__MODULE__, :sign_up_link,
       account: account,
       sign_in_form_url: sign_in_form_url,
@@ -50,6 +51,7 @@ defmodule Portal.Mailer.AuthEmail do
     default_email()
     |> subject("Firezone sign in token")
     |> to(actor.email)
+    |> with_account_id(actor.account.id)
     |> render_body(__MODULE__, :sign_in_link,
       account: actor.account,
       client_sign_in: params["as"] == "client",
@@ -69,6 +71,7 @@ defmodule Portal.Mailer.AuthEmail do
     default_email()
     |> subject("Welcome to Firezone")
     |> to(actor.email)
+    |> with_account_id(account.id)
     |> render_body(__MODULE__, :new_user,
       account: account,
       actor: actor,

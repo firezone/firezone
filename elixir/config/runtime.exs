@@ -271,7 +271,8 @@ if config_env() == :prod do
           google_sync: 5,
           okta_scheduler: 1,
           okta_sync: 5,
-          sync_error_notifications: 1
+          sync_error_notifications: 1,
+          outbound_emails: 1
         ],
         else: []
       ),
@@ -463,6 +464,17 @@ if config_env() == :prod do
            adapter: env_var_to_config!(:outbound_email_adapter),
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
+
+  config :portal,
+         Portal.Mailer.Secondary,
+         [
+           adapter: env_var_to_config!(:secondary_outbound_email_adapter),
+           from_email: env_var_to_config!(:outbound_email_from)
+         ] ++ env_var_to_config!(:secondary_outbound_email_adapter_opts)
+
+  config :portal,
+         Portal.AzureCommunicationServices,
+         event_grid_webhook_secret: env_var_to_config!(:acs_event_grid_webhook_secret)
 
   # Sentry
 

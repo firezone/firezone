@@ -119,9 +119,20 @@ defmodule PortalWeb.EmailOTPController do
             {actor.id, otp.id, nil}
           else
             {:error, :rate_limited} ->
+              Logger.info("Email OTP sign-in rate limited",
+                account_slug: account.slug,
+                auth_provider_id: auth_provider_id
+              )
+
               {Ecto.UUID.generate(), Ecto.UUID.generate(), :rate_limited}
 
-            _ ->
+            error ->
+              Logger.info("Email OTP sign-in email not sent",
+                account_slug: account.slug,
+                auth_provider_id: auth_provider_id,
+                error: inspect(error)
+              )
+
               # Generate dummy IDs to prevent oracle attacks
               {Ecto.UUID.generate(), Ecto.UUID.generate(), nil}
           end

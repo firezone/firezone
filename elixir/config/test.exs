@@ -219,6 +219,7 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 ##### Third-party configs #####
 ###############################
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
+config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
 
 # Allow asserting on info logs and higher
 config :logger, level: :info

@@ -49,8 +49,13 @@ defmodule Portal.Workers.OutdatedGateways do
   end
 
   defp send_notifications(gateways, account, incompatible_client_count) do
-    Database.all_admins_for_account!(account)
-    |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1.email))
+    admin_emails =
+      Database.all_admins_for_account!(account)
+      |> Enum.map(& &1.email)
+
+    if admin_emails != [] do
+      send_email(account, gateways, incompatible_client_count, admin_emails)
+    end
 
     changeset =
       account_changeset(account, %{
@@ -66,14 +71,25 @@ defmodule Portal.Workers.OutdatedGateways do
     Database.update_account(changeset)
   end
 
-  defp send_email(account, gateways, incompatible_client_count, email) do
+  defp send_email(account, gateways, incompatible_client_count, emails) do
     Mailer.Notifications.outdated_gateway_email(
       account,
       gateways,
       incompatible_client_count,
-      email
+      emails
     )
-    |> Mailer.deliver_with_rate_limit()
+    |> Mailer.enqueue()
+    |> case do
+      {:ok, _result} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue outdated gateway email",
+          account_id: account.id,
+          recipient_count: length(emails),
+          reason: inspect(reason)
+        )
+    end
   end
 
   defp account_changeset(account, attrs) do

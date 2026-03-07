@@ -101,7 +101,8 @@ config :portal, Oban,
     google_sync: 5,
     okta_scheduler: 1,
     okta_sync: 5,
-    sync_error_notifications: 1
+    sync_error_notifications: 1,
+    outbound_emails: 1
   ],
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
@@ -223,6 +224,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :portal, Portal.Mailer, adapter: Swoosh.Adapters.Local
+config :portal, Portal.Mailer.Secondary, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev

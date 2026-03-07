@@ -782,6 +782,62 @@ defmodule Portal.Config.Definitions do
     end
   )
 
+  @doc """
+  Method to use for sending queued outbound email.
+  If not set, queued emails will use the default no-op behaviour.
+  """
+  defconfig(
+    :secondary_outbound_email_adapter,
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values:
+        [
+          Swoosh.Adapters.AmazonSES,
+          Swoosh.Adapters.AzureCommunicationServices,
+          Swoosh.Adapters.CustomerIO,
+          Swoosh.Adapters.Dyn,
+          Swoosh.Adapters.ExAwsAmazonSES,
+          Swoosh.Adapters.Gmail,
+          Swoosh.Adapters.MailPace,
+          Swoosh.Adapters.Mailgun,
+          Swoosh.Adapters.Mailjet,
+          Swoosh.Adapters.Mandrill,
+          Swoosh.Adapters.Postmark,
+          Swoosh.Adapters.ProtonBridge,
+          Swoosh.Adapters.SMTP,
+          Swoosh.Adapters.SMTP2GO,
+          Swoosh.Adapters.Sendgrid,
+          Swoosh.Adapters.Sendinblue,
+          Swoosh.Adapters.Sendmail,
+          Swoosh.Adapters.SocketLabs,
+          Swoosh.Adapters.SparkPost
+        ] ++ @local_development_adapters
+    ),
+    default: nil
+  )
+
+  @doc """
+  Queued email adapter configuration.
+  """
+  defconfig(:secondary_outbound_email_adapter_opts, :map,
+    default: %{},
+    sensitive: true,
+    dump: fn map ->
+      Dumper.keyword(map)
+      |> Keyword.update(:tls_options, nil, &Dumper.dump_ssl_opts/1)
+      |> Keyword.update(:sockopts, [], &Dumper.dump_ssl_opts/1)
+    end
+  )
+
+  ##############################################
+  ## Outbound Email
+  ##############################################
+
+  @doc """
+  Shared secret expected on ACS Event Grid webhook notification requests.
+  Configure the webhook URL with `?secret=...` using this value.
+  """
+  defconfig(:acs_event_grid_webhook_secret, :string, sensitive: true, default: nil)
+
   ##############################################
   ## Billing flags
   ##############################################
