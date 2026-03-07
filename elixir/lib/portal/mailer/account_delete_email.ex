@@ -13,5 +13,6 @@ defmodule Portal.Mailer.AccountDelete do
     |> subject("ACCOUNT DELETE REQUEST - #{account.id}")
     |> to("support@firezone.dev")
     |> render_text_body(__MODULE__, :account_delete_request, account: account, subject: subject)
+    |> with_account(account.id)
   end
 end

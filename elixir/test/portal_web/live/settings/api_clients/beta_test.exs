@@ -84,11 +84,32 @@ defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "request to join"
 
-    assert_email_sent(fn email ->
+    assert_email_queued(fn email ->
       assert email.subject == "REST API Beta Request - #{account.id}"
       assert email.text_body =~ "REST API Beta Request"
       assert email.text_body =~ "#{account.id}"
       assert email.text_body =~ "#{actor.id}"
     end)
+  end
+
+  defp collect_queued_emails do
+    import Ecto.Query
+
+    from(e in Portal.OutboundEmail, order_by: [asc: e.inserted_at])
+    |> Portal.Repo.all()
+    |> Enum.map(fn entry ->
+      %{
+        subject: entry.request["subject"],
+        text_body: entry.request["text_body"],
+        html_body: entry.request["html_body"],
+        to: Enum.map(entry.request["to"] || [], fn %{"name" => n, "address" => a} -> {n, a} end),
+        bcc: Enum.map(entry.request["bcc"] || [], fn %{"name" => n, "address" => a} -> {n, a} end)
+      }
+    end)
+  end
+
+  defp assert_email_queued(fun) do
+    [email | _] = collect_queued_emails()
+    fun.(email)
   end
 end

@@ -116,12 +116,32 @@ defmodule PortalWeb.EmailOTPController do
           with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
                {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
+            Logger.debug("Email OTP sign-in email sent",
+              account_id: account.id,
+              auth_provider_id: auth_provider_id,
+              actor_id: actor.id,
+              email: email
+            )
+
             {actor.id, otp.id, nil}
           else
             {:error, :rate_limited} ->
+              Logger.debug("Email OTP sign-in email rate limited",
+                account_id: account.id,
+                auth_provider_id: auth_provider_id,
+                email: email
+              )
+
               {Ecto.UUID.generate(), Ecto.UUID.generate(), :rate_limited}
 
-            _ ->
+            error ->
+              Logger.debug("Email OTP sign-in email not sent",
+                account_id: account.id,
+                auth_provider_id: auth_provider_id,
+                email: email,
+                error: inspect(error)
+              )
+
               # Generate dummy IDs to prevent oracle attacks
               {Ecto.UUID.generate(), Ecto.UUID.generate(), nil}
           end

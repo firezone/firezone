@@ -13,5 +13,6 @@ defmodule Portal.Mailer.BetaEmail do
     |> subject("REST API Beta Request - #{account.id}")
     |> to("support@firezone.dev")
     |> render_text_body(__MODULE__, :rest_api_request, account: account, subject: subject)
+    |> with_account(account.id)
   end
 end

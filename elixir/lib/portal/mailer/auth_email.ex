@@ -28,6 +28,7 @@ defmodule Portal.Mailer.AuthEmail do
       user_agent: user_agent,
       remote_ip: "#{:inet.ntoa(remote_ip)}"
     )
+    |> with_account(account.id)
   end
 
   def sign_in_link_email(
@@ -59,6 +60,7 @@ defmodule Portal.Mailer.AuthEmail do
       user_agent: user_agent,
       remote_ip: "#{:inet.ntoa(remote_ip)}"
     )
+    |> with_account(actor.account.id)
   end
 
   def new_user_email(
@@ -74,5 +76,6 @@ defmodule Portal.Mailer.AuthEmail do
       actor: actor,
       subject: subject
     )
+    |> with_account(account.id)
   end
 end

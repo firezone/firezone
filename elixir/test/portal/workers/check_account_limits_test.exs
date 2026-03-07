@@ -66,14 +66,14 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       # Collect all sent emails
-      emails_sent = collect_sent_emails()
+      emails_sent = collect_queued_emails()
 
-      # All 3 admins should receive emails
-      assert length(emails_sent) == 3
+      # One batched email should be queued with all 3 admins in BCC
+      assert length(emails_sent) == 1
 
       email_recipients =
         emails_sent
-        |> Enum.flat_map(fn email -> email.to end)
+        |> Enum.flat_map(fn email -> email.bcc end)
         |> Enum.map(fn
           {_name, email} -> email
           email when is_binary(email) -> email
@@ -117,7 +117,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       # No new emails should be sent
-      refute_email_sent()
+      refute_email_queued()
 
       # warning_last_sent_at should not be updated
       account = Repo.get!(Portal.Account, account.id)
@@ -144,7 +144,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       # Email should be sent again
-      assert_email_sent(fn email ->
+      assert_email_queued(fn email ->
         assert email.subject == "Firezone Account Limits Exceeded"
       end)
 
@@ -190,7 +190,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       account = Repo.get!(Portal.Account, account.id)
       refute Portal.Billing.any_limit_exceeded?(account)
-      refute_email_sent()
+      refute_email_queued()
     end
 
     test "does not process disabled accounts" do
@@ -213,7 +213,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       account = Repo.get!(Portal.Account, account.id)
       refute Portal.Billing.any_limit_exceeded?(account)
-      refute_email_sent()
+      refute_email_queued()
     end
 
     test "only sends emails to enabled admin actors" do
@@ -239,14 +239,14 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       # Collect all sent emails
-      emails_sent = collect_sent_emails()
+      emails_sent = collect_queued_emails()
 
-      # Only 2 enabled admins should receive emails
-      assert length(emails_sent) == 2
+      # One batched email should be queued with only the enabled admins in BCC
+      assert length(emails_sent) == 1
 
       email_recipients =
         emails_sent
-        |> Enum.flat_map(fn email -> email.to end)
+        |> Enum.flat_map(fn email -> email.bcc end)
         |> Enum.map(fn {_name, email} -> email end)
 
       assert admin1.email in email_recipients
@@ -274,7 +274,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       assert :ok = perform_job(CheckAccountLimits, %{})
 
-      emails_sent = collect_sent_emails()
+      emails_sent = collect_queued_emails()
       [first_email | _] = emails_sent
 
       # Verify multiple limits with counts
@@ -291,7 +291,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       assert :ok = perform_job(CheckAccountLimits, %{})
 
-      [first_email | _] = collect_sent_emails()
+      [first_email | _] = collect_queued_emails()
       assert first_email.text_body =~ "change your paid users"
       assert first_email.text_body =~ "Settings"
       assert first_email.text_body =~ "Billing"
@@ -307,7 +307,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       assert :ok = perform_job(CheckAccountLimits, %{})
 
-      [first_email | _] = collect_sent_emails()
+      [first_email | _] = collect_queued_emails()
       assert first_email.text_body =~ "upgrade to Team"
       assert first_email.text_body =~ "Settings"
       assert first_email.text_body =~ "Billing"
@@ -322,7 +322,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       assert :ok = perform_job(CheckAccountLimits, %{})
 
-      [first_email | _] = collect_sent_emails()
+      [first_email | _] = collect_queued_emails()
       assert first_email.text_body =~ "contact your account manager"
     end
 
@@ -401,15 +401,28 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
     |> Repo.update!()
   end
 
-  defp collect_sent_emails do
-    collect_sent_emails([])
+  defp collect_queued_emails do
+    import Ecto.Query
+
+    from(e in Portal.OutboundEmail, order_by: [asc: e.inserted_at])
+    |> Repo.all()
+    |> Enum.map(fn entry ->
+      %{
+        subject: entry.request["subject"],
+        text_body: entry.request["text_body"],
+        html_body: entry.request["html_body"],
+        to: Enum.map(entry.request["to"] || [], fn %{"name" => n, "address" => a} -> {n, a} end),
+        bcc: Enum.map(entry.request["bcc"] || [], fn %{"name" => n, "address" => a} -> {n, a} end)
+      }
+    end)
   end
 
-  defp collect_sent_emails(acc) do
-    receive do
-      {:email, email} -> collect_sent_emails([email | acc])
-    after
-      0 -> Enum.reverse(acc)
-    end
+  defp assert_email_queued(fun) do
+    [email | _] = collect_queued_emails()
+    fun.(email)
+  end
+
+  defp refute_email_queued do
+    assert collect_queued_emails() == []
   end
 end

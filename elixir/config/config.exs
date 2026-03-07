@@ -88,6 +88,8 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     client_tokens
     one_time_passcodes
     portal_sessions
+    outbound_emails
+    outbound_email_recipients
     ipv4_addresses
     ipv6_addresses
     api_tokens
@@ -387,6 +389,10 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
 
+config :portal, Portal.Workers.OutboundEmail,
+  rate_limit_per_minute: 30,
+  rate_limit_per_hour: 100
+
 ###############################
 ##### Third-party configs #####
 ###############################
@@ -418,6 +424,12 @@ config :swoosh, :api_client, Swoosh.ApiClient.Req
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
   from_email: "test@firez.one"
+
+config :portal, Portal.Mailer.Secondary,
+  adapter: nil,
+  from_email: "test@firez.one"
+
+config :portal, Portal.AzureCommunicationServices.APIClient, req_opts: []
 
 config :esbuild,
   version: "0.25.4",

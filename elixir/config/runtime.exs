@@ -244,7 +244,16 @@ if config_env() == :prod do
     {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
 
     # Delete expired portal sessions every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions}
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
+
+    # Process outbound emails every minute
+    {"* * * * *", Portal.Workers.OutboundEmail},
+
+    # Refresh delivery state for queued emails every minute
+    {"* * * * *", Portal.Workers.CheckOutboundEmailDeliveryStatus},
+
+    # Delete old outbound email entries daily at midnight
+    {"0 0 * * *", Portal.Workers.DeleteOldOutboundEmailEntries}
   ]
 
   config :portal, Oban,
@@ -271,7 +280,8 @@ if config_env() == :prod do
           google_sync: 5,
           okta_scheduler: 1,
           okta_sync: 5,
-          sync_error_notifications: 1
+          sync_error_notifications: 1,
+          outbound_emails: 1
         ],
         else: []
       ),
@@ -463,6 +473,18 @@ if config_env() == :prod do
            adapter: env_var_to_config!(:outbound_email_adapter),
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
+
+  config :portal,
+         Portal.Mailer.Secondary,
+         [
+           adapter: env_var_to_config!(:secondary_outbound_email_adapter),
+           from_email: env_var_to_config!(:outbound_email_from)
+         ] ++ env_var_to_config!(:secondary_outbound_email_adapter_opts)
+
+  config :portal,
+         Portal.Workers.OutboundEmail,
+         rate_limit_per_minute: env_var_to_config!(:outbound_email_rate_limit_per_minute),
+         rate_limit_per_hour: env_var_to_config!(:outbound_email_rate_limit_per_hour)
 
   # Sentry
 

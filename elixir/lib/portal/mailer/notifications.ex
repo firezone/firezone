@@ -11,13 +11,13 @@ defmodule Portal.Mailer.Notifications do
   embed_templates "notifications/*.html", suffix: "_html"
   embed_templates "notifications/*.text", suffix: "_text"
 
-  def outdated_gateway_email(account, gateways, incompatible_client_count, email) do
+  def outdated_gateway_email(account, gateways, incompatible_client_count, recipients) do
     params = %{clients_order_by: "latest_session:asc:version"}
     outdated_clients_url = url(~p"/#{account.id}/clients?#{params}")
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")
-    |> to(email)
+    |> put_recipients(recipients)
     |> render_body(__MODULE__, :outdated_gateway,
       account: account,
       gateways: gateways,
@@ -25,20 +25,27 @@ defmodule Portal.Mailer.Notifications do
       incompatible_client_count: incompatible_client_count,
       latest_version: Portal.ComponentVersions.gateway_version()
     )
+    |> with_account(account.id)
   end
 
-  def limits_exceeded_email(account, warning, email) do
+  def limits_exceeded_email(account, warning, recipients) do
     billing_url = url(~p"/#{account.id}/settings/billing")
     plan_type = Portal.Billing.plan_type(account)
 
     default_email()
     |> subject("Firezone Account Limits Exceeded")
-    |> to(email)
+    |> put_recipients(recipients)
     |> render_body(__MODULE__, :limits_exceeded,
       account: account,
       warning: warning,
       billing_url: billing_url,
       plan_type: plan_type
     )
+    |> with_account(account.id)
   end
+
+  defp put_recipients(email, recipients) when is_list(recipients),
+    do: bcc_recipients(email, recipients)
+
+  defp put_recipients(email, recipient), do: to(email, recipient)
 end
