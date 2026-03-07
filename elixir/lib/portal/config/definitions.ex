@@ -736,6 +736,7 @@ defmodule Portal.Config.Definitions do
       values:
         [
           Swoosh.Adapters.AmazonSES,
+          Swoosh.Adapters.AzureCommunicationServices,
           Swoosh.Adapters.CustomerIO,
           Swoosh.Adapters.Dyn,
           Swoosh.Adapters.ExAwsAmazonSES,

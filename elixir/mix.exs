@@ -104,6 +104,9 @@ defmodule Portal.MixProject do
       # Email
       {:gen_smtp, "~> 1.0"},
       {:multipart, "~> 0.6.0"},
+      # TODO: Remove override when this issue is resolved: https://github.com/swoosh/swoosh/issues/1112
+      {:swoosh,
+       github: "firezone/swoosh", ref: "3ad0304f7f12124dec285df1ebac8da005ad4626", override: true},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
