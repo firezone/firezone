@@ -193,11 +193,11 @@ defmodule Portal.Presence do
 
   defmodule Gateways do
     def connect(%Gateway{} = gateway, token_id, session_meta \\ %{}) do
-      # Account must be tracked before Site so that when the Site presence
-      # broadcast fires and the LiveView reloads, account presence is already
-      # visible via Portal.Presence.Gateways.Account.list/1.
-      with {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id, session_meta),
-           {:ok, _} <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id) do
+      # Site must be tracked before Account so that when the Account presence
+      # broadcast fires and the LiveView reloads, site presence is already
+      # visible via Portal.Presence.Gateways.Site.list/1.
+      with {:ok, _} <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id),
+           {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id, session_meta) do
         :ok
       end
     end
