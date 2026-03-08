@@ -138,7 +138,7 @@ defmodule Portal.MixProject do
        override: true},
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
-      {:opentelemetry_oban, "~> 1.1.1"},
+      {:opentelemetry_oban, "~> 1.2.0"},
       {:opentelemetry_telemetry, "~> 1.1", override: true},
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 2.0"},
