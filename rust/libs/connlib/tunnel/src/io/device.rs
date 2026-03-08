@@ -76,18 +76,15 @@ impl Device {
                 return Poll::Ready(Ok(()));
             }
 
-            let packets = mem::take(&mut self.outbound_buffer);
+            tracing::trace!("Got buffered packets, building flush future");
+
+            let buffered_packets = mem::take(&mut self.outbound_buffer);
             let tx = tun.sender().clone();
 
             self.flush_future = Some(
                 async move {
-                    let permits = tx
-                        .reserve_many(packets.len())
-                        .await
-                        .map_err(|_| TunChannelClosed)?;
-
-                    for (permit, packet) in permits.zip(packets) {
-                        permit.send(packet);
+                    for packet in buffered_packets {
+                        tx.send(packet).await.map_err(|_| TunChannelClosed)?;
                     }
 
                     Ok(())
@@ -101,6 +98,11 @@ impl Device {
         };
 
         ready!(fut.poll_unpin(cx))?;
+
+        tracing::trace!("Flush complete");
+
+        // Reset after we are done.
+        self.flush_future = None;
 
         Poll::Ready(Ok(()))
     }
@@ -117,7 +119,7 @@ impl Device {
 
         // Try to send immediately if channel has capacity.
         if let Err(packet) = tun.sender().try_send(packet).map_err(|e| e.into_inner()) {
-            // On error, buffer the packet.
+            tracing::trace!(?packet, "Unable to send packet into channel, buffering");
             self.outbound_buffer.push(packet);
         }
     }
@@ -137,9 +139,8 @@ mod tests {
     #[tokio::test]
     async fn flush_returns_error_when_sender_channel_closed() {
         let mut device = Device::new();
-        let mut test_tun = TestTun::new();
-        let _rx = std::mem::replace(&mut test_tun.rx, mpsc::channel(1).1);
-        drop(_rx);
+        let (test_tun, send_rx, _recv_tx) = TestTun::new();
+        drop(send_rx);
         device.set_tun(Box::new(test_tun));
 
         let packet =
@@ -154,29 +155,67 @@ mod tests {
         assert!(err.any_is::<TunChannelClosed>());
     }
 
+    #[tokio::test]
+    async fn flush_future_is_reset_after_completion() {
+        let _guard = logging::test("trace");
+
+        let mut device = Device::new();
+        let (test_tun, mut send_rx, _send_tx) = TestTun::new();
+        device.set_tun(Box::new(test_tun));
+
+        let packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1234, 5678, &[1])
+                .unwrap();
+
+        // We cycle 3 times to ensure we can send and flush again repeatedly.
+        for _ in 0..3 {
+            device.send(packet.clone());
+            device.send(packet.clone()); // This one should get buffered.
+
+            let poll = device.poll_flush_noop_waker();
+            assert!(poll.is_pending(), "Flush should suspend if channel is full");
+
+            send_rx.recv().await.unwrap();
+
+            std::future::poll_fn(|cx| device.poll_flush(cx))
+                .await
+                .unwrap();
+
+            send_rx.recv().await.unwrap();
+        }
+    }
+
     struct TestTun {
-        tx: mpsc::Sender<IpPacket>,
-        rx: mpsc::Receiver<IpPacket>,
+        send_tx: mpsc::Sender<IpPacket>,
+        recv_rx: mpsc::Receiver<IpPacket>,
     }
 
     impl TestTun {
-        fn new() -> Self {
-            let (tx, rx) = mpsc::channel(1);
-            Self { tx, rx }
+        fn new() -> (Self, mpsc::Receiver<IpPacket>, mpsc::Sender<IpPacket>) {
+            let (send_tx, send_rx) = mpsc::channel(1);
+            let (recv_tx, recv_rx) = mpsc::channel(1);
+
+            (Self { send_tx, recv_rx }, send_rx, recv_tx)
         }
     }
 
     impl Tun for TestTun {
         fn sender(&self) -> &mpsc::Sender<IpPacket> {
-            &self.tx
+            &self.send_tx
         }
 
         fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
-            &mut self.rx
+            &mut self.recv_rx
         }
 
         fn name(&self) -> &str {
             "test"
+        }
+    }
+
+    impl Device {
+        fn poll_flush_noop_waker(&mut self) -> Poll<Result<()>> {
+            self.poll_flush(&mut Context::from_waker(futures::task::noop_waker_ref()))
         }
     }
 }
