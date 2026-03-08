@@ -81,7 +81,7 @@ impl Device {
             let buffered_packets = mem::take(&mut self.outbound_buffer);
             let tx = tun.sender().clone();
 
-            self.flush_future = Some(
+            let flush = self.flush_future.insert(
                 async move {
                     for packet in buffered_packets {
                         tx.send(packet).await.map_err(|_| TunChannelClosed)?;
@@ -93,8 +93,7 @@ impl Device {
                 .boxed(),
             );
 
-            // Poll the future we just created.
-            return self.poll_flush(cx);
+            return flush.poll_unpin(cx);
         };
 
         ready!(fut.poll_unpin(cx))?;
