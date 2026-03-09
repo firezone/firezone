@@ -379,6 +379,10 @@ config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
   capacity: 200
 
+config :portal, PortalAPI.Sockets.RateLimit,
+  refill_rate: 1,
+  capacity: 1
+
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
