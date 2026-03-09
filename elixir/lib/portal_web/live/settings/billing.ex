@@ -241,26 +241,6 @@ defmodule PortalWeb.Settings.Billing do
         </div>
       </:content>
     </.section>
-
-    <.section>
-      <:title>
-        Danger zone
-      </:title>
-      <:content>
-        <h3 class="ml-4 mb-4 font-medium text-neutral-900">
-          Terminate account
-        </h3>
-        <p class="ml-4 mb-4 text-neutral-600">
-          <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" /> To
-          <span :if={Portal.Account.active?(@account)}>disable your account and</span>
-          schedule it for deletion, please <.link
-            class={link_style()}
-            target="_blank"
-            href={mailto_support(@account, @subject, "Account termination request: #{@account.name}")}
-          >contact support</.link>.
-        </p>
-      </:content>
-    </.section>
     """
   end
 
