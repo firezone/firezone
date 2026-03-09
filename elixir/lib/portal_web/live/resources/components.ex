@@ -484,21 +484,11 @@ defmodule PortalWeb.Resources.Components do
 
       query =
         from(c in Portal.Client, as: :clients)
+        |> join(:inner, [clients: c], a in assoc(c, :actor), as: :actors)
         |> join(:left, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
         |> join(:left, [clients: c], ipv6 in assoc(c, :ipv6_address), as: :ipv6)
         |> where([clients: c], c.id not in ^selected_ids)
-        |> where(
-          [clients: c, ipv4: ipv4, ipv6: ipv6],
-          ilike(c.name, ^pattern) or
-            ilike(type(c.id, :string), ^pattern) or
-            ilike(coalesce(c.external_id, ""), ^pattern) or
-            ilike(coalesce(c.device_serial, ""), ^pattern) or
-            ilike(coalesce(c.device_uuid, ""), ^pattern) or
-            ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or
-            ilike(coalesce(c.firebase_installation_id, ""), ^pattern) or
-            ilike(type(ipv4.address, :string), ^pattern) or
-            ilike(type(ipv6.address, :string), ^pattern)
-        )
+        |> where(^client_search_filter(pattern))
         |> preload([:ipv4_address, :ipv6_address])
         |> limit(10)
 
@@ -511,6 +501,23 @@ defmodule PortalWeb.Resources.Components do
           |> Portal.Presence.Clients.preload_clients_presence()
           |> Enum.sort_by(&if &1.online?, do: 0, else: 1)
       end
+    end
+
+    defp client_search_filter(pattern) do
+      dynamic(
+        [clients: c, actors: a, ipv4: ipv4, ipv6: ipv6],
+        ilike(c.name, ^pattern) or
+          ilike(a.name, ^pattern) or
+          ilike(coalesce(a.email, ""), ^pattern) or
+          ilike(type(c.id, :string), ^pattern) or
+          ilike(coalesce(c.external_id, ""), ^pattern) or
+          ilike(coalesce(c.device_serial, ""), ^pattern) or
+          ilike(coalesce(c.device_uuid, ""), ^pattern) or
+          ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or
+          ilike(coalesce(c.firebase_installation_id, ""), ^pattern) or
+          ilike(type(ipv4.address, :string), ^pattern) or
+          ilike(type(ipv6.address, :string), ^pattern)
+      )
     end
 
     def validate_selected_clients([], _subject), do: {:ok, []}
