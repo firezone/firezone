@@ -152,6 +152,12 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.any_is::<TunChannelClosed>());
+
+        // Ensure polling twice doesn't panic.
+        let err = std::future::poll_fn(|cx| device.poll_flush(cx))
+            .await
+            .unwrap_err();
+        assert!(err.any_is::<TunChannelClosed>());
     }
 
     #[tokio::test]
