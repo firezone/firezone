@@ -484,12 +484,15 @@ defmodule PortalWeb.Resources.Components do
 
       query =
         from(c in Portal.Client, as: :clients)
+        |> join(:inner, [clients: c], a in assoc(c, :actor), as: :actors)
         |> join(:left, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
         |> join(:left, [clients: c], ipv6 in assoc(c, :ipv6_address), as: :ipv6)
         |> where([clients: c], c.id not in ^selected_ids)
         |> where(
-          [clients: c, ipv4: ipv4, ipv6: ipv6],
+          [clients: c, actors: a, ipv4: ipv4, ipv6: ipv6],
           ilike(c.name, ^pattern) or
+            ilike(a.name, ^pattern) or
+            ilike(coalesce(a.email, ""), ^pattern) or
             ilike(type(c.id, :string), ^pattern) or
             ilike(coalesce(c.external_id, ""), ^pattern) or
             ilike(coalesce(c.device_serial, ""), ^pattern) or

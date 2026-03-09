@@ -231,6 +231,34 @@ defmodule PortalWeb.Live.Resources.EditTest do
            })
   end
 
+  test "can search for clients in device pool picker by actor email", %{
+    account: account,
+    actor: actor,
+    conn: conn
+  } do
+    enable_feature(:client_to_client)
+    account = update_account(account, features: %{client_to_client: true})
+    existing_client = client_fixture(account: account, name: "ExistingDevice")
+
+    client_actor =
+      actor_fixture(account: account, name: "Jordan Device User", email: "jordan@example.com")
+
+    _client = client_fixture(account: account, actor: client_actor, name: "Phone-01")
+    resource = static_device_pool_resource_fixture(account: account, clients: [existing_client])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    html =
+      lv
+      |> element("input[name='client_search']")
+      |> render_change(%{"client_search" => "jordan@example.com"})
+
+    assert html =~ "Phone-01"
+  end
+
   test "can remove a client from an existing device pool", %{
     account: account,
     actor: actor,
