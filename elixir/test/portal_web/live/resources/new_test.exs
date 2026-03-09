@@ -266,6 +266,36 @@ defmodule PortalWeb.Live.Resources.NewTest do
     assert html =~ "MyLaptop"
   end
 
+  test "can search for clients in device pool picker by actor name", %{
+    account: account,
+    actor: actor,
+    conn: conn
+  } do
+    enable_feature(:client_to_client)
+    update_account(account, features: %{client_to_client: true})
+
+    client_actor =
+      actor_fixture(account: account, name: "Taylor Device User", email: "taylor@example.com")
+
+    _client = client_fixture(account: account, actor: client_actor, name: "Laptop-01")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/resources/new")
+
+    lv
+    |> form("form[phx-submit='submit']")
+    |> render_change(resource: %{type: :static_device_pool})
+
+    html =
+      lv
+      |> element("input[name='client_search']")
+      |> render_change(%{"client_search" => "Taylor Device User"})
+
+    assert html =~ "Laptop-01"
+  end
+
   test "can add a client to the device pool", %{
     account: account,
     actor: actor,
