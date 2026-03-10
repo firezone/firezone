@@ -4487,7 +4487,7 @@ defmodule PortalAPI.Client.ChannelTest do
                     connected: [relay_view | _] = relays
                   }
 
-      assert length(relays) == 2
+      assert length(relays) == 4
 
       assert %{
                addr: _,
