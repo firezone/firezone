@@ -695,7 +695,7 @@ mod tests {
     };
 
     use anyhow::ErrorExt;
-    use ip_packet::make::TcpFlags;
+    use ip_packet::make::TcpArgs;
 
     use crate::{
         gateway::{RoutingError, nat_table},
@@ -743,7 +743,7 @@ mod tests {
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
-            TcpFlags::default(),
+            TcpArgs::default(),
             &[0u8; 100],
         )
         .unwrap();
@@ -805,7 +805,7 @@ mod tests {
             gateway_tun_ipv4(),
             5401,
             80,
-            TcpFlags::default(),
+            TcpArgs::default(),
             &[0u8; 100],
         )
         .unwrap();
@@ -815,7 +815,7 @@ mod tests {
             client_tun_ipv4(),
             80,
             5401,
-            TcpFlags::default(),
+            TcpArgs::default(),
             &[0u8; 100],
         )
         .unwrap();
@@ -1405,7 +1405,7 @@ mod proptests {
         Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
     };
     use crate::proptest::*;
-    use ip_packet::make::{TcpFlags, icmp_request_packet, tcp_packet, udp_packet};
+    use ip_packet::make::{TcpArgs, icmp_request_packet, tcp_packet, udp_packet};
     use itertools::Itertools as _;
     use proptest::{
         arbitrary::any,
@@ -1454,7 +1454,7 @@ mod proptests {
 
             let packet = match protocol {
                 Protocol::Tcp { dport } => {
-                    tcp_packet(src, *dest, sport, *dport, TcpFlags::default(), &payload)
+                    tcp_packet(src, *dest, sport, *dport, TcpArgs::default(), &payload)
                 }
                 Protocol::Udp { dport } => udp_packet(src, *dest, sport, *dport, &payload),
                 Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
@@ -1512,7 +1512,7 @@ mod proptests {
         for (_, protocol) in protocol_config {
             let packet = match protocol {
                 Protocol::Tcp { dport } => {
-                    tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
+                    tcp_packet(src, dest, sport, dport, TcpArgs::default(), &payload)
                 }
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
@@ -1556,7 +1556,7 @@ mod proptests {
         );
         let packet = match protocol {
             Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
+                tcp_packet(src, dest, sport, dport, TcpArgs::default(), &payload)
             }
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
@@ -1615,7 +1615,7 @@ mod proptests {
 
         let packet_allowed = match protocol_allowed {
             Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
+                tcp_packet(src, dest, sport, dport, TcpArgs::default(), &payload)
             }
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
@@ -1624,7 +1624,7 @@ mod proptests {
 
         let packet_rejected = match protocol_removed {
             Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
+                tcp_packet(src, dest, sport, dport, TcpArgs::default(), &payload)
             }
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),

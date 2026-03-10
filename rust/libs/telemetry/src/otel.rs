@@ -114,7 +114,7 @@ pub mod metrics {
 
     use opentelemetry::{
         KeyValue,
-        metrics::{Counter, Gauge},
+        metrics::{Counter, Gauge, Histogram},
     };
 
     use crate::otel::QueueLength;
@@ -124,6 +124,15 @@ pub mod metrics {
             .u64_counter("network.packet.dropped")
             .with_description("Count of packets that are dropped or discarded")
             .with_unit("{packet}")
+            .build()
+    }
+
+    pub fn system_network_packets_batch_count() -> Histogram<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_histogram("system.network.packets.batch_count")
+            .with_description("How many batches of packets we have processed in a single syscall.")
+            .with_unit("{batches}")
+            .with_boundaries((1..32_u64).map(|i| i as f64).collect())
             .build()
     }
 

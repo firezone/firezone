@@ -861,6 +861,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix",
+ "opentelemetry",
  "resolv-conf",
  "ring",
  "rtnetlink",

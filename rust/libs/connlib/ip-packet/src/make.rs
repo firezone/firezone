@@ -110,18 +110,18 @@ pub fn tcp_packet<IP>(
     daddr: IP,
     sport: u16,
     dport: u16,
-    flags: TcpFlags,
+    args: TcpArgs,
     payload: &[u8],
 ) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
-    let TcpFlags { rst } = flags;
+    let TcpArgs { rst, seq } = args;
 
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let mut packet =
-                PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
+                PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, seq, 128);
 
             if rst {
                 packet = packet.rst();
@@ -131,7 +131,7 @@ where
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let mut packet =
-                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
+                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, seq, 128);
 
             if rst {
                 packet = packet.rst();
@@ -143,9 +143,13 @@ where
     }
 }
 
+/// A combination of further arguments we want to pass to a TCP packet.
+///
+/// Contains flags, options, fields etc.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct TcpFlags {
+pub struct TcpArgs {
     pub rst: bool,
+    pub seq: u32,
 }
 
 pub fn udp_packet<SIP, DIP>(
