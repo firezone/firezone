@@ -670,8 +670,6 @@ impl ClientState {
     ) {
         self.node
             .add_remote_candidate(conn_id.into(), ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events(now);
     }
 
     pub fn remove_ice_candidate(
@@ -682,8 +680,6 @@ impl ClientState {
     ) {
         self.node
             .remove_remote_candidate(conn_id.into(), ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events(now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
