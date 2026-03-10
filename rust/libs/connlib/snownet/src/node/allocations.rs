@@ -188,7 +188,9 @@ where
             .next()
     }
 
-    pub(crate) fn gc(&mut self) {
+    pub(crate) fn gc(&mut self) -> bool {
+        let len_before = self.inner.len();
+
         self.inner
             .retain(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
@@ -201,6 +203,8 @@ where
                 }
                 None => true,
             });
+
+        self.inner.len() != len_before
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {

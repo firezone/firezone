@@ -608,13 +608,15 @@ where
             }
         }
 
-        self.allocations.gc();
-        self.connections.check_relays_available(
-            &self.allocations,
-            &mut self.pending_events,
-            &mut self.rng,
-            now,
-        );
+        let relays_changed = self.allocations.gc();
+        if relays_changed {
+            self.connections.check_relays_available(
+                &self.allocations,
+                &mut self.pending_events,
+                &mut self.rng,
+                now,
+            );
+        }
         self.connections
             .handle_timeout(&mut self.pending_events, now);
     }
@@ -654,6 +656,7 @@ where
                 &mut self.connections,
                 &allocation,
                 &mut self.pending_events,
+                now,
             );
 
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
@@ -690,6 +693,7 @@ where
                         &mut self.connections,
                         &previous,
                         &mut self.pending_events,
+                        now,
                     );
 
                     tracing::info!(%rid, address = ?server, "Replaced TURN server")
@@ -761,6 +765,7 @@ where
             index,
             tunnel,
             next_wg_timer_update: now,
+            dirty_at: Some(now),
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
@@ -912,6 +917,7 @@ where
                         message,
                     },
                 );
+                c.mark_dirty(now);
 
                 return ControlFlow::Break(Ok(()));
             }
@@ -1010,7 +1016,7 @@ where
                 }
                 allocation::Event::Invalid(candidate) => {
                     for (cid, c) in self.connections.iter_mut() {
-                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events);
+                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
             }
@@ -1117,13 +1123,14 @@ fn invalidate_allocation_candidates<TId, RId>(
     connections: &mut Connections<TId, RId>,
     allocation: &Allocation,
     pending_events: &mut VecDeque<Event<TId>>,
+    now: Instant,
 ) where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     for (cid, c) in connections.iter_mut() {
         for candidate in allocation.current_relay_candidates() {
-            c.remove_local_candidate(cid, &candidate, pending_events);
+            c.remove_local_candidate(cid, &candidate, pending_events, now);
         }
     }
 }
@@ -1217,6 +1224,7 @@ struct Connection<RId> {
     remote_pub_key: PublicKey,
     /// When to next update the [`Tunn`]'s timers.
     next_wg_timer_update: Instant,
+    dirty_at: Option<Instant>,
 
     last_proactive_handshake_sent_at: Option<Instant>,
 
@@ -1258,6 +1266,7 @@ where
     #[must_use]
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
+            .chain(self.dirty_at.map(|instant| (instant, "pending work")))
             .chain(
                 self.agent
                     .poll_timeout()
@@ -1274,6 +1283,26 @@ where
             )
             .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant)
+    }
+
+    fn scheduled_timeout_due(&mut self, now: Instant) -> bool {
+        iter::empty()
+            .chain(
+                self.agent
+                    .poll_timeout()
+                    .map(|instant| (instant, "ICE agent")),
+            )
+            .chain(Some((self.next_wg_timer_update, "boringtun tunnel")))
+            .chain(
+                self.candidate_timeout()
+                    .map(|instant| (instant, "candidate timeout")),
+            )
+            .chain(
+                self.disconnect_timeout()
+                    .map(|instant| (instant, "disconnect timeout")),
+            )
+            .chain(self.state.poll_timeout(&self.agent))
+            .any(|(timeout, _)| now >= timeout)
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
@@ -1300,6 +1329,12 @@ where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
     {
+        if self.dirty_at.is_none() && !self.scheduled_timeout_due(now) {
+            return;
+        }
+
+        self.dirty_at = None;
+
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
         self.agent.handle_timeout(now);
@@ -1326,17 +1361,7 @@ where
 
         self.handle_tunnel_timeout(now, allocations, transmits);
 
-        // If this was a scheduled update, hop to the next interval.
-        if now >= self.next_wg_timer_update {
-            self.next_wg_timer_update = now + Duration::from_secs(1); // TODO: Remove fixed interval in favor of precise `next_timer_update` function in `boringtun`.
-        }
-
-        // If `boringtun` wants to be called earlier than the scheduled interval, move it forward.
-        if let Some(next_update) = self.tunnel.next_timer_update()
-            && next_update < self.next_wg_timer_update
-        {
-            self.next_wg_timer_update = next_update;
-        }
+        self.reschedule_wg_timer(now);
 
         while let Some(event) = self.agent.poll_event() {
             match event {
@@ -1523,6 +1548,22 @@ where
         }
     }
 
+    fn mark_dirty(&mut self, now: Instant) {
+        self.dirty_at = Some(self.dirty_at.map_or(now, |dirty_at| dirty_at.min(now)));
+    }
+
+    fn reschedule_wg_timer(&mut self, now: Instant) {
+        if now >= self.next_wg_timer_update {
+            self.next_wg_timer_update = now + Duration::from_secs(1); // TODO: Remove fixed interval in favor of precise `next_timer_update` function in `boringtun`.
+        }
+
+        if let Some(next_update) = self.tunnel.next_timer_update()
+            && next_update < self.next_wg_timer_update
+        {
+            self.next_wg_timer_update = next_update;
+        }
+    }
+
     fn handle_tunnel_timeout(
         &mut self,
         now: Instant,
@@ -1597,6 +1638,8 @@ where
                     unreachable!("never returned from encapsulate")
                 }
             };
+
+        self.reschedule_wg_timer(now);
 
         let packet_end = packet_start + len;
         buffer.truncate(packet_end);
@@ -1741,6 +1784,8 @@ where
             }
         };
 
+        self.reschedule_wg_timer(now);
+
         if let ControlFlow::Continue(packet) = &control_flow {
             self.state
                 .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
@@ -1791,6 +1836,8 @@ where
             return;
         };
 
+        self.reschedule_wg_timer(now);
+
         self.last_proactive_handshake_sent_at = Some(now);
 
         transmits.extend(make_owned_transmit(
@@ -1818,6 +1865,7 @@ where
 
         self.state
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
+        self.mark_dirty(now);
     }
 
     fn remove_local_candidate<TId>(
@@ -1825,6 +1873,7 @@ where
         id: TId,
         candidate: &Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
+        now: Instant,
     ) where
         TId: fmt::Display,
     {
@@ -1845,6 +1894,8 @@ where
                 candidate: candidate.clone(),
             })
         }
+
+        self.mark_dirty(now);
     }
 
     fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
@@ -1858,6 +1909,7 @@ where
         // Make sure we move out of idle mode when we add new candidates.
         self.state
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
+        self.mark_dirty(now);
     }
 
     fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
@@ -1868,7 +1920,8 @@ where
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
 
         self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
+            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
+        self.mark_dirty(now);
     }
 
     fn socket(&self) -> Option<PeerSocket> {
@@ -2084,5 +2137,45 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn dirty_connections_poll_immediately() {
+        let now = Instant::now();
+        let mut node = Node::<u32, u32>::new([1; 32], now, Duration::ZERO);
+        let mut agent = new_agent(IceRole::Controlling);
+
+        agent.set_local_credentials(str0m::IceCreds::new());
+        agent.set_remote_credentials(str0m::IceCreds::new());
+
+        let mut connection = node.init_connection(
+            1,
+            agent,
+            PublicKey::from([2; 32]),
+            x25519::StaticSecret::random_from_rng(rand::thread_rng()),
+            7,
+            Index::new_local(11),
+            IceConfig::client_default(),
+            IceConfig::client_idle(),
+            now,
+            now,
+        );
+
+        let dirty_at = now;
+        connection.next_wg_timer_update = now + Duration::from_secs(30);
+        connection.dirty_at = None;
+        connection.mark_dirty(dirty_at);
+
+        assert_eq!(connection.poll_timeout(), Some((dirty_at, "pending work")));
+
+        connection.handle_timeout(
+            1,
+            dirty_at,
+            &mut Allocations::default(),
+            &mut VecDeque::default(),
+        );
+
+        assert!(connection.dirty_at.is_none());
+        assert_ne!(connection.poll_timeout(), Some((dirty_at, "pending work")));
     }
 }
