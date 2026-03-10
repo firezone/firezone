@@ -687,6 +687,10 @@ impl Allocation {
             SocketAddr::V6(_) => self.ip6_socket()?,
         };
 
+        if let Some(socket) = self.active_socket.as_mut() {
+            socket.reset(now);
+        }
+
         tracing::trace!(%peer, ?socket, "Decapsulated channel-data message");
 
         Some((peer, payload, socket))
@@ -709,6 +713,8 @@ impl Allocation {
                 .as_mut()
                 .and_then(|a| a.handle_timeout(now))
         {
+            tracing::debug!("Sending STUN binding as keep-alive");
+
             self.queue(addr, make_binding_request(self.software.clone()), None, now);
         }
 
@@ -867,7 +873,7 @@ impl Allocation {
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
-        let active_socket = self.active_socket?.addr;
+        let active_socket = self.active_socket.as_mut()?;
         let payload_length = buffer.len() - 4;
 
         let connected_channel_to_peer = self.channel_bindings.connected_channel_to_peer(peer, now);
@@ -890,8 +896,10 @@ impl Allocation {
             payload_length,
         );
 
+        active_socket.reset(now);
+
         Some(EncodeOk {
-            socket: active_socket,
+            socket: active_socket.addr,
         })
     }
 
@@ -1196,9 +1204,15 @@ impl ActiveSocket {
             return None;
         }
 
-        self.next_binding = now + BINDING_INTERVAL;
+        self.reset(now);
 
         Some(self.addr)
+    }
+
+    fn reset(&mut self, now: Instant) {
+        tracing::trace!("Resetting keepalive binding");
+
+        self.next_binding = now + BINDING_INTERVAL;
     }
 }
 
