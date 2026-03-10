@@ -501,7 +501,10 @@ impl Io {
         let timeout = tokio::time::Instant::from_std(timeout);
 
         match self.timeout.as_mut() {
-            Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+            Some(existing_timeout)
+                if abs_duration_since(existing_timeout.deadline(), timeout)
+                    >= Duration::from_millis(100) =>
+            {
                 tracing::trace!(wakeup_in, %reason);
 
                 existing_timeout.as_mut().reset(timeout)
@@ -650,12 +653,29 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     true
 }
 
+fn abs_duration_since(left: tokio::time::Instant, right: tokio::time::Instant) -> Duration {
+    match left.cmp(&right) {
+        std::cmp::Ordering::Less => right.duration_since(left),
+        std::cmp::Ordering::Equal => right.duration_since(left),
+        std::cmp::Ordering::Greater => left.duration_since(right),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use futures::task::noop_waker_ref;
     use std::{future::poll_fn, net::Ipv4Addr, ptr::addr_of_mut};
 
     use super::*;
+
+    #[test]
+    fn correct_abs_duration_since() {
+        let one = tokio::time::Instant::now();
+        let two = one + Duration::from_secs(1);
+
+        assert_eq!(abs_duration_since(one, two), Duration::from_secs(1));
+        assert_eq!(abs_duration_since(two, one), Duration::from_secs(1));
+    }
 
     #[tokio::test]
     async fn timer_is_reset_after_it_fires() {
@@ -746,6 +766,48 @@ mod tests {
         );
         assert!(io.udp_dns_server.is_empty());
         assert!(io.tcp_dns_server.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cannot_reset_less_than_100ms_earlier() {
+        let _guard = logging::test("debug");
+
+        let mut io = Io::for_test();
+        let now = Instant::now();
+
+        io.reset_timeout(now + Duration::from_millis(400), "test");
+        io.reset_timeout(now + Duration::from_millis(350), "test"); // Needs to be at least 100ms earlier to replace.
+
+        tokio::time::sleep(Duration::from_millis(350)).await;
+        let poll = io.poll_test();
+
+        assert!(poll.is_pending());
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let Poll::Ready(input) = io.poll_test() else {
+            panic!("Should be ready");
+        };
+
+        assert!(input.timeout);
+    }
+
+    #[tokio::test]
+    async fn cannot_reset_less_than_100ms_later() {
+        let _guard = logging::test("debug");
+
+        let mut io = Io::for_test();
+        let now = Instant::now();
+
+        io.reset_timeout(now + Duration::from_millis(350), "test");
+        io.reset_timeout(now + Duration::from_millis(400), "test"); // Needs to be at least 100ms later to replace.
+
+        tokio::time::sleep(Duration::from_millis(350)).await;
+
+        let Poll::Ready(input) = io.poll_test() else {
+            panic!("Should be ready");
+        };
+
+        assert!(input.timeout);
     }
 
     fn example_com_recursive_query() -> dns::RecursiveQuery {
