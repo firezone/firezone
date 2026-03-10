@@ -656,8 +656,8 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 fn abs_duration_since(left: tokio::time::Instant, right: tokio::time::Instant) -> Duration {
     match left.cmp(&right) {
         std::cmp::Ordering::Less => right.duration_since(left),
-        std::cmp::Ordering::Equal => right.duration_since(left),
         std::cmp::Ordering::Greater => left.duration_since(right),
+        std::cmp::Ordering::Equal => Duration::ZERO,
     }
 }
 
@@ -675,6 +675,7 @@ mod tests {
 
         assert_eq!(abs_duration_since(one, two), Duration::from_secs(1));
         assert_eq!(abs_duration_since(two, one), Duration::from_secs(1));
+        assert_eq!(abs_duration_since(one, one), Duration::ZERO);
     }
 
     #[tokio::test]
