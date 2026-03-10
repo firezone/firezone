@@ -498,7 +498,7 @@ impl Eventloop {
                         tracing::debug!("Failed to handle flow created: {e}");
 
                         self.portal_cmd_tx
-                            .send(PortalCommand::Send(EgressMessages::NoRelays))
+                            .send(PortalCommand::Send(EgressMessages::NoRelays {}))
                             .await
                             .context("Failed to send message to portal")?;
                     }

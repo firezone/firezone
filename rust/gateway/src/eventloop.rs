@@ -315,7 +315,7 @@ impl Eventloop {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
                     self.portal_cmd_tx
-                        .send(PortalCommand::Send(EgressMessages::NoRelays))
+                        .send(PortalCommand::Send(EgressMessages::NoRelays {}))
                         .await
                         .context("Failed to send message to portal")?;
 
