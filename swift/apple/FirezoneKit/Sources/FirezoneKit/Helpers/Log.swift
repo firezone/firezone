@@ -46,7 +46,10 @@ public final class Log {
     }
   }
 
+  private static let isCLI: Bool = ProcessInfo.processInfo.processName == "firezone-cli"
+
   private static let processName: String = {
+    if isCLI { return "cli" }
     switch Bundle.main.bundleIdentifier {
     case "dev.firezone.firezone": return "app"
     case "dev.firezone.firezone.network-extension": return "tunnel"
@@ -101,30 +104,35 @@ public final class Log {
     logger.trace("\(message, privacy: .public)")
     logWriter?.write(severity: .trace, message: message)
     sentryLog(severity: .trace, message: message)
+    writeToStderr(.trace, message)
   }
 
   public static func debug(_ message: String) {
     self.logger.debug("\(message, privacy: .public)")
     logWriter?.write(severity: .debug, message: message)
     sentryLog(severity: .debug, message: message)
+    writeToStderr(.debug, message)
   }
 
   public static func info(_ message: String) {
     logger.info("\(message, privacy: .public)")
     logWriter?.write(severity: .info, message: message)
     sentryLog(severity: .info, message: message)
+    writeToStderr(.info, message)
   }
 
   public static func warning(_ message: String) {
     logger.warning("\(message, privacy: .public)")
     logWriter?.write(severity: .warning, message: message)
     sentryLog(severity: .warning, message: message)
+    writeToStderr(.warning, message)
   }
 
   public static func error(_ message: String) {
     self.logger.error("\(message, privacy: .public)")
     logWriter?.write(severity: .error, message: message)
     sentryLog(severity: .error, message: message)
+    writeToStderr(.error, message)
   }
 
   public static func error(_ err: Error) {
@@ -174,6 +182,14 @@ public final class Log {
     else { return }
 
     try FileManager.default.removeItem(at: directory)
+  }
+
+  private static func writeToStderr(_ severity: LogWriter.Severity, _ message: String) {
+    guard isCLI else { return }
+    var line = "\(severity.rawValue) \(message)\n"
+    line.withUTF8 { buffer in
+      _ = fwrite(buffer.baseAddress, 1, buffer.count, stderr)
+    }
   }
 
   // Don't capture certain kinds of IPC and security errors in DEBUG builds
