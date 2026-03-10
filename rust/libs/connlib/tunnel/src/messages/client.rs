@@ -525,6 +525,15 @@ mod tests {
     }
 
     #[test]
+    fn serialize_no_relays_message() {
+        let message = EgressMessages::NoRelays {};
+        let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
     fn faulty_candidate_get_skipped() {
         let bad_candidates = serde_json::json!({ "gateway_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3", "candidates": ["foo", "bar", "baz", "candidate:fffeff6435be70ddbf995982 1 udp 1694498559 87.121.72.60 57114 typ srflx raddr 0.0.0.0 rport 0"] });
 
