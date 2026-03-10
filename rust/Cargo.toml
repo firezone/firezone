@@ -276,19 +276,17 @@ tracing = "0.1.41"
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
 lto = "fat"
 
+# Always ship with debug symbols.
+debug = true
+
 # Increases the compiler's ability to produce smaller, optimized code
 # at the expense of compilation time
 codegen-units = 1
 
 [profile.release.package.firezone-gui-client]
-debug = "full"
 split-debuginfo = "packed"
-
-[profile.release.package.ebpf-turn-router]
-debug = 2
 
 # Override build settings just for the GUI client, so we get a pdb/dwp
 # Cargo ignores profile settings if they're not in the workspace's Cargo.toml
 [profile.dev.package.firezone-gui-client]
-debug = "full"
 split-debuginfo = "packed"
