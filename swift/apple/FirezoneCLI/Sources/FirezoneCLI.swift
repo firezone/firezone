@@ -5,8 +5,8 @@
 //
 
 import ArgumentParser
-import Foundation
 import FirezoneKit
+import Foundation
 import NetworkExtension
 
 @main
@@ -18,26 +18,11 @@ struct FirezoneCLI: AsyncParsableCommand {
     subcommands: [SignIn.self, SignOut.self]
   )
 
-  @Option(name: .shortAndLong, help: "Log directory path.")
-  var logDir: String?
-
-  @Option(name: .shortAndLong, help: "Max partition time for log files.")
-  var maxPartitionTime: String?
-
   @Option(name: .shortAndLong, help: ArgumentHelp("API URL.", visibility: .hidden))
   var apiUrl: String?
 
-  @Option(name: .long, help: "Friendly name for this device.")
-  var firezoneName: String?
-
-  @Option(name: .shortAndLong, help: "Device identifier (auto-generated if not set).")
-  var firezoneId: String?
-
   @Flag(name: .long, help: "Activate Internet Resource.")
   var activateInternetResource = false
-
-  @Flag(name: .long, help: "Disable telemetry.")
-  var noTelemetry = false
 
   @Flag(name: .long, help: ArgumentHelp("Validate config and exit.", visibility: .hidden))
   var check = false
@@ -60,30 +45,18 @@ struct FirezoneCLI: AsyncParsableCommand {
       ?? ProcessInfo.processInfo.environment["FIREZONE_API_URL"]
       ?? "wss://api.firezone.dev/"
 
-    // TODO: Wire firezoneName and firezoneId into TunnelConfiguration
-    _ = self.firezoneName
-      ?? ProcessInfo.processInfo.environment["FIREZONE_NAME"]
-
-    _ = self.firezoneId
-      ?? ProcessInfo.processInfo.environment["FIREZONE_ID"]
-      ?? Self.getOrCreateDeviceId()
-
     let internetResourceEnabled =
       self.activateInternetResource
       || ProcessInfo.processInfo.environment["FIREZONE_ACTIVATE_INTERNET_RESOURCE"] == "1"
 
-    // TODO: Wire noTelemetry into TunnelConfiguration
-    _ = self.noTelemetry
-      || ProcessInfo.processInfo.environment["FIREZONE_NO_TELEMETRY"] == "1"
-
     // Load token: env var first, then Keychain
     let token: Token
     if let envToken = ProcessInfo.processInfo.environment["FIREZONE_TOKEN"],
-      let t = Token(envToken)
+      let parsed = Token(envToken)
     {
-      token = t
-    } else if let t = try Token.load() {
-      token = t
+      token = parsed
+    } else if let saved = try Token.load() {
+      token = saved
     } else {
       throw ValidationError(
         "No token found. Set FIREZONE_TOKEN or run 'firezone sign-in' first."
@@ -96,23 +69,24 @@ struct FirezoneCLI: AsyncParsableCommand {
     }
 
     #if SYSTEM_EXTENSION
-    // Check/install system extension
-    try await installSystemExtensionIfNeeded()
+      // Check/install system extension
+      try await installSystemExtensionIfNeeded()
     #endif
 
     // Load or create VPN configuration
+    let factory = NETunnelProviderManagerFactory()
     let vpnManager: VPNConfigurationManager
-    if let existing = try await VPNConfigurationManager.load() {
+    if let existing = try await VPNConfigurationManager.load(using: factory) {
       vpnManager = existing
     } else {
       Log.info("Creating VPN configuration...")
-      vpnManager = try await VPNConfigurationManager()
+      vpnManager = try await VPNConfigurationManager(manager: factory.createManager())
     }
 
     try await vpnManager.enable()
 
     guard let session = vpnManager.session() else {
-      throw CleanExit.message("Failed to get VPN session")
+      throw ValidationError("Failed to get VPN session")
     }
 
     let accountSlug =
@@ -128,18 +102,27 @@ struct FirezoneCLI: AsyncParsableCommand {
     try IPCClient.start(session: session, token: token.description, configuration: configuration)
     Log.info("Tunnel started")
 
+    // Bridge signals into async world via AsyncStream
+    let (signalStream, signalContinuation) = AsyncStream.makeStream(of: SignalAction.self)
+
     // Subscribe to VPN status updates
     let shouldExitOnConnect = self.exit
+    let tunnelState = TunnelState()
     Task {
       for await status in IPCClient.vpnStatusUpdates(session: session) {
         switch status {
         case .connected:
           Log.info("Tunnel connected")
           if shouldExitOnConnect {
-            Foundation.exit(0)
+            signalContinuation.yield(.shutdown)
           }
         case .disconnected:
-          Log.info("Tunnel disconnected")
+          if tunnelState.isRestarting {
+            Log.info("Tunnel disconnected (restarting)")
+          } else {
+            Log.info("Tunnel disconnected externally, shutting down...")
+            signalContinuation.yield(.shutdown)
+          }
         case .connecting:
           Log.info("Tunnel connecting...")
         case .reasserting:
@@ -154,7 +137,6 @@ struct FirezoneCLI: AsyncParsableCommand {
       }
     }
 
-    // Set up signal handlers
     let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
     let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
     let sighupSource = DispatchSource.makeSignalSource(signal: SIGHUP, queue: .main)
@@ -163,65 +145,60 @@ struct FirezoneCLI: AsyncParsableCommand {
     signal(SIGTERM, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
 
-    sigintSource.setEventHandler {
-      Log.info("Caught SIGINT, shutting down...")
-      session.stopTunnel()
-      Foundation.exit(0)
-    }
-
-    sigtermSource.setEventHandler {
-      Log.info("Caught SIGTERM, shutting down...")
-      session.stopTunnel()
-      Foundation.exit(0)
-    }
-
-    sighupSource.setEventHandler {
-      Log.info("Caught SIGHUP, restarting tunnel...")
-      session.stopTunnel()
-      do {
-        try IPCClient.start(
-          session: session, token: token.description, configuration: configuration)
-        Log.info("Tunnel restarted")
-      } catch {
-        Log.error(error)
-        Foundation.exit(1)
-      }
-    }
+    sigintSource.setEventHandler { signalContinuation.yield(.shutdown) }
+    sigtermSource.setEventHandler { signalContinuation.yield(.shutdown) }
+    sighupSource.setEventHandler { signalContinuation.yield(.restart) }
 
     sigintSource.resume()
     sigtermSource.resume()
     sighupSource.resume()
 
-    // Keep process alive
-    dispatchMain()
-  }
-
-  private static func getOrCreateDeviceId() -> String {
-    let key = "firezoneId"
-    if let savedId = UserDefaults.standard.string(forKey: key) {
-      return savedId
+    for await action in signalStream {
+      switch action {
+      case .shutdown:
+        Log.info("Shutting down...")
+        session.stopTunnel()
+        return
+      case .restart:
+        Log.info("Restarting tunnel...")
+        tunnelState.isRestarting = true
+        session.stopTunnel()
+        try IPCClient.start(
+          session: session, token: token.description, configuration: configuration)
+        tunnelState.isRestarting = false
+        Log.info("Tunnel restarted")
+      }
     }
-    let newId = UUID().uuidString
-    UserDefaults.standard.set(newId, forKey: key)
-    return newId
   }
 
   #if SYSTEM_EXTENSION
-  @MainActor
-  private func installSystemExtensionIfNeeded() async throws {
-    let manager = SystemExtensionManager()
-    let status = try await manager.check()
+    @MainActor
+    private func installSystemExtensionIfNeeded() async throws {
+      let manager = SystemExtensionManager()
+      let status = try await manager.check()
 
-    switch status {
-    case .installed:
-      Log.info("System extension is up to date")
-    case .needsInstall, .needsReplacement:
-      Log.info("Installing system extension...")
-      _ = try await manager.tryInstall()
-      Log.info("System extension installed")
+      switch status {
+      case .installed:
+        Log.info("System extension is up to date")
+      case .needsInstall, .needsReplacement:
+        Log.info("Installing system extension...")
+        _ = try await manager.tryInstall()
+        Log.info("System extension installed")
+      }
     }
-  }
   #endif
+}
+
+// MARK: - Signal handling
+
+private enum SignalAction {
+  case shutdown
+  case restart
+}
+
+@MainActor
+private final class TunnelState {
+  var isRestarting = false
 }
 
 // MARK: - Subcommands
@@ -253,7 +230,7 @@ struct SignIn: AsyncParsableCommand {
     }
 
     if let slug = accountSlug, !slug.isEmpty {
-      components.path = (components.path as NSString).appendingPathComponent(slug)
+      components.path += components.path.hasSuffix("/") ? slug : "/\(slug)"
     }
 
     var queryItems = components.queryItems ?? []
