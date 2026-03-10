@@ -2003,6 +2003,60 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_reply ref, :error, %{reason: :unknown_message}
     end
 
+    test "no_relays sends relays_presence with 2 selected relays", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay1)
+
+      relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
+      :ok = Portal.Presence.Relays.connect(relay2)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{})
+
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: [relay_view | _] = relays
+                  }
+
+      assert length(relays) == 2
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+    end
+
+    test "no_relays sends relays_presence with empty connected when no relays are online", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: []}
+
+      push(socket, "no_relays", %{})
+
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: []
+                  }
+    end
+
     test "flow_authorized forwards reply to the client channel", %{
       client: client,
       account: account,

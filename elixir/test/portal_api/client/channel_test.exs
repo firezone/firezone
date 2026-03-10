@@ -4468,6 +4468,57 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_in/3 no_relays" do
+    test "sends relays_presence with 2 selected relays", %{
+      client: client,
+      subject: subject
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{})
+
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: [relay_view | _] = relays
+                  }
+
+      assert length(relays) == 2
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+    end
+
+    test "sends relays_presence with empty connected when no relays are online", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: []}
+
+      push(socket, "no_relays", %{})
+
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: []
+                  }
+    end
+  end
+
   describe "handle_in/3 for unknown message" do
     test "it doesn't crash", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
