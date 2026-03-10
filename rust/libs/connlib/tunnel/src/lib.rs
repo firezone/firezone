@@ -236,7 +236,7 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.role_state.handle_timeout(now);
+                    self.io.schedule_timeout(now);
 
                     ready = true;
                 }
@@ -257,9 +257,7 @@ impl ClientTunnel {
                                     transmit.ecn,
                                 );
                             }
-                            None => {
-                                self.role_state.handle_timeout(now);
-                            }
+                            None => self.io.schedule_timeout(now),
                         }
                     }
 
@@ -286,7 +284,7 @@ impl ClientTunnel {
                             Some(packet) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            None => self.role_state.handle_timeout(now),
+                            None => self.io.schedule_timeout(now),
                         };
                     }
 
@@ -449,9 +447,7 @@ impl GatewayTunnel {
                                     transmit.ecn,
                                 );
                             }
-                            Ok(None) => {
-                                self.role_state.handle_timeout(now, Utc::now());
-                            }
+                            Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => {
                                 let routing_error = e
                                     .any_downcast_ref::<gateway::UnroutablePacket>()
@@ -492,7 +488,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.role_state.handle_timeout(now, now_utc),
+                            Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };
                     }

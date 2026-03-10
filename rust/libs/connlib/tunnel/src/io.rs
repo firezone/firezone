@@ -504,6 +504,20 @@ impl Io {
         }
     }
 
+    /// Schedules a wakeup in case one isn't registered yet.
+    pub fn schedule_timeout(&mut self, now: Instant) {
+        let now = tokio::time::Instant::from_std(now);
+        let latest_wakeup = now + Duration::from_secs(1);
+
+        match self.timeout.as_mut() {
+            Some(existing_timeout) if existing_timeout.deadline() < latest_wakeup => {}
+            Some(existing_timeout) => {
+                existing_timeout.as_mut().reset(latest_wakeup);
+            }
+            None => self.timeout = Some(Box::pin(tokio::time::sleep_until(latest_wakeup))),
+        }
+    }
+
     pub fn send_network(
         &mut self,
         src: Option<SocketAddr>,
@@ -707,6 +721,43 @@ mod tests {
                 dns_types::ResponseCode::NOERROR
             );
         }
+    }
+
+    #[tokio::test]
+    async fn schedule_timeout_shortens_deadline_when_current_is_too_far_away() {
+        let mut io = Io::for_test();
+
+        // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
+        // schedule_timeout should pull it in to ~1s from now.
+        let now = Instant::now();
+        io.schedule_timeout(now);
+
+        let deadline = io.timeout.as_mut().deadline().into_std();
+        let wakeup_in = deadline.duration_since(now);
+
+        assert!(
+            wakeup_in <= Duration::from_secs(1),
+            "expected deadline within 1s, got {wakeup_in:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn schedule_timeout_does_not_postpone_an_already_close_deadline() {
+        let mut io = Io::for_test();
+
+        // Set a deadline that is already sooner than 1s.
+        let now = Instant::now();
+        let close_deadline = now + Duration::from_millis(100);
+        io.reset_timeout(close_deadline, "close deadline");
+
+        io.schedule_timeout(now);
+
+        let deadline = io.timeout.as_mut().deadline().into_std();
+
+        assert_eq!(
+            deadline, close_deadline,
+            "schedule_timeout must not push out a deadline that is already close"
+        );
     }
 
     #[tokio::test]
