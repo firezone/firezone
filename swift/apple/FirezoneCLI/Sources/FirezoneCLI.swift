@@ -12,7 +12,7 @@ import NetworkExtension
 @main
 struct FirezoneCLI: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
-    commandName: "firezone",
+    commandName: "firezone-cli",
     abstract: "Firezone headless Client",
     version: Self.versionString,
     subcommands: [SignIn.self, SignOut.self]
@@ -59,7 +59,7 @@ struct FirezoneCLI: AsyncParsableCommand {
       token = saved
     } else {
       throw ValidationError(
-        "No token found. Set FIREZONE_TOKEN or run 'firezone sign-in' first."
+        "No token found. Set FIREZONE_TOKEN or run 'firezone-cli sign-in' first."
       )
     }
 
@@ -279,7 +279,7 @@ struct SignIn: AsyncParsableCommand {
     }
 
     try token.save()
-    print("Token saved successfully. You can now run 'firezone' to connect.")
+    print("Token saved successfully. You can now run 'firezone-cli' to connect.")
   }
 }
 
