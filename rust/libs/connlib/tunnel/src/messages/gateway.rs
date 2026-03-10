@@ -248,6 +248,7 @@ pub enum EgressMessages {
         #[serde(rename = "ref")]
         reference: String,
     },
+    NoRelays,
 }
 
 #[cfg(test)]

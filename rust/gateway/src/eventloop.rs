@@ -315,12 +315,10 @@ impl Eventloop {
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
-                    // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                     self.portal_cmd_tx
-                        .send(PortalCommand::Connect(PublicKeyParam(
-                            tunnel.public_key().to_bytes(),
-                        )))
-                        .await?;
+                        .send(PortalCommand::Send(EgressMessages::NoRelays))
+                        .await
+                        .context("Failed to connect phoenix-channel")?;
 
                     return Ok(());
                 };

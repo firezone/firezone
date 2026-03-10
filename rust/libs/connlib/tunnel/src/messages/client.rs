@@ -215,6 +215,7 @@ pub enum EgressMessages {
     RequestDeviceAccess {
         ipv4: Ipv4Addr,
     },
+    NoRelays,
     NewGatewayIceCandidates(GatewayIceCandidates),
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
