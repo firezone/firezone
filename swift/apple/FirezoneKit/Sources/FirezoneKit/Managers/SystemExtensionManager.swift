@@ -69,7 +69,7 @@
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
-    public override init() {
+    override public init() {
       super.init()
     }
 

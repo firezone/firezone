@@ -47,7 +47,7 @@
 		FZ0CLI012E80000000000002 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000020 /* FirezoneKit */; };
 		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; };
 		FZ0CLI012E80000000000004 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
-		FZ0CLI012E80000000000005 /* firezone in Copy CLI Binary */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000011 /* firezone */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FZ0CLI012E80000000000005 /* FirezoneCLI.app in Copy CLI Binary */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000011 /* FirezoneCLI.app */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 
 /* End PBXBuildFile section */
 
@@ -101,10 +101,10 @@
 		FZ0CLI012E80000000000050 /* Copy CLI Binary */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 6;
+			dstPath = "Contents/Helpers";
+			dstSubfolderSpec = 1;
 			files = (
-				FZ0CLI012E80000000000005 /* firezone in Copy CLI Binary */,
+				FZ0CLI012E80000000000005 /* FirezoneCLI.app in Copy CLI Binary */,
 			);
 			name = "Copy CLI Binary";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -145,7 +145,7 @@
 		8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.macOS.plist; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000010 /* FirezoneCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneCLI.swift; sourceTree = "<group>"; };
-		FZ0CLI012E80000000000011 /* firezone */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = firezone; sourceTree = BUILT_PRODUCTS_DIR; };
+		FZ0CLI012E80000000000011 /* FirezoneCLI.app */ = {isa = PBXFileReference; explicitFileType = "wrapper.application"; includeInIndex = 0; path = "FirezoneCLI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FZ0CLI012E80000000000012 /* FirezoneCLI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneCLI.entitlements; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -263,7 +263,7 @@
 				8DCC021928D512AC007E12D2 /* Firezone.app */,
 				05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */,
 				8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */,
-				FZ0CLI012E80000000000011 /* firezone */,
+				FZ0CLI012E80000000000011 /* FirezoneCLI.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -404,9 +404,9 @@
 				FZ0CLI012E80000000000020 /* FirezoneKit */,
 				FZ0CLI012E80000000000030 /* ArgumentParser */,
 			);
-			productName = firezone;
-			productReference = FZ0CLI012E80000000000011 /* firezone */;
-			productType = "com.apple.product-type.tool";
+			productName = "firezone-cli";
+			productReference = FZ0CLI012E80000000000011 /* FirezoneCLI.app */;
+			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
@@ -1308,7 +1308,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
-				PRODUCT_NAME = firezone;
+				PRODUCT_NAME = "firezone-cli";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1333,7 +1333,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
-				PRODUCT_NAME = firezone;
+				PRODUCT_NAME = "firezone-cli";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -1359,7 +1359,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
-				PRODUCT_NAME = firezone;
+				PRODUCT_NAME = "firezone-cli";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
