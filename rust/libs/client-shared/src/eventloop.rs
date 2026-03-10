@@ -500,7 +500,7 @@ impl Eventloop {
                         self.portal_cmd_tx
                             .send(PortalCommand::Send(EgressMessages::NoRelays))
                             .await
-                            .context("Failed to connect phoenix-channel")?;
+                            .context("Failed to send message to portal")?;
                     }
                     Err(e) => {
                         tracing::warn!("Failed to handle flow created: {e:#}");
