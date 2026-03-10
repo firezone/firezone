@@ -512,7 +512,7 @@ impl Io {
             Some(_) => {}
             None => {
                 self.timeout = {
-                    tracing::trace!(?wakeup_in, %reason);
+                    tracing::trace!(wakeup_in, %reason);
 
                     Some(Box::pin(tokio::time::sleep_until(timeout)))
                 }
