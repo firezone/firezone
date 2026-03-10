@@ -130,7 +130,7 @@
           {Credo.Check.Refactor.MapJoin, []},
           {Credo.Check.Refactor.NegatedConditionsInUnless, []},
           {Credo.Check.Refactor.NegatedConditionsWithElse, []},
-          {Credo.Check.Refactor.Nesting, [max_nesting: 3]},
+          {Credo.Check.Refactor.Nesting, [max_nesting: 2]},
           {Credo.Check.Refactor.UnlessWithElse, []},
           {Credo.Check.Refactor.WithClauses, []},
           {Credo.Check.Refactor.FilterFilter, []},

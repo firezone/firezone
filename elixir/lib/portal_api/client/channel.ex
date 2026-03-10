@@ -1330,28 +1330,24 @@ defmodule PortalAPI.Client.Channel do
     defp filter_compatible_gateways(gateways, resource, client_version) do
       case Version.parse(client_version) do
         {:ok, version} ->
-          gateways
-          |> Enum.filter(fn gateway ->
-            gateway_version_str = gateway.latest_session && gateway.latest_session.version
-
-            case gateway_version_str && Version.parse(gateway_version_str) do
-              {:ok, gateway_version} ->
-                Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-                  Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
-                  not is_nil(
-                    Portal.Resource.adapt_resource_for_version(
-                      resource,
-                      gateway_version_str
-                    )
-                  )
-
-              _ ->
-                false
-            end
-          end)
+          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
 
         :error ->
           []
+      end
+    end
+
+    defp compatible_gateway?(gateway, resource, version) do
+      gateway_version_str = gateway.latest_session && gateway.latest_session.version
+
+      case gateway_version_str && Version.parse(gateway_version_str) do
+        {:ok, gateway_version} ->
+          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
+            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
+            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
+
+        _ ->
+          false
       end
     end
 
