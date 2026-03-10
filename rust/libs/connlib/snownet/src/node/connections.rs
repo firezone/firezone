@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -17,6 +17,7 @@ use crate::{
 
 pub struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
+    dirty: BTreeSet<TId>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
 
@@ -29,6 +30,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
             established: Default::default(),
+            dirty: Default::default(),
             established_by_wireguard_session_index: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
@@ -69,6 +71,7 @@ where
 
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
         let connection = self.established.remove(id)?;
+        self.dirty.remove(id);
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
@@ -89,6 +92,8 @@ where
         rng: &mut impl Rng,
         now: Instant,
     ) {
+        let mut dirty = Vec::new();
+
         for (cid, c) in self.iter_established_mut() {
             if allocations.contains(&c.relay.id) {
                 continue; // Our relay is still there, no problems.
@@ -110,7 +115,10 @@ where
             for candidate in allocation.current_relay_candidates() {
                 c.add_local_candidate(cid, &candidate, pending_events, now);
             }
+            dirty.push(cid);
         }
+
+        self.dirty.extend(dirty);
     }
 
     pub(crate) fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
@@ -124,6 +132,7 @@ where
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
         let existing = self.established.insert(id, connection);
+        self.dirty.remove(&id);
 
         // Remove previous mappings for connection.
         self.established_by_wireguard_session_index
@@ -154,6 +163,10 @@ where
             .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok(connection)
+    }
+
+    pub(crate) fn get_mut_if_established(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
+        self.established.get_mut(id)
     }
 
     pub(crate) fn get_established_mut_session_index(
@@ -212,6 +225,7 @@ where
 
     pub(crate) fn clear(&mut self) {
         self.established.clear();
+        self.dirty.clear();
         self.established_by_wireguard_session_index.clear();
     }
 
@@ -224,6 +238,10 @@ where
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        if let Some(timeout) = self.dirty_timeout() {
+            return Some(timeout);
+        }
+
         iter::empty()
             .chain(
                 self.established
@@ -263,6 +281,27 @@ where
                     })
                     .min_by_key(|(t, _)| *t),
             )
+            .min_by_key(|(instant, _)| *instant)
+    }
+
+    pub(crate) fn mark_dirty(&mut self, id: TId) {
+        if self.established.contains_key(&id) {
+            self.dirty.insert(id);
+        }
+    }
+
+    pub(crate) fn take_dirty(&mut self) -> Vec<TId> {
+        std::mem::take(&mut self.dirty).into_iter().collect()
+    }
+
+    pub(crate) fn clear_dirty(&mut self) {
+        self.dirty.clear();
+    }
+
+    fn dirty_timeout(&self) -> Option<(Instant, &'static str)> {
+        self.dirty
+            .iter()
+            .filter_map(|id| Some((self.established.get(id)?.dirty_at?, "pending work")))
             .min_by_key(|(instant, _)| *instant)
     }
 }

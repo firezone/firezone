@@ -236,7 +236,7 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.role_state.handle_timeout(now);
+                    self.role_state.handle_pending_work(now);
 
                     ready = true;
                 }
@@ -258,7 +258,7 @@ impl ClientTunnel {
                                 );
                             }
                             None => {
-                                self.role_state.handle_timeout(now);
+                                self.role_state.handle_pending_work(now);
                             }
                         }
                     }
@@ -286,7 +286,7 @@ impl ClientTunnel {
                             Some(packet) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            None => self.role_state.handle_timeout(now),
+                            None => self.role_state.handle_pending_work(now),
                         };
                     }
 
@@ -450,7 +450,7 @@ impl GatewayTunnel {
                                 );
                             }
                             Ok(None) => {
-                                self.role_state.handle_timeout(now, Utc::now());
+                                self.role_state.handle_pending_work(now);
                             }
                             Err(e) => {
                                 let routing_error = e
@@ -492,7 +492,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.role_state.handle_timeout(now, now_utc),
+                            Ok(None) => self.role_state.handle_pending_work(now),
                             Err(e) => error.push(e),
                         };
                     }

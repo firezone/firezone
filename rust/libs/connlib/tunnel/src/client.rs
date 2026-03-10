@@ -670,8 +670,7 @@ impl ClientState {
     ) {
         self.node
             .add_remote_candidate(conn_id.into(), ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events(now);
+        self.handle_pending_work(now);
     }
 
     pub fn remove_ice_candidate(
@@ -682,8 +681,7 @@ impl ClientState {
     ) {
         self.node
             .remove_remote_candidate(conn_id.into(), ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events(now);
+        self.handle_pending_work(now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
@@ -1175,6 +1173,14 @@ impl ClientState {
         self.reset_offline_site_status(now);
 
         self.dns_cache.handle_timeout(now);
+    }
+
+    pub fn handle_pending_work(&mut self, now: Instant) {
+        self.node.handle_pending_work(now);
+        self.drain_node_events(now);
+
+        self.advance_dns_clients_and_servers(now);
+        self.send_dns_resource_nat_packets(now);
     }
 
     /// Advance the DNS server and client state machines.

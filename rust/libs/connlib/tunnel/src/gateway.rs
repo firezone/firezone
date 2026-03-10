@@ -248,8 +248,7 @@ impl GatewayState {
     ) {
         self.node
             .add_remote_candidate(conn_id, ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.handle_pending_work(now);
     }
 
     pub fn remove_ice_candidate(
@@ -260,8 +259,7 @@ impl GatewayState {
     ) {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events();
+        self.handle_pending_work(now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
@@ -550,6 +548,11 @@ impl GatewayState {
                 }
             }
         }
+    }
+
+    pub fn handle_pending_work(&mut self, now: Instant) {
+        self.node.handle_pending_work(now);
+        self.drain_node_events();
     }
 
     fn drain_node_events(&mut self) {

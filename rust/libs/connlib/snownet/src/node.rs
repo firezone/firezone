@@ -350,6 +350,7 @@ where
         );
 
         self.connections.insert_established(cid, index, connection);
+        self.connections.mark_dirty(cid);
 
         Ok(())
     }
@@ -435,6 +436,8 @@ where
         };
 
         c.add_remote_candidate(cid, candidate.clone(), now);
+        let relay_id = c.relay.id;
+        self.connections.mark_dirty(cid);
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -447,8 +450,8 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut_by_id(&c.relay.id) else {
-            tracing::debug!(rid = %c.relay.id, "Unknown relay");
+        let Some(allocation) = self.allocations.get_mut_by_id(&relay_id) else {
+            tracing::debug!(rid = %relay_id, "Unknown relay");
             return;
         };
 
@@ -465,6 +468,7 @@ where
         };
 
         c.remove_remote_candidate(cid, candidate, now);
+        self.connections.mark_dirty(cid);
     }
 
     /// Decapsulate an incoming packet.
@@ -571,6 +575,21 @@ where
             .min_by_key(|(instant, _)| *instant)
     }
 
+    pub fn handle_pending_work(&mut self, now: Instant) {
+        self.allocations_drain_events(now);
+
+        for id in self.connections.take_dirty() {
+            let Some(connection) = self.connections.get_mut_if_established(&id) else {
+                continue;
+            };
+
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
+        }
+
+        self.connections
+            .handle_timeout(&mut self.pending_events, now);
+    }
+
     /// Advances time within the [`Node`].
     ///
     /// This function is the main "work-horse" outside of encapsulating or decapsulating network packets.
@@ -591,6 +610,7 @@ where
         self.allocations.handle_timeout(now);
 
         self.allocations_drain_events(now);
+        self.connections.clear_dirty();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
@@ -906,7 +926,9 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (_, c) in self.connections.iter_mut() {
+        let mut matched_connection = None;
+
+        for (cid, c) in self.connections.iter_mut() {
             if c.agent.accepts_message(&message) {
                 c.agent.handle_packet(
                     now,
@@ -918,9 +940,16 @@ where
                     },
                 );
                 c.mark_dirty(now);
+                matched_connection = Some(cid);
 
-                return ControlFlow::Break(Ok(()));
+                break;
             }
+        }
+
+        if let Some(cid) = matched_connection {
+            self.connections.mark_dirty(cid);
+
+            return ControlFlow::Break(Ok(()));
         }
 
         tracing::trace!("Packet was a STUN message but no agent handled it. Already disconnected?");
@@ -1008,17 +1037,25 @@ where
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
+            let mut dirty = Vec::new();
+
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
                         c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        dirty.push(cid);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
                     for (cid, c) in self.connections.iter_mut() {
                         c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        dirty.push(cid);
                     }
                 }
+            }
+
+            for cid in dirty {
+                self.connections.mark_dirty(cid);
             }
         }
     }
@@ -1265,8 +1302,18 @@ where
 
     #[must_use]
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        self.dirty_at
+            .map(|instant| (instant, "pending work"))
+            .or_else(|| self.scheduled_timeout())
+    }
+
+    fn scheduled_timeout_due(&mut self, now: Instant) -> bool {
+        self.scheduled_timeout()
+            .is_some_and(|(timeout, _)| now >= timeout)
+    }
+
+    fn scheduled_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(self.dirty_at.map(|instant| (instant, "pending work")))
             .chain(
                 self.agent
                     .poll_timeout()
@@ -1283,26 +1330,6 @@ where
             )
             .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant)
-    }
-
-    fn scheduled_timeout_due(&mut self, now: Instant) -> bool {
-        iter::empty()
-            .chain(
-                self.agent
-                    .poll_timeout()
-                    .map(|instant| (instant, "ICE agent")),
-            )
-            .chain(Some((self.next_wg_timer_update, "boringtun tunnel")))
-            .chain(
-                self.candidate_timeout()
-                    .map(|instant| (instant, "candidate timeout")),
-            )
-            .chain(
-                self.disconnect_timeout()
-                    .map(|instant| (instant, "disconnect timeout")),
-            )
-            .chain(self.state.poll_timeout(&self.agent))
-            .any(|(timeout, _)| now >= timeout)
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
