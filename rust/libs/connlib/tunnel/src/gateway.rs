@@ -248,8 +248,6 @@ impl GatewayState {
     ) {
         self.node
             .add_remote_candidate(conn_id, ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events();
     }
 
     pub fn remove_ice_candidate(
@@ -260,8 +258,6 @@ impl GatewayState {
     ) {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
