@@ -52,7 +52,6 @@ pub struct Eventloop {
 
 enum PortalCommand {
     Send(EgressMessages),
-    Connect(PublicKeyParam),
     Close,
 }
 
@@ -523,7 +522,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    mut public_key: PublicKeyParam,
+    public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -576,12 +575,6 @@ async fn phoenix_channel_event_loop(
                         tracing::debug!(?msg, "Failed to send message to portal: Not connected")
                     }
                 }
-            }
-            Either::Right((Some(PortalCommand::Connect(new_public_key)), _)) => {
-                public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
-
-                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
-                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Right((Some(PortalCommand::Close), _)) => {
                 let _ = portal.close();
