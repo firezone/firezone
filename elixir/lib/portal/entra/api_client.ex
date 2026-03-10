@@ -3,6 +3,8 @@ defmodule Portal.Entra.APIClient do
   Client for Microsoft Graph PortalAPI.
   """
 
+  require Logger
+
   @doc """
   Gets an access token using the OAuth2 client credentials flow.
   """
@@ -132,8 +134,6 @@ defmodule Portal.Entra.APIClient do
     url = "#{endpoint}/v1.0/$batch"
     req_opts = fetch_config(:req_opts) || []
 
-    require Logger
-
     case Req.post(
            url,
            [
@@ -168,18 +168,7 @@ defmodule Portal.Entra.APIClient do
 
           {:error, {:batch_all_failed, error_status, error_body}}
         else
-          # Log any failed requests as warnings
-          if not Enum.empty?(failed) do
-            Logger.warning("Some batch user requests failed",
-              failed_count: length(failed),
-              successful_count: length(successful)
-            )
-          end
-
-          users = Enum.map(successful, fn response -> response["body"] end)
-          Logger.debug("Filtered users", count: length(users))
-
-          {:ok, users}
+          handle_batch_results(successful, failed)
         end
 
       {:ok, %Req.Response{} = response} ->
@@ -193,6 +182,20 @@ defmodule Portal.Entra.APIClient do
       {:error, _} = error ->
         error
     end
+  end
+
+  defp handle_batch_results(successful, failed) do
+    if not Enum.empty?(failed) do
+      Logger.warning("Some batch user requests failed",
+        failed_count: length(failed),
+        successful_count: length(successful)
+      )
+    end
+
+    users = Enum.map(successful, fn response -> response["body"] end)
+    Logger.debug("Filtered users", count: length(users))
+
+    {:ok, users}
   end
 
   @doc """

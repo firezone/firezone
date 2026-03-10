@@ -5,6 +5,7 @@ defmodule PortalWeb.Error do
   Provides explicit `handle/2` functions for all error cases,
   avoiding action_fallback macros which can break stack traces.
   """
+  require Logger
   import Plug.Conn
   import Phoenix.Controller
 
@@ -34,7 +35,6 @@ defmodule PortalWeb.Error do
   end
 
   def handle(conn, error) do
-    require Logger
     Logger.error("Unhandled Web error", error: inspect(error))
 
     conn

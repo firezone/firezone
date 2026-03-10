@@ -307,51 +307,47 @@ defmodule Portal.Okta.APIClient do
   @spec stream_all(Req.Request.t()) :: Enumerable.t()
   defp stream_all(req) do
     Stream.resource(
-      # Start function - returns initial state
       fn -> {req, nil} end,
-      # Next function - fetches next page and returns {items, new_state} or {:halt, state}
-      fn
-        :halt ->
-          {:halt, :halt}
-
-        {request, cursor} ->
-          # Merge cursor param if we have one
-          request =
-            if cursor do
-              Req.merge(request, params: [after: cursor])
-            else
-              request
-            end
-
-          case Req.get!(request) do
-            %{status: 200, body: items, headers: headers} ->
-              next_cursor = extract_next_cursor(headers)
-              # Wrap each item in {:ok, item}
-              ok_items = Enum.map(items, &{:ok, &1})
-
-              if next_cursor do
-                {ok_items, {request, next_cursor}}
-              else
-                {ok_items, :halt}
-              end
-
-            %{status: status} = response when status in [401, 403] ->
-              {[{:error, response}], :halt}
-
-            %{status: status, headers: headers, body: body} = response ->
-              Logger.warning("Unexpected response while making Okta API request",
-                status: status,
-                headers: inspect(headers),
-                response: inspect(body)
-              )
-
-              {[{:error, response}], :halt}
-          end
-      end,
-      # After function - (nothing needed here)
+      &next_page/1,
       fn _state -> :ok end
     )
   end
+
+  defp next_page(:halt), do: {:halt, :halt}
+
+  defp next_page({request, cursor}) do
+    request
+    |> with_cursor(cursor)
+    |> Req.get!()
+    |> handle_page_response(request)
+  end
+
+  defp with_cursor(request, nil), do: request
+  defp with_cursor(request, cursor), do: Req.merge(request, params: [after: cursor])
+
+  defp handle_page_response(%{status: 200, body: items, headers: headers}, request) do
+    next_cursor = extract_next_cursor(headers)
+    {wrap_ok_items(items), next_state(request, next_cursor)}
+  end
+
+  defp handle_page_response(%{status: status} = response, _request) when status in [401, 403] do
+    {[{:error, response}], :halt}
+  end
+
+  defp handle_page_response(%{status: status, headers: headers, body: body} = response, _request) do
+    Logger.warning("Unexpected response while making Okta API request",
+      status: status,
+      headers: inspect(headers),
+      response: inspect(body)
+    )
+
+    {[{:error, response}], :halt}
+  end
+
+  defp wrap_ok_items(items), do: Enum.map(items, &{:ok, &1})
+
+  defp next_state(_request, nil), do: :halt
+  defp next_state(request, cursor), do: {request, cursor}
 
   defp create_client_assertion(%APIClient{} = client, token_endpoint) do
     now = System.system_time(:second)

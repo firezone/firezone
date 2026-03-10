@@ -237,39 +237,11 @@ defmodule PortalWeb.Settings.DirectorySync do
          "Directory sync is available on the Enterprise plan. Please upgrade your plan."
        )}
     else
-      # Set disabled_reason when disabling, clear error state when enabling
-      changeset =
-        if new_disabled_state do
-          # Disabling - set reason
-          changeset(directory, %{
-            "is_disabled" => true,
-            "disabled_reason" => "Disabled by admin"
-          })
-        else
-          # Enabling - check if directory is verified first
-          if directory.is_verified do
-            # Clear error state when enabling
-            changeset(directory, %{
-              "is_disabled" => false,
-              "disabled_reason" => nil,
-              "error_email_count" => 0,
-              "error_message" => nil,
-              "errored_at" => nil
-            })
-          else
-            # Can't enable unverified directory
-            changeset(directory, %{})
-            |> Ecto.Changeset.add_error(
-              :is_verified,
-              "Directory must be verified before enabling"
-            )
-          end
-        end
+      changeset = toggle_directory_changeset(directory, new_disabled_state)
+      action = if(new_disabled_state, do: "disabled", else: "enabled")
 
       case Database.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
-          action = if new_disabled_state, do: "disabled", else: "enabled"
-
           {:noreply,
            socket
            |> init()
@@ -303,6 +275,31 @@ defmodule PortalWeb.Settings.DirectorySync do
       {:error, reason} ->
         Logger.info("Failed to enqueue #{type} sync job", id: id, reason: inspect(reason))
         {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
+    end
+  end
+
+  defp toggle_directory_changeset(directory, true) do
+    changeset(directory, %{
+      "is_disabled" => true,
+      "disabled_reason" => "Disabled by admin"
+    })
+  end
+
+  defp toggle_directory_changeset(directory, false) do
+    if directory.is_verified do
+      changeset(directory, %{
+        "is_disabled" => false,
+        "disabled_reason" => nil,
+        "error_email_count" => 0,
+        "error_message" => nil,
+        "errored_at" => nil
+      })
+    else
+      changeset(directory, %{})
+      |> Ecto.Changeset.add_error(
+        :is_verified,
+        "Directory must be verified before enabling"
+      )
     end
   end
 

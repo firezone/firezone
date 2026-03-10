@@ -33,16 +33,20 @@ defmodule Portal.Mailer do
     metadata = %{email: email, config: config, mailer: __MODULE__}
 
     if opts[:adapter] do
-      :telemetry.span([:swoosh, :deliver], metadata, fn ->
-        case Mailer.deliver(email, opts) do
-          {:ok, result} -> {{:ok, result}, Map.put(metadata, :result, result)}
-          {:error, error} -> {{:error, error}, Map.put(metadata, :error, error)}
-        end
-      end)
+      deliver_with_telemetry(email, opts, metadata)
     else
       Logger.info("Emails are not configured", email_subject: inspect(email.subject))
       {:ok, %{}}
     end
+  end
+
+  defp deliver_with_telemetry(email, opts, metadata) do
+    :telemetry.span([:swoosh, :deliver], metadata, fn ->
+      case Mailer.deliver(email, opts) do
+        {:ok, result} -> {{:ok, result}, Map.put(metadata, :result, result)}
+        {:error, error} -> {{:error, error}, Map.put(metadata, :error, error)}
+      end
+    end)
   end
 
   # sobelow_skip ["DOS.StringToAtom"]

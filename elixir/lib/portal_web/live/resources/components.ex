@@ -430,7 +430,7 @@ defmodule PortalWeb.Resources.Components do
     if address = form[:address].value do
       @known_recommendations
       |> Enum.find_value(fn {key, value} ->
-        if String.ends_with?(String.trim(address), key), do: value
+        String.ends_with?(String.trim(address), key) && value
       end)
     end
   end

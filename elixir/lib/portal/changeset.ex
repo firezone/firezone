@@ -371,20 +371,24 @@ defmodule Portal.Changeset do
 
   def validate_one_of(%Ecto.Changeset{} = changeset, field, validators) do
     validate_change(changeset, field, fn current_field, _value ->
-      orig_errors = Enum.filter(changeset.errors, &(elem(&1, 0) == current_field))
+      reduce_validators(validators, changeset, current_field)
+    end)
+  end
 
-      Enum.reduce_while(validators, [], fn validator, errors ->
-        validated_cs = validator.(changeset, current_field)
+  defp reduce_validators(validators, changeset, field) do
+    orig_errors = Enum.filter(changeset.errors, &(elem(&1, 0) == field))
 
-        new_errors =
-          Enum.filter(validated_cs.errors, &(elem(&1, 0) == current_field)) -- orig_errors
+    Enum.reduce_while(validators, [], fn validator, errors ->
+      validated_cs = validator.(changeset, field)
 
-        if Enum.empty?(new_errors) do
-          {:halt, new_errors}
-        else
-          {:cont, new_errors ++ errors}
-        end
-      end)
+      new_errors =
+        Enum.filter(validated_cs.errors, &(elem(&1, 0) == field)) -- orig_errors
+
+      if Enum.empty?(new_errors) do
+        {:halt, new_errors}
+      else
+        {:cont, new_errors ++ errors}
+      end
     end)
   end
 
@@ -392,18 +396,21 @@ defmodule Portal.Changeset do
     validate_change(changeset, ip_or_cidr_field, fn _ip_or_cidr_field, ip_or_cidr ->
       case Portal.Types.INET.cast(ip_or_cidr) do
         {:ok, ip_or_cidr} ->
-          if Portal.Types.CIDR.contains?(cidr, ip_or_cidr) or
-               Portal.Types.CIDR.contains?(ip_or_cidr, cidr) do
-            message = Keyword.get(opts, :message, "cannot be in the CIDR #{cidr}")
-            [{ip_or_cidr_field, message}]
-          else
-            []
-          end
+          cidr_overlap_error(ip_or_cidr_field, ip_or_cidr, cidr, opts)
 
         _other ->
           []
       end
     end)
+  end
+
+  defp cidr_overlap_error(field, ip_or_cidr, cidr, opts) do
+    if Portal.Types.CIDR.contains?(cidr, ip_or_cidr) or
+         Portal.Types.CIDR.contains?(ip_or_cidr, cidr) do
+      [{field, Keyword.get(opts, :message, "cannot be in the CIDR #{cidr}")}]
+    else
+      []
+    end
   end
 
   def validate_and_normalize_cidr(%Ecto.Changeset{} = changeset, field, _opts \\ []) do
@@ -449,11 +456,7 @@ defmodule Portal.Changeset do
   def validate_hash(%Ecto.Changeset{} = changeset, value_field, type, hash_field: hash_field) do
     with {:data, hash} <- fetch_field(changeset, hash_field) do
       validate_change(changeset, value_field, fn value_field, token ->
-        if Portal.Crypto.equal?(type, token, hash) do
-          []
-        else
-          [{value_field, {"is invalid", [validation: :hash]}}]
-        end
+        hash_error(value_field, type, token, hash)
       end)
     else
       {:changes, _hash} ->
@@ -461,6 +464,14 @@ defmodule Portal.Changeset do
 
       :error ->
         add_error(changeset, value_field, "is already verified", validation: :hash)
+    end
+  end
+
+  defp hash_error(value_field, type, token, hash) do
+    if Portal.Crypto.equal?(type, token, hash) do
+      []
+    else
+      [{value_field, {"is invalid", [validation: :hash]}}]
     end
   end
 

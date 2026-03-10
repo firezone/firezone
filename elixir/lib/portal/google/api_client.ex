@@ -313,23 +313,7 @@ defmodule Portal.Google.APIClient do
           {:ok, []}
 
         200 ->
-          case JSON.decode(String.trim(json_body)) do
-            {:ok, user} ->
-              {:ok, [user]}
-
-            {:error, decode_error} ->
-              log_batch_parse_issue(
-                "Failed to decode JSON in batch users response part",
-                error: inspect(decode_error),
-                snippet: snippet(json_body)
-              )
-
-              {:error,
-               %Req.Response{
-                 status: 502,
-                 body: %{"error" => "Invalid JSON in batch users response part"}
-               }}
-          end
+          decode_json_user(json_body)
       end
     else
       status when is_integer(status) and status not in [200, 404] ->
@@ -337,7 +321,7 @@ defmodule Portal.Google.APIClient do
           status: status
         )
 
-        normalized_status = if(status > 0, do: status, else: 502)
+        normalized_status = normalize_status(status)
 
         {:error,
          %Req.Response{status: normalized_status, body: %{"error" => "Batch users part failed"}}}
@@ -356,6 +340,29 @@ defmodule Portal.Google.APIClient do
          }}
     end
   end
+
+  defp decode_json_user(json_body) do
+    case JSON.decode(String.trim(json_body)) do
+      {:ok, user} ->
+        {:ok, [user]}
+
+      {:error, decode_error} ->
+        log_batch_parse_issue(
+          "Failed to decode JSON in batch users response part",
+          error: inspect(decode_error),
+          snippet: snippet(json_body)
+        )
+
+        {:error,
+         %Req.Response{
+           status: 502,
+           body: %{"error" => "Invalid JSON in batch users response part"}
+         }}
+    end
+  end
+
+  defp normalize_status(status) when status > 0, do: status
+  defp normalize_status(_status), do: 502
 
   defp log_batch_parse_issue(message, metadata) do
     Logger.warning(fn ->
