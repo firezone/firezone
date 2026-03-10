@@ -81,7 +81,7 @@ impl Device {
             let buffered_packets = mem::take(&mut self.outbound_buffer);
             let tx = tun.sender().clone();
 
-            let flush = self.flush_future.insert(
+            self.flush_future = Some(
                 async move {
                     for packet in buffered_packets {
                         tx.send(packet).await.map_err(|_| TunChannelClosed)?;
@@ -89,21 +89,20 @@ impl Device {
 
                     Ok(())
                 }
-                .fuse()
                 .boxed(),
             );
 
-            return flush.poll_unpin(cx);
+            return self.poll_flush(cx);
         };
 
-        ready!(fut.poll_unpin(cx))?;
+        let res = ready!(fut.poll_unpin(cx));
 
         tracing::trace!("Flush complete");
 
         // Reset after we are done.
         self.flush_future = None;
 
-        Poll::Ready(Ok(()))
+        Poll::Ready(res)
     }
 
     pub fn send(&mut self, packet: IpPacket) {
@@ -154,10 +153,9 @@ mod tests {
         assert!(err.any_is::<TunChannelClosed>());
 
         // Ensure polling twice doesn't panic.
-        let err = std::future::poll_fn(|cx| device.poll_flush(cx))
+        std::future::poll_fn(|cx| device.poll_flush(cx))
             .await
-            .unwrap_err();
-        assert!(err.any_is::<TunChannelClosed>());
+            .unwrap();
     }
 
     #[tokio::test]
