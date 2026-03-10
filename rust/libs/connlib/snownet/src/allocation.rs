@@ -2783,6 +2783,65 @@ mod tests {
         );
     }
 
+    #[test]
+    fn skips_binding_request_on_outbound_channel_data_message() {
+        let _guard = logging::test("trace");
+
+        let mut now = Instant::now();
+
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+
+        allocation.bind_channel(PEER2_IP4, now);
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), now);
+
+        now += Duration::from_secs(10);
+
+        allocation
+            .encode_channel_data_header(PEER2_IP4, &mut [0u8; 10], now)
+            .unwrap();
+
+        now += Duration::from_secs(15);
+        allocation.handle_timeout(now);
+
+        let maybe_transmit = allocation.poll_transmit();
+        assert_eq!(maybe_transmit, None);
+    }
+
+    #[test]
+    fn skips_binding_request_on_inbound_channel_data_message() {
+        let _guard = logging::test("trace");
+
+        let mut now = Instant::now();
+
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+
+        allocation.bind_channel(PEER2_IP4, now);
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(channel_bind_success(&channel_bind_msg), now);
+
+        now += Duration::from_secs(10);
+
+        let mut packet = vec![0; 4];
+        channel_data::encode_header_to_slice(&mut packet, 16384, 0);
+
+        allocation.decapsulate(
+            SocketAddr::V4(RELAY_V4),
+            channel_data::decode(&packet).unwrap(),
+            now,
+        );
+
+        now += Duration::from_secs(15);
+        allocation.handle_timeout(now);
+
+        let maybe_transmit = allocation.poll_transmit();
+        assert_eq!(maybe_transmit, None);
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
