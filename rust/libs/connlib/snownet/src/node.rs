@@ -608,8 +608,10 @@ where
             }
         }
 
-        self.allocations.gc();
-        self.connections.check_relays_available(
+        let removed_allocations = self.allocations.gc();
+
+        self.connections.maybe_migrate_relays(
+            removed_allocations,
             &self.allocations,
             &mut self.pending_events,
             &mut self.rng,
