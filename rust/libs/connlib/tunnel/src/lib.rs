@@ -8,6 +8,7 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use anyhow::{Context as _, ErrorExt as _, Result};
+use budget::Budget;
 use connlib_model::{
     ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
 };
@@ -28,6 +29,7 @@ use std::{
 };
 use tun::Tun;
 
+mod budget;
 mod client;
 mod dns;
 mod expiring_map;
@@ -181,11 +183,9 @@ impl ClientTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
-        let mut ready = false;
+        let mut budget = Budget::new(cx.waker().clone(), MAX_EVENTLOOP_ITERS);
 
-        for _ in 0..MAX_EVENTLOOP_ITERS {
-            ready = false;
-
+        while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             // Pass up existing events.
@@ -206,20 +206,20 @@ impl ClientTunnel {
             // Drain all buffered IP packets.
             while let Some(packet) = self.role_state.poll_packets() {
                 self.io.send_tun(packet);
-                ready = true;
+                tick.want_continue();
             }
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
-                ready = true;
+                tick.want_continue();
             }
 
             // Drain all scheduled DNS queries.
             while let Some(query) = self.role_state.poll_dns_queries() {
                 self.io.send_dns_query(query);
-                ready = true;
+                tick.want_continue();
             }
 
             // Process all IO sources that are ready.
@@ -239,12 +239,12 @@ impl ClientTunnel {
                     self.role_state.handle_dns_response(response, now);
                     self.io.schedule_timeout(now);
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if timeout {
                     self.role_state.handle_timeout(now);
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if let Some(packets) = device {
@@ -262,7 +262,7 @@ impl ClientTunnel {
                         }
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if let Some(mut packets) = network {
@@ -289,26 +289,18 @@ impl ClientTunnel {
                         };
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if !error.is_empty() {
                     return Poll::Ready(ClientEvent::Error(error));
                 }
             }
-
-            if !ready {
-                break;
-            }
         }
 
         // Reset timer for time-based wakeup before we suspend.
         if let Some((timeout, reason)) = self.role_state.poll_timeout() {
             self.io.reset_timeout(timeout, reason);
-        }
-
-        if ready {
-            cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
         }
 
         Poll::Pending
@@ -370,9 +362,9 @@ impl GatewayTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<GatewayEvent> {
-        for _ in 0..MAX_EVENTLOOP_ITERS {
-            let mut ready = false;
+        let mut budget = Budget::new(cx.waker().clone(), MAX_EVENTLOOP_ITERS);
 
+        while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             // Pass up existing events.
@@ -385,7 +377,7 @@ impl GatewayTunnel {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
 
-                ready = true;
+                tick.want_continue();
             }
 
             // Process all IO sources that are ready.
@@ -429,12 +421,12 @@ impl GatewayTunnel {
                         }
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if timeout {
                     self.role_state.handle_timeout(now, now_utc);
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if let Some(packets) = device {
@@ -466,7 +458,7 @@ impl GatewayTunnel {
                         }
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if let Some(mut packets) = network {
@@ -494,7 +486,7 @@ impl GatewayTunnel {
                         };
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 for query in udp_dns_queries {
@@ -520,7 +512,7 @@ impl GatewayTunnel {
                         }
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 for query in tcp_dns_queries {
@@ -546,27 +538,20 @@ impl GatewayTunnel {
                         }
                     }
 
-                    ready = true;
+                    tick.want_continue();
                 }
 
                 if !error.is_empty() {
                     return Poll::Ready(GatewayEvent::Error(error));
                 }
             }
-
-            if ready {
-                continue;
-            }
-
-            // Reset timer for time-based wakeup before we suspend.
-            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout, reason);
-            }
-
-            return Poll::Pending;
         }
 
-        cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
+        // Reset timer for time-based wakeup before we suspend.
+        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+            self.io.reset_timeout(timeout, reason);
+        }
+
         Poll::Pending
     }
 }
