@@ -1,49 +1,30 @@
-use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::os::fd::{FromRawFd, OwnedFd};
-use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
 use telemetry::otel;
 use tokio::sync::mpsc;
-use tokio_util::sync::PollSender;
 use tun::ioctl;
 
 const QUEUE_SIZE: usize = 1000;
 
-#[derive(Debug)]
 pub struct Tun {
     name: String,
-    outbound_tx: PollSender<IpPacket>,
+    outbound_tx: mpsc::Sender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
     _fd: OwnedFd,
 }
 
 impl tun::Tun for Tun {
+    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+        &self.outbound_tx
+    }
+
+    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+        &mut self.inbound_rx
+    }
+
     fn name(&self) -> &str {
         self.name.as_str()
-    }
-
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.outbound_tx
-            .poll_ready_unpin(cx)
-            .map_err(io::Error::other)
-    }
-
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.outbound_tx
-            .start_send_unpin(packet)
-            .map_err(io::Error::other)?;
-
-        Ok(())
-    }
-
-    fn poll_recv_many(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
-        max: usize,
-    ) -> Poll<usize> {
-        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 }
 
@@ -96,7 +77,7 @@ impl Tun {
 
         Ok(Tun {
             name,
-            outbound_tx: PollSender::new(outbound_tx),
+            outbound_tx,
             inbound_rx,
             _fd: unsafe { OwnedFd::from_raw_fd(fd) }, // `OwnedFd` will close the fd on drop.
         })

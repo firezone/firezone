@@ -8,10 +8,10 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 ip-packet = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
 
 [target.'cfg(target_family = "unix")'.dependencies]
 libc = { workspace = true }
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tracing = { workspace = true }
 
 [lints]

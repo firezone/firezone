@@ -3,7 +3,7 @@
 use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
 use anyhow::{Context as _, Result};
 use futures::{
-    SinkExt, StreamExt, TryStreamExt,
+    StreamExt, TryStreamExt,
     future::{self, Either},
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -22,7 +22,6 @@ use rtnetlink::sys::AsyncSocket;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::{collections::BTreeSet, path::Path};
 use std::{
     collections::HashMap,
@@ -39,8 +38,8 @@ use std::{
 };
 use std::{net::IpAddr, time::Duration};
 use telemetry::otel;
-use tokio::{sync::mpsc, time::Instant};
-use tokio_util::sync::PollSender;
+use tokio::sync::mpsc;
+use tokio::time::Instant;
 use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
@@ -680,9 +679,8 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 
 const QUEUE_SIZE: usize = 10_000;
 
-#[derive(Debug)]
 pub struct Tun {
-    outbound_tx: PollSender<IpPacket>,
+    outbound_tx: mpsc::Sender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -734,7 +732,7 @@ impl Tun {
             .map_err(io::Error::other)?;
 
         Ok(Self {
-            outbound_tx: PollSender::new(outbound_tx),
+            outbound_tx,
             inbound_rx,
         })
     }
@@ -769,27 +767,12 @@ fn open_tun() -> Result<OwnedFd> {
 }
 
 impl tun::Tun for Tun {
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.outbound_tx
-            .poll_ready_unpin(cx)
-            .map_err(io::Error::other)
+    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+        &self.outbound_tx
     }
 
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.outbound_tx
-            .start_send_unpin(packet)
-            .map_err(io::Error::other)?;
-
-        Ok(())
-    }
-
-    fn poll_recv_many(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
-        max: usize,
-    ) -> Poll<usize> {
-        self.inbound_rx.poll_recv_many(cx, buf, max)
+    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+        &mut self.inbound_rx
     }
 
     fn name(&self) -> &str {
