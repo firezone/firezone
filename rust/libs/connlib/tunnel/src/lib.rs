@@ -181,8 +181,10 @@ impl ClientTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
+        let mut ready = false;
+
         for _ in 0..MAX_EVENTLOOP_ITERS {
-            let mut ready = false;
+            ready = false;
 
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
@@ -295,19 +297,20 @@ impl ClientTunnel {
                 }
             }
 
-            if ready {
-                continue;
+            if !ready {
+                break;
             }
-
-            // Reset timer for time-based wakeup before we suspend.
-            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout, reason);
-            }
-
-            return Poll::Pending;
         }
 
-        cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
+        // Reset timer for time-based wakeup before we suspend.
+        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+            self.io.reset_timeout(timeout, reason);
+        }
+
+        if ready {
+            cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
+        }
+
         Poll::Pending
     }
 }
