@@ -608,8 +608,10 @@ where
             }
         }
 
-        self.allocations.gc();
-        self.connections.check_relays_available(
+        let removed_allocations = self.allocations.gc();
+
+        self.connections.maybe_migrate_relays(
+            removed_allocations,
             &self.allocations,
             &mut self.pending_events,
             &mut self.rng,
@@ -710,6 +712,15 @@ where
         {
             previous_allocation.refresh(now);
         }
+
+        // Fourth, migrate existing connections away from removed relays.
+        self.connections.maybe_migrate_relays(
+            to_remove.into_iter(),
+            &self.allocations,
+            &mut self.pending_events,
+            &mut self.rng,
+            now,
+        );
     }
 
     #[must_use]
