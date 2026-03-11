@@ -913,6 +913,24 @@ where
             return ControlFlow::Continue(());
         };
 
+        // Fast-path dispatch via remote ufrag
+        if let Some((_, remote)) = message.split_username()
+            && let Some((_, c)) = self.connections.get_established_mut_by_remote_ufrag(remote)
+            && c.agent.accepts_message(&message)
+        {
+            c.agent.handle_packet(
+                now,
+                StunPacket {
+                    proto: Protocol::Udp,
+                    source: from,
+                    destination,
+                    message,
+                },
+            );
+
+            return ControlFlow::Break(Ok(()));
+        }
+
         for (_, c) in self.connections.iter_mut() {
             if c.agent.accepts_message(&message) {
                 c.agent.handle_packet(

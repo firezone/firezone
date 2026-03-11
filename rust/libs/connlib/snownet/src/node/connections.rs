@@ -19,6 +19,7 @@ pub struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
+    established_by_remote_ice_credentials: BTreeMap<String, TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
@@ -30,6 +31,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
         Self {
             established: Default::default(),
             established_by_wireguard_session_index: Default::default(),
+            established_by_remote_ice_credentials: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_session_indices: Default::default(),
@@ -72,6 +74,8 @@ where
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
+        self.established_by_remote_ice_credentials
+            .retain(|_, c| c != id);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
@@ -122,6 +126,10 @@ where
         index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
+        let remote_ufrag = connection
+            .agent
+            .remote_credentials()
+            .map(|ice| ice.ufrag.to_owned());
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
@@ -129,6 +137,11 @@ where
             .retain(|_, c| c != &id);
         self.established_by_wireguard_session_index
             .insert(index.global(), id);
+        if let Some(ufrag) = remote_ufrag {
+            self.established_by_remote_ice_credentials.insert(ufrag, id);
+        } else {
+            // TODO: Warning
+        }
 
         existing
     }
@@ -193,6 +206,16 @@ where
             ))?;
 
         Ok((*id, conn))
+    }
+
+    pub(crate) fn get_established_mut_by_remote_ufrag(
+        &mut self,
+        ufrag: &str,
+    ) -> Option<(TId, &mut Connection<RId>)> {
+        let id = self.established_by_remote_ice_credentials.get(ufrag)?;
+        let conn = self.established.get_mut(id)?;
+
+        Some((*id, conn))
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
