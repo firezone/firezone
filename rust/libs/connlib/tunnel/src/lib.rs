@@ -291,11 +291,6 @@ impl ClientTunnel {
                     ready = true;
                 }
 
-                // Reset timer for time-based wakeup.
-                if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                    self.io.reset_timeout(timeout, reason);
-                }
-
                 if !error.is_empty() {
                     return Poll::Ready(ClientEvent::Error(error));
                 }
@@ -303,6 +298,11 @@ impl ClientTunnel {
 
             if ready {
                 continue;
+            }
+
+            // Reset timer for time-based wakeup before we suspend.
+            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                self.io.reset_timeout(timeout, reason);
             }
 
             return Poll::Pending;
@@ -548,11 +548,6 @@ impl GatewayTunnel {
                     ready = true;
                 }
 
-                // Reset timer for time-based wakeup.
-                if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                    self.io.reset_timeout(timeout, reason);
-                }
-
                 if !error.is_empty() {
                     return Poll::Ready(GatewayEvent::Error(error));
                 }
@@ -560,6 +555,11 @@ impl GatewayTunnel {
 
             if ready {
                 continue;
+            }
+
+            // Reset timer for time-based wakeup before we suspend.
+            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                self.io.reset_timeout(timeout, reason);
             }
 
             return Poll::Pending;
