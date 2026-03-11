@@ -3,6 +3,7 @@ mod connection_state;
 mod connections;
 
 pub use connections::UnknownConnection;
+use smallvec::SmallVec;
 
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
@@ -282,7 +283,7 @@ where
                 .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
 
             // Take all current candidates.
-            let current_candidates = c.agent.local_candidates().collect::<Vec<_>>();
+            let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 6]>>();
 
             // Re-seed connection with all candidates.
             let new_candidates =
@@ -1106,7 +1107,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         })
         .filter(|c| !agent.remote_candidates().contains(c))
         .take(2)
-        .collect::<Vec<_>>();
+        .collect::<SmallVec<[_; 2]>>();
 
     for c in optimistic_candidates {
         tracing::debug!(candidate = ?c, "Adding optimistic candidate for remote");
