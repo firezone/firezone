@@ -415,6 +415,14 @@ impl ClientState {
             return None;
         }
 
+        let dst = packet.destination();
+
+        if tun_config.ip.is_ip(dst) {
+            tracing::trace!(%dst, "Dropping packet destined to local tunnel IP");
+
+            return None;
+        }
+
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
@@ -621,15 +629,6 @@ impl ClientState {
         now: Instant,
     ) -> Option<(ClientOrGatewayId, IpPacket)> {
         let dst = packet.destination();
-
-        if self
-            .tun_config
-            .current()
-            .is_some_and(|config| config.ip.is_ip(dst))
-        {
-            tracing::trace!(%dst, "Dropping packet destined to local tunnel IP");
-            return None;
-        }
 
         if let Some((id, _)) = self.gateways.peer_by_ip(dst) {
             return Some((ClientOrGatewayId::Gateway(id), packet));
@@ -2095,13 +2094,14 @@ mod tests {
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv6() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
-        let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 1);
+        let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
+
+        assert!(crate::is_peer(tun_ipv6.into()));
 
         state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
         drain_events(&mut state);
 
-        let packet =
-            ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
+        let packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
 
         assert!(state.handle_tun_input(packet, now).is_none());
         assert_no_device_connection_intent(&mut state);
