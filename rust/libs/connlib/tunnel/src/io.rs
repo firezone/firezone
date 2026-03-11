@@ -3,15 +3,15 @@ mod doh;
 mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
+mod timeout;
 mod udp_dns;
 
 pub use device::{Device, TunChannelClosed};
 
-use crate::{TunnelError, dns, otel, sockets::Sockets};
+use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
 use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
-use futures::FutureExt as _;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
@@ -23,7 +23,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     io,
     net::{IpAddr, SocketAddr},
-    pin::Pin,
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant},
@@ -69,7 +68,7 @@ pub struct Io {
     doh_clients: BTreeMap<DoHUrl, HttpClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
-    timeout: Pin<Box<tokio::time::Sleep>>,
+    timeout: Timeout,
 
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
@@ -167,7 +166,7 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            timeout: Box::pin(tokio::time::sleep(DEFAULT_TIME_ADVANCE)),
+            timeout: Timeout::new(DEFAULT_TIME_ADVANCE),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -270,8 +269,6 @@ impl Io {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
-
-        let now = Instant::now();
 
         let mut error = TunnelError::default();
 
@@ -393,13 +390,7 @@ impl Io {
             self.doh_clients.remove(server);
         }
 
-        let timeout = self.timeout.as_mut().poll_unpin(cx).is_ready();
-
-        if timeout {
-            self.timeout
-                .as_mut()
-                .reset(tokio::time::Instant::from_std(now) + DEFAULT_TIME_ADVANCE);
-        }
+        let timeout = self.timeout.poll_tick(cx).is_ready();
 
         if !timeout
             && device.is_pending()
@@ -413,7 +404,7 @@ impl Io {
         }
 
         Poll::Ready(Input {
-            now,
+            now: Instant::now(),
             now_utc: Utc::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
@@ -487,22 +478,20 @@ impl Io {
         let wakeup_in = tracing::event_enabled!(Level::TRACE)
             .then(|| timeout.duration_since(Instant::now()))
             .map(tracing::field::debug);
-        let timeout = tokio::time::Instant::from_std(timeout);
 
-        if self.timeout.as_mut().deadline() != timeout {
+        if self.timeout.deadline() != timeout {
             tracing::trace!(wakeup_in, %reason);
 
-            self.timeout.as_mut().reset(timeout);
+            self.timeout.reset(timeout);
         }
     }
 
     /// Schedules a wakeup in case one isn't registered yet.
     pub fn schedule_timeout(&mut self, now: Instant) {
-        let now = tokio::time::Instant::from_std(now);
         let latest_wakeup = now + Duration::from_secs(1);
 
-        if self.timeout.as_mut().deadline() > latest_wakeup {
-            self.timeout.as_mut().reset(latest_wakeup);
+        if self.timeout.deadline() > latest_wakeup {
+            self.timeout.reset(latest_wakeup);
         }
     }
 
@@ -652,12 +641,13 @@ mod tests {
 
         let deadline = Instant::now() + Duration::from_secs(1);
         io.reset_timeout(deadline, "");
+        let scheduled_deadline = io.timeout.deadline();
 
         let input = io.next().await;
 
         assert!(input.timeout);
         assert!(input.now >= deadline, "timer expire after deadline");
-        let last_now = input.now;
+        assert_eq!(deadline, scheduled_deadline);
 
         drop(input);
 
@@ -665,11 +655,7 @@ mod tests {
 
         assert!(poll.is_pending());
         assert_eq!(
-            io.timeout
-                .as_mut()
-                .deadline()
-                .into_std()
-                .duration_since(last_now),
+            io.timeout.deadline().duration_since(scheduled_deadline),
             DEFAULT_TIME_ADVANCE
         );
     }
@@ -729,7 +715,7 @@ mod tests {
         let now = Instant::now();
         io.schedule_timeout(now);
 
-        let deadline = io.timeout.as_mut().deadline().into_std();
+        let deadline = io.timeout.deadline();
         let wakeup_in = deadline.duration_since(now);
 
         assert!(
@@ -749,7 +735,7 @@ mod tests {
 
         io.schedule_timeout(now);
 
-        let deadline = io.timeout.as_mut().deadline().into_std();
+        let deadline = io.timeout.deadline();
 
         assert_eq!(
             deadline, close_deadline,
