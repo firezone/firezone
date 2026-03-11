@@ -9,7 +9,6 @@ use logging::err_with_src;
 use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
-use std::task::ready;
 use std::time::{Duration, Instant};
 use std::{
     collections::HashSet,
@@ -17,11 +16,9 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
     sync::Arc,
-    task::{Context, Poll},
 };
 use telemetry::otel;
 use tokio::sync::mpsc;
-use tokio_util::sync::PollSender;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
@@ -215,7 +212,7 @@ pub struct Tun {
 struct TunState {
     session: Arc<wintun::Session>,
 
-    outbound_tx: PollSender<IpPacket>,
+    outbound_tx: mpsc::Sender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -332,7 +329,7 @@ impl Tun {
             luid,
             state: Some(TunState {
                 session,
-                outbound_tx: PollSender::new(outbound_tx),
+                outbound_tx,
                 inbound_rx,
             }),
             send_thread: Some(send_thread),
@@ -346,48 +343,24 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    /// Receive a batch of packets up to `max`.
-    fn poll_recv_many(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
-        max: usize,
-    ) -> Poll<usize> {
-        self.state
+    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+        &self
+            .state
+            .as_ref()
+            .expect("`tun_state` to always be `Some` until we drop")
+            .outbound_tx
+    }
+
+    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+        &mut self
+            .state
             .as_mut()
             .expect("`tun_state` to always be `Some` until we drop")
             .inbound_rx
-            .poll_recv_many(cx, buf, max)
     }
 
     fn name(&self) -> &str {
         TUNNEL_NAME
-    }
-
-    /// Check if more packets can be sent.
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        ready!(
-            self.state
-                .as_mut()
-                .ok_or_else(|| io::Error::other("Internal state gone"))?
-                .outbound_tx
-                .poll_reserve(cx)
-                .map_err(io::Error::other)?
-        );
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Send a packet.
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.state
-            .as_mut()
-            .ok_or_else(|| io::Error::other("Internal state gone"))?
-            .outbound_tx
-            .send_item(packet)
-            .map_err(io::Error::other)?;
-
-        Ok(())
     }
 }
 

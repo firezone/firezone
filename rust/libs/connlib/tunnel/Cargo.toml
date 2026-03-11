@@ -45,6 +45,7 @@ secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+smallvec = { workspace = true, features = ["const_generics"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }

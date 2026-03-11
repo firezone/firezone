@@ -388,6 +388,10 @@ impl Eventloop {
                 return Err(e);
             }
 
+            if e.any_is::<tunnel::TunChannelClosed>() {
+                return Err(e);
+            }
+
             tracing::warn!("Tunnel error: {e:#}");
         }
 

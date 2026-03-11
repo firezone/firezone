@@ -46,20 +46,11 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn poll_send_ready(&mut self, _: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
+    fn sender(&self) -> &tokio::sync::mpsc::Sender<ip_packet::IpPacket> {
         todo!()
     }
 
-    fn send(&mut self, _: ip_packet::IpPacket) -> io::Result<()> {
-        todo!()
-    }
-
-    fn poll_recv_many(
-        &mut self,
-        _: &mut std::task::Context,
-        _: &mut Vec<ip_packet::IpPacket>,
-        _: usize,
-    ) -> std::task::Poll<usize> {
+    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<ip_packet::IpPacket> {
         todo!()
     }
 

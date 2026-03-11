@@ -30,7 +30,6 @@ use std::{
 use tun::Tun;
 
 mod client;
-mod device_channel;
 mod dns;
 mod expiring_map;
 mod gateway;
@@ -76,13 +75,14 @@ pub use client::ClientState;
 pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, UnroutablePacket};
+pub use io::TunChannelClosed;
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
 pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
