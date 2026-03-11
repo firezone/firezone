@@ -415,6 +415,14 @@ impl ClientState {
             return None;
         }
 
+        let dst = packet.destination();
+
+        if tun_config.ip.is_ip(dst) {
+            tracing::trace!(%dst, "Dropping packet destined to local tunnel IP");
+
+            return None;
+        }
+
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
@@ -2068,6 +2076,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv4() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let tun_ipv4 = Ipv4Addr::new(100, 82, 80, 16);
+
+        state.update_interface_config(interface(tun_ipv4, Ipv6Addr::LOCALHOST));
+        drain_events(&mut state);
+
+        let packet = ip_packet::make::udp_packet(tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
+
+        assert!(state.handle_tun_input(packet, now).is_none());
+        assert_no_device_connection_intent(&mut state);
+    }
+
+    #[test]
+    fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv6() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
+
+        assert!(crate::is_peer(tun_ipv6.into()));
+
+        state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
+        drain_events(&mut state);
+
+        let packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
+
+        assert!(state.handle_tun_input(packet, now).is_none());
+        assert_no_device_connection_intent(&mut state);
+    }
+
+    #[test]
     fn prefers_already_connected_gateways() {
         let mut state = ClientState::for_test();
         state.gateways_by_site.insert(
@@ -2187,6 +2227,30 @@ mod tests {
             v4: Ipv4Addr::LOCALHOST,
             v6: Ipv6Addr::LOCALHOST,
         })
+    }
+
+    fn interface(ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> InterfaceConfig {
+        InterfaceConfig {
+            ipv4,
+            ipv6,
+            upstream_dns: vec![],
+            upstream_do53: vec![],
+            upstream_doh: vec![],
+            search_domain: None,
+        }
+    }
+
+    fn drain_events(state: &mut ClientState) {
+        while state.poll_event().is_some() {}
+    }
+
+    fn assert_no_device_connection_intent(state: &mut ClientState) {
+        while let Some(event) = state.poll_event() {
+            assert!(
+                !matches!(event, ClientEvent::DeviceConnectionIntent { .. }),
+                "unexpected device connection intent"
+            );
+        }
     }
 }
 
