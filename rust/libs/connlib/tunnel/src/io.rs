@@ -46,6 +46,8 @@ const MAX_INBOUND_PACKET_BATCH: usize = {
     }
 };
 
+const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
+
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
@@ -67,7 +69,7 @@ pub struct Io {
     doh_clients: BTreeMap<DoHUrl, HttpClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
-    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    timeout: Pin<Box<tokio::time::Sleep>>,
 
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
@@ -165,7 +167,7 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            timeout: None,
+            timeout: Box::pin(tokio::time::sleep(DEFAULT_TIME_ADVANCE)),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -268,6 +270,8 @@ impl Io {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
+
+        let now = Instant::now();
 
         let mut error = TunnelError::default();
 
@@ -389,14 +393,12 @@ impl Io {
             self.doh_clients.remove(server);
         }
 
-        let timeout = self
-            .timeout
-            .as_mut()
-            .map(|timeout| timeout.poll_unpin(cx).is_ready())
-            .unwrap_or(false);
+        let timeout = self.timeout.as_mut().poll_unpin(cx).is_ready();
 
         if timeout {
-            self.timeout = None;
+            self.timeout
+                .as_mut()
+                .reset(tokio::time::Instant::from_std(now) + DEFAULT_TIME_ADVANCE);
         }
 
         if !timeout
@@ -411,7 +413,7 @@ impl Io {
         }
 
         Poll::Ready(Input {
-            now: Instant::now(),
+            now,
             now_utc: Utc::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
@@ -487,20 +489,10 @@ impl Io {
             .map(tracing::field::debug);
         let timeout = tokio::time::Instant::from_std(timeout);
 
-        match self.timeout.as_mut() {
-            Some(existing_timeout) if existing_timeout.deadline() != timeout => {
-                tracing::trace!(wakeup_in, %reason);
+        if self.timeout.as_mut().deadline() != timeout {
+            tracing::trace!(wakeup_in, %reason);
 
-                existing_timeout.as_mut().reset(timeout)
-            }
-            Some(_) => {}
-            None => {
-                self.timeout = {
-                    tracing::trace!(?wakeup_in, %reason);
-
-                    Some(Box::pin(tokio::time::sleep_until(timeout)))
-                }
-            }
+            self.timeout.as_mut().reset(timeout);
         }
     }
 
@@ -509,12 +501,8 @@ impl Io {
         let now = tokio::time::Instant::from_std(now);
         let latest_wakeup = now + Duration::from_secs(1);
 
-        match self.timeout.as_mut() {
-            Some(existing_timeout) if existing_timeout.deadline() < latest_wakeup => {}
-            Some(existing_timeout) => {
-                existing_timeout.as_mut().reset(latest_wakeup);
-            }
-            None => self.timeout = Some(Box::pin(tokio::time::sleep_until(latest_wakeup))),
+        if self.timeout.as_mut().deadline() > latest_wakeup {
+            self.timeout.as_mut().reset(latest_wakeup);
         }
     }
 
@@ -669,12 +657,21 @@ mod tests {
 
         assert!(input.timeout);
         assert!(input.now >= deadline, "timer expire after deadline");
+        let last_now = input.now;
+
         drop(input);
 
         let poll = io.poll_test();
 
         assert!(poll.is_pending());
-        assert!(io.timeout.is_none());
+        assert_eq!(
+            io.timeout
+                .as_mut()
+                .deadline()
+                .into_std()
+                .duration_since(last_now),
+            DEFAULT_TIME_ADVANCE
+        );
     }
 
     #[tokio::test]
