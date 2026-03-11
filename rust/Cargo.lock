@@ -860,7 +860,7 @@ dependencies = [
  "logging",
  "netlink-packet-core",
  "netlink-packet-route",
- "nix",
+ "nix 0.31.2",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -2379,7 +2379,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow-ext",
  "clap",
- "nix",
+ "nix 0.31.2",
  "rpassword",
  "secrecy",
  "tracing",
@@ -2408,7 +2408,7 @@ dependencies = [
  "ip_network",
  "libc",
  "logging",
- "nix",
+ "nix 0.31.2",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
@@ -2460,7 +2460,7 @@ dependencies = [
  "known-dirs",
  "logging",
  "native-dialog",
- "nix",
+ "nix 0.31.2",
  "notify-rust",
  "output_vt100",
  "parking_lot",
@@ -2526,7 +2526,7 @@ dependencies = [
  "known-dirs",
  "libc",
  "logging",
- "nix",
+ "nix 0.31.2",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
@@ -4571,6 +4571,18 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d6d0705320c1e6ba1d912b5e37cf18071b6c2e9b7fa8215a1e8a7651966f5d3"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
  "memoffset",
 ]
 
@@ -5133,7 +5145,7 @@ checksum = "e4022a17595a00d6a369236fdae483f0de7f0a339960a53118b818238e132224"
 dependencies = [
  "android_system_properties",
  "log",
- "nix",
+ "nix 0.30.1",
  "objc2",
  "objc2-foundation",
  "objc2-ui-kit",
@@ -6197,7 +6209,7 @@ dependencies = [
  "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
- "nix",
+ "nix 0.30.1",
  "thiserror 1.0.69",
  "tokio",
 ]
