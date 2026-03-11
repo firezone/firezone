@@ -6999,6 +6999,7 @@ dependencies = [
  "ringbuffer",
  "sha1",
  "sha2",
+ "smallvec",
  "str0m",
  "stun_codec",
  "telemetry",

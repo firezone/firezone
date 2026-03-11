@@ -82,33 +82,32 @@ where
         Some(connection)
     }
 
-    pub(crate) fn check_relays_available(
+    pub(crate) fn maybe_migrate_relays(
         &mut self,
+        removed_allocations: impl Iterator<Item = RId>,
         allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         rng: &mut impl Rng,
         now: Instant,
     ) {
-        for (cid, c) in self.iter_established_mut() {
-            if allocations.contains(&c.relay.id) {
-                continue; // Our relay is still there, no problems.
-            }
+        for rid in removed_allocations {
+            for (cid, c) in self.iter_mut_by_relay(rid) {
+                let Some((rid, new_allocation)) = allocations.sample(rng) else {
+                    if !c.relay.logged_sample_failure {
+                        tracing::debug!(%cid, "Failed to sample new relay for connection");
+                    }
+                    c.relay.logged_sample_failure = true;
 
-            let Some((rid, allocation)) = allocations.sample(rng) else {
-                if !c.relay.logged_sample_failure {
-                    tracing::debug!(%cid, "Failed to sample new relay for connection");
+                    continue;
+                };
+
+                tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
+
+                c.relay.id = rid;
+
+                for candidate in new_allocation.current_relay_candidates() {
+                    c.add_local_candidate(cid, &candidate, pending_events, now);
                 }
-                c.relay.logged_sample_failure = true;
-
-                continue;
-            };
-
-            tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
-
-            c.relay.id = rid;
-
-            for candidate in allocation.current_relay_candidates() {
-                c.add_local_candidate(cid, &candidate, pending_events, now);
             }
         }
     }

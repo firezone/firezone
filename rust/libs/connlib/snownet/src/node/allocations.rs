@@ -9,6 +9,7 @@ use bufferpool::BufferPool;
 use itertools::Itertools as _;
 use rand::{Rng, seq::IteratorRandom as _};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
+use smallvec::SmallVec;
 use str0m::Candidate;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
@@ -38,10 +39,6 @@ where
 
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
-    }
-
-    pub(crate) fn contains(&self, id: &RId) -> bool {
-        self.inner.contains_key(id)
     }
 
     pub(crate) fn get_by_id(&self, id: &RId) -> Option<&Allocation> {
@@ -188,19 +185,25 @@ where
             .next()
     }
 
-    pub(crate) fn gc(&mut self) {
+    /// Performs garbage-collection across all our allocations.
+    ///
+    /// This is zero-cost if we end up not making any changes because we will simply end up returning an empty iterator.
+    pub(crate) fn gc(&mut self) -> impl Iterator<Item = RId> + use<RId> {
         self.inner
-            .retain(|rid, allocation| match allocation.can_be_freed() {
+            .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
 
                     self.previous_relays_by_ip
                         .extend(server_addresses(allocation));
 
-                    false
+                    true
                 }
-                None => true,
-            });
+                None => false,
+            })
+            .map(|(rid, _)| rid)
+            .collect::<SmallVec<[_; 2]>>() // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+            .into_iter()
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
