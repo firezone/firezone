@@ -90,9 +90,9 @@ where
         rng: &mut impl Rng,
         now: Instant,
     ) {
-        for rid in removed_allocations {
-            for (cid, c) in self.iter_mut_by_relay(rid) {
-                let Some((rid, new_allocation)) = allocations.sample(rng) else {
+        for removed_relay in removed_allocations {
+            for (cid, c) in self.iter_mut_by_relay(removed_relay) {
+                let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
                     if !c.relay.logged_sample_failure {
                         tracing::debug!(%cid, "Failed to sample new relay for connection");
                     }
@@ -101,9 +101,9 @@ where
                     continue;
                 };
 
-                tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
+                tracing::info!(%cid, old = %c.relay.id, new = %new_relay, "Attempting to migrate connection to new relay");
 
-                c.relay.id = rid;
+                c.relay.id = new_relay;
 
                 for candidate in new_allocation.current_relay_candidates() {
                     c.add_local_candidate(cid, &candidate, pending_events, now);
