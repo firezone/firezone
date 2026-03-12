@@ -1,0 +1,814 @@
+x-firezone-env: &firezone-env
+  FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJDFkM2UzNDRhLTk1MDAtNDVhZi05N2JhLWNmNzJlYWVlYmNhOG0AAAAkMDNmZmZlMDEtZjU1Mi00MDAxLTliMmQtZmIwM2ExZGYxOWJmbQAAADhPVEpVUjZNT09QQ0sySlY4M0s4T0EwSlFDSzJINFZCVlM2SFI1TE85TTNHTFA4OTdHQTAwPT09PW4GAMHbwuCcAWIAAVGA.K8cSzI1GI71qde2bQNvDKUEHz_DTYROklGhHCt1301U"
+  FIREZONE_API_URL: "wss://api.firez.one"
+  RUST_LOG: "info"
+
+x-firezone-client: &firezone-client
+  image: ghcr.io/firezone/client:main
+  restart: unless-stopped
+  cap_add:
+    - NET_ADMIN
+  devices:
+    - /dev/net/tun:/dev/net/tun
+  environment: *firezone-env
+
+services:
+  thomas-firezone-client-0001:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0001
+    hostname: thomas-firezone-client-0001
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "62c58058eeb7cebccd910cc55af849a211a6e20ec5fcaa03bd8e343da1026028"
+
+  thomas-firezone-client-0002:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0002
+    hostname: thomas-firezone-client-0002
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "8fbe78297c9b348d8cd71a9e4e0edeb074eaafc353c44e668850afdc8db13ed1"
+
+  thomas-firezone-client-0003:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0003
+    hostname: thomas-firezone-client-0003
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "6c6f355154b5e414e54c0b74fd0b70c99e8ac41e3fd78fe809853daf760f673c"
+
+  thomas-firezone-client-0004:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0004
+    hostname: thomas-firezone-client-0004
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "f69c791c30ea2449f11f1814ff81aff9d4512dbe10afd2cec3724a0e148dc151"
+
+  thomas-firezone-client-0005:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0005
+    hostname: thomas-firezone-client-0005
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "6247b94004fe036983679df93ed17118983467b2ef36f6b124896fb77a229b79"
+
+  thomas-firezone-client-0006:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0006
+    hostname: thomas-firezone-client-0006
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "e3ce9852f6ef4e6bd51b5f98fb5401adbf0ff4b3d56b6dec9af92d23f5bf3730"
+
+  thomas-firezone-client-0007:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0007
+    hostname: thomas-firezone-client-0007
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "3e85b390ad58db753157e9e51c14a3527753d8253a4c9274635165a7cb95e67a"
+
+  thomas-firezone-client-0008:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0008
+    hostname: thomas-firezone-client-0008
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "ccfac159c7b3b1e1572a28c3451bea45098a148084050ac234148b27252b493f"
+
+  thomas-firezone-client-0009:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0009
+    hostname: thomas-firezone-client-0009
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "be133aa74ff35609cf8d99b058acdc9d9e51bac8a09763c640e031cad1b08af9"
+
+  thomas-firezone-client-0010:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0010
+    hostname: thomas-firezone-client-0010
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "3937345d64afb9683f1bd781f12e5666a4a5ac82a30f23fc0f47d11b94724c26"
+
+  thomas-firezone-client-0011:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0011
+    hostname: thomas-firezone-client-0011
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "0cfa988813835ae5f5251221a9da5cd960c37b089b1a5761c0d8bcd37d02bb94"
+
+  thomas-firezone-client-0012:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0012
+    hostname: thomas-firezone-client-0012
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "1726b8251e0537041516d34a8ea741df74cf66f84f05d9b6df2913bbffcedf7a"
+
+  thomas-firezone-client-0013:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0013
+    hostname: thomas-firezone-client-0013
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "eedf856cd345c303bffa2749b8bc69729bd3184befe0ec8ae7379624bab350f2"
+
+  thomas-firezone-client-0014:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0014
+    hostname: thomas-firezone-client-0014
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "8cb943c4b69d56fca10a58c560e94f4a4f74a7e2434672389b30c347f7c36d3e"
+
+  thomas-firezone-client-0015:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0015
+    hostname: thomas-firezone-client-0015
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "9d28b04459b6a2bef5043de990cfad3dcb22b6c107fa99d44dbce915b8e28579"
+
+  thomas-firezone-client-0016:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0016
+    hostname: thomas-firezone-client-0016
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "f0a31a10372ce0ff4314b0a5292d3c5db5c2b83a021908d3e3583960ce53a7dd"
+
+  thomas-firezone-client-0017:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0017
+    hostname: thomas-firezone-client-0017
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "95e70e8e20566eb66b3ddb9e8f0a40beb910fbc02aa4ee98251aeae51b8740b8"
+
+  thomas-firezone-client-0018:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0018
+    hostname: thomas-firezone-client-0018
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "96676e4c088181394a4dfa9d016868c70423414b91d9532f19fbb50cfa20de3b"
+
+  thomas-firezone-client-0019:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0019
+    hostname: thomas-firezone-client-0019
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "c3b67d70fd2228d8ed72f79443e6251f9d662d05cf13e0be7fa224d91b59457e"
+
+  thomas-firezone-client-0020:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0020
+    hostname: thomas-firezone-client-0020
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "27c23e2d415888accd58149ec3659b167dab37b316fe22c5e7857eb702c90641"
+
+  thomas-firezone-client-0021:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0021
+    hostname: thomas-firezone-client-0021
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "aed0074eb75599889c57bc14f2297c3cc65d08f9557d6d1e3f737fe061ec4299"
+
+  thomas-firezone-client-0022:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0022
+    hostname: thomas-firezone-client-0022
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "dd67dcb1272d9f5c23956620ca5aada7677475c0f64a9f8543b69d5d49d87575"
+
+  thomas-firezone-client-0023:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0023
+    hostname: thomas-firezone-client-0023
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "34d28a7619d8d0882eecad71c34f2016fce26037605b6413545fb1f1f5fdf237"
+
+  thomas-firezone-client-0024:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0024
+    hostname: thomas-firezone-client-0024
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "092a6f7fa3fc5925cbf3c1e8089f2f40b040ad9d8401a63b0cc8d8d522e94114"
+
+  thomas-firezone-client-0025:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0025
+    hostname: thomas-firezone-client-0025
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "7b1ebee81ce50100a899eac23f2742c4c08226a14d7078c9303b5b3c05c031e6"
+
+  thomas-firezone-client-0026:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0026
+    hostname: thomas-firezone-client-0026
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "833202333e151782d9b58b448c176decf50b467c9189533f522ab9764234e52a"
+
+  thomas-firezone-client-0027:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0027
+    hostname: thomas-firezone-client-0027
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "fb645ae5fc0d5c247caaec3531e45efb32ff449104248fcec7b067bc5e3af170"
+
+  thomas-firezone-client-0028:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0028
+    hostname: thomas-firezone-client-0028
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "0105581498d052fc42c1415741e5ed9c800219853c7580a539447500a9f92bc3"
+
+  thomas-firezone-client-0029:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0029
+    hostname: thomas-firezone-client-0029
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "69ad9d66cfc9561fa8c913110eeca0300ae57f069573577481219cfe9b0530e0"
+
+  thomas-firezone-client-0030:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0030
+    hostname: thomas-firezone-client-0030
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "4099838a2afe5639b3a20144c7f3aba06fc767a88bde8fa60b7a0274fa7a3e07"
+
+  thomas-firezone-client-0031:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0031
+    hostname: thomas-firezone-client-0031
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "59559f874f79e2a4bf406797cd74543d1264dedf18516f73c52bdc99909d5268"
+
+  thomas-firezone-client-0032:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0032
+    hostname: thomas-firezone-client-0032
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "44624e5854cf596aa1180838d2d73d4953934850dc25cbc7101c88ab97ecf3a0"
+
+  thomas-firezone-client-0033:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0033
+    hostname: thomas-firezone-client-0033
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "47794481ff32cde4fc9ebf23247d14f74aa8c257d4aba56e18efd8bc520e0bb7"
+
+  thomas-firezone-client-0034:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0034
+    hostname: thomas-firezone-client-0034
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "c79c78ccada43ab892dc60dd6ccdc6a47962b1ea676d77d4f465c7656fefc0f2"
+
+  thomas-firezone-client-0035:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0035
+    hostname: thomas-firezone-client-0035
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "67b8f3473594e992f9f4d0fdc5ca12205b33191c640005fea28ba59caa20f84a"
+
+  thomas-firezone-client-0036:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0036
+    hostname: thomas-firezone-client-0036
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "cfa4e09b39ea580711abae0c9562d9faee6230a07f9eb993ba90f3a0837eb202"
+
+  thomas-firezone-client-0037:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0037
+    hostname: thomas-firezone-client-0037
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "42d00660abf2b2d7a980eb9713ea90ed99e4d731481bc5d6ca73684b3b556812"
+
+  thomas-firezone-client-0038:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0038
+    hostname: thomas-firezone-client-0038
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "0181cd066bbb72d7025f5db28888463feaed04512825092cf5df2b8b4aba064f"
+
+  thomas-firezone-client-0039:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0039
+    hostname: thomas-firezone-client-0039
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "59d1b7a7c9d8e50483badef4038166fd27de208739a9d22faa4726369d328dfa"
+
+  thomas-firezone-client-0040:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0040
+    hostname: thomas-firezone-client-0040
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "711fa417f862fb91c7eddd6f56e99c2defde8c2b735834fa6dac001731aa5745"
+
+  thomas-firezone-client-0041:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0041
+    hostname: thomas-firezone-client-0041
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "6aed20d969613799473887858085e5188d15c928a8b9dad50b2de0b1e4c75a6b"
+
+  thomas-firezone-client-0042:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0042
+    hostname: thomas-firezone-client-0042
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "e9f1682bd95aa499c7b888be9e922aee00c239295aec1e673f4be69ed68dc4f5"
+
+  thomas-firezone-client-0043:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0043
+    hostname: thomas-firezone-client-0043
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "8b9bb4bc8a85f05ef70b7d1b847be1b53c25994bfbadb27d0994430bacf5824f"
+
+  thomas-firezone-client-0044:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0044
+    hostname: thomas-firezone-client-0044
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "aa53f86808721667b75e701689f3f62f1a90057f456af27b411ccd8011aed8b0"
+
+  thomas-firezone-client-0045:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0045
+    hostname: thomas-firezone-client-0045
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "5f7b48601bd2b615b1a3e8a0267436700808a5531c3971b517b9a76ac6efad3c"
+
+  thomas-firezone-client-0046:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0046
+    hostname: thomas-firezone-client-0046
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "7e049dba33dd652d5a40b3f224c9e3c6fe75620fdab979716c2dc56dad6c8211"
+
+  thomas-firezone-client-0047:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0047
+    hostname: thomas-firezone-client-0047
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "ca6602b44ad6504b04c531d89c24fdb734dc1be99ea83f3f4de6fc9f09d7998d"
+
+  thomas-firezone-client-0048:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0048
+    hostname: thomas-firezone-client-0048
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "faa2a841dfebdd4a9b224ec120c35a8b0162b8b811de004e3defe8baec66b479"
+
+  thomas-firezone-client-0049:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0049
+    hostname: thomas-firezone-client-0049
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "663bc46c9004d1062a580ec660c680f797fe5af635bd1625ad1f6b82c3e7c87d"
+
+  thomas-firezone-client-0050:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0050
+    hostname: thomas-firezone-client-0050
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "2c6e92448b9c1351336699a2e910af68dd8b71befc585d90251c6fa35b0e5be3"
+
+  thomas-firezone-client-0051:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0051
+    hostname: thomas-firezone-client-0051
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "98d6ca23263d4be9a0096e95c0bc93dd8a5acb66d543a92995e9d442740ca1de"
+
+  thomas-firezone-client-0052:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0052
+    hostname: thomas-firezone-client-0052
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "64d58fe2462926691abfe010a2661722cdffc104543bebe2e25f5e1c6820e9e8"
+
+  thomas-firezone-client-0053:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0053
+    hostname: thomas-firezone-client-0053
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "ea99df89afa8bb2a5acfa2da19e9951df84443efd7ca0b9ec1b2ef897ecb7dd9"
+
+  thomas-firezone-client-0054:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0054
+    hostname: thomas-firezone-client-0054
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "6d85f80c5e42b81b6a664b8957eb121d629c8d04756354e1b2b4ff74aa9c09a3"
+
+  thomas-firezone-client-0055:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0055
+    hostname: thomas-firezone-client-0055
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "88a2bff3008eb0c3aab6b60eacf895018a093175744c0423104e967e0fbeba0c"
+
+  thomas-firezone-client-0056:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0056
+    hostname: thomas-firezone-client-0056
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "bfae0122b6db6ef21c1f5859a7390b312799555393c6787e42b05585994d69ef"
+
+  thomas-firezone-client-0057:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0057
+    hostname: thomas-firezone-client-0057
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "43f1e920cb161120ea9e18c33eeea13b6dfedea97adb69b2100a32f99d8d6e4b"
+
+  thomas-firezone-client-0058:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0058
+    hostname: thomas-firezone-client-0058
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "31ec861536a3d22c28794cc09ced038828c4ca4f29a09bead9ec061c9cc34ccc"
+
+  thomas-firezone-client-0059:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0059
+    hostname: thomas-firezone-client-0059
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "f51128a2cfba119e3d830488bb4baaaab957252d1ddc9c934016e7be2c5267e2"
+
+  thomas-firezone-client-0060:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0060
+    hostname: thomas-firezone-client-0060
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "0e376140d030821f3e218625ccd0c5fb080fde6c4a7644d41c951cc854faddce"
+
+  thomas-firezone-client-0061:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0061
+    hostname: thomas-firezone-client-0061
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "faf870ce4f267c4678ef11df91dd9416da4e029004e67c6031c5192e44cbc1d4"
+
+  thomas-firezone-client-0062:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0062
+    hostname: thomas-firezone-client-0062
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "28f516e61fc9179f8c0fa2a84e5eb1fc081bf18fab6d334be184908e8c43775f"
+
+  thomas-firezone-client-0063:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0063
+    hostname: thomas-firezone-client-0063
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "828d118ec272fec3f4992768e57f128a0abc3783edd0f63958c2afb346ce9cb0"
+
+  thomas-firezone-client-0064:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0064
+    hostname: thomas-firezone-client-0064
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "25c3b46279de99ed98e01b15fba51eae3c76579da493144e518b40dad40f8ff0"
+
+  thomas-firezone-client-0065:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0065
+    hostname: thomas-firezone-client-0065
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "554b8e63bff110b47b1129d0463b47b6d074258b5c3ada451e5a5ce8e4497ac3"
+
+  thomas-firezone-client-0066:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0066
+    hostname: thomas-firezone-client-0066
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "5827339e6a3921b702aebf6d9473c123632eddf40adc017a876786983ca0222b"
+
+  thomas-firezone-client-0067:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0067
+    hostname: thomas-firezone-client-0067
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "343890a34c04dcf2626df7ac9051aacfae7030984baf79b1719e5d032453ac46"
+
+  thomas-firezone-client-0068:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0068
+    hostname: thomas-firezone-client-0068
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "7cb7a1af87eb816b7132bfd63e33a9229d693d84e2cddaca6a55008383741891"
+
+  thomas-firezone-client-0069:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0069
+    hostname: thomas-firezone-client-0069
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "e588268b161060030f8d9112c4a6db00ecfb5e8a4e682ed8f95bfa10b959d15a"
+
+  thomas-firezone-client-0070:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0070
+    hostname: thomas-firezone-client-0070
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "7b674d04b83c5a98eb6fc34c6c6464d1d6b999c515de847b95ec29d7867cd627"
+
+  thomas-firezone-client-0071:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0071
+    hostname: thomas-firezone-client-0071
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "a83aa92e0d91452f951dbfc8b2fc6625907a751a1acc52c14c8eb3701005111f"
+
+  thomas-firezone-client-0072:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0072
+    hostname: thomas-firezone-client-0072
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "34fdf04d0eaa040f3ccd971daa3e6225c4334e70fa5c87c82f394c086da6ce36"
+
+  thomas-firezone-client-0073:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0073
+    hostname: thomas-firezone-client-0073
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "2b4d63bcad20133db2f72a442f739db59252acd06999363e7753548f8d623184"
+
+  thomas-firezone-client-0074:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0074
+    hostname: thomas-firezone-client-0074
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "15a0f600ba17db4ec76271f35ce514bfc4986b0631e7e6e4bd71cd412f83d9d7"
+
+  thomas-firezone-client-0075:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0075
+    hostname: thomas-firezone-client-0075
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "57b36049338dfbcef499be1cc5b515580e102085273e53c9f96587f738618d6d"
+
+  thomas-firezone-client-0076:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0076
+    hostname: thomas-firezone-client-0076
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "5e59c075aa51722a407c830b055673dbb1d062aa5b20cf01b0ee33c87150b1e3"
+
+  thomas-firezone-client-0077:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0077
+    hostname: thomas-firezone-client-0077
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "446ebeed63d07056aa9fa604ae31018220f42426760396b12e03e3f007408c7e"
+
+  thomas-firezone-client-0078:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0078
+    hostname: thomas-firezone-client-0078
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "07db8756e7dad8e20010ad969909a1e8aa843ccffa0edae6fa64e9d8725498fb"
+
+  thomas-firezone-client-0079:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0079
+    hostname: thomas-firezone-client-0079
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "46851cae3216d20e3adac807b354d0032beeba49c2c4cc2f642203ea63e3b368"
+
+  thomas-firezone-client-0080:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0080
+    hostname: thomas-firezone-client-0080
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "edf66f9d8f467387b3a581bc8727619c5a8d5988348b6bb10864336894b3350f"
+
+  thomas-firezone-client-0081:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0081
+    hostname: thomas-firezone-client-0081
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "1a9383530fefefceef60198469622fc3f6286a7566ab66fd8df12c0db71f310a"
+
+  thomas-firezone-client-0082:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0082
+    hostname: thomas-firezone-client-0082
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "0b9943701df6cce6e0d95577b30c5080c072cbb4a9e80721752dc0e956204064"
+
+  thomas-firezone-client-0083:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0083
+    hostname: thomas-firezone-client-0083
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "f8f051ce932e6a3308136d31df61fc36796c10fd0f80cb2aa127c0bd6f4eabd5"
+
+  thomas-firezone-client-0084:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0084
+    hostname: thomas-firezone-client-0084
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "4452006894cf2601e4327d195a460f7280aa35e0bc1a5094dde5d829533677a5"
+
+  thomas-firezone-client-0085:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0085
+    hostname: thomas-firezone-client-0085
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "9b4d62de17bfc68a07afdf87fa561caf0815f512a39ac9e469badb3f4b413923"
+
+  thomas-firezone-client-0086:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0086
+    hostname: thomas-firezone-client-0086
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "91135fa7e3711e9c55b2864d85ba1c64dcfb2d79ae567508ca8a54be044fcde9"
+
+  thomas-firezone-client-0087:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0087
+    hostname: thomas-firezone-client-0087
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "1da93cb6aeeafcebf6d68973eed490c54e974a3aeb1df2b156b003269d63cfb6"
+
+  thomas-firezone-client-0088:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0088
+    hostname: thomas-firezone-client-0088
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "2ad35140b71cdeb558fb905885db5c59576f25177143515da0ab3764c376c57c"
+
+  thomas-firezone-client-0089:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0089
+    hostname: thomas-firezone-client-0089
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "9d7d028c336dde57ed4024be0be69f58b3250b955c41149c7ea7e0d8f36461ec"
+
+  thomas-firezone-client-0090:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0090
+    hostname: thomas-firezone-client-0090
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "b2c83d5d0589f3808e2e59a52a31e5e6b9717b4fb6f32ba6300981b989f6e142"
+
+  thomas-firezone-client-0091:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0091
+    hostname: thomas-firezone-client-0091
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "f7f11adff79b87a95bc89b7f4af066bdea27909c4832170d244937c1c8fab148"
+
+  thomas-firezone-client-0092:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0092
+    hostname: thomas-firezone-client-0092
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "3f162a85017fd060604995af867a63c43bad97b23b0c0460f3157d5dae17529e"
+
+  thomas-firezone-client-0093:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0093
+    hostname: thomas-firezone-client-0093
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "e3c1e0ec62598a4fe8b46dbd4df2ea954a86ad031b7b1b59c1a041f5be5a3d4e"
+
+  thomas-firezone-client-0094:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0094
+    hostname: thomas-firezone-client-0094
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "c47b5d31175c7a736e6a25ead639b722b49379af699c016baf91fd2dfc7ccc0c"
+
+  thomas-firezone-client-0095:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0095
+    hostname: thomas-firezone-client-0095
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "2de6d393390804f0dce5e5057de24e9867e3b79c17d20ae1f445beed70d81639"
+
+  thomas-firezone-client-0096:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0096
+    hostname: thomas-firezone-client-0096
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "d99b2887d7ed02e433962833aecdbd44b5991dabd975b2fc6e4c637273d584a7"
+
+  thomas-firezone-client-0097:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0097
+    hostname: thomas-firezone-client-0097
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "6ae9f664297d8d5b3220265ecd4371f4ffac0c5ba14a307d51d4342239b25474"
+
+  thomas-firezone-client-0098:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0098
+    hostname: thomas-firezone-client-0098
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "2c91dd4e2bd63b22a9bf6a9a1246bf99362be3a2ac28c7a405b535116daf9c33"
+
+  thomas-firezone-client-0099:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0099
+    hostname: thomas-firezone-client-0099
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "bc3839a0292da6ce31eec18b16d611ddf5e6ec3d8bec57479f0556f83aa3491e"
+
+  thomas-firezone-client-0100:
+    <<: *firezone-client
+    container_name: thomas-firezone-client-0100
+    hostname: thomas-firezone-client-0100
+    environment:
+      <<: *firezone-env
+      FIREZONE_ID: "a7586cc276bdcac38cec7540b5d3a89690b4b82dde5ee57b66b3f9bc6cf4aaf9"
