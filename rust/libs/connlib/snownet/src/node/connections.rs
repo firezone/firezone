@@ -6,25 +6,28 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
 use rand::Rng;
+use str0m::ice::{StunMessage, TransId};
 
 use crate::{
     ConnectionStats, Event,
-    node::{Connection, allocations::Allocations},
+    node::{Connection, allocations::Allocations, inflight_stun_requests::InflightStunRequests},
 };
 
 pub struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
+    established_by_local_ufrag: BTreeMap<String, TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
     disconnected_session_indices: BTreeMap<usize, Instant>,
 
     connections_with_removed_relays: BTreeSet<TId>,
+    disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -32,10 +35,12 @@ impl<TId, RId> Default for Connections<TId, RId> {
         Self {
             established: Default::default(),
             established_by_wireguard_session_index: Default::default(),
+            established_by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_session_indices: Default::default(),
             connections_with_removed_relays: Default::default(),
+            disconnected_ufrags: Default::default(),
         }
     }
 }
@@ -60,6 +65,8 @@ where
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
             self.disconnected_ids.insert(id, now);
+            self.disconnected_ufrags
+                .insert(conn.agent.local_credentials().ufrag.to_owned(), now);
         }
 
         self.disconnected_ids
@@ -68,6 +75,8 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_session_indices
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_ufrags
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
     }
 
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
@@ -75,12 +84,15 @@ where
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
+        self.established_by_local_ufrag.retain(|_, c| c != id);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
         self.disconnected_session_indices
             .insert(connection.index.global(), now);
+        self.disconnected_ufrags
+            .insert(connection.agent.local_credentials().ufrag.to_owned(), now);
 
         Some(connection)
     }
@@ -138,6 +150,7 @@ where
         index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
+        let local_ufrag = connection.agent.local_credentials().ufrag.to_owned();
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
@@ -145,6 +158,7 @@ where
             .retain(|_, c| c != &id);
         self.established_by_wireguard_session_index
             .insert(index.global(), id);
+        self.established_by_local_ufrag.insert(local_ufrag, id);
 
         existing
     }
@@ -209,6 +223,43 @@ where
             ))?;
 
         Ok((*id, conn))
+    }
+
+    pub(crate) fn get_established_mut_for_stun_message(
+        &mut self,
+        message: &StunMessage,
+        inflight_stun_requests: &mut InflightStunRequests<TId>,
+        now: Instant,
+    ) -> Result<(TId, &mut Connection<RId>)> {
+        if message.is_binding_request() {
+            let (ufrag, _) = message
+                .split_username()
+                .context("Binding request does not have a USERNAME attribute")?;
+            let id = self
+                .established_by_local_ufrag
+                .get(ufrag)
+                .ok_or(UnknownConnection::by_local_ufrag(
+                    ufrag,
+                    &self.disconnected_ufrags,
+                    now,
+                ))
+                .copied()?;
+            let conn = self.get_mut(&id, now)?;
+
+            return Ok((id, conn));
+        }
+
+        if message.is_successful_binding_response() {
+            let trans_id = message.trans_id();
+            let id = inflight_stun_requests
+                .remove(trans_id)
+                .ok_or(UnknownConnection::by_trans_id(trans_id))?;
+            let conn = self.get_mut(&id, now)?;
+
+            return Ok((id, conn));
+        }
+
+        bail!("STUN message is not a BINDING")
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
@@ -324,6 +375,28 @@ impl UnknownConnection {
             disconnected_for: disconnected_public_keys
                 .get(&key)
                 .map(|disconnected| now.duration_since(*disconnected)),
+        }
+    }
+
+    fn by_local_ufrag(
+        key: &str,
+        disconnected_ufrags: &BTreeMap<String, Instant>,
+        now: Instant,
+    ) -> Self {
+        Self {
+            id: key.to_owned(),
+            kind: "ufrag",
+            disconnected_for: disconnected_ufrags
+                .get(key)
+                .map(|disconnected| now.duration_since(*disconnected)),
+        }
+    }
+
+    fn by_trans_id(key: TransId) -> Self {
+        Self {
+            id: format!("{key:?}"),
+            kind: "STUN trans ID",
+            disconnected_for: None,
         }
     }
 
