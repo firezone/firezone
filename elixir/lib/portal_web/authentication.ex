@@ -20,6 +20,8 @@ defmodule PortalWeb.Authentication do
   @doc """
   Returns non-empty parameters that should be persisted during sign in flow.
   """
+  def take_sign_in_params(nil), do: %{}
+
   def take_sign_in_params(params) do
     params
     |> Map.take(["as", "state", "nonce", "redirect_to"])

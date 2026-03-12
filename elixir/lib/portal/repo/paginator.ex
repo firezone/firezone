@@ -44,7 +44,8 @@ defmodule Portal.Repo.Paginator do
       |> Enum.reverse()
 
     if encoded_cursor = Keyword.get(opts, :cursor) do
-      with {:ok, {direction, values}} <- decode_cursor(encoded_cursor) do
+      with {:ok, {direction, values}} <- decode_cursor(encoded_cursor),
+           :ok <- validate_cursor_values(cursor_fields, values) do
         {:ok,
          %{
            query_module: query_module,
@@ -324,6 +325,17 @@ defmodule Portal.Repo.Paginator do
       nil -> Map.fetch!(schema, field)
       key -> Map.fetch!(schema, key)
     end
+  end
+
+  defp validate_cursor_values(cursor_fields, values) do
+    valid? =
+      Enum.zip(cursor_fields, values)
+      |> Enum.all?(fn
+        {{_, :asc, _}, nil} -> false
+        _ -> true
+      end)
+
+    if valid?, do: :ok, else: {:error, :invalid_cursor}
   end
 
   defp decode_cursor(encoded) do

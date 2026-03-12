@@ -1,5 +1,6 @@
 defmodule PortalWeb.Clients.Edit do
   use PortalWeb, :live_view
+  import Ecto.Changeset
   alias Portal.Presence.Clients
   alias __MODULE__.Database
 
@@ -60,6 +61,7 @@ defmodule PortalWeb.Clients.Edit do
   def handle_event("change", %{"client" => attrs}, socket) do
     changeset =
       update_changeset(socket.assigns.client, attrs)
+      |> Portal.Client.changeset()
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -78,14 +80,9 @@ defmodule PortalWeb.Clients.Edit do
   end
 
   defp update_changeset(client, attrs) do
-    import Ecto.Changeset
-    update_fields = ~w[name]a
-    required_fields = ~w[external_id name]a
-
     client
-    |> cast(attrs, update_fields)
-    |> validate_required(required_fields)
-    |> Portal.Client.changeset()
+    |> cast(attrs, [:name])
+    |> validate_required([:external_id, :name])
   end
 
   defmodule Database do
