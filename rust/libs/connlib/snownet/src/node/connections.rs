@@ -100,9 +100,9 @@ where
         for removed_relay in removed_allocations {
             for (cid, c) in self.iter_mut_by_relay(removed_relay) {
                 let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
-                    let was_present = connections_with_removed_relays.insert(cid);
+                    let was_inserted = connections_with_removed_relays.insert(cid);
 
-                    if !was_present {
+                    if was_inserted {
                         tracing::debug!(%cid, "Failed to sample new relay for connection");
                     }
 
