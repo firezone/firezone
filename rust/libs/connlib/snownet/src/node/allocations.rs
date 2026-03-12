@@ -187,7 +187,8 @@ where
 
     /// Performs garbage-collection across all our allocations.
     ///
-    /// This is zero-cost if we end up not making any changes because we will simply end up returning an empty iterator.
+    /// Handling the resulting iterator is zero-cost if we end up not making any changes
+    /// because we will simply end up returning an empty iterator.
     pub(crate) fn gc(&mut self) -> impl Iterator<Item = RId> + use<RId> {
         self.inner
             .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
