@@ -488,11 +488,7 @@ impl Io {
 
     /// Schedules a wakeup in case one isn't registered yet.
     pub fn schedule_timeout(&mut self, now: Instant) {
-        let latest_wakeup = now + Duration::from_secs(1);
-
-        if self.timeout.deadline() > latest_wakeup {
-            self.timeout.reset(latest_wakeup);
-        }
+        self.timeout.schedule(now + Duration::from_secs(1));
     }
 
     pub fn send_network(
