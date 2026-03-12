@@ -610,7 +610,7 @@ where
 
         let removed_allocations = self.allocations.gc();
 
-        self.connections.maybe_migrate_relays(
+        self.connections.migrate_relays(
             removed_allocations,
             &self.allocations,
             &mut self.pending_events,
@@ -714,7 +714,7 @@ where
         }
 
         // Fourth, migrate existing connections away from removed relays.
-        self.connections.maybe_migrate_relays(
+        self.connections.migrate_relays(
             to_remove.into_iter(),
             &self.allocations,
             &mut self.pending_events,
@@ -777,10 +777,7 @@ where
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,
-            relay: SelectedRelay {
-                id: relay,
-                sample_failure: false,
-            },
+            relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
                 ip_buffer: AllocRingBuffer::new(128),
@@ -1254,8 +1251,6 @@ struct Connection<RId> {
 #[derive(Debug)]
 struct SelectedRelay<RId> {
     id: RId,
-    /// Whether we've already logged failure to sample a new relay.
-    sample_failure: bool,
 }
 
 impl<RId> Connection<RId>
@@ -1896,6 +1891,25 @@ where
 
     fn is_idle(&self) -> bool {
         matches!(self.state, ConnectionState::Idle { .. })
+    }
+
+    fn migrate_relay<TId>(
+        &mut self,
+        cid: TId,
+        new_relay: RId,
+        new_allocation: &Allocation,
+        pending_events: &mut VecDeque<Event<TId>>,
+        now: Instant,
+    ) where
+        TId: fmt::Display + Copy,
+    {
+        tracing::info!(%cid, old = %self.relay.id, new = %new_relay, "Attempting to migrate connection to new relay");
+
+        self.relay.id = new_relay;
+
+        for candidate in new_allocation.current_relay_candidates() {
+            self.add_local_candidate(cid, &candidate, pending_events, now);
+        }
     }
 }
 
