@@ -84,7 +84,8 @@ where
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
-        self.established_by_local_ufrag.retain(|_, c| c != id);
+        self.established_by_local_ufrag
+            .remove(&connection.agent.local_credentials().ufrag);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
