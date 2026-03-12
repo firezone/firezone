@@ -1,5 +1,5 @@
 use opentelemetry::{KeyValue, metrics::Histogram};
-use std::{task::Waker, time::Instant};
+use std::{sync::OnceLock, task::Waker, time::Instant};
 
 /// Tracks progress and iteration budget for an event-loop.
 ///
@@ -13,7 +13,7 @@ pub(crate) struct Budget {
     remaining: u32,
     ready: bool,
     started_at: Instant,
-    histogram: Histogram<f64>,
+    name: &'static str,
 }
 
 pub(crate) struct Tick<'a>(&'a mut bool);
@@ -25,17 +25,13 @@ impl Tick<'_> {
 }
 
 impl Budget {
-    pub(crate) fn new(waker: Waker, budget: u32) -> Self {
+    pub(crate) fn new(waker: Waker, budget: u32, name: &'static str) -> Self {
         Self {
             waker,
             remaining: budget,
             ready: true, // Treat the first iteration as "ready" so we always enter the loop once.
             started_at: Instant::now(),
-            histogram: opentelemetry::global::meter("connlib")
-                .f64_histogram("eventloop.poll.duration")
-                .with_description("Duration of a single event-loop poll.")
-                .with_unit("s")
-                .build(),
+            name,
         }
     }
 
@@ -56,15 +52,43 @@ impl Drop for Budget {
         let exhausted = self.remaining == 0;
         let elapsed_s = self.started_at.elapsed().as_secs_f64();
 
-        self.histogram.record(
+        poll_duration_histogram().record(
             elapsed_s,
-            &[KeyValue::new("eventloop.exhausted", exhausted)],
+            &[
+                KeyValue::new("eventloop.exhausted", exhausted),
+                KeyValue::new("eventloop.name", self.name),
+            ],
         );
 
         if exhausted {
             self.waker.wake_by_ref();
         }
     }
+}
+
+fn poll_duration_histogram() -> &'static Histogram<f64> {
+    static STORAGE: OnceLock<Histogram<f64>> = OnceLock::new();
+
+    STORAGE.get_or_init(|| {
+        opentelemetry::global::meter("connlib")
+            .f64_histogram("eventloop.poll.duration")
+            .with_description("Duration of a single event-loop poll.")
+            .with_unit("s")
+            .with_boundaries(vec![
+                0.000_005, // 5µs
+                0.000_010, // 10µs
+                0.000_025, // 25µs
+                0.000_050, // 50µs
+                0.000_100, // 100µs
+                0.000_250, // 250µs
+                0.000_500, // 500µs
+                0.001_000, // 1ms
+                0.002_500, // 2.5ms
+                0.005_000, // 5ms
+                0.010_000, // 10ms
+            ])
+            .build()
+    })
 }
 
 #[cfg(test)]
@@ -82,7 +106,7 @@ mod tests {
     #[test]
     fn iterates_once_with_no_work_does_not_call_waker() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10);
+        let mut budget = Budget::new(waker, 10, "test");
 
         let mut iterations = 0usize;
         while let Some(_tick) = budget.next() {
@@ -96,7 +120,7 @@ mod tests {
     #[test]
     fn continues_as_long_as_want_continue_is_called() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10);
+        let mut budget = Budget::new(waker, 10, "test");
 
         let mut iterations = 0usize;
         while let Some(mut tick) = budget.next() {
@@ -113,7 +137,7 @@ mod tests {
     #[test]
     fn wakes_after_exhausting_budget() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10);
+        let mut budget = Budget::new(waker, 10, "test");
 
         while let Some(mut tick) = budget.next() {
             tick.want_continue();
