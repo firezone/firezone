@@ -93,10 +93,10 @@ where
         for removed_relay in removed_allocations {
             for (cid, c) in self.iter_mut_by_relay(removed_relay) {
                 let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
-                    if !c.relay.logged_sample_failure {
+                    if !c.relay.sample_failure {
                         tracing::debug!(%cid, "Failed to sample new relay for connection");
                     }
-                    c.relay.logged_sample_failure = true;
+                    c.relay.sample_failure = true;
 
                     continue;
                 };
@@ -464,7 +464,7 @@ mod tests {
             last_proactive_handshake_sent_at: None,
             relay: SelectedRelay {
                 id: 0,
-                logged_sample_failure: false,
+                sample_failure: false,
             },
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),

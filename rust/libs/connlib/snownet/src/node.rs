@@ -779,7 +779,7 @@ where
             remote_pub_key: remote,
             relay: SelectedRelay {
                 id: relay,
-                logged_sample_failure: false,
+                sample_failure: false,
             },
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
@@ -1255,7 +1255,7 @@ struct Connection<RId> {
 struct SelectedRelay<RId> {
     id: RId,
     /// Whether we've already logged failure to sample a new relay.
-    logged_sample_failure: bool,
+    sample_failure: bool,
 }
 
 impl<RId> Connection<RId>
