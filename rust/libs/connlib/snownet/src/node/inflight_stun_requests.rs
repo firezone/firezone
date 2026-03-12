@@ -44,6 +44,10 @@ where
             .extract_if(|_, (_, expires_at)| now >= *expires_at)
         {}
     }
+
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
 }
 
 #[cfg(test)]

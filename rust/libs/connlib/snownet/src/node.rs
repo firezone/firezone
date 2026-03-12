@@ -226,6 +226,7 @@ where
 
         self.connections.clear();
         self.buffered_transmits.clear();
+        self.inflight_stun_requests.clear();
 
         self.private_key = StaticSecret::random_from_rng(&mut self.rng);
         self.public_key = (&self.private_key).into();
