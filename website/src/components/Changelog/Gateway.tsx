@@ -43,6 +43,10 @@ export default function Gateway() {
           Fixes an issue where the WebSocket connection to the control plane was
           lost under load.
         </ChangeItem>
+        <ChangeItem pull="12506">
+          Fixes an issue where the Gateway would disconnect from a relay under
+          high-load.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.0" date={new Date("2026-02-02")}>
         <ChangeItem pull="11771">
