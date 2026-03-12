@@ -637,6 +637,7 @@ where
         );
         self.connections
             .handle_timeout(&mut self.pending_events, now);
+        self.inflight_stun_requests.handle_timeout(now);
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -1519,9 +1520,10 @@ where
             let dst = transmit.destination;
             let stun_packet_bytes = Vec::from(transmit.contents);
             match StunMessage::parse(&stun_packet_bytes) {
-                Ok(msg) => {
-                    inflight_stun_requests.add(cid, msg.trans_id());
+                Ok(msg) if msg.is_binding_request() => {
+                    inflight_stun_requests.add(cid, msg.trans_id(), now);
                 }
+                Ok(_) => {}
                 Err(e) => {
                     tracing::warn!("str0m emitted invalid STUN message: {e}")
                 }
