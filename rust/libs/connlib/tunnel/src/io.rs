@@ -476,7 +476,7 @@ impl Io {
 
     pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
         let wakeup_in = tracing::event_enabled!(Level::TRACE)
-            .then(|| timeout.duration_since(Instant::now()))
+            .then(|| timeout.saturating_duration_since(Instant::now()))
             .map(tracing::field::debug);
 
         if self.timeout.deadline() != timeout {
