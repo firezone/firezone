@@ -3,10 +3,14 @@ defmodule PortalWeb.SidebarTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
 
   setup do
     account = account_fixture()
     actor = actor_fixture(account: account, type: :account_admin_user)
+    site = site_fixture(account: account)
+    internet_resource_fixture(account: account, site: site)
 
     %{
       account: account,

@@ -1,10 +1,6 @@
 defmodule Portal.Changes.Hooks.MembershipsTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Memberships
-  import Portal.AccountFixtures
-  import Portal.ActorFixtures
-  import Portal.GroupFixtures
-  import Portal.MembershipFixtures
   alias Portal.Changes.Change
   alias Portal.Membership
   alias Portal.PubSub

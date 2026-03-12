@@ -71,7 +71,7 @@ defmodule PortalWeb.Live.Sites.IndexTest do
     conn: conn
   } do
     site = site_fixture(account: account)
-    resource = resource_fixture(account: account, site: site)
+    _resource = resource_fixture(account: account, site: site)
 
     {:ok, lv, _html} =
       conn

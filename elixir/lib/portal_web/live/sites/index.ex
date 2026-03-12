@@ -15,7 +15,7 @@ defmodule PortalWeb.Sites.Index do
       socket
       |> assign(page_title: "Sites")
       |> assign(internet_resource: internet_resource)
-      |> assign(internet_site: internet_resource && internet_resource.site)
+      |> assign(internet_site: internet_resource.site)
       |> assign_live_table("sites",
         query_module: Database,
         sortable_fields: [
@@ -209,7 +209,7 @@ defmodule PortalWeb.Sites.Index do
     socket =
       socket
       |> assign(internet_resource: internet_resource)
-      |> assign(internet_site: internet_resource && internet_resource.site)
+      |> assign(internet_site: internet_resource.site)
       |> reload_live_table!("sites")
 
     {:noreply, socket}
