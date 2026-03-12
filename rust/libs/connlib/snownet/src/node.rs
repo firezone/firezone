@@ -1,6 +1,7 @@
 mod allocations;
 mod connection_state;
 mod connections;
+mod inflight_stun_requests;
 
 pub use connections::UnknownConnection;
 
@@ -9,6 +10,7 @@ use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
+use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
@@ -25,7 +27,7 @@ use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
-use ringbuffer::{AllocRingBuffer, RingBuffer as _};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sha2::Digest;
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
@@ -92,6 +94,8 @@ pub struct Node<TId, RId> {
     allocations: Allocations<RId>,
 
     connections: Connections<TId, RId>,
+    inflight_stun_requests: InflightStunRequests<TId>,
+
     pending_events: VecDeque<Event<TId>>,
 
     stats: NodeStats,
@@ -184,6 +188,7 @@ where
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
             allocations: Default::default(),
+            inflight_stun_requests: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
@@ -221,6 +226,7 @@ where
 
         self.connections.clear();
         self.buffered_transmits.clear();
+        self.inflight_stun_requests.clear();
 
         self.private_key = StaticSecret::random_from_rng(&mut self.rng);
         self.public_key = (&self.private_key).into();
@@ -553,7 +559,13 @@ where
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
     pub fn poll_event(&mut self) -> Option<Event<TId>> {
-        self.pending_events.pop_front()
+        let event = self.pending_events.pop_front()?;
+
+        if let Event::ConnectionClosed(id) | Event::ConnectionFailed(id) = &event {
+            self.inflight_stun_requests.remove_by_conn_id(*id);
+        }
+
+        Some(event)
     }
 
     /// Returns, when [`Node::handle_timeout`] should be called next.
@@ -594,7 +606,13 @@ where
         self.allocations_drain_events(now);
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
+            connection.handle_timeout(
+                id,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+                &mut self.inflight_stun_requests,
+            );
         }
 
         if self.connections.all_idle() {
@@ -620,6 +638,7 @@ where
         );
         self.connections
             .handle_timeout(&mut self.pending_events, now);
+        self.inflight_stun_requests.handle_timeout(now);
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -910,23 +929,30 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (_, c) in self.connections.iter_mut() {
-            if c.agent.accepts_message(&message) {
-                c.agent.handle_packet(
-                    now,
-                    StunPacket {
-                        proto: Protocol::Udp,
-                        source: from,
-                        destination,
-                        message,
-                    },
-                );
+        let (_, c) = match self.connections.get_established_mut_for_stun_message(
+            &message,
+            &mut self.inflight_stun_requests,
+            now,
+        ) {
+            Ok(c) => c,
+            Err(e) => return ControlFlow::Break(Err(e)),
+        };
 
-                return ControlFlow::Break(Ok(()));
-            }
+        let handled = c.agent.handle_packet(
+            now,
+            StunPacket {
+                proto: Protocol::Udp,
+                source: from,
+                destination,
+                message,
+            },
+        );
+
+        if !handled {
+            tracing::debug!(
+                "Agent did not handle STUN packet assigned by local ufrag or STUN Transaction ID"
+            );
         }
-
-        tracing::trace!("Packet was a STUN message but no agent handled it. Already disconnected?");
 
         ControlFlow::Break(Ok(()))
     }
@@ -1303,6 +1329,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
+        inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
@@ -1492,23 +1519,32 @@ where
         while let Some(transmit) = self.agent.poll_transmit() {
             let source = transmit.source;
             let dst = transmit.destination;
-            let stun_packet = transmit.contents;
+            let stun_packet_bytes = Vec::from(transmit.contents);
+            match StunMessage::parse(&stun_packet_bytes) {
+                Ok(msg) if msg.is_binding_request() => {
+                    inflight_stun_requests.add(cid, msg.trans_id(), now);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("str0m emitted invalid STUN message: {e}")
+                }
+            }
 
             // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
-                self.stats.stun_bytes_to_peer_direct += stun_packet.len();
+                self.stats.stun_bytes_to_peer_direct += stun_packet_bytes.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
-                    payload: self.buffer_pool.pull_initialised(&Vec::from(stun_packet)),
+                    payload: self.buffer_pool.pull_initialised(&stun_packet_bytes),
                     ecn: Ecn::NonEct,
                 });
                 continue;
             };
 
-            let mut data_channel_packet = channel_data_packet_buffer(&stun_packet);
+            let mut data_channel_packet = channel_data_packet_buffer(&stun_packet_bytes);
 
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
             let Some(encode_ok) =
