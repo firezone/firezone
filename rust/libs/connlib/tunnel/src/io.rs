@@ -46,6 +46,7 @@ const MAX_INBOUND_PACKET_BATCH: usize = {
 };
 
 const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
+const TIMEOUT_GRANULARITY: Duration = Duration::from_millis(50);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
@@ -166,7 +167,7 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            timeout: Timeout::new(DEFAULT_TIME_ADVANCE),
+            timeout: Timeout::new(DEFAULT_TIME_ADVANCE, TIMEOUT_GRANULARITY, Instant::now()),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
