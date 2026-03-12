@@ -45,12 +45,14 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn deadline_auto_resets_to_old_deadline_plus_advance_after_firing() {
         let advance = Duration::from_secs(1);
         let mut timeout = Timeout::new(advance);
 
         let original_deadline = timeout.deadline();
+
+        tokio::time::advance(advance).await;
 
         poll_fn(|cx| timeout.poll_tick(cx)).await;
 
