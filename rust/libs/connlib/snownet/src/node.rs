@@ -797,7 +797,6 @@ where
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
-            signalling_completed_at: now,
             remote_pub_key: remote,
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
@@ -811,6 +810,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         }
     }
 
@@ -1266,7 +1266,8 @@ struct Connection<RId> {
 
     stats: ConnectionStats,
     intent_sent_at: Instant,
-    signalling_completed_at: Instant,
+    candidate_timeout: Option<Instant>,
+
     first_handshake_completed_at: Option<Instant>,
 
     buffer: Vec<u8>,
@@ -1303,7 +1304,7 @@ where
             )
             .chain(Some((self.next_wg_timer_update, "boringtun tunnel")))
             .chain(
-                self.candidate_timeout()
+                self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
             .chain(
@@ -1314,14 +1315,6 @@ where
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
-    }
-
-    fn candidate_timeout(&self) -> Option<Instant> {
-        if self.agent.remote_candidates().count() > 0 {
-            return None;
-        }
-
-        Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
     }
 
     fn disconnect_timeout(&self) -> Option<Instant> {
@@ -1352,10 +1345,7 @@ where
         self.state
             .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
-        if self
-            .candidate_timeout()
-            .is_some_and(|timeout| now >= timeout)
-        {
+        if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
             tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
@@ -1907,6 +1897,7 @@ where
         TId: fmt::Display,
     {
         self.agent.add_remote_candidate(candidate);
+        self.candidate_timeout = None;
 
         generate_optimistic_candidates(&mut self.agent);
 
