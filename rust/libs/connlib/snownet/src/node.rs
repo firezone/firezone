@@ -797,7 +797,6 @@ where
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
-            signalling_completed_at: now,
             remote_pub_key: remote,
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
@@ -811,6 +810,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         }
     }
 
@@ -1266,7 +1266,8 @@ struct Connection<RId> {
 
     stats: ConnectionStats,
     intent_sent_at: Instant,
-    signalling_completed_at: Instant,
+    candidate_timeout: Option<Instant>,
+
     first_handshake_completed_at: Option<Instant>,
 
     buffer: Vec<u8>,
@@ -1317,11 +1318,7 @@ where
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
-        if self.agent.remote_candidates().count() > 0 {
-            return None;
-        }
-
-        Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
+        self.candidate_timeout
     }
 
     fn disconnect_timeout(&self) -> Option<Instant> {
@@ -1907,6 +1904,7 @@ where
         TId: fmt::Display,
     {
         self.agent.add_remote_candidate(candidate);
+        self.candidate_timeout = None;
 
         generate_optimistic_candidates(&mut self.agent);
 

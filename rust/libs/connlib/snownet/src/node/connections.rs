@@ -625,7 +625,7 @@ mod tests {
             disconnected_at: None,
             stats: Default::default(),
             intent_sent_at: Instant::now(),
-            signalling_completed_at: Instant::now(),
+            candidate_timeout: None,
             first_handshake_completed_at: None,
             buffer: Default::default(),
             buffer_pool: BufferPool::new(0, "test"),
