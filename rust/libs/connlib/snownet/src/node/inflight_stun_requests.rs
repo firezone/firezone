@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     time::{Duration, Instant},
 };
 
@@ -9,13 +9,15 @@ use str0m::ice::TransId;
 const TTL: Duration = Duration::from_secs(10);
 
 pub struct InflightStunRequests<TId> {
-    inner: HashMap<String, (TId, Instant)>,
+    inner: HashMap<String, TId>,
+    expires_at: BTreeMap<Instant, String>,
 }
 
 impl<TId> Default for InflightStunRequests<TId> {
     fn default() -> Self {
         Self {
-            inner: HashMap::default(),
+            inner: Default::default(),
+            expires_at: Default::default(),
         }
     }
 }
@@ -25,24 +27,32 @@ where
     TId: PartialEq,
 {
     pub fn add(&mut self, conn_id: TId, id: TransId, now: Instant) {
-        self.inner.insert(format!("{id:?}"), (conn_id, now + TTL)); // TODO: Use debug formatting while we wait for https://github.com/algesten/str0m/pull/905
+        let k = format!("{id:?}"); // TODO: Use debug formatting while we wait for https://github.com/algesten/str0m/pull/905
+
+        self.inner.insert(k.clone(), conn_id);
+        self.expires_at.insert(now + TTL, k);
     }
 
     pub fn remove(&mut self, id: TransId) -> Option<TId> {
-        let (id, _) = self.inner.remove(&format!("{id:?}"))?;
+        let id = self.inner.remove(&format!("{id:?}"))?;
 
         Some(id)
     }
 
     pub fn remove_by_conn_id(&mut self, id: TId) {
-        for _ in self.inner.extract_if(|_, (c, _)| c == &id) {}
+        for _ in self.inner.extract_if(|_, c| c == &id) {}
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        for _ in self
-            .inner
-            .extract_if(|_, (_, expires_at)| now >= *expires_at)
-        {}
+        while let Some(entry) = self.expires_at.first_entry() {
+            if entry.key() > &now {
+                break;
+            }
+
+            let trans_id = entry.remove();
+
+            self.inner.remove(&trans_id);
+        }
     }
 
     pub fn clear(&mut self) {
