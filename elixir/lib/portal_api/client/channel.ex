@@ -46,6 +46,8 @@ defmodule PortalAPI.Client.Channel do
       @recompute_authorized_resources_every
     )
 
+    schedule_session_expiry(socket.assigns.subject.expires_at)
+
     # Get initial list of authorized resources, hydrating the cache
     {:ok, resources, [], cache} =
       Cache.Client.recompute_connectable_resources(
@@ -83,6 +85,7 @@ defmodule PortalAPI.Client.Channel do
 
     # Register for targeted messages from gateway channels
     :ok = Channels.register_client(socket.assigns.client.id)
+    :ok = Channels.register_token(socket.assigns.subject.credential.id)
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
     push(socket, "init", %{
@@ -373,9 +376,11 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
-  def handle_info({:pg_group_evicted, group}, socket) do
-    Channels.handle_eviction(group)
-    {:noreply, socket}
+  def handle_info(:disconnect, socket) do
+    # Important: We push disconnect before closing the socket to prevent the client from
+    # attempting to immediately reconnect
+    push(socket, "disconnect", %{reason: "token_expired"})
+    {:stop, :shutdown, socket}
   end
 
   # Catch-all for messages we don't handle
@@ -1507,5 +1512,10 @@ defmodule PortalAPI.Client.Channel do
 
   defp flow_creation_timeout do
     Portal.Config.get_env(:portal, :flow_creation_timeout_ms, :timer.seconds(15))
+  end
+
+  defp schedule_session_expiry(expires_at) do
+    ms = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
+    Process.send_after(self(), :disconnect, max(ms, 0))
   end
 end

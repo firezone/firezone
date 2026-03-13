@@ -314,11 +314,11 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_receive {:socket_close, _pid, _}
     end
 
-    test "send disconnect broadcast when the token is deleted", %{
+    test "pushes disconnect event and closes when the token is deleted", %{
       client: client,
       subject: subject
     } do
-      :ok = PubSub.subscribe(Portal.Sockets.socket_id(subject.credential.id))
+      Process.flag(:trap_exit, true)
 
       {:ok, _reply, _socket} =
         PortalAPI.Client.Socket
@@ -351,12 +351,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       Portal.Changes.Hooks.ClientTokens.on_delete(100, data)
 
-      assert_receive %Phoenix.Socket.Broadcast{
-        topic: topic,
-        event: "disconnect"
-      }
-
-      assert topic == Portal.Sockets.socket_id(token.id)
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "sends list of available resources after join", %{
@@ -847,22 +843,36 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 pg_group_evicted" do
-    test "channel leaves pg group and stops receiving targeted messages", %{
+  describe "handle_info/2 :disconnect" do
+    test "pushes disconnect event and closes the channel", %{
       client: client,
       subject: subject
     } do
-      socket = join_channel(client, subject)
-      # Flush :after_join before asserting group membership
-      :sys.get_state(socket.channel_pid)
+      Process.flag(:trap_exit, true)
+      _socket = join_channel(client, subject)
 
-      assert :ok = Channels.send_to_client(client.id, :ping)
+      assert_push "init", _init_payload
 
-      group = {Portal.Channels, :client, client.id}
-      send(socket.channel_pid, {:pg_group_evicted, group})
-      :sys.get_state(socket.channel_pid)
+      Channels.send_to_client(client.id, :disconnect)
 
-      assert {:error, :not_found} = Channels.send_to_client(client.id, :ping)
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "duplicate connection evicts the first client", %{
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      _socket = join_channel(client, subject)
+
+      assert_push "init", _init_payload
+
+      # Simulate a second connection registering for the same client
+      Channels.register_client(client.id)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
     end
   end
 

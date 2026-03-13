@@ -51,6 +51,23 @@ defmodule Portal.Channels do
   end
 
   @doc """
+  Registers the calling process under the given token ID.
+  Used to enable disconnect-by-token when a token is deleted.
+  """
+  def register_token(token_id) do
+    :pg.join(group(:token, token_id), self())
+  end
+
+  @doc """
+  Sends a message to the process registered for the given token ID.
+
+  Returns `:ok` if a process is registered, `{:error, :not_found}` otherwise.
+  """
+  def send_to_token(token_id, message) do
+    send_to_group(group(:token, token_id), message)
+  end
+
+  @doc """
   Tells a gateway to reject access for a client to a resource.
 
   This is the public API for triggering reject_access from outside the channel system
@@ -60,13 +77,8 @@ defmodule Portal.Channels do
     send_to_gateway(gateway_id, {:reject_access, client_id, resource_id})
   end
 
-  @doc false
-  def handle_eviction(group) do
-    :pg.leave(group, self())
-  end
-
   defp upsert_group(group) do
-    Enum.each(:pg.get_members(group), &send(&1, {:pg_group_evicted, group}))
+    Enum.each(:pg.get_members(group), &send(&1, :disconnect))
     :pg.join(group, self())
   end
 

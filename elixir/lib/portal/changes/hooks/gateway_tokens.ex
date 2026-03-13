@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.GatewayTokens do
   @behaviour Portal.Changes.Hooks
-  alias Portal.PubSub
+  alias Portal.Channels
   import Portal.SchemaHelpers
 
   @impl true
@@ -12,14 +12,7 @@ defmodule Portal.Changes.Hooks.GatewayTokens do
   @impl true
   def on_delete(_lsn, old_data) do
     token = struct_from_params(Portal.GatewayToken, old_data)
-
-    # Disconnect all sockets using this token
-    disconnect_socket(token)
-  end
-
-  defp disconnect_socket(token) do
-    topic = Portal.Sockets.socket_id(token.id)
-    payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
-    PubSub.broadcast(topic, payload)
+    Channels.send_to_token(token.id, :disconnect)
+    :ok
   end
 end

@@ -11,7 +11,7 @@ defmodule Portal.ChannelsTest do
       assert_receive :hello
     end
 
-    test "re-registration replaces the previous process" do
+    test "re-registration sends :disconnect to the previous process" do
       client_id = Ecto.UUID.generate()
       parent = self()
 
@@ -30,9 +30,10 @@ defmodule Portal.ChannelsTest do
       # New process (self) registers for the same client_id — should evict old_pid
       Channels.register_client(client_id)
 
+      assert_receive {:old_received, :disconnect}
+
       assert :ok = Channels.send_to_client(client_id, :hello)
       assert_receive :hello
-      refute_receive {:old_received, :hello}
 
       # Cleanup
       Process.exit(old_pid, :kill)
@@ -53,7 +54,7 @@ defmodule Portal.ChannelsTest do
       assert_receive :hello
     end
 
-    test "re-registration replaces the previous process" do
+    test "re-registration sends :disconnect to the previous process" do
       gateway_id = Ecto.UUID.generate()
       parent = self()
 
@@ -72,9 +73,10 @@ defmodule Portal.ChannelsTest do
       # New process (self) registers for the same gateway_id — should evict old_pid
       Channels.register_gateway(gateway_id)
 
+      assert_receive {:old_received, :disconnect}
+
       assert :ok = Channels.send_to_gateway(gateway_id, :hello)
       assert_receive :hello
-      refute_receive {:old_received, :hello}
 
       # Cleanup
       Process.exit(old_pid, :kill)
@@ -118,37 +120,18 @@ defmodule Portal.ChannelsTest do
     end
   end
 
-  describe "handle_eviction/1" do
-    test "removes the calling process from its registered group" do
-      client_id = Ecto.UUID.generate()
-      parent = self()
-      group = {Portal.Channels, :client, client_id}
+  describe "register_token/1 and send_to_token/2" do
+    test "delivers message to a registered process" do
+      token_id = Ecto.UUID.generate()
+      Channels.register_token(token_id)
 
-      pid =
-        spawn(fn ->
-          Channels.register_client(client_id)
-          send(parent, :registered)
+      assert :ok = Channels.send_to_token(token_id, :hello)
+      assert_receive :hello
+    end
 
-          receive do
-            {:pg_group_evicted, g} ->
-              Channels.handle_eviction(g)
-              send(parent, :evicted)
-          end
-
-          receive do
-            :stop -> :ok
-          end
-        end)
-
-      assert_receive :registered
-      assert :ok = Channels.send_to_client(client_id, :ping)
-
-      send(pid, {:pg_group_evicted, group})
-      assert_receive :evicted
-
-      assert {:error, :not_found} = Channels.send_to_client(client_id, :ping)
-
-      Process.exit(pid, :kill)
+    test "returns {:error, :not_found} when no process is registered" do
+      token_id = Ecto.UUID.generate()
+      assert {:error, :not_found} = Channels.send_to_token(token_id, :hello)
     end
   end
 
