@@ -625,12 +625,6 @@ impl TunnelTest {
                 now,
             );
 
-            if let Some((next, reason)) = self.poll_timeout()
-                && next < now
-            {
-                tracing::error!(?next, ?now, %reason, "State machine requested time in the past");
-            }
-
             for (id, gateway) in self.gateways.iter_mut() {
                 let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
                     continue;
