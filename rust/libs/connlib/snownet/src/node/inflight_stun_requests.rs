@@ -36,11 +36,15 @@ where
     pub fn remove(&mut self, id: TransId) -> Option<TId> {
         let id = self.inner.remove(&format!("{id:?}"))?;
 
+        // We purposely don't clean up `expires_at` because it will get cleaned up in `handle_timeout` anyway.
+
         Some(id)
     }
 
     pub fn remove_by_conn_id(&mut self, id: TId) {
         for _ in self.inner.extract_if(|_, c| c == &id) {}
+
+        // We purposely don't clean up `expires_at` because it will get cleaned up in `handle_timeout` anyway.
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
