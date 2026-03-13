@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use smallvec::SmallVec;
 use str0m::ice::TransId;
 
 /// For how long we will at most keep around an inflight STUN request ID.
@@ -10,7 +11,7 @@ const TTL: Duration = Duration::from_secs(10);
 
 pub struct InflightStunRequests<TId> {
     inner: HashMap<String, TId>,
-    expires_at: BTreeMap<Instant, String>,
+    expires_at: BTreeMap<Instant, SmallVec<[String; 4]>>,
 }
 
 impl<TId> Default for InflightStunRequests<TId> {
@@ -30,7 +31,7 @@ where
         let k = format!("{id:?}"); // TODO: Use debug formatting while we wait for https://github.com/algesten/str0m/pull/905
 
         self.inner.insert(k.clone(), conn_id);
-        self.expires_at.insert(now + TTL, k);
+        self.expires_at.entry(now + TTL).or_default().push(k);
     }
 
     pub fn remove(&mut self, id: TransId) -> Option<TId> {
@@ -55,7 +56,9 @@ where
 
             let trans_id = entry.remove();
 
-            self.inner.remove(&trans_id);
+            for id in trans_id {
+                self.inner.remove(&id);
+            }
         }
     }
 
