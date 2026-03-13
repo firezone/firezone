@@ -58,7 +58,6 @@ updates:
       - "/.github/actions/setup-node"
       - "/.github/actions/setup-postgres"
       - "/.github/actions/setup-rust-nightly"
-      - "/.github/actions/setup-rust-sccache"
       - "/.github/actions/setup-rust-stable"
       - "/.github/actions/setup-rust-target-dependency-cache"
       - "/.github/actions/setup-rust-target-workspace-cache"

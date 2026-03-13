@@ -12,7 +12,9 @@ runs:
       with:
         targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
 
-    - uses: ./.github/actions/setup-rust-sccache
+    - uses: ./.github/actions/setup-rust-target-dependency-cache
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
