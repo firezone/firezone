@@ -85,6 +85,29 @@ HISTCONTROL=ignorespace # prevents saving the next line in shell history
  KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
 ```
 
+### Minification and Symbol Upload
+
+Release builds have R8 minification enabled to reduce APK size by ~30-40%.
+The minification configuration includes:
+
+- **ProGuard Rules**: Comprehensive rules in `app/proguard-rules.pro` protect:
+  - UniFFI-generated Rust FFI bindings (`uniffi.connlib.**`)
+  - JNI native methods and library loading
+  - Firebase Crashlytics
+  - Retrofit, Moshi, OkHttp (API layer)
+  - Hilt/Dagger (dependency injection)
+  - Android components (VpnService, ViewModel, etc.)
+
+- **Symbol Upload**: Release builds automatically upload:
+  - ProGuard mapping files to Firebase Crashlytics (via `uploadCrashlyticsSymbolFileRelease`)
+  - Native debug symbols to Firebase Crashlytics (via `nativeSymbolUploadEnabled`)
+  - Rust debug symbols to Sentry
+
+The mapping file allows crash reports to be deobfuscated, showing the original
+class and method names in stack traces. Rust debug symbols are preserved in
+release builds via the `[profile.release.package.client-ffi]` configuration
+in `/rust/Cargo.toml`.
+
 ## Logs
 
 To see all connlib related logs via ADB use:

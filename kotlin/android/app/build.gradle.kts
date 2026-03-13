@@ -95,12 +95,12 @@ android {
             // Enables code shrinking, obfuscation, and optimization for only
             // your project's release build type. Make sure to use a build
             // variant with `isDebuggable=false`.
-            // Not compatible with Rust
-            isMinifyEnabled = false
+            // Enabled with comprehensive ProGuard rules to protect Rust FFI interfaces
+            isMinifyEnabled = true
 
             // Enables resource shrinking, which is performed by the
             // Android Gradle plugin.
-            isShrinkResources = false
+            isShrinkResources = true
 
             // Includes the default ProGuard rules files that are packaged with
             // the Android Gradle plugin. To learn more, go to the section about
@@ -118,6 +118,8 @@ android {
                 // stack traces in the Crashlytics dashboard.
                 nativeSymbolUploadEnabled = true
                 unstrippedNativeLibsDir = layout.buildDirectory.dir("rustJniLibs")
+                // Upload ProGuard mapping files for crash symbolication
+                mappingFileUploadEnabled = true
             }
 
             resValue("string", "app_name", "\"Firezone\"")
