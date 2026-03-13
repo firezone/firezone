@@ -25,12 +25,12 @@ impl Tick<'_> {
 }
 
 impl Budget {
-    pub(crate) fn new(waker: Waker, budget: u32, name: &'static str) -> Self {
+    pub(crate) fn new(waker: Waker, budget: u32, name: &'static str, now: Instant) -> Self {
         Self {
             waker,
             remaining: budget,
             ready: true, // Treat the first iteration as "ready" so we always enter the loop once.
-            started_at: Instant::now(),
+            started_at: now,
             name,
         }
     }
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn iterates_once_with_no_work_does_not_call_waker() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10, "test");
+        let mut budget = Budget::new(waker, 10, "test", Instant::now());
 
         let mut iterations = 0usize;
         while let Some(_tick) = budget.next() {
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn continues_as_long_as_want_continue_is_called() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10, "test");
+        let mut budget = Budget::new(waker, 10, "test", Instant::now());
 
         let mut iterations = 0usize;
         while let Some(mut tick) = budget.next() {
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn wakes_after_exhausting_budget() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10, "test");
+        let mut budget = Budget::new(waker, 10, "test", Instant::now());
 
         while let Some(mut tick) = budget.next() {
             tick.want_continue();
