@@ -149,7 +149,7 @@ proc-macro2 = "1.0.106"
 proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
-quote = "1.0.44"
+quote = "1.0.45"
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.7.1"
