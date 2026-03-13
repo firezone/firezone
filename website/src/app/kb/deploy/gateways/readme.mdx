@@ -121,24 +121,38 @@ Gateways are mostly performance-bound by the I/O rate at which they can process
 packets, so bare metal deployments or VMs with high I/O rates will make a big
 difference in both throughput and latency.
 
-Gateways benefit from multi-threading with up to 6 CPU cores. On machines with
-shared CPUs or less than 4 cores, Gateways still perform acceptably well for
-smaller deployments but may experience contention around CPU resources,
-resulting in lower throughput. For ideal performance, we recommend providing at
-least 4 CPU cores.
+The number of clients a Gateway can support depends heavily on your throughput
+requirements — available bandwidth is shared across all connected clients. A
+single Gateway on a 2-core dedicated vCPU VM can reliably handle up to **1,000
+clients**, assuming your link speed is sufficient. Throughput is also affected
+by latency to/from clients and whether connections are peer-to-peer or relayed
+(relayed connections carry additional overhead).
 
-| Gateway size | Approx. users served | CPU cores | Memory | Recommended link speed |
-| ------------ | -------------------- | --------- | ------ | ---------------------- |
-| Micro        | 10                   | 1         | 256 MB | 500 Mbps               |
-| Small        | 10 - 50              | 2         | 512 MB | 1 Gbps                 |
-| Medium       | 50+                  | 4         | 1 GB   | 2.5 Gbps               |
+Gateways scale with CPU cores up to **4 cores**, beyond which additional cores
+provide no benefit. Up to **4 GB of RAM** can be used for packet buffers; more
+than that is not utilized. For ideal performance, we recommend at least 4
+dedicated CPU cores.
+
+A typical Gateway on a 4-core Linux machine with a recent kernel and sub-10ms
+round-trip latency should be able to push **2 Gbps+ of peer-to-peer WireGuard
+traffic**. While the Gateway runs as a userspace binary, this is often on par
+with or faster than the kernel WireGuard module due to multithreading and
+offloading optimizations.
+
+| Gateway size | Approx. clients served | CPU cores | Memory | Recommended link speed |
+| ------------ | ---------------------- | --------- | ------ | ---------------------- |
+| Micro        | up to 50               | 1         | 1 GB   | 500 Mbps               |
+| Small        | up to 250              | 2         | 2 GB   | 1 Gbps                 |
+| Medium       | up to 1,000            | 4         | 4 GB   | 2.5 Gbps+              |
 
 Gateways deployed to the Internet site should always have at least 4 CPU cores.
 
-To go beyond the table above, you can deploy additional Gateways and use
-Firezone's
+For production workloads, we recommend deploying **at least 3 Gateways** to
+ensure high availability during rolling upgrades and to distribute load across
+multiple machines. To scale beyond a single Gateway's capacity, deploy
+additional Gateways and use Firezone's
 [automatic load balancing](/kb/architecture/critical-sequences#high-availability)
-to distribute Client connections across them.
+to shard Client connections across them.
 
 ### Performance tuning
 
