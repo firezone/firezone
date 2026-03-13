@@ -43,6 +43,10 @@ export default function Gateway() {
           Fixes an issue where the WebSocket connection to the control plane was
           lost under load.
         </ChangeItem>
+        <ChangeItem pull="12504">
+          Greatly improves performance for cases where many Clients (100+) are
+          connected to a single Gateway.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.0" date={new Date("2026-02-02")}>
         <ChangeItem pull="11771">
