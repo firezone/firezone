@@ -61,6 +61,7 @@ where
 
     pub fn clear(&mut self) {
         self.inner.clear();
+        self.expires_at.clear();
     }
 }
 
