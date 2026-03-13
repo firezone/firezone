@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     time::{Duration, Instant},
 };
 
@@ -9,13 +9,15 @@ use str0m::ice::TransId;
 const TTL: Duration = Duration::from_secs(10);
 
 pub struct InflightStunRequests<TId> {
-    inner: HashMap<String, (TId, Instant)>,
+    inner: HashMap<String, TId>,
+    expires_at: BTreeSet<(Instant, String)>,
 }
 
 impl<TId> Default for InflightStunRequests<TId> {
     fn default() -> Self {
         Self {
-            inner: HashMap::default(),
+            inner: Default::default(),
+            expires_at: Default::default(),
         }
     }
 }
@@ -25,28 +27,40 @@ where
     TId: PartialEq,
 {
     pub fn add(&mut self, conn_id: TId, id: TransId, now: Instant) {
-        self.inner.insert(format!("{id:?}"), (conn_id, now + TTL)); // TODO: Use debug formatting while we wait for https://github.com/algesten/str0m/pull/905
+        let k = format!("{id:?}"); // TODO: Use debug formatting while we wait for https://github.com/algesten/str0m/pull/905
+
+        self.inner.insert(k.clone(), conn_id);
+        self.expires_at.insert((now + TTL, k));
     }
 
     pub fn remove(&mut self, id: TransId) -> Option<TId> {
-        let (id, _) = self.inner.remove(&format!("{id:?}"))?;
+        let id = self.inner.remove(&format!("{id:?}"))?;
+
+        // We purposely don't clean up `expires_at` because it will get cleaned up in `handle_timeout` anyway.
 
         Some(id)
     }
 
     pub fn remove_by_conn_id(&mut self, id: TId) {
-        for _ in self.inner.extract_if(|_, (c, _)| c == &id) {}
+        for _ in self.inner.extract_if(|_, c| c == &id) {}
+
+        // We purposely don't clean up `expires_at` because it will get cleaned up in `handle_timeout` anyway.
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        for _ in self
-            .inner
-            .extract_if(|_, (_, expires_at)| now >= *expires_at)
-        {}
+        while let Some((expires, trans_id)) = self.expires_at.first() {
+            if expires > &now {
+                break;
+            }
+
+            self.inner.remove(trans_id);
+            self.expires_at.pop_first();
+        }
     }
 
     pub fn clear(&mut self) {
         self.inner.clear();
+        self.expires_at.clear();
     }
 }
 
@@ -109,6 +123,21 @@ mod tests {
         requests.handle_timeout(now + TTL + Duration::from_millis(1));
 
         assert_eq!(requests.remove(id), None);
+    }
+
+    #[test]
+    fn entries_with_same_time_get_cleared_with_handle_timeout() {
+        let mut requests = InflightStunRequests::default();
+        let now = Instant::now();
+        let id1 = TransId::new();
+        let id2 = TransId::new();
+
+        requests.add(1u32, id1, now);
+        requests.add(2u32, id2, now);
+        requests.handle_timeout(now + TTL + Duration::from_millis(1));
+
+        assert_eq!(requests.remove(id1), None);
+        assert_eq!(requests.remove(id2), None);
     }
 
     #[test]
