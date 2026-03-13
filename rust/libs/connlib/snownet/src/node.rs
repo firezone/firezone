@@ -1304,7 +1304,7 @@ where
             )
             .chain(Some((self.next_wg_timer_update, "boringtun tunnel")))
             .chain(
-                self.candidate_timeout()
+                self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
             .chain(
@@ -1315,10 +1315,6 @@ where
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
-    }
-
-    fn candidate_timeout(&self) -> Option<Instant> {
-        self.candidate_timeout
     }
 
     fn disconnect_timeout(&self) -> Option<Instant> {
@@ -1349,10 +1345,7 @@ where
         self.state
             .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
-        if self
-            .candidate_timeout()
-            .is_some_and(|timeout| now >= timeout)
-        {
+        if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
             tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
