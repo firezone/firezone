@@ -9,8 +9,8 @@ use str0m::ice::TransId;
 const TTL: Duration = Duration::from_secs(10);
 
 pub struct InflightStunRequests<TId> {
-    inner: HashMap<String, TId>,
-    expires_at: BTreeSet<(Instant, String)>,
+    inner: HashMap<TransId, TId>,
+    expires_at: BTreeSet<(Instant, TransId)>,
 }
 
 impl<TId> Default for InflightStunRequests<TId> {
@@ -27,14 +27,12 @@ where
     TId: PartialEq,
 {
     pub fn add(&mut self, conn_id: TId, id: TransId, now: Instant) {
-        let k = format!("{id:?}"); // TODO: Use debug formatting while we wait for https://github.com/algesten/str0m/pull/905
-
-        self.inner.insert(k.clone(), conn_id);
-        self.expires_at.insert((now + TTL, k));
+        self.inner.insert(id, conn_id);
+        self.expires_at.insert((now + TTL, id));
     }
 
     pub fn remove(&mut self, id: TransId) -> Option<TId> {
-        let id = self.inner.remove(&format!("{id:?}"))?;
+        let id = self.inner.remove(&id)?;
 
         // We purposely don't clean up `expires_at` because it will get cleaned up in `handle_timeout` anyway.
 
