@@ -1342,12 +1342,11 @@ where
         // Important: This just checks the cache. `poll_timeout()` re-computes on every call.
         if self
             .poll_timeout_cache
-            .is_some_and(|(timeout, _)| timeout > now)
+            .take_if(|(timeout, _)| now >= *timeout)
+            .is_none()
         {
             return;
-        }
-
-        self.poll_timeout_cache = None;
+        };
 
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
