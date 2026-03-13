@@ -300,12 +300,18 @@ class TunnelService : VpnService() {
 
             serviceScope.launch {
                 try {
+                    // Set telemetry environment and user context
+                    val deviceIdValue = deviceId()
+                    dev.firezone.android.core.Telemetry.setEnvironmentOrClose(config.apiUrl)
+                    dev.firezone.android.core.Telemetry.setFirezoneId(deviceIdValue)
+                    dev.firezone.android.core.Telemetry.setAccountSlug(config.accountSlug)
+
                     Session
                         .newAndroid(
                             apiUrl = config.apiUrl,
                             token = token,
                             accountSlug = config.accountSlug,
-                            deviceId = deviceId(),
+                            deviceId = deviceIdValue,
                             deviceName = getDeviceName(),
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
