@@ -631,7 +631,7 @@ mod tests {
             buffer_pool: BufferPool::new(0, "test"),
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
-            poll_timeout_cache: None,
+            poll_timeout_cache: Default::default(),
         }
     }
 }

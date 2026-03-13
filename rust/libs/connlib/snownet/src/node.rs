@@ -2,6 +2,7 @@ mod allocations;
 mod connection_state;
 mod connections;
 mod inflight_stun_requests;
+mod timeout_cache;
 
 pub use connections::UnknownConnection;
 
@@ -11,6 +12,7 @@ use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
+use crate::node::timeout_cache::TimeoutCache;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
@@ -808,7 +810,7 @@ where
             first_handshake_completed_at: None,
             default_ice_config,
             idle_ice_config,
-            poll_timeout_cache: None,
+            poll_timeout_cache: Default::default(),
         }
     }
 
@@ -1275,7 +1277,7 @@ struct Connection<RId> {
     #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
 
-    poll_timeout_cache: Option<(Instant, &'static str)>,
+    poll_timeout_cache: TimeoutCache,
 }
 
 #[derive(Debug)]
@@ -1293,7 +1295,7 @@ where
 
     #[must_use]
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        self.poll_timeout_cache = iter::empty()
+        let timeout = iter::empty()
             .chain(
                 self.agent
                     .poll_timeout()
@@ -1311,7 +1313,7 @@ where
             .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
-        self.poll_timeout_cache
+        self.poll_timeout_cache.update(timeout)
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
@@ -1339,13 +1341,9 @@ where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
     {
-        // Important: This just checks the cache. `poll_timeout()` re-computes on every call.
-        if self
-            .poll_timeout_cache
-            .take_if(|(timeout, _)| now >= *timeout)
-            .is_none()
-        {
-            return;
+        match self.poll_timeout_cache.check(now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return,
         };
 
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
