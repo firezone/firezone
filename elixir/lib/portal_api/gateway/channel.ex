@@ -67,6 +67,7 @@ defmodule PortalAPI.Gateway.Channel do
 
     # Register for targeted messages from client channels
     :ok = Channels.register_gateway(socket.assigns.gateway.id)
+    :ok = Channels.register_token(socket.assigns.token_id)
     :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
 
     # Return all connected relays and subscribe to global relay presence
@@ -366,9 +367,11 @@ defmodule PortalAPI.Gateway.Channel do
     {:noreply, socket}
   end
 
-  def handle_info({:pg_group_evicted, group}, socket) do
-    Channels.handle_eviction(group)
-    {:noreply, socket}
+  def handle_info(:disconnect, socket) do
+    # Important: We push disconnect before closing the socket to prevent the gateway from
+    # attempting to immediately reconnect
+    push(socket, "disconnect", %{reason: "token_expired"})
+    {:stop, :shutdown, socket}
   end
 
   # Catch-all for messages we don't handle

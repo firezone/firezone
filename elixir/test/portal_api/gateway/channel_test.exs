@@ -158,23 +158,38 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
-  describe "handle_info/2 pg_group_evicted" do
-    test "channel leaves pg group and stops receiving targeted messages", %{
+  describe "handle_info/2 :disconnect" do
+    test "pushes disconnect event and closes the channel", %{
       gateway: gateway,
       site: site,
       token: token
     } do
-      socket = join_channel(gateway, site, token)
-      # Flush :after_join before asserting group membership
-      :sys.get_state(socket.channel_pid)
+      Process.flag(:trap_exit, true)
+      _socket = join_channel(gateway, site, token)
 
-      assert :ok = Channels.send_to_gateway(gateway.id, :ping)
+      assert_push "init", _init_payload
 
-      group = {Portal.Channels, :gateway, gateway.id}
-      send(socket.channel_pid, {:pg_group_evicted, group})
-      :sys.get_state(socket.channel_pid)
+      Channels.send_to_gateway(gateway.id, :disconnect)
 
-      assert {:error, :not_found} = Channels.send_to_gateway(gateway.id, :ping)
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "duplicate connection evicts the first gateway", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      _socket = join_channel(gateway, site, token)
+
+      assert_push "init", _init_payload
+
+      # Simulate a second connection registering for the same gateway
+      Channels.register_gateway(gateway.id)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
     end
   end
 
@@ -434,20 +449,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert payload.account_slug == "new-slug"
     end
 
-    test "disconnects socket when token is deleted", %{
+    test "pushes disconnect event and closes when the token is deleted", %{
       account: account,
       gateway: gateway,
       site: site,
       token: token
     } do
+      Process.flag(:trap_exit, true)
       _socket = join_channel(gateway, site, token)
 
-      # Consume the init message from join
       assert_push "init", _init_payload
-
-      # Subscribe to the token's socket topic (Portal.Sockets.socket_id returns "tokens:#{id}")
-      socket_topic = Portal.Sockets.socket_id(token.id)
-      :ok = PubSub.subscribe(socket_topic)
 
       data = %{
         "id" => token.id,
@@ -457,12 +468,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       Changes.Hooks.GatewayTokens.on_delete(100, data)
 
-      assert_receive %Phoenix.Socket.Broadcast{
-        topic: topic,
-        event: "disconnect"
-      }
-
-      assert topic == socket_topic
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "disconnect socket when gateway is deleted", %{

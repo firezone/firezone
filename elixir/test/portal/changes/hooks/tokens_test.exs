@@ -3,7 +3,8 @@ defmodule Portal.Changes.Hooks.TokensTest do
   import Portal.AccountFixtures
   import Portal.TokenFixtures
   alias Portal.Changes.Hooks.ClientTokens
-  alias Portal.PubSub
+  alias Portal.Changes.Hooks.GatewayTokens
+  alias Portal.Channels
 
   describe "ClientTokens.on_insert/2" do
     test "returns :ok" do
@@ -18,12 +19,11 @@ defmodule Portal.Changes.Hooks.TokensTest do
   end
 
   describe "ClientTokens.on_delete/2" do
-    test "broadcasts disconnect message on socket topic" do
+    test "sends :disconnect to registered token process" do
       account = account_fixture()
       token = client_token_fixture(account: account)
 
-      topic = Portal.Sockets.socket_id(token.id)
-      :ok = PubSub.subscribe(topic)
+      Channels.register_token(token.id)
 
       old_data = %{
         "id" => token.id,
@@ -32,11 +32,63 @@ defmodule Portal.Changes.Hooks.TokensTest do
       }
 
       assert :ok == ClientTokens.on_delete(0, old_data)
+      assert_receive :disconnect
+    end
 
-      assert_receive %Phoenix.Socket.Broadcast{
-        topic: ^topic,
-        event: "disconnect"
+    test "returns :ok when no process is registered for token" do
+      account = account_fixture()
+      token = client_token_fixture(account: account)
+
+      old_data = %{
+        "id" => token.id,
+        "account_id" => account.id,
+        "type" => "client"
       }
+
+      assert :ok == ClientTokens.on_delete(0, old_data)
+    end
+  end
+
+  describe "GatewayTokens.on_insert/2" do
+    test "returns :ok" do
+      assert :ok == GatewayTokens.on_insert(0, %{})
+    end
+  end
+
+  describe "GatewayTokens.on_update/3" do
+    test "returns :ok" do
+      assert :ok = GatewayTokens.on_update(0, %{}, %{})
+    end
+  end
+
+  describe "GatewayTokens.on_delete/2" do
+    test "sends :disconnect to registered token process" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account)
+
+      Channels.register_token(token.id)
+
+      old_data = %{
+        "id" => token.id,
+        "account_id" => account.id,
+        "type" => "gateway"
+      }
+
+      assert :ok == GatewayTokens.on_delete(0, old_data)
+      assert_receive :disconnect
+    end
+
+    test "returns :ok when no process is registered for token" do
+      account = account_fixture()
+      token = gateway_token_fixture(account: account)
+
+      old_data = %{
+        "id" => token.id,
+        "account_id" => account.id,
+        "type" => "gateway"
+      }
+
+      assert :ok == GatewayTokens.on_delete(0, old_data)
     end
   end
 end
