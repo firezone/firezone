@@ -808,6 +808,7 @@ where
             first_handshake_completed_at: None,
             default_ice_config,
             idle_ice_config,
+            poll_timeout_cache: None,
         }
     }
 
@@ -1273,6 +1274,8 @@ struct Connection<RId> {
 
     #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
+
+    poll_timeout_cache: Option<(Instant, &'static str)>,
 }
 
 #[derive(Debug)]
@@ -1290,7 +1293,7 @@ where
 
     #[must_use]
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        iter::empty()
+        self.poll_timeout_cache = iter::empty()
             .chain(
                 self.agent
                     .poll_timeout()
@@ -1306,7 +1309,9 @@ where
                     .map(|instant| (instant, "disconnect timeout")),
             )
             .chain(self.state.poll_timeout(&self.agent))
-            .min_by_key(|(instant, _)| *instant)
+            .min_by_key(|(instant, _)| *instant);
+
+        self.poll_timeout_cache
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
@@ -1334,6 +1339,16 @@ where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
     {
+        // Important: This just checks the cache. `poll_timeout()` re-computes on every call.
+        if self
+            .poll_timeout_cache
+            .is_some_and(|(timeout, _)| timeout > now)
+        {
+            return;
+        }
+
+        self.poll_timeout_cache = None;
+
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
         self.agent.handle_timeout(now);
