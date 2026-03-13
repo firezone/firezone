@@ -127,6 +127,21 @@ mod tests {
     }
 
     #[test]
+    fn entries_with_same_time_get_cleared_with_handle_timeout() {
+        let mut requests = InflightStunRequests::default();
+        let now = Instant::now();
+        let id1 = TransId::new();
+        let id2 = TransId::new();
+
+        requests.add(1u32, id1, now);
+        requests.add(2u32, id2, now);
+        requests.handle_timeout(now + TTL + Duration::from_millis(1));
+
+        assert_eq!(requests.remove(id1), None);
+        assert_eq!(requests.remove(id2), None);
+    }
+
+    #[test]
     fn only_expired_entries_are_removed() {
         let mut requests = InflightStunRequests::default();
         let t0 = Instant::now();
