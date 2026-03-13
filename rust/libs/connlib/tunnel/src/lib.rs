@@ -118,17 +118,20 @@ impl ClientTunnel {
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
     ) -> Self {
+        let now = Instant::now();
+
         Self {
             io: Io::new(
                 tcp_socket_factory,
                 udp_socket_factory.clone(),
                 BTreeSet::default(),
+                now,
             ),
             role_state: ClientState::new(
                 rand::random(),
                 records,
                 is_internet_resource_active,
-                Instant::now(),
+                now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
@@ -314,12 +317,19 @@ impl GatewayTunnel {
         nameservers: BTreeSet<IpAddr>,
         flow_logs: bool,
     ) -> Self {
+        let now = Instant::now();
+
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+            io: Io::new(
+                tcp_socket_factory,
+                udp_socket_factory.clone(),
+                nameservers,
+                now,
+            ),
             role_state: GatewayState::new(
                 flow_logs,
                 rand::random(),
-                Instant::now(),
+                now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),

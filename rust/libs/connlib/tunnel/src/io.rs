@@ -162,12 +162,13 @@ impl Io {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        now: Instant,
     ) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            timeout: Timeout::new(DEFAULT_TIME_ADVANCE, TIMEOUT_GRANULARITY, Instant::now()),
+            timeout: Timeout::new(DEFAULT_TIME_ADVANCE, TIMEOUT_GRANULARITY, now),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -634,9 +635,10 @@ mod tests {
 
     #[tokio::test]
     async fn timer_is_reset_after_it_fires() {
-        let mut io = Io::for_test();
+        let now = Instant::now();
+        let mut io = Io::for_test(now);
 
-        let deadline = Instant::now() + Duration::from_secs(1);
+        let deadline = now + Duration::from_secs(1);
         io.reset_timeout(deadline, "");
         let scheduled_deadline = io.timeout.deadline();
 
@@ -660,7 +662,7 @@ mod tests {
     #[tokio::test]
     async fn emits_now_in_case_timeout_is_in_the_past() {
         let now = Instant::now();
-        let mut io = Io::for_test();
+        let mut io = Io::for_test(now);
 
         io.reset_timeout(now - Duration::from_secs(10), "");
 
@@ -674,7 +676,7 @@ mod tests {
     async fn bootstrap_doh() {
         let _guard = logging::test("debug");
 
-        let mut io = Io::for_test();
+        let mut io = Io::for_test(Instant::now());
         io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
 
         {
@@ -705,11 +707,11 @@ mod tests {
 
     #[tokio::test]
     async fn schedule_timeout_shortens_deadline_when_current_is_too_far_away() {
-        let mut io = Io::for_test();
+        let now = Instant::now();
+        let mut io = Io::for_test(now);
 
         // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
         // schedule_timeout should pull it in to ~1s from now.
-        let now = Instant::now();
         io.schedule_timeout(now);
 
         let deadline = io.timeout.deadline();
@@ -723,10 +725,10 @@ mod tests {
 
     #[tokio::test]
     async fn schedule_timeout_does_not_postpone_an_already_close_deadline() {
-        let mut io = Io::for_test();
+        let now = Instant::now();
+        let mut io = Io::for_test(now);
 
         // Set a deadline that is already sooner than 1s.
-        let now = Instant::now();
         let close_deadline = now + Duration::from_millis(100);
         io.reset_timeout(close_deadline, "close deadline");
 
@@ -744,7 +746,7 @@ mod tests {
     async fn rebind_dns_clears_all_servers_on_failure() {
         let _guard = logging::test("debug");
 
-        let mut io = Io::for_test();
+        let mut io = Io::for_test(Instant::now());
 
         let result = io.rebind_dns(vec![
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0), // This one will almost definitely work.
@@ -785,11 +787,12 @@ mod tests {
 
     /// Helper functions to make the test more concise.
     impl Io {
-        fn for_test() -> Io {
+        fn for_test(now: Instant) -> Io {
             let mut io = Io::new(
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
+                now,
             );
             io.set_tun(Box::new(DummyTun::new()));
 
