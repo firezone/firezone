@@ -43,11 +43,14 @@ struct FirezoneCLI: AsyncParsableCommand {
     let apiURL =
       self.apiUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_API_URL"]
-      ?? "wss://api.firezone.dev/"
+      ?? Configuration.defaultApiURL
 
     let internetResourceEnabled =
       self.activateInternetResource
       || ProcessInfo.processInfo.environment["FIREZONE_ACTIVATE_INTERNET_RESOURCE"] == "1"
+
+    Log.info("API URL: \(apiURL)")
+    Log.info("Internet resource: \(internetResourceEnabled)")
 
     // Load token: env var first, then Keychain
     let token: Token
@@ -90,12 +93,19 @@ struct FirezoneCLI: AsyncParsableCommand {
     }
 
     let accountSlug =
-      ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"] ?? ""
+      ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
+      ?? Configuration.defaultAccountSlug
+
+    Log.info("Account slug: \(accountSlug.isEmpty ? "(empty)" : accountSlug)")
+
+    let logFilter =
+      ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"]
+      ?? Configuration.defaultLogFilter
 
     let configuration = TunnelConfiguration(
       apiURL: apiURL,
       accountSlug: accountSlug,
-      logFilter: "info",
+      logFilter: logFilter,
       internetResourceEnabled: internetResourceEnabled
     )
 
@@ -120,7 +130,7 @@ struct FirezoneCLI: AsyncParsableCommand {
           if tunnelState.isRestarting {
             Log.info("Tunnel disconnected (restarting)")
           } else {
-            Log.info("Tunnel disconnected externally, shutting down...")
+            Self.logDisconnectReason(session: session)
             signalContinuation.yield(.shutdown)
           }
         case .connecting:
@@ -134,6 +144,17 @@ struct FirezoneCLI: AsyncParsableCommand {
         @unknown default:
           Log.warning("Unknown tunnel status: \(status.rawValue)")
         }
+      }
+    }
+
+    // Connection timeout — if not connected within 30s, clear stale token and exit
+    Task {
+      try? await Task.sleep(for: .seconds(30))
+      if session.status != .connected {
+        Log.error("Timed out waiting for tunnel to connect — clearing token")
+        Log.error("Run 'firezone-cli sign-in' to get a new token.")
+        try? Token.delete()
+        signalContinuation.yield(.shutdown)
       }
     }
 
@@ -167,6 +188,25 @@ struct FirezoneCLI: AsyncParsableCommand {
           session: session, token: token.description, configuration: configuration)
         tunnelState.isRestarting = false
         Log.info("Tunnel restarted")
+      }
+    }
+  }
+
+  /// Check the disconnect reason and log an actionable message.
+  private static func logDisconnectReason(session: NETunnelProviderSession) {
+    session.fetchLastDisconnectError { error in
+      if let nsError = error as NSError?,
+        nsError.domain == ConnlibError.errorDomain,
+        nsError.code == 0,
+        let reason = nsError.userInfo["reason"] as? String
+      {
+        Log.error("Authentication failed: \(reason)")
+        Log.error("Clearing stale token. Run 'firezone-cli sign-in' to get a new token.")
+        try? Token.delete()
+      } else if let error {
+        Log.error("Tunnel disconnected: \(error.localizedDescription)")
+      } else {
+        Log.info("Tunnel disconnected externally, shutting down...")
       }
     }
   }
@@ -219,7 +259,7 @@ struct SignIn: AsyncParsableCommand {
     let authBaseURL =
       self.authBaseUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_AUTH_BASE_URL"]
-      ?? "https://app.firezone.dev"
+      ?? Configuration.defaultAuthURL
 
     let accountSlug =
       self.accountSlug

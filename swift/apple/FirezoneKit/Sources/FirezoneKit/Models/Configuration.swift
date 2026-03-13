@@ -86,16 +86,16 @@ public class Configuration: ObservableObject {
   }
 
   #if DEBUG
-    static let defaultAuthURL = "https://app.firez.one"
-    static let defaultApiURL = "wss://api.firez.one"
-    static let defaultLogFilter = "debug"
+    nonisolated public static let defaultAuthURL = "https://app.firez.one"
+    nonisolated public static let defaultApiURL = "wss://api.firez.one"
+    nonisolated public static let defaultLogFilter = "debug"
   #else
-    static let defaultAuthURL = "https://app.firezone.dev"
-    static let defaultApiURL = "wss://api.firezone.dev"
-    static let defaultLogFilter = "info"
+    nonisolated public static let defaultAuthURL = "https://app.firezone.dev"
+    nonisolated public static let defaultApiURL = "wss://api.firezone.dev"
+    nonisolated public static let defaultLogFilter = "info"
   #endif
 
-  static let defaultAccountSlug = ""
+  nonisolated public static let defaultAccountSlug = ""
   static let defaultSupportURL = "https://firezone.dev/support"
 
   // Bools are always default false
