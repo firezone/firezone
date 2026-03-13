@@ -3,6 +3,7 @@ defmodule PortalWeb.Live.Settings.AccountTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.OutboundEmailTestHelpers
 
   setup do
     Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
@@ -93,7 +94,7 @@ defmodule PortalWeb.Live.Settings.AccountTest do
            |> render_click()
            |> element_to_text() =~ "A request has been sent to delete your account"
 
-    assert_email_sent(fn email ->
+    assert_email_queued(account.id, fn email ->
       assert email.subject == "ACCOUNT DELETE REQUEST - #{account.id}"
       assert email.text_body =~ "#{account.id}"
       assert email.text_body =~ "#{actor.id}"
