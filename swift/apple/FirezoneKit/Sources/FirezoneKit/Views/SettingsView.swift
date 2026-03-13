@@ -4,8 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-// TODO: Refactor to fix file length
-
 import Combine
 import OSLog
 import SwiftUI
@@ -81,29 +79,16 @@ public struct SettingsView: View {
   private let store: Store
   private let configuration: Configuration
 
-  private enum ConfirmationAlertContinueAction: Int {
-    case none
-    case saveSettings
-    case saveAllSettingsAndDismiss
-
-    func performAction(on view: SettingsView) async throws {
-      switch self {
-      case .none:
-        break
-      case .saveSettings:
-        try await view.saveSettings()
-      case .saveAllSettingsAndDismiss:
-        try await view.saveAllSettingsAndDismiss()
-      }
-    }
-  }
-
   @State private var isCalculatingLogsSize = false
   @State private var calculatedLogsSize = "Unknown"
   @State private var isClearingLogs = false
   @State private var isExportingLogs = false
-  @State private var isShowingConfirmationAlert = false
-  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
+  #if os(iOS)
+    @State private var localSelectedSection: SettingsSection?
+  #else
+    @State private var localSelectedSection: SettingsSection? = .general
+  #endif
+  @FocusState private var focusedField: SettingsField?
 
   @State private var calculateLogSizeTask: Task<(), Never>?
 
@@ -131,139 +116,84 @@ public struct SettingsView: View {
   public init(store: Store) {
     self.store = store
     self.configuration = store.configuration
-    _viewModel = StateObject(wrappedValue: SettingsViewModel())
+    _viewModel = StateObject(
+      wrappedValue: SettingsViewModel(configuration: store.configuration, store: store))
   }
 
   public var body: some View {
-    #if os(iOS)
-      NavigationView {
-        ZStack {
-          Color(UIColor.systemGroupedBackground)
-            .ignoresSafeArea()
+    settingsContent
+  }
 
-          VStack {
-            TabView {
-              generalTab
-                .tabItem {
-                  Image(systemName: "slider.horizontal.3")
-                  Text("General")
-                }
-              advancedTab
-                .tabItem {
-                  Image(systemName: "gearshape.2")
-                  Text("Advanced")
-                }
-                .badge(viewModel.isValid() ? nil : "!")
-              logsTab
-                .tabItem {
-                  Image(systemName: "doc.text")
-                  Text("Diagnostic Logs")
-                }
-            }
-          }
-          .padding(.bottom, 10)
-          .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-              Button("Save") {
-                let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-                if case .connected = store.vpnStatus {
-                  self.confirmationAlertContinueAction = action
-                  self.isShowingConfirmationAlert = true
-                } else {
-                  withErrorHandler { try await action.performAction(on: self) }
-                }
-              }
-              .disabled(viewModel.shouldDisableApplyButton)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
-              Button("Cancel") { dismiss() }
-            }
-          }
-          .navigationTitle("Settings")
-          .navigationBarTitleDisplayMode(.inline)
-          .alert(
-            "Some settings may not have been applied",
-            isPresented: $isShowingConfirmationAlert,
-            presenting: confirmationAlertContinueAction,
-            actions: { confirmationAlertContinueAction in
-              Button("OK") {
-                withErrorHandler {
-                  try await confirmationAlertContinueAction.performAction(on: self)
-                }
-              }
-            },
-            message: { _ in
-              Text("Some settings require signing out and in again before they take effect.")
-            }
-          )
+  private var settingsContent: some View {
+    splitView
+      .onDisappear {
+        if let field = focusedField, !viewModel.showSignOutConfirmation {
+          focusedField = nil
+          withErrorHandler { try await viewModel.saveField(field) }
         }
       }
-    #elseif os(macOS)
-      VStack {
-        TabView {
-          generalTab
-            .tabItem {
-              Text("General")
-            }
-          advancedTab
-            .tabItem {
-              Text("Advanced")
-            }
-          logsTab
-            .tabItem {
-              Text("Diagnostic Logs")
-            }
-        }
-        .padding(20)
-        Spacer()
-        HStack(spacing: 5) {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
-          Spacer()
-          Button(
-            "Reset to Defaults",
-            action: {
-              viewModel.reset()
-            }
-          )
-          .disabled(viewModel.shouldDisableResetButton)
-
-          Button(
-            "Apply",
-            action: {
-              let action = ConfirmationAlertContinueAction.saveSettings
-              if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
-                self.confirmationAlertContinueAction = action
-                self.isShowingConfirmationAlert = true
-              } else {
-                withErrorHandler { try await action.performAction(on: self) }
-              }
-            }
-          )
-          .disabled(viewModel.shouldDisableApplyButton)
-
-        }
-        .padding([.bottom], 20)
-        .padding([.leading, .trailing], 40)
-        Spacer()
+      .onChange(of: focusedField) { [oldField = focusedField] newField in
+        guard let field = oldField, field != newField else { return }
+        withErrorHandler { try await viewModel.saveField(field) }
       }
       .alert(
-        "Some settings may not have been applied",
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("OK", role: .destructive) {
-            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
+        "Sign out required",
+        isPresented: $viewModel.showSignOutConfirmation,
+        actions: {
+          Button("Cancel", role: .cancel) {
+            viewModel.cancelSignOutChange()
+          }
+          Button("Sign Out") {
+            withErrorHandler {
+              try await viewModel.confirmSignOutChange()
+            }
           }
         },
-        message: { _ in
-          Text("Some settings require signing out and in again before they take effect.")
+        message: {
+          Text("This will sign you out of your current session. Do you want to continue?")
         }
       )
-    #else
-      #error("Unsupported platform")
+  }
+
+  private var splitView: some View {
+    NavigationSplitView(columnVisibility: .constant(.all)) {
+      List(selection: $localSelectedSection) {
+        ForEach(SettingsSection.allCases) { section in
+          Label(section.rawValue, systemImage: section.icon)
+            .badge(section == .advanced && !viewModel.isValid ? "!" : nil)
+            .tag(section)
+        }
+      }
+      .listStyle(.sidebar)
+      .navigationTitle("Settings")
+      #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Done") { dismiss() }
+          }
+        }
+      #endif
+    } detail: {
+      settingsDetailView(for: localSelectedSection ?? .general)
+    }
+    #if os(macOS)
+      .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
     #endif
+  }
+
+  @ViewBuilder
+  private func settingsDetailView(for section: SettingsSection) -> some View {
+    switch section {
+    case .general:
+      generalTab
+    case .advanced:
+      advancedTab
+    case .logs:
+      logsTab
+    case .about:
+      AboutView()
+    }
   }
 
   private var generalTab: some View {
@@ -281,6 +211,7 @@ public struct SettingsView: View {
                 text: $viewModel.accountSlug,
                 prompt: Text(PlaceholderText.accountSlug)
               )
+              .focused($focusedField, equals: .accountSlug)
               .disabled(configuration.isAccountSlugForced)
               .frame(width: 250)
             }
@@ -291,16 +222,23 @@ public struct SettingsView: View {
             }
             .toggleStyle(.checkbox)
             .disabled(configuration.isConnectOnStartForced)
+            .onChange(of: viewModel.connectOnStart) { _ in
+              withErrorHandler { try await viewModel.saveToggle(.connectOnStart) }
+            }
 
             Toggle(isOn: $viewModel.startOnLogin) {
               Text("Start Firezone when you sign into your Mac")
             }
             .toggleStyle(.checkbox)
             .disabled(configuration.isStartOnLoginForced)
+            .onChange(of: viewModel.startOnLogin) { _ in
+              withErrorHandler { try await viewModel.saveToggle(.startOnLogin) }
+            }
           }
           .padding(10)
           Spacer()
         }
+
         Spacer()
       }
     #elseif os(iOS)
@@ -316,6 +254,7 @@ public struct SettingsView: View {
                   PlaceholderText.accountSlug,
                   text: $viewModel.accountSlug
                 )
+                .focused($focusedField, equals: .accountSlug)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
@@ -329,6 +268,9 @@ public struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .disabled(configuration.isConnectOnStartForced)
+                .onChange(of: viewModel.connectOnStart) { _ in
+                  withErrorHandler { try await viewModel.saveToggle(.connectOnStart) }
+                }
               }
             },
             header: { Text("General Settings") },
@@ -358,48 +300,50 @@ public struct SettingsView: View {
         HStack {
           Spacer()
           Form {
-            // Auth Base URL
-            HStack {
-              Text("Auth Base URL")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.authURL,
-                prompt: Text(PlaceholderText.authURL)
-              )
-              .disabled(configuration.isAuthURLForced)
-              .frame(width: 250)
-            }
+            validatedField(
+              label: "Auth Base URL",
+              text: $viewModel.authURL,
+              prompt: PlaceholderText.authURL,
+              field: .authURL,
+              isValid: viewModel.isAuthURLValid,
+              isDisabled: configuration.isAuthURLForced,
+              errorMessage: "Must be a valid http:// or https:// URL with no path"
+            )
 
-            // API URL
-            HStack {
-              Text("API URL")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.apiURL,
-                prompt: Text(PlaceholderText.apiURL)
-              )
-              .disabled(configuration.isApiURLForced)
-              .frame(width: 250)
-            }
+            validatedField(
+              label: "API URL",
+              text: $viewModel.apiURL,
+              prompt: PlaceholderText.apiURL,
+              field: .apiURL,
+              isValid: viewModel.isApiURLValid,
+              isDisabled: configuration.isApiURLForced,
+              errorMessage: "Must be a valid wss:// or ws:// URL with no path"
+            )
 
-            // Log Filter
-            HStack {
-              Text("Log Filter")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.logFilter,
-                prompt: Text(PlaceholderText.logFilter)
-              )
-              .disabled(configuration.isLogFilterForced)
-              .frame(width: 250)
-            }
+            validatedField(
+              label: "Log Filter",
+              text: $viewModel.logFilter,
+              prompt: PlaceholderText.logFilter,
+              field: .logFilter,
+              isValid: viewModel.isLogFilterValid,
+              isDisabled: configuration.isLogFilterForced,
+              errorMessage: "Must not be empty"
+            )
           }
           .frame(width: 500)
           Spacer()
         }
+
+        HStack {
+          Spacer()
+          Button("Reset to Defaults") {
+            focusedField = nil
+            viewModel.reset()
+          }
+          .disabled(viewModel.shouldDisableResetButton)
+          Spacer()
+        }
+        .padding(.top, 10)
 
         Spacer()
       }
@@ -408,50 +352,39 @@ public struct SettingsView: View {
         Form {
           Section(
             content: {
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Auth Base URL")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.authURL,
-                  text: $viewModel.authURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isAuthURLForced)
-              }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("API URL")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.apiURL,
-                  text: $viewModel.apiURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isApiURLForced)
-              }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Log Filter")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.logFilter,
-                  text: $viewModel.logFilter
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isLogFilterForced)
-              }
+              iOSValidatedField(
+                label: "Auth Base URL",
+                placeholder: PlaceholderText.authURL,
+                text: $viewModel.authURL,
+                field: .authURL,
+                isValid: viewModel.isAuthURLValid,
+                isDisabled: configuration.isAuthURLForced,
+                errorMessage: "Must be a valid http:// or https:// URL with no path"
+              )
+              iOSValidatedField(
+                label: "API URL",
+                placeholder: PlaceholderText.apiURL,
+                text: $viewModel.apiURL,
+                field: .apiURL,
+                isValid: viewModel.isApiURLValid,
+                isDisabled: configuration.isApiURLForced,
+                errorMessage: "Must be a valid wss:// or ws:// URL with no path"
+              )
+              iOSValidatedField(
+                label: "Log Filter",
+                placeholder: PlaceholderText.logFilter,
+                text: $viewModel.logFilter,
+                field: .logFilter,
+                isValid: viewModel.isLogFilterValid,
+                isDisabled: configuration.isLogFilterForced,
+                errorMessage: "Must not be empty"
+              )
               HStack {
                 Spacer()
                 Button(
                   "Reset to Defaults",
                   action: {
+                    focusedField = nil
                     viewModel.reset()
                   }
                 )
@@ -463,17 +396,7 @@ public struct SettingsView: View {
             footer: { Text(FootnoteText.forAdvanced ?? "") }
           )
         }
-        Spacer()
-        HStack {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
-          Spacer()
-        }
-        .padding([.leading, .bottom], 20)
-        .background(Color(uiColor: .secondarySystemBackground))
       }
-      .background(Color(uiColor: .secondarySystemBackground))
     #endif
   }
 
@@ -584,11 +507,6 @@ public struct SettingsView: View {
     #endif
   }
 
-  private func saveAllSettingsAndDismiss() async throws {
-    try await saveSettings()
-    dismiss()
-  }
-
   #if os(macOS)
     private func exportLogsWithSavePanelOnMac() {
       self.isExportingLogs = true
@@ -684,10 +602,6 @@ public struct SettingsView: View {
     }
   }
 
-  private func saveSettings() async throws {
-    try await viewModel.save()
-  }
-
   // Calculates the total size of our logs by summing the size of the
   // app, tunnel, and connlib log directories.
   //
@@ -767,6 +681,88 @@ public struct SettingsView: View {
       }
     }
   }
+
+  // MARK: - Validated field helpers
+
+  #if os(macOS)
+    // swiftlint:disable:next function_parameter_count
+    @ViewBuilder
+    private func validatedField(
+      label: String,
+      text: Binding<String>,
+      prompt: String,
+      field: SettingsField,
+      isValid: Bool,
+      isDisabled: Bool,
+      errorMessage: String
+    ) -> some View {
+      VStack(alignment: .leading, spacing: 2) {
+        HStack {
+          Text(label)
+            .frame(width: 150, alignment: .trailing)
+          TextField("", text: text, prompt: Text(prompt))
+            .focused($focusedField, equals: field)
+            .disabled(isDisabled)
+            .frame(width: 250)
+            .validationBorder(isValid: isValid, isFocused: focusedField == field)
+        }
+        // Use .opacity(0) instead of conditional rendering to reserve layout
+        // space and prevent vertical jumps when validation errors appear/disappear.
+        HStack(spacing: 0) {
+          // 150pt label width + 8pt default HStack spacing
+          Spacer()
+            .frame(width: 150 + 8)
+          Text(errorMessage)
+            .font(.caption)
+            .foregroundStyle(.red)
+            .opacity(!isValid && focusedField != field ? 1 : 0)
+        }
+      }
+    }
+  #endif
+
+  #if os(iOS)
+    // swiftlint:disable:next function_parameter_count
+    @ViewBuilder
+    private func iOSValidatedField(
+      label: String,
+      placeholder: String,
+      text: Binding<String>,
+      field: SettingsField,
+      isValid: Bool,
+      isDisabled: Bool,
+      errorMessage: String = ""
+    ) -> some View {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(label)
+          .foregroundStyle(.secondary)
+          .font(.caption)
+        TextField(placeholder, text: text)
+          .focused($focusedField, equals: field)
+          .autocorrectionDisabled()
+          .textInputAutocapitalization(.never)
+          .submitLabel(.done)
+          .disabled(isDisabled)
+          .validationBorder(isValid: isValid, isFocused: focusedField == field)
+        if !isValid && focusedField != field && !errorMessage.isEmpty {
+          Text(errorMessage)
+            .font(.caption)
+            .foregroundStyle(.red)
+        }
+      }
+    }
+  #endif
+}
+
+/// Adds a red border around a field when invalid and not focused.
+/// Scoped `fileprivate` to SettingsView only.
+extension View {
+  fileprivate func validationBorder(isValid: Bool, isFocused: Bool) -> some View {
+    overlay(
+      RoundedRectangle(cornerRadius: 4)
+        .stroke(!isValid && !isFocused ? Color.red : Color.clear, lineWidth: 1)
+    )
+  }
 }
 
 struct ButtonWithProgress: View {
@@ -834,44 +830,6 @@ struct LogDirectorySizeView: View {
         }
       )
     }
-  }
-}
-
-struct FormTextField: View {
-  let title: String
-  let baseURLString: String
-  let placeholder: String
-  let text: Binding<String>
-
-  var body: some View {
-    #if os(iOS)
-      VStack(spacing: 10) {
-        Spacer()
-        HStack(spacing: 5) {
-          Text(title)
-          Spacer()
-          TextField(baseURLString, text: text, prompt: Text(placeholder))
-            .autocorrectionDisabled()
-            .textInputAutocapitalization(.never)
-        }
-        Spacer()
-      }
-    #else
-      HStack(spacing: 30) {
-        Spacer()
-        VStack(alignment: .leading) {
-          Label(title, image: "")
-            .labelStyle(.titleOnly)
-            .multilineTextAlignment(.leading)
-          TextField(baseURLString, text: text, prompt: Text(placeholder))
-            .autocorrectionDisabled()
-            .multilineTextAlignment(.leading)
-            .foregroundColor(.secondary)
-            .frame(maxWidth: 360)
-        }
-        Spacer()
-      }
-    #endif
   }
 }
 
