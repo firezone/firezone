@@ -501,13 +501,10 @@ impl Eventloop {
                     Ok(Err(e @ snownet::NoTurnServers {})) => {
                         tracing::debug!("Failed to handle flow created: {e}");
 
-                        // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                         self.portal_cmd_tx
-                            .send(PortalCommand::Connect(PublicKeyParam(
-                                tunnel.public_key().to_bytes(),
-                            )))
+                            .send(PortalCommand::Send(EgressMessages::NoRelays {}))
                             .await
-                            .context("Failed to connect phoenix-channel")?;
+                            .context("Failed to send message to portal")?;
                     }
                     Err(e) => {
                         tracing::warn!("Failed to handle flow created: {e:#}");

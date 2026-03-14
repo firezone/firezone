@@ -52,7 +52,6 @@ pub struct Eventloop {
 
 enum PortalCommand {
     Send(EgressMessages),
-    Connect(PublicKeyParam),
     Close,
 }
 
@@ -319,12 +318,10 @@ impl Eventloop {
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
-                    // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                     self.portal_cmd_tx
-                        .send(PortalCommand::Connect(PublicKeyParam(
-                            tunnel.public_key().to_bytes(),
-                        )))
-                        .await?;
+                        .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                        .await
+                        .context("Failed to send message to portal")?;
 
                     return Ok(());
                 };
@@ -529,7 +526,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    mut public_key: PublicKeyParam,
+    public_key: PublicKeyParam,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     resolver: TokioResolver,
@@ -582,12 +579,6 @@ async fn phoenix_channel_event_loop(
                         tracing::debug!(?msg, "Failed to send message to portal: Not connected")
                     }
                 }
-            }
-            Either::Right((Some(PortalCommand::Connect(new_public_key)), _)) => {
-                public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
-
-                let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
-                portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Right((Some(PortalCommand::Close), _)) => {
                 let _ = portal.close();

@@ -654,7 +654,6 @@ impl TunnelTest {
                     Err(ClientEventError::Client { id, error: e }) => {
                         tracing::debug!("Failed to handle ClientEvent: {e}");
 
-                        // Simulate WebSocket reconnect ...
                         let client = self.clients.get_mut(&id).unwrap();
                         client.exec_mut(|c| {
                             c.update_relays(iter::empty(), self.relays.iter(), now);
@@ -663,7 +662,6 @@ impl TunnelTest {
                     Err(ClientEventError::Gateway { id, error: e }) => {
                         tracing::debug!("Failed to handle GatewayEvent: {e}");
 
-                        // Simulate WebSocket reconnect ...
                         let gateway = self.gateways.get_mut(&id).unwrap();
                         gateway
                             .exec_mut(|g| g.update_relays(iter::empty(), self.relays.iter(), now))

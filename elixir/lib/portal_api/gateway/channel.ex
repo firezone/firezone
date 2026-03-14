@@ -471,6 +471,23 @@ defmodule PortalAPI.Gateway.Channel do
     {:noreply, socket}
   end
 
+  def handle_in("no_relays", _payload, socket) do
+    {:ok, relays} = select_relays(socket)
+    socket = cache_relays(socket, relays)
+
+    push(socket, "relays_presence", %{
+      disconnected_ids: [],
+      connected:
+        Views.Relay.render_many(
+          relays,
+          socket.assigns.session.public_key,
+          @relay_credentials_expire_at
+        )
+    })
+
+    {:noreply, socket}
+  end
+
   # Catch-all for unknown messages
   def handle_in(message, payload, socket) do
     Logger.error("Unknown gateway message", message: message, payload: payload)
