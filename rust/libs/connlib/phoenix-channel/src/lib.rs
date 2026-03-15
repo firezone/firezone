@@ -563,10 +563,18 @@ where
                     Poll::Ready(Ok(stream)) => {
                         self.state = State::Connected(Connected {
                             stream,
-                            heartbeat: tokio::time::interval_at(
-                                tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
-                                HEARTBEAT_INTERVAL,
-                            ),
+                            heartbeat: {
+                                let mut interval = tokio::time::interval_at(
+                                    tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
+                                    HEARTBEAT_INTERVAL,
+                                );
+                                // If we were busy and missed ticks, don't burst-fire to catch up.
+                                // Deliver at most one tick and reschedule from now.
+                                interval.set_missed_tick_behavior(
+                                    tokio::time::MissedTickBehavior::Delay,
+                                );
+                                interval
+                            },
                             inflight_heartbeats: Default::default(),
                             pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
                             pending_join_requests: Default::default(),
