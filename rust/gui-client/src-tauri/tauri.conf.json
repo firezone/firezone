@@ -10,7 +10,7 @@
     "linux": {
       "deb": {
         "preInstallScript": "./linux_package/preinst",
-        "postInstallScript": "./linux_package/postinst",
+        "postInstallScript": "./linux_package/postinst_deb",
         "preRemoveScript": "./linux_package/prerm_deb",
         "files": {
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
@@ -20,7 +20,7 @@
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
       },
       "rpm": {
-        "postInstallScript": "./linux_package/postinst",
+        "postInstallScript": "./linux_package/postinst_rpm",
         "preRemoveScript": "./linux_package/prerm_rpm",
         "files": {
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
