@@ -80,7 +80,7 @@ importers:
         version: 8.5.8
       posthog-js:
         specifier: ^1.x
-        version: 1.356.1
+        version: 1.359.1
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -874,11 +874,11 @@ packages:
   '@oxc-project/types@0.112.0':
     resolution: {integrity: sha512-m6RebKHIRsax2iCwVpYW2ErQwa4ywHJrE4sCK3/8JK8ZZAWOKXaRJFl/uP51gaVyyXlaS4+chU1nSCdzYf6QqQ==}
 
-  '@posthog/core@1.23.1':
-    resolution: {integrity: sha512-GViD5mOv/mcbZcyzz3z9CS0R79JzxVaqEz4sP5Dsea178M/j3ZWe6gaHDZB9yuyGfcmIMQ/8K14yv+7QrK4sQQ==}
+  '@posthog/core@1.23.2':
+    resolution: {integrity: sha512-zTDdda9NuSHrnwSOfFMxX/pyXiycF4jtU1kTr8DL61dHhV+7LF6XF1ndRZZTuaGGbfbb/GJYkEsjEX9SXfNZeQ==}
 
-  '@posthog/types@1.356.1':
-    resolution: {integrity: sha512-miIUjs4LiBDMOxKkC87HEJLIih0pNGMAjxx+mW4X7jLpN41n0PLMW7swRE6uuxcMV0z3H6MllRSCYmsokkyfuQ==}
+  '@posthog/types@1.359.1':
+    resolution: {integrity: sha512-oQihoHWLnOkSkzOToCWKNigbJ7UZcIkl+rSJuq2PLwL7EB0Q/r1UGSbVCkrPH8xtPbYpi7w4TVpMrg41TMT+LQ==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -1529,9 +1529,8 @@ packages:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
 
-  dompurify@3.3.2:
-    resolution: {integrity: sha512-6obghkliLdmKa56xdbLOpUZ43pAR6xFy1uOrxBaIDjT+yaRuuybLjGS9eVBoSR/UPU5fq3OXClEHLJNGvbxKpQ==}
-    engines: {node: '>=20'}
+  dompurify@3.3.3:
+    resolution: {integrity: sha512-Oj6pzI2+RqBfFG+qOaOLbFXLQ90ARpcGG6UePL82bJLtdsa6CYJD7nmiU8MW9nQNOtCHV3lZ/Bzq1X0QYbBZCA==}
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -2644,11 +2643,11 @@ packages:
     resolution: {integrity: sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  posthog-js@1.356.1:
-    resolution: {integrity: sha512-4EQliSyTp3j/xOaWpZmu7fk1b4S+J3qy4JOu5Xy3/MYFxv1SlAylgifRdCbXZxCQWb6PViaNvwRf4EmburgfWA==}
+  posthog-js@1.359.1:
+    resolution: {integrity: sha512-Gy/eX02im6ON0zMxfTR61GNk1sjgLT9rVGfBQ5C757/WS4mN3vTUJveQYoX9jr3y0pqPZ57DqCcf6zcw++bpzQ==}
 
-  preact@10.28.4:
-    resolution: {integrity: sha512-uKFfOHWuSNpRFVTnljsCluEFq57OKT+0QdOiQo8XWnQ/pSvg7OpX5eNOejELXJMWy+BwM2nobz0FkvzmnpCNsQ==}
+  preact@10.29.0:
+    resolution: {integrity: sha512-wSAGyk2bYR1c7t3SZ3jHcM6xy0lcBcDel6lODcs9ME6Th++Dx2KU+6D3HD8wMMKGA8Wpw7OMd3/4RGzYRpzwRg==}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -3862,11 +3861,11 @@ snapshots:
 
   '@oxc-project/types@0.112.0': {}
 
-  '@posthog/core@1.23.1':
+  '@posthog/core@1.23.2':
     dependencies:
       cross-spawn: 7.0.6
 
-  '@posthog/types@1.356.1': {}
+  '@posthog/types@1.359.1': {}
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -4500,7 +4499,7 @@ snapshots:
     dependencies:
       esutils: 2.0.3
 
-  dompurify@3.3.2:
+  dompurify@3.3.3:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -6140,23 +6139,23 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  posthog-js@1.356.1:
+  posthog-js@1.359.1:
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/api-logs': 0.208.0
       '@opentelemetry/exporter-logs-otlp-http': 0.208.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/resources': 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-logs': 0.208.0(@opentelemetry/api@1.9.0)
-      '@posthog/core': 1.23.1
-      '@posthog/types': 1.356.1
+      '@posthog/core': 1.23.2
+      '@posthog/types': 1.359.1
       core-js: 3.48.0
-      dompurify: 3.3.2
+      dompurify: 3.3.3
       fflate: 0.4.8
-      preact: 10.28.4
+      preact: 10.29.0
       query-selector-shadow-dom: 1.0.1
       web-vitals: 5.1.0
 
-  preact@10.28.4: {}
+  preact@10.29.0: {}
 
   prelude-ls@1.2.1: {}
 
