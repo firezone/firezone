@@ -1,0 +1,21 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "cargo-clippy",
+      "fileLocation": ["relative", "rust"],
+      "pattern": [
+        {
+          "regexp": "^(?:\\x1b\\[[\\d;]+m)*(warning|error)(?:\\x1b\\[[\\d;]+m)*(\\[.+?\\])?(?:\\x1b\\[[\\d;]+m)*:(?:\\x1b\\[[\\d;]+m)* (.+?)(?:\\x1b\\[[\\d;]+m)*$",
+          "severity": 1,
+          "message": 3
+        },
+        {
+          "regexp": "^\\s*(?:\\x1b\\[[\\d;]+m)*\\s*--> (?:\\x1b\\[[\\d;]+m)*(.+):(\\d+):(\\d+)(?:\\x1b\\[[\\d;]+m)*$",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      ]
+    }
+  ]
+}
