@@ -20,7 +20,7 @@ runs:
       with:
         path: elixir/.tool-versions
 
-    - uses: erlef/setup-beam@3580539ceec3dc05b0ed51e9e10b08eb7a7c2bb4 # v1.21.0
+    - uses: erlef/setup-beam@ee09b1e59bb240681c382eb1f0abc6a04af72764 # v1.23.0
       id: setup-beam
       with:
         otp-version: ${{ steps.versions.outputs.erlang }}
