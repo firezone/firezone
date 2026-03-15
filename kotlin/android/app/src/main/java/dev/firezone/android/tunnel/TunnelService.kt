@@ -317,11 +317,11 @@ class TunnelService : VpnService() {
                             startDisconnectMonitoring()
                             startLogCleanup()
 
-                            eventLoop(session, commandChannel!!)
+                            val stopReason = eventLoop(session, commandChannel!!)
 
-                            Log.i(TAG, "Event-loop finished")
+                            Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            if (startedByUser) {
+                            if (startedByUser && stopReason != StopReason.ExplicitDisconnect) {
                                 // Show dismissable disconnected notification
                                 TunnelNotification.showDisconnectedNotification(context)
                             }
@@ -518,6 +518,14 @@ class TunnelService : VpnService() {
         data object Reset : TunnelCommand()
     }
 
+    enum class StopReason {
+        ExplicitDisconnect,
+        Disconnected,
+        EventChannelClosed,
+        CommandChannelClosed,
+        Error,
+    }
+
     private fun resourceById(resourceId: String): Pair<Resource, Site>? {
         val resource = _tunnelResources.find { it.id == resourceId } ?: return null
         val site = resource.sites?.firstOrNull() ?: return null
@@ -534,7 +542,7 @@ class TunnelService : VpnService() {
     private suspend fun eventLoop(
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
-    ) {
+    ): StopReason {
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
@@ -542,16 +550,20 @@ class TunnelService : VpnService() {
                 }
             }
 
-        var running = true
+        var explicitDisconnect = false
+        var stopReason: StopReason? = null
 
-        while (running) {
+        while (stopReason == null) {
             try {
                 select<Unit> {
                     commandChannel.onReceive { command ->
                         when (command) {
                             is TunnelCommand.Disconnect -> {
+                                explicitDisconnect = true
                                 session.disconnect()
-                                // Sending disconnect will close the event-stream which will exit this loop
+
+                                // Sending disconnect will close the event-stream which will exit this loop.
+                                // We don't want to bail out here right away to allow connlib to clean up after itself.
                             }
 
                             is TunnelCommand.SetInternetResourceState -> {
@@ -613,7 +625,7 @@ class TunnelService : VpnService() {
                                     repo.clearToken()
                                     repo.clearActorName()
 
-                                    running = false
+                                    stopReason = StopReason.Disconnected
                                 }
 
                                 is Event.GatewayVersionMismatch -> {
@@ -636,17 +648,24 @@ class TunnelService : VpnService() {
 
                                 null -> {
                                     Log.i(TAG, "Event channel closed")
-                                    running = false
+                                    stopReason = StopReason.EventChannelClosed
                                 }
                             }
                         }
                     }
                 }
             } catch (e: ClosedReceiveChannelException) {
-                running = false
+                stopReason = StopReason.CommandChannelClosed
             } catch (e: Exception) {
                 Log.e(TAG, "Error in event loop", e)
+                stopReason = StopReason.Error
             }
+        }
+
+        return if (explicitDisconnect) {
+            StopReason.ExplicitDisconnect
+        } else {
+            stopReason
         }
     }
 
@@ -706,7 +725,8 @@ class TunnelService : VpnService() {
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
 
-        private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+        private val MANAGED_CONFIGURATIONS =
+            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
