@@ -16,7 +16,7 @@ runs:
   steps:
     - name: Tool Versions
       id: versions
-      uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+      uses: marocchino/tool-versions-action@4219f2e6bfdb4cce482b78f71ad9663e64f4d247 # v2.0.0
       with:
         path: elixir/.tool-versions
 
