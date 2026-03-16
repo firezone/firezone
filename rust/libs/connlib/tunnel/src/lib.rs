@@ -183,7 +183,7 @@ impl ClientTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
-        let mut budget = Budget::new(cx.waker().clone(), MAX_EVENTLOOP_ITERS, "client-tunnel");
+        let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
@@ -362,7 +362,7 @@ impl GatewayTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<GatewayEvent> {
-        let mut budget = Budget::new(cx.waker().clone(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
+        let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.

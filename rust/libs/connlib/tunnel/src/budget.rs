@@ -8,8 +8,8 @@ use std::{sync::OnceLock, task::Waker, time::Instant};
 /// and another iteration should follow.
 /// When the budget is dropped, it wakes the waker if the budget was exhausted while still
 /// making progress, so the runtime reschedules the task instead of suspending it indefinitely.
-pub(crate) struct Budget {
-    waker: Waker,
+pub(crate) struct Budget<'a> {
+    waker: &'a Waker,
     remaining: u32,
     ready: bool,
     started_at: Instant,
@@ -24,8 +24,8 @@ impl Tick<'_> {
     }
 }
 
-impl Budget {
-    pub(crate) fn new(waker: Waker, budget: u32, name: &'static str) -> Self {
+impl<'a> Budget<'a> {
+    pub(crate) fn new(waker: &'a Waker, budget: u32, name: &'static str) -> Self {
         Self {
             waker,
             remaining: budget,
@@ -47,7 +47,7 @@ impl Budget {
     }
 }
 
-impl Drop for Budget {
+impl<'a> Drop for Budget<'a> {
     fn drop(&mut self) {
         let exhausted = self.remaining == 0;
         let elapsed_s = self.started_at.elapsed().as_secs_f64();
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn iterates_once_with_no_work_does_not_call_waker() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10, "test");
+        let mut budget = Budget::new(&waker, 10, "test");
 
         let mut iterations = 0usize;
         while let Some(_tick) = budget.next() {
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn continues_as_long_as_want_continue_is_called() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10, "test");
+        let mut budget = Budget::new(&waker, 10, "test");
 
         let mut iterations = 0usize;
         while let Some(mut tick) = budget.next() {
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn wakes_after_exhausting_budget() {
         let (waker, wake_count) = counting_waker();
-        let mut budget = Budget::new(waker, 10, "test");
+        let mut budget = Budget::new(&waker, 10, "test");
 
         while let Some(mut tick) = budget.next() {
             tick.want_continue();
