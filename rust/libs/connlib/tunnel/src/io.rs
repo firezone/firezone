@@ -10,7 +10,6 @@ pub use device::{Device, TunChannelClosed};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
-use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
@@ -101,8 +100,6 @@ impl Default for Buffers {
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input<D, I> {
-    pub now: Instant,
-    pub now_utc: DateTime<Utc>,
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
@@ -115,8 +112,6 @@ pub struct Input<D, I> {
 impl<D, I> Input<D, I> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
-            now: Instant::now(),
-            now_utc: Utc::now(),
             timeout: false,
             device: None,
             network: None,
@@ -404,8 +399,6 @@ impl Io {
         }
 
         Poll::Ready(Input {
-            now: Instant::now(),
-            now_utc: Utc::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
             network: poll_result_to_option(network, &mut error),
@@ -489,6 +482,10 @@ impl Io {
     /// Schedules a wakeup in case one isn't registered yet.
     pub fn schedule_timeout(&mut self, now: Instant) {
         self.timeout.schedule(now + Duration::from_secs(1));
+    }
+
+    pub fn duration_until_timeout(&self, now: Instant) -> Duration {
+        self.timeout.deadline().duration_since(now)
     }
 
     pub fn send_network(
@@ -640,9 +637,10 @@ mod tests {
         let scheduled_deadline = io.timeout.deadline();
 
         let input = io.next().await;
+        let now = Instant::now();
 
         assert!(input.timeout);
-        assert!(input.now >= deadline, "timer expire after deadline");
+        assert!(now >= deadline, "timer expire after deadline");
         assert_eq!(deadline, scheduled_deadline);
 
         drop(input);
@@ -663,8 +661,8 @@ mod tests {
 
         io.reset_timeout(now - Duration::from_secs(10), "");
 
-        let input = io.next().await;
-        let timeout = input.now;
+        let _input = io.next().await;
+        let timeout = Instant::now();
 
         assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
     }

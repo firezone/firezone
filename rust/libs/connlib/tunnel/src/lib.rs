@@ -9,6 +9,7 @@
 
 use anyhow::{Context as _, ErrorExt as _, Result};
 use budget::Budget;
+use chrono::Utc;
 use connlib_model::{
     ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
 };
@@ -58,6 +59,9 @@ const REALM: &str = "firezone";
 /// With 5000, we could not reproduce the force-yielding to be needed.
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
+
+/// How far we tolerate the timer to be in the future before we recompute it.
+const MAX_FUTURE_TIMEOUT: Duration = Duration::from_millis(50);
 
 pub const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
     Ok(n) => n,
@@ -183,7 +187,13 @@ impl ClientTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
-        let mut budget = Budget::new(cx.waker().clone(), MAX_EVENTLOOP_ITERS, "client-tunnel");
+        let now = Instant::now();
+        let mut budget = Budget::new(
+            cx.waker().clone(),
+            MAX_EVENTLOOP_ITERS,
+            "client-tunnel",
+            now,
+        );
 
         while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
@@ -224,8 +234,6 @@ impl ClientTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                now,
-                now_utc: _,
                 timeout,
                 dns_response,
                 tcp_dns_queries: _,
@@ -298,8 +306,12 @@ impl ClientTunnel {
             }
         }
 
-        // Reset timer for time-based wakeup before we suspend.
-        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+        // Reset timer for time-based wakeup before we suspend
+        // To be more efficient, we only recompute the timeout if the currently scheduled timer
+        // is more than 50ms in the future.
+        if self.io.duration_until_timeout(now) > MAX_FUTURE_TIMEOUT
+            && let Some((timeout, reason)) = self.role_state.poll_timeout()
+        {
             self.io.reset_timeout(timeout, reason);
         }
 
@@ -362,7 +374,14 @@ impl GatewayTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<GatewayEvent> {
-        let mut budget = Budget::new(cx.waker().clone(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
+        let now = Instant::now();
+        let utc_now = Utc::now();
+        let mut budget = Budget::new(
+            cx.waker().clone(),
+            MAX_EVENTLOOP_ITERS,
+            "gateway-tunnel",
+            now,
+        );
 
         while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
@@ -382,8 +401,6 @@ impl GatewayTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                now,
-                now_utc,
                 timeout,
                 dns_response,
                 tcp_dns_queries,
@@ -425,7 +442,7 @@ impl GatewayTunnel {
                 }
 
                 if timeout {
-                    self.role_state.handle_timeout(now, now_utc);
+                    self.role_state.handle_timeout(now, utc_now);
                     tick.want_continue();
                 }
 
@@ -547,8 +564,12 @@ impl GatewayTunnel {
             }
         }
 
-        // Reset timer for time-based wakeup before we suspend.
-        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+        // Reset timer for time-based wakeup before we suspend
+        // To be more efficient, we only recompute the timeout if the currently scheduled timer
+        // is more than 50ms in the future.
+        if self.io.duration_until_timeout(now) > MAX_FUTURE_TIMEOUT
+            && let Some((timeout, reason)) = self.role_state.poll_timeout()
+        {
             self.io.reset_timeout(timeout, reason);
         }
 
