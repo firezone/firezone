@@ -181,7 +181,7 @@ where
         let connection = self
             .established
             .get_mut(id)
-            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok(connection)
     }
@@ -194,16 +194,14 @@ where
         let id = self
             .established_by_wireguard_session_index
             .get(&index.global())
-            .context(UnknownConnection::by_index(
-                index.global(),
-                &self.disconnected_session_indices,
-                now,
-            ))?;
+            .with_context(|| {
+                UnknownConnection::by_index(index.global(), &self.disconnected_session_indices, now)
+            })?;
 
         let connection = self
             .established
             .get_mut(id)
-            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok((*id, connection))
     }
@@ -217,11 +215,9 @@ where
             .established
             .iter_mut()
             .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .context(UnknownConnection::by_public_key(
-                key,
-                &self.disconnected_public_keys,
-                now,
-            ))?;
+            .with_context(|| {
+                UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
+            })?;
 
         Ok((*id, conn))
     }
