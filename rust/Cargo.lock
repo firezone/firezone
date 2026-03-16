@@ -2511,7 +2511,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.5.7"
+version = "1.5.8"
 dependencies = [
  "anyhow-ext",
  "backoff",
