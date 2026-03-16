@@ -53,7 +53,7 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Grace-period for when we will act on an ICE disconnect.
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// For how long we will at most try to re-key a WireGuard tunnel
+/// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
 /// A node within a `snownet` network maintains connections to several other nodes.
