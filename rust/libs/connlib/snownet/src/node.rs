@@ -53,6 +53,9 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Grace-period for when we will act on an ICE disconnect.
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// For how long we will at most try to re-key a WireGuard tunnel.
+const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
+
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -785,9 +788,9 @@ where
         // before Firezone can fix the state and make a new connection.
         //
         // By aligning the rekey-attempt-time roughly with our ICE timeout, we ensure
-        // that even if the hole-punch was successful, it will take at most 15s
+        // that even if the hole-punch was successful, it will take at most 20s
         // until we have a WireGuard tunnel to send packets into.
-        tunnel.set_rekey_attempt_time(Duration::from_secs(15));
+        tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
 
         Connection {
             agent,
@@ -2040,6 +2043,17 @@ mod tests {
         IceConfig::client_default().apply(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_millis(16500))
+    }
+
+    // Our WireGuard rekey attempt time must be greater than the ICE timeout,
+    // otherwise we cannot migrate an existing tunnel to a new candidate pair.
+    #[test]
+    fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
+        let mut agent = new_agent(IceRole::Controlling);
+
+        IceConfig::client_default().apply(&mut agent);
+
+        assert!(agent.ice_timeout() < WG_REKEY_ATTEMPT_TIME)
     }
 
     #[test]
