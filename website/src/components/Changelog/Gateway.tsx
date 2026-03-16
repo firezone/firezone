@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.1" date={new Date("2026-03-16")}>
         <ChangeItem pull="12355">
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
           time.
@@ -47,7 +48,7 @@ export default function Gateway() {
           Greatly improves performance for cases where many Clients (100+) are
           connected to a single Gateway.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.0" date={new Date("2026-02-02")}>
         <ChangeItem pull="11771">
           BREAKING: Remove support for Firezone 1.3.x Clients and lower.
