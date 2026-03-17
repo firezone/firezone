@@ -200,6 +200,12 @@ impl UdpSocket {
         let quinn_ref = quinn_udp::UdpSockRef::from(&self.inner);
         let quinn_state = quinn_udp::UdpSocketState::new(quinn_ref)?;
 
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
+        unsafe {
+            quinn_state.set_apple_fast_path();
+        }
+
         Ok(PerfUdpSocket {
             inner: self.inner,
             state: quinn_state,
@@ -688,6 +694,7 @@ where
 #[cfg(test)]
 mod tests {
     use gat_lending_iterator::LendingIterator as _;
+    use quinn_udp::RecvMeta;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV6};
 
     use super::*;
@@ -704,20 +711,18 @@ mod tests {
                 DummyBuffer(b"".to_vec()),
             ],
             [
-                quinn_udp::RecvMeta {
-                    addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
-                    dst_ip: Some(IpAddr::V4(Ipv4Addr::LOCALHOST)),
-                    stride: 7,
-                    len: 38,
-                    ecn: None,
-                },
-                quinn_udp::RecvMeta {
-                    addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
-                    dst_ip: Some(IpAddr::V4(Ipv4Addr::LOCALHOST)),
-                    stride: 4,
-                    len: 23,
-                    ecn: None,
-                },
+                recv_meta(
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    38,
+                    7,
+                ),
+                recv_meta(
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    23,
+                    4,
+                ),
                 quinn_udp::RecvMeta::default(),
             ],
             0,
@@ -803,5 +808,15 @@ mod tests {
             err.to_string(),
             "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
         );
+    }
+
+    fn recv_meta(addr: SocketAddr, dst_ip: IpAddr, len: usize, stride: usize) -> RecvMeta {
+        let mut meta = RecvMeta::default();
+        meta.addr = addr;
+        meta.dst_ip = Some(dst_ip);
+        meta.len = len;
+        meta.stride = stride;
+
+        meta
     }
 }
