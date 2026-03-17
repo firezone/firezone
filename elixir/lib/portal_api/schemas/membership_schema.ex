@@ -12,7 +12,7 @@ defmodule PortalAPI.Schemas.Membership do
       items: %Schema{
         type: :object,
         properties: %{
-          id: %Schema{type: :string, description: "Actor ID"},
+          id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
           name: %Schema{type: :string, description: "Actor Name"},
           type: %Schema{type: :string, description: "Actor Type"}
         }
@@ -43,12 +43,12 @@ defmodule PortalAPI.Schemas.Membership do
             add: %Schema{
               type: :array,
               description: "Array of Actor IDs",
-              items: %Schema{type: :string, description: "Actor ID"}
+              items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             },
             remove: %Schema{
               type: :array,
               description: "Array of Actor IDs",
-              items: %Schema{type: :string, description: "Actor ID"}
+              items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             }
           }
         }
@@ -81,7 +81,7 @@ defmodule PortalAPI.Schemas.Membership do
           items: %Schema{
             type: :object,
             properties: %{
-              actor_id: %Schema{type: :string, description: "Actor ID"}
+              actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             }
           }
         }
@@ -152,7 +152,7 @@ defmodule PortalAPI.Schemas.Membership do
             actor_ids: %Schema{
               description: "Actor IDs",
               type: :array,
-              items: %Schema{type: :string, description: "Actor ID"}
+              items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             }
           }
         }

@@ -10,9 +10,9 @@ defmodule PortalAPI.Schemas.GatewaySession do
       description: "Gateway Session",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Gateway Session ID"},
-        gateway_id: %Schema{type: :string, description: "Gateway ID"},
-        gateway_token_id: %Schema{type: :string, description: "Gateway Token ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Gateway Session ID"},
+        gateway_id: %Schema{type: :string, format: :uuid, description: "Gateway ID"},
+        gateway_token_id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"},
         last_seen_user_agent: %Schema{
           type: :string,
           description: "User agent at time of session"

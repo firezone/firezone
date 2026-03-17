@@ -10,8 +10,8 @@ defmodule PortalAPI.Schemas.Client do
       description: "Client",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Client ID"},
-        actor_id: %Schema{type: :string, description: "Actor ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Client ID"},
+        actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
         name: %Schema{
           type: :string,
           description: "Client Name"
@@ -34,6 +34,7 @@ defmodule PortalAPI.Schemas.Client do
         },
         device_uuid: %Schema{
           type: :string,
+          format: :uuid,
           description: "Device manufacturer UUID (unavailable for mobile devices)"
         },
         identifier_for_vendor: %Schema{

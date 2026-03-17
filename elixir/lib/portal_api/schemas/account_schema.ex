@@ -45,7 +45,7 @@ defmodule PortalAPI.Schemas.Account do
       description: "Account schema",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Account ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         slug: %Schema{type: :string, description: "Account slug"},
         name: %Schema{type: :string, description: "Account name"},
         legal_name: %Schema{type: :string, description: "Account legal name"},

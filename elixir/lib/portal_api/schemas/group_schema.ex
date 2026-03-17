@@ -10,7 +10,7 @@ defmodule PortalAPI.Schemas.Group do
       description: "Group",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Group ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Group ID"},
         name: %Schema{type: :string, description: "Group Name"},
         email: %Schema{
           type: :string,
@@ -24,6 +24,7 @@ defmodule PortalAPI.Schemas.Group do
         },
         directory_id: %Schema{
           type: :string,
+          format: :uuid,
           description: "Directory ID this group belongs to",
           nullable: true
         },

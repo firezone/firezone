@@ -121,6 +121,20 @@ jobs:
 
       - name: Check for unused deps
         run: mix deps.unlock --check-unused
+
+      - name: Validate OpenAPI spec
+        run: |
+          mix openapi.spec.yaml --spec PortalAPI.ApiSpec
+          result=$(curl --fail --show-error --silent \
+            --max-time 10 \
+            --retry 3 \
+            --retry-delay 1 \
+            --retry-connrefused \
+            --data-binary @openapi.yaml \
+            -H 'Content-Type:application/yaml' \
+            https://validator.swagger.io/validator/debug)
+          echo "$result"
+          echo "$result" | jq -e '.schemaValidationMessages | length == 0'
 # TODO: IDP-REFACTOR: Re-enable
 # acceptance-test:
 #   name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}

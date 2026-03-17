@@ -10,9 +10,9 @@ defmodule PortalAPI.Schemas.ClientSession do
       description: "Client Session",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Client Session ID"},
-        client_id: %Schema{type: :string, description: "Client ID"},
-        client_token_id: %Schema{type: :string, description: "Client Token ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Client Session ID"},
+        client_id: %Schema{type: :string, format: :uuid, description: "Client ID"},
+        client_token_id: %Schema{type: :string, format: :uuid, description: "Client Token ID"},
         last_seen_user_agent: %Schema{
           type: :string,
           description: "User agent at time of session"

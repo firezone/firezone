@@ -10,7 +10,7 @@ defmodule PortalAPI.Schemas.Resource do
       description: "Resource",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Resource ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         name: %Schema{type: :string, description: "Resource name"},
         address: %Schema{type: :string, description: "Resource address"},
         address_description: %Schema{type: :string, description: "Resource address description"},
@@ -25,10 +25,11 @@ defmodule PortalAPI.Schemas.Resource do
           enum: ["ipv4_only", "ipv6_only", "dual"]
         },
         site_id: %Schema{
-          title: "Site ID",
+          title: "SiteID",
           description:
             "Site to connect the Resource to. Required for all types except `static_device_pool`.",
-          type: :string
+          type: :string,
+          format: :uuid
         }
       },
       required: [:name, :type],

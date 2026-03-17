@@ -10,8 +10,8 @@ defmodule PortalAPI.Schemas.OktaDirectory do
       description: "Okta Directory",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Directory ID"},
-        account_id: %Schema{type: :string, description: "Account ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Directory ID"},
+        account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         name: %Schema{type: :string, description: "Directory name"},
         client_id: %Schema{type: :string, description: "Client ID"},
         kid: %Schema{type: :string, description: "Key ID"},
@@ -19,15 +19,23 @@ defmodule PortalAPI.Schemas.OktaDirectory do
         error_count: %Schema{type: :integer, description: "Error count"},
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
         disabled_reason: %Schema{type: :string, description: "Reason for disabling"},
-        synced_at: %Schema{type: :string, format: :datetime, description: "Last sync timestamp"},
+        synced_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "Last sync timestamp"
+        },
         error: %Schema{type: :string, description: "Last error message"},
         error_emailed_at: %Schema{
           type: :string,
-          format: :datetime,
+          format: :"date-time",
           description: "Error email timestamp"
         },
-        inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"},
-        updated_at: %Schema{type: :string, format: :datetime, description: "Update timestamp"}
+        inserted_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "Creation timestamp"
+        },
+        updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
       required: [:id, :name],
       example: %{

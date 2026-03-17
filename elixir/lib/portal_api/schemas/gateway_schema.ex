@@ -10,7 +10,7 @@ defmodule PortalAPI.Schemas.Gateway do
       description: "Gateway",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Gateway ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Gateway ID"},
         name: %Schema{
           type: :string,
           description: "Gateway Name",

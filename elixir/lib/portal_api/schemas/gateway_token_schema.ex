@@ -10,7 +10,7 @@ defmodule PortalAPI.Schemas.GatewayToken do
       description: "Gateway Token",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Gateway Token ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"},
         token: %Schema{type: :string, description: "Gateway Token"}
       },
       required: [:id, :token],
@@ -53,7 +53,7 @@ defmodule PortalAPI.Schemas.GatewayToken do
         data: %Schema{
           type: :object,
           properties: %{
-            id: %Schema{type: :string, description: "Gateway Token ID"}
+            id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"}
           },
           required: [:id]
         }
