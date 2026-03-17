@@ -24,6 +24,9 @@ struct FirezoneCLI: AsyncParsableCommand {
   @Flag(name: .long, help: "Activate Internet Resource.")
   var activateInternetResource = false
 
+  @Option(name: .long, help: "Account slug.")
+  var accountSlug: String?
+
   @Flag(name: .long, help: ArgumentHelp("Validate config and exit.", visibility: .hidden))
   var check = false
 
@@ -93,7 +96,8 @@ struct FirezoneCLI: AsyncParsableCommand {
     }
 
     let accountSlug =
-      ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
+      self.accountSlug
+      ?? ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
       ?? Configuration.defaultAccountSlug
 
     Log.info("Account slug: \(accountSlug.isEmpty ? "(empty)" : accountSlug)")
