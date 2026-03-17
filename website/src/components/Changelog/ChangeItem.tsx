@@ -4,7 +4,7 @@ export default function ChangeItem({
   pull,
   children,
 }: {
-  pull?: string;
+  pull?: number;
   children: React.ReactNode;
 }) {
   return (
