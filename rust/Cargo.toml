@@ -26,6 +26,7 @@ members = [
     "libs/connlib/socket-factory",
     "libs/connlib/tun",
     "libs/connlib/tunnel",
+    "libs/eventloop-budget",
     "libs/http-client",
     "libs/known-dirs",
     "libs/logging",
@@ -88,6 +89,7 @@ either = "1.15.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 etherparse = { version = "0.19.0", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
+eventloop-budget = { path = "libs/eventloop-budget" }
 filetime = "0.2.27"
 firezone-headless-client = { path = "headless-client" }
 firezone-relay = { path = "relay/server" }

@@ -2315,6 +2315,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "eventloop-budget"
+version = "0.1.0"
+dependencies = [
+ "opentelemetry",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2588,6 +2595,7 @@ dependencies = [
  "derive_more 2.1.1",
  "difference",
  "ebpf-shared",
+ "eventloop-budget",
  "futures",
  "hex",
  "logging",
@@ -8508,6 +8516,7 @@ dependencies = [
  "divan",
  "dns-over-tcp",
  "dns-types",
+ "eventloop-budget",
  "firezone-relay",
  "futures",
  "futures-bounded",

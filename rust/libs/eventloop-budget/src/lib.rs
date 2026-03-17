@@ -8,7 +8,7 @@ use std::{sync::OnceLock, task::Waker, time::Instant};
 /// and another iteration should follow.
 /// When the budget is dropped, it wakes the waker if the budget was exhausted while still
 /// making progress, so the runtime reschedules the task instead of suspending it indefinitely.
-pub(crate) struct Budget<'a> {
+pub struct Budget<'a> {
     waker: &'a Waker,
     remaining: u32,
     ready: bool,
@@ -16,16 +16,16 @@ pub(crate) struct Budget<'a> {
     name: &'static str,
 }
 
-pub(crate) struct Tick<'a>(&'a mut bool);
+pub struct Tick<'a>(&'a mut bool);
 
 impl Tick<'_> {
-    pub(crate) fn want_continue(&mut self) {
+    pub fn want_continue(&mut self) {
         *self.0 = true;
     }
 }
 
 impl<'a> Budget<'a> {
-    pub(crate) fn new(waker: &'a Waker, budget: u32, name: &'static str) -> Self {
+    pub fn new(waker: &'a Waker, budget: u32, name: &'static str) -> Self {
         Self {
             waker,
             remaining: budget,
@@ -35,7 +35,11 @@ impl<'a> Budget<'a> {
         }
     }
 
-    pub(crate) fn next(&mut self) -> Option<Tick<'_>> {
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "We cannot implement `Iterator` because we borrow from `self`."
+    )]
+    pub fn next(&mut self) -> Option<Tick<'_>> {
         if !self.ready || self.remaining == 0 {
             return None;
         }

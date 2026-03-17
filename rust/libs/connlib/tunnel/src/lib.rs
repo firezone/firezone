@@ -8,11 +8,11 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use anyhow::{Context as _, ErrorExt as _, Result};
-use budget::Budget;
 use connlib_model::{
     ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
 };
 use dns_types::DomainName;
+use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
@@ -29,7 +29,6 @@ use std::{
 };
 use tun::Tun;
 
-mod budget;
 mod client;
 mod dns;
 mod expiring_map;

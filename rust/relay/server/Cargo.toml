@@ -18,6 +18,7 @@ bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
+eventloop-budget = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 logging = { workspace = true }

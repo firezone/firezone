@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{http_health_check, signals};
 use clap::Parser;
+use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
@@ -515,9 +516,9 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
-        for _ in 0..MAX_EVENTLOOP_ITERS {
-            let mut ready = false;
+        let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "relay");
 
+        while let Some(mut tick) = budget.next() {
             ready!(self.sockets.flush(cx))?;
 
             // Priority 1: Execute the pending commands of the server.
@@ -590,7 +591,7 @@ where
                     }
                 }
 
-                ready = true;
+                tick.want_continue();
             }
 
             // Priority 2: Read from our sockets.
@@ -640,7 +641,7 @@ where
                         }
                     };
 
-                    ready = true;
+                    tick.want_continue();
                 }
                 Poll::Ready(Ok(sockets::Received {
                     port, // Packets coming in on any other port are from peers.
@@ -667,12 +668,12 @@ where
                         };
                     };
 
-                    ready = true;
+                    tick.want_continue();
                 }
                 Poll::Ready(Err(sockets::Error::Io(e))) => {
                     tracing::warn!(target: "relay", "Error while receiving message: {}", err_with_src(&e));
 
-                    ready = true;
+                    tick.want_continue();
                 }
                 Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)), // Fail the event-loop. We can't operate without the `mio` worker-task.
                 Poll::Pending => {}
@@ -681,20 +682,20 @@ where
             // Priority 3: Check when we need to next be woken. This needs to happen after all state modifications.
             if let Some(timeout) = self.server.poll_timeout() {
                 Pin::new(&mut self.sleep).reset(timeout);
-                // Purposely no `ready = true` because we just change the state of `sleep` and we poll it below.
+                // Purposely no `tick.want_continue()` because we just change the state of `sleep` and we poll it below.
             }
 
             // Priority 4: Handle time-sensitive tasks:
             if let Poll::Ready(deadline) = self.sleep.poll_unpin(cx) {
                 self.server.handle_timeout(deadline);
 
-                ready = true;
+                tick.want_continue();
             }
 
             // Priority 5: Handle portal messages
             match self.event_rx.poll_recv(cx) {
                 Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
-                    ready = true;
+                    tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {
                     return Poll::Ready(Err(
@@ -726,15 +727,10 @@ where
 
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
 
-                ready = true;
-            }
-
-            if !ready {
-                return Poll::Pending;
+                tick.want_continue();
             }
         }
 
-        cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
         Poll::Pending
     }
 
