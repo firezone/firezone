@@ -5,10 +5,10 @@ mod make_writer;
 mod tun;
 
 // mark:next-apple-version
-pub const RELEASE: &str = "connlib-apple@1.5.14";
+pub const RELEASE: &str = "connlib-apple@1.5.15";
 
 // mark:next-apple-version
-pub const VERSION: &str = "1.5.14";
+pub const VERSION: &str = "1.5.15";
 
 pub const COMPONENT: &str = "apple-client";
 

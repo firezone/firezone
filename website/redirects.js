@@ -10,14 +10,14 @@ module.exports = [
     source: "/dl/firezone-client-macos/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.13/firezone-macos-client-1.5.13.dmg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.14/firezone-macos-client-1.5.14.dmg",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-macos/pkg/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.13/firezone-macos-client-1.5.13.pkg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.14/firezone-macos-client-1.5.14.pkg",
     permanent: false,
   },
   /*
