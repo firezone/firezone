@@ -26,6 +26,7 @@ if [ ! -x "$CLI_PATH" ]; then
     exit 1
 fi
 
+echo "Binary: $CLI_PATH"
 echo "Running: firezone-cli $*"
 echo "---"
 exec "$CLI_PATH" "$@"
