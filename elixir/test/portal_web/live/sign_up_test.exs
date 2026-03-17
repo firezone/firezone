@@ -1,5 +1,6 @@
 defmodule PortalWeb.SignUpTest do
   use PortalWeb.ConnCase, async: true
+  import ExUnit.CaptureLog
   import Swoosh.TestAssertions
   import Portal.DataCase, only: [errors_on: 1]
   import Portal.AccountFixtures
@@ -557,6 +558,52 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "https://www.firezone.dev/kb/client-apps"
       assert html =~ "View the Quickstart Guide"
       assert html =~ "https://www.firezone.dev/kb/quickstart"
+    end
+  end
+
+  describe "Database.register_account/6" do
+    test "logs error with account_id and step when a multi step fails" do
+      account_id = Ecto.UUID.generate()
+
+      registration = %PortalWeb.SignUp.Registration{
+        email: "log-test-#{System.unique_integer([:positive])}@example.com",
+        account: %Portal.Account{name: "Test Co"},
+        actor: %Portal.Actor{name: "Test User"}
+      }
+
+      invalid_group_changeset =
+        %Portal.Group{}
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.add_error(:name, "injected failure")
+
+      changeset_fns = %{
+        account: fn attrs ->
+          %Portal.Account{id: Map.get(attrs, :id)}
+          |> Ecto.Changeset.cast(attrs, [:name])
+          |> Ecto.Changeset.put_change(:legal_name, Map.get(attrs, :name))
+          |> Ecto.Changeset.put_change(:slug, "test-#{System.unique_integer([:positive])}")
+        end,
+        everyone_group: fn _account -> invalid_group_changeset end,
+        site: fn _account, _attrs -> invalid_group_changeset end,
+        internet_site: fn _account -> invalid_group_changeset end,
+        internet_resource: fn _account, _site -> invalid_group_changeset end
+      }
+
+      log =
+        capture_log(fn ->
+          PortalWeb.SignUp.Database.register_account(
+            registration,
+            account_id,
+            nil,
+            changeset_fns,
+            "Mozilla/5.0",
+            "127.0.0.1"
+          )
+        end)
+
+      assert log =~ "Failed to register account during sign-up"
+      assert log =~ account_id
+      assert log =~ "everyone_group"
     end
   end
 

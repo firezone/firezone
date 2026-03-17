@@ -396,6 +396,14 @@ defmodule PortalWeb.SignUp do
              :error,
              "We encountered a temporary error creating your account. Please try again."
            )}
+
+        {:error, _step, _reason, _effects_so_far} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "We encountered an unexpected error creating your account. Please try again."
+           )}
       end
     else
       {:noreply, assign(socket, form: to_form(changeset))}
@@ -548,6 +556,7 @@ defmodule PortalWeb.SignUp do
 
   defmodule Database do
     import Ecto.Changeset
+    require Logger
 
     alias Portal.{
       Actor,
@@ -610,6 +619,21 @@ defmodule PortalWeb.SignUp do
         )
       end)
       |> Safe.transact()
+      |> case do
+        {:ok, _} = ok ->
+          ok
+
+        {:error, step, reason, changes} = error ->
+          :ok =
+            Logger.error("Failed to register account during sign-up",
+              account_id: account_id,
+              step: step,
+              reason: inspect(reason),
+              completed_steps: Map.keys(changes)
+            )
+
+          error
+      end
     end
 
     def create_email_provider(account) do
