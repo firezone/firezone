@@ -29,7 +29,7 @@ export default function Android() {
           Gracefully handles WebSocket closes from the portal instead of logging
           a deserialization error.
         </ChangeItem>
-        <ChangeItem pull="#12111">
+        <ChangeItem pull="12111">
           Prevents unbounded log growth by enforcing a 100 MB log size cap with
           automatic cleanup of oldest files.
         </ChangeItem>
