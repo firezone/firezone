@@ -157,8 +157,8 @@ function android() {
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.10"
-    next_gui_client_version="1.5.11"
+    current_gui_client_version="1.5.11"
+    next_gui_client_version="1.5.12"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     update_version_marker "mark:current-gui-version" "$current_gui_client_version"
@@ -179,8 +179,8 @@ function gui() {
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.6"
-    next_headless_client_version="1.5.7"
+    current_headless_client_version="1.5.7"
+    next_headless_client_version="1.5.8"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     update_version_marker "mark:current-headless-version" "$current_headless_client_version"
@@ -201,8 +201,8 @@ function headless() {
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.5.0"
-    next_gateway_version="1.5.1"
+    current_gateway_version="1.5.1"
+    next_gateway_version="1.5.2"
 
     update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     update_version_marker "mark:current-gateway-version" "$current_gateway_version"

@@ -41,7 +41,7 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-windows_1.5.10_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.11/firezone-client-gui-windows_1.5.11_x86_64.msi",
     permanent: false,
   },
   /*
@@ -53,7 +53,7 @@ module.exports = [
     source: "/dl/firezone-client-headless-windows/latest/x86_64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.6/firezone-client-headless-windows_1.5.6_x86_64.exe",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.7/firezone-client-headless-windows_1.5.7_x86_64.exe",
     permanent: false,
   },
   /*
@@ -65,35 +65,35 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-linux_1.5.10_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.11/firezone-client-gui-linux_1.5.11_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-linux_1.5.10_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.11/firezone-client-gui-linux_1.5.11_aarch64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/x86_64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.6/firezone-client-headless-linux_1.5.6_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.7/firezone-client-headless-linux_1.5.7_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/aarch64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.6/firezone-client-headless-linux_1.5.6_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.7/firezone-client-headless-linux_1.5.7_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/armv7",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.6/firezone-client-headless-linux_1.5.6_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.5.7/firezone-client-headless-linux_1.5.7_armv7",
     permanent: false,
   },
   /*
@@ -105,21 +105,21 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.0/firezone-gateway_1.5.0_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.1/firezone-gateway_1.5.1_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.0/firezone-gateway_1.5.0_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.1/firezone-gateway_1.5.1_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.0/firezone-gateway_1.5.0_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.1/firezone-gateway_1.5.1_armv7",
     permanent: false,
   },
   /*
