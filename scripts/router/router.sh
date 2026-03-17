@@ -68,8 +68,8 @@ fi
 if [ -n "${NETWORK_LATENCY_MS:-}" ]; then
     LATENCY=$((NETWORK_LATENCY_MS / 2)) # Latency is only applied to outbound packets. To achieve the actual configured latency, we apply half of it to each interface.
 
-    tc qdisc add dev internet root netem delay "${LATENCY}ms"
-    tc qdisc add dev internal root netem delay "${LATENCY}ms"
+    tc qdisc add dev internet root netem delay "${LATENCY}ms" || true
+    tc qdisc add dev internal root netem delay "${LATENCY}ms" || true
 fi
 
 ip link set dev internal txqueuelen 100000

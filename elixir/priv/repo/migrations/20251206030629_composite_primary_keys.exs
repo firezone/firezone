@@ -56,7 +56,7 @@ defmodule Portal.Repo.Migrations.CompositePrimaryKeys do
       sites
   ]
     |> Enum.each(fn table ->
-      execute("ALTER TABLE #{table} DROP CONSTRAINT #{table}_pkey")
+      execute("ALTER TABLE #{table} DROP CONSTRAINT #{table}_pkey CASCADE")
       execute("ALTER TABLE #{table} ADD PRIMARY KEY (account_id, id)")
     end)
 

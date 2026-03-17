@@ -7,73 +7,73 @@ defmodule Portal.Repo.Migrations.RenameFlowsToPolicyAuthorizations do
 
     # Rename indexes
     execute(
-      "ALTER INDEX flows_pkey RENAME TO policy_authorizations_pkey",
-      "ALTER INDEX policy_authorizations_pkey RENAME TO flows_pkey"
+      "ALTER INDEX IF EXISTS flows_pkey RENAME TO policy_authorizations_pkey",
+      "ALTER INDEX IF EXISTS policy_authorizations_pkey RENAME TO flows_pkey"
     )
 
     execute(
-      "ALTER INDEX flows_account_id_client_id_index RENAME TO policy_authorizations_account_id_client_id_index",
-      "ALTER INDEX policy_authorizations_account_id_client_id_index RENAME TO flows_account_id_client_id_index"
+      "ALTER INDEX IF EXISTS flows_account_id_client_id_index RENAME TO policy_authorizations_account_id_client_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_account_id_client_id_index RENAME TO flows_account_id_client_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_account_id_gateway_id_index RENAME TO policy_authorizations_account_id_gateway_id_index",
-      "ALTER INDEX policy_authorizations_account_id_gateway_id_index RENAME TO flows_account_id_gateway_id_index"
+      "ALTER INDEX IF EXISTS flows_account_id_gateway_id_index RENAME TO policy_authorizations_account_id_gateway_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_account_id_gateway_id_index RENAME TO flows_account_id_gateway_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_account_id_policy_id_index RENAME TO policy_authorizations_account_id_policy_id_index",
-      "ALTER INDEX policy_authorizations_account_id_policy_id_index RENAME TO flows_account_id_policy_id_index"
+      "ALTER INDEX IF EXISTS flows_account_id_policy_id_index RENAME TO policy_authorizations_account_id_policy_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_account_id_policy_id_index RENAME TO flows_account_id_policy_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_account_id_resource_id_index RENAME TO policy_authorizations_account_id_resource_id_index",
-      "ALTER INDEX policy_authorizations_account_id_resource_id_index RENAME TO flows_account_id_resource_id_index"
+      "ALTER INDEX IF EXISTS flows_account_id_resource_id_index RENAME TO policy_authorizations_account_id_resource_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_account_id_resource_id_index RENAME TO flows_account_id_resource_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_account_id_token_id_index RENAME TO policy_authorizations_account_id_token_id_index",
-      "ALTER INDEX policy_authorizations_account_id_token_id_index RENAME TO flows_account_id_token_id_index"
+      "ALTER INDEX IF EXISTS flows_account_id_token_id_index RENAME TO policy_authorizations_account_id_token_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_account_id_token_id_index RENAME TO flows_account_id_token_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_client_id_index RENAME TO policy_authorizations_client_id_index",
-      "ALTER INDEX policy_authorizations_client_id_index RENAME TO flows_client_id_index"
+      "ALTER INDEX IF EXISTS flows_client_id_index RENAME TO policy_authorizations_client_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_client_id_index RENAME TO flows_client_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_expires_at_account_id_gateway_id_index RENAME TO policy_authorizations_expires_at_account_id_gateway_id_index",
-      "ALTER INDEX policy_authorizations_expires_at_account_id_gateway_id_index RENAME TO flows_expires_at_account_id_gateway_id_index"
+      "ALTER INDEX IF EXISTS flows_expires_at_account_id_gateway_id_index RENAME TO policy_authorizations_expires_at_account_id_gateway_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_expires_at_account_id_gateway_id_index RENAME TO flows_expires_at_account_id_gateway_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_gateway_id_index RENAME TO policy_authorizations_gateway_id_index",
-      "ALTER INDEX policy_authorizations_gateway_id_index RENAME TO flows_gateway_id_index"
+      "ALTER INDEX IF EXISTS flows_gateway_id_index RENAME TO policy_authorizations_gateway_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_gateway_id_index RENAME TO flows_gateway_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_membership_id_idx RENAME TO policy_authorizations_membership_id_idx",
-      "ALTER INDEX policy_authorizations_membership_id_idx RENAME TO flows_membership_id_idx"
+      "ALTER INDEX IF EXISTS flows_membership_id_idx RENAME TO policy_authorizations_membership_id_idx",
+      "ALTER INDEX IF EXISTS policy_authorizations_membership_id_idx RENAME TO flows_membership_id_idx"
     )
 
     execute(
-      "ALTER INDEX flows_membership_id_index RENAME TO policy_authorizations_membership_id_index",
-      "ALTER INDEX policy_authorizations_membership_id_index RENAME TO flows_membership_id_index"
+      "ALTER INDEX IF EXISTS flows_membership_id_index RENAME TO policy_authorizations_membership_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_membership_id_index RENAME TO flows_membership_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_policy_id_index RENAME TO policy_authorizations_policy_id_index",
-      "ALTER INDEX policy_authorizations_policy_id_index RENAME TO flows_policy_id_index"
+      "ALTER INDEX IF EXISTS flows_policy_id_index RENAME TO policy_authorizations_policy_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_policy_id_index RENAME TO flows_policy_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_resource_id_index RENAME TO policy_authorizations_resource_id_index",
-      "ALTER INDEX policy_authorizations_resource_id_index RENAME TO flows_resource_id_index"
+      "ALTER INDEX IF EXISTS flows_resource_id_index RENAME TO policy_authorizations_resource_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_resource_id_index RENAME TO flows_resource_id_index"
     )
 
     execute(
-      "ALTER INDEX flows_token_id_index RENAME TO policy_authorizations_token_id_index",
-      "ALTER INDEX policy_authorizations_token_id_index RENAME TO flows_token_id_index"
+      "ALTER INDEX IF EXISTS flows_token_id_index RENAME TO policy_authorizations_token_id_index",
+      "ALTER INDEX IF EXISTS policy_authorizations_token_id_index RENAME TO flows_token_id_index"
     )
 
     # The foreign key constraints are automatically renamed when the table is renamed
