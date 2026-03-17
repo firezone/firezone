@@ -4,7 +4,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
   import Portal.TokenFixtures
   alias Portal.Changes.Hooks.ClientTokens
   alias Portal.Changes.Hooks.GatewayTokens
-  alias Portal.Channels
+  alias Portal.PG
 
   describe "ClientTokens.on_insert/2" do
     test "returns :ok" do
@@ -23,7 +23,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
       account = account_fixture()
       token = client_token_fixture(account: account)
 
-      Channels.register_token(token.id)
+      PG.register(token.id)
 
       old_data = %{
         "id" => token.id,
@@ -66,7 +66,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
       account = account_fixture()
       token = gateway_token_fixture(account: account)
 
-      Channels.register_token(token.id)
+      PG.register(token.id)
 
       old_data = %{
         "id" => token.id,

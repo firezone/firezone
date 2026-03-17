@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.GatewayTokens do
   @behaviour Portal.Changes.Hooks
-  alias Portal.Channels
+  alias Portal.PG
   import Portal.SchemaHelpers
 
   @impl true
@@ -12,7 +12,7 @@ defmodule Portal.Changes.Hooks.GatewayTokens do
   @impl true
   def on_delete(_lsn, old_data) do
     token = struct_from_params(Portal.GatewayToken, old_data)
-    Channels.send_to_token(token.id, :disconnect)
+    PG.deliver(token.id, :disconnect)
     :ok
   end
 end

@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.ChannelTest do
   use PortalAPI.ChannelCase, async: true
   alias Portal.Changes
-  alias Portal.{Channels, PubSub}
+  alias Portal.{PG, PubSub}
   import Portal.Cache.Cacheable, only: [to_cache: 1]
 
   @test_user_agent "macOS/14.0 apple-client/1.3.0"
@@ -34,6 +34,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+
+    # Flush the channel's mailbox so :register is processed before returning.
+    # after_join sends `send(self(), :register)` then pushes "init"; by the time
+    # the caller receives "init" via assert_push, :register is still pending in the
+    # channel's mailbox. This ensures PG registration is complete.
+    :sys.get_state(socket.channel_pid)
 
     socket
   end
@@ -158,6 +164,76 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 pg scope crash" do
+    test "registers exactly once per key on join", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      pg_scope: scope
+    } do
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      assert [_] = :pg.get_members(scope, gateway.id)
+      assert [_] = :pg.get_members(scope, token.id)
+    end
+
+    test "re-registers with the pg scope after it crashes", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      _socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+
+      # Kill the pg scope — the supervisor restarts it, wiping all group memberships
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      Process.exit(old_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, :killed}
+
+      # While the scope is down (or restarted but channel not yet re-registered), delivery fails
+      assert {:error, :not_found} = PG.deliver(gateway.id, :ping)
+
+      # Channel receives the same :DOWN, calls reregister_pg_scope, and re-joins the group
+      Process.sleep(100)
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+    end
+
+    test "retries re-registration when the scope is still restarting", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      pg_scope: scope
+    } do
+      _socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+
+      # Stop the scope completely so it stays down (no supervisor restarts it)
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      stop_supervised!(scope)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+
+      # Channel's :DOWN handler fires — scope is nil, schedules :reregister_pg_scope retry
+      # Delivery fails while scope is down
+      assert {:error, :not_found} = PG.deliver(gateway.id, :ping)
+
+      # Start a fresh scope under the same name so the retry succeeds
+      start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+
+      # Wait for the 50ms retry + re-registration
+      Process.sleep(200)
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+    end
+  end
+
   describe "handle_info/2 :disconnect" do
     test "pushes disconnect event and closes the channel", %{
       gateway: gateway,
@@ -169,7 +245,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "init", _init_payload
 
-      Channels.send_to_gateway(gateway.id, :disconnect)
+      PG.deliver(gateway.id, :disconnect)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
@@ -186,7 +262,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "init", _init_payload
 
       # Simulate a second connection registering for the same gateway
-      Channels.register_gateway(gateway.id)
+      PG.register(gateway.id)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
@@ -2239,7 +2315,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Channels.register_client(client.id)
+      :ok = PG.register(client.id)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -2284,7 +2360,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Channels.register_client(client.id)
+      :ok = PG.register(client.id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 

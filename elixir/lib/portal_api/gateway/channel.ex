@@ -5,7 +5,7 @@ defmodule PortalAPI.Gateway.Channel do
 
   alias Portal.{
     Cache,
-    Channels,
+    PG,
     Changes.Change,
     PubSub,
     Resource,
@@ -65,10 +65,9 @@ defmodule PortalAPI.Gateway.Channel do
 
     :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
 
-    # Register for targeted messages from client channels
-    :ok = Channels.register_gateway(socket.assigns.gateway.id)
-    :ok = Channels.register_token(socket.assigns.token_id)
     :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
+
+    send(self(), :register)
 
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
@@ -374,6 +373,19 @@ defmodule PortalAPI.Gateway.Channel do
     {:stop, :shutdown, socket}
   end
 
+  # The pg scope crashed and restarted — re-register so targeted messages keep working.
+  # pid-matching against pg_scope_pid ensures we only react to the pg scope we monitored.
+  def handle_info(
+        {:DOWN, _ref, :process, pid, _reason},
+        %{assigns: %{pg_scope_pid: pid}} = socket
+      ) do
+    register(socket)
+  end
+
+  def handle_info(:register, socket) do
+    register(socket)
+  end
+
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -447,7 +459,7 @@ defmodule PortalAPI.Gateway.Channel do
         socket
       ) do
     Enum.each(client_ids, fn client_id ->
-      Channels.send_to_client(
+      PG.deliver(
         client_id,
         {:ice_candidates, socket.assigns.gateway.id, candidates}
       )
@@ -462,7 +474,7 @@ defmodule PortalAPI.Gateway.Channel do
         socket
       ) do
     Enum.each(client_ids, fn client_id ->
-      Channels.send_to_client(
+      PG.deliver(
         client_id,
         {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates}
       )
@@ -723,6 +735,27 @@ defmodule PortalAPI.Gateway.Channel do
   defp nils_last(nil, _), do: false
   defp nils_last(_, nil), do: true
   defp nils_last(a, b), do: a <= b
+
+  defp register(socket) do
+    current_pid = socket.assigns[:pg_scope_pid]
+
+    case PG.scope_pid() do
+      nil ->
+        Logger.error("Portal.PG scope is not running, retrying registration shortly")
+        Process.send_after(self(), :register, 50)
+        {:noreply, socket}
+
+      ^current_pid ->
+        # We're already registered
+        {:noreply, socket}
+
+      new_pid ->
+        Process.monitor(new_pid)
+        :ok = PG.register(socket.assigns.gateway.id)
+        :ok = PG.register(socket.assigns.token_id)
+        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+    end
+  end
 
   defmodule Database do
     import Ecto.Query

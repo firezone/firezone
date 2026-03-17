@@ -4,7 +4,7 @@ defmodule PortalAPI.Client.Channel do
 
   alias Portal.{
     Cache,
-    Channels,
+    PG,
     Changes.Change,
     Features,
     PubSub,
@@ -83,10 +83,9 @@ defmodule PortalAPI.Client.Channel do
         session_meta
       )
 
-    # Register for targeted messages from gateway channels
-    :ok = Channels.register_client(socket.assigns.client.id)
-    :ok = Channels.register_token(socket.assigns.subject.credential.id)
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
+
+    send(self(), :register)
 
     push(socket, "init", %{
       # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
@@ -383,6 +382,19 @@ defmodule PortalAPI.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
+  # The pg scope crashed and restarted — re-register so targeted messages keep working.
+  # pid-matching against pg_scope_pid ensures we only react to the pg scope we monitored.
+  def handle_info(
+        {:DOWN, _ref, :process, pid, _reason},
+        %{assigns: %{pg_scope_pid: pid}} = socket
+      ) do
+    register(socket)
+  end
+
+  def handle_info(:register, socket) do
+    register(socket)
+  end
+
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -471,7 +483,7 @@ defmodule PortalAPI.Client.Channel do
         expires_at
       )
 
-      case Channels.send_to_gateway(gateway.id, message) do
+      case PG.deliver(gateway.id, message) do
         :ok ->
           timer_ref =
             Process.send_after(
@@ -617,7 +629,7 @@ defmodule PortalAPI.Client.Channel do
         expires_at
       )
 
-      case Channels.send_to_gateway(
+      case PG.deliver(
              gateway.id,
              {:allow_access, {self(), socket_ref(socket)},
               %{
@@ -690,7 +702,7 @@ defmodule PortalAPI.Client.Channel do
         expires_at
       )
 
-      case Channels.send_to_gateway(
+      case PG.deliver(
              gateway.id,
              {:request_connection, {self(), socket_ref(socket)},
               %{
@@ -751,7 +763,7 @@ defmodule PortalAPI.Client.Channel do
           target_meta.public_key
         )
 
-      Channels.send_to_client(
+      PG.deliver(
         target_client_id,
         {:client_device_access_authorized,
          %{
@@ -812,7 +824,7 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    Channels.send_to_gateway(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
+    PG.deliver(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
     {:noreply, socket}
   end
 
@@ -821,7 +833,7 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    Channels.send_to_gateway(
+    PG.deliver(
       gateway_id,
       {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
     )
@@ -836,7 +848,7 @@ defmodule PortalAPI.Client.Channel do
       ) do
     with true <- client_to_client_enabled?(socket.assigns.subject.account),
          :ok <-
-           Channels.send_to_client(
+           PG.deliver(
              target_client_id,
              {:client_ice_candidates, socket.assigns.client.id, candidates}
            ) do
@@ -864,7 +876,7 @@ defmodule PortalAPI.Client.Channel do
       ) do
     with true <- client_to_client_enabled?(socket.assigns.subject.account),
          :ok <-
-           Channels.send_to_client(
+           PG.deliver(
              target_client_id,
              {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
            ) do
@@ -895,7 +907,7 @@ defmodule PortalAPI.Client.Channel do
         socket
       ) do
     Enum.each(gateway_ids, fn gateway_id ->
-      Channels.send_to_gateway(
+      PG.deliver(
         gateway_id,
         {:ice_candidates, socket.assigns.client.id, candidates}
       )
@@ -910,7 +922,7 @@ defmodule PortalAPI.Client.Channel do
         socket
       ) do
     Enum.each(gateway_ids, fn gateway_id ->
-      Channels.send_to_gateway(
+      PG.deliver(
         gateway_id,
         {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
       )
@@ -1517,5 +1529,26 @@ defmodule PortalAPI.Client.Channel do
   defp schedule_session_expiry(expires_at) do
     ms = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
     Process.send_after(self(), :disconnect, max(ms, 0))
+  end
+
+  defp register(socket) do
+    current_pid = socket.assigns[:pg_scope_pid]
+
+    case PG.scope_pid() do
+      nil ->
+        Logger.error("Portal.PG scope is not running, retrying registration shortly")
+        Process.send_after(self(), :register, 50)
+        {:noreply, socket}
+
+      ^current_pid ->
+        # We're already registered
+        {:noreply, socket}
+
+      new_pid ->
+        Process.monitor(new_pid)
+        :ok = PG.register(socket.assigns.client.id)
+        :ok = PG.register(socket.assigns.subject.credential.id)
+        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+    end
   end
 end

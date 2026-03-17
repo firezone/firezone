@@ -3,7 +3,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import ExUnit.CaptureLog
   alias Portal.Changes
   alias Portal.Presence
-  alias Portal.{Channels, PubSub}
+  alias Portal.{PG, PubSub}
   alias PortalAPI.Client.Channel
 
   import Portal.AccountFixtures
@@ -53,6 +53,12 @@ defmodule PortalAPI.Client.ChannelTest do
         client_version: client_version
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+
+    # Flush the channel's mailbox so :register is processed before returning.
+    # after_join sends `send(self(), :register)` then pushes "init"; by the time
+    # the caller receives "init" via assert_push, :register is still pending in the
+    # channel's mailbox. This ensures PG registration is complete.
+    :sys.get_state(socket.channel_pid)
 
     socket
   end
@@ -843,6 +849,73 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 pg scope crash" do
+    test "registers exactly once per key on join", %{
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      assert [_] = :pg.get_members(scope, client.id)
+      assert [_] = :pg.get_members(scope, subject.credential.id)
+    end
+
+    test "re-registers with the pg scope after it crashes", %{
+      client: client,
+      subject: subject
+    } do
+      _socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(client.id, :ping)
+
+      # Kill the pg scope — the supervisor restarts it, wiping all group memberships
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      Process.exit(old_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, :killed}
+
+      # While the scope is down (or restarted but channel not yet re-registered), delivery fails
+      assert {:error, :not_found} = PG.deliver(client.id, :ping)
+
+      # Channel receives the same :DOWN, calls reregister_pg_scope, and re-joins the group
+      Process.sleep(100)
+
+      assert :ok = PG.deliver(client.id, :ping)
+    end
+
+    test "retries re-registration when the scope is still restarting", %{
+      client: client,
+      subject: subject,
+      pg_scope: scope
+    } do
+      _socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(client.id, :ping)
+
+      # Stop the scope completely so it stays down (no supervisor restarts it)
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      stop_supervised!(scope)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+
+      # Channel's :DOWN handler fires — scope is nil, schedules :reregister_pg_scope retry
+      # Delivery fails while scope is down
+      assert {:error, :not_found} = PG.deliver(client.id, :ping)
+
+      # Start a fresh scope under the same name so the retry succeeds
+      start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+
+      # Wait for the 50ms retry + re-registration
+      Process.sleep(200)
+
+      assert :ok = PG.deliver(client.id, :ping)
+    end
+  end
+
   describe "handle_info/2 :disconnect" do
     test "pushes disconnect event and closes the channel", %{
       client: client,
@@ -853,7 +926,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "init", _init_payload
 
-      Channels.send_to_client(client.id, :disconnect)
+      PG.deliver(client.id, :disconnect)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
@@ -869,7 +942,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
 
       # Simulate a second connection registering for the same client
-      Channels.register_client(client.id)
+      PG.register(client.id)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
@@ -2575,7 +2648,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       :ok = Portal.Presence.Relays.connect(global_relay)
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
@@ -2639,7 +2712,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(global_relay)
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
@@ -2698,7 +2771,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2834,7 +2907,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -2890,7 +2963,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
@@ -2936,7 +3009,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -2979,8 +3052,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :ok = connect_gateway_presence(gateway2, gateway_token.id)
 
-      :ok = Channels.register_gateway(gateway1.id)
-      :ok = Channels.register_gateway(gateway2.id)
+      :ok = PG.register(gateway1.id)
+      :ok = PG.register(gateway2.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3044,7 +3117,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3092,7 +3165,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3153,7 +3226,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
       send(socket.channel_pid, %Changes.Change{
@@ -3374,7 +3447,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3688,7 +3761,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -3782,7 +3855,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway = Repo.preload(gateway, :site)
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -3885,7 +3958,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -4047,7 +4120,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -4114,7 +4187,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -4194,7 +4267,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       Phoenix.PubSub.subscribe(PubSub, Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       push(socket, "request_connection", %{
         "resource_id" => resource.id,
@@ -4245,7 +4318,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
 
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -4291,7 +4364,7 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_token = gateway_token_fixture(account: account, site: gateway.site)
       :ok = connect_gateway_presence(gateway, gateway_token.id)
       :ok = PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
-      :ok = Channels.register_gateway(gateway.id)
+      :ok = PG.register(gateway.id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
