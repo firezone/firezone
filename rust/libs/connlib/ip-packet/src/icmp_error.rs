@@ -1,4 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    fmt,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
 use anyhow::{Context as _, Result, bail};
 use etherparse::{Icmpv4Type, Icmpv6Type, LaxIpv4Slice, LaxIpv6Slice, icmpv4, icmpv6};
@@ -56,6 +59,28 @@ impl IcmpError {
             self,
             V4Unreachable(FilterProhibited) | V6Unreachable(Prohibited)
         )
+    }
+}
+
+impl fmt::Display for IcmpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IcmpError::V4Unreachable(inner) => {
+                write!(f, "Destination is unreachable (code: {})", inner.code_u8())
+            }
+            IcmpError::V4TimeExceeded(inner) => {
+                write!(f, "Time exceeded (code: {})", inner.code_u8())
+            }
+            IcmpError::V6Unreachable(inner) => {
+                write!(f, "Destination is unreachable (code: {})", inner.code_u8())
+            }
+            IcmpError::V6PacketTooBig { mtu } => {
+                write!(f, "IPv6 packet exceeds allowed MTU ({mtu})")
+            }
+            IcmpError::V6TimeExceeded(inner) => {
+                write!(f, "Time exceeded (code: {})", inner.code_u8())
+            }
+        }
     }
 }
 
