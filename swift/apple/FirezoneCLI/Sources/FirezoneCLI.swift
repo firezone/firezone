@@ -14,8 +14,7 @@ struct FirezoneCLI: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "firezone-cli",
     abstract: "Firezone headless Client",
-    version: Self.versionString,
-    subcommands: [SignIn.self, SignOut.self]
+    version: Self.versionString
   )
 
   @Option(name: .shortAndLong, help: ArgumentHelp("API URL.", visibility: .hidden))
@@ -27,11 +26,17 @@ struct FirezoneCLI: AsyncParsableCommand {
   @Option(name: .long, help: "Account slug.")
   var accountSlug: String?
 
+  @Option(name: .long, help: ArgumentHelp("Auth base URL.", visibility: .hidden))
+  var authBaseUrl: String?
+
   @Flag(name: .long, help: ArgumentHelp("Validate config and exit.", visibility: .hidden))
   var check = false
 
   @Flag(name: .long, help: ArgumentHelp("Exit after tunnel connects.", visibility: .hidden))
   var exit = false
+
+  @Flag(name: .long, help: "Sign out and remove stored token.")
+  var signOut = false
 
   private static var versionString: String {
     let version =
@@ -43,6 +48,11 @@ struct FirezoneCLI: AsyncParsableCommand {
 
   @MainActor
   mutating func run() async throws {
+    if signOut {
+      try await performSignOut()
+      return
+    }
+
     let apiURL =
       self.apiUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_API_URL"]
@@ -55,19 +65,15 @@ struct FirezoneCLI: AsyncParsableCommand {
     Log.info("API URL: \(apiURL)")
     Log.info("Internet resource: \(internetResourceEnabled)")
 
-    // Load token: env var first, then Keychain
-    let token: Token
-    if let envToken = ProcessInfo.processInfo.environment["FIREZONE_TOKEN"],
-      let parsed = Token(envToken)
-    {
-      token = parsed
-    } else if let saved = try Token.load() {
-      token = saved
-    } else {
-      throw ValidationError(
-        "No token found. Set FIREZONE_TOKEN or run 'firezone-cli sign-in' first."
-      )
-    }
+    let accountSlug =
+      self.accountSlug
+      ?? ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
+      ?? Configuration.defaultAccountSlug
+
+    let authBaseURL =
+      self.authBaseUrl
+      ?? ProcessInfo.processInfo.environment["FIREZONE_AUTH_BASE_URL"]
+      ?? Configuration.defaultAuthURL
 
     if check {
       Log.info("Configuration valid")
@@ -75,11 +81,47 @@ struct FirezoneCLI: AsyncParsableCommand {
     }
 
     #if SYSTEM_EXTENSION
-      // Check/install system extension
       try await installSystemExtensionIfNeeded()
     #endif
 
-    // Load or create VPN configuration
+    let session = try await setupVPN()
+
+    Log.info("Account slug: \(accountSlug.isEmpty ? "(empty)" : accountSlug)")
+
+    let logFilter =
+      ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"]
+      ?? Configuration.defaultLogFilter
+
+    let configuration = TunnelConfiguration(
+      apiURL: apiURL,
+      accountSlug: accountSlug,
+      logFilter: logFilter,
+      internetResourceEnabled: internetResourceEnabled
+    )
+
+    // Start tunnel: with explicit token if env var is set, otherwise let NE try keychain
+    if let envToken = ProcessInfo.processInfo.environment["FIREZONE_TOKEN"],
+      let token = Token(envToken)
+    {
+      try IPCClient.start(session: session, token: token.description, configuration: configuration)
+    } else {
+      try IPCClient.start(session: session, configuration: configuration)
+    }
+
+    Log.info("Tunnel started")
+
+    try await monitorTunnel(
+      session: session,
+      configuration: configuration,
+      authBaseURL: authBaseURL,
+      accountSlug: accountSlug
+    )
+  }
+
+  // MARK: - VPN Setup
+
+  @MainActor
+  private func setupVPN() async throws -> NETunnelProviderSession {
     let factory = NETunnelProviderManagerFactory()
     let vpnManager: VPNConfigurationManager
     if let existing = try await VPNConfigurationManager.load(using: factory) {
@@ -95,33 +137,23 @@ struct FirezoneCLI: AsyncParsableCommand {
       throw ValidationError("Failed to get VPN session")
     }
 
-    let accountSlug =
-      self.accountSlug
-      ?? ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
-      ?? Configuration.defaultAccountSlug
+    return session
+  }
 
-    Log.info("Account slug: \(accountSlug.isEmpty ? "(empty)" : accountSlug)")
+  // MARK: - Tunnel Monitoring
 
-    let logFilter =
-      ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"]
-      ?? Configuration.defaultLogFilter
-
-    let configuration = TunnelConfiguration(
-      apiURL: apiURL,
-      accountSlug: accountSlug,
-      logFilter: logFilter,
-      internetResourceEnabled: internetResourceEnabled
-    )
-
-    try IPCClient.start(session: session, token: token.description, configuration: configuration)
-    Log.info("Tunnel started")
-
-    // Bridge signals into async world via AsyncStream
+  @MainActor
+  private func monitorTunnel(
+    session: NETunnelProviderSession,
+    configuration: TunnelConfiguration,
+    authBaseURL: String,
+    accountSlug: String
+  ) async throws {
     let (signalStream, signalContinuation) = AsyncStream.makeStream(of: SignalAction.self)
-
-    // Subscribe to VPN status updates
     let shouldExitOnConnect = self.exit
     let tunnelState = TunnelState()
+
+    // Subscribe to VPN status updates
     Task {
       for await status in IPCClient.vpnStatusUpdates(session: session) {
         switch status {
@@ -134,8 +166,14 @@ struct FirezoneCLI: AsyncParsableCommand {
           if tunnelState.isRestarting {
             Log.info("Tunnel disconnected (restarting)")
           } else {
-            Self.logDisconnectReason(session: session)
-            signalContinuation.yield(.shutdown)
+            let error = await Self.fetchLastDisconnectErrorAsync(session: session)
+            if let error, !tunnelState.hasPromptedForToken, Self.isTokenNotFoundError(error) {
+              Log.info("Token not found in keychain: \(error)")
+              signalContinuation.yield(.promptForToken)
+            } else {
+              Self.logDisconnectError(error)
+              signalContinuation.yield(.shutdown)
+            }
           }
         case .connecting:
           Log.info("Tunnel connecting...")
@@ -151,13 +189,12 @@ struct FirezoneCLI: AsyncParsableCommand {
       }
     }
 
-    // Connection timeout — if not connected within 30s, clear stale token and exit
-    Task {
+    // Connection timeout
+    var timeoutTask = Task {
       try? await Task.sleep(for: .seconds(30))
+      guard !Task.isCancelled else { return }
       if session.status != .connected {
-        Log.error("Timed out waiting for tunnel to connect — clearing token")
-        Log.error("Run 'firezone-cli sign-in' to get a new token.")
-        try? Token.delete()
+        Log.error("Timed out waiting for tunnel to connect")
         signalContinuation.yield(.shutdown)
       }
     }
@@ -188,93 +225,38 @@ struct FirezoneCLI: AsyncParsableCommand {
         Log.info("Restarting tunnel...")
         tunnelState.isRestarting = true
         session.stopTunnel()
-        try IPCClient.start(
-          session: session, token: token.description, configuration: configuration)
+        try IPCClient.start(session: session, configuration: configuration)
         tunnelState.isRestarting = false
         Log.info("Tunnel restarted")
+      case .promptForToken:
+        timeoutTask.cancel()
+        tunnelState.hasPromptedForToken = true
+        let token = try promptForSignIn(authBaseURL: authBaseURL, accountSlug: accountSlug)
+        try IPCClient.start(
+          session: session, token: token.description, configuration: configuration)
+        Log.info("Tunnel started with token")
+        // Restart timeout for the new connection attempt
+        timeoutTask = Task {
+          try? await Task.sleep(for: .seconds(30))
+          guard !Task.isCancelled else { return }
+          if session.status != .connected {
+            Log.error("Timed out waiting for tunnel to connect")
+            signalContinuation.yield(.shutdown)
+          }
+        }
       }
     }
   }
 
-  /// Check the disconnect reason and log an actionable message.
-  private static func logDisconnectReason(session: NETunnelProviderSession) {
-    session.fetchLastDisconnectError { error in
-      if let nsError = error as NSError?,
-        nsError.domain == ConnlibError.errorDomain,
-        nsError.code == 0,
-        let reason = nsError.userInfo["reason"] as? String
-      {
-        Log.error("Authentication failed: \(reason)")
-        Log.error("Clearing stale token. Run 'firezone-cli sign-in' to get a new token.")
-        try? Token.delete()
-      } else if let error {
-        Log.error("Tunnel disconnected: \(error.localizedDescription)")
-      } else {
-        Log.info("Tunnel disconnected externally, shutting down...")
-      }
-    }
-  }
+  // MARK: - Sign In / Sign Out
 
-  #if SYSTEM_EXTENSION
-    @MainActor
-    private func installSystemExtensionIfNeeded() async throws {
-      let manager = SystemExtensionManager()
-      let status = try await manager.check()
-
-      switch status {
-      case .installed:
-        Log.info("System extension is up to date")
-      case .needsInstall, .needsReplacement:
-        Log.info("Installing system extension...")
-        _ = try await manager.tryInstall()
-        Log.info("System extension installed")
-      }
-    }
-  #endif
-}
-
-// MARK: - Signal handling
-
-private enum SignalAction {
-  case shutdown
-  case restart
-}
-
-@MainActor
-private final class TunnelState {
-  var isRestarting = false
-}
-
-// MARK: - Subcommands
-
-struct SignIn: AsyncParsableCommand {
-  static let configuration = CommandConfiguration(
-    commandName: "sign-in",
-    abstract: "Sign in via browser-based authentication."
-  )
-
-  @Option(name: .long, help: "Auth base URL.")
-  var authBaseUrl: String?
-
-  @Option(name: .long, help: "Account slug.")
-  var accountSlug: String?
-
-  mutating func run() async throws {
-    let authBaseURL =
-      self.authBaseUrl
-      ?? ProcessInfo.processInfo.environment["FIREZONE_AUTH_BASE_URL"]
-      ?? Configuration.defaultAuthURL
-
-    let accountSlug =
-      self.accountSlug
-      ?? ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
-
+  private func promptForSignIn(authBaseURL: String, accountSlug: String) throws -> Token {
     guard var components = URLComponents(string: authBaseURL) else {
       throw ValidationError("Invalid auth base URL: \(authBaseURL)")
     }
 
-    if let slug = accountSlug, !slug.isEmpty {
-      components.path += components.path.hasSuffix("/") ? slug : "/\(slug)"
+    if !accountSlug.isEmpty {
+      components.path += components.path.hasSuffix("/") ? accountSlug : "/\(accountSlug)"
     }
 
     var queryItems = components.queryItems ?? []
@@ -308,6 +290,10 @@ struct SignIn: AsyncParsableCommand {
     print("Enter the token from your browser: ", terminator: "")
     fflush(stdout)
 
+    // Restore default SIGINT handling so Ctrl+C works during the prompt
+    signal(SIGINT, SIG_DFL)
+    defer { signal(SIGINT, SIG_IGN) }
+
     guard let tokenString = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines),
       !tokenString.isEmpty
     else {
@@ -322,33 +308,88 @@ struct SignIn: AsyncParsableCommand {
       throw ValidationError("Invalid token")
     }
 
-    try token.save()
-    print("Token saved successfully. You can now run 'firezone-cli' to connect.")
+    return token
   }
-}
 
-struct SignOut: AsyncParsableCommand {
-  static let configuration = CommandConfiguration(
-    commandName: "sign-out",
-    abstract: "Sign out by removing the stored token."
-  )
-
-  @Flag(name: .shortAndLong, help: "Skip confirmation prompt.")
-  var force = false
-
-  mutating func run() async throws {
-    if !force {
-      print("Are you sure you want to sign out? [y/N] ", terminator: "")
-      fflush(stdout)
-      guard let answer = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines),
-        ["y", "yes"].contains(answer.lowercased())
-      else {
-        print("Cancelled.")
-        return
-      }
+  @MainActor
+  private func performSignOut() async throws {
+    let factory = NETunnelProviderManagerFactory()
+    guard let vpnManager = try await VPNConfigurationManager.load(using: factory) else {
+      throw ValidationError("No VPN configuration found")
     }
 
-    try Token.delete()
-    print("Token removed successfully.")
+    guard let session = vpnManager.session() else {
+      throw ValidationError("Failed to get VPN session")
+    }
+
+    try await IPCClient.signOut(session: session)
+    Log.info("Signed out successfully")
   }
+
+  // MARK: - Error Handling
+
+  private static func fetchLastDisconnectErrorAsync(
+    session: NETunnelProviderSession
+  ) async -> (any Error)? {
+    await withCheckedContinuation { continuation in
+      session.fetchLastDisconnectError { error in
+        continuation.resume(returning: error)
+      }
+    }
+  }
+
+  /// Returns true if the error indicates the NE could not find a token in the keychain.
+  ///
+  /// `PacketTunnelProviderError` is defined in the NE target and auto-bridged to NSError
+  /// when crossing the IPC boundary. `tokenNotFoundInKeychain` is case index 2.
+  private static func isTokenNotFoundError(_ error: (any Error)?) -> Bool {
+    guard let nsError = error as NSError? else { return false }
+    return nsError.domain.contains("PacketTunnelProviderError") && nsError.code == 2
+  }
+
+  /// Log the disconnect reason from the NE.
+  private static func logDisconnectError(_ error: (any Error)?) {
+    if let nsError = error as NSError?,
+      nsError.domain == ConnlibError.errorDomain,
+      nsError.code == 0,
+      let reason = nsError.userInfo["reason"] as? String
+    {
+      Log.error("Authentication failed: \(reason)")
+    } else if let error {
+      Log.error("Tunnel disconnected: \(error)")
+    } else {
+      Log.info("Tunnel disconnected externally, shutting down...")
+    }
+  }
+
+  #if SYSTEM_EXTENSION
+    @MainActor
+    private func installSystemExtensionIfNeeded() async throws {
+      let manager = SystemExtensionManager()
+      let status = try await manager.check()
+
+      switch status {
+      case .installed:
+        Log.info("System extension is up to date")
+      case .needsInstall, .needsReplacement:
+        Log.info("Installing system extension...")
+        _ = try await manager.tryInstall()
+        Log.info("System extension installed")
+      }
+    }
+  #endif
+}
+
+// MARK: - Signal handling
+
+private enum SignalAction {
+  case shutdown
+  case restart
+  case promptForToken
+}
+
+@MainActor
+private final class TunnelState {
+  var isRestarting = false
+  var hasPromptedForToken = false
 }
