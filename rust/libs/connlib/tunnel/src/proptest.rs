@@ -11,7 +11,10 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+use crate::{
+    client::{CidrResource, DnsResource, InternetResource, Resource},
+    messages::{Filter, PortRange},
+};
 
 pub fn resource(
     sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
@@ -34,17 +37,18 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
         domain_name(2..4),
         address_description(),
         ip_stack(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, ip_stack, sites)| DnsResource {
+            move |(id, name, address, address_description, ip_stack, filters, sites)| DnsResource {
                 id,
                 address: address.to_string(),
                 name,
                 sites,
                 address_description,
                 ip_stack,
-                filters: Vec::default(),
+                filters,
             },
         )
 }
@@ -58,16 +62,17 @@ pub fn cidr_resource(
         resource_name(),
         ip_network,
         address_description(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| CidrResource {
+            move |(id, name, address, address_description, filters, sites)| CidrResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
-                filters: Vec::default(),
+                filters,
             },
         )
 }
@@ -79,6 +84,27 @@ pub fn internet_resource(
         name: "Internet Resource".to_string(),
         id,
         sites,
+    })
+}
+
+pub fn filters() -> impl Strategy<Value = Vec<Filter>> {
+    collection::vec(filter(), 0..3)
+}
+
+fn filter() -> impl Strategy<Value = Filter> {
+    prop_oneof![
+        Just(Filter::Icmp),
+        port_range().prop_map(Filter::Udp),
+        port_range().prop_map(Filter::Tcp)
+    ]
+}
+
+fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
     })
 }
 
