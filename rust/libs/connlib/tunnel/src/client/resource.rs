@@ -10,10 +10,13 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
 use serde::Deserialize;
 
-use crate::messages::client::{
-    ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
-    ResourceDescriptionDynamicDevicePool, ResourceDescriptionInternet,
-    ResourceDescriptionStaticDevicePool,
+use crate::messages::{
+    Filter,
+    client::{
+        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
+        ResourceDescriptionDynamicDevicePool, ResourceDescriptionInternet,
+        ResourceDescriptionStaticDevicePool,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,6 +43,8 @@ pub struct DnsResource {
     pub sites: Vec<Site>,
 
     pub ip_stack: IpStack,
+
+    pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -56,6 +61,8 @@ pub struct CidrResource {
 
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
+
+    pub filters: Vec<Filter>,
 }
 
 /// Description of an internet resource.
@@ -308,6 +315,7 @@ impl CidrResource {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            filters: resource.filters,
         }
     }
 
@@ -370,6 +378,7 @@ impl DnsResource {
             address_description: resource.address_description,
             sites: resource.sites,
             ip_stack: resource.ip_stack.unwrap_or(IpStack::Dual),
+            filters: resource.filters,
         }
     }
 

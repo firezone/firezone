@@ -44,6 +44,7 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
                 sites,
                 address_description,
                 ip_stack,
+                filters: Vec::default(),
             },
         )
 }
@@ -66,6 +67,7 @@ pub fn cidr_resource(
                 name,
                 sites,
                 address_description,
+                filters: Vec::default(),
             },
         )
 }

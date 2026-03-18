@@ -2336,6 +2336,7 @@ mod proptests {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            filters: resource.filters,
         };
 
         client_state.add_resource(Resource::Cidr(dns_as_cidr_resource.clone()), Instant::now());

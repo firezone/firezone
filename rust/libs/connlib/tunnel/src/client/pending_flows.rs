@@ -231,6 +231,7 @@ mod tests {
             name: "localhost-ipv4".to_owned(),
             address_description: None,
             sites: vec![site1()],
+            filters: Vec::default(),
         })
     }
 
@@ -241,6 +242,7 @@ mod tests {
             name: "localhost-ipv6".to_owned(),
             address_description: None,
             sites: vec![site1()],
+            filters: Vec::default(),
         })
     }
 

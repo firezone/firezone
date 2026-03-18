@@ -229,7 +229,7 @@ pub struct RelaysPresence {
     pub connected: Vec<Relay>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum Filter {
     Udp(PortRange),
@@ -237,7 +237,7 @@ pub enum Filter {
     Icmp,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PortRange {
     // TODO: we can use a custom deserializer
     // or maybe change the control plane to use start and end would suffice

@@ -1,6 +1,8 @@
 //! Client related messages that are needed within connlib
 
-use crate::messages::{IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey};
+use crate::messages::{
+    Filter, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey,
+};
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -25,6 +27,9 @@ pub struct ResourceDescriptionDns {
     /// The IP stack supported by this resource.
     #[serde(default)]
     pub ip_stack: Option<IpStack>,
+
+    #[serde(default)]
+    pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -42,6 +47,9 @@ pub struct ResourceDescriptionCidr {
     pub address_description: Option<String>,
     #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
+
+    #[serde(default)]
+    pub filters: Vec<Filter>,
 }
 
 fn internet_resource_name() -> String {
