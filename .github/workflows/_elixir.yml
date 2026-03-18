@@ -135,6 +135,7 @@ jobs:
             https://validator.swagger.io/validator/debug)
           echo "$result"
           echo "$result" | jq -e '.schemaValidationMessages | length == 0'
+
 # TODO: IDP-REFACTOR: Re-enable
 # acceptance-test:
 #   name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
