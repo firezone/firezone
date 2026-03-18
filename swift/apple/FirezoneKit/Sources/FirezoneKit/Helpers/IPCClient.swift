@@ -59,7 +59,7 @@ public enum IPCClient {
   }
 
   @MainActor
-  static func signOut(session: NETunnelProviderSession) async throws {
+  public static func signOut(session: NETunnelProviderSession) async throws {
     let message = ProviderMessage.signOut
     _ = try await sendProviderMessage(session: session, message: message)
 
