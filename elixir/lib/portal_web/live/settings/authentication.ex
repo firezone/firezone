@@ -349,8 +349,9 @@ defmodule PortalWeb.Settings.Authentication do
   defp verification_start_error_message({404, _body}),
     do: "Discovery document not found (HTTP 404). Please verify the Discovery Document URI."
 
-  defp verification_start_error_message({status, _body}) when status >= 500,
-    do: "Identity provider is unavailable (HTTP #{status}). Please try again shortly."
+  defp verification_start_error_message({status, _body})
+       when is_integer(status) and status >= 500,
+       do: "Identity provider is unavailable (HTTP #{status}). Please try again shortly."
 
   defp verification_start_error_message({status, _body}) when is_integer(status),
     do:
@@ -369,8 +370,14 @@ defmodule PortalWeb.Settings.Authentication do
   defp verification_start_error_message(%Req.TransportError{}),
     do: "Unable to fetch discovery document due to a network error."
 
-  defp verification_start_error_message(reason) when is_binary(reason), do: reason
-  defp verification_start_error_message(_reason), do: "Failed to start verification."
+  defp verification_start_error_message({:unexpected_end, _}),
+    do:
+      "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+
+  defp verification_start_error_message({tag, _, _})
+       when tag in [:invalid_byte, :unexpected_sequence],
+       do:
+         "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
     schema = changeset.data.__struct__

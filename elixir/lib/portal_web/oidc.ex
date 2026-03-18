@@ -260,10 +260,6 @@ defmodule PortalWeb.OIDC do
     )
   end
 
-  def build_verification_uri(type, _config, _verifier, _state_token) do
-    {:error, "Unknown verification type: #{type}"}
-  end
-
   @doc """
   Returns the OIDC callback URL. Public so controllers can use it without
   duplicating the endpoint configuration.

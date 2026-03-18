@@ -3476,7 +3476,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "discovery document"
+      assert html =~ "Discovery document contains invalid JSON"
     end
 
     test "handles JSON with invalid byte sequences", %{
@@ -3506,7 +3506,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verify-button") |> render_click()
 
       html = render(lv)
-      assert html =~ "Failed to start verification."
+      assert html =~ "Discovery document contains invalid JSON"
     end
 
     test "handles HTTP 401 error", %{
