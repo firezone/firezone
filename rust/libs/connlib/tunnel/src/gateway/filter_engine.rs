@@ -1,7 +1,7 @@
 use ip_packet::{Protocol, UnsupportedProtocol};
 use rangemap::RangeInclusiveSet;
 
-use crate::messages::gateway::{Filter, Filters};
+use crate::messages::{Filter, gateway::Filters};
 
 #[derive(Debug)]
 pub(crate) enum FilterEngine {

@@ -699,7 +699,7 @@ mod tests {
 
     use crate::{
         gateway::{RoutingError, nat_table},
-        messages::gateway::{Filter, PortRange, ResourceDescriptionCidr},
+        messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
     };
 
     #[test]
@@ -1401,9 +1401,8 @@ mod tests {
 mod proptests {
     use super::tests::*;
     use super::*;
-    use crate::messages::gateway::{
-        Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
-    };
+    use crate::messages::gateway::{ResourceDescription, ResourceDescriptionCidr};
+    use crate::messages::{Filter, PortRange};
     use crate::proptest::*;
     use ip_packet::make::{TcpFlags, icmp_request_packet, tcp_packet, udp_packet};
     use itertools::Itertools as _;
