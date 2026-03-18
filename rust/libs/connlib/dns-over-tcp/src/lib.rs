@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod client;
 mod codec;
 mod server;
