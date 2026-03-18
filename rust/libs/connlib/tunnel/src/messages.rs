@@ -241,10 +241,10 @@ pub enum Filter {
 pub struct PortRange {
     // TODO: we can use a custom deserializer
     // or maybe change the control plane to use start and end would suffice
-    #[serde(default = "max_port")]
-    pub port_range_end: u16,
     #[serde(default = "min_port")]
     pub port_range_start: u16,
+    #[serde(default = "max_port")]
+    pub port_range_end: u16,
 }
 
 // Note: these 2 functions are needed since serde doesn't yet support default_value
