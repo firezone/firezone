@@ -17,6 +17,8 @@ defmodule PortalWeb.Settings.Authentication do
 
   require Logger
 
+  @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+
   @context_options [
     {"Client Applications and Admin Portal", "clients_and_portal"},
     {"Client Applications Only", "clients_only"},
@@ -371,13 +373,16 @@ defmodule PortalWeb.Settings.Authentication do
     do: "Unable to fetch discovery document due to a network error."
 
   defp verification_start_error_message({:unexpected_end, _}),
-    do:
-      "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+    do: @invalid_json_error_message
 
   defp verification_start_error_message({tag, _, _})
        when tag in [:invalid_byte, :unexpected_sequence],
-       do:
-         "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+       do: @invalid_json_error_message
+
+  defp verification_start_error_message(reason) do
+    Logger.error("Unhandled verification start error", reason: inspect(reason))
+    "Failed to start verification."
+  end
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
     schema = changeset.data.__struct__
