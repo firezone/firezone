@@ -219,7 +219,7 @@ impl StubPortal {
                     id: r.id,
                     address: r.address,
                     name: r.name.clone(),
-                    filters: Vec::new(),
+                    filters: r.filters.clone(),
                 },
             ))
         });
@@ -227,7 +227,7 @@ impl StubPortal {
             gateway::ResourceDescription::Dns(gateway::ResourceDescriptionDns {
                 id: r.id,
                 name: r.name.clone(),
-                filters: Vec::new(),
+                filters: r.filters.clone(),
                 address: r.address.clone(),
             })
         });
