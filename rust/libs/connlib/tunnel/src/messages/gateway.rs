@@ -13,8 +13,6 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
 };
 
-pub type Filters = Vec<Filter>;
-
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionDns {
@@ -27,7 +25,7 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    pub filters: Filters,
+    pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -42,7 +40,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
-    pub filters: Filters,
+    pub filters: Vec<Filter>,
 }
 
 /// Description of an Internet resource.

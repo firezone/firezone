@@ -1,7 +1,7 @@
 use ip_packet::{Protocol, UnsupportedProtocol};
 use rangemap::RangeInclusiveSet;
 
-use crate::messages::{Filter, gateway::Filters};
+use crate::messages::Filter;
 
 #[derive(Debug)]
 pub(crate) enum FilterEngine {
@@ -40,7 +40,7 @@ impl FilterEngine {
     }
 
     pub(crate) fn with_filters<'a>(
-        filters: impl Iterator<Item = &'a Filters> + Clone,
+        filters: impl Iterator<Item = &'a Vec<Filter>> + Clone,
     ) -> FilterEngine {
         // Empty filters means permit all
         if filters.clone().any(|f| f.is_empty()) {

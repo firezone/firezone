@@ -16,7 +16,7 @@ use crate::gateway::filter_engine::FilterEngine;
 use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::gateway::unroutable_packet::UnroutablePacket;
-use crate::messages::gateway::Filters;
+use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
 use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
@@ -521,14 +521,14 @@ enum ResourceOnGateway {
     Cidr {
         name: String,
         network: IpNetwork,
-        filters: Filters,
+        filters: Vec<Filter>,
         expires_at: Option<DateTime<Utc>>,
     },
     Dns {
         name: String,
         address: String,
         domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
-        filters: Filters,
+        filters: Vec<Filter>,
         expires_at: Option<DateTime<Utc>>,
     },
     Internet {
@@ -590,8 +590,8 @@ impl ResourceOnGateway {
         }
     }
 
-    fn filters(&self) -> &Filters {
-        const EMPTY: &Filters = &Filters::new();
+    fn filters(&self) -> &Vec<Filter> {
+        const EMPTY: &Vec<Filter> = &Vec::new();
 
         match self {
             ResourceOnGateway::Cidr { filters, .. } => filters,
@@ -677,7 +677,7 @@ fn insert_filters<'a>(
     filter_store: &mut IpNetworkTable<(FilterEngine, ResourceId)>,
     ip: IpNetwork,
     id: ResourceId,
-    filters: impl Iterator<Item = &'a Filters> + Clone,
+    filters: impl Iterator<Item = &'a Vec<Filter>> + Clone,
 ) {
     let filter_engine = FilterEngine::with_filters(filters);
 
@@ -1474,7 +1474,7 @@ mod proptests {
         #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=10))] protocol_config: Vec<
-            (Filters, Protocol),
+            (Vec<Filter>, Protocol),
         >,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
@@ -1532,7 +1532,7 @@ mod proptests {
         #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
         #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
-        #[strategy(filters_with_rejected_protocol())] protocol_config: (Filters, Protocol),
+        #[strategy(filters_with_rejected_protocol())] protocol_config: (Vec<Filter>, Protocol),
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
@@ -1587,8 +1587,8 @@ mod proptests {
         #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(non_overlapping_non_empty_filters_with_allowed_protocol())] protocol_config: (
-            (Filters, Protocol),
-            (Filters, Protocol),
+            (Vec<Filter>, Protocol),
+            (Vec<Filter>, Protocol),
         ),
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
@@ -1668,7 +1668,7 @@ mod proptests {
     }
 
     fn cidr_resources(
-        filters: impl Strategy<Value = (Filters, Protocol)>,
+        filters: impl Strategy<Value = (Vec<Filter>, Protocol)>,
         num: usize,
     ) -> impl Strategy<Value = Vec<(ResourceDescription, Protocol, IpAddr)>> {
         let ids = collection::btree_set(resource_id(), num);
@@ -1697,7 +1697,7 @@ mod proptests {
         any_ip_network(8).prop_flat_map(|net| host(net).prop_map(move |host| (net, host)))
     }
 
-    fn filters_with_allowed_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
+    fn filters_with_allowed_protocol() -> impl Strategy<Value = (Vec<Filter>, Protocol)> {
         filters().prop_flat_map(|filters| {
             if filters.is_empty() {
                 any::<Protocol>().prop_map(|p| (vec![], p)).boxed()
@@ -1713,7 +1713,7 @@ mod proptests {
     }
 
     fn non_overlapping_non_empty_filters_with_allowed_protocol()
-    -> impl Strategy<Value = ((Filters, Protocol), (Filters, Protocol))> {
+    -> impl Strategy<Value = ((Vec<Filter>, Protocol), (Vec<Filter>, Protocol))> {
         filters_with_allowed_protocol()
             .prop_filter("empty filters accepts every packet", |(f, _)| !f.is_empty())
             .prop_flat_map(|(filters_a, protocol_a)| {
@@ -1734,7 +1734,7 @@ mod proptests {
             })
     }
 
-    fn filters_with_rejected_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
+    fn filters_with_rejected_protocol() -> impl Strategy<Value = (Vec<Filter>, Protocol)> {
         filters()
             .prop_filter("empty filters accepts every packet", |f| !f.is_empty())
             .prop_flat_map(|f| {
@@ -1773,7 +1773,7 @@ mod proptests {
             })
     }
 
-    fn gaps(filters: Filters, protocol: ProtocolKind) -> Vec<RangeInclusive<u16>> {
+    fn gaps(filters: Vec<Filter>, protocol: ProtocolKind) -> Vec<RangeInclusive<u16>> {
         filters
             .into_iter()
             .filter_map(|f| match (f, protocol) {
@@ -1808,7 +1808,7 @@ mod proptests {
         }
     }
 
-    fn filters_in_gaps(filters: Filters) -> impl Strategy<Value = Filters> {
+    fn filters_in_gaps(filters: Vec<Filter>) -> impl Strategy<Value = Vec<Filter>> {
         let contains_icmp_filter = filters.contains(&Filter::Icmp);
 
         let ranges_without_tcp_filter = gaps(filters.clone(), ProtocolKind::Tcp);
@@ -1830,7 +1830,7 @@ mod proptests {
     fn filter_from_vec(
         ranges: Vec<RangeInclusive<u16>>,
         empty_protocol: ProtocolKind,
-    ) -> impl Strategy<Value = Filters> + Clone {
+    ) -> impl Strategy<Value = Vec<Filter>> + Clone {
         if ranges.is_empty() {
             return Just(vec![]).boxed();
         }
@@ -1847,7 +1847,7 @@ mod proptests {
         .boxed()
     }
 
-    fn filters() -> impl Strategy<Value = Filters> {
+    fn filters() -> impl Strategy<Value = Vec<Filter>> {
         collection::vec(
             prop_oneof![
                 Just(Filter::Icmp),
