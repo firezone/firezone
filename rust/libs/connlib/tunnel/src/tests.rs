@@ -25,6 +25,8 @@ mod dns_records;
 mod dns_server_resource;
 mod flux_capacitor;
 mod icmp_error_hosts;
+mod ref_client;
+mod ref_gateway;
 mod reference;
 mod sim_client;
 mod sim_gateway;

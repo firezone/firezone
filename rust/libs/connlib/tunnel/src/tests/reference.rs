@@ -1,7 +1,7 @@
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::{IcmpErrorHosts, icmp_error_hosts};
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
+    composite_strategy::CompositeStrategy, ref_client::*, ref_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::proptest::{domain_label, host_v4, host_v6};
@@ -24,7 +24,7 @@ use std::{
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
