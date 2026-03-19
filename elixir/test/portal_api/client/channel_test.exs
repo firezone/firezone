@@ -262,7 +262,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, client: client, subject: subject} do
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
       presence = Presence.Clients.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
@@ -373,7 +373,7 @@ defmodule PortalAPI.Client.ChannelTest do
       internet_resource: internet_resource,
       offline_resource: offline_resource
     } do
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{
         resources: resources,
@@ -705,7 +705,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
 
     test "relay credentials are stable across reconnects", %{client: client, subject: subject} do
-      _relay = connect_relay(%{lat: 37.0, lon: -120.0})
+      connect_relay(%{lat: 37.0, lon: -120.0})
 
       public_key = Portal.ClientFixtures.generate_public_key()
 
@@ -758,7 +758,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
       # Consume the init message
       assert_push "init", %{relays: []}
 
@@ -866,7 +866,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
       assert_push "init", _init_payload
 
       assert :ok = PG.deliver(client.id, :ping)
@@ -891,7 +891,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       pg_scope: scope
     } do
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
       assert_push "init", _init_payload
 
       assert :ok = PG.deliver(client.id, :ping)
@@ -914,6 +914,20 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert :ok = PG.deliver(client.id, :ping)
     end
+
+    test "ignores :register when already registered to the current scope", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # Send :register while already registered — scope pid matches, noop
+      send(socket.channel_pid, :register)
+      :sys.get_state(socket.channel_pid)
+
+      assert :ok = PG.deliver(client.id, :ping)
+    end
   end
 
   describe "handle_info/2 :disconnect" do
@@ -922,7 +936,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       Process.flag(:trap_exit, true)
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", _init_payload
 
@@ -937,7 +951,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       Process.flag(:trap_exit, true)
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", _init_payload
 
@@ -1035,6 +1049,23 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert payload.id == resource.id
     end
+
+    test "sends resource_deleted when a resource is no longer accessible", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # Clear all policies from cache so no resources remain accessible
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | cache: %{state.assigns.cache | policies: %{}}}}
+      end)
+
+      send(socket.channel_pid, :recompute_authorized_resources)
+
+      assert_push "resource_deleted", _
+    end
   end
 
   describe "handle_info/2 for presence events" do
@@ -1049,7 +1080,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -1081,7 +1112,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -1111,7 +1142,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Connect relay BEFORE client joins so it's included in init
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: [relay_view1, relay_view2]}
       assert relay1.id == relay_view1.id
@@ -1134,7 +1165,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       # Connect relay1
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
@@ -1193,7 +1224,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       relay = connect_relay(%{lat: 37.0, lon: -120.0})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: [_, _]}
 
@@ -1248,7 +1279,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Sydney, Australia (~13700km from Houston)
       relay_sydney = connect_relay(%{lat: -33.87, lon: 151.21})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       # Should receive the 2 closest relays (Kansas and Mexico), not Sydney
       assert_push "init", %{relays: relays}
@@ -1297,7 +1328,7 @@ defmodule PortalAPI.Client.ChannelTest do
           connect_relay(%{lat: lat, lon: lon})
         end)
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: relays}
 
@@ -1335,7 +1366,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Create relay without location (nil lat/lon)
       relay_without_location = connect_relay(%{lat: nil, lon: nil})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: relays}
 
@@ -1367,7 +1398,7 @@ defmodule PortalAPI.Client.ChannelTest do
       _relay1 = connect_relay(%{lat: 37.7749, lon: -122.4194})
       _relay2 = connect_relay(%{lat: 37.7749, lon: -122.4194})
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       # Should still receive 2 relays (randomly selected)
       assert_push "init", %{relays: relays}
@@ -1383,7 +1414,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Set debounce to 10ms so the test is fast but we can still observe coalescing
       Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
 
-      _socket = join_channel(client, subject)
+      join_channel(client, subject)
 
       assert_push "init", %{relays: []}
 
@@ -1405,6 +1436,41 @@ defmodule PortalAPI.Client.ChannelTest do
       # After debounce, should receive exactly one update reflecting final state
       # Since the relay is online with the same stamp_secret, no disconnects should be reported
       refute_push "relays_presence", %{disconnected_ids: [_]}, 200
+    end
+
+    test "load_balance_relays defers relays with lat but nil lon", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: 29.69,
+              remote_ip_location_lon: -95.90
+          }
+      }
+
+      client = client_fixture(account: account, actor: actor)
+
+      # Two relays with full coordinates — these fill the 2 available slots
+      relay_near_1 = connect_relay(%{lat: 38.0, lon: -97.0})
+      relay_near_2 = connect_relay(%{lat: 20.59, lon: -100.39})
+
+      # Relay with lat but nil lon — exercises {_, nil} -> {nil, relay} branch;
+      # treated as having no location and deferred behind relays with full coords
+      relay_nil_lon = connect_relay(%{lat: 1.0, lon: nil})
+
+      join_channel(client, subject)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      assert relay_near_1.id in relay_ids
+      assert relay_near_2.id in relay_ids
+      refute relay_nil_lon.id in relay_ids
     end
   end
 
@@ -2482,6 +2548,232 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :client_ice_candidates" do
+    test "pushes client_ice_candidates to the socket", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1", "cand2"]
+      source_client_id = Ecto.UUID.generate()
+
+      send(socket.channel_pid, {:client_ice_candidates, source_client_id, candidates})
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "client_ice_candidates", payload
+      assert payload == %{client_id: source_client_id, candidates: candidates}
+    end
+  end
+
+  describe "handle_info/2 :invalidate_client_ice_candidates" do
+    test "pushes invalidate_client_ice_candidates to the socket", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1", "cand2"]
+      source_client_id = Ecto.UUID.generate()
+
+      send(socket.channel_pid, {:invalidate_client_ice_candidates, source_client_id, candidates})
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "invalidate_client_ice_candidates", payload
+      assert payload == %{client_id: source_client_id, candidates: candidates}
+    end
+  end
+
+  describe "handle_in/3 new_gateway_ice_candidates" do
+    test "forwards ice candidates to the gateway via PG", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1", "cand2"]
+
+      gateway = Repo.preload(gateway, :site)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      :ok = PG.register(gateway.id)
+
+      push(socket, "new_gateway_ice_candidates", %{
+        "candidates" => candidates,
+        "gateway_id" => gateway.id
+      })
+
+      assert_receive {:ice_candidates, client_id, ^candidates}, 200
+      assert client_id == client.id
+    end
+  end
+
+  describe "handle_in/3 invalidate_gateway_ice_candidates" do
+    test "forwards ice candidate invalidations to the gateway via PG", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1", "cand2"]
+
+      gateway = Repo.preload(gateway, :site)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      :ok = PG.register(gateway.id)
+
+      push(socket, "invalidate_gateway_ice_candidates", %{
+        "candidates" => candidates,
+        "gateway_id" => gateway.id
+      })
+
+      assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
+      assert client_id == client.id
+    end
+  end
+
+  describe "handle_in/3 new_client_ice_candidates" do
+    test "forwards ice candidates to target client when c2c is enabled", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1", "cand2"]
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+
+      :ok = PG.register(target_client.id)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => candidates,
+        "client_id" => target_client.id
+      })
+
+      assert_receive {:client_ice_candidates, sending_client_id, ^candidates}, 200
+      assert sending_client_id == client.id
+    end
+
+    test "does nothing when c2c is globally disabled", %{
+      client: client,
+      subject: subject
+    } do
+      # Global feature off (no enable_feature call) — account already has client_to_client: true
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1"]
+      target_client_id = Ecto.UUID.generate()
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => candidates,
+        "client_id" => target_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "does nothing when target client is offline", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      # Do NOT PG.register target_client.id
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+  end
+
+  describe "handle_in/3 invalidate_client_ice_candidates" do
+    test "forwards invalidations to target client when c2c is enabled", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      candidates = ["cand1", "cand2"]
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      :ok = PG.register(target_client.id)
+
+      push(socket, "invalidate_client_ice_candidates", %{
+        "candidates" => candidates,
+        "client_id" => target_client.id
+      })
+
+      assert_receive {:invalidate_client_ice_candidates, sending_client_id, ^candidates}, 200
+      assert sending_client_id == client.id
+    end
+
+    test "pushes client_ice_candidate_error :disabled when c2c is globally disabled", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      target_client_id = Ecto.UUID.generate()
+
+      push(socket, "invalidate_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client_id
+      })
+
+      assert_push "client_ice_candidate_error", %{
+        client_id: ^target_client_id,
+        reason: :disabled
+      }
+    end
+
+    test "pushes client_ice_candidate_error :offline when target client is not in PG", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      # Do NOT PG.register target_client.id
+      target_client_id = target_client.id
+
+      push(socket, "invalidate_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client_id
+      })
+
+      assert_push "client_ice_candidate_error", %{
+        client_id: ^target_client_id,
+        reason: :offline
+      }
+    end
+  end
+
   describe "handle_in/3 create_flow" do
     test "returns error when resource is not found", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
@@ -3272,6 +3564,113 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute_push "flow_creation_failed", _
     end
+
+    test "returns :offline when gateway is in presence but not registered in PG", %{
+      client: client,
+      subject: subject,
+      gateway: gateway,
+      gateway_token: gateway_token,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      gateway = Repo.preload(gateway, :site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      # Do NOT PG.register(gateway.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_push "flow_creation_failed", %{reason: :offline, resource_id: resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "returns :forbidden with violated_properties when all policies are violated", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | cache: %{state.assigns.cache | policies: %{}}}}
+      end)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_push "flow_creation_failed", %{
+        reason: :forbidden,
+        resource_id: resource_id,
+        violated_properties: _
+      }
+
+      assert resource_id == resource.id
+    end
+
+    test "returns :version_mismatch when client version string is invalid", %{
+      client: client,
+      subject: subject,
+      gateway: gateway,
+      gateway_token: gateway_token,
+      dns_resource: resource
+    } do
+      # Join with a valid version so recompute_authorized_resources doesn't crash,
+      # then replace only the client_version assign with an invalid string.
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | client_version: "not-a-semver"}}
+      end)
+
+      gateway = Repo.preload(gateway, :site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_push "flow_creation_failed", %{reason: :version_mismatch, resource_id: resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "returns :version_mismatch when gateway has no version", %{
+      account: account,
+      client: client,
+      subject: subject,
+      site: site,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_version: nil
+        )
+        |> Repo.preload(:site)
+
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_push "flow_creation_failed", %{reason: :version_mismatch, resource_id: resource_id}
+      assert resource_id == resource.id
+    end
   end
 
   describe "handle_in/3 prepare_connection" do
@@ -3659,6 +4058,22 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_reply ref, :ok, %{}
     end
+
+    test "returns :forbidden with violated_properties when all policies are violated", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | cache: %{state.assigns.cache | policies: %{}}}}
+      end)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, %{reason: :forbidden, violated_properties: _}
+    end
   end
 
   describe "handle_in/3 reuse_connection" do
@@ -3989,6 +4404,53 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:allow_access, _refs, _payload}
     end
+
+    test "returns :offline when gateway is in presence but not registered in PG", %{
+      client: client,
+      subject: subject,
+      gateway: gateway,
+      gateway_token: gateway_token,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      gateway = Repo.preload(gateway, :site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      # Do NOT PG.register(gateway.id)
+
+      ref =
+        push(socket, "reuse_connection", %{
+          "resource_id" => resource.id,
+          "gateway_id" => gateway.id,
+          "payload" => "DNS_Q"
+        })
+
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns :forbidden with violated_properties when all policies are violated", %{
+      client: client,
+      subject: subject,
+      gateway: gateway,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | cache: %{state.assigns.cache | policies: %{}}}}
+      end)
+
+      ref =
+        push(socket, "reuse_connection", %{
+          "resource_id" => resource.id,
+          "gateway_id" => gateway.id,
+          "payload" => "DNS_Q"
+        })
+
+      assert_reply ref, :error, %{reason: :forbidden, violated_properties: _}
+    end
   end
 
   describe "handle_in/3 request_connection" do
@@ -4278,6 +4740,55 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:request_connection, _refs, _payload}
     end
+
+    test "returns :offline when gateway is in presence but not registered in PG", %{
+      client: client,
+      subject: subject,
+      gateway: gateway,
+      gateway_token: gateway_token,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      gateway = Repo.preload(gateway, :site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      # Do NOT PG.register(gateway.id)
+
+      ref =
+        push(socket, "request_connection", %{
+          "resource_id" => resource.id,
+          "gateway_id" => gateway.id,
+          "client_payload" => "RTC_SD",
+          "client_preshared_key" => "PSK"
+        })
+
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns :forbidden with violated_properties when all policies are violated", %{
+      client: client,
+      subject: subject,
+      gateway: gateway,
+      dns_resource: resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | cache: %{state.assigns.cache | policies: %{}}}}
+      end)
+
+      ref =
+        push(socket, "request_connection", %{
+          "resource_id" => resource.id,
+          "gateway_id" => gateway.id,
+          "client_payload" => "RTC_SD",
+          "client_preshared_key" => "PSK"
+        })
+
+      assert_reply ref, :error, %{reason: :forbidden, violated_properties: _}
+    end
   end
 
   describe "handle_in/3 broadcast_ice_candidates" do
@@ -4445,7 +4956,7 @@ defmodule PortalAPI.Client.ChannelTest do
       initiating_socket = join_channel(client, subject)
       assert_push "init", _
 
-      _target_socket = join_channel(target_client, target_subject)
+      join_channel(target_client, target_subject)
       assert_push "init", _
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
@@ -4488,7 +4999,7 @@ defmodule PortalAPI.Client.ChannelTest do
       initiating_socket = join_channel(client, subject)
       assert_push "init", _
 
-      _target_socket = join_channel(target_client, target_subject)
+      join_channel(target_client, target_subject)
       assert_push "init", _
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
@@ -4540,7 +5051,7 @@ defmodule PortalAPI.Client.ChannelTest do
       initiating_socket = join_channel(client, subject)
       assert_push "init", _
 
-      _other_socket = join_channel(other_client, other_subject)
+      join_channel(other_client, other_subject)
       assert_push "init", _
 
       other_ip = Portal.Types.INET.to_string(other_client.ipv4_address.address)
@@ -4548,6 +5059,21 @@ defmodule PortalAPI.Client.ChannelTest do
       push(initiating_socket, "request_device_access", %{"ipv4" => other_ip})
 
       assert_push "client_device_access_denied", %{ipv4: ^other_ip, reason: :forbidden}
+    end
+
+    test "does nothing for invalid IPv4 addresses", %{
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # "::1" is an IPv6 address, not IPv4 — triggers {:error, :invalid_ipv4}
+      push(socket, "request_device_access", %{"ipv4" => "::1"})
+
+      refute_push "client_device_access_denied", _
     end
   end
 
@@ -4557,6 +5083,96 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: _, relays: _, interface: _}
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
+    end
+  end
+
+  describe "handle_info/2 for StaticDevicePoolMember changes" do
+    test "tracks pool member insert in cache when resource is connectable", %{
+      account: account,
+      client: client,
+      subject: subject,
+      group: group
+    } do
+      pool_resource = static_device_pool_resource_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: %Portal.StaticDevicePoolMember{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          resource_id: pool_resource.id,
+          client_id: target_client.id
+        }
+      })
+
+      state = :sys.get_state(socket.channel_pid)
+      assert state.assigns.cache.connectable_devices[target_client.id]
+    end
+
+    test "removes pool member from cache on delete without pushing denied", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # Delete a member that was never in connectable_devices — ipv4 is nil, no push
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :delete,
+        old_struct: %Portal.StaticDevicePoolMember{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          resource_id: Ecto.UUID.generate(),
+          client_id: Ecto.UUID.generate()
+        }
+      })
+
+      :sys.get_state(socket.channel_pid)
+      refute_push "client_device_access_denied", _
+    end
+
+    test "pushes client_device_access_denied when a tracked authorized member is deleted", %{
+      account: account,
+      client: client,
+      subject: subject,
+      group: group
+    } do
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+
+      pool_resource =
+        static_device_pool_resource_fixture(account: account, clients: [target_client])
+
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      # connectable_devices is populated from DB during join for the static pool resource
+      :sys.get_state(socket.channel_pid)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :delete,
+        old_struct: %Portal.StaticDevicePoolMember{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          resource_id: pool_resource.id,
+          client_id: target_client.id
+        }
+      })
+
+      assert_push "client_device_access_denied", %{reason: :forbidden}
     end
   end
 
@@ -4654,6 +5270,31 @@ defmodule PortalAPI.Client.ChannelTest do
         end)
 
       refute log =~ "Failed to create policy authorization"
+    end
+
+    test "logs exception when an unexpected error occurs", %{subject: subject} do
+      # nil does not match %Subject{} in Portal.Safe.scoped/2, raising FunctionClauseError
+      attrs = %{
+        id: Ecto.UUID.generate(),
+        token_id: nil,
+        policy_id: Ecto.UUID.generate(),
+        client_id: Ecto.UUID.generate(),
+        gateway_id: Ecto.UUID.generate(),
+        resource_id: Ecto.UUID.generate(),
+        membership_id: nil,
+        account_id: subject.account.id,
+        client_remote_ip: {100, 64, 0, 1},
+        client_user_agent: "test-agent",
+        gateway_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      log =
+        capture_log(fn ->
+          Channel.do_create_policy_authorization(attrs, nil)
+        end)
+
+      assert log =~ "Failed to create policy authorization"
     end
   end
 end

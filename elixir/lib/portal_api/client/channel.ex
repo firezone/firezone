@@ -108,7 +108,7 @@ defmodule PortalAPI.Client.Channel do
         })
     })
 
-    {:noreply, assign(socket, cache: cache)}
+    {:noreply, assign(socket, cache: cache, pending_flows: %{})}
   end
 
   ####################################
@@ -313,45 +313,46 @@ defmodule PortalAPI.Client.Channel do
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
-    pending_flows = Map.get(socket.assigns, :pending_flows, %{})
 
-    if Map.has_key?(pending_flows, resource_id) do
-      reply_payload = %{
-        resource_id: resource_id,
-        preshared_key: preshared_key,
-        client_ice_credentials: ice_credentials.initiator,
-        # TODO: conditionally rename to site_id based on client version
-        # apple: >= 1.5.11
-        # headless: >= 1.5.6
-        # android: >= 1.5.8
-        # gui: >= 1.5.10
-        # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
-        gateway_group_id: site_id,
-        gateway_id: gateway_id,
-        gateway_public_key: gateway_public_key,
-        gateway_ipv4: gateway_ipv4,
-        gateway_ipv6: gateway_ipv6,
-        gateway_ice_credentials: ice_credentials.receiver
-      }
+    case Map.pop(socket.assigns.pending_flows, resource_id) do
+      {nil, _} ->
+        # Flow already timed out — ignore late gateway response
+        {:noreply, socket}
 
-      push(socket, "flow_created", reply_payload)
+      {timer_ref, remaining} ->
+        Process.cancel_timer(timer_ref)
 
-      socket = cancel_pending_flow(socket, resource_id)
-      {:noreply, socket}
-    else
-      # Flow already timed out — ignore late gateway response
-      {:noreply, socket}
+        reply_payload = %{
+          resource_id: resource_id,
+          preshared_key: preshared_key,
+          client_ice_credentials: ice_credentials.initiator,
+          # TODO: conditionally rename to site_id based on client version
+          # apple: >= 1.5.11
+          # headless: >= 1.5.6
+          # android: >= 1.5.8
+          # gui: >= 1.5.10
+          # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
+          gateway_group_id: site_id,
+          gateway_id: gateway_id,
+          gateway_public_key: gateway_public_key,
+          gateway_ipv4: gateway_ipv4,
+          gateway_ipv6: gateway_ipv6,
+          gateway_ice_credentials: ice_credentials.receiver
+        }
+
+        push(socket, "flow_created", reply_payload)
+        {:noreply, assign(socket, :pending_flows, remaining)}
     end
   end
 
   def handle_info({:flow_creation_timeout, resource_id}, socket) do
-    pending_flows = Map.get(socket.assigns, :pending_flows, %{})
+    case Map.pop(socket.assigns.pending_flows, resource_id) do
+      {nil, _} ->
+        {:noreply, socket}
 
-    if Map.has_key?(pending_flows, resource_id) do
-      push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
-      {:noreply, assign(socket, :pending_flows, Map.delete(pending_flows, resource_id))}
-    else
-      {:noreply, socket}
+      {_timer_ref, remaining} ->
+        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+        {:noreply, assign(socket, :pending_flows, remaining)}
     end
   end
 
@@ -492,8 +493,13 @@ defmodule PortalAPI.Client.Channel do
               flow_creation_timeout()
             )
 
-          pending_flows = Map.get(socket.assigns, :pending_flows, %{})
-          socket = assign(socket, :pending_flows, Map.put(pending_flows, resource_id, timer_ref))
+          socket =
+            assign(
+              socket,
+              :pending_flows,
+              Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
+            )
+
           {:noreply, socket}
 
         {:error, :not_found} ->
@@ -1368,8 +1374,6 @@ defmodule PortalAPI.Client.Channel do
       end
     end
 
-    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: nil}), do: nil
-
     defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
       Ecto.UUID.load!(site.id)
     end
@@ -1507,19 +1511,6 @@ defmodule PortalAPI.Client.Channel do
       fields -- [:membership_id, :receiving_client_id, :gateway_id, :gateway_remote_ip]
     )
     |> Portal.PolicyAuthorization.changeset()
-  end
-
-  defp cancel_pending_flow(socket, resource_id) do
-    pending_flows = Map.get(socket.assigns, :pending_flows, %{})
-
-    case Map.pop(pending_flows, resource_id) do
-      {nil, _} ->
-        socket
-
-      {timer_ref, remaining} ->
-        Process.cancel_timer(timer_ref)
-        assign(socket, :pending_flows, remaining)
-    end
   end
 
   defp flow_creation_timeout do
