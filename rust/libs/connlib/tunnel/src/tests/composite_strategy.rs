@@ -49,6 +49,22 @@ where
 
         self.with(prob, make_strategy(element))
     }
+
+    /// Adds a strategy based on an optional input element if the option is `Some`.
+    pub fn with_if_some<S, E>(
+        self,
+        prob: u32,
+        element: Option<E>,
+        make_strategy: impl Fn(E) -> S,
+    ) -> Self
+    where
+        S: Strategy<Value = T> + 'static,
+    {
+        match element {
+            Some(element) => self.with(prob, make_strategy(element)),
+            None => self,
+        }
+    }
 }
 
 pub trait IsEmpty {
@@ -58,12 +74,6 @@ pub trait IsEmpty {
 impl<T> IsEmpty for Vec<T> {
     fn is_empty(&self) -> bool {
         Vec::is_empty(self)
-    }
-}
-
-impl<T> IsEmpty for Option<T> {
-    fn is_empty(&self) -> bool {
-        Option::is_none(self)
     }
 }
 
