@@ -277,6 +277,11 @@ impl SimGateway {
         }
     }
 
+    pub(crate) fn clear_packets(&mut self) {
+        self.received_icmp_requests.clear();
+        self.received_udp_requests.clear();
+    }
+
     fn handle_icmp_request(
         &mut self,
         packet: &IpPacket,

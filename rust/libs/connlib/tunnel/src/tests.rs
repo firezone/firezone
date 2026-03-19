@@ -116,6 +116,9 @@ fn tunnel_test() {
 
                 // Check the invariants after the transition is applied
                 TunnelTest::check_invariants(&sut, &ref_state);
+
+                ReferenceState::clear_packets(&mut ref_state);
+                TunnelTest::clear_packets(&mut sut);
             }
 
             Ok(())

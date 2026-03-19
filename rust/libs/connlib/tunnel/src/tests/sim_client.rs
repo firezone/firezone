@@ -469,6 +469,19 @@ impl SimClient {
 
         Some(transmit)
     }
+
+    pub(crate) fn clear_packets(&mut self) {
+        self.sent_icmp_requests.clear();
+        self.received_icmp_replies.clear();
+        self.received_icmp_requests.clear();
+        self.sent_udp_requests.clear();
+        self.received_udp_replies.clear();
+        self.received_udp_requests.clear();
+        self.sent_udp_dns_queries.clear();
+        self.received_udp_dns_responses.clear();
+        self.sent_tcp_dns_queries.clear();
+        self.received_tcp_dns_responses.clear();
+    }
 }
 
 /// Reference state for a particular client.

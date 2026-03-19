@@ -599,6 +599,15 @@ impl TunnelTest {
             assert_resource_status(ref_client, sut_client);
         }
     }
+
+    pub(crate) fn clear_packets(state: &mut TunnelTest) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|c| c.clear_packets());
+        }
+        for gateway in state.gateways.values_mut() {
+            gateway.exec_mut(|g| g.clear_packets());
+        }
+    }
 }
 
 impl TunnelTest {
