@@ -11,7 +11,7 @@ use crate::{
     ClientState,
     client::{CidrResource, DnsResource, InternetResource, Resource},
     dns,
-    messages::{Interface, UpstreamDo53, UpstreamDoH},
+    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, Site, SiteId};
@@ -576,17 +576,37 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
         self.cidr_resources
             .iter_ipv4()
-            .map(|(n, _)| n)
+            .map(|(n, id)| {
+                let filters = self
+                    .resources
+                    .iter()
+                    .find_map(|r| match r {
+                        Resource::Cidr(c) if c.id == *id => Some(c.filters.clone()),
+                        Resource::Cidr(_) | Resource::Dns(_) | Resource::Internet(_) => None,
+                    })
+                    .unwrap_or_default();
+                (n, filters)
+            })
             .collect_vec()
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Network> {
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(Ipv6Network, Vec<Filter>)> {
         self.cidr_resources
             .iter_ipv6()
-            .map(|(n, _)| n)
+            .map(|(n, id)| {
+                let filters = self
+                    .resources
+                    .iter()
+                    .find_map(|r| match r {
+                        Resource::Cidr(c) if c.id == *id => Some(c.filters.clone()),
+                        Resource::Cidr(_) | Resource::Dns(_) | Resource::Internet(_) => None,
+                    })
+                    .unwrap_or_default();
+                (n, filters)
+            })
             .collect_vec()
     }
 
@@ -688,32 +708,32 @@ impl RefClient {
         )
     }
 
-    pub(crate) fn resolved_v4_domains(&self) -> Vec<DomainName> {
+    pub(crate) fn resolved_v4_domains(&self) -> Vec<(DomainName, Vec<Filter>)> {
         self.resolved_domains()
             .filter_map(|(domain, records)| {
-                records
-                    .iter()
-                    .any(|r| matches!(r, &RecordType::A))
-                    .then_some(domain)
-            })
-            .filter(|d| {
-                self.dns_resource_by_domain(d)
-                    .is_some_and(|r| r.ip_stack.supports_ipv4())
+                if !records.iter().any(|r| matches!(r, &RecordType::A)) {
+                    return None;
+                }
+                let resource = self.dns_resource_by_domain(&domain)?;
+                resource
+                    .ip_stack
+                    .supports_ipv4()
+                    .then(|| (domain, resource.filters.clone()))
             })
             .collect()
     }
 
-    pub(crate) fn resolved_v6_domains(&self) -> Vec<DomainName> {
+    pub(crate) fn resolved_v6_domains(&self) -> Vec<(DomainName, Vec<Filter>)> {
         self.resolved_domains()
             .filter_map(|(domain, records)| {
-                records
-                    .iter()
-                    .any(|r| matches!(r, &RecordType::AAAA))
-                    .then_some(domain)
-            })
-            .filter(|d| {
-                self.dns_resource_by_domain(d)
-                    .is_some_and(|r| r.ip_stack.supports_ipv6())
+                if !records.iter().any(|r| matches!(r, &RecordType::AAAA)) {
+                    return None;
+                }
+                let resource = self.dns_resource_by_domain(&domain)?;
+                resource
+                    .ip_stack
+                    .supports_ipv6()
+                    .then(|| (domain, resource.filters.clone()))
             })
             .collect()
     }

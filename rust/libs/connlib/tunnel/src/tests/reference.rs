@@ -4,6 +4,7 @@ use super::{
     composite_strategy::CompositeStrategy, ref_client::*, ref_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
+use crate::messages::Filter;
 use crate::proptest::{domain_label, host_v4, host_v6};
 use crate::{client, dns};
 use crate::{dns::is_subdomain, proptest::relay_id};
@@ -293,7 +294,7 @@ impl ReferenceState {
             .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, ipv4_resource)| {
+                sample::select(values).prop_flat_map(move |(client_id, ipv4_resource, _filters)| {
                     let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
                     prop_oneof![
@@ -305,7 +306,7 @@ impl ReferenceState {
             .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, ipv6_resource)| {
+                sample::select(values).prop_flat_map(move |(client_id, ipv6_resource, _filters)| {
                     let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
                     prop_oneof![
@@ -317,7 +318,7 @@ impl ReferenceState {
             .with_if_not_empty(10, state.resolved_v4_domains(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, domain)| {
+                sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
                     let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
                     prop_oneof![
@@ -329,7 +330,7 @@ impl ReferenceState {
             .with_if_not_empty(10, state.resolved_v6_domains(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, domain)| {
+                sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
                     let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
                     prop_oneof![
@@ -344,7 +345,7 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
                         let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
                         connect_tcp(client_id, Just(tunnel_ip4), Just(domain))
@@ -357,7 +358,7 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
                         let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
                         connect_tcp(client_id, Just(tunnel_ip6), Just(domain))
@@ -370,7 +371,7 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
                         let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
                         prop_oneof![
@@ -386,7 +387,7 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
                         let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
                         prop_oneof![
@@ -1136,26 +1137,26 @@ impl ReferenceState {
             .collect()
     }
 
-    fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network)> {
+    fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
                 c.inner()
                     .ipv4_cidr_resource_dsts()
                     .into_iter()
-                    .map(|ip| (*id, ip))
+                    .map(|(ip, filters)| (*id, ip, filters))
             })
             .collect()
     }
 
-    fn resolved_v4_domains(&self) -> Vec<(ClientId, DomainName)> {
+    fn resolved_v4_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
                 c.inner()
                     .resolved_v4_domains()
                     .into_iter()
-                    .map(|ip| (*id, ip))
+                    .map(|(domain, filters)| (*id, domain, filters))
             })
             .collect()
     }
@@ -1176,26 +1177,26 @@ impl ReferenceState {
             .collect()
     }
 
-    fn ipv6_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv6Network)> {
+    fn ipv6_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv6Network, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
                 c.inner()
                     .ipv6_cidr_resource_dsts()
                     .into_iter()
-                    .map(|ip| (*id, ip))
+                    .map(|(ip, filters)| (*id, ip, filters))
             })
             .collect()
     }
 
-    fn resolved_v6_domains(&self) -> Vec<(ClientId, DomainName)> {
+    fn resolved_v6_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
                 c.inner()
                     .resolved_v6_domains()
                     .into_iter()
-                    .map(|ip| (*id, ip))
+                    .map(|(domain, filters)| (*id, domain, filters))
             })
             .collect()
     }
@@ -1422,7 +1423,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v4_domains_with_tcp_resources(&self) -> Vec<(ClientId, DomainName)> {
+    fn resolved_v4_domains_with_tcp_resources(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1430,16 +1431,16 @@ impl ReferenceState {
                     .inner()
                     .resolved_v4_domains()
                     .into_iter()
-                    .filter_map(|domain| {
+                    .filter_map(|(domain, filters)| {
                         self.tcp_resources
                             .contains_key(&domain)
-                            .then_some((*id, domain))
+                            .then_some((*id, domain, filters))
                     })
             })
             .collect()
     }
 
-    fn resolved_v6_domains_with_tcp_resources(&self) -> Vec<(ClientId, DomainName)> {
+    fn resolved_v6_domains_with_tcp_resources(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1447,16 +1448,19 @@ impl ReferenceState {
                     .inner()
                     .resolved_v6_domains()
                     .into_iter()
-                    .filter_map(|domain| {
+                    .filter_map(|(domain, filters)| {
                         self.tcp_resources
                             .contains_key(&domain)
-                            .then_some((*id, domain))
+                            .then_some((*id, domain, filters))
                     })
             })
             .collect()
     }
 
-    fn resolved_v4_domains_with_icmp_errors(&self, at: Instant) -> Vec<(ClientId, DomainName)> {
+    fn resolved_v4_domains_with_icmp_errors(
+        &self,
+        at: Instant,
+    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1464,17 +1468,20 @@ impl ReferenceState {
                     .inner()
                     .resolved_v4_domains()
                     .into_iter()
-                    .filter_map(|d| {
+                    .filter_map(|(d, filters)| {
                         self.global_dns_records
                             .domain_ips_iter(&d, at)
                             .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
-                            .then_some((*id, d))
+                            .then_some((*id, d, filters))
                     })
             })
             .collect()
     }
 
-    fn resolved_v6_domains_with_icmp_errors(&self, at: Instant) -> Vec<(ClientId, DomainName)> {
+    fn resolved_v6_domains_with_icmp_errors(
+        &self,
+        at: Instant,
+    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1482,11 +1489,11 @@ impl ReferenceState {
                     .inner()
                     .resolved_v6_domains()
                     .into_iter()
-                    .filter_map(|d| {
+                    .filter_map(|(d, filters)| {
                         self.global_dns_records
                             .domain_ips_iter(&d, at)
                             .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
-                            .then_some((*id, d))
+                            .then_some((*id, d, filters))
                     })
             })
             .collect()
