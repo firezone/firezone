@@ -917,6 +917,16 @@ impl RefClient {
             .copied()
             .any(|t| (t..t + ice_timeout).contains(&at))
     }
+
+    pub(crate) fn clear_packets(&mut self) {
+        self.expected_gateway_icmp_handshakes.clear();
+        self.expected_client_icmp_handshakes.clear();
+        self.expected_gateway_udp_handshakes.clear();
+        self.expected_client_udp_handshakes.clear();
+        self.expected_udp_dns_handshakes.clear();
+        self.expected_tcp_dns_handshakes.clear();
+        self.expected_tcp_connections.clear();
+    }
 }
 
 // This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.

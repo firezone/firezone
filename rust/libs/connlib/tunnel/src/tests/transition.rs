@@ -130,6 +130,43 @@ pub(crate) enum Transition {
     },
 }
 
+impl Transition {
+    /// Whether we should clear all packets / connections before this [`Transition`].
+    ///
+    /// Certain transitions, like adding or removing resources change the Client's state
+    /// in a way that makes previously passing assertions fail. For example, a packet that
+    /// was previously filtered out could now suddenly be allowed.
+    ///
+    /// To make our lives easier in the assertions, we clear all sent packets in certain cases.
+    pub(crate) fn should_clear_packets(&self) -> bool {
+        match self {
+            Transition::AddResource(_)
+            | Transition::RemoveResource(_)
+            | Transition::ChangeCidrResourceAddress { .. }
+            | Transition::MoveResourceToNewSite { .. }
+            | Transition::DeauthorizeWhileGatewayIsPartitioned(_)
+            | Transition::SetInternetResourceState { .. } => true,
+            Transition::SendIcmpPacket { .. }
+            | Transition::SendUdpPacket { .. }
+            | Transition::ConnectTcp { .. }
+            | Transition::SendIcmpPacketToDevice { .. }
+            | Transition::SendDnsQueries(_)
+            | Transition::UpdateSystemDnsServers { .. }
+            | Transition::UpdateUpstreamDo53Servers(_)
+            | Transition::UpdateUpstreamDoHServers(_)
+            | Transition::UpdateUpstreamSearchDomain(_)
+            | Transition::RoamClient { .. }
+            | Transition::ReconnectPortal { .. }
+            | Transition::RestartClient { .. }
+            | Transition::DeployNewRelays(_)
+            | Transition::PartitionRelaysFromPortal
+            | Transition::Idle
+            | Transition::RebootRelaysWhilePartitioned(_)
+            | Transition::UpdateDnsRecords { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct DnsQuery {
     pub(crate) domain: DomainName,

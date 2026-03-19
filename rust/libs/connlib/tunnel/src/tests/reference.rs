@@ -1061,6 +1061,12 @@ impl ReferenceState {
         }
     }
 
+    pub(crate) fn clear_packets(state: &mut ReferenceState) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|c| c.clear_packets())
+        }
+    }
+
     fn is_valid_dst_ip(&self, dst: IpAddr) -> bool {
         let rid = self
             .clients

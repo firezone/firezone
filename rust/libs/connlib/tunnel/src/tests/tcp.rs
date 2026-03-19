@@ -115,6 +115,11 @@ impl Client {
             l3_tcp::AnySocket::Tcp(socket) => socket,
         })
     }
+
+    pub fn reset(&mut self) {
+        self.sockets = l3_tcp::SocketSet::new(Vec::default());
+        self.device.clear();
+    }
 }
 
 impl Server {
