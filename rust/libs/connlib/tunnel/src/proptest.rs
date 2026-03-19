@@ -203,7 +203,7 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
 // Note: for these tests we don't really care that it's a valid host
 // we only need a host.
 // If we filter valid hosts it generates too many rejects
-pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
+pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> + Clone {
     (0u32..=number_of_hosts_ipv4(ip.netmask()))
         .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
 }
@@ -211,7 +211,7 @@ pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
 // Note: for these tests we don't really care that it's a valid host
 // we only need a host.
 // If we filter valid hosts it generates too many rejects
-pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> {
+pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> + Clone {
     (0u128..=number_of_hosts_ipv6(ip.netmask()))
         .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
 }

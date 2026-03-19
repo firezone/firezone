@@ -294,49 +294,57 @@ impl ReferenceState {
             .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, ipv4_resource, _filters)| {
+                sample::select(values).prop_flat_map(move |(client_id, ipv4_resource, filters)| {
                     let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
-                    prop_oneof![
-                        icmp_packet(client_id, Just(tunnel_ip4), host_v4(ipv4_resource)),
-                        udp_packet(client_id, Just(tunnel_ip4), host_v4(ipv4_resource)),
-                    ]
+                    icmp_or_udp_packet_for_filters(
+                        client_id,
+                        Just(tunnel_ip4),
+                        host_v4(ipv4_resource),
+                        filters,
+                    )
                 })
             })
             .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, ipv6_resource, _filters)| {
+                sample::select(values).prop_flat_map(move |(client_id, ipv6_resource, filters)| {
                     let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
-                    prop_oneof![
-                        icmp_packet(client_id, Just(tunnel_ip6), host_v6(ipv6_resource)),
-                        udp_packet(client_id, Just(tunnel_ip6), host_v6(ipv6_resource)),
-                    ]
+                    icmp_or_udp_packet_for_filters(
+                        client_id,
+                        Just(tunnel_ip6),
+                        host_v6(ipv6_resource),
+                        filters,
+                    )
                 })
             })
             .with_if_not_empty(10, state.resolved_v4_domains(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
+                sample::select(values).prop_flat_map(move |(client_id, domain, filters)| {
                     let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
-                    prop_oneof![
-                        icmp_packet(client_id, Just(tunnel_ip4), Just(domain.clone())),
-                        udp_packet(client_id, Just(tunnel_ip4), Just(domain)),
-                    ]
+                    icmp_or_udp_packet_for_filters(
+                        client_id,
+                        Just(tunnel_ip4),
+                        Just(domain),
+                        filters,
+                    )
                 })
             })
             .with_if_not_empty(10, state.resolved_v6_domains(), |values| {
                 let clients = state.clients.clone();
 
-                sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
+                sample::select(values).prop_flat_map(move |(client_id, domain, filters)| {
                     let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
-                    prop_oneof![
-                        icmp_packet(client_id, Just(tunnel_ip6), Just(domain.clone())),
-                        udp_packet(client_id, Just(tunnel_ip6), Just(domain)),
-                    ]
+                    icmp_or_udp_packet_for_filters(
+                        client_id,
+                        Just(tunnel_ip6),
+                        Just(domain),
+                        filters,
+                    )
                 })
             })
             .with_if_not_empty(
@@ -345,10 +353,10 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, filters)| {
                         let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
-                        connect_tcp(client_id, Just(tunnel_ip4), Just(domain))
+                        connect_tcp_for_filters(client_id, Just(tunnel_ip4), Just(domain), filters)
                     })
                 },
             )
@@ -358,10 +366,10 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, filters)| {
                         let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
-                        connect_tcp(client_id, Just(tunnel_ip6), Just(domain))
+                        connect_tcp_for_filters(client_id, Just(tunnel_ip6), Just(domain), filters)
                     })
                 },
             )
@@ -371,13 +379,15 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, filters)| {
                         let tunnel_ip4 = clients.get(&client_id).unwrap().inner().tunnel_ip4;
 
-                        prop_oneof![
-                            icmp_packet(client_id, Just(tunnel_ip4), Just(domain.clone())),
-                            udp_packet(client_id, Just(tunnel_ip4), Just(domain)),
-                        ]
+                        icmp_or_udp_packet_for_filters(
+                            client_id,
+                            Just(tunnel_ip4),
+                            Just(domain),
+                            filters,
+                        )
                     })
                 },
             )
@@ -387,13 +397,15 @@ impl ReferenceState {
                 |values| {
                     let clients = state.clients.clone();
 
-                    sample::select(values).prop_flat_map(move |(client_id, domain, _filters)| {
+                    sample::select(values).prop_flat_map(move |(client_id, domain, filters)| {
                         let tunnel_ip6 = clients.get(&client_id).unwrap().inner().tunnel_ip6;
 
-                        prop_oneof![
-                            icmp_packet(client_id, Just(tunnel_ip6), Just(domain.clone())),
-                            udp_packet(client_id, Just(tunnel_ip6), Just(domain)),
-                        ]
+                        icmp_or_udp_packet_for_filters(
+                            client_id,
+                            Just(tunnel_ip6),
+                            Just(domain),
+                            filters,
+                        )
                     })
                 },
             )
@@ -472,7 +484,12 @@ impl ReferenceState {
 
                         prop_oneof![
                             icmp_packet(client_id, Just(tunnel_ip4), Just(non_resource_ip)),
-                            udp_packet(client_id, Just(tunnel_ip4), Just(non_resource_ip)),
+                            udp_packet(
+                                client_id,
+                                Just(tunnel_ip4),
+                                Just(non_resource_ip),
+                                any::<u16>()
+                            ),
                         ]
                     })
                 },
@@ -488,7 +505,12 @@ impl ReferenceState {
 
                         prop_oneof![
                             icmp_packet(client_id, Just(tunnel_ip6), Just(non_resource_ip)),
-                            udp_packet(client_id, Just(tunnel_ip6), Just(non_resource_ip)),
+                            udp_packet(
+                                client_id,
+                                Just(tunnel_ip6),
+                                Just(non_resource_ip),
+                                any::<u16>()
+                            ),
                         ]
                     })
                 },
@@ -501,7 +523,12 @@ impl ReferenceState {
 
                     prop_oneof![
                         icmp_packet(client_id, Just(tunnel_ip4), host_v4(gateway_ip)),
-                        udp_packet(client_id, Just(tunnel_ip4), host_v4(gateway_ip)),
+                        udp_packet(
+                            client_id,
+                            Just(tunnel_ip4),
+                            host_v4(gateway_ip),
+                            any::<u16>()
+                        ),
                     ]
                 })
             })
@@ -513,7 +540,12 @@ impl ReferenceState {
 
                     prop_oneof![
                         icmp_packet(client_id, Just(tunnel_ip6), host_v6(gateway_ip)),
-                        udp_packet(client_id, Just(tunnel_ip6), host_v6(gateway_ip)),
+                        udp_packet(
+                            client_id,
+                            Just(tunnel_ip6),
+                            host_v6(gateway_ip),
+                            any::<u16>()
+                        ),
                     ]
                 })
             })
