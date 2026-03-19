@@ -20,6 +20,7 @@ use tracing_subscriber::{
 
 mod assertions;
 mod buffered_transmits;
+mod coin;
 mod composite_strategy;
 mod dns_records;
 mod dns_server_resource;

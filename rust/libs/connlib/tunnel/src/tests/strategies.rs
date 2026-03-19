@@ -5,7 +5,8 @@ use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
     InternetResource,
 };
-use crate::messages::{UpstreamDo53, UpstreamDoH};
+use crate::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
+use crate::tests::coin;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
 use dns_types::{DoHUrl, DomainName, OwnedRecordData};
@@ -143,6 +144,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     Just(gateway_selector),
                     Just(upstream_do53_servers),
                     Just(upstream_doh_servers),
+                    coin::head_biased(80),
                 )
             },
         )
@@ -157,7 +159,38 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 gateway_selector,
                 upstream_do53_servers,
                 upstream_doh_servers,
+                coin_80,
             )| {
+                // Mutate our CIDR resources to ensure that IF we sampled a DNS server that is covered by a CIDR resource,
+                // in 80% of cases, we have a traffic filter that allows udp/53 and tcp/53.
+                let cidr_resources = cidr_resources
+                    .into_iter()
+                    .map(|mut r| {
+                        let covers_do53 = upstream_do53_servers
+                            .iter()
+                            .any(|s| r.address.contains(s.ip));
+
+                        if !covers_do53 {
+                            return r;
+                        }
+
+                        if coin_80.flip() == coin::Side::Tails {
+                            return r;
+                        }
+
+                        r.filters.push(Filter::Udp(PortRange {
+                            port_range_start: 53,
+                            port_range_end: 53,
+                        }));
+                        r.filters.push(Filter::Tcp(PortRange {
+                            port_range_start: 53,
+                            port_range_end: 53,
+                        }));
+
+                        r
+                    })
+                    .collect();
+
                 StubPortal::new(
                     clients,
                     gateways_by_site,
