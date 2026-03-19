@@ -22,33 +22,6 @@ services:
     networks:
       - app-internal
 
-  vault:
-    image: vault:1.13.3
-    environment:
-      VAULT_ADDR: "http://127.0.0.1:8200"
-      VAULT_DEV_ROOT_TOKEN_ID: "firezone"
-      VAULT_LOG_LEVEL: "debug"
-    ports:
-      - 8200:8200/tcp
-    cap_add:
-      - IPC_LOCK
-    networks:
-      - app-internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--spider",
-          "--proxy",
-          "off",
-          "http://127.0.0.1:8200/v1/sys/health?standbyok=true",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-
   common:
     image: alpine:latest # Dummy, will always be overridden.
     environment:

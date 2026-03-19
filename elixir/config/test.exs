@@ -230,19 +230,10 @@ config :geolix,
     %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
   ]
 
-config :wallaby,
-  driver: Wallaby.Chrome,
-  screenshot_on_failure: true,
-  # TODO: Contribute to Wallaby to make this configurable on the per-process level,
-  # along with buffer to write logs only on process failure
-  js_logger: false,
-  hackney_options: [timeout: 10_000, recv_timeout: 10_000]
-
 ex_unit_config =
   [
     formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-    capture_log: true,
-    exclude: [:acceptance]
+    capture_log: true
   ] ++
     case System.get_env("CI_ASSERT_RECEIVE_TIMEOUT_MS") do
       nil -> []

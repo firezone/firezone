@@ -318,9 +318,14 @@ defmodule Portal.RepoTest do
       query_module: query_module,
       queryable: queryable
     } do
+      fixed_datetime = ~U[2000-01-01 00:00:00.000000Z]
+
       actors =
-        for _i <- 1..10 do
+        for i <- 1..10 do
+          inserted_at = DateTime.add(fixed_datetime, i, :second)
+
           actor_fixture(account: account)
+          |> Portal.Fixture.update!(inserted_at: inserted_at)
         end
 
       actors = actors |> Enum.sort_by(&{&1.inserted_at, &1.id}) |> Enum.reverse()

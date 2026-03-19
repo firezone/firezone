@@ -50,12 +50,6 @@ npm-debug.log
 # MaxMind DB files
 /priv/geoip/
 
-# Test screenshots
-/screenshots/
-
-# WG configs generated in acceptance tests
-*.conf
-
 # ElixirLS
 .elixir_ls/
 
