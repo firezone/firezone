@@ -1,4 +1,10 @@
+import { Metadata } from "next";
 import Image from "next/image";
+
+export const metadata: Metadata = {
+  title: "Support • Firezone",
+  description: "Need help? Start here.",
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

@@ -7,10 +7,10 @@ import {
 
 export default function Alert({
   children,
-  color,
+  color = "info",
 }: {
   children: React.ReactNode;
-  color: string;
+  color?: string;
 }) {
   switch (color) {
     case "info":
