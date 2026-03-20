@@ -72,6 +72,7 @@ defmodule PortalAPI.Client.Channel do
       ipv6:
         socket.assigns.client.ipv6_address &&
           socket.assigns.client.ipv6_address.address.address,
+      name: socket.assigns.client.name,
       public_key: socket.assigns.session.public_key,
       psk_base: socket.assigns.client.psk_base
     }
@@ -769,11 +770,16 @@ defmodule PortalAPI.Client.Channel do
           target_meta.public_key
         )
 
+      account_key = socket.assigns.subject.account.key
+
       PG.deliver(
         target_client_id,
         {:client_device_access_authorized,
          %{
            client_id: client.id,
+           client_name: client.name,
+           client_fqdns:
+             client_fqdns(client.ipv4_address && client.ipv4_address.address, account_key),
            client_public_key: client_public_key,
            client_ipv4: client.ipv4_address && client.ipv4_address.address,
            client_ipv6: client.ipv6_address && client.ipv6_address.address,
@@ -784,10 +790,14 @@ defmodule PortalAPI.Client.Channel do
          }}
       )
 
+      target_ipv4 = target_meta.ipv4 && %Postgrex.INET{address: target_meta.ipv4}
+
       push(socket, "client_device_access_authorized", %{
         client_id: target_client_id,
+        client_name: target_meta.name,
+        client_fqdns: client_fqdns(target_ipv4, account_key),
         client_public_key: target_meta.public_key,
-        client_ipv4: target_meta.ipv4 && %Postgrex.INET{address: target_meta.ipv4},
+        client_ipv4: target_ipv4,
         client_ipv6: target_meta.ipv6 && %Postgrex.INET{address: target_meta.ipv6},
         preshared_key: preshared_key,
         local_ice_credentials: ice_credentials.initiator,
@@ -952,6 +962,12 @@ defmodule PortalAPI.Client.Channel do
       _ -> {:error, :invalid_ipv4}
     end
   end
+
+  defp client_fqdns(%Postgrex.INET{address: {a, b, c, d}}, account_key) do
+    ["#{a}-#{b}-#{c}-#{d}.#{account_key}.fz.internal"]
+  end
+
+  defp client_fqdns(_, _), do: []
 
   defp find_online_client_by_ipv4(account_id, ipv4_tuple) do
     case Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) do

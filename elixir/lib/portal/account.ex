@@ -126,7 +126,6 @@ defmodule Portal.Account do
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
-
 end
 
 defmodule Portal.Account.Metadata do

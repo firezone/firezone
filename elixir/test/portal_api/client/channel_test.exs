@@ -4993,19 +4993,31 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
       target_client_id = target_client.id
+      target_client_name = target_client.name
       initiating_client_id = client.id
+      initiating_client_name = client.name
+
+      {a, b, c, d} = target_client.ipv4_address.address.address
+      target_client_fqdns = ["#{a}-#{b}-#{c}-#{d}.#{account.key}.fz.internal"]
+
+      {a, b, c, d} = client.ipv4_address.address.address
+      initiating_client_fqdns = ["#{a}-#{b}-#{c}-#{d}.#{account.key}.fz.internal"]
 
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
 
       # Initiating client receives authorized as the controlling peer
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
+        client_name: ^target_client_name,
+        client_fqdns: ^target_client_fqdns,
         ice_role: :controlling
       }
 
       # Target client receives authorized as the controlled peer
       assert_push "client_device_access_authorized", %{
         client_id: ^initiating_client_id,
+        client_name: ^initiating_client_name,
+        client_fqdns: ^initiating_client_fqdns,
         ice_role: :controlled
       }
     end
