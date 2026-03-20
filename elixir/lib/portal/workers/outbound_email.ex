@@ -3,7 +3,7 @@ defmodule Portal.Workers.OutboundEmail do
   Oban worker that submits a queued email using the secondary outbound adapter.
   """
 
-  use Oban.Worker, queue: :outbound_emails, max_attempts: 3
+  use Oban.Worker, queue: :outbound_emails, max_attempts: 1
 
   alias Portal.Mailer
   require Logger
