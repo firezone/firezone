@@ -1174,6 +1174,11 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.drain_node_events(now);
 
+        while let Some(dns::Event::RecordsChanged(records)) = self.stub_resolver.poll_event() {
+            self.buffered_events
+                .push_back(ClientEvent::DnsRecordsChanged { records });
+        }
+
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
         self.reset_offline_site_status(now);
@@ -1708,13 +1713,7 @@ impl ClientState {
             return Some(ClientEvent::DeviceConnectionIntent { ipv4: client });
         }
 
-        self.buffered_events
-            .pop_front()
-            .or_else(|| match self.stub_resolver.poll_event()? {
-                dns::Event::RecordsChanged(records) => {
-                    Some(ClientEvent::DnsRecordsChanged { records })
-                }
-            })
+        self.buffered_events.pop_front()
     }
 
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
