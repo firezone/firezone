@@ -1001,9 +1001,8 @@ impl ClientState {
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
-        self.active_cidr_resources
-            .iter()
-            .map(|(ip, _)| ip)
+        iter::empty()
+            .chain(self.active_cidr_resources.iter().map(|(ip, _)| ip))
             .chain(iter::once(IPV4_TUNNEL.into()))
             .chain(iter::once(IPV6_TUNNEL.into()))
             .chain(iter::once(IPV4_RESOURCES.into()))
