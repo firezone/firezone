@@ -347,6 +347,8 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      assert_push "init", _init_payload
+
       token = Repo.get_by(Portal.ClientToken, id: subject.credential.id)
 
       data = %{

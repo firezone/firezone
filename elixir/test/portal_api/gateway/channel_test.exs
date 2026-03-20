@@ -1542,6 +1542,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
+      assert_push "init", _init_payload
+
       old_data = %{
         "id" => resource.id,
         "account_id" => resource.account_id,
