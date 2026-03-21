@@ -18,6 +18,7 @@ defmodule PortalAPI.AccountControllerTest do
                "data" => %{
                  "id" => account_id,
                  "slug" => slug,
+                 "key" => key,
                  "name" => name,
                  "legal_name" => legal_name,
                  "limits" => limits
@@ -26,6 +27,7 @@ defmodule PortalAPI.AccountControllerTest do
 
       assert account_id == account.id
       assert slug == account.slug
+      assert key == account.key
       assert name == account.name
       assert legal_name == account.legal_name
       assert is_map(limits)

@@ -582,6 +582,7 @@ defmodule PortalWeb.SignUpTest do
           |> Ecto.Changeset.cast(attrs, [:name])
           |> Ecto.Changeset.put_change(:legal_name, Map.get(attrs, :name))
           |> Ecto.Changeset.put_change(:slug, "test-#{System.unique_integer([:positive])}")
+          |> Ecto.Changeset.put_change(:key, Portal.Account.new_key())
         end,
         everyone_group: fn _account -> invalid_group_changeset end,
         site: fn _account, _attrs -> invalid_group_changeset end,

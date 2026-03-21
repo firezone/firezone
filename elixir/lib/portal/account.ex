@@ -12,6 +12,7 @@ defmodule Portal.Account do
   schema "accounts" do
     field :name, :string
     field :slug, :string
+    field :key, :string
 
     field :legal_name, :string
 
@@ -80,8 +81,18 @@ defmodule Portal.Account do
     changeset
     |> validate_length(:name, min: 3, max: 64)
     |> validate_length(:slug, min: 3, max: 100)
+    |> validate_length(:key, is: 6)
+    |> validate_key_format()
     |> validate_length(:legal_name, min: 1, max: 255)
     |> unique_constraint(:slug, name: :accounts_slug_index)
+    |> unique_constraint(:key, name: :accounts_key_index)
+  end
+
+  @base36 ~c"abcdefghijklmnopqrstuvwxyz0123456789"
+
+  @doc "Generate a cryptographically random 6-character base-36 key."
+  def new_key do
+    for(_ <- 1..6, into: "", do: <<Enum.at(@base36, uniform(36))>>)
   end
 
   @spec active?(t()) :: boolean()
@@ -98,6 +109,22 @@ defmodule Portal.Account do
 
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
+  end
+
+  # Rejection sampling to avoid modulo bias.
+  # Largest multiple of 36 that fits in a byte is 252 (36 * 7).
+  defp uniform(n) do
+    <<byte>> = :crypto.strong_rand_bytes(1)
+
+    if byte < 252 do
+      rem(byte, n)
+    else
+      uniform(n)
+    end
+  end
+
+  defp validate_key_format(changeset) do
+    validate_format(changeset, :key, ~r/^[a-z0-9]+$/, message: "must be lowercase alphanumeric")
   end
 end
 

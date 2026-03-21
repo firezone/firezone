@@ -472,7 +472,8 @@ defmodule Portal.Billing.EventHandler do
   # TODO: BILLING OVERHAUL
   # The DB operations should be wrapped in a transaction to ensure atomicity
   defp create_account_with_defaults(attrs, metadata, account_email) do
-    with {:ok, account} <- attrs |> create_account_changeset() |> Database.insert(),
+    with {:ok, account} <-
+           Database.insert_account_with_key_retry(fn -> create_account_changeset(attrs) end),
          {:ok, account} <- Billing.update_stripe_customer(account),
          {:ok, account} <- Portal.Billing.create_subscription(account),
          :ok <- setup_account_defaults(account, metadata, account_email) do
@@ -637,9 +638,10 @@ defmodule Portal.Billing.EventHandler do
     import Ecto.Changeset
 
     %Portal.Account{}
-    |> cast(attrs, [:name, :legal_name, :slug])
+    |> cast(attrs, [:name, :legal_name, :slug, :key])
+    |> put_change(:key, Portal.Account.new_key())
     |> cast_embed(:metadata)
-    |> validate_required([:name, :legal_name, :slug])
+    |> validate_required([:name, :legal_name, :slug, :key])
   end
 
   defmodule Database do
@@ -688,6 +690,28 @@ defmodule Portal.Billing.EventHandler do
     def insert(changeset) do
       Safe.unscoped(changeset)
       |> Safe.insert()
+    end
+
+    def insert_account_with_key_retry(changeset_fn, retries \\ 5) do
+      changeset_fn.()
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, account} ->
+          {:ok, account}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          if retries > 0 and key_taken?(changeset) do
+            insert_account_with_key_retry(changeset_fn, retries - 1)
+          else
+            {:error, changeset}
+          end
+      end
+    end
+
+    defp key_taken?(%Ecto.Changeset{errors: errors}) do
+      Keyword.has_key?(errors, :key) and
+        match?({"has already been taken", _}, Keyword.get(errors, :key))
     end
 
     def update_account_by_id(id, attrs) do

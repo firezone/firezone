@@ -249,11 +249,12 @@ defmodule Portal.Repo.Seeds do
           name: "Firezone Account",
           legal_name: "Firezone Account",
           slug: "firezone",
+          key: Account.new_key(),
           config: %{
             search_domain: "httpbin.search.test"
           }
         },
-        [:name, :legal_name, :slug]
+        [:name, :legal_name, :slug, :key]
       )
       |> cast_embed(:config)
       |> put_change(:id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
@@ -289,9 +290,10 @@ defmodule Portal.Repo.Seeds do
         %{
           name: "Other Corp Account",
           legal_name: "Other Corp Account",
-          slug: "not_firezone"
+          slug: "not_firezone",
+          key: Account.new_key()
         },
-        [:name, :legal_name, :slug]
+        [:name, :legal_name, :slug, :key]
       )
       |> put_change(:id, "9b9290bf-e1bc-4dd3-b401-511908262690")
       |> Repo.insert!()

@@ -12,6 +12,7 @@ defmodule PortalAPI.AccountJSON do
     %{
       id: account.id,
       slug: account.slug,
+      key: account.key,
       name: account.name,
       legal_name: account.legal_name,
       limits: build_limits(account)

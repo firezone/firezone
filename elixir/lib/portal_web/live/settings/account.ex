@@ -43,6 +43,12 @@ defmodule PortalWeb.Settings.Account do
               <.copy id="account-slug">{@account.slug}</.copy>
             </:value>
           </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Account Key</:label>
+            <:value>
+              <.copy id="account-key">{@account.key}</.copy>
+            </:value>
+          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>

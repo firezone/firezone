@@ -47,11 +47,17 @@ defmodule PortalAPI.Schemas.Account do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         slug: %Schema{type: :string, description: "Account slug"},
+        key: %Schema{
+          type: :string,
+          description: "6-character account key",
+          minLength: 6,
+          maxLength: 6
+        },
         name: %Schema{type: :string, description: "Account name"},
         legal_name: %Schema{type: :string, description: "Account legal name"},
         limits: PortalAPI.Schemas.Account.LimitsSchema
       },
-      required: [:id, :slug, :name]
+      required: [:id, :slug, :key, :name]
     })
   end
 
