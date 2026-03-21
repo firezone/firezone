@@ -61,19 +61,18 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   end
 
   defp verify_secret(conn) do
-    case AzureCommunicationServices.event_grid_webhook_signing_secret() do
+    with secret when is_binary(secret) <-
+           AzureCommunicationServices.event_grid_webhook_signing_secret(),
+         [key] when is_binary(key) <- get_req_header(conn, "aeg-sas-key"),
+         true <- Plug.Crypto.secure_compare(key, secret) do
+      :ok
+    else
       nil ->
         Logger.error("ACS Event Grid webhook secret is not configured")
         {:error, :invalid_secret}
 
-      secret ->
-        conn = fetch_query_params(conn)
-
-        if Plug.Crypto.secure_compare(conn.params["secret"] || "", secret) do
-          :ok
-        else
-          {:error, :invalid_secret}
-        end
+      _ ->
+        {:error, :invalid_secret}
     end
   end
 

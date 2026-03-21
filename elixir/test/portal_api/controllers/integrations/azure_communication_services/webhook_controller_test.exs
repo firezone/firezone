@@ -31,8 +31,9 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("aeg-event-type", "Notification")
+        |> put_req_header("aeg-sas-key", "wrong")
         |> post(
-          "/integrations/azure_communication_services/webhooks?secret=wrong",
+          "/integrations/azure_communication_services/webhooks",
           notification_payload()
         )
 
@@ -52,8 +53,9 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("aeg-event-type", "Notification")
+        |> put_req_header("aeg-sas-key", "acs-secret")
         |> post(
-          "/integrations/azure_communication_services/webhooks?secret=acs-secret",
+          "/integrations/azure_communication_services/webhooks",
           notification_payload()
         )
 
@@ -74,8 +76,9 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("aeg-event-type", "Notification")
+        |> put_req_header("aeg-sas-key", "acs-secret")
         |> post(
-          "/integrations/azure_communication_services/webhooks?secret=acs-secret",
+          "/integrations/azure_communication_services/webhooks",
           notification_payload()
         )
 
