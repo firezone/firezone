@@ -176,6 +176,7 @@ defmodule Portal.Mailer do
       {name, addr} -> %{"name" => name, "address" => addr}
       addr when is_binary(addr) -> %{"name" => "", "address" => addr}
     end)
+    |> Enum.uniq_by(fn %{"address" => addr} -> EmailSuppression.normalize_email(addr) end)
   end
 
   defp drop_suppressed_recipients(request) do

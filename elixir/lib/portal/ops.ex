@@ -1,6 +1,8 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Mailer}
+  alias Portal.{Banner, EmailSuppression, Mailer}
+
+  @max_bcc_per_message 50
 
   @doc """
   Counts presences grouped by topic prefix.
@@ -83,17 +85,53 @@ defmodule Portal.Ops do
 
   def queue_admin_email(account_ids, subject, html_body, plaintext_body)
       when account_ids == :all or is_list(account_ids) do
-    Database.get_account_admin_emails_by_account(account_ids)
-    |> Enum.each(fn {account_id, admin_emails} ->
-      if admin_emails != [] do
+    emails_by_account =
+      Database.get_account_admin_emails_by_account(account_ids)
+      |> Enum.map(fn {account_id, admin_emails} ->
+        normalized =
+          admin_emails
+          |> Enum.map(&EmailSuppression.normalize_email/1)
+          |> Enum.uniq()
+
+        {account_id, normalized}
+      end)
+      |> Enum.reject(fn {_account_id, emails} -> emails == [] end)
+
+    total_recipients = Enum.sum(Enum.map(emails_by_account, fn {_, emails} -> length(emails) end))
+    total_accounts = length(emails_by_account)
+
+    if total_recipients == 0 do
+      IO.puts("No admin recipients found.")
+      :ok
+    else
+      IO.puts(
+        "About to send email '#{subject}' to #{total_recipients} unique admin(s) across #{total_accounts} account(s). Continue? [y/N]"
+      )
+
+      case IO.gets("") |> String.trim() do
+        answer when answer in ["y", "Y"] ->
+          enqueue_chunked(emails_by_account, subject, html_body, plaintext_body)
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    end
+  end
+
+  defp enqueue_chunked(emails_by_account, subject, html_body, plaintext_body) do
+    Enum.each(emails_by_account, fn {account_id, admin_emails} ->
+      admin_emails
+      |> Enum.chunk_every(@max_bcc_per_message)
+      |> Enum.each(fn chunk ->
         Mailer.default_email()
         |> Swoosh.Email.subject(subject)
-        |> Mailer.bcc_recipients(admin_emails)
+        |> Mailer.bcc_recipients(chunk)
         |> Swoosh.Email.html_body(html_body)
         |> Swoosh.Email.text_body(plaintext_body)
         |> Mailer.with_account_id(account_id)
         |> Mailer.enqueue()
-      end
+      end)
     end)
 
     :ok

@@ -102,9 +102,12 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
         "eventType" => "Microsoft.Communication.EmailDeliveryReportReceived",
         "eventTime" => "2026-03-13T07:00:00Z",
         "data" => %{
+          "sender" => "notifications@firez.one",
           "messageId" => "message-1",
           "recipient" => "delivered@example.com",
-          "deliveryStatus" => "Delivered"
+          "status" => "Delivered",
+          "deliveryStatusDetails" => %{"statusMessage" => "Delivered successfully"},
+          "deliveryAttemptTimeStamp" => "2026-03-13T07:00:00Z"
         }
       }
     ])

@@ -6,7 +6,7 @@ defmodule Portal.AzureCommunicationServices do
   alias Portal.EmailSuppression
   alias __MODULE__.Database
 
-  @ignored_delivery_statuses MapSet.new(["Queued", "OutForDelivery", "Expanded"])
+  @ignored_delivery_statuses MapSet.new(["Expanded"])
 
   def event_grid_webhook_signing_secret do
     Portal.Config.fetch_env!(:portal, __MODULE__)
@@ -51,75 +51,57 @@ defmodule Portal.AzureCommunicationServices do
 
   defp delivery_report(_event), do: {:error, :invalid_delivery_report}
 
-  defp report_update_attrs(%{"deliveryStatus" => delivery_status} = data) do
-    if MapSet.member?(@ignored_delivery_statuses, delivery_status) do
+  defp report_update_attrs(%{"status" => status} = data) do
+    if MapSet.member?(@ignored_delivery_statuses, status) do
       :ignore
     else
-      terminal_status_attrs(data)
+      details = extract_details(data["deliveryStatusDetails"])
+      terminal_status_attrs(status, details)
     end
   end
 
-  defp terminal_status_attrs(%{"deliveryStatus" => "Delivered"}) do
+  defp extract_details(%{"statusMessage" => msg}) when is_binary(msg), do: msg
+  defp extract_details(details) when is_binary(details), do: details
+  defp extract_details(_), do: nil
+
+  defp terminal_status_attrs("Delivered", _details) do
     %{status: :delivered, failure_code: nil, failure_message: nil, suppress?: false}
   end
 
-  defp terminal_status_attrs(%{"deliveryStatus" => "Suppressed"} = data) do
+  defp terminal_status_attrs("Suppressed", details) do
+    %{status: :suppressed, failure_code: "Suppressed", failure_message: details, suppress?: true}
+  end
+
+  defp terminal_status_attrs("Bounced", details) do
+    %{status: :bounced, failure_code: "Bounced", failure_message: details, suppress?: true}
+  end
+
+  defp terminal_status_attrs("Quarantined", details) do
     %{
-      status: :suppressed,
-      failure_code: "Suppressed",
-      failure_message: data["deliveryStatusDetails"],
+      status: :quarantined,
+      failure_code: "Quarantined",
+      failure_message: details,
       suppress?: true
     }
   end
 
-  defp terminal_status_attrs(%{"deliveryStatus" => "Bounced"} = data) do
+  defp terminal_status_attrs("FilteredSpam", details) do
     %{
-      status: :bounced,
-      failure_code: "Bounced",
-      failure_message: data["deliveryStatusDetails"],
+      status: :filtered_spam,
+      failure_code: "FilteredSpam",
+      failure_message: details,
       suppress?: true
     }
   end
 
-  defp terminal_status_attrs(%{"deliveryStatus" => delivery_status} = data) do
-    details = data["deliveryStatusDetails"]
-
-    cond do
-      suppression_text?(delivery_status) or suppression_text?(details) ->
-        %{
-          status: :suppressed,
-          failure_code: to_string(delivery_status),
-          failure_message: details,
-          suppress?: true
-        }
-
-      bounce_text?(delivery_status) or bounce_text?(details) ->
-        %{
-          status: :bounced,
-          failure_code: to_string(delivery_status),
-          failure_message: details,
-          suppress?: true
-        }
-
-      true ->
-        %{
-          status: :failed,
-          failure_code: to_string(delivery_status),
-          failure_message: details,
-          suppress?: false
-        }
-    end
+  defp terminal_status_attrs(status, details) do
+    %{
+      status: :failed,
+      failure_code: to_string(status),
+      failure_message: details,
+      suppress?: false
+    }
   end
-
-  defp suppression_text?(value) when is_binary(value),
-    do: String.contains?(String.downcase(value), "suppress")
-
-  defp suppression_text?(_value), do: false
-
-  defp bounce_text?(value) when is_binary(value),
-    do: String.contains?(String.downcase(value), "bounce")
-
-  defp bounce_text?(_value), do: false
 
   defmodule Database do
     import Ecto.Query

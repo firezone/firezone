@@ -128,6 +128,28 @@ defmodule Portal.MailerTest do
       assert Repo.aggregate(Oban.Job, :count, :id) == 0
     end
 
+    test "deduplicates recipients by normalized email address" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.bcc({"", "admin@example.com"})
+        |> Swoosh.Email.bcc({"", "Admin@Example.com"})
+        |> Swoosh.Email.bcc({"", "admin@example.com"})
+        |> Swoosh.Email.bcc({"", "other@example.com"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Dedup Test")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, job} = enqueue(email)
+
+      bcc_addresses = Enum.map(job.args["request"]["bcc"], & &1["address"])
+      assert length(bcc_addresses) == 2
+      assert "admin@example.com" in bcc_addresses
+      assert "other@example.com" in bcc_addresses
+    end
+
     test "filters suppressed bcc recipients before inserting the job" do
       account = account_fixture()
 

@@ -23,7 +23,9 @@ defmodule Portal.OutboundEmailDelivery do
       type: :string
     )
 
-    field(:status, Ecto.Enum, values: [:pending, :delivered, :bounced, :suppressed, :failed])
+    field(:status, Ecto.Enum,
+      values: [:pending, :delivered, :bounced, :suppressed, :quarantined, :filtered_spam, :failed]
+    )
 
     field(:failure_code, :string)
     field(:failure_message, :string)

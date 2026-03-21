@@ -88,6 +88,66 @@ defmodule Portal.AzureCommunicationServicesTest do
       assert suppressed == 1
     end
 
+    test "marks a recipient quarantined and inserts a suppression" do
+      account = account_fixture()
+
+      entry =
+        outbound_email_fixture(account,
+          message_id: "message-quarantined",
+          recipients: ["quarantined@example.com"]
+        )
+
+      assert :ok =
+               AzureCommunicationServices.handle_event_grid_events([
+                 delivery_report_event(
+                   "message-quarantined",
+                   "quarantined@example.com",
+                   "Quarantined",
+                   "Message was quarantined"
+                 )
+               ])
+
+      delivery = delivery!(entry, "quarantined@example.com")
+      assert delivery.status == :quarantined
+      assert delivery.failure_code == "Quarantined"
+
+      suppressed =
+        from(s in Portal.EmailSuppression, where: s.email == "quarantined@example.com")
+        |> Repo.aggregate(:count, :email)
+
+      assert suppressed == 1
+    end
+
+    test "marks a recipient filtered_spam and inserts a suppression" do
+      account = account_fixture()
+
+      entry =
+        outbound_email_fixture(account,
+          message_id: "message-filtered",
+          recipients: ["filtered@example.com"]
+        )
+
+      assert :ok =
+               AzureCommunicationServices.handle_event_grid_events([
+                 delivery_report_event(
+                   "message-filtered",
+                   "filtered@example.com",
+                   "FilteredSpam",
+                   "Message identified as spam"
+                 )
+               ])
+
+      delivery = delivery!(entry, "filtered@example.com")
+      assert delivery.status == :filtered_spam
+      assert delivery.failure_code == "FilteredSpam"
+
+      suppressed =
+        from(s in Portal.EmailSuppression, where: s.email == "filtered@example.com")
+        |> Repo.aggregate(:count, :email)
+
+      assert suppressed == 1
+    end
+
     test "ignores out-of-order delivery events (stale: already terminal)" do
       account = account_fixture()
 
@@ -148,10 +208,12 @@ defmodule Portal.AzureCommunicationServicesTest do
       "eventType" => "Microsoft.Communication.EmailDeliveryReportReceived",
       "eventTime" => "2026-03-13T07:00:00Z",
       "data" => %{
+        "sender" => "notifications@firez.one",
         "messageId" => message_id,
         "recipient" => recipient,
-        "deliveryStatus" => status,
-        "deliveryStatusDetails" => details
+        "status" => status,
+        "deliveryStatusDetails" => if(details, do: %{"statusMessage" => details}),
+        "deliveryAttemptTimeStamp" => "2026-03-13T07:00:00Z"
       }
     }
   end

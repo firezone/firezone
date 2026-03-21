@@ -105,6 +105,8 @@ defmodule Portal.OpsTest do
   end
 
   describe "queue_admin_email/4" do
+    import ExUnit.CaptureIO
+
     test "queues one batched email per account with enabled admins" do
       account1 = account_fixture()
       account2 = account_fixture()
@@ -117,33 +119,35 @@ defmodule Portal.OpsTest do
       |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
       |> Repo.update!()
 
-      assert :ok =
-               queue_admin_email(
-                 [account1.id, account2.id],
-                 "Admin Subject",
-                 "<p>Admin HTML</p>",
-                 "Admin Text"
-               )
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_admin_email(
+                   [account1.id, account2.id],
+                   "Admin Subject",
+                   "<p>Admin HTML</p>",
+                   "Admin Text"
+                 )
 
-      assert collect_queued_emails(account1.id) == [
-               %{
-                 subject: "Admin Subject",
-                 html_body: "<p>Admin HTML</p>",
-                 text_body: "Admin Text",
-                 to: [],
-                 bcc: [{"", admin1.email}]
-               }
-             ]
+        assert collect_queued_emails(account1.id) == [
+                 %{
+                   subject: "Admin Subject",
+                   html_body: "<p>Admin HTML</p>",
+                   text_body: "Admin Text",
+                   to: [],
+                   bcc: [{"", String.downcase(admin1.email)}]
+                 }
+               ]
 
-      assert collect_queued_emails(account2.id) == [
-               %{
-                 subject: "Admin Subject",
-                 html_body: "<p>Admin HTML</p>",
-                 text_body: "Admin Text",
-                 to: [],
-                 bcc: [{"", admin2.email}]
-               }
-             ]
+        assert collect_queued_emails(account2.id) == [
+                 %{
+                   subject: "Admin Subject",
+                   html_body: "<p>Admin HTML</p>",
+                   text_body: "Admin Text",
+                   to: [],
+                   bcc: [{"", String.downcase(admin2.email)}]
+                 }
+               ]
+      end)
     end
 
     test "skips disabled accounts when queuing for :all" do
@@ -158,25 +162,95 @@ defmodule Portal.OpsTest do
         disabled_reason: "Testing"
       })
 
-      assert :ok =
-               queue_admin_email(
-                 :all,
-                 "Admin Subject",
-                 "<p>Admin HTML</p>",
-                 "Admin Text"
-               )
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_admin_email(
+                   :all,
+                   "Admin Subject",
+                   "<p>Admin HTML</p>",
+                   "Admin Text"
+                 )
 
-      assert collect_queued_emails(enabled_account.id) == [
-               %{
-                 subject: "Admin Subject",
-                 html_body: "<p>Admin HTML</p>",
-                 text_body: "Admin Text",
-                 to: [],
-                 bcc: [{"", enabled_admin.email}]
-               }
-             ]
+        assert collect_queued_emails(enabled_account.id) == [
+                 %{
+                   subject: "Admin Subject",
+                   html_body: "<p>Admin HTML</p>",
+                   text_body: "Admin Text",
+                   to: [],
+                   bcc: [{"", String.downcase(enabled_admin.email)}]
+                 }
+               ]
 
-      assert collect_queued_emails(disabled_account.id) == []
+        assert collect_queued_emails(disabled_account.id) == []
+      end)
+    end
+
+    test "aborts when user declines confirmation" do
+      account = account_fixture()
+      admin_actor_fixture(account: account)
+
+      capture_io("n\n", fn ->
+        assert :aborted =
+                 queue_admin_email(
+                   [account.id],
+                   "Subject",
+                   "<p>HTML</p>",
+                   "Text"
+                 )
+
+        assert collect_queued_emails(account.id) == []
+      end)
+    end
+
+    test "normalizes admin emails to lowercase" do
+      account = account_fixture()
+      admin_actor_fixture(account: account, email: "Admin.User@Example.COM")
+
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_admin_email(
+                   [account.id],
+                   "Normalize Subject",
+                   "<p>HTML</p>",
+                   "Text"
+                 )
+
+        [email] = collect_queued_emails(account.id)
+        [{_, addr}] = email.bcc
+        assert addr == "admin.user@example.com"
+      end)
+    end
+
+    test "chunks BCC recipients into groups of 50" do
+      account = account_fixture()
+
+      # Create 75 admin actors
+      Enum.each(1..75, fn i ->
+        admin_actor_fixture(
+          account: account,
+          email: "admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
+        )
+      end)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_admin_email(
+                     [account.id],
+                     "Chunk Subject",
+                     "<p>Chunk HTML</p>",
+                     "Chunk Text"
+                   )
+
+          queued = collect_queued_emails(account.id)
+          assert length(queued) == 2
+
+          bcc_counts = Enum.map(queued, fn email -> length(email.bcc) end) |> Enum.sort()
+          assert bcc_counts == [25, 50]
+        end)
+
+      assert output =~ "75 unique admin(s)"
+      assert output =~ "1 account(s)"
     end
   end
 end
