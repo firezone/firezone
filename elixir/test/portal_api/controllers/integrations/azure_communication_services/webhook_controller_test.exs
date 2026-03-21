@@ -6,7 +6,7 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
 
   setup do
     Portal.Config.put_env_override(:portal, Portal.AzureCommunicationServices,
-      event_grid_webhook_secret: "acs-secret"
+      event_grid_webhook_signing_secret: "acs-secret"
     )
 
     :ok

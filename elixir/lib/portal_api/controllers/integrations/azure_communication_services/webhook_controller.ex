@@ -61,7 +61,7 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   end
 
   defp verify_secret(conn) do
-    case AzureCommunicationServices.event_grid_webhook_secret() do
+    case AzureCommunicationServices.event_grid_webhook_signing_secret() do
       nil ->
         Logger.error("ACS Event Grid webhook secret is not configured")
         {:error, :invalid_secret}

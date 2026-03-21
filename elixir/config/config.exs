@@ -426,7 +426,7 @@ config :portal, Portal.Mailer.Secondary,
   from_email: "test@firez.one",
   req_opts: [retry: :transient]
 
-config :portal, Portal.AzureCommunicationServices, event_grid_webhook_secret: nil
+config :portal, Portal.AzureCommunicationServices, event_grid_webhook_signing_secret: nil
 
 config :esbuild,
   version: "0.25.4",

@@ -8,9 +8,9 @@ defmodule Portal.AzureCommunicationServices do
 
   @ignored_delivery_statuses MapSet.new(["Queued", "OutForDelivery", "Expanded"])
 
-  def event_grid_webhook_secret do
+  def event_grid_webhook_signing_secret do
     Portal.Config.fetch_env!(:portal, __MODULE__)
-    |> Keyword.fetch!(:event_grid_webhook_secret)
+    |> Keyword.fetch!(:event_grid_webhook_signing_secret)
   end
 
   def handle_event_grid_events(events) when is_list(events) do

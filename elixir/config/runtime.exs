@@ -474,7 +474,8 @@ if config_env() == :prod do
 
   config :portal,
          Portal.AzureCommunicationServices,
-         event_grid_webhook_secret: env_var_to_config!(:acs_event_grid_webhook_secret)
+         event_grid_webhook_signing_secret:
+           env_var_to_config!(:acs_event_grid_webhook_signing_secret)
 
   # Sentry
 

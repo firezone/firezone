@@ -836,7 +836,7 @@ defmodule Portal.Config.Definitions do
   Shared secret expected on ACS Event Grid webhook notification requests.
   Configure the webhook URL with `?secret=...` using this value.
   """
-  defconfig(:acs_event_grid_webhook_secret, :string, sensitive: true, default: nil)
+  defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
 
   ##############################################
   ## Billing flags
