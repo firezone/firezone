@@ -328,27 +328,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       Process.flag(:trap_exit, true)
-
-      {:ok, _reply, _socket} =
-        PortalAPI.Client.Socket
-        |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            client_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: nil
-          },
-          subject: subject,
-          client_version: nil
-        })
-        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      join_channel(client, subject)
 
       assert_push "init", _init_payload
 
