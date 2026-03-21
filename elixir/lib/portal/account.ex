@@ -95,6 +95,22 @@ defmodule Portal.Account do
     for(_ <- 1..6, into: "", do: <<Enum.at(@base36, uniform(36))>>)
   end
 
+  # Rejection sampling to avoid modulo bias.
+  # Largest multiple of 36 that fits in a byte is 252 (36 * 7).
+  defp uniform(n) do
+    <<byte>> = :crypto.strong_rand_bytes(1)
+
+    if byte < 252 do
+      rem(byte, n)
+    else
+      uniform(n)
+    end
+  end
+
+  defp validate_key_format(changeset) do
+    validate_format(changeset, :key, ~r/^[a-z0-9]+$/, message: "must be lowercase alphanumeric")
+  end
+
   @spec active?(t()) :: boolean()
   def active?(%__MODULE__{disabled_at: nil}), do: true
   def active?(%__MODULE__{}), do: false
@@ -111,21 +127,6 @@ defmodule Portal.Account do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
 
-  # Rejection sampling to avoid modulo bias.
-  # Largest multiple of 36 that fits in a byte is 252 (36 * 7).
-  defp uniform(n) do
-    <<byte>> = :crypto.strong_rand_bytes(1)
-
-    if byte < 252 do
-      rem(byte, n)
-    else
-      uniform(n)
-    end
-  end
-
-  defp validate_key_format(changeset) do
-    validate_format(changeset, :key, ~r/^[a-z0-9]+$/, message: "must be lowercase alphanumeric")
-  end
 end
 
 defmodule Portal.Account.Metadata do
