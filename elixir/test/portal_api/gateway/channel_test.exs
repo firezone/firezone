@@ -114,6 +114,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       presence = Portal.Presence.Gateways.Account.list(account.id)
 
@@ -123,6 +124,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     test "channel crash takes down the transport", %{gateway: gateway, site: site, token: token} do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       Process.flag(:trap_exit, true)
 
@@ -339,6 +341,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       send(socket.channel_pid, %Changes.Change{lsn: 100})
 
@@ -559,6 +562,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       :ok = PubSub.Changes.subscribe(account.id)
 
@@ -579,9 +583,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
         old_struct: %Portal.Account{},
         struct: %Portal.Account{slug: "new-slug"}
       }
-
-      # Consume first init from join
-      assert_push "init", _payload
 
       assert_push "init", payload
 
@@ -618,6 +619,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       Process.flag(:trap_exit, true)
 
@@ -1586,6 +1588,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->

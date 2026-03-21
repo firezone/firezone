@@ -263,6 +263,8 @@ defmodule PortalAPI.Client.ChannelTest do
   describe "join/3" do
     test "tracks presence after join", %{account: account, client: client, subject: subject} do
       join_channel(client, subject)
+      assert_push "init", _init_payload
+
       presence = Presence.Clients.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
@@ -273,6 +275,7 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
 
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
 
       # In tests, we (the test process) are the transport_pid
       assert socket.transport_pid == self()
@@ -973,6 +976,8 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
       identity_fixture(actor: actor, account: account)
       group = group_fixture(account: account)
       site = site_fixture(account: account)
@@ -1168,6 +1173,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       join_channel(client, subject)
+      assert_push "init", _init_payload
 
       # Connect relay1
       relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
@@ -1479,6 +1485,8 @@ defmodule PortalAPI.Client.ChannelTest do
   describe "handle_info/2 for change events" do
     test "ignores out of order %Change{}", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
       send(socket.channel_pid, %Changes.Change{lsn: 100})
 
       assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
@@ -1494,6 +1502,7 @@ defmodule PortalAPI.Client.ChannelTest do
       account: account
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
 
       updated_account = %{
         account
@@ -1882,6 +1891,8 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
       Process.flag(:trap_exit, true)
 
       send(socket.channel_pid, %Changes.Change{
@@ -2940,6 +2951,8 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
       :ok = Portal.Presence.Relays.connect(global_relay)
 
       :ok = PG.register(gateway.id)
@@ -2997,6 +3010,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
 
       update_account(account,
         features: %{
@@ -3194,6 +3208,9 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      :sys.get_state(socket.channel_pid)
+      assert_push "init", _init_payload
+
       :ok = Portal.Presence.Relays.connect(global_relay)
 
       gateway = Repo.preload(gateway, :site)
@@ -3280,6 +3297,9 @@ defmodule PortalAPI.Client.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
+      :sys.get_state(socket.channel_pid)
+      assert_push "init", _init_payload
+
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
         "connected_gateway_ids" => []
@@ -3324,6 +3344,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
+      assert_push "init", _init_payload
 
       :ok = Portal.Presence.Relays.connect(global_relay)
 
