@@ -113,5 +113,5 @@
   "websock_adapter": {:hex, :websock_adapter, "0.5.9", "43dc3ba6d89ef5dec5b1d0a39698436a1e856d000d84bf31a3149862b01a287f", [:mix], [{:bandit, ">= 0.6.0", [hex: :bandit, repo: "hexpm", optional: true]}, {:plug, "~> 1.14", [hex: :plug, repo: "hexpm", optional: false]}, {:plug_cowboy, "~> 2.6", [hex: :plug_cowboy, repo: "hexpm", optional: true]}, {:websock, "~> 0.5", [hex: :websock, repo: "hexpm", optional: false]}], "hexpm", "5534d5c9adad3c18a0f58a9371220d75a803bf0b9a3d87e6fe072faaeed76a08"},
   "yamerl": {:hex, :yamerl, "0.10.0", "4ff81fee2f1f6a46f1700c0d880b24d193ddb74bd14ef42cb0bcf46e81ef2f8e", [:rebar3], [], "hexpm", "346adb2963f1051dc837a2364e4acf6eb7d80097c0f53cbdc3046ec8ec4b4e6e"},
   "yaml_elixir": {:hex, :yaml_elixir, "2.12.0", "30343ff5018637a64b1b7de1ed2a3ca03bc641410c1f311a4dbdc1ffbbf449c7", [:mix], [{:yamerl, "~> 0.10", [hex: :yamerl, repo: "hexpm", optional: false]}], "hexpm", "ca6bacae7bac917a7155dca0ab6149088aa7bc800c94d0fe18c5238f53b313c6"},
-  "ymlr": {:hex, :ymlr, "5.1.4", "b924d61e1fc1ec371cde6ab3ccd9311110b1e052fc5c2460fb322e8380e7712a", [:mix], [], "hexpm", "75f16cf0709fbd911b30311a0359a7aa4b5476346c01882addefd5f2b1cfaa51"},
+  "ymlr": {:hex, :ymlr, "5.1.5", "0b9207c7940be3f2bc29b77cd55109d5aa2f4dcde6575942017335769e6f5628", [:mix], [], "hexpm", "7030cb240c46850caeb3b01be745307632be319b15f03083136f6251f49b516d"},
 }
