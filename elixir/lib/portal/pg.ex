@@ -27,6 +27,16 @@ defmodule Portal.PG do
   end
 
   @doc """
+  Joins the calling process to the group under `key` without disconnecting existing members.
+
+  Use this for keys where multiple processes can legitimately coexist
+  (e.g. a credential shared by many clients).
+  """
+  def join(key) do
+    :pg.join(scope(), key, self())
+  end
+
+  @doc """
   Delivers `message` to all processes registered under `key`.
 
   Returns `:ok` if at least one process is registered, `{:error, :not_found}` otherwise.

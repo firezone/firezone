@@ -145,6 +145,90 @@ defmodule Portal.PGTest do
     end
   end
 
+  describe "join/1 (credential/token shared by multiple clients)" do
+    test "multiple processes can join the same key without disconnecting each other", %{
+      scope: scope
+    } do
+      credential_id = Ecto.UUID.generate()
+      parent = self()
+
+      pids =
+        for i <- 1..10 do
+          spawn(fn ->
+            Portal.Config.put_env_override(:portal, :pg_scope, scope)
+            PG.join(credential_id)
+            send(parent, {:joined, i})
+
+            receive do
+              msg -> send(parent, {:received, i, msg})
+            end
+          end)
+        end
+
+      for i <- 1..10, do: assert_receive({:joined, ^i})
+
+      # All 10 processes should receive the message — none were disconnected
+      assert :ok = PG.deliver(credential_id, :hello)
+
+      for i <- 1..10, do: assert_receive({:received, ^i, :hello})
+
+      Enum.each(pids, &Process.exit(&1, :kill))
+    end
+
+    test "join does not disconnect processes registered with register/1", %{scope: scope} do
+      key = Ecto.UUID.generate()
+      parent = self()
+
+      pid =
+        spawn(fn ->
+          Portal.Config.put_env_override(:portal, :pg_scope, scope)
+          PG.register(key)
+          send(parent, :registered)
+
+          receive do
+            msg -> send(parent, {:first, msg})
+          end
+        end)
+
+      assert_receive :registered
+
+      # join should NOT send :disconnect to the existing process
+      PG.join(key)
+
+      # Deliver should reach both the registered process and self
+      assert :ok = PG.deliver(key, :hello)
+      assert_receive {:first, :hello}
+      assert_receive :hello
+
+      Process.exit(pid, :kill)
+    end
+
+    test "register/1 disconnects joined processes but join/1 does not", %{scope: scope} do
+      key = Ecto.UUID.generate()
+      parent = self()
+
+      joined_pid =
+        spawn(fn ->
+          Portal.Config.put_env_override(:portal, :pg_scope, scope)
+          PG.join(key)
+          send(parent, :joined)
+
+          receive do
+            msg -> send(parent, {:joined_received, msg})
+          end
+        end)
+
+      assert_receive :joined
+
+      # register/1 should disconnect the joined process
+      PG.register(key)
+
+      assert_receive {:joined_received, :disconnect}
+
+      Process.exit(joined_pid, :kill)
+    end
+  end
+
   describe "scope_pid/0" do
     test "returns the pid of the running pg scope" do
       assert is_pid(PG.scope_pid())

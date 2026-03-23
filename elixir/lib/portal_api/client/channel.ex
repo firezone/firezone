@@ -1538,7 +1538,7 @@ defmodule PortalAPI.Client.Channel do
       new_pid ->
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.client.id)
-        :ok = PG.register(socket.assigns.subject.credential.id)
+        :ok = PG.join(socket.assigns.subject.credential.id)
         {:noreply, assign(socket, :pg_scope_pid, new_pid)}
     end
   end

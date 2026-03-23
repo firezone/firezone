@@ -752,7 +752,7 @@ defmodule PortalAPI.Gateway.Channel do
       new_pid ->
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.gateway.id)
-        :ok = PG.register(socket.assigns.token_id)
+        :ok = PG.join(socket.assigns.token_id)
         {:noreply, assign(socket, :pg_scope_pid, new_pid)}
     end
   end

@@ -334,6 +334,34 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :disconnect regression — shared token" do
+    test "multiple gateways sharing a token are not disconnected by each other", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+
+      gateway1 = gateway_fixture(account: account, site: site)
+      gateway2 = gateway_fixture(account: account, site: site)
+
+      socket1 = join_channel(gateway1, site, token)
+      assert_push "init", _
+
+      socket2 = join_channel(gateway2, site, token)
+      assert_push "init", _
+
+      # Both channels should still be alive — sharing a token must not
+      # cause one to evict the other (regression: PG.register on token_id
+      # used to send :disconnect to all existing members)
+      assert Process.alive?(socket1.channel_pid)
+      assert Process.alive?(socket2.channel_pid)
+
+      # Neither channel should have received a disconnect push
+      refute_push "disconnect", _
+    end
+  end
+
   describe "handle_info/2" do
     test "ignores out of order %Change{}", %{
       gateway: gateway,

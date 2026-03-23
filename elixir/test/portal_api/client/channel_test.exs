@@ -948,6 +948,35 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :disconnect regression — shared credential" do
+    test "multiple clients sharing a credential are not disconnected by each other", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+
+      # Create two different clients that share the same credential (token)
+      client1 = client_fixture(account: account, actor: actor)
+      client2 = client_fixture(account: account, actor: actor)
+
+      socket1 = join_channel(client1, subject)
+      assert_push "init", _
+
+      socket2 = join_channel(client2, subject)
+      assert_push "init", _
+
+      # Both channels should still be alive — sharing a credential must not
+      # cause one to evict the other (regression: PG.register on credential.id
+      # used to send :disconnect to all existing members)
+      assert Process.alive?(socket1.channel_pid)
+      assert Process.alive?(socket2.channel_pid)
+
+      # Neither channel should have received a disconnect push
+      refute_push "disconnect", _
+    end
+  end
+
   describe "handle_info/2 recompute_authorized_resources" do
     test "sends resource_created_or_updated for new connectable_resources", %{
       account: account,
