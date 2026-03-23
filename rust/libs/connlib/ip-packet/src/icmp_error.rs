@@ -60,6 +60,14 @@ impl IcmpError {
             V4Unreachable(FilterProhibited) | V6Unreachable(Prohibited)
         )
     }
+
+    pub fn is_unreachable_network(&self) -> bool {
+        use IcmpError::*;
+        use icmpv4::DestUnreachableHeader::*;
+        use icmpv6::DestUnreachableCode::*;
+
+        matches!(self, V4Unreachable(Network) | V6Unreachable(Address))
+    }
 }
 
 impl fmt::Display for IcmpError {
@@ -109,6 +117,15 @@ impl FailedPacket {
         match self.l4_proto {
             Layer4Protocol::Udp { src, .. } => Protocol::Udp(src),
             Layer4Protocol::Tcp { src, .. } => Protocol::Tcp(src),
+            Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
+        }
+    }
+
+    /// The destination protocol of the packet.
+    pub fn dst_proto(&self) -> Protocol {
+        match self.l4_proto {
+            Layer4Protocol::Udp { dst, .. } => Protocol::Udp(dst),
+            Layer4Protocol::Tcp { dst, .. } => Protocol::Tcp(dst),
             Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
         }
     }
