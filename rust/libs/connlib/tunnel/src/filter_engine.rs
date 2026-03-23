@@ -3,13 +3,13 @@ use rangemap::RangeInclusiveSet;
 
 use crate::messages::Filter;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
 pub(crate) enum FilterEngine {
     PermitAll,
     PermitSome(AllowRules),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
 pub(crate) struct AllowRules {
     udp: RangeInclusiveSet<u16>,
     tcp: RangeInclusiveSet<u16>,

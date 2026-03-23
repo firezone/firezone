@@ -32,6 +32,7 @@ use tun::Tun;
 mod client;
 mod dns;
 mod expiring_map;
+mod filter_engine;
 mod gateway;
 mod io;
 pub mod messages;

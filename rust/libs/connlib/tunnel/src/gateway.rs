@@ -1,5 +1,4 @@
 mod client_on_gateway;
-mod filter_engine;
 mod flow_tracker;
 mod nat_table;
 mod unroutable_packet;
