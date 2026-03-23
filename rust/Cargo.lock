@@ -7174,8 +7174,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.16.2"
-source = "git+https://github.com/algesten/str0m?branch=main#3e0bdbd56e565f6150c357c7c3dbcd91599b673b"
+version = "0.17.0"
+source = "git+https://github.com/algesten/str0m?branch=main#da92bfa3b7449228db8449dd529d4681c8b83c8c"
 dependencies = [
  "arrayvec",
  "combine",
@@ -7192,8 +7192,8 @@ dependencies = [
 
 [[package]]
 name = "str0m-proto"
-version = "0.1.2"
-source = "git+https://github.com/algesten/str0m?branch=main#3e0bdbd56e565f6150c357c7c3dbcd91599b673b"
+version = "0.2.0"
+source = "git+https://github.com/algesten/str0m?branch=main#da92bfa3b7449228db8449dd529d4681c8b83c8c"
 dependencies = [
  "base64ct",
  "dimpl",
