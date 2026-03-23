@@ -4,7 +4,6 @@ use connlib_model::ResourceId;
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use itertools::Itertools;
 
 #[derive(Debug, Default)]
 pub(crate) struct RoutingTable {
@@ -37,18 +36,11 @@ impl RoutingTable {
         tie_breaker: impl Fn(ResourceId, ResourceId) -> Ordering,
     ) -> Option<ResourceId> {
         let (_, resources) = self.cidr.longest_match(ip)?;
-        let first = resources.first()?;
-
-        // Fast-path for the case where no sorting is needed.
-        if resources.len() == 1 {
-            return Some(*first);
-        }
 
         let id = resources
             .iter()
             .copied()
-            .sorted_by(|left, right| tie_breaker(*left, *right).reverse().then(left.cmp(right)))
-            .next()?;
+            .max_by(|left, right| tie_breaker(*left, *right).reverse().then(left.cmp(right)))?;
 
         Some(id)
     }
@@ -63,18 +55,9 @@ impl RoutingTable {
         tie_breaker: impl Fn(ResourceId, ResourceId) -> Ordering,
     ) -> Option<(ResourceId, &DomainName)> {
         let (_, resources) = self.dns.longest_match(ip)?;
-        let (id, domain) = resources.first()?;
-
-        if resources.len() == 1 {
-            return Some((*id, domain));
-        }
-
-        let (id, domain) = resources
-            .iter()
-            .sorted_by(|(left, _), (right, _)| {
-                tie_breaker(*left, *right).reverse().then(left.cmp(right))
-            })
-            .next()?;
+        let (id, domain) = resources.iter().max_by(|(left, _), (right, _)| {
+            tie_breaker(*left, *right).reverse().then(left.cmp(right))
+        })?;
 
         Some((*id, domain))
     }
