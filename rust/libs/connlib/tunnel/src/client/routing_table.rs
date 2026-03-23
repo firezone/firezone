@@ -280,7 +280,7 @@ mod tests {
 
         t.remove_by_resource(R1);
 
-        assert_eq!(t.matches_cidr(ip, no_tiebreak), None);
+        assert_eq!(t.matches_dns(ip, no_tiebreak), None);
     }
 
     #[test]
