@@ -340,7 +340,8 @@ defmodule PortalAPI.Client.ChannelTest do
         "expires_at" => token.expires_at
       }
 
-      Portal.Changes.Hooks.ClientTokens.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Portal.Changes.Hooks.ClientTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
