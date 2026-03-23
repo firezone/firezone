@@ -116,7 +116,7 @@ itertools = "0.14.0"
 jni = "0.21.1"
 keyring-core = "0.7.3"
 known-dirs = { path = "libs/known-dirs" }
-known-folders = "1.4.1"
+known-folders = "1.4.2"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
