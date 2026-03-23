@@ -174,7 +174,7 @@ impl ClientState {
 
         for record in &records {
             for ip in &record.ips {
-                routing_table.upsert_dns(*ip, record.resource);
+                routing_table.upsert_dns(*ip, record.resource, record.domain.clone());
             }
         }
 
@@ -324,13 +324,13 @@ impl ClientState {
         // Organise all buffered packets by gateway + domain.
         let mut buffered_packets_by_gateway_and_domain = buffered_packets
             .map(|packet| {
-                let (domain, resource) = self
-                    .stub_resolver
-                    .resolve_resource_by_ip(&packet.destination())
-                    .context("IP is not associated with a DNS resource domain")?;
+                let (resource, domain) = self
+                    .routing_table
+                    .matches_dns(packet.destination(), |_, _| Ordering::Equal)
+                    .context("IP is not associated with a DNS resource")?;
                 let gateway_id = self
                     .authorized_resources
-                    .get(resource)
+                    .get(&resource)
                     .context("No gateway for resource")?;
 
                 anyhow::Ok((*gateway_id, domain, packet))
@@ -366,7 +366,7 @@ impl ClientState {
             };
 
             let packets_for_domain = buffered_packets_by_gateway_and_domain
-                .remove(&(*gid, domain))
+                .remove(&(*gid, domain.clone()))
                 .unwrap_or_default();
 
             match self.dns_resource_nat.update(
@@ -617,12 +617,12 @@ impl ClientState {
             self.route_packet_to_resource(packet, now)?
         };
 
-        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst)
+        if let Some((_, domain)) = self.routing_table.matches_dns(dst, |_, _| Ordering::Equal)
             && let ClientOrGatewayId::Gateway(gid) = pid
         {
             packet = self
                 .dns_resource_nat
-                .handle_outgoing(gid, domain, packet, now)?;
+                .handle_outgoing(gid, &domain, packet, now)?;
         }
 
         let transmit = self
@@ -1030,8 +1030,9 @@ impl ClientState {
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         let maybe_dns_resource_id = self.routing_table.matches_dns(destination, |_, _| Ordering::Equal)
             .inspect(
-                |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for DNS resource"),
-            );
+                |(rid, domain)| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, %domain, "Packet for DNS resource"),
+            )
+            .map(|(rid, _)| rid);
 
         // Tie-breaker function for preferring resources we are already connected to over other ones.
         let prefer_connected_cidr = |left, right| match (
@@ -1186,7 +1187,8 @@ impl ClientState {
         while let Some(dns::Event::RecordsChanged(records)) = self.stub_resolver.poll_event() {
             for record in &records {
                 for ip in &record.ips {
-                    self.routing_table.upsert_dns(*ip, record.resource);
+                    self.routing_table
+                        .upsert_dns(*ip, record.resource, record.domain.clone());
                 }
             }
 

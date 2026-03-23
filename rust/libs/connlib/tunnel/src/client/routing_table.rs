@@ -1,6 +1,7 @@
 use std::{cmp::Ordering, collections::BTreeSet, net::IpAddr};
 
 use connlib_model::ResourceId;
+use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
@@ -8,7 +9,7 @@ use itertools::Itertools;
 #[derive(Debug, Default)]
 pub(crate) struct RoutingTable {
     cidr: IpNetworkTable<BTreeSet<ResourceId>>,
-    dns: IpNetworkTable<BTreeSet<ResourceId>>,
+    dns: IpNetworkTable<BTreeSet<(ResourceId, DomainName)>>,
 }
 
 impl RoutingTable {
@@ -22,8 +23,8 @@ impl RoutingTable {
     /// Adds a new entry to the DNS resource routing table.
     ///
     /// Returns `true` if the resource wasn't present before.
-    pub fn upsert_dns(&mut self, ip: IpAddr, resource: ResourceId) -> bool {
-        upsert(&mut self.dns, ip.into(), resource)
+    pub fn upsert_dns(&mut self, ip: IpAddr, resource: ResourceId, domain: DomainName) -> bool {
+        upsert(&mut self.dns, ip.into(), (resource, domain))
     }
 
     /// Finds the CIDR resource to which traffic to a certain IP should be routed.
@@ -52,14 +53,16 @@ impl RoutingTable {
         &self,
         ip: IpAddr,
         tie_breaker: impl Fn(ResourceId, ResourceId) -> Ordering,
-    ) -> Option<ResourceId> {
+    ) -> Option<(ResourceId, DomainName)> {
         let (_, resources) = self.dns.longest_match(ip)?;
 
         resources
             .iter()
-            .copied()
-            .sorted_by(|left, right| tie_breaker(*left, *right).reverse().then(left.cmp(right)))
+            .sorted_by(|(left, _), (right, _)| {
+                tie_breaker(*left, *right).reverse().then(left.cmp(right))
+            })
             .next()
+            .cloned()
     }
 
     pub fn any_cidr(&self, ip: IpAddr) -> bool {
@@ -69,8 +72,8 @@ impl RoutingTable {
     }
 
     pub fn remove_by_resource(&mut self, resource: ResourceId) {
-        remove_by_resource(&mut self.cidr, resource);
-        remove_by_resource(&mut self.dns, resource);
+        remove_by_resource(&mut self.cidr, |c| c == &resource);
+        remove_by_resource(&mut self.dns, |(c, _)| c == &resource);
     }
 
     pub fn cidr_routes(&self) -> impl Iterator<Item = IpNetwork> {
@@ -78,24 +81,30 @@ impl RoutingTable {
     }
 }
 
-fn upsert(
-    table: &mut IpNetworkTable<BTreeSet<ResourceId>>,
-    network: IpNetwork,
-    resource: ResourceId,
-) -> bool {
+fn upsert<T>(table: &mut IpNetworkTable<BTreeSet<T>>, network: IpNetwork, element: T) -> bool
+where
+    T: Ord,
+{
     match table.exact_match_mut(network) {
-        Some(resources) => resources.insert(resource),
+        Some(elements) => elements.insert(element),
         None => {
-            table.insert(network, BTreeSet::from_iter([resource]));
+            table.insert(network, BTreeSet::from_iter([element]));
 
             true
         }
     }
 }
 
-fn remove_by_resource(table: &mut IpNetworkTable<BTreeSet<ResourceId>>, resource: ResourceId) {
+fn remove_by_resource<T>(
+    table: &mut IpNetworkTable<BTreeSet<T>>,
+    predicate: impl Fn(&T) -> bool + Copy,
+) where
+    T: Ord,
+{
     for (_, resources) in table.iter_mut() {
-        resources.remove(&resource);
+        for el in resources.extract_if(.., predicate) {
+            drop(el)
+        }
     }
 
     table.retain(|_, resources| !resources.is_empty());
@@ -127,11 +136,18 @@ mod tests {
     fn dns_upsert() {
         let mut t = RoutingTable::default();
         let ip = "192.168.1.1".parse().unwrap();
+        let domain = "example.com".parse::<DomainName>().unwrap();
 
-        assert!(t.upsert_dns(ip, R1), "first upsert should return true");
-        assert!(!t.upsert_dns(ip, R1), "second upsert should return false");
         assert!(
-            t.upsert_dns(ip, R2),
+            t.upsert_dns(ip, R1, domain.clone()),
+            "first upsert should return true"
+        );
+        assert!(
+            !t.upsert_dns(ip, R1, domain.clone()),
+            "second upsert should return false"
+        );
+        assert!(
+            t.upsert_dns(ip, R2, domain),
             "same network upsert of different resource should return true"
         );
     }
@@ -151,9 +167,10 @@ mod tests {
     fn matches_dns_resource_by_ip() {
         let mut t = RoutingTable::default();
         let ip = "1.2.3.4".parse().unwrap();
-        t.upsert_dns(ip, R1);
+        let domain = "example.com".parse::<DomainName>().unwrap();
+        t.upsert_dns(ip, R1, domain.clone());
 
-        assert_eq!(t.matches_dns(ip, no_tiebreak), Some(R1));
+        assert_eq!(t.matches_dns(ip, no_tiebreak), Some((R1, domain)));
     }
 
     #[test]
@@ -261,7 +278,8 @@ mod tests {
     fn remove_by_resource_removes_from_dns_table() {
         let mut t = RoutingTable::default();
         let ip = "1.2.3.4".parse().unwrap();
-        t.upsert_dns(ip, R1);
+        let domain = "example.com".parse::<DomainName>().unwrap();
+        t.upsert_dns(ip, R1, domain);
 
         t.remove_by_resource(R1);
 
@@ -301,7 +319,8 @@ mod tests {
     fn cidr_routes_does_not_include_dns_entries() {
         let mut t = RoutingTable::default();
         let ip = "1.2.3.4".parse().unwrap();
-        t.upsert_dns(ip, R1);
+        let domain = "example.com".parse::<DomainName>().unwrap();
+        t.upsert_dns(ip, R1, domain);
 
         assert_eq!(t.cidr_routes().count(), 0);
     }

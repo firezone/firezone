@@ -167,17 +167,6 @@ impl StubResolver {
         }
     }
 
-    /// Attempts to resolve an IP to a given resource.
-    ///
-    /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
-    /// This is in the hot-path of packet routing and must be fast!
-    pub(crate) fn resolve_resource_by_ip(
-        &self,
-        ip: &IpAddr,
-    ) -> Option<&(dns_types::DomainName, ResourceId)> {
-        self.ips_to_fqdn.get(ip)
-    }
-
     pub(crate) fn resolved_resources(
         &self,
     ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, &Vec<IpAddr>)> + '_ {
