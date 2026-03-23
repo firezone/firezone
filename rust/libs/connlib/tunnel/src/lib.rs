@@ -231,7 +231,7 @@ impl ClientTunnel {
                 udp_dns_queries: _,
                 device,
                 network,
-                error,
+                mut error,
             }) = self.io.poll(cx, &mut self.buffers)
             {
                 if let Some(response) = dns_response {
@@ -259,6 +259,11 @@ impl ClientTunnel {
                             }
                             None => self.io.schedule_timeout(now),
                         }
+                    }
+
+                    // Eagerly flush GSO queue.
+                    if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
+                        error.push(e);
                     }
 
                     tick.want_continue();
@@ -455,6 +460,11 @@ impl GatewayTunnel {
                                 error.push(e);
                             }
                         }
+                    }
+
+                    // Eagerly flush GSO queue.
+                    if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
+                        error.push(e);
                     }
 
                     tick.want_continue();
