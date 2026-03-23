@@ -40,7 +40,7 @@ impl RoutingTable {
         let id = resources
             .iter()
             .copied()
-            .max_by(|left, right| tie_breaker(*left, *right).reverse().then(left.cmp(right)))?;
+            .max_by(|left, right| tie_breaker(*left, *right).then(left.cmp(right)))?;
 
         Some(id)
     }
@@ -55,9 +55,9 @@ impl RoutingTable {
         tie_breaker: impl Fn(ResourceId, ResourceId) -> Ordering,
     ) -> Option<(ResourceId, &DomainName)> {
         let (_, resources) = self.dns.longest_match(ip)?;
-        let (id, domain) = resources.iter().max_by(|(left, _), (right, _)| {
-            tie_breaker(*left, *right).reverse().then(left.cmp(right))
-        })?;
+        let (id, domain) = resources
+            .iter()
+            .max_by(|(left, _), (right, _)| tie_breaker(*left, *right).then(left.cmp(right)))?;
 
         Some((*id, domain))
     }
@@ -214,14 +214,14 @@ mod tests {
         let prefer_r1 = |a: ResourceId, b: ResourceId| match (a == R1, b == R1) {
             (true, _) => Ordering::Greater,
             (_, true) => Ordering::Less,
-            _ => a.cmp(&b),
+            _ => Ordering::Equal,
         };
         assert_eq!(t.matches_cidr(ip, prefer_r1), Some(R1));
 
         let prefer_r2 = |a: ResourceId, b: ResourceId| match (a == R2, b == R2) {
             (true, _) => Ordering::Greater,
             (_, true) => Ordering::Less,
-            _ => a.cmp(&b),
+            _ => Ordering::Equal,
         };
         assert_eq!(t.matches_cidr(ip, prefer_r2), Some(R2));
     }
