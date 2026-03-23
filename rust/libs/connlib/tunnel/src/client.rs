@@ -1183,18 +1183,7 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events(now);
-
-        while let Some(dns::Event::RecordsChanged(records)) = self.stub_resolver.poll_event() {
-            for record in &records {
-                for ip in &record.ips {
-                    self.routing_table
-                        .upsert_dns(*ip, record.resource, record.domain.clone());
-                }
-            }
-
-            self.buffered_events
-                .push_back(ClientEvent::DnsRecordsChanged { records });
-        }
+        self.drain_stub_resolver_events();
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
@@ -1467,6 +1456,7 @@ impl ClientState {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
+                self.drain_stub_resolver_events();
                 self.dns_cache.insert(message.domain(), &response, now);
 
                 return Some(response);
@@ -1663,6 +1653,20 @@ impl ClientState {
                     conn_id,
                     candidates,
                 })
+        }
+    }
+
+    fn drain_stub_resolver_events(&mut self) {
+        while let Some(dns::Event::RecordsChanged(records)) = self.stub_resolver.poll_event() {
+            for record in &records {
+                for ip in &record.ips {
+                    self.routing_table
+                        .upsert_dns(*ip, record.resource, record.domain.clone());
+                }
+            }
+
+            self.buffered_events
+                .push_back(ClientEvent::DnsRecordsChanged { records });
         }
     }
 
