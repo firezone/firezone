@@ -37,8 +37,8 @@ pub struct ResourceStubResolver {
     fqdn_to_ips: BTreeMap<(dns_types::DomainName, ResourceId), Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (dns_types::DomainName, ResourceId)>,
     ip_provider: IpProvider,
-    /// All DNS resources we know about, indexed by the glob pattern they match against.
-    dns_resources: BTreeMap<Pattern, Resource>,
+    /// All DNS resources we know about, sorted by their glob pattern.
+    dns_resources: BTreeSet<Resource>,
     search_domain: Option<DomainName>,
 
     events: VecDeque<Event>,
@@ -55,8 +55,9 @@ pub(crate) enum ResolveStrategy {
     RecurseSite(ResourceId),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Resource {
+    pattern: Pattern,
     id: ResourceId,
     ip_stack: IpStack,
 }
@@ -132,26 +133,29 @@ impl ResourceStubResolver {
             }
         };
 
-        let existing = self
-            .dns_resources
-            .insert(parsed_pattern, Resource { id, ip_stack });
-
-        existing.is_none()
+        self.dns_resources.insert(Resource {
+            pattern: parsed_pattern,
+            id,
+            ip_stack,
+        })
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|_, r| r.id != id);
+        for r in self.dns_resources.extract_if(.., |r| r.id == id) {
+            drop(r)
+        }
     }
 
     fn get_or_assign_a_records(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource: Resource,
+        rid: ResourceId,
+        ip_stack: IpStack,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource.id)
+        self.get_or_assign_ips(fqdn, rid)
             .into_iter()
             .filter_map(get_v4)
-            .filter(|_| resource.ip_stack.supports_ipv4())
+            .filter(|_| ip_stack.supports_ipv4())
             .map(dns_types::records::a)
             .collect_vec()
     }
@@ -159,12 +163,13 @@ impl ResourceStubResolver {
     fn get_or_assign_aaaa_records(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource: Resource,
+        rid: ResourceId,
+        ip_stack: IpStack,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource.id)
+        self.get_or_assign_ips(fqdn, rid)
             .into_iter()
             .filter_map(get_v6)
-            .filter(|_| resource.ip_stack.supports_ipv6())
+            .filter(|_| ip_stack.supports_ipv6())
             .map(dns_types::records::aaaa)
             .collect_vec()
     }
@@ -205,19 +210,19 @@ impl ResourceStubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<Resource> {
+    fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<&Resource> {
         let name = Candidate::from_domain(domain);
 
-        for (pattern, r) in &self.dns_resources {
-            if pattern.matches(&name) {
-                tracing::trace!(id = %r.id, %pattern, %domain, "Matched resource");
+        for r in &self.dns_resources {
+            if r.pattern.matches(&name) {
+                tracing::trace!(id = %r.id, pattern = %r.pattern, %domain, "Matched resource");
 
-                return Some(*r);
+                return Some(r);
             }
         }
 
         if tracing::enabled!(tracing::Level::TRACE) {
-            let patterns = self.dns_resources.keys().join(" | ");
+            let patterns = self.dns_resources.iter().map(|r| &r.pattern).join(" | ");
             let patterns = format!("[{patterns}]");
 
             tracing::trace!(%domain, %patterns, "No resources matched");
@@ -252,10 +257,10 @@ impl ResourceStubResolver {
 
         let records = match (qtype, maybe_resource) {
             (RecordType::A, Some(resource)) => {
-                self.get_or_assign_a_records(domain.clone(), resource)
+                self.get_or_assign_a_records(domain.clone(), resource.id, resource.ip_stack)
             }
             (RecordType::AAAA, Some(resource)) => {
-                self.get_or_assign_aaaa_records(domain.clone(), resource)
+                self.get_or_assign_aaaa_records(domain.clone(), resource.id, resource.ip_stack)
             }
             (RecordType::SRV | RecordType::TXT, Some(resource)) => {
                 tracing::debug!(%qtype, rid = %resource.id, "Forwarding query for DNS resource to corresponding site");
@@ -820,16 +825,19 @@ mod benches {
 
                 let needle = resolver
                     .dns_resources
-                    .keys()
+                    .iter()
                     .choose(&mut rng)
                     .unwrap()
+                    .pattern
                     .to_string();
 
                 let needle = dns_types::DomainName::vec_from_str(&needle).unwrap();
 
                 (resolver, needle)
             })
-            .bench_refs(|(resolver, needle)| resolver.match_resource_linear(needle).unwrap());
+            .bench_refs(|(resolver, needle)| {
+                resolver.match_resource_linear(needle).unwrap().clone()
+            });
     }
 
     fn make_domain(rng: &mut impl Rng) -> String {

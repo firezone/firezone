@@ -1,7 +1,7 @@
 use super::*;
 use std::{convert::Infallible, fmt, str::FromStr};
 
-#[derive(Eq)]
+#[derive(Eq, Clone)]
 pub struct Pattern {
     inner: glob::Pattern,
     original: String,
