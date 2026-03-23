@@ -32,7 +32,7 @@ use secrecy::ExposeSecret as _;
 use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
-use crate::dns::{DnsResourceRecord, StubResolver};
+use crate::dns::{DnsResourceRecord, StubResolver, stub_resolver};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::messages::{IceRole, Interface as InterfaceConfig};
 use crate::peer_store::PeerStore;
@@ -1657,7 +1657,9 @@ impl ClientState {
     }
 
     fn drain_stub_resolver_events(&mut self) {
-        while let Some(dns::Event::RecordsChanged(records)) = self.stub_resolver.poll_event() {
+        while let Some(stub_resolver::Event::RecordsChanged(records)) =
+            self.stub_resolver.poll_event()
+        {
             for record in &records {
                 for ip in &record.ips {
                     self.routing_table
