@@ -37,12 +37,20 @@ impl RoutingTable {
         tie_breaker: impl Fn(ResourceId, ResourceId) -> Ordering,
     ) -> Option<ResourceId> {
         let (_, resources) = self.cidr.longest_match(ip)?;
+        let first = resources.first()?;
 
-        resources
+        // Fast-path for the case where no sorting is needed.
+        if resources.len() == 1 {
+            return Some(*first);
+        }
+
+        let id = resources
             .iter()
             .copied()
             .sorted_by(|left, right| tie_breaker(*left, *right).reverse().then(left.cmp(right)))
-            .next()
+            .next()?;
+
+        Some(id)
     }
 
     /// Finds the DNS resource to which traffic to a certain IP should be routed.
@@ -53,16 +61,22 @@ impl RoutingTable {
         &self,
         ip: IpAddr,
         tie_breaker: impl Fn(ResourceId, ResourceId) -> Ordering,
-    ) -> Option<(ResourceId, DomainName)> {
+    ) -> Option<(ResourceId, &DomainName)> {
         let (_, resources) = self.dns.longest_match(ip)?;
+        let (id, domain) = resources.first()?;
 
-        resources
+        if resources.len() == 1 {
+            return Some((*id, domain));
+        }
+
+        let (id, domain) = resources
             .iter()
             .sorted_by(|(left, _), (right, _)| {
                 tie_breaker(*left, *right).reverse().then(left.cmp(right))
             })
-            .next()
-            .cloned()
+            .next()?;
+
+        Some((*id, domain))
     }
 
     pub fn any_cidr(&self, ip: IpAddr) -> bool {
@@ -170,7 +184,7 @@ mod tests {
         let domain = "example.com".parse::<DomainName>().unwrap();
         t.upsert_dns(ip, R1, domain.clone());
 
-        assert_eq!(t.matches_dns(ip, no_tiebreak), Some((R1, domain)));
+        assert_eq!(t.matches_dns(ip, no_tiebreak), Some((R1, &domain)));
     }
 
     #[test]

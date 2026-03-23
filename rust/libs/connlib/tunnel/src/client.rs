@@ -366,7 +366,7 @@ impl ClientState {
             };
 
             let packets_for_domain = buffered_packets_by_gateway_and_domain
-                .remove(&(*gid, domain.clone()))
+                .remove(&(*gid, domain))
                 .unwrap_or_default();
 
             match self.dns_resource_nat.update(
@@ -622,7 +622,7 @@ impl ClientState {
         {
             packet = self
                 .dns_resource_nat
-                .handle_outgoing(gid, &domain, packet, now)?;
+                .handle_outgoing(gid, domain, packet, now)?;
         }
 
         let transmit = self
