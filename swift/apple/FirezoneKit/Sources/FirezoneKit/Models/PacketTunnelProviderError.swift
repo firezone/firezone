@@ -6,8 +6,20 @@
 
 import Foundation
 
-public enum PacketTunnelProviderError: Error {
+public enum PacketTunnelProviderError: Error, CustomNSError {
   case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
+
+  public static var errorDomain: String {
+    "FirezoneKit.PacketTunnelProviderError"
+  }
+
+  public var errorCode: Int {
+    switch self {
+    case .tunnelConfigurationIsInvalid: 0
+    case .firezoneIdIsInvalid: 1
+    case .tokenNotFoundInKeychain: 2
+    }
+  }
 }
