@@ -18,15 +18,6 @@ defmodule Portal.HealthTest do
   end
 
   describe "PortalWeb.Endpoint integration" do
-    test "GET /healthz returns 200" do
-      conn =
-        Plug.Test.conn(:get, "/healthz")
-        |> PortalWeb.Endpoint.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
-    end
-
     test "GET /readyz returns 200 when ready" do
       conn =
         Plug.Test.conn(:get, "/readyz")
@@ -39,15 +30,6 @@ defmodule Portal.HealthTest do
   end
 
   describe "PortalAPI.Endpoint integration" do
-    test "GET /healthz returns 200" do
-      conn =
-        Plug.Test.conn(:get, "/healthz")
-        |> PortalAPI.Endpoint.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
-    end
-
     test "GET /readyz returns 200 when ready" do
       conn =
         Plug.Test.conn(:get, "/readyz")
@@ -56,18 +38,6 @@ defmodule Portal.HealthTest do
       assert conn.status == 200
       assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
       assert is_binary(version)
-    end
-  end
-
-  describe "GET /healthz" do
-    test "returns 200 with status ok" do
-      conn =
-        :get
-        |> conn("/healthz")
-        |> Portal.Health.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
     end
   end
 

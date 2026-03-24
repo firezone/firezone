@@ -2,7 +2,6 @@ defmodule Portal.Health do
   @moduledoc """
   Health check plug that handles liveness and readiness probes.
 
-  - `/healthz` - Liveness check, always returns 200 OK
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
                 503 when draining or starting
 
@@ -44,13 +43,6 @@ defmodule Portal.Health do
   def init(opts), do: opts
 
   @impl true
-  def call(%Plug.Conn{request_path: "/healthz", method: "GET"} = conn, _opts) do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(200, JSON.encode!(%{status: :ok}))
-    |> halt()
-  end
-
   def call(%Plug.Conn{request_path: "/readyz", method: "GET"} = conn, _opts) do
     conn
     |> put_resp_content_type("application/json")
