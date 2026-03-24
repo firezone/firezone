@@ -62,10 +62,9 @@ on:
         value: ${{ jobs.data-plane-linux.outputs.http_test_server_image }}
 
 permissions:
-  # write permission is required to create a github release
-  contents: write
-  id-token: write
-  packages: write
+  contents: write # create/update GitHub releases
+  id-token: write # OIDC auth
+  packages: write # push Docker images to GHCR
 
 jobs:
   update-release-draft:

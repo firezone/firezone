@@ -9,6 +9,7 @@ defmodule Portal.Repo.Migrations.BackfillAccountKeys do
     SET key = (
       SELECT string_agg(substr('#{@chars}', floor(random() * 36 + 1)::int, 1), '')
       FROM generate_series(1, 6)
+      WHERE accounts.id IS NOT NULL
     )
     WHERE key IS NULL
     """)

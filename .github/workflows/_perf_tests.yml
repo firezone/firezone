@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
-      pull-requests: write
+      id-token: write # OIDC auth
+      pull-requests: write # post perf result comments
     env:
       PORTAL_IMAGE: "ghcr.io/firezone/portal"
       PORTAL_TAG: ${{ github.sha }}
@@ -130,9 +130,9 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
-      pull-requests: write
-      checks: write
+      id-token: write # OIDC auth
+      pull-requests: write # post Bencher PR comments
+      checks: write # Bencher check annotations
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: bencherdev/bencher@8151077aa7b1bceaac11c4b308265417cae60e2b # v0.5.10

@@ -9,7 +9,7 @@ jobs:
       run:
         working-directory: ./elixir
     permissions:
-      checks: write
+      checks: write # dorny/test-reporter
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
