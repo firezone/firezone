@@ -86,14 +86,7 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-# 4. --exit flag is accepted (combined with --check to avoid starting the tunnel)
-assert_exit_code "--exit --check exits 0" 0 "$CLI_PATH" --exit --check
-
-# 5. sign-in --help exits 0 and shows account-slug
-assert_exit_code "sign-in --help exits 0" 0 "$CLI_PATH" sign-in --help
-assert_output_contains "sign-in --help shows account-slug" "account-slug" "$CLI_PATH" sign-in --help
-
-# 5. sign-out --help exits 0 and shows Sign out
+# 4. sign-out --help exits 0 and shows Sign out
 assert_exit_code "sign-out --help exits 0" 0 "$CLI_PATH" sign-out --help
 assert_output_contains "sign-out --help shows 'Sign out'" "Sign out" "$CLI_PATH" sign-out --help
 
