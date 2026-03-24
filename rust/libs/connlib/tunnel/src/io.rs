@@ -419,7 +419,7 @@ impl Io {
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_gso_queue(cx).is_pending() {
+        if self.flush_gso_queue(cx)?.is_pending() {
             any_pending = true
         }
 
