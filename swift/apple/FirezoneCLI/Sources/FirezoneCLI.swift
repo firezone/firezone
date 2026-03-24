@@ -284,6 +284,21 @@ struct FirezoneCLI: AsyncParsableCommand {
     signal(SIGINT, SIG_DFL)
     defer { signal(SIGINT, SIG_IGN) }
 
+    // Disable terminal echo so the token isn't visible on screen
+    var originalTermios = termios()
+    let hasTerminal = tcgetattr(STDIN_FILENO, &originalTermios) == 0
+    if hasTerminal {
+      var noEcho = originalTermios
+      noEcho.c_lflag &= ~UInt(ECHO)
+      tcsetattr(STDIN_FILENO, TCSANOW, &noEcho)
+    }
+    defer {
+      if hasTerminal {
+        tcsetattr(STDIN_FILENO, TCSANOW, &originalTermios)
+        print()  // newline after the hidden input
+      }
+    }
+
     guard let tokenString = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines),
       !tokenString.isEmpty
     else {
