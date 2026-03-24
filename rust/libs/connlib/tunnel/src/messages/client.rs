@@ -587,8 +587,7 @@ mod tests {
         let ResourceDescription::StaticDevicePool(json) = &parsed[0] else {
             panic!("Expected StaticDevicePool");
         };
-        let desc =
-            ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
+        let desc = ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
         assert!(desc.address.is_none());
     }
 

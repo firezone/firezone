@@ -117,7 +117,9 @@ impl Resource {
                     })
                     .ok()?;
 
-                Some(Resource::DevicePool(DevicePoolResource::from_description(i)))
+                Some(Resource::DevicePool(DevicePoolResource::from_description(
+                    i,
+                )))
             }
             ResourceDescription::Unknown => None,
         }
