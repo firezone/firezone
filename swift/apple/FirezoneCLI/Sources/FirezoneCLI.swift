@@ -336,13 +336,10 @@ struct FirezoneCLI: AsyncParsableCommand {
     }
   }
 
-  /// Returns true if the error indicates the NE could not find a token in the keychain.
-  ///
-  /// `PacketTunnelProviderError` is defined in the NE target and auto-bridged to NSError
-  /// when crossing the IPC boundary. `tokenNotFoundInKeychain` is case index 2.
   private static func isTokenNotFoundError(_ error: (any Error)?) -> Bool {
     guard let nsError = error as NSError? else { return false }
-    return nsError.domain.contains("PacketTunnelProviderError") && nsError.code == 2
+    let expected = PacketTunnelProviderError.tokenNotFoundInKeychain as NSError
+    return nsError.domain == expected.domain && nsError.code == expected.code
   }
 
   /// Log the disconnect reason from the NE.

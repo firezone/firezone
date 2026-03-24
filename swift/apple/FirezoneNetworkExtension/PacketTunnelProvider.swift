@@ -9,12 +9,6 @@ import NetworkExtension
 import System
 import os
 
-enum PacketTunnelProviderError: Error {
-  case tunnelConfigurationIsInvalid
-  case firezoneIdIsInvalid
-  case tokenNotFoundInKeychain
-}
-
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
   /// Task for consuming commands from Adapter. Uses CancellableTask for RAII cleanup.
