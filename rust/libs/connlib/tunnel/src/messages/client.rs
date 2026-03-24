@@ -48,6 +48,19 @@ fn internet_resource_name() -> String {
     "Internet Resource".to_string()
 }
 
+/// Description of a static device pool resource.
+#[derive(Debug, Deserialize)]
+pub struct ResourceDescriptionStaticDevicePool {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+    /// DNS pattern for the pool. `None` if the pool doesn't participate in DNS resolution.
+    pub address: Option<String>,
+}
+
 /// Description of an internet resource.
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionInternet {
@@ -69,6 +82,7 @@ pub enum ResourceDescription {
     Dns(serde_json::Value),
     Cidr(serde_json::Value),
     Internet(serde_json::Value),
+    StaticDevicePool(serde_json::Value),
     #[serde(other)]
     Unknown, // Important for forwards-compatibility with future resource types.
 }
@@ -531,6 +545,51 @@ mod tests {
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn can_deserialize_static_device_pool_resource_with_address() {
+        let resources = r#"[
+            {
+                "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": "static_device_pool",
+                "name": "IoT Devices",
+                "address": "*.devices.example.com"
+            }
+        ]"#;
+
+        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+
+        assert!(matches!(
+            parsed[0],
+            ResourceDescription::StaticDevicePool(_)
+        ));
+    }
+
+    #[test]
+    fn can_deserialize_static_device_pool_resource_without_address() {
+        let resources = r#"[
+            {
+                "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "type": "static_device_pool",
+                "name": "IoT Devices",
+                "address": null
+            }
+        ]"#;
+
+        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+
+        assert!(matches!(
+            parsed[0],
+            ResourceDescription::StaticDevicePool(_)
+        ));
+
+        let ResourceDescription::StaticDevicePool(json) = &parsed[0] else {
+            panic!("Expected StaticDevicePool");
+        };
+        let desc =
+            ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
+        assert!(desc.address.is_none());
     }
 
     #[test]

@@ -98,7 +98,7 @@ impl Resource {
 
                 Some(Resource::Internet(InternetResource::from_description(i)))
             }
-            ResourceDescription::Unknown => None,
+            ResourceDescription::StaticDevicePool(_) | ResourceDescription::Unknown => None,
         }
     }
 
