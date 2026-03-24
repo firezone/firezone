@@ -568,6 +568,7 @@ impl ReferenceState {
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
+                        client::Resource::DevicePool(_) => {}
                     });
                 }
             }
@@ -607,6 +608,7 @@ impl ReferenceState {
                         client::Resource::Internet(_) => {
                             tracing::error!("Internet Resource cannot move site");
                         }
+                        client::Resource::DevicePool(_) => {}
                     })
                 }
             }
@@ -1320,7 +1322,9 @@ impl ReferenceState {
             .into_iter()
             .filter_map(|r| match r {
                 client::Resource::Cidr(r) => Some(r),
-                client::Resource::Dns(_) | client::Resource::Internet(_) => None,
+                client::Resource::Dns(_)
+                | client::Resource::Internet(_)
+                | client::Resource::DevicePool(_) => None,
             })
             .collect();
 
@@ -1344,7 +1348,8 @@ impl ReferenceState {
                 client::Resource::Dns(r) if r.address.starts_with("*.") => Some(r),
                 client::Resource::Dns(_)
                 | client::Resource::Cidr(_)
-                | client::Resource::Internet(_) => None,
+                | client::Resource::Internet(_)
+                | client::Resource::DevicePool(_) => None,
             })
             .collect();
 
