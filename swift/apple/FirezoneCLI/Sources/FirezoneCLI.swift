@@ -344,8 +344,7 @@ struct FirezoneCLI: AsyncParsableCommand {
   private static func isTokenNotFoundError(_ error: (any Error)?) -> Bool {
     guard let nsError = error as NSError? else { return false }
     let expected = PacketTunnelProviderError.tokenNotFoundInKeychain as NSError
-    // Match on suffix to handle both old NE domain (module-scoped) and new (CustomNSError)
-    return nsError.domain.hasSuffix("PacketTunnelProviderError") && nsError.code == expected.code
+    return nsError.domain == expected.domain && nsError.code == expected.code
   }
 
   /// Log the disconnect reason from the NE.
