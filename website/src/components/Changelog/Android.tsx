@@ -20,7 +20,8 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.9" date={new Date("2026-03-24")}>
         <ChangeItem pull={12355}>
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
           time.
@@ -86,7 +87,7 @@ export default function Android() {
           Fixes an issue where the WebSocket connection to the control plane was
           lost under load.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull={11077}>
           Fixes an issue where the authentication link would not open in the

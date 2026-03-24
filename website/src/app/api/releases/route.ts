@@ -7,7 +7,7 @@ export async function GET() {
     // mark:current-apple-version
     apple: "1.5.14",
     // mark:current-android-version
-    android: "1.5.8",
+    android: "1.5.9",
     // mark:current-gui-version
     gui: "1.5.11",
     // mark:current-headless-version
