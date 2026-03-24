@@ -174,6 +174,8 @@ config :portal, Portal.Health,
   web_endpoint: PortalWeb.Endpoint,
   api_endpoint: PortalAPI.Endpoint,
   ops_endpoint: PortalOps.Endpoint,
+  repo: Portal.Repo,
+  replica_repo: Portal.Repo.Replica,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
