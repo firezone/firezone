@@ -8,6 +8,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
   import Portal.ClientSessionFixtures
   import Portal.TokenFixtures
 
+  import Ecto.Query
   alias Portal.ClientSession
   alias Portal.Workers.DeleteOldClientSessions
 
@@ -51,6 +52,35 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
       assert :ok = perform_job(DeleteOldClientSessions, %{})
 
       assert Repo.get_by(ClientSession, id: session.id)
+    end
+
+    test "keeps exactly one session when multiple share the same inserted_at" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+
+      old_timestamp = DateTime.utc_now() |> DateTime.add(-91, :day)
+
+      sessions =
+        for _ <- 1..3 do
+          client_session_fixture(account: account, client: client, token: token)
+        end
+
+      # Set all three to the exact same inserted_at to simulate a batch flush
+      for session <- sessions do
+        session
+        |> Ecto.Changeset.change(inserted_at: old_timestamp)
+        |> Repo.update!()
+      end
+
+      assert :ok = perform_job(DeleteOldClientSessions, %{})
+
+      remaining =
+        from(s in ClientSession, where: s.client_id == ^client.id)
+        |> Repo.all()
+
+      assert length(remaining) == 1
     end
 
     test "deletes multiple old sessions across accounts keeping latest per client" do

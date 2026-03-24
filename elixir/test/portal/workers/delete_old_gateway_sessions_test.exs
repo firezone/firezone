@@ -59,6 +59,34 @@ defmodule Portal.Workers.DeleteOldGatewaySessionsTest do
       assert Repo.get_by(GatewaySession, id: latest_session.id)
     end
 
+    test "keeps exactly one session when multiple share the same inserted_at" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(account: account, site: site)
+
+      old_timestamp = DateTime.utc_now() |> DateTime.add(-91, :day)
+
+      for _ <- 1..3 do
+        gateway_session_fixture(account: account, gateway: gateway, token: token)
+      end
+
+      # Set all sessions (including the one from gateway_fixture) to the same timestamp
+      Repo.update_all(
+        from(s in GatewaySession, where: s.gateway_id == ^gateway.id),
+        set: [inserted_at: old_timestamp]
+      )
+
+      assert :ok = perform_job(DeleteOldGatewaySessions, %{})
+
+      remaining =
+        from(s in GatewaySession, where: s.gateway_id == ^gateway.id)
+        |> Repo.all()
+
+      # gateway_fixture creates 1 session + 3 from fixture = 4 total, only 1 kept
+      assert length(remaining) == 1
+    end
+
     test "deletes multiple old sessions across accounts keeping latest per gateway" do
       account1 = account_fixture()
       site1 = site_fixture(account: account1)

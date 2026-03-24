@@ -27,18 +27,27 @@ defmodule Portal.Workers.DeleteOldClientSessions do
     alias Portal.Safe
 
     def delete_old_client_sessions do
-      from(s in ClientSession, as: :client_sessions)
-      |> where([client_sessions: s], s.inserted_at < ago(90, "day"))
-      |> where(
-        [client_sessions: s],
-        exists(
-          from(newer in ClientSession,
-            where: newer.client_id == parent_as(:client_sessions).client_id,
-            where: newer.inserted_at > parent_as(:client_sessions).inserted_at,
-            select: 1
-          )
+      latest_per_client =
+        from(s in ClientSession,
+          select: %{
+            id: s.id,
+            rn:
+              row_number()
+              # id is a UUID so its ordering is arbitrary, but it provides a
+              # deterministic tiebreaker when multiple sessions share the same
+              # inserted_at (e.g. from a batch flush), ensuring exactly one is kept.
+              |> over(
+                partition_by: s.client_id,
+                order_by: [desc: s.inserted_at, desc: s.id]
+              )
+          }
         )
+
+      from(s in ClientSession, as: :client_sessions)
+      |> join(:inner, [client_sessions: s], r in subquery(latest_per_client),
+        on: r.id == s.id and r.rn > 1
       )
+      |> where([client_sessions: s], s.inserted_at < ago(90, "day"))
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
