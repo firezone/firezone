@@ -33,7 +33,7 @@ const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
-pub struct StubResolver {
+pub struct ResourceStubResolver {
     fqdn_to_ips: BTreeMap<(dns_types::DomainName, ResourceId), Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (dns_types::DomainName, ResourceId)>,
     ip_provider: IpProvider,
@@ -61,13 +61,13 @@ struct Resource {
     ip_stack: IpStack,
 }
 
-impl Default for StubResolver {
+impl Default for ResourceStubResolver {
     fn default() -> Self {
-        StubResolver::new(Default::default())
+        ResourceStubResolver::new(Default::default())
     }
 }
 
-impl StubResolver {
+impl ResourceStubResolver {
     pub(crate) fn new(records: BTreeSet<DnsResourceRecord>) -> Self {
         let mut ips_to_fqdn = HashMap::default();
         let mut fqdn_to_ips = BTreeMap::default();
@@ -100,7 +100,7 @@ impl StubResolver {
             let _ = ip_provider.get_n_ipv6(num_ip6_records);
         }
 
-        StubResolver {
+        ResourceStubResolver {
             fqdn_to_ips,
             ips_to_fqdn,
             ip_provider,
@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn prioritises_non_wildcard_over_wildcard_domain() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
         let wc = ResourceId::from_u128(0);
         let non_wc = ResourceId::from_u128(1);
 
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn query_for_doh_canary_domain_records_nx_domain() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
 
         let query = Query::new(
             "use-application-dns.net"
@@ -514,7 +514,7 @@ mod tests {
 
     #[test]
     fn a_query_for_ipv6_only_resource_yields_empty_set() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn aaaa_query_for_ipv4_only_resource_yields_empty_set() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn ip_stack_can_be_restricted_after_initial_query() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -591,7 +591,7 @@ mod tests {
 
     #[test]
     fn ip_stack_is_honored_from_cached_records() {
-        let mut resolver = StubResolver::new(BTreeSet::from([DnsResourceRecord {
+        let mut resolver = ResourceStubResolver::new(BTreeSet::from([DnsResourceRecord {
             domain: "example.com".parse().unwrap(),
             resource: ResourceId::from_u128(1),
             ips: vec![
@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn emits_new_records_on_assign() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn repeated_queries_dont_emit_events() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -705,7 +705,7 @@ mod benches {
     fn match_domain_linear<const NUM_RES: u128>(bencher: divan::Bencher) {
         bencher
             .with_inputs(|| {
-                let mut resolver = StubResolver::default();
+                let mut resolver = ResourceStubResolver::default();
                 let mut rng = rand::thread_rng();
 
                 for n in 0..NUM_RES {

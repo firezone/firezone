@@ -32,7 +32,7 @@ use secrecy::ExposeSecret as _;
 use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
-use crate::dns::{DnsResourceRecord, StubResolver, stub_resolver};
+use crate::dns::{DnsResourceRecord, ResourceStubResolver, stub_resolver};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::messages::{IceRole, Interface as InterfaceConfig};
 use crate::peer_store::PeerStore;
@@ -140,7 +140,7 @@ pub struct ClientState {
     dns_config: DnsConfig,
 
     /// Manages internal dns records and emits forwarding event when not internally handled
-    stub_resolver: StubResolver,
+    stub_resolver: ResourceStubResolver,
     /// Caches responses from DNS servers.
     dns_cache: DnsCache,
 
@@ -191,7 +191,7 @@ impl ClientState {
             node: Node::new(seed, now, unix_ts),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
-            stub_resolver: StubResolver::new(records),
+            stub_resolver: ResourceStubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,

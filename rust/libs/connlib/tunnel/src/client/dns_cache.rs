@@ -143,7 +143,7 @@ mod tests {
     use connlib_model::{IpStack, ResourceId};
     use dns_types::{RecordType, ResponseCode, records};
 
-    use crate::dns::{ResolveStrategy, StubResolver};
+    use crate::dns::{ResolveStrategy, ResourceStubResolver};
 
     use super::*;
 
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn does_not_cache_response_from_stub_resolver() {
-        let mut resolver = StubResolver::default();
+        let mut resolver = ResourceStubResolver::default();
         let mut cache = DnsCache::default();
 
         resolver.add_resource(

@@ -2,7 +2,7 @@ pub(crate) mod pattern;
 pub(crate) mod stub_resolver;
 
 pub(crate) use pattern::Pattern;
-pub(crate) use stub_resolver::{ResolveStrategy, StubResolver};
+pub(crate) use stub_resolver::{ResolveStrategy, ResourceStubResolver};
 
 pub use stub_resolver::DnsResourceRecord;
 
