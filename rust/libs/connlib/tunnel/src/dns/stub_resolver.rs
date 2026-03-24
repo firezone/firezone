@@ -35,7 +35,7 @@ const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
 pub struct ResourceStubResolver {
     fqdn_to_ips: BTreeMap<dns_types::DomainName, (Vec<IpAddr>, ResourceId)>,
-    ips_to_fqdn: HashMap<IpAddr, (dns_types::DomainName, ResourceId)>,
+    ips_to_fqdn: HashMap<IpAddr, dns_types::DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, sorted by their glob pattern.
     dns_resources: BTreeSet<Resource>,
@@ -90,7 +90,7 @@ impl ResourceStubResolver {
 
             for record in records {
                 for ip in record.ips.clone() {
-                    ips_to_fqdn.insert(ip, (record.domain.clone(), record.resource));
+                    ips_to_fqdn.insert(ip, record.domain.clone());
                 }
 
                 fqdn_to_ips.insert(record.domain, (record.ips, record.resource));
@@ -197,7 +197,7 @@ impl ResourceStubResolver {
             })
             .clone();
         for ip in &ips {
-            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource));
+            self.ips_to_fqdn.insert(*ip, fqdn.clone());
         }
 
         if records_changed {
@@ -236,7 +236,7 @@ impl ResourceStubResolver {
         reverse_dns_name: &dns_types::DomainName,
     ) -> Option<dns_types::DomainName> {
         let address = reverse_dns_addr(&reverse_dns_name.to_string())?;
-        let (domain, _) = self.ips_to_fqdn.get(&address)?;
+        let domain = self.ips_to_fqdn.get(&address)?;
 
         Some(domain.clone())
     }
