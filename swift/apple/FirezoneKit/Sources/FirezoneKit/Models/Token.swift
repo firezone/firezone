@@ -68,7 +68,7 @@ public struct Token: CustomStringConvertible, Sendable {
       } catch let error as KeychainError {
         // If update fails due to permissions (item owned by different code signature),
         // delete the old item and add a fresh one
-        if case .appleSecError("SecItemUpdate", -61) = error {
+        if case .appleSecError("SecItemUpdate", errSecWrPerm) = error {
           try Keychain.delete(persistentRef: existingRef)
         } else {
           throw error
