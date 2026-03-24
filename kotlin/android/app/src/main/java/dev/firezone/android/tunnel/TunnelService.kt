@@ -16,12 +16,13 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.Log
+import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
@@ -51,6 +52,7 @@ import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.enforceLogSizeCap
+import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.use
@@ -88,6 +90,7 @@ class TunnelService : VpnService() {
     private var disconnectCallback: DisconnectMonitor? = null
 
     private var logCleanupJob: Job? = null
+    private var featureFlagPollJob: Job? = null
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
@@ -302,9 +305,9 @@ class TunnelService : VpnService() {
                 try {
                     // Set telemetry environment and user context
                     val deviceIdValue = deviceId()
-                    dev.firezone.android.core.Telemetry.setEnvironmentOrClose(config.apiUrl)
-                    dev.firezone.android.core.Telemetry.setFirezoneId(deviceIdValue)
-                    dev.firezone.android.core.Telemetry.setAccountSlug(config.accountSlug)
+                    Telemetry.setEnvironmentOrClose(config.apiUrl)
+                    Telemetry.setFirezoneId(deviceIdValue)
+                    Telemetry.setAccountSlug(config.accountSlug)
 
                     Session
                         .newAndroid(
@@ -322,6 +325,7 @@ class TunnelService : VpnService() {
                             startNetworkMonitoring()
                             startDisconnectMonitoring()
                             startLogCleanup()
+                            startFeatureFlagPoll()
 
                             val stopReason = eventLoop(session, commandChannel!!)
 
@@ -334,7 +338,6 @@ class TunnelService : VpnService() {
                         }
                 } catch (e: ConnlibException) {
                     Log.e(TAG, "Failed to start session", e)
-
                     e.close()
                 } finally {
                     commandChannel = null
@@ -342,6 +345,7 @@ class TunnelService : VpnService() {
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
+                    stopFeatureFlagPoll()
 
                     // Stop the foreground notification
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -442,6 +446,23 @@ class TunnelService : VpnService() {
     private fun stopLogCleanup() {
         logCleanupJob?.cancel()
         logCleanupJob = null
+    }
+
+    private fun startFeatureFlagPoll() {
+        featureFlagPollJob =
+            serviceScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    val active = isLogStreamingActive()
+                    Log.setStreamingActive(active)
+                    delay(FEATURE_FLAG_POLL_INTERVAL_MS)
+                }
+            }
+    }
+
+    private fun stopFeatureFlagPoll() {
+        featureFlagPollJob?.cancel()
+        featureFlagPollJob = null
+        Log.setStreamingActive(false)
     }
 
     fun setServiceStateMutableStateFlow(stateFlow: MutableStateFlow<State?>) {
@@ -662,6 +683,9 @@ class TunnelService : VpnService() {
                 }
             } catch (e: ClosedReceiveChannelException) {
                 stopReason = StopReason.CommandChannelClosed
+            } catch (e: CancellationException) {
+                stopReason = StopReason.CommandChannelClosed
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error in event loop", e)
                 stopReason = StopReason.Error
@@ -730,6 +754,7 @@ class TunnelService : VpnService() {
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
+        private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
 
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")

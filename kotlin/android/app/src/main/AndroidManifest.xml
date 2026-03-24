@@ -103,6 +103,9 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Disable Sentry auto-init; we initialize manually in Telemetry.start() -->
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
+
         <meta-data android:name="android.content.APP_RESTRICTIONS"
             android:resource="@xml/app_restrictions" />
 
