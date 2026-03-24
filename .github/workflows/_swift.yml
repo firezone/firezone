@@ -35,7 +35,7 @@ jobs:
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
-          install_args: --cd swift/apple
+          install_args: --cd swift/apple swiftlint
       - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
@@ -55,7 +55,7 @@ jobs:
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
-          install_args: --cd swift/apple
+          install_args: --cd swift/apple swiftlint
       - name: Check Swift formatting and linting
         run: mise run //swift/apple:check
 
@@ -105,7 +105,7 @@ jobs:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
         with:
-          install_args: --cd swift/apple
+          install_args: --cd swift/apple swiftlint
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.rust-targets }}
