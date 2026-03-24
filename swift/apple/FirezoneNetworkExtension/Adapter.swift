@@ -477,13 +477,16 @@ actor Adapter {
         if ipv4Address.isWithinSentinelRange() {
           Log.warning(
             "Not adding fetched system resolver because it's within sentinel range: \(ipv4Address)")
-        } else if ipv4Address.isNonRoutable() {
-          Log.debug(
-            "Not adding fetched system resolver because it's non-routable: \(ipv4Address)")
-        } else {
-          parsedResolvers.append("\(ipv4Address)")
+          continue
         }
 
+        if ipv4Address.isNonRoutable() {
+          Log.debug(
+            "Not adding fetched system resolver because it's non-routable: \(ipv4Address)")
+          continue
+        }
+
+        parsedResolvers.append("\(ipv4Address)")
         continue
       }
 
@@ -491,13 +494,16 @@ actor Adapter {
         if ipv6Address.isWithinSentinelRange() {
           Log.warning(
             "Not adding fetched system resolver because it's within sentinel range: \(ipv6Address)")
-        } else if ipv6Address.isNonRoutable() {
-          Log.debug(
-            "Not adding fetched system resolver because it's non-routable: \(ipv6Address)")
-        } else {
-          parsedResolvers.append("\(ipv6Address)")
+          continue
         }
 
+        if ipv6Address.isNonRoutable() {
+          Log.debug(
+            "Not adding fetched system resolver because it's non-routable: \(ipv6Address)")
+          continue
+        }
+
+        parsedResolvers.append("\(ipv6Address)")
         continue
       }
 
