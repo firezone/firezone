@@ -34,7 +34,7 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
 pub struct ResourceStubResolver {
-    fqdn_to_ips: BTreeMap<(dns_types::DomainName, ResourceId), Vec<IpAddr>>,
+    fqdn_to_ips: BTreeMap<dns_types::DomainName, (Vec<IpAddr>, ResourceId)>,
     ips_to_fqdn: HashMap<IpAddr, (dns_types::DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, sorted by their glob pattern.
@@ -93,7 +93,7 @@ impl ResourceStubResolver {
                     ips_to_fqdn.insert(ip, (record.domain.clone(), record.resource));
                 }
 
-                fqdn_to_ips.insert((record.domain, record.resource), record.ips);
+                fqdn_to_ips.insert(record.domain, (record.ips, record.resource));
             }
 
             // Advance IP provider to make sure future addresses are unique.
@@ -116,7 +116,7 @@ impl ResourceStubResolver {
     ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, &Vec<IpAddr>)> + '_ {
         self.fqdn_to_ips
             .iter()
-            .map(|((domain, resource), ips)| (domain, resource, ips))
+            .map(|(domain, (ips, resource))| (domain, resource, ips))
     }
 
     pub(crate) fn add_resource(
@@ -181,9 +181,9 @@ impl ResourceStubResolver {
     ) -> Vec<IpAddr> {
         let mut records_changed = false;
 
-        let ips = self
+        let (ips, _) = self
             .fqdn_to_ips
-            .entry((fqdn.clone(), resource))
+            .entry(fqdn.clone())
             .or_insert_with(|| {
                 let mut ips = Vec::with_capacity(8);
                 ips.extend(self.ip_provider.get_n_ipv4(4));
@@ -193,7 +193,7 @@ impl ResourceStubResolver {
 
                 records_changed = true;
 
-                ips
+                (ips, resource)
             })
             .clone();
         for ip in &ips {
@@ -309,7 +309,7 @@ impl ResourceStubResolver {
     fn records(&self) -> BTreeSet<DnsResourceRecord> {
         self.fqdn_to_ips
             .iter()
-            .map(|((name, resource), ips)| DnsResourceRecord {
+            .map(|(name, (ips, resource))| DnsResourceRecord {
                 domain: name.clone(),
                 resource: *resource,
                 ips: ips.clone(),
