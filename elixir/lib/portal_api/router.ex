@@ -33,6 +33,24 @@ defmodule PortalAPI.Router do
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi"
   end
 
+  pipeline :ingestion do
+    plug Plug.Parsers,
+      parsers: [:json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 10_000_000
+
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.IngestionAuth
+    plug PortalAPI.Plugs.IngestionRateLimit
+  end
+
+  scope "/ingestion", PortalAPI do
+    pipe_through :ingestion
+
+    post "/flow_logs", FlowLogController, :create
+  end
+
   scope "/", PortalAPI do
     pipe_through :api
 
