@@ -350,7 +350,7 @@ impl DeviceStubResolver {
     /// Attempts to match the given domain against device pool patterns.
     ///
     /// Returns the [`ResourceId`] of the first matching device pool, if any.
-    pub(crate) fn match_device_pool(
+    pub(crate) fn match_device_pool_linear(
         &self,
         domain: &dns_types::DomainName,
     ) -> Option<ResourceId> {
@@ -741,7 +741,7 @@ mod tests {
         resolver.add_resource(rid, "*.devices.example.com".to_owned());
 
         let matched = resolver
-            .match_device_pool(&"foo.devices.example.com".parse().unwrap());
+            .match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
 
         assert_eq!(matched, Some(rid));
     }
@@ -752,7 +752,7 @@ mod tests {
         resolver.add_resource(ResourceId::from_u128(1), "*.devices.example.com".to_owned());
 
         let matched = resolver
-            .match_device_pool(&"foo.other.example.com".parse().unwrap());
+            .match_device_pool_linear(&"foo.other.example.com".parse().unwrap());
 
         assert_eq!(matched, None);
     }
@@ -766,7 +766,7 @@ mod tests {
         resolver.remove_resource(rid);
 
         let matched = resolver
-            .match_device_pool(&"foo.devices.example.com".parse().unwrap());
+            .match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
 
         assert_eq!(matched, None);
     }
@@ -781,7 +781,7 @@ mod tests {
         resolver.add_resource(specific, "foo.devices.example.com".to_owned());
 
         let matched = resolver
-            .match_device_pool(&"foo.devices.example.com".parse().unwrap());
+            .match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
 
         assert_eq!(matched, Some(specific));
     }
