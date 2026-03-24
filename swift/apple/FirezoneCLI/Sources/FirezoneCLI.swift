@@ -149,6 +149,11 @@ struct FirezoneCLI: AsyncParsableCommand {
     let (signalStream, signalContinuation) = AsyncStream.makeStream(of: SignalAction.self)
     let tunnelState = TunnelState()
 
+    // Check if the session is already connected (e.g. from a previous run)
+    if session.status == .connected {
+      Log.info("Tunnel connected")
+    }
+
     // Subscribe to VPN status updates
     Task {
       for await status in IPCClient.vpnStatusUpdates(session: session) {
