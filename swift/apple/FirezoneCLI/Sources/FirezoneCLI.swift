@@ -32,9 +32,6 @@ struct FirezoneCLI: AsyncParsableCommand {
   @Flag(name: .long, help: ArgumentHelp("Validate config and exit.", visibility: .hidden))
   var check = false
 
-  @Flag(name: .long, help: ArgumentHelp("Exit after tunnel connects.", visibility: .hidden))
-  var exit = false
-
   @Flag(name: .long, help: "Sign out and remove stored token.")
   var signOut = false
 
@@ -150,7 +147,6 @@ struct FirezoneCLI: AsyncParsableCommand {
     accountSlug: String
   ) async throws {
     let (signalStream, signalContinuation) = AsyncStream.makeStream(of: SignalAction.self)
-    let shouldExitOnConnect = self.exit
     let tunnelState = TunnelState()
 
     // Subscribe to VPN status updates
@@ -159,9 +155,6 @@ struct FirezoneCLI: AsyncParsableCommand {
         switch status {
         case .connected:
           Log.info("Tunnel connected")
-          if shouldExitOnConnect {
-            signalContinuation.yield(.shutdown)
-          }
         case .disconnected:
           if tunnelState.isRestarting {
             Log.info("Tunnel disconnected (restarting)")

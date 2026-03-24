@@ -28,21 +28,40 @@ if [ ! -x "$CLI_PATH" ]; then
     exit 1
 fi
 
-echo "Testing: firezone --exit (${TIMEOUT}s timeout)"
+echo "Testing: firezone tunnel connect (${TIMEOUT}s timeout)"
 echo "CLI: $CLI_PATH"
 echo "---"
 
-exit_code=0
-output=$(timeout "$TIMEOUT" "$CLI_PATH" --exit 2>&1) || exit_code=$?
+# Run the CLI in the background, capture output to a temp file
+outfile=$(mktemp)
+"$CLI_PATH" > "$outfile" 2>&1 &
+cli_pid=$!
 
-if [ "$exit_code" -eq 0 ]; then
-    echo "PASS: --exit connected and exited cleanly"
-elif [ "$exit_code" -eq 124 ]; then
-    echo "FAIL: --exit timed out after ${TIMEOUT}s (tunnel did not connect)"
-    echo "  Output: $output"
-    exit 1
+# Wait for "Tunnel connected" in output, up to TIMEOUT seconds
+elapsed=0
+connected=false
+while [ "$elapsed" -lt "$TIMEOUT" ]; do
+    if grep -q "Tunnel connected" "$outfile" 2>/dev/null; then
+        connected=true
+        break
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+
+if $connected; then
+    echo "PASS: tunnel connected within ${elapsed}s"
+    # Gracefully shut down
+    kill -TERM "$cli_pid" 2>/dev/null || true
+    wait "$cli_pid" 2>/dev/null || true
 else
-    echo "FAIL: --exit exited with code $exit_code"
-    echo "  Output: $output"
+    echo "FAIL: tunnel did not connect within ${TIMEOUT}s"
+    kill -TERM "$cli_pid" 2>/dev/null || true
+    wait "$cli_pid" 2>/dev/null || true
+    echo "  Output:"
+    cat "$outfile"
+    rm -f "$outfile"
     exit 1
 fi
+
+rm -f "$outfile"
