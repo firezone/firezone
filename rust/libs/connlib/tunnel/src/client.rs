@@ -32,7 +32,7 @@ use secrecy::ExposeSecret as _;
 use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
-use crate::dns::{DnsResourceRecord, ResourceStubResolver, stub_resolver};
+use crate::dns::{DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, stub_resolver};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::messages::{IceRole, Interface as InterfaceConfig};
 use crate::peer_store::PeerStore;
@@ -141,6 +141,8 @@ pub struct ClientState {
 
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: ResourceStubResolver,
+    /// Matches DNS queries against device pool patterns.
+    device_stub_resolver: DeviceStubResolver,
     /// Caches responses from DNS servers.
     dns_cache: DnsCache,
 
@@ -192,6 +194,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
             stub_resolver: ResourceStubResolver::new(records),
+            device_stub_resolver: Default::default(),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,
@@ -1820,7 +1823,12 @@ impl ClientState {
             }
             Resource::Cidr(cidr) => self.routing_table.upsert_cidr(cidr.address, cidr.id),
             Resource::Internet(_) => self.is_internet_resource_active,
-            Resource::DevicePool(_) => false, // Device pools are activated via DNS resolution, not routing.
+            Resource::DevicePool(pool) => match &pool.address {
+                Some(address) => self
+                    .device_stub_resolver
+                    .add_resource(pool.id, address.clone()),
+                None => false,
+            },
         };
 
         if activated {
@@ -1859,8 +1867,9 @@ impl ClientState {
 
         match resource {
             Resource::Dns(_) => self.stub_resolver.remove_resource(id),
-            Resource::Cidr(_) | Resource::DevicePool(_) => {}
+            Resource::Cidr(_) => {}
             Resource::Internet(_) => self.is_internet_resource_active = false,
+            Resource::DevicePool(_) => self.device_stub_resolver.remove_resource(id),
         }
 
         let name = resource.name();
