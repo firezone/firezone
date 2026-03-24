@@ -1,4 +1,4 @@
-import FirezoneKit
+import FirezoneShared
 import Foundation
 
 /// Commands that can be sent to the Session.

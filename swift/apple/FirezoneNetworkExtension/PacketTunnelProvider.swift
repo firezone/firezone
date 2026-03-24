@@ -4,7 +4,8 @@
 //  LICENSE: Apache-2.0
 //
 
-import FirezoneKit
+import FirezoneNE
+import FirezoneShared
 import NetworkExtension
 import System
 import os
@@ -87,7 +88,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.
     // So handle that edge case gracefully.
-    let legacyConfiguration = VPNConfigurationManager.legacyConfiguration(
+    let legacyConfiguration = legacyConfiguration(
       protocolConfiguration: protocolConfiguration as? NETunnelProviderProtocol
     )
 
@@ -450,7 +451,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       if let sendableError {
         let error: Error =
           sendableError.isAuthenticationError
-          ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
+          ? FirezoneShared.ConnlibError.sessionExpired(sendableError.message)
           : NSError(
             domain: "Firezone", code: 1,
             userInfo: [NSLocalizedDescriptionKey: sendableError.message])

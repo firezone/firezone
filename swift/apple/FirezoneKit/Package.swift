@@ -1,5 +1,4 @@
 // swift-tools-version: 6.2
-// The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
@@ -7,9 +6,9 @@ let package = Package(
   name: "FirezoneKit",
   platforms: [.iOS(.v16), .macOS(.v13)],
   products: [
-    // Products define the executables and libraries a package produces, and make them visible to
-    // other packages.
-    .library(name: "FirezoneKit", targets: ["FirezoneKit"])
+    .library(name: "FirezoneShared", targets: ["FirezoneShared"]),
+    .library(name: "FirezoneApp", targets: ["FirezoneApp"]),
+    .library(name: "FirezoneNE", targets: ["FirezoneNE"]),
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-system", exact: "1.6.4"),
@@ -17,15 +16,16 @@ let package = Package(
   ],
   targets: [
     .target(
-      name: "FirezoneKit",
+      name: "FirezoneShared",
       dependencies: [
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ]
     ),
-    .testTarget(
-      name: "FirezoneKitTests",
-      dependencies: ["FirezoneKit"]
-    ),
+    .target(name: "FirezoneApp", dependencies: ["FirezoneShared"]),
+    .target(name: "FirezoneNE", dependencies: ["FirezoneShared"]),
+    .testTarget(name: "FirezoneSharedTests", dependencies: ["FirezoneShared"]),
+    .testTarget(name: "FirezoneAppTests", dependencies: ["FirezoneApp"]),
+    .testTarget(name: "FirezoneNETests", dependencies: ["FirezoneNE"]),
   ]
 )

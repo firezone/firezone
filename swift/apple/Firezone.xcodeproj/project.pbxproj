@@ -14,8 +14,9 @@
 		6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		6F0EDF1F2E79A13800D6D632 /* Adapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 177FB893F19457A113042247 /* Adapter.swift */; };
 		6F0EDF212E79A15700D6D632 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
-		794C38152970A2660029F38F /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38142970A2660029F38F /* FirezoneKit */; };
-		79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneKit */; };
+		794C38142970A2660029F390 /* FirezoneShared in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38142970A2660029F38E /* FirezoneShared */; };
+		794C38152970A2660029F38F /* FirezoneNE in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38142970A2660029F38F /* FirezoneNE */; };
+		79756C6629704A7A0018E2D5 /* FirezoneApp in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneApp */; };
 		858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 177FB893F19457A113042247 /* Adapter.swift */; };
 		8D0000012D4100000003 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
 		8D0000012D4100000004 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
@@ -23,7 +24,8 @@
 		8D0000012D4100000006 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
 		8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D41B9A62D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
-		8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneKit */; };
+		8D5047F72CE6AA22009802EA /* FirezoneShared in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E8 /* FirezoneShared */; };
+		8D5047F82CE6AA22009802E9 /* FirezoneNE in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneNE */; };
 		8D5047FB2CE6AA37009802E9 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8D5047FE2CE6AA54009802E9 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
 		8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
@@ -129,7 +131,8 @@
 			files = (
 				8DC333F92D2FA85200E627D5 /* libresolv.tbd in Frameworks */,
 				8DC333FA2D2FA85200E627D5 /* libresolv.9.tbd in Frameworks */,
-				794C38152970A2660029F38F /* FirezoneKit in Frameworks */,
+				794C38142970A2660029F390 /* FirezoneShared in Frameworks */,
+				794C38152970A2660029F38F /* FirezoneNE in Frameworks */,
 				05CF1CF1290B1CEE00CF4755 /* NetworkExtension.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -139,7 +142,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				8DC333FB2D2FA89100E627D5 /* SystemConfiguration.framework in Frameworks */,
-				8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */,
+				8D5047F72CE6AA22009802EA /* FirezoneShared in Frameworks */,
+				8D5047F82CE6AA22009802E9 /* FirezoneNE in Frameworks */,
 				8DC9FB852CF5A738001BCE6A /* NetworkExtension.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -149,7 +153,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */,
-				79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */,
+				79756C6629704A7A0018E2D5 /* FirezoneApp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -275,7 +279,8 @@
 			);
 			name = FirezoneNetworkExtensioniOS;
 			packageProductDependencies = (
-				794C38142970A2660029F38F /* FirezoneKit */,
+				794C38142970A2660029F38E /* FirezoneShared */,
+				794C38142970A2660029F38F /* FirezoneNE */,
 			);
 			productName = FirezoneNetworkExtensioniOS;
 			productReference = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */;
@@ -296,7 +301,8 @@
 			);
 			name = FirezoneNetworkExtensionmacOS;
 			packageProductDependencies = (
-				8D5047F72CE6AA22009802E9 /* FirezoneKit */,
+				8D5047F72CE6AA22009802E8 /* FirezoneShared */,
+				8D5047F72CE6AA22009802E9 /* FirezoneNE */,
 			);
 			productName = FirezoneNetworkExtensionStandalonemacOS;
 			productReference = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */;
@@ -322,7 +328,7 @@
 			);
 			name = Firezone;
 			packageProductDependencies = (
-				79756C6529704A7A0018E2D5 /* FirezoneKit */,
+				79756C6529704A7A0018E2D5 /* FirezoneApp */,
 			);
 			productName = Firezone;
 			productReference = 8DCC021928D512AC007E12D2 /* Firezone.app */;
@@ -1238,17 +1244,25 @@
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		794C38142970A2660029F38F /* FirezoneKit */ = {
+		794C38142970A2660029F38E /* FirezoneShared */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = FirezoneKit;
+			productName = FirezoneShared;
 		};
-		79756C6529704A7A0018E2D5 /* FirezoneKit */ = {
+		794C38142970A2660029F38F /* FirezoneNE */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = FirezoneKit;
+			productName = FirezoneNE;
 		};
-		8D5047F72CE6AA22009802E9 /* FirezoneKit */ = {
+		79756C6529704A7A0018E2D5 /* FirezoneApp */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = FirezoneKit;
+			productName = FirezoneApp;
+		};
+		8D5047F72CE6AA22009802E8 /* FirezoneShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FirezoneShared;
+		};
+		8D5047F72CE6AA22009802E9 /* FirezoneNE */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FirezoneNE;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

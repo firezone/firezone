@@ -1,4 +1,5 @@
-import FirezoneKit
+import FirezoneNE
+import FirezoneShared
 import Foundation
 
 /// Commands sent from Adapter to PacketTunnelProvider.

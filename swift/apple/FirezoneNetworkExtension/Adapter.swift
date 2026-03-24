@@ -6,7 +6,8 @@
 
 // TODO: Refactor to fix file length
 
-import FirezoneKit
+import FirezoneNE
+import FirezoneShared
 import Foundation
 import NetworkExtension
 import OSLog
@@ -443,7 +444,7 @@ actor Adapter {
       if error.isAuthenticationError() {
         #if os(iOS)
           // iOS notifications should be shown from the tunnel process
-          SessionNotification.showSignedOutNotificationiOS()
+          TunnelNotification.showSignedOutNotificationiOS()
         #endif
 
         let sendableError = SendableError(errorMessage, isAuthenticationError: true)
@@ -520,20 +521,20 @@ actor Adapter {
 
   // MARK: - Resource conversion (uniffi → FirezoneKit)
 
-  private func convertResource(_ uniffiResource: Resource) -> FirezoneKit.Resource {
+  private func convertResource(_ uniffiResource: Resource) -> FirezoneShared.Resource {
     switch uniffiResource {
     case .dns(let resource):
-      FirezoneKit.Resource(
+      FirezoneShared.Resource(
         id: resource.id, name: resource.name, address: resource.address,
         addressDescription: resource.addressDescription,
         status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .dns)
     case .cidr(let resource):
-      FirezoneKit.Resource(
+      FirezoneShared.Resource(
         id: resource.id, name: resource.name, address: resource.address,
         addressDescription: resource.addressDescription,
         status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .cidr)
     case .internet(let resource):
-      FirezoneKit.Resource(
+      FirezoneShared.Resource(
         id: resource.id, name: resource.name, address: nil, addressDescription: nil,
         status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .internet)
     }
@@ -542,13 +543,13 @@ actor Adapter {
 
 // MARK: - UniFFI → FirezoneKit type conversions
 
-extension FirezoneKit.Site {
+extension FirezoneShared.Site {
   init(_ site: Site) {
     self.init(id: site.id, name: site.name)
   }
 }
 
-extension FirezoneKit.ResourceStatus {
+extension FirezoneShared.ResourceStatus {
   init(_ status: ResourceStatus) {
     switch status {
     case .unknown: self = .unknown
@@ -568,6 +569,7 @@ extension Network.NWPath {
       || path?.gateways != self.gateways
   }
 }
+
 
 extension IPv4Address {
   func isWithinSentinelRange() -> Bool {

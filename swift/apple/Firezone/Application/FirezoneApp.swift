@@ -5,7 +5,7 @@
 //
 
 import Combine
-import FirezoneKit
+import FirezoneApp
 import Sentry
 import SwiftUI
 

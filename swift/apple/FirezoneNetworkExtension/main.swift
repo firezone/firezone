@@ -4,7 +4,7 @@
 //  LICENSE: Apache-2.0
 //
 
-import FirezoneKit
+import FirezoneShared
 import Foundation
 import NetworkExtension
 
