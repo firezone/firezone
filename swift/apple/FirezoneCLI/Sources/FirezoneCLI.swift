@@ -29,9 +29,6 @@ struct FirezoneCLI: AsyncParsableCommand {
   @Option(name: .long, help: ArgumentHelp("Auth base URL.", visibility: .hidden))
   var authBaseUrl: String?
 
-  @Flag(name: .long, help: ArgumentHelp("Validate config and exit.", visibility: .hidden))
-  var check = false
-
   @Flag(name: .long, help: "Sign out and remove stored token.")
   var signOut = false
 
@@ -71,11 +68,6 @@ struct FirezoneCLI: AsyncParsableCommand {
       self.authBaseUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_AUTH_BASE_URL"]
       ?? Configuration.defaultAuthURL
-
-    if check {
-      Log.info("Configuration valid")
-      return
-    }
 
     #if SYSTEM_EXTENSION
       try await installSystemExtensionIfNeeded()
