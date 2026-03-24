@@ -4,15 +4,21 @@ on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
 
+permissions:
+  contents: read
+  pull-requests: write # post review comments
+  issues: read
+  id-token: write # OIDC auth
+
 jobs:
   claude-review:
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: write # post review comments
       issues: read
-      id-token: write
+      id-token: write # OIDC auth
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

@@ -19,6 +19,9 @@ concurrency:
   group: "ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
+permissions:
+  contents: read
+
 env:
   GH_TOKEN: ${{ github.token }}
 
@@ -160,11 +163,16 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
+    permissions:
+      contents: write # release draft and build artifact uploads
+      id-token: write # OIDC auth
 
   monitor-kotlin:
     needs: [kotlin]
     if: "!cancelled() && needs.kotlin.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -174,11 +182,16 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'swift')
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
+    permissions:
+      contents: write # release draft and build artifact uploads
+      id-token: write # OIDC auth
 
   monitor-swift:
     needs: [swift]
     if: "!cancelled() && needs.swift.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -188,11 +201,15 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
+    permissions:
+      checks: write # dorny/test-reporter
 
   monitor-elixir:
     needs: [elixir]
     if: "!cancelled() && needs.elixir.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -202,11 +219,16 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
 
   monitor-rust:
     needs: [rust]
     if: "!cancelled() && needs.rust.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -216,11 +238,16 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
+    permissions:
+      contents: write # release draft and build artifact uploads
+      id-token: write # OIDC auth
 
   monitor-tauri:
     needs: [tauri]
     if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -230,11 +257,17 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      security-events: write # upload CodeQL results
 
   monitor-codeql:
     needs: [codeql]
     if: "!cancelled() && needs.codeql.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -244,11 +277,16 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
+    permissions:
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
 
   monitor-control-plane:
     needs: [control-plane]
     if: "!cancelled() && needs.control-plane.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -258,6 +296,10 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
       image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
@@ -268,6 +310,8 @@ jobs:
     needs: [data-plane]
     if: "!cancelled() && needs.data-plane.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -277,11 +321,16 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'loadtest')
     uses: ./.github/workflows/_loadtest.yml
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage uploads
 
   monitor-loadtest:
     needs: [loadtest]
     if: "!cancelled() && needs.loadtest.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: gh run cancel ${{ github.run_id }}
@@ -290,6 +339,10 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     needs: [control-plane, data-plane]
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      pull-requests: write # post test result comments
     with:
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
@@ -318,6 +371,10 @@ jobs:
     uses: ./.github/workflows/_integration_tests.yml
     needs: [control-plane, data-plane]
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      pull-requests: write # post test result comments
     with:
       gateway_image: ${{ matrix.gateway.image }}
       gateway_tag: ${{ matrix.gateway.tag }}

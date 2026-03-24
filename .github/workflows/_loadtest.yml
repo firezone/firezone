@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write # OIDC auth for Azure Storage uploads
 
 jobs:
   loadtest:

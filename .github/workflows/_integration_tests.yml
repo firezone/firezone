@@ -61,8 +61,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
-      pull-requests: write
+      id-token: write # OIDC auth
+      pull-requests: write # post test result comments
     env:
       PORTAL_IMAGE: ${{ inputs.portal_image }}
       PORTAL_TAG: ${{ inputs.portal_tag }}

@@ -10,6 +10,8 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
       RELEASE_NAME: macos-client-1.5.15
@@ -70,7 +72,7 @@ jobs:
       MISE_EXPERIMENTAL: "1"
     permissions:
       contents: write # for attaching the build artifacts to the release
-      id-token: write
+      id-token: write # OIDC auth
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:

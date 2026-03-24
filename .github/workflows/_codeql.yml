@@ -13,7 +13,7 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write
+      security-events: write # upload CodeQL results
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:

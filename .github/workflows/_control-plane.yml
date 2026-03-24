@@ -9,8 +9,8 @@ on:
         default: ${{ github.sha }}
 
 permissions:
-  id-token: write
-  packages: write
+  id-token: write # OIDC auth
+  packages: write # push Docker images to GHCR
 
 jobs:
   control-plane:
