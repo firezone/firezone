@@ -69,7 +69,7 @@ struct FirezoneCLI: AsyncParsableCommand {
       ?? ProcessInfo.processInfo.environment["FIREZONE_AUTH_BASE_URL"]
       ?? Configuration.defaultAuthURL
 
-    try await installSystemExtensionIfNeeded()
+    try await verifySystemExtension()
 
     let session = try await setupVPN()
 
@@ -363,7 +363,7 @@ struct FirezoneCLI: AsyncParsableCommand {
   }
 
   @MainActor
-  private func installSystemExtensionIfNeeded() async throws {
+  private func verifySystemExtension() async throws {
     let manager = SystemExtensionManager()
     let status = try await manager.check()
 
@@ -371,13 +371,11 @@ struct FirezoneCLI: AsyncParsableCommand {
     case .installed:
       Log.info("System extension is up to date")
     case .needsInstall:
-      Log.info("Installing system extension...")
-      _ = try await manager.tryInstall()
-      Log.info("System extension installed")
+      throw ValidationError(
+        "System extension is not installed. Launch Firezone.app first to install it.")
     case .needsReplacement:
-      Log.info("Replacing system extension...")
-      _ = try await manager.tryInstall()
-      Log.info("System extension replaced")
+      throw ValidationError(
+        "System extension version does not match this CLI. Launch Firezone.app to update it.")
     }
   }
 }
