@@ -264,7 +264,7 @@ ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "mas
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.30" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", version = "0.6.0", branch = "main" } # Waiting for release.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
