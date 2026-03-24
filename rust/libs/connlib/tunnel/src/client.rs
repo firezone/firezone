@@ -140,7 +140,7 @@ pub struct ClientState {
     dns_config: DnsConfig,
 
     /// Manages internal dns records and emits forwarding event when not internally handled
-    stub_resolver: ResourceStubResolver,
+    resource_stub_resolver: ResourceStubResolver,
     /// Matches DNS queries against device pool patterns.
     device_stub_resolver: DeviceStubResolver,
     /// Caches responses from DNS servers.
@@ -193,7 +193,7 @@ impl ClientState {
             node: Node::new(seed, now, unix_ts),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
-            stub_resolver: ResourceStubResolver::new(records),
+            resource_stub_resolver: ResourceStubResolver::new(records),
             device_stub_resolver: Default::default(),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
@@ -352,7 +352,7 @@ impl ClientState {
             );
 
         for (domain, rid, proxy_ips, gid) in
-            self.stub_resolver
+            self.resource_stub_resolver
                 .resolved_resources()
                 .map(|(domain, resource, proxy_ips)| {
                     let gateway = self.authorized_resources.get(resource);
@@ -1405,7 +1405,7 @@ impl ClientState {
             }
         };
 
-        match self.stub_resolver.handle(&message) {
+        match self.resource_stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 if response.response_code() == ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
@@ -1455,7 +1455,7 @@ impl ClientState {
             return Some(response);
         }
 
-        match self.stub_resolver.handle(&message) {
+        match self.resource_stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
@@ -1591,7 +1591,7 @@ impl ClientState {
             return;
         }
 
-        self.stub_resolver
+        self.resource_stub_resolver
             .set_search_domain(new_tun_config.search_domain.clone());
         self.tun_config.update(new_tun_config);
 
@@ -1661,7 +1661,7 @@ impl ClientState {
 
     fn drain_stub_resolver_events(&mut self) {
         while let Some(stub_resolver::Event::RecordsChanged(records)) =
-            self.stub_resolver.poll_event()
+            self.resource_stub_resolver.poll_event()
         {
             for record in &records {
                 for ip in &record.ips {
@@ -1818,7 +1818,7 @@ impl ClientState {
 
         let activated = match &new_resource {
             Resource::Dns(dns) => {
-                self.stub_resolver
+                self.resource_stub_resolver
                     .add_resource(dns.id, dns.address.clone(), dns.ip_stack)
             }
             Resource::Cidr(cidr) => self.routing_table.upsert_cidr(cidr.address, cidr.id),
@@ -1866,7 +1866,7 @@ impl ClientState {
         };
 
         match resource {
-            Resource::Dns(_) => self.stub_resolver.remove_resource(id),
+            Resource::Dns(_) => self.resource_stub_resolver.remove_resource(id),
             Resource::Cidr(_) => {}
             Resource::Internet(_) => self.is_internet_resource_active = false,
             Resource::DevicePool(_) => self.device_stub_resolver.remove_resource(id),
@@ -1892,7 +1892,7 @@ impl ClientState {
 
         // Clear DNS resource NAT state for all domains resolved for this DNS resource.
         for domain in self
-            .stub_resolver
+            .resource_stub_resolver
             .resolved_resources()
             .filter_map(|(domain, candidate, _)| (candidate == &id).then_some(domain))
         {
