@@ -224,7 +224,7 @@ impl ClientState {
         self.resources_by_id
             .values()
             .cloned()
-            .map(|r| {
+            .filter_map(|r| {
                 let status = self.resource_status(&r);
                 r.with_status(status)
             })
@@ -780,6 +780,7 @@ impl ClientState {
             Resource::Dns(_) => {
                 self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
             }
+            Resource::DevicePool(_) => {}
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
@@ -1070,8 +1071,7 @@ impl ClientState {
 
     fn internet_resource(&self) -> Option<&InternetResource> {
         self.resources_by_id.values().find_map(|r| match r {
-            Resource::Dns(_) => None,
-            Resource::Cidr(_) => None,
+            Resource::Dns(_) | Resource::Cidr(_) | Resource::DevicePool(_) => None,
             Resource::Internet(internet_resource) => Some(internet_resource),
         })
     }
@@ -1820,6 +1820,7 @@ impl ClientState {
             }
             Resource::Cidr(cidr) => self.routing_table.upsert_cidr(cidr.address, cidr.id),
             Resource::Internet(_) => self.is_internet_resource_active,
+            Resource::DevicePool(_) => false, // Device pools are activated via DNS resolution, not routing.
         };
 
         if activated {
@@ -1858,7 +1859,7 @@ impl ClientState {
 
         match resource {
             Resource::Dns(_) => self.stub_resolver.remove_resource(id),
-            Resource::Cidr(_) => {}
+            Resource::Cidr(_) | Resource::DevicePool(_) => {}
             Resource::Internet(_) => self.is_internet_resource_active = false,
         }
 
