@@ -149,6 +149,7 @@ struct FirezoneCLI: AsyncParsableCommand {
         switch status {
         case .connected:
           Log.info("Tunnel connected")
+          tunnelState.isRestarting = false
         case .disconnected:
           if tunnelState.isRestarting {
             Log.info("Tunnel disconnected (restarting)")
@@ -213,7 +214,6 @@ struct FirezoneCLI: AsyncParsableCommand {
         tunnelState.isRestarting = true
         session.stopTunnel()
         try IPCClient.start(session: session, configuration: configuration)
-        tunnelState.isRestarting = false
         Log.info("Tunnel restarted")
       case .promptForToken:
         timeoutTask.cancel()
@@ -300,10 +300,6 @@ struct FirezoneCLI: AsyncParsableCommand {
       !tokenString.isEmpty
     else {
       throw ValidationError("No token provided")
-    }
-
-    guard tokenString.count >= 64 else {
-      throw ValidationError("Token appears to be invalid (too short)")
     }
 
     guard let token = Token(tokenString) else {
