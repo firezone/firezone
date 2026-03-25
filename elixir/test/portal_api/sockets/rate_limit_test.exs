@@ -15,6 +15,26 @@ defmodule PortalAPI.Sockets.RateLimitTest do
       assert RateLimit.check(connect_info) == {:error, :rate_limit}
     end
 
+    test "uses runtime config overrides" do
+      Portal.Config.put_env_override(:portal, PortalAPI.Sockets.RateLimit,
+        refill_rate: 1,
+        capacity: 3
+      )
+
+      connect_info = unique_connect_info()
+
+      assert RateLimit.check(connect_info) == :ok
+      assert RateLimit.check(connect_info) == :ok
+      assert RateLimit.check(connect_info) == :ok
+
+      rate_limited =
+        Enum.any?(1..3, fn _ ->
+          RateLimit.check(connect_info) == {:error, :rate_limit}
+        end)
+
+      assert rate_limited, "Expected at least one request to be rate limited"
+    end
+
     test "allows requests from different IPs with same token" do
       token = unique_token()
 

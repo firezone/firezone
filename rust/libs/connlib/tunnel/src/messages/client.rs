@@ -215,6 +215,7 @@ pub enum EgressMessages {
     RequestDeviceAccess {
         ipv4: Ipv4Addr,
     },
+    NoRelays {},
     NewGatewayIceCandidates(GatewayIceCandidates),
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
@@ -518,6 +519,15 @@ mod tests {
             preferred_gateways: Vec::new(),
         };
         let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_no_relays_message() {
+        let message = EgressMessages::NoRelays {};
+        let expected_json = r#"{"event":"no_relays","payload":{}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

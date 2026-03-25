@@ -4,7 +4,7 @@ defmodule PortalAPI.Client.Channel do
 
   alias Portal.{
     Cache,
-    Channels,
+    PG,
     Changes.Change,
     Features,
     PubSub,
@@ -46,6 +46,8 @@ defmodule PortalAPI.Client.Channel do
       @recompute_authorized_resources_every
     )
 
+    schedule_session_expiry(socket.assigns.subject.expires_at)
+
     # Get initial list of authorized resources, hydrating the cache
     {:ok, resources, [], cache} =
       Cache.Client.recompute_connectable_resources(
@@ -70,6 +72,7 @@ defmodule PortalAPI.Client.Channel do
       ipv6:
         socket.assigns.client.ipv6_address &&
           socket.assigns.client.ipv6_address.address.address,
+      name: socket.assigns.client.name,
       public_key: socket.assigns.session.public_key,
       psk_base: socket.assigns.client.psk_base
     }
@@ -81,12 +84,18 @@ defmodule PortalAPI.Client.Channel do
         session_meta
       )
 
-    # Register for targeted messages from gateway channels
-    :ok = Channels.register_client(socket.assigns.client.id)
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
+    send(self(), :register)
+
     push(socket, "init", %{
-      resources: Views.Resource.render_many(resources),
+      # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+      resources:
+        resources
+        |> Enum.reject(&(&1.type == :static_device_pool))
+        |> Views.Resource.render_many(),
+      # TODO: Re-enable after verifying compatibility with older clients
+      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
         Views.Relay.render_many(
           relays,
@@ -100,7 +109,7 @@ defmodule PortalAPI.Client.Channel do
         })
     })
 
-    {:noreply, assign(socket, cache: cache)}
+    {:noreply, assign(socket, cache: cache, pending_flows: %{})}
   end
 
   ####################################
@@ -145,11 +154,12 @@ defmodule PortalAPI.Client.Channel do
         socket.assigns.subject
       )
 
+    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
     end
 
-    for resource <- added_resources do
+    for resource <- added_resources, resource.type != :static_device_pool do
       push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
 
@@ -304,51 +314,53 @@ defmodule PortalAPI.Client.Channel do
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
-    pending_flows = Map.get(socket.assigns, :pending_flows, %{})
 
-    if Map.has_key?(pending_flows, resource_id) do
-      reply_payload = %{
-        resource_id: resource_id,
-        preshared_key: preshared_key,
-        client_ice_credentials: ice_credentials.initiator,
-        # TODO: conditionally rename to site_id based on client version
-        # apple: >= 1.5.11
-        # headless: >= 1.5.6
-        # android: >= 1.5.8
-        # gui: >= 1.5.10
-        # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
-        gateway_group_id: site_id,
-        gateway_id: gateway_id,
-        gateway_public_key: gateway_public_key,
-        gateway_ipv4: gateway_ipv4,
-        gateway_ipv6: gateway_ipv6,
-        gateway_ice_credentials: ice_credentials.receiver
-      }
+    case Map.pop(socket.assigns.pending_flows, resource_id) do
+      {nil, _} ->
+        # Flow already timed out — ignore late gateway response
+        {:noreply, socket}
 
-      push(socket, "flow_created", reply_payload)
+      {timer_ref, remaining} ->
+        Process.cancel_timer(timer_ref)
 
-      socket = cancel_pending_flow(socket, resource_id)
-      {:noreply, socket}
-    else
-      # Flow already timed out — ignore late gateway response
-      {:noreply, socket}
+        reply_payload = %{
+          resource_id: resource_id,
+          preshared_key: preshared_key,
+          client_ice_credentials: ice_credentials.initiator,
+          # TODO: conditionally rename to site_id based on client version
+          # apple: >= 1.5.11
+          # headless: >= 1.5.6
+          # android: >= 1.5.8
+          # gui: >= 1.5.10
+          # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
+          gateway_group_id: site_id,
+          gateway_id: gateway_id,
+          gateway_public_key: gateway_public_key,
+          gateway_ipv4: gateway_ipv4,
+          gateway_ipv6: gateway_ipv6,
+          gateway_ice_credentials: ice_credentials.receiver
+        }
+
+        push(socket, "flow_created", reply_payload)
+        {:noreply, assign(socket, :pending_flows, remaining)}
     end
   end
 
   def handle_info({:flow_creation_timeout, resource_id}, socket) do
-    pending_flows = Map.get(socket.assigns, :pending_flows, %{})
+    case Map.pop(socket.assigns.pending_flows, resource_id) do
+      {nil, _} ->
+        {:noreply, socket}
 
-    if Map.has_key?(pending_flows, resource_id) do
-      push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
-      {:noreply, assign(socket, :pending_flows, Map.delete(pending_flows, resource_id))}
-    else
-      {:noreply, socket}
+      {_timer_ref, remaining} ->
+        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+        {:noreply, assign(socket, :pending_flows, remaining)}
     end
   end
 
   def handle_info({:client_device_access_authorized, payload}, socket) do
     push(socket, "client_device_access_authorized", payload)
-    {:noreply, socket}
+    cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
+    {:noreply, assign(socket, cache: cache)}
   end
 
   def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
@@ -365,9 +377,24 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
-  def handle_info({:pg_group_evicted, group}, socket) do
-    Channels.handle_eviction(group)
-    {:noreply, socket}
+  def handle_info(:disconnect, socket) do
+    # Important: We push disconnect before closing the socket to prevent the client from
+    # attempting to immediately reconnect
+    push(socket, "disconnect", %{reason: "token_expired"})
+    {:stop, :shutdown, socket}
+  end
+
+  # The pg scope crashed and restarted — re-register so targeted messages keep working.
+  # pid-matching against pg_scope_pid ensures we only react to the pg scope we monitored.
+  def handle_info(
+        {:DOWN, _ref, :process, pid, _reason},
+        %{assigns: %{pg_scope_pid: pid}} = socket
+      ) do
+    register(socket)
+  end
+
+  def handle_info(:register, socket) do
+    register(socket)
   end
 
   # Catch-all for messages we don't handle
@@ -458,7 +485,7 @@ defmodule PortalAPI.Client.Channel do
         expires_at
       )
 
-      case Channels.send_to_gateway(gateway.id, message) do
+      case PG.deliver(gateway.id, message) do
         :ok ->
           timer_ref =
             Process.send_after(
@@ -467,8 +494,13 @@ defmodule PortalAPI.Client.Channel do
               flow_creation_timeout()
             )
 
-          pending_flows = Map.get(socket.assigns, :pending_flows, %{})
-          socket = assign(socket, :pending_flows, Map.put(pending_flows, resource_id, timer_ref))
+          socket =
+            assign(
+              socket,
+              :pending_flows,
+              Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
+            )
+
           {:noreply, socket}
 
         {:error, :not_found} ->
@@ -604,7 +636,7 @@ defmodule PortalAPI.Client.Channel do
         expires_at
       )
 
-      case Channels.send_to_gateway(
+      case PG.deliver(
              gateway.id,
              {:allow_access, {self(), socket_ref(socket)},
               %{
@@ -677,7 +709,7 @@ defmodule PortalAPI.Client.Channel do
         expires_at
       )
 
-      case Channels.send_to_gateway(
+      case PG.deliver(
              gateway.id,
              {:request_connection, {self(), socket_ref(socket)},
               %{
@@ -718,10 +750,11 @@ defmodule PortalAPI.Client.Channel do
   def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
     account_id = socket.assigns.client.account_id
 
-    with true <- client_to_client_enabled?(),
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
          {:ok, ipv4_tuple} <- parse_ipv4(ipv4_string),
-         {target_client_id, target_meta} <-
-           Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) || :not_found do
+         :ok <- Cache.Client.authorize_device_access(socket.assigns.cache, ipv4_tuple),
+         {:ok, target_client_id, target_meta} <-
+           find_online_client_by_ipv4(account_id, ipv4_tuple) do
       client = socket.assigns.client
       client_public_key = socket.assigns.session.public_key
       target_client = %Portal.Client{id: target_client_id, psk_base: target_meta.psk_base}
@@ -737,11 +770,16 @@ defmodule PortalAPI.Client.Channel do
           target_meta.public_key
         )
 
-      Channels.send_to_client(
+      account_key = socket.assigns.subject.account.key
+
+      PG.deliver(
         target_client_id,
         {:client_device_access_authorized,
          %{
            client_id: client.id,
+           client_name: client.name,
+           client_fqdns:
+             client_fqdns(client.ipv4_address && client.ipv4_address.address, account_key),
            client_public_key: client_public_key,
            client_ipv4: client.ipv4_address && client.ipv4_address.address,
            client_ipv6: client.ipv6_address && client.ipv6_address.address,
@@ -752,10 +790,14 @@ defmodule PortalAPI.Client.Channel do
          }}
       )
 
+      target_ipv4 = target_meta.ipv4 && %Postgrex.INET{address: target_meta.ipv4}
+
       push(socket, "client_device_access_authorized", %{
         client_id: target_client_id,
+        client_name: target_meta.name,
+        client_fqdns: client_fqdns(target_ipv4, account_key),
         client_public_key: target_meta.public_key,
-        client_ipv4: target_meta.ipv4 && %Postgrex.INET{address: target_meta.ipv4},
+        client_ipv4: target_ipv4,
         client_ipv6: target_meta.ipv6 && %Postgrex.INET{address: target_meta.ipv6},
         preshared_key: preshared_key,
         local_ice_credentials: ice_credentials.initiator,
@@ -783,8 +825,12 @@ defmodule PortalAPI.Client.Channel do
 
         {:noreply, socket}
 
-      :not_found ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :not_found})
+      :offline ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :offline})
+        {:noreply, socket}
+
+      {:error, :forbidden} ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :forbidden})
         {:noreply, socket}
     end
   end
@@ -794,7 +840,7 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    Channels.send_to_gateway(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
+    PG.deliver(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
     {:noreply, socket}
   end
 
@@ -803,7 +849,7 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    Channels.send_to_gateway(
+    PG.deliver(
       gateway_id,
       {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
     )
@@ -816,9 +862,9 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(),
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
          :ok <-
-           Channels.send_to_client(
+           PG.deliver(
              target_client_id,
              {:client_ice_candidates, socket.assigns.client.id, candidates}
            ) do
@@ -844,9 +890,9 @@ defmodule PortalAPI.Client.Channel do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(),
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
          :ok <-
-           Channels.send_to_client(
+           PG.deliver(
              target_client_id,
              {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
            ) do
@@ -877,7 +923,7 @@ defmodule PortalAPI.Client.Channel do
         socket
       ) do
     Enum.each(gateway_ids, fn gateway_id ->
-      Channels.send_to_gateway(
+      PG.deliver(
         gateway_id,
         {:ice_candidates, socket.assigns.client.id, candidates}
       )
@@ -892,11 +938,28 @@ defmodule PortalAPI.Client.Channel do
         socket
       ) do
     Enum.each(gateway_ids, fn gateway_id ->
-      Channels.send_to_gateway(
+      PG.deliver(
         gateway_id,
         {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
       )
     end)
+
+    {:noreply, socket}
+  end
+
+  def handle_in("no_relays", _payload, socket) do
+    {:ok, relays} = select_relays(socket)
+    socket = cache_relays(socket, relays)
+
+    push(socket, "relays_presence", %{
+      disconnected_ids: [],
+      connected:
+        Views.Relay.render_many(
+          relays,
+          socket.assigns.session.public_key,
+          socket.assigns.subject.expires_at
+        )
+    })
 
     {:noreply, socket}
   end
@@ -908,7 +971,7 @@ defmodule PortalAPI.Client.Channel do
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
-  defp client_to_client_enabled?, do: Database.client_to_client_enabled?()
+  defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
 
   defp parse_ipv4(ipv4_string) when is_binary(ipv4_string) do
     case :inet.parse_address(String.to_charlist(ipv4_string)) do
@@ -916,6 +979,27 @@ defmodule PortalAPI.Client.Channel do
       _ -> {:error, :invalid_ipv4}
     end
   end
+
+  defp client_fqdns(%Postgrex.INET{address: {a, b, c, d}}, account_key) do
+    ["#{a}-#{b}-#{c}-#{d}.#{account_key}.fz.internal"]
+  end
+
+  defp client_fqdns(_, _), do: []
+
+  defp find_online_client_by_ipv4(account_id, ipv4_tuple) do
+    case Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) do
+      {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
+      nil -> :offline
+    end
+  end
+
+  # TODO: Re-enable after verifying compatibility with older clients
+  # defp render_ipv4s(ipv4s) do
+  #   ipv4s
+  #   |> Enum.map(&:inet.ntoa/1)
+  #   |> Enum.map(&to_string/1)
+  #   |> Enum.sort()
+  # end
 
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
@@ -1205,6 +1289,39 @@ defmodule PortalAPI.Client.Channel do
     |> push_resource_updates(socket)
   end
 
+  # STATIC DEVICE POOL MEMBERS
+
+  defp handle_change(
+         %Change{op: :insert, struct: %Portal.StaticDevicePoolMember{} = member},
+         socket
+       ) do
+    {:ok, cache} =
+      Cache.Client.add_static_device_pool_member(
+        socket.assigns.cache,
+        member,
+        socket.assigns.subject
+      )
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.StaticDevicePoolMember{} = member},
+         socket
+       ) do
+    {:ok, ipv4, cache} =
+      Cache.Client.delete_static_device_pool_member(socket.assigns.cache, member)
+
+    if ipv4 do
+      push(socket, "client_device_access_denied", %{
+        ipv4: to_string(:inet.ntoa(ipv4)),
+        reason: :forbidden
+      })
+    end
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
   defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
@@ -1216,7 +1333,8 @@ defmodule PortalAPI.Client.Channel do
       push(socket, "resource_deleted", resource_id)
     end
 
-    for resource <- added_resources do
+    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+    for resource <- added_resources, resource.type != :static_device_pool do
       push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
 
@@ -1228,11 +1346,12 @@ defmodule PortalAPI.Client.Channel do
 
     alias Portal.Features
 
-    def client_to_client_enabled? do
+    def client_to_client_enabled?(account) do
       query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
 
-      Portal.Safe.unscoped(query, :replica)
-      |> Portal.Safe.exists?()
+      account_feature_enabled? = account.features.client_to_client == true
+
+      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
     end
 
     def all_compatible_gateways_for_client_and_resource(
@@ -1267,32 +1386,26 @@ defmodule PortalAPI.Client.Channel do
     defp filter_compatible_gateways(gateways, resource, client_version) do
       case Version.parse(client_version) do
         {:ok, version} ->
-          gateways
-          |> Enum.filter(fn gateway ->
-            gateway_version_str = gateway.latest_session && gateway.latest_session.version
-
-            case gateway_version_str && Version.parse(gateway_version_str) do
-              {:ok, gateway_version} ->
-                Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-                  Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
-                  not is_nil(
-                    Portal.Resource.adapt_resource_for_version(
-                      resource,
-                      gateway_version_str
-                    )
-                  )
-
-              _ ->
-                false
-            end
-          end)
+          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
 
         :error ->
           []
       end
     end
 
-    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: nil}), do: nil
+    defp compatible_gateway?(gateway, resource, version) do
+      gateway_version_str = gateway.latest_session && gateway.latest_session.version
+
+      case gateway_version_str && Version.parse(gateway_version_str) do
+        {:ok, gateway_version} ->
+          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
+            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
+            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
+
+        _ ->
+          false
+      end
+    end
 
     defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
       Ecto.UUID.load!(site.id)
@@ -1418,7 +1531,8 @@ defmodule PortalAPI.Client.Channel do
   defp create_policy_authorization_changeset(attrs) do
     import Ecto.Changeset
 
-    fields = ~w[id token_id policy_id client_id gateway_id resource_id membership_id
+    fields =
+      ~w[id token_id policy_id client_id receiving_client_id gateway_id resource_id membership_id
                 account_id
                 expires_at
                 client_remote_ip client_user_agent
@@ -1426,24 +1540,39 @@ defmodule PortalAPI.Client.Channel do
 
     %Portal.PolicyAuthorization{}
     |> cast(attrs, fields)
-    |> validate_required(fields -- [:membership_id])
+    |> validate_required(
+      fields -- [:membership_id, :receiving_client_id, :gateway_id, :gateway_remote_ip]
+    )
     |> Portal.PolicyAuthorization.changeset()
-  end
-
-  defp cancel_pending_flow(socket, resource_id) do
-    pending_flows = Map.get(socket.assigns, :pending_flows, %{})
-
-    case Map.pop(pending_flows, resource_id) do
-      {nil, _} ->
-        socket
-
-      {timer_ref, remaining} ->
-        Process.cancel_timer(timer_ref)
-        assign(socket, :pending_flows, remaining)
-    end
   end
 
   defp flow_creation_timeout do
     Portal.Config.get_env(:portal, :flow_creation_timeout_ms, :timer.seconds(15))
+  end
+
+  defp schedule_session_expiry(expires_at) do
+    ms = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
+    Process.send_after(self(), :disconnect, max(ms, 0))
+  end
+
+  defp register(socket) do
+    current_pid = socket.assigns[:pg_scope_pid]
+
+    case PG.scope_pid() do
+      nil ->
+        Logger.error("Portal.PG scope is not running, retrying registration shortly")
+        Process.send_after(self(), :register, 50)
+        {:noreply, socket}
+
+      ^current_pid ->
+        # We're already registered
+        {:noreply, socket}
+
+      new_pid ->
+        Process.monitor(new_pid)
+        :ok = PG.register(socket.assigns.client.id)
+        :ok = PG.join(socket.assigns.subject.credential.id)
+        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+    end
   end
 end

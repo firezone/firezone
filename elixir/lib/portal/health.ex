@@ -1,10 +1,9 @@
 defmodule Portal.Health do
   @moduledoc """
-  Health check plug that handles liveness and readiness probes.
+  Health check plug that handles readiness probes.
 
-  - `/healthz` - Liveness check, always returns 200 OK
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
-                503 when draining or starting
+                503 when draining, database unavailable or starting
 
   Can be used in two ways:
 
@@ -44,13 +43,6 @@ defmodule Portal.Health do
   def init(opts), do: opts
 
   @impl true
-  def call(%Plug.Conn{request_path: "/healthz", method: "GET"} = conn, _opts) do
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(200, JSON.encode!(%{status: :ok}))
-    |> halt()
-  end
-
   def call(%Plug.Conn{request_path: "/readyz", method: "GET"} = conn, _opts) do
     conn
     |> put_resp_content_type("application/json")
@@ -71,6 +63,9 @@ defmodule Portal.Health do
       not endpoints_ready?() ->
         send_resp(conn, 503, JSON.encode!(%{status: :starting, version: version}))
 
+      not repos_ready?() ->
+        send_resp(conn, 503, JSON.encode!(%{status: :database_unavailable, version: version}))
+
       true ->
         send_resp(conn, 200, JSON.encode!(%{status: :ready, version: version}))
     end
@@ -79,6 +74,20 @@ defmodule Portal.Health do
   defp draining? do
     Portal.Config.fetch_env!(:portal, Portal.Health)[:draining_file_path]
     |> File.exists?()
+  end
+
+  defp repos_ready? do
+    config = Portal.Config.fetch_env!(:portal, Portal.Health)
+    repo = Keyword.fetch!(config, :repo)
+    replica_repo = Keyword.fetch!(config, :replica_repo)
+
+    try do
+      %{num_rows: 1} = Ecto.Adapters.SQL.query!(repo, "SELECT 1", [])
+      %{num_rows: 1} = Ecto.Adapters.SQL.query!(replica_repo, "SELECT 1", [])
+      true
+    rescue
+      _ -> false
+    end
   end
 
   defp endpoints_ready? do

@@ -205,6 +205,47 @@ defmodule Portal.Google.DirectoryTest do
       assert Ecto.Changeset.get_field(changeset, :is_disabled) == false
       assert Ecto.Changeset.get_field(changeset, :error_email_count) == 0
       assert Ecto.Changeset.get_field(changeset, :is_verified) == false
+      assert Ecto.Changeset.get_field(changeset, :group_sync_mode) == :all
+      assert Ecto.Changeset.get_field(changeset, :orgunit_sync_enabled) == false
+    end
+
+    test "accepts all valid group_sync_mode values", %{account: account} do
+      for mode <- [:all, :filtered, :disabled] do
+        changeset =
+          %Directory{account_id: account.id}
+          |> Ecto.Changeset.cast(
+            %{
+              name: "Test Directory",
+              domain: "example.com",
+              impersonation_email: "admin@example.com",
+              is_verified: true,
+              group_sync_mode: mode
+            },
+            [:name, :domain, :impersonation_email, :is_verified, :group_sync_mode]
+          )
+          |> Directory.changeset()
+
+        assert changeset.valid?, "Expected group_sync_mode #{inspect(mode)} to be valid"
+        assert Ecto.Changeset.get_field(changeset, :group_sync_mode) == mode
+      end
+    end
+
+    test "rejects invalid group_sync_mode value", %{account: account} do
+      changeset =
+        %Directory{account_id: account.id}
+        |> Ecto.Changeset.cast(
+          %{
+            name: "Test Directory",
+            domain: "example.com",
+            impersonation_email: "admin@example.com",
+            is_verified: true,
+            group_sync_mode: :invalid_mode
+          },
+          [:name, :domain, :impersonation_email, :is_verified, :group_sync_mode]
+        )
+        |> Directory.changeset()
+
+      refute changeset.valid?
     end
 
     test "allows synced and errored timestamps to be set", %{account: account} do

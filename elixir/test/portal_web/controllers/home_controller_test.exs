@@ -1,0 +1,72 @@
+defmodule PortalWeb.HomeControllerTest do
+  use PortalWeb.ConnCase, async: true
+
+  import Portal.AccountFixtures
+
+  describe "home/2" do
+    test "renders the form to find the account sign in page", %{conn: conn} do
+      conn = get(conn, ~p"/")
+      html = response(conn, 200)
+
+      assert html =~ "Account ID or Slug"
+      assert html =~ "Go to Sign In page"
+    end
+
+    test "renders recently used account", %{conn: conn} do
+      accounts = [
+        account_fixture(),
+        account_fixture()
+      ]
+
+      response_conn = get(conn, ~p"/")
+      html = response(response_conn, 200)
+
+      for account <- accounts do
+        refute html =~ account.name
+        refute html =~ ~p"/#{account.slug}"
+      end
+
+      account_ids = Enum.map(accounts, & &1.id)
+
+      cookie_conn =
+        PortalWeb.Cookie.RecentAccounts.put(conn, %PortalWeb.Cookie.RecentAccounts{
+          account_ids: account_ids
+        })
+
+      %{value: signed_value} = cookie_conn.resp_cookies["recent_accounts"]
+
+      conn =
+        conn
+        |> put_req_cookie("recent_accounts", signed_value)
+        |> get(~p"/")
+
+      html = response(conn, 200)
+
+      for account <- accounts do
+        assert html =~ account.name
+        assert html =~ ~p"/#{account.slug}"
+      end
+    end
+  end
+
+  describe "redirect_to_sign_in/2" do
+    test "redirects to the sign in page", %{conn: conn} do
+      id = Ecto.UUID.generate()
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => id, "as" => "client"})
+      assert redirected_to(conn) == ~p"/#{id}?as=client"
+    end
+
+    test "downcases account slug on redirect", %{conn: conn} do
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => "FOO", "as" => "client"})
+      assert redirected_to(conn) == ~p"/foo?as=client"
+    end
+
+    test "puts an error flash when slug is invalid", %{conn: conn} do
+      conn = post(conn, ~p"/", %{"account_id_or_slug" => "?1", "as" => "client"})
+      assert redirected_to(conn) == ~p"/?as=client"
+
+      assert conn.assigns.flash["error"] ==
+               "Account ID or Slug can only contain letters, digits and underscore"
+    end
+  end
+end

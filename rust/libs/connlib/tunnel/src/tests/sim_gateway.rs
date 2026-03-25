@@ -2,23 +2,20 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     icmp_error_hosts::{IcmpError, IcmpErrorHosts},
-    reference::{PrivateKey, private_key},
-    sim_net::{Host, dual_ip_stack, host},
+    sim_net::Host,
     sim_relay::{SimRelay, map_explode},
-    strategies::latency,
 };
-use crate::{GatewayState, IpConfig};
+use crate::GatewayState;
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
-use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     time::Instant,
 };
 
@@ -300,83 +297,6 @@ impl SimGateway {
 
         Some(transmit)
     }
-}
-
-/// Reference state for a particular gateway.
-#[derive(Debug, Clone)]
-pub struct RefGateway {
-    pub(crate) key: PrivateKey,
-    pub(crate) tunnel_ip4: Ipv4Addr,
-    pub(crate) tunnel_ip6: Ipv6Addr,
-
-    site_specific_dns_records: DnsRecords,
-}
-
-impl RefGateway {
-    /// Initialize the [`GatewayState`].
-    ///
-    /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(
-        self,
-        id: GatewayId,
-        tcp_resources: BTreeSet<SocketAddr>,
-        now: Instant,
-        utc_now: DateTime<Utc>,
-    ) -> SimGateway {
-        let mut sut = GatewayState::new(
-            false,
-            self.key.0,
-            now,
-            utc_now
-                .signed_duration_since(DateTime::UNIX_EPOCH)
-                .to_std()
-                .unwrap(),
-        ); // Cheating a bit here by reusing the key as seed.
-        sut.update_tun_device(IpConfig {
-            v4: self.tunnel_ip4,
-            v6: self.tunnel_ip6,
-        });
-
-        SimGateway::new(id, sut, tcp_resources, self.site_specific_dns_records, now)
-    }
-
-    pub fn dns_records(&self) -> &DnsRecords {
-        &self.site_specific_dns_records
-    }
-}
-
-pub(crate) fn ref_gateway_host(
-    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
-    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
-    site_specific_dns_records: impl Strategy<Value = DnsRecords>,
-) -> impl Strategy<Value = Host<RefGateway>> {
-    host(
-        dual_ip_stack(),
-        Just(52625),
-        ref_gateway(tunnel_ip4s, tunnel_ip6s, site_specific_dns_records),
-        latency(200), // We assume gateways have a somewhat decent Internet connection.
-    )
-}
-
-fn ref_gateway(
-    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
-    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
-    site_specific_dns_records: impl Strategy<Value = DnsRecords>,
-) -> impl Strategy<Value = RefGateway> {
-    (
-        private_key(),
-        tunnel_ip4s,
-        tunnel_ip6s,
-        site_specific_dns_records,
-    )
-        .prop_map(
-            move |(key, tunnel_ip4, tunnel_ip6, site_specific_dns_records)| RefGateway {
-                key,
-                tunnel_ip4,
-                tunnel_ip6,
-                site_specific_dns_records,
-            },
-        )
 }
 
 fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {

@@ -10,15 +10,19 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
       description: "External Identity",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "External Identity ID"},
-        actor_id: %Schema{type: :string, description: "Actor ID"},
-        account_id: %Schema{type: :string, description: "Account ID"},
+        id: %Schema{type: :string, format: :uuid, description: "External Identity ID"},
+        actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
+        account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         issuer: %Schema{
           type: :string,
           description:
             "Identity issuer URL (e.g., 'https://accounts.google.com', 'https://company.okta.com')"
         },
-        directory_id: %Schema{type: :string, description: "Directory UUID reference"},
+        directory_id: %Schema{
+          type: :string,
+          format: :uuid,
+          description: "Directory UUID reference"
+        },
         idp_id: %Schema{type: :string, description: "IDP-specific identifier for this identity"},
         name: %Schema{type: :string, description: "Full name"},
         given_name: %Schema{type: :string, description: "Given name"},
@@ -31,10 +35,14 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
         firezone_avatar_url: %Schema{type: :string, description: "Firezone-hosted avatar URL"},
         last_synced_at: %Schema{
           type: :string,
-          format: :datetime,
+          format: :"date-time",
           description: "Last sync timestamp"
         },
-        inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"}
+        inserted_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "Creation timestamp"
+        }
       },
       required: [:id, :actor_id, :issuer, :idp_id],
       example: %{

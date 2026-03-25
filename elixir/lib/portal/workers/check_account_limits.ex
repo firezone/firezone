@@ -136,30 +136,30 @@ defmodule Portal.Workers.CheckAccountLimits do
         )
 
       admins ->
-        Enum.each(admins, fn admin ->
-          send_limit_exceeded_email(account, admin, warning)
-        end)
+        send_limit_exceeded_email(account, admins, warning)
     end
   end
 
-  defp send_limit_exceeded_email(account, admin, warning) do
+  defp send_limit_exceeded_email(account, admins, warning) do
+    recipient_emails = Enum.map(admins, & &1.email)
+
     Logger.info("Sending limits exceeded email",
-      to: admin.email,
+      recipient_count: length(recipient_emails),
       account_id: account.id
     )
 
-    Notifications.limits_exceeded_email(account, warning, admin.email)
-    |> Mailer.deliver()
+    Notifications.limits_exceeded_email(account, warning, recipient_emails)
+    |> Mailer.enqueue()
     |> case do
       {:ok, _result} ->
-        Logger.info("Limits exceeded email sent successfully",
-          to: admin.email,
+        Logger.info("Limits exceeded email enqueued successfully",
+          recipient_count: length(recipient_emails),
           account_id: account.id
         )
 
       {:error, reason} ->
-        Logger.error("Failed to send limits exceeded email",
-          to: admin.email,
+        Logger.error("Failed to enqueue limits exceeded email",
+          recipient_count: length(recipient_emails),
           reason: inspect(reason),
           account_id: account.id
         )
@@ -186,7 +186,6 @@ defmodule Portal.Workers.CheckAccountLimits do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Account
     alias Portal.Actor
     alias Portal.Client
 

@@ -248,6 +248,7 @@ pub enum EgressMessages {
         #[serde(rename = "ref")]
         reference: String,
     },
+    NoRelays {},
 }
 
 #[cfg(test)]
@@ -414,6 +415,15 @@ mod tests {
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
         assert!(matches!(message, IngressMessages::AuthorizeFlow(_)));
+    }
+
+    #[test]
+    fn serialize_no_relays_message() {
+        let message = EgressMessages::NoRelays {};
+        let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
     }
 
     #[test]

@@ -481,21 +481,7 @@ defmodule Portal.Entra.Sync do
         )
 
         # Validate required fields in groups before processing
-        Enum.each(groups, fn group ->
-          unless group["id"] do
-            raise Entra.SyncError,
-              error: {:validation, "group missing 'id' field"},
-              directory_id: directory.id,
-              step: :process_group
-          end
-
-          unless group["displayName"] do
-            raise Entra.SyncError,
-              error: {:validation, "group '#{group["id"]}' missing 'displayName' field"},
-              directory_id: directory.id,
-              step: :process_group
-          end
-        end)
+        Enum.each(groups, fn group -> validate_group!(group, directory) end)
 
         # Build and sync groups
         group_attrs =
@@ -523,6 +509,22 @@ defmodule Portal.Entra.Sync do
     |> Stream.run()
 
     :ok
+  end
+
+  defp validate_group!(group, directory) do
+    unless group["id"] do
+      raise Entra.SyncError,
+        error: {:validation, "group missing 'id' field"},
+        directory_id: directory.id,
+        step: :process_group
+    end
+
+    unless group["displayName"] do
+      raise Entra.SyncError,
+        error: {:validation, "group '#{group["id"]}' missing 'displayName' field"},
+        directory_id: directory.id,
+        step: :process_group
+    end
   end
 
   defp sync_all_group_members(directory, access_token, synced_at, group) do

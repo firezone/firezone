@@ -99,11 +99,14 @@ defmodule PortalWeb.Resources.Index do
             </.link>
           </:col>
           <:col :let={resource} field={{:resources, :address}} label="Address">
-            <code :if={resource.type != :internet} class="block text-xs">
+            <code :if={resource.type not in [:internet, :static_device_pool]} class="block text-xs">
               {resource.address}
             </code>
             <span :if={resource.type == :internet} class="block text-xs">
               <code>0.0.0.0/0</code>, <code>::/0 </code>
+            </span>
+            <span :if={resource.type == :static_device_pool} class="block text-xs">
+              Device Pool
             </span>
           </:col>
           <:col :let={resource} label="site">

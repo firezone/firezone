@@ -41,12 +41,18 @@ defmodule PortalWeb.Sites.Index do
       resources_counts = Database.count_resources_by_site(site_ids, socket.assigns.subject)
       policies_counts = Database.count_policies_by_site(site_ids, socket.assigns.subject)
 
+      gateway_counts =
+        Map.new(site_ids, fn site_id ->
+          {site_id, Presence.Gateways.Site.list(site_id) |> map_size()}
+        end)
+
       {:ok,
        assign(socket,
          sites: sites,
          sites_metadata: metadata,
          resources_counts: resources_counts,
-         policies_counts: policies_counts
+         policies_counts: policies_counts,
+         gateway_counts: gateway_counts
        )}
     end
   end
@@ -121,7 +127,7 @@ defmodule PortalWeb.Sites.Index do
           </:col>
 
           <:col :let={site} label="online gateways" class="w-1/6">
-            <% count = Presence.Gateways.Site.list(site.id) |> map_size() %>
+            <% count = Map.get(@gateway_counts, site.id, 0) %>
             <%= if count == 0 do %>
               <span class="flex items-center">
                 <.icon

@@ -27,7 +27,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
-    Google.Directory => @common_fields ++ ~w[domain impersonation_email]a,
+    Google.Directory =>
+      @common_fields ++ ~w[domain impersonation_email group_sync_mode orgunit_sync_enabled]a,
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
 
@@ -236,39 +237,11 @@ defmodule PortalWeb.Settings.DirectorySync do
          "Directory sync is available on the Enterprise plan. Please upgrade your plan."
        )}
     else
-      # Set disabled_reason when disabling, clear error state when enabling
-      changeset =
-        if new_disabled_state do
-          # Disabling - set reason
-          changeset(directory, %{
-            "is_disabled" => true,
-            "disabled_reason" => "Disabled by admin"
-          })
-        else
-          # Enabling - check if directory is verified first
-          if directory.is_verified do
-            # Clear error state when enabling
-            changeset(directory, %{
-              "is_disabled" => false,
-              "disabled_reason" => nil,
-              "error_email_count" => 0,
-              "error_message" => nil,
-              "errored_at" => nil
-            })
-          else
-            # Can't enable unverified directory
-            changeset(directory, %{})
-            |> Ecto.Changeset.add_error(
-              :is_verified,
-              "Directory must be verified before enabling"
-            )
-          end
-        end
+      changeset = toggle_directory_changeset(directory, new_disabled_state)
+      action = if(new_disabled_state, do: "disabled", else: "enabled")
 
       case Database.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
-          action = if new_disabled_state, do: "disabled", else: "enabled"
-
           {:noreply,
            socket
            |> init()
@@ -305,35 +278,59 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  defp toggle_directory_changeset(directory, true) do
+    changeset(directory, %{
+      "is_disabled" => true,
+      "disabled_reason" => "Disabled by admin"
+    })
+  end
+
+  defp toggle_directory_changeset(directory, false) do
+    if directory.is_verified do
+      changeset(directory, %{
+        "is_disabled" => false,
+        "disabled_reason" => nil,
+        "error_email_count" => 0,
+        "error_message" => nil,
+        "errored_at" => nil
+      })
+    else
+      changeset(directory, %{})
+      |> Ecto.Changeset.add_error(
+        :is_verified,
+        "Directory must be verified before enabling"
+      )
+    end
+  end
+
   def handle_info(:do_verification, socket) do
     start_verification(socket)
   end
 
-  def handle_info({:entra_admin_consent, pid, _issuer, tenant_id, state_token}, socket) do
-    :ok = Portal.PubSub.unsubscribe("entra-admin-consent:#{state_token}")
-    stored_token = socket.assigns.verification.token
+  # Sent directly by the Entra directory_sync verification controller
+  def handle_info({:entra_directory_sync_complete, tenant_id, ack_to}, socket) do
+    # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
+    # For NEW: Entra has no programmatically set fields, so .data works here too.
+    changeset = socket.assigns.form.source
 
-    # Verify the state token matches
-    if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
-      send(pid, :success)
+    attrs =
+      changeset.changes
+      |> Map.put(:is_verified, true)
+      |> Map.put(:tenant_id, tenant_id)
 
-      # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
-      # For NEW: Entra has no programmatically set fields, so .data works here too.
-      changeset = socket.assigns.form.source
+    changeset = changeset(changeset.data, attrs)
+    maybe_send_verification_ack(ack_to)
 
-      attrs =
-        changeset.changes
-        |> Map.put(:is_verified, true)
-        |> Map.put(:tenant_id, tenant_id)
+    {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
+  end
 
-      changeset = changeset(changeset.data, attrs)
+  def handle_info({:entra_directory_sync_complete, tenant_id}, socket) do
+    handle_info({:entra_directory_sync_complete, tenant_id, nil}, socket)
+  end
 
-      {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
-    else
-      send(pid, {:error, :token_mismatch})
-      error = "Failed to verify directory: token mismatch"
-      {:noreply, assign(socket, verification_error: error)}
-    end
+  # Sent directly by the verification controller on any failure
+  def handle_info({:verification_failed, reason}, socket) do
+    {:noreply, assign(socket, verification_error: format_verification_error_reason(reason))}
   end
 
   def handle_info(:directories_changed, socket) do
@@ -341,6 +338,27 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
+    send(pid, {:verification_ack, ref})
+    :ok
+  end
+
+  defp maybe_send_verification_ack(_), do: :ok
+
+  defp format_verification_error_reason(reason) when is_binary(reason), do: reason
+  defp format_verification_error_reason(reason), do: inspect(reason)
+
+  defp verification_start_error_message({status, _body}) when is_integer(status) do
+    "Failed to fetch discovery document (HTTP #{status}). Please verify your provider configuration."
+  end
+
+  defp verification_start_error_message(%Req.TransportError{reason: reason}) do
+    "Unable to fetch discovery document: #{inspect(reason)}."
+  end
+
+  defp verification_start_error_message(reason) when is_binary(reason), do: reason
+  defp verification_start_error_message(_reason), do: "Failed to start verification."
 
   def render(assigns) do
     ~H"""
@@ -401,7 +419,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             <!-- Blurred preview content -->
             <div class="blur-xs pointer-events-none select-none opacity-60">
               <div class="flex flex-wrap gap-4">
-                <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+                <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center flex-1 min-w-0">
                       <.provider_icon type="google" class="w-7 h-7 mr-2 shrink-0" />
@@ -422,7 +440,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     </div>
                   </div>
                 </div>
-                <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+                <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
                   <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center flex-1 min-w-0">
                       <.provider_icon type="entra" class="w-7 h-7 mr-2 shrink-0" />
@@ -610,7 +628,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     assigns = assign(assigns, :toggle_disabled, toggle_disabled)
 
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-md p-4" style="width: 28rem;">
+    <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 shrink-0" />
@@ -935,10 +953,10 @@ defmodule PortalWeb.Settings.DirectorySync do
           </p>
         </div>
 
-        <div :if={@type == "entra"}>
-          <label class="block text-sm font-medium text-neutral-700 mb-3">
+        <fieldset :if={@type == "entra"}>
+          <legend class="block text-sm font-medium text-neutral-700 mb-3">
             Group sync mode
-          </label>
+          </legend>
           <% sync_all_groups = get_field(@form.source, :sync_all_groups) %>
           <div class="grid gap-4 md:grid-cols-2">
             <label class={[
@@ -992,7 +1010,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               </span>
             </label>
           </div>
-        </div>
+        </fieldset>
 
         <div :if={@type == "google"}>
           <.input
@@ -1006,6 +1024,110 @@ defmodule PortalWeb.Settings.DirectorySync do
           />
           <p class="mt-1 text-xs text-neutral-600">
             Enter the admin email address to impersonate for directory sync.
+          </p>
+        </div>
+
+        <fieldset :if={@type == "google"}>
+          <legend class="block text-sm font-medium text-neutral-700 mb-3">
+            Group sync mode
+          </legend>
+          <% group_sync_mode = get_field(@form.source, :group_sync_mode) %>
+          <div class="grid gap-4 md:grid-cols-3">
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
+              if(group_sync_mode == :all,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <input
+                type="radio"
+                name={@form[:group_sync_mode].name}
+                value="all"
+                checked={group_sync_mode == :all}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
+                  All groups
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600">
+                All groups from your directory will be synced.
+                <strong class="block mt-1">Default.</strong>
+              </span>
+            </label>
+
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
+              if(group_sync_mode == :filtered,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <input
+                type="radio"
+                name={@form[:group_sync_mode].name}
+                value="filtered"
+                checked={group_sync_mode == :filtered}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
+                  Filtered groups
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600">
+                Only groups whose name starts with
+                <code class="text-xs"><strong>[firezone-sync]</strong></code>
+                or email starts with <code class="text-xs"><strong>firezone-sync</strong></code>
+                will be synced.
+              </span>
+            </label>
+
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-md cursor-pointer transition-all",
+              if(group_sync_mode == :disabled,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <input
+                type="radio"
+                name={@form[:group_sync_mode].name}
+                value="disabled"
+                checked={group_sync_mode == :disabled}
+                class="sr-only"
+              />
+              <div class="mb-2">
+                <span class="text-base font-semibold text-neutral-900">
+                  Disabled
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600">
+                No groups will be synced from your directory.
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div :if={@type == "google"} class="mt-4">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="hidden" name={@form[:orgunit_sync_enabled].name} value="false" />
+            <input
+              type="checkbox"
+              name={@form[:orgunit_sync_enabled].name}
+              value="true"
+              checked={get_field(@form.source, :orgunit_sync_enabled)}
+              class="w-4 h-4 text-accent-600 border-neutral-300 rounded"
+            />
+            <span class="text-sm font-medium text-neutral-700">
+              Sync Organization Units
+            </span>
+          </label>
+          <p class="mt-1 ml-7 text-xs text-neutral-600">
+            Sync Google Workspace organizational units as groups. <strong>Note:</strong>
+            When enabled, all org units and active users will be synced.
           </p>
         </div>
 
@@ -1348,15 +1470,19 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset = socket.assigns.form.source
     impersonation_email = get_field(changeset, :impersonation_email)
     config = Portal.Config.fetch_env!(:portal, Google.APIClient)
-    key = config[:service_account_key] |> JSON.decode!()
 
     result =
-      with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
+      with key_json when is_binary(key_json) <- config[:service_account_key],
+           key = JSON.decode!(key_json),
+           {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
              Google.APIClient.get_access_token(impersonation_email, key),
            {:ok, %Req.Response{status: 200, body: body}} <-
              Google.APIClient.get_customer(access_token),
            :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
         {:ok, body["customerDomain"]}
+      else
+        nil -> {:error, :service_account_not_configured}
+        other -> other
       end
 
     case result do
@@ -1384,45 +1510,25 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp start_verification(%{assigns: %{type: "entra"}} = socket) do
-    # For Entra directory sync, we use the admin consent endpoint which pre-checks
-    # "Consent on behalf of your organization" and grants application permissions:
-    # - Directory.Read.All: Read users, groups, and directory data
-    # - Application.Read.All: Read service principal and app role assignments (for group assignment)
-    #
-    # IMPORTANT: Use the .default scope to request all application permissions
-    # configured in the app registration. This is the correct way to request
-    # application permissions (not delegated) via the admin consent endpoint.
-
-    token = Portal.Crypto.random_token(32)
-    state = "entra-admin-consent:#{token}"
-
-    config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
-    client_id = config[:client_id]
-
-    # Build admin consent URL - route through /auth/oidc/callback so admins only need one redirect URI
-    redirect_uri = url(~p"/auth/oidc/callback")
-
-    # Use .default scope to request all configured application permissions
-    params = %{
-      client_id: client_id,
-      state: state,
-      redirect_uri: redirect_uri,
-      scope: "https://graph.microsoft.com/.default"
-    }
-
-    query_string = URI.encode_query(params)
-
-    admin_consent_url =
-      "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{query_string}"
-
-    :ok = Portal.PubSub.subscribe("entra-admin-consent:#{token}")
-
-    verification = %{token: token, url: admin_consent_url}
-
-    {:noreply,
-     socket
-     |> assign(verification: verification)
-     |> push_event("open_url", %{url: admin_consent_url})}
+    with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
+         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         state_token <-
+           PortalWeb.OIDC.sign_verification_state(
+             lv_pid_string,
+             PortalWeb.OIDC.verification_state_type("entra_directory_sync")
+           ),
+         {:ok, uri} <-
+           PortalWeb.OIDC.build_verification_uri(
+             "entra_directory_sync",
+             config,
+             "",
+             state_token
+           ) do
+      {:noreply, push_event(socket, "open_url", %{url: uri})}
+    else
+      {:error, reason} ->
+        {:noreply, assign(socket, verification_error: verification_start_error_message(reason))}
+    end
   end
 
   defp start_verification(%{assigns: %{type: "okta"}} = socket) do
@@ -1527,6 +1633,10 @@ defmodule PortalWeb.Settings.DirectorySync do
     Logger.info("Transport error while verifying Google directory", error: inspect(reason))
 
     "Transport error while attempting to connect to Google.  We're looking into this"
+  end
+
+  defp parse_google_verification_error({:error, :service_account_not_configured}) do
+    "No service account key is configured for this deployment. Please contact your administrator."
   end
 
   defp parse_google_verification_error({:error, reason}) when is_exception(reason) do

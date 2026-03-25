@@ -9,6 +9,10 @@ rustflags="-C force-frame-pointers=yes"
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 # Set consistent macOS deployment target to prevent rebuilds
 # when environment variables change between Xcode and CLI builds
 # This must match the Xcode project setting (13.0)

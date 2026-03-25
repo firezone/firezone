@@ -10,14 +10,14 @@ defmodule PortalAPI.Schemas.Resource do
       description: "Resource",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Resource ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         name: %Schema{type: :string, description: "Resource name"},
         address: %Schema{type: :string, description: "Resource address"},
         address_description: %Schema{type: :string, description: "Resource address description"},
         type: %Schema{
           type: :string,
-          description: "Resource type",
-          enum: ["cidr", "ip", "dns"]
+          description: "Resource type. For `static_device_pool`, `address` is not applicable.",
+          enum: ["cidr", "ip", "dns", "static_device_pool"]
         },
         ip_stack: %Schema{
           type: :string,
@@ -25,12 +25,14 @@ defmodule PortalAPI.Schemas.Resource do
           enum: ["ipv4_only", "ipv6_only", "dual"]
         },
         site_id: %Schema{
-          title: "Site ID",
-          description: "Site to connect the Resource to",
-          type: :string
+          title: "SiteID",
+          description:
+            "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+          type: :string,
+          format: :uuid
         }
       },
-      required: [:name, :type, :site_id],
+      required: [:name, :type],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Prod DB",
@@ -48,7 +50,8 @@ defmodule PortalAPI.Schemas.Resource do
 
     OpenApiSpex.schema(%{
       title: "ResourceRequest",
-      description: "POST body for creating a Resource",
+      description:
+        "POST body for creating a Resource. `site_id` is required unless `type` is `static_device_pool`.",
       type: :object,
       properties: %{
         resource: %Schema{properties: Resource.Schema.schema().properties}

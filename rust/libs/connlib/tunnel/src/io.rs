@@ -1,14 +1,17 @@
+mod device;
 mod doh;
 mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
+mod timeout;
 mod udp_dns;
 
-use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
+pub use device::{Device, TunChannelClosed};
+
+use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
 use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
-use futures::FutureExt as _;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
@@ -17,10 +20,9 @@ use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     io,
     net::{IpAddr, SocketAddr},
-    pin::Pin,
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant},
@@ -43,6 +45,8 @@ const MAX_INBOUND_PACKET_BATCH: usize = {
     }
 };
 
+const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
+
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
@@ -64,10 +68,9 @@ pub struct Io {
     doh_clients: BTreeMap<DoHUrl, HttpClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
-    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    timeout: Timeout,
 
     tun: Device,
-    outbound_packet_buffer: VecDeque<IpPacket>,
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
@@ -163,8 +166,7 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            outbound_packet_buffer: VecDeque::default(),
-            timeout: None,
+            timeout: Timeout::new(DEFAULT_TIME_ADVANCE),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -298,7 +300,7 @@ impl Io {
         let device = self
             .tun
             .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
-            .map(|num_packets| {
+            .map_ok(|num_packets| {
                 let num_ipv4 = buffers.ip[..num_packets]
                     .iter()
                     .filter(|p| p.ipv4_header().is_some())
@@ -388,15 +390,7 @@ impl Io {
             self.doh_clients.remove(server);
         }
 
-        let timeout = self
-            .timeout
-            .as_mut()
-            .map(|timeout| timeout.poll_unpin(cx).is_ready())
-            .unwrap_or(false);
-
-        if timeout {
-            self.timeout = None;
-        }
+        let timeout = self.timeout.poll_tick(cx).is_ready();
 
         if !timeout
             && device.is_pending()
@@ -413,7 +407,7 @@ impl Io {
             now: Instant::now(),
             now_utc: Utc::now(),
             timeout,
-            device: poll_to_option(device),
+            device: poll_result_to_option(device, &mut error),
             network: poll_result_to_option(network, &mut error),
             tcp_dns_queries,
             udp_dns_queries,
@@ -439,22 +433,8 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        loop {
-            // First, check if we can send more packets.
-            if self.tun.poll_send_ready(cx)?.is_pending() {
-                any_pending = true;
-                break;
-            }
-
-            // Second, check if we have any buffer packets.
-            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
-                break; // No more packets? All done.
-            };
-
-            // Third, send the packet.
-            self.tun
-                .send(packet)
-                .context("Failed to send IP packet to TUN device")?;
+        if self.tun.poll_flush(cx)?.is_pending() {
+            any_pending = true;
         }
 
         if any_pending {
@@ -477,7 +457,7 @@ impl Io {
             ],
         );
 
-        self.outbound_packet_buffer.push_back(packet);
+        self.tun.send(packet);
     }
 
     pub fn reset(&mut self) {
@@ -496,25 +476,19 @@ impl Io {
 
     pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
         let wakeup_in = tracing::event_enabled!(Level::TRACE)
-            .then(|| timeout.duration_since(Instant::now()))
+            .then(|| timeout.saturating_duration_since(Instant::now()))
             .map(tracing::field::debug);
-        let timeout = tokio::time::Instant::from_std(timeout);
 
-        match self.timeout.as_mut() {
-            Some(existing_timeout) if existing_timeout.deadline() != timeout => {
-                tracing::trace!(wakeup_in, %reason);
+        if self.timeout.deadline() != timeout {
+            tracing::trace!(wakeup_in, %reason);
 
-                existing_timeout.as_mut().reset(timeout)
-            }
-            Some(_) => {}
-            None => {
-                self.timeout = {
-                    tracing::trace!(?wakeup_in, %reason);
-
-                    Some(Box::pin(tokio::time::sleep_until(timeout)))
-                }
-            }
+            self.timeout.reset(timeout);
         }
+    }
+
+    /// Schedules a wakeup in case one isn't registered yet.
+    pub fn schedule_timeout(&mut self, now: Instant) {
+        self.timeout.schedule(now + Duration::from_secs(1));
     }
 
     pub fn send_network(
@@ -663,17 +637,23 @@ mod tests {
 
         let deadline = Instant::now() + Duration::from_secs(1);
         io.reset_timeout(deadline, "");
+        let scheduled_deadline = io.timeout.deadline();
 
         let input = io.next().await;
 
         assert!(input.timeout);
         assert!(input.now >= deadline, "timer expire after deadline");
+        assert_eq!(deadline, scheduled_deadline);
+
         drop(input);
 
         let poll = io.poll_test();
 
         assert!(poll.is_pending());
-        assert!(io.timeout.is_none());
+        assert_eq!(
+            io.timeout.deadline().duration_since(scheduled_deadline),
+            DEFAULT_TIME_ADVANCE
+        );
     }
 
     #[tokio::test]
@@ -720,6 +700,43 @@ mod tests {
                 dns_types::ResponseCode::NOERROR
             );
         }
+    }
+
+    #[tokio::test]
+    async fn schedule_timeout_shortens_deadline_when_current_is_too_far_away() {
+        let mut io = Io::for_test();
+
+        // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
+        // schedule_timeout should pull it in to ~1s from now.
+        let now = Instant::now();
+        io.schedule_timeout(now);
+
+        let deadline = io.timeout.deadline();
+        let wakeup_in = deadline.duration_since(now);
+
+        assert!(
+            wakeup_in <= Duration::from_secs(1),
+            "expected deadline within 1s, got {wakeup_in:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn schedule_timeout_does_not_postpone_an_already_close_deadline() {
+        let mut io = Io::for_test();
+
+        // Set a deadline that is already sooner than 1s.
+        let now = Instant::now();
+        let close_deadline = now + Duration::from_millis(100);
+        io.reset_timeout(close_deadline, "close deadline");
+
+        io.schedule_timeout(now);
+
+        let deadline = io.timeout.deadline();
+
+        assert_eq!(
+            deadline, close_deadline,
+            "schedule_timeout must not push out a deadline that is already close"
+        );
     }
 
     #[tokio::test]
@@ -773,7 +790,7 @@ mod tests {
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
             );
-            io.set_tun(Box::new(DummyTun));
+            io.set_tun(Box::new(DummyTun::new()));
 
             io
         }
@@ -810,24 +827,25 @@ mod tests {
         }
     }
 
-    struct DummyTun;
+    struct DummyTun {
+        tx: tokio::sync::mpsc::Sender<IpPacket>,
+        rx: tokio::sync::mpsc::Receiver<IpPacket>,
+    }
+
+    impl DummyTun {
+        fn new() -> Self {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            Self { tx, rx }
+        }
+    }
 
     impl Tun for DummyTun {
-        fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
+        fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+            &self.tx
         }
 
-        fn send(&mut self, _: IpPacket) -> io::Result<()> {
-            Ok(())
-        }
-
-        fn poll_recv_many(
-            &mut self,
-            _: &mut Context,
-            _: &mut Vec<IpPacket>,
-            _: usize,
-        ) -> Poll<usize> {
-            Poll::Pending
+        fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+            &mut self.rx
         }
 
         fn name(&self) -> &str {

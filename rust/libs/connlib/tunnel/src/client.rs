@@ -6,6 +6,7 @@ mod gateway_on_client;
 mod pending_device_access;
 mod pending_flows;
 mod resource;
+mod routing_table;
 mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
@@ -14,11 +15,15 @@ pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
+use crate::client::routing_table::RoutingTable;
 use crate::client::tracked_state::TrackedState;
+use crate::messages::client::FailReason;
 use boringtun::x25519;
+#[cfg(test)]
+pub(crate) use resource::CidrResource;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
-pub(crate) use resource::{CidrResource, InternetResource, Resource};
+pub(crate) use resource::{InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
@@ -27,7 +32,7 @@ use secrecy::ExposeSecret as _;
 use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
-use crate::dns::{DnsResourceRecord, StubResolver};
+use crate::dns::{DnsResourceRecord, StubResolver, stub_resolver};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::messages::{IceRole, Interface as InterfaceConfig};
 use crate::peer_store::PeerStore;
@@ -39,7 +44,6 @@ use connlib_model::{
 };
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
@@ -126,8 +130,8 @@ pub struct ClientState {
     /// The online/offline status of a site, together with the timestamp when we set it.
     sites_status: BTreeMap<SiteId, (ResourceStatus, Instant)>,
 
-    /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    active_cidr_resources: IpNetworkTable<CidrResource>,
+    /// The routing table, mapping IPs to Resource IDs.
+    routing_table: RoutingTable,
     is_internet_resource_active: bool,
     /// All resources indexed by their ID.
     resources_by_id: BTreeMap<ResourceId, Resource>,
@@ -166,9 +170,17 @@ impl ClientState {
         now: Instant,
         unix_ts: Duration,
     ) -> Self {
+        let mut routing_table = RoutingTable::default();
+
+        for record in &records {
+            for ip in &record.ips {
+                routing_table.upsert_dns(*ip, record.resource, record.domain.clone());
+            }
+        }
+
         Self {
             authorized_resources: Default::default(),
-            active_cidr_resources: IpNetworkTable::new(),
+            routing_table,
             resources_by_id: Default::default(),
             gateways: Default::default(),
             clients: Default::default(),
@@ -254,10 +266,29 @@ impl ClientState {
         self.resource_list.update(self.resources());
     }
 
-    pub fn set_client_offline(&mut self, ipv4: Ipv4Addr) {
-        self.pending_device_access.remove(&ipv4);
+    /// Handles cases where access to a device is denied.
+    ///
+    /// This can happen in several cases:
+    ///
+    /// 1. During initial setup of the access, i.e. when we are trying to connect to another device.
+    /// 2. When access is revoked after it has been established.
+    pub fn handle_client_device_access_denied(
+        &mut self,
+        ipv4: Ipv4Addr,
+        reason: FailReason,
+        now: Instant,
+    ) {
+        tracing::debug!(%ipv4, "Device access denied: {reason:?}");
 
+        self.pending_device_access.remove(&ipv4);
         // TODO: Update resource list with offline client.
+
+        let Some((id, _)) = self.clients.peer_by_ip(ipv4) else {
+            return;
+        };
+        self.clients.remove(&id);
+        self.node
+            .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -293,13 +324,13 @@ impl ClientState {
         // Organise all buffered packets by gateway + domain.
         let mut buffered_packets_by_gateway_and_domain = buffered_packets
             .map(|packet| {
-                let (domain, resource) = self
-                    .stub_resolver
-                    .resolve_resource_by_ip(&packet.destination())
-                    .context("IP is not associated with a DNS resource domain")?;
+                let (resource, domain) = self
+                    .routing_table
+                    .matches_dns(packet.destination(), |_, _| Ordering::Equal)
+                    .context("IP is not associated with a DNS resource")?;
                 let gateway_id = self
                     .authorized_resources
-                    .get(resource)
+                    .get(&resource)
                     .context("No gateway for resource")?;
 
                 anyhow::Ok((*gateway_id, domain, packet))
@@ -391,6 +422,14 @@ impl ClientState {
 
         if !tun_config.ip.is_ip(packet.source()) {
             tracing::debug!(?packet, "Dropping packet with bad source IP");
+
+            return None;
+        }
+
+        let dst = packet.destination();
+
+        if tun_config.ip.is_ip(dst) {
+            tracing::trace!(%dst, "Dropping packet destined to local tunnel IP");
 
             return None;
         }
@@ -578,7 +617,7 @@ impl ClientState {
             self.route_packet_to_resource(packet, now)?
         };
 
-        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst)
+        if let Some((_, domain)) = self.routing_table.matches_dns(dst, |_, _| Ordering::Equal)
             && let ClientOrGatewayId::Gateway(gid) = pid
         {
             packet = self
@@ -602,12 +641,12 @@ impl ClientState {
     ) -> Option<(ClientOrGatewayId, IpPacket)> {
         let dst = packet.destination();
 
-        if let Some(gateway) = self.gateways.peer_by_ip(dst) {
-            return Some((ClientOrGatewayId::Gateway(gateway.id()), packet));
+        if let Some((id, _)) = self.gateways.peer_by_ip(dst) {
+            return Some((ClientOrGatewayId::Gateway(id), packet));
         }
 
-        if let Some(client) = self.clients.peer_by_ip(dst) {
-            return Some((ClientOrGatewayId::Client(client.id()), packet));
+        if let Some((id, _)) = self.clients.peer_by_ip(dst) {
+            return Some((ClientOrGatewayId::Client(id), packet));
         }
 
         let ipv4_addr = match dst {
@@ -632,14 +671,14 @@ impl ClientState {
             return None;
         };
 
-        let Some(peer) =
+        let Some((gid, _)) =
             peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
         else {
             self.on_not_connected_resource(resource, packet, now);
             return None;
         };
 
-        Some((ClientOrGatewayId::Gateway(peer.id()), packet))
+        Some((ClientOrGatewayId::Gateway(gid), packet))
     }
 
     pub fn add_ice_candidate(
@@ -650,8 +689,6 @@ impl ClientState {
     ) {
         self.node
             .add_remote_candidate(conn_id.into(), ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events(now);
     }
 
     pub fn remove_ice_candidate(
@@ -662,8 +699,6 @@ impl ClientState {
     ) {
         self.node
             .remove_remote_candidate(conn_id.into(), ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events(now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
@@ -711,7 +746,7 @@ impl ClientState {
 
         let peer = self
             .gateways
-            .upsert(gid, || GatewayOnClient::new(gid, gateway_tun));
+            .upsert(gid, || GatewayOnClient::new(gateway_tun));
 
         // Deal with buffered packets
 
@@ -793,8 +828,7 @@ impl ClientState {
             now,
         )?;
 
-        self.clients
-            .upsert(cid, || ClientOnClient::new(cid, client_tun));
+        self.clients.upsert(cid, || ClientOnClient::new(client_tun));
 
         if let Some(pending_client_access) = pending_device_access {
             for packet in pending_client_access.into_buffered_packets() {
@@ -831,10 +865,7 @@ impl ClientState {
             return Some(*server);
         }
 
-        self.active_cidr_resources
-            .longest_match(server.ip())
-            .is_some()
-            .then_some(*server)
+        self.routing_table.any_cidr(server.ip()).then_some(*server)
     }
 
     /// Handles UDP & TCP packets targeted at our stub resolver.
@@ -978,9 +1009,8 @@ impl ClientState {
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
-        self.active_cidr_resources
-            .iter()
-            .map(|(ip, _)| ip)
+        iter::empty()
+            .chain(self.routing_table.cidr_routes())
             .chain(iter::once(IPV4_TUNNEL.into()))
             .chain(iter::once(IPV6_TUNNEL.into()))
             .chain(iter::once(IPV4_RESOURCES.into()))
@@ -998,20 +1028,23 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
-        // We need to filter disabled resources because we never remove resources from the stub_resolver
-        let maybe_dns_resource_id = self
-            .stub_resolver
-            .resolve_resource_by_ip(&destination)
-            .map(|(_, r)| *r)
+        let maybe_dns_resource_id = self.routing_table.matches_dns(destination, |_, _| Ordering::Equal)
             .inspect(
-                |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for DNS resource"),
-            );
+                |(rid, domain)| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, %domain, "Packet for DNS resource"),
+            )
+            .map(|(rid, _)| rid);
 
-        // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
-        let maybe_cidr_resource_id = self
-            .active_cidr_resources
-            .longest_match(destination)
-            .map(|(_, res)| res.id)
+        // Tie-breaker function for preferring resources we are already connected to over other ones.
+        let prefer_connected_cidr = |left, right| match (
+            self.is_cidr_resource_connected(&left),
+            self.is_cidr_resource_connected(&right),
+        ) {
+            (true, true) | (false, false) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+        };
+
+        let maybe_cidr_resource_id = self.routing_table.matches_cidr(destination, prefer_connected_cidr)
             .inspect(
                 |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for CIDR resource"),
             );
@@ -1150,6 +1183,7 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events(now);
+        self.drain_stub_resolver_events();
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
@@ -1422,6 +1456,7 @@ impl ClientState {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
+                self.drain_stub_resolver_events();
                 self.dns_cache.insert(message.domain(), &response, now);
 
                 return Some(response);
@@ -1446,7 +1481,7 @@ impl ClientState {
                 });
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
-                let Some(gateway) =
+                let Some((_, gateway)) =
                     peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
                 else {
                     self.on_not_connected_resource(
@@ -1546,26 +1581,6 @@ impl ClientState {
         self.maybe_update_tun_config(new_tun_config);
     }
 
-    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<CidrResource> {
-        let mut active_cidr_resources = IpNetworkTable::<CidrResource>::new();
-
-        for resource in self.resources_by_id.values() {
-            let Resource::Cidr(resource) = resource else {
-                continue;
-            };
-
-            if let Some(active_resource) = active_cidr_resources.exact_match(resource.address)
-                && self.is_cidr_resource_connected(&active_resource.id)
-            {
-                continue;
-            }
-
-            active_cidr_resources.insert(resource.address, resource.clone());
-        }
-
-        active_cidr_resources
-    }
-
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
         if Some(&new_tun_config) == self.tun_config.current() {
             tracing::trace!(current = ?self.tun_config.current(), "TUN device configuration unchanged");
@@ -1641,6 +1656,22 @@ impl ClientState {
         }
     }
 
+    fn drain_stub_resolver_events(&mut self) {
+        while let Some(stub_resolver::Event::RecordsChanged(records)) =
+            self.stub_resolver.poll_event()
+        {
+            for record in &records {
+                for ip in &record.ips {
+                    self.routing_table
+                        .upsert_dns(*ip, record.resource, record.domain.clone());
+                }
+            }
+
+            self.buffered_events
+                .push_back(ClientEvent::DnsRecordsChanged { records });
+        }
+    }
+
     fn update_site_status_by_gateway(
         &mut self,
         gid: &GatewayId,
@@ -1685,13 +1716,7 @@ impl ClientState {
             return Some(ClientEvent::DeviceConnectionIntent { ipv4: client });
         }
 
-        self.buffered_events
-            .pop_front()
-            .or_else(|| match self.stub_resolver.poll_event()? {
-                dns::Event::RecordsChanged(records) => {
-                    Some(ClientEvent::DnsRecordsChanged { records })
-                }
-            })
+        self.buffered_events.pop_front()
     }
 
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
@@ -1756,7 +1781,6 @@ impl ClientState {
             self.add_resource(resource, now)
         }
 
-        self.active_cidr_resources = self.recalculate_active_cidr_resources();
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
     }
@@ -1794,33 +1818,12 @@ impl ClientState {
                 self.stub_resolver
                     .add_resource(dns.id, dns.address.clone(), dns.ip_stack)
             }
-            Resource::Cidr(cidr) => {
-                let existing = self.active_cidr_resources.exact_match(cidr.address);
-
-                match existing {
-                    Some(existing) => {
-                        // If we are "activating" the same resource, don't print a log to avoid spam.
-                        let is_different = existing.id != cidr.id;
-
-                        // If the current resource is routing traffic, we don't update the routing table, so don't print a log either.
-                        // See `recalculate_active_cidr_resources` for details.
-                        let existing_is_not_connected =
-                            self.is_cidr_resource_connected(&existing.id);
-
-                        is_different && existing_is_not_connected
-                    }
-                    None => true,
-                }
-            }
+            Resource::Cidr(cidr) => self.routing_table.upsert_cidr(cidr.address, cidr.id),
             Resource::Internet(_) => self.is_internet_resource_active,
         };
 
         if activated {
             self.log_activating_resource(&new_resource);
-        }
-
-        if matches!(new_resource, Resource::Cidr(_)) {
-            self.active_cidr_resources = self.recalculate_active_cidr_resources();
         }
 
         self.maybe_update_tun_routes();
@@ -1840,13 +1843,8 @@ impl ClientState {
     pub fn remove_resource(&mut self, id: ResourceId, now: Instant) {
         self.disable_resource(id, now);
 
-        if self
-            .resources_by_id
-            .remove(&id)
-            .is_some_and(|r| matches!(r, Resource::Cidr(_)))
-        {
-            self.active_cidr_resources = self.recalculate_active_cidr_resources();
-        };
+        self.resources_by_id.remove(&id);
+        self.routing_table.remove_by_resource(id);
 
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
@@ -1872,7 +1870,8 @@ impl ClientState {
 
         self.pending_flows.remove(&id);
 
-        let Some(peer) = peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
+        let Some((_, peer)) =
+            peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
         else {
             return;
         };
@@ -1961,11 +1960,11 @@ fn peer_by_resource_mut<'p>(
     resources_gateways: &HashMap<ResourceId, GatewayId>,
     peers: &'p mut PeerStore<GatewayId, GatewayOnClient>,
     resource: ResourceId,
-) -> Option<&'p mut GatewayOnClient> {
+) -> Option<(GatewayId, &'p mut GatewayOnClient)> {
     let gateway_id = resources_gateways.get(&resource)?;
     let peer = peers.peer_by_id_mut(gateway_id)?;
 
-    Some(peer)
+    Some((*gateway_id, peer))
 }
 
 fn into_udp_dns_packet(
@@ -2048,6 +2047,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv4() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let tun_ipv4 = Ipv4Addr::new(100, 82, 80, 16);
+
+        state.update_interface_config(interface(tun_ipv4, Ipv6Addr::LOCALHOST));
+        drain_events(&mut state);
+
+        let packet = ip_packet::make::udp_packet(tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
+
+        assert!(state.handle_tun_input(packet, now).is_none());
+        assert_no_device_connection_intent(&mut state);
+    }
+
+    #[test]
+    fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv6() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
+
+        assert!(crate::is_peer(tun_ipv6.into()));
+
+        state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
+        drain_events(&mut state);
+
+        let packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
+
+        assert!(state.handle_tun_input(packet, now).is_none());
+        assert_no_device_connection_intent(&mut state);
+    }
+
+    #[test]
     fn prefers_already_connected_gateways() {
         let mut state = ClientState::for_test();
         state.gateways_by_site.insert(
@@ -2058,9 +2089,7 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state
-            .gateways
-            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
+        state.gateways.upsert(GatewayId::from_u128(30), peer);
 
         let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
 
@@ -2086,9 +2115,7 @@ mod tests {
             SiteId::from_u128(2),
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
-        state
-            .gateways
-            .upsert(GatewayId::from_u128(30), || peer(GatewayId::from_u128(30)));
+        state.gateways.upsert(GatewayId::from_u128(30), peer);
         state
             .authorized_resources
             .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
@@ -2166,14 +2193,35 @@ mod tests {
         }
     }
 
-    fn peer(id: GatewayId) -> GatewayOnClient {
-        GatewayOnClient::new(
-            id,
-            IpConfig {
-                v4: Ipv4Addr::LOCALHOST,
-                v6: Ipv6Addr::LOCALHOST,
-            },
-        )
+    fn peer() -> GatewayOnClient {
+        GatewayOnClient::new(IpConfig {
+            v4: Ipv4Addr::LOCALHOST,
+            v6: Ipv6Addr::LOCALHOST,
+        })
+    }
+
+    fn interface(ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> InterfaceConfig {
+        InterfaceConfig {
+            ipv4,
+            ipv6,
+            upstream_dns: vec![],
+            upstream_do53: vec![],
+            upstream_doh: vec![],
+            search_domain: None,
+        }
+    }
+
+    fn drain_events(state: &mut ClientState) {
+        while state.poll_event().is_some() {}
+    }
+
+    fn assert_no_device_connection_intent(state: &mut ClientState) {
+        while let Some(event) = state.poll_event() {
+            assert!(
+                !matches!(event, ClientEvent::DeviceConnectionIntent { .. }),
+                "unexpected device connection intent"
+            );
+        }
     }
 }
 

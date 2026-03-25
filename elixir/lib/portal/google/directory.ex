@@ -26,6 +26,8 @@ defmodule Portal.Google.Directory do
     field :error_email_count, :integer, default: 0, read_after_writes: true
     field :is_verified, :boolean, default: false, read_after_writes: true
     field :legacy_service_account_key, :map, redact: true
+    field :group_sync_mode, Ecto.Enum, values: [:all, :filtered, :disabled], default: :all
+    field :orgunit_sync_enabled, :boolean, default: false
 
     timestamps()
   end
@@ -37,6 +39,7 @@ defmodule Portal.Google.Directory do
     |> validate_length(:domain, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
+    |> check_constraint(:group_sync_mode, name: :group_sync_mode_values)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
     |> unique_constraint(:domain,

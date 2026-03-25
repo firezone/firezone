@@ -135,6 +135,16 @@ defmodule Portal.Config.Definitions do
   defconfig(:api_capacity, :integer, default: 200)
 
   @doc """
+  The API socket rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
+  """
+  defconfig(:api_socket_refill_rate, :integer, default: 1)
+
+  @doc """
+  The API socket rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
+  """
+  defconfig(:api_socket_capacity, :integer, default: 1)
+
+  @doc """
   The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:web_refill_rate, :integer, default: 10)
@@ -700,6 +710,13 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:maxmind_city_db_path, :string, default: nil)
 
+  @doc """
+  Comma-separated list of ISO 3166-1 alpha-2 country codes to block at the endpoint.
+
+  Requests are denied with HTTP 403 when the resolved remote IP country matches one of these codes.
+  """
+  defconfig(:country_code_blocklist, {:array, ",", :string}, default: [])
+
   ##############################################
   ## Outbound Email Settings
   ##############################################
@@ -729,6 +746,7 @@ defmodule Portal.Config.Definitions do
       values:
         [
           Swoosh.Adapters.AmazonSES,
+          Swoosh.Adapters.AzureCommunicationServices,
           Swoosh.Adapters.CustomerIO,
           Swoosh.Adapters.Dyn,
           Swoosh.Adapters.ExAwsAmazonSES,
@@ -763,6 +781,62 @@ defmodule Portal.Config.Definitions do
       |> Keyword.update(:sockopts, [], &Dumper.dump_ssl_opts/1)
     end
   )
+
+  @doc """
+  Method to use for sending queued outbound email.
+  If not set, queued emails will use the default no-op behaviour.
+  """
+  defconfig(
+    :secondary_outbound_email_adapter,
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values:
+        [
+          Swoosh.Adapters.AmazonSES,
+          Swoosh.Adapters.AzureCommunicationServices,
+          Swoosh.Adapters.CustomerIO,
+          Swoosh.Adapters.Dyn,
+          Swoosh.Adapters.ExAwsAmazonSES,
+          Swoosh.Adapters.Gmail,
+          Swoosh.Adapters.MailPace,
+          Swoosh.Adapters.Mailgun,
+          Swoosh.Adapters.Mailjet,
+          Swoosh.Adapters.Mandrill,
+          Swoosh.Adapters.Postmark,
+          Swoosh.Adapters.ProtonBridge,
+          Swoosh.Adapters.SMTP,
+          Swoosh.Adapters.SMTP2GO,
+          Swoosh.Adapters.Sendgrid,
+          Swoosh.Adapters.Sendinblue,
+          Swoosh.Adapters.Sendmail,
+          Swoosh.Adapters.SocketLabs,
+          Swoosh.Adapters.SparkPost
+        ] ++ @local_development_adapters
+    ),
+    default: nil
+  )
+
+  @doc """
+  Queued email adapter configuration.
+  """
+  defconfig(:secondary_outbound_email_adapter_opts, :map,
+    default: %{},
+    sensitive: true,
+    dump: fn map ->
+      Dumper.keyword(map)
+      |> Keyword.update(:tls_options, nil, &Dumper.dump_ssl_opts/1)
+      |> Keyword.update(:sockopts, [], &Dumper.dump_ssl_opts/1)
+    end
+  )
+
+  ##############################################
+  ## Outbound Email
+  ##############################################
+
+  @doc """
+  Shared secret expected on ACS Event Grid webhook notification requests.
+  Configure the webhook URL with `?secret=...` using this value.
+  """
+  defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
 
   ##############################################
   ## Billing flags

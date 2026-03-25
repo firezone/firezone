@@ -1,7 +1,7 @@
 use super::{
     dns_records::DnsRecords,
-    sim_client::{RefClient, ref_client_host},
-    sim_gateway::{RefGateway, ref_gateway_host},
+    ref_client::{RefClient, ref_client_host},
+    ref_gateway::{RefGateway, ref_gateway_host},
     sim_net::Host,
     strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
 };

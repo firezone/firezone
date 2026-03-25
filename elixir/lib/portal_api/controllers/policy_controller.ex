@@ -180,23 +180,23 @@ defmodule PortalAPI.PolicyController do
           |> Safe.one()
 
         case resource do
-          nil ->
-            {:error, :not_found}
-
-          %{type: :internet} ->
-            if Portal.Account.internet_resource_enabled?(subject.account) do
-              :ok
-            else
-              {:error, :forbidden, reason: "Internet resource is not enabled for this account"}
-            end
-
-          _ ->
-            :ok
+          nil -> {:error, :not_found}
+          resource -> check_internet_resource(resource, subject.account)
         end
       else
         :ok
       end
     end
+
+    defp check_internet_resource(%{type: :internet}, account) do
+      if Portal.Account.internet_resource_enabled?(account) do
+        :ok
+      else
+        {:error, :forbidden, reason: "Internet resource is not enabled for this account"}
+      end
+    end
+
+    defp check_internet_resource(_resource, _account), do: :ok
 
     def create_policy(attrs, %Authentication.Subject{} = subject) do
       changeset =

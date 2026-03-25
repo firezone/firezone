@@ -10,8 +10,8 @@ defmodule PortalAPI.Schemas.UserpassAuthProvider do
       description: "Username & Password Auth Provider",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Provider ID"},
-        account_id: %Schema{type: :string, description: "Account ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
+        account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         name: %Schema{type: :string, description: "Provider name"},
         issuer: %Schema{type: :string, description: "Issuer"},
         context: %Schema{
@@ -28,8 +28,12 @@ defmodule PortalAPI.Schemas.UserpassAuthProvider do
           description: "Portal session lifetime in seconds"
         },
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
-        inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"},
-        updated_at: %Schema{type: :string, format: :datetime, description: "Update timestamp"}
+        inserted_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "Creation timestamp"
+        },
+        updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
       required: [:id, :name],
       example: %{

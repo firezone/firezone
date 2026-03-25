@@ -1,6 +1,8 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.Banner
+  alias Portal.{Banner, EmailSuppression, Mailer}
+
+  @max_bcc_per_message 50
 
   @doc """
   Counts presences grouped by topic prefix.
@@ -77,9 +79,67 @@ defmodule Portal.Ops do
     Database.delete_all(Banner)
   end
 
+  def queue_admin_email(subject, html_body, plaintext_body) do
+    queue_admin_email(:all, subject, html_body, plaintext_body)
+  end
+
+  def queue_admin_email(account_ids, subject, html_body, plaintext_body)
+      when account_ids == :all or is_list(account_ids) do
+    emails_by_account =
+      Database.get_account_admin_emails_by_account(account_ids)
+      |> Enum.map(fn {account_id, admin_emails} ->
+        normalized =
+          admin_emails
+          |> Enum.map(&EmailSuppression.normalize_email/1)
+          |> Enum.uniq()
+
+        {account_id, normalized}
+      end)
+      |> Enum.reject(fn {_account_id, emails} -> emails == [] end)
+
+    total_recipients = Enum.sum(Enum.map(emails_by_account, fn {_, emails} -> length(emails) end))
+    total_accounts = length(emails_by_account)
+
+    if total_recipients == 0 do
+      IO.puts("No admin recipients found.")
+      :ok
+    else
+      IO.puts(
+        "About to send email '#{subject}' to #{total_recipients} unique admin(s) across #{total_accounts} account(s). Continue? [y/N]"
+      )
+
+      case IO.gets("") |> String.trim() do
+        answer when answer in ["y", "Y"] ->
+          enqueue_chunked(emails_by_account, subject, html_body, plaintext_body)
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    end
+  end
+
+  defp enqueue_chunked(emails_by_account, subject, html_body, plaintext_body) do
+    Enum.each(emails_by_account, fn {account_id, admin_emails} ->
+      admin_emails
+      |> Enum.chunk_every(@max_bcc_per_message)
+      |> Enum.each(fn chunk ->
+        Mailer.default_email()
+        |> Swoosh.Email.subject(subject)
+        |> Mailer.bcc_recipients(chunk)
+        |> Swoosh.Email.html_body(html_body)
+        |> Swoosh.Email.text_body(plaintext_body)
+        |> Mailer.with_account_id(account_id)
+        |> Mailer.enqueue()
+      end)
+    end)
+
+    :ok
+  end
+
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Account, Safe}
+    alias Portal.{Account, Actor, Safe}
 
     def get_disabled_account!(id) do
       from(a in Account,
@@ -106,6 +166,29 @@ defmodule Portal.Ops do
       banner
       |> Safe.unscoped()
       |> Safe.delete()
+    end
+
+    def get_account_admin_emails_by_account(account_ids_or_all) do
+      Actor
+      |> where([a], a.type == :account_admin_user)
+      |> where([a], is_nil(a.disabled_at))
+      |> maybe_filter_account_ids(account_ids_or_all)
+      |> select([a], {a.account_id, a.email})
+      |> Safe.unscoped(:replica)
+      |> Safe.all()
+      |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
+        email
+      end)
+    end
+
+    defp maybe_filter_account_ids(query, :all) do
+      join(query, :inner, [a], account in Account,
+        on: account.id == a.account_id and is_nil(account.disabled_at)
+      )
+    end
+
+    defp maybe_filter_account_ids(query, account_ids) when is_list(account_ids) do
+      where(query, [a], a.account_id in ^account_ids)
     end
   end
 end

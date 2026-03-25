@@ -10,7 +10,7 @@ defmodule PortalAPI.Schemas.Actor do
       description: "Actor",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Actor ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
         name: %Schema{
           type: :string,
           description: "Actor Name",
@@ -37,6 +37,7 @@ defmodule PortalAPI.Schemas.Actor do
         },
         created_by_directory_id: %Schema{
           type: :string,
+          format: :uuid,
           description: "Directory ID that created this actor",
           nullable: true
         },

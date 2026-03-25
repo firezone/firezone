@@ -77,6 +77,10 @@ defmodule PortalAPI.Router do
   end
 
   scope "/integrations", PortalAPI.Integrations do
+    scope "/azure_communication_services", AzureCommunicationServices do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end

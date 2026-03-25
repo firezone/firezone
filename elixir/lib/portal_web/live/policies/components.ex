@@ -27,7 +27,8 @@ defmodule PortalWeb.Policies.Components do
     internet: @all_conditions -- [:current_utc_datetime],
     dns: @all_conditions,
     ip: @all_conditions,
-    cidr: @all_conditions
+    cidr: @all_conditions,
+    static_device_pool: @all_conditions
   }
 
   attr(:policy, :map, required: true)
@@ -229,16 +230,7 @@ defmodule PortalWeb.Policies.Components do
 
         ranges
         |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
-        |> Enum.map(fn {dow, time_ranges} ->
-          time_ranges_by_timezone =
-            time_ranges
-            |> Enum.reduce(%{}, fn {starts_at, ends_at, timezone}, acc ->
-              range = {starts_at, ends_at}
-              Map.update(acc, timezone, [range], fn ranges -> [range | ranges] end)
-            end)
-
-          {dow, time_ranges_by_timezone}
-        end)
+        |> Enum.map(fn {dow, time_ranges} -> {dow, group_ranges_by_timezone(time_ranges)} end)
         |> Enum.sort_by(fn {dow, _time_ranges_by_timezone} -> day_of_week_index(dow) end)
       end)
 
@@ -270,6 +262,13 @@ defmodule PortalWeb.Policies.Components do
 
   for {{code, _name}, index} <- Enum.with_index(@days_of_week) do
     def day_of_week_index(unquote(code)), do: unquote(index)
+  end
+
+  defp group_ranges_by_timezone(time_ranges) do
+    Enum.reduce(time_ranges, %{}, fn {starts_at, ends_at, timezone}, acc ->
+      range = {starts_at, ends_at}
+      Map.update(acc, timezone, [range], fn ranges -> [range | ranges] end)
+    end)
   end
 
   defp condition_operator_option_name(:contains), do: "contains"
@@ -854,12 +853,12 @@ defmodule PortalWeb.Policies.Components do
         )
 
       # Combine all providers from different tables using Safe
-      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (okta_query |> Safe.scoped(subject) |> Safe.all())
+      (userpass_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject, :replica) |> Safe.all())
     end
 
     # Inlined from PortalWeb.Groups.Components
@@ -938,7 +937,7 @@ defmodule PortalWeb.Policies.Components do
           query
         end
 
-      groups = query |> Safe.scoped(subject) |> Safe.all()
+      groups = query |> Safe.scoped(subject, :replica) |> Safe.all()
 
       # For metadata, we'll return a simple count
       metadata = %{limit: 25, count: length(groups)}

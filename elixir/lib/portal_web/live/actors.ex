@@ -346,62 +346,51 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
-      # Prevent users from deleting themselves
-      if actor.id == socket.assigns.subject.actor.id do
-        {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
-      else
-        case Database.delete(actor, socket.assigns.subject) do
-          {:ok, _actor} ->
-            {:noreply, handle_success(socket, "Actor deleted successfully")}
-
-          {:error, :unauthorized} ->
-            {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete actor")}
-        end
-      end
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
+         :ok <- ensure_not_self(actor, socket.assigns.subject),
+         {:ok, _actor} <- Database.delete(actor, socket.assigns.subject) do
+      {:noreply, handle_success(socket, "Actor deleted successfully")}
     else
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Actor not found")}
 
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
+
+      {:error, :self_operation} ->
+        {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete actor")}
     end
   end
 
   def handle_event("disable", %{"id" => id}, socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
-      # Prevent users from disabling themselves
-      if actor.id == socket.assigns.subject.actor.id do
-        {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
-      else
-        case actor
-             |> change()
-             |> put_change(:disabled_at, DateTime.utc_now())
-             |> Database.update(socket.assigns.subject) do
-          {:ok, updated_actor} ->
-            socket =
-              socket
-              |> reload_live_table!("actors")
-              |> maybe_update_actor_assign(id, updated_actor)
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
+         :ok <- ensure_not_self(actor, socket.assigns.subject),
+         {:ok, updated_actor} <-
+           actor
+           |> change()
+           |> put_change(:disabled_at, DateTime.utc_now())
+           |> Database.update(socket.assigns.subject) do
+      socket =
+        socket
+        |> reload_live_table!("actors")
+        |> maybe_update_actor_assign(id, updated_actor)
 
-            {:noreply, put_flash(socket, :success_inline, "Actor disabled successfully")}
-
-          {:error, :unauthorized} ->
-            {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to disable actor")}
-        end
-      end
+      {:noreply, put_flash(socket, :success_inline, "Actor disabled successfully")}
     else
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Actor not found")}
 
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
+
+      {:error, :self_operation} ->
+        {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to disable actor")}
     end
   end
 
@@ -1645,6 +1634,10 @@ defmodule PortalWeb.Actors do
   end
 
   # Utility helpers
+  defp ensure_not_self(actor, subject) do
+    if actor.id == subject.actor.id, do: {:error, :self_operation}, else: :ok
+  end
+
   defp handle_success(socket, message) do
     socket
     |> put_flash(:success, message)

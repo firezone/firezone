@@ -85,12 +85,9 @@ defmodule PortalWeb.Sites.New do
   end
 
   defp new_site(attrs \\ %{}) do
-    change_site(%Portal.Site{}, attrs)
-  end
-
-  defp change_site(site, attrs) do
-    site
+    %Portal.Site{}
     |> cast(attrs, [:name])
+    |> Portal.Site.changeset()
   end
 
   defp create_changeset(account, attrs) do

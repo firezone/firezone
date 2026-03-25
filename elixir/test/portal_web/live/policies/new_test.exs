@@ -3,6 +3,7 @@ defmodule PortalWeb.Live.Policies.NewTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientFixtures
   import Portal.GroupFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyFixtures
@@ -439,6 +440,61 @@ defmodule PortalWeb.Live.Policies.NewTest do
     assert policy.resource_id == resource.id
 
     assert assert_redirect(lv, ~p"/#{account}/groups/#{group}")
+  end
+
+  test "creates a policy for a static device pool resource", %{
+    account: account,
+    actor: actor,
+    conn: conn
+  } do
+    account = update_account(account, features: %{client_to_client: true})
+    group = group_fixture(account: account)
+    client = client_fixture(account: account)
+    resource = static_device_pool_resource_fixture(account: account, clients: [client])
+
+    attrs = %{
+      group_id: group.id,
+      resource_id: resource.id
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/policies/new")
+
+    assert lv
+           |> form("form[phx-submit=submit]", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Portal.Policy, attrs)
+    assert policy
+    assert policy.resource_id == resource.id
+
+    flash = assert_redirect(lv, ~p"/#{account}/policies")
+    assert flash["success"] == "Policy created successfully"
+  end
+
+  test "shows all conditions for static device pool resource", %{
+    account: account,
+    actor: actor,
+    conn: conn
+  } do
+    account = update_account(account, features: %{client_to_client: true})
+    resource = static_device_pool_resource_fixture(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource.id}")
+
+    form = form(lv, "form[phx-submit=submit]")
+    html = render(form)
+
+    # All standard conditions are available for device pools
+    assert html =~ "client_verified"
+    assert html =~ "current_utc_datetime"
+    assert html =~ "auth_provider_id"
+    assert html =~ "remote_ip"
   end
 
   test "redirects back to site when a new policy is created with pre-set site_id", %{

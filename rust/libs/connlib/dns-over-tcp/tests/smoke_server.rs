@@ -103,14 +103,16 @@ impl Eventloop {
 
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
-            ready!(self.tun.poll_send_ready(cx)).unwrap();
-
-            if let Some(packet) = self.dns_server.poll_outbound() {
-                self.tun.send(packet).unwrap();
-                continue;
+            // Send all outbound DNS packets
+            while let Some(packet) = self.dns_server.poll_outbound() {
+                self.tun
+                    .sender()
+                    .try_send(packet)
+                    .expect("channels should be able to buffer all packets we send in this test")
             }
 
-            if let Some(query) = self.dns_server.poll_queries() {
+            // Handle DNS queries and generate responses
+            while let Some(query) = self.dns_server.poll_queries() {
                 self.dns_server
                     .send_message(
                         query.local,
@@ -118,12 +120,9 @@ impl Eventloop {
                         ResponseBuilder::for_query(&query.message, ResponseCode::NXDOMAIN).build(),
                     )
                     .unwrap();
-                continue;
             }
 
-            let mut buf = Vec::with_capacity(1);
-            ready!(self.tun.poll_recv_many(cx, &mut buf, 1));
-            let ip_packet = buf.remove(0);
+            let ip_packet = ready!(self.tun.receiver().poll_recv(cx)).unwrap();
 
             if self.dns_server.accepts(&ip_packet) {
                 self.dns_server.handle_inbound(ip_packet);

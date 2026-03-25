@@ -10,8 +10,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
       description: "OIDC Auth Provider",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Provider ID"},
-        account_id: %Schema{type: :string, description: "Account ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
+        account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         name: %Schema{type: :string, description: "Provider name"},
         issuer: %Schema{type: :string, description: "Issuer"},
         context: %Schema{
@@ -31,8 +31,12 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
         is_default: %Schema{type: :boolean, description: "Whether provider is default"},
         client_id: %Schema{type: :string, description: "Client ID"},
         discovery_document_uri: %Schema{type: :string, description: "Discovery document URI"},
-        inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"},
-        updated_at: %Schema{type: :string, format: :datetime, description: "Update timestamp"}
+        inserted_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "Creation timestamp"
+        },
+        updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
       required: [:id, :name],
       example: %{

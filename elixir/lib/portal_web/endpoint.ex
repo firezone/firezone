@@ -38,6 +38,8 @@ defmodule PortalWeb.Endpoint do
     proxies: {__MODULE__, :external_trusted_proxies, []},
     clients: {__MODULE__, :clients, []}
 
+  plug Portal.Plugs.CountryCodeBlocklist
+
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 

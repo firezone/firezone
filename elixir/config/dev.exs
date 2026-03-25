@@ -90,8 +90,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
-       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
-       {worker_dev_schedule, Portal.Workers.DeleteExpiredAuthenticationCacheEntries}
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions}
      ]}
   ],
   queues: [
@@ -102,7 +101,8 @@ config :portal, Oban,
     google_sync: 5,
     okta_scheduler: 1,
     okta_sync: 5,
-    sync_error_notifications: 1
+    sync_error_notifications: 1,
+    outbound_emails: 1
   ],
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
@@ -157,8 +157,8 @@ config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/"
+    "style-src 'self'",
+    "script-src 'self' https://cdn.tailwindcss.com/"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
@@ -224,6 +224,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :portal, Portal.Mailer, adapter: Swoosh.Adapters.Local
+config :portal, Portal.Mailer.Secondary, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev

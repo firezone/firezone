@@ -189,8 +189,8 @@ config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self'",
+    "script-src 'self'"
   ]
 
 config :portal, :constant_execution_time, 1
@@ -219,6 +219,7 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 ##### Third-party configs #####
 ###############################
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
+config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
 
 # Allow asserting on info logs and higher
 config :logger, level: :info
@@ -230,19 +231,10 @@ config :geolix,
     %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
   ]
 
-config :wallaby,
-  driver: Wallaby.Chrome,
-  screenshot_on_failure: true,
-  # TODO: Contribute to Wallaby to make this configurable on the per-process level,
-  # along with buffer to write logs only on process failure
-  js_logger: false,
-  hackney_options: [timeout: 10_000, recv_timeout: 10_000]
-
 ex_unit_config =
   [
     formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-    capture_log: true,
-    exclude: [:acceptance]
+    capture_log: true
   ] ++
     case System.get_env("CI_ASSERT_RECEIVE_TIMEOUT_MS") do
       nil -> []

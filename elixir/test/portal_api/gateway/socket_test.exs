@@ -215,6 +215,34 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert rate_limited, "Expected at least one connection attempt to be rate limited"
     end
 
+    test "uses socket rate limit config overrides for repeated connection attempts" do
+      Portal.Config.put_env_override(:portal, PortalAPI.Sockets.RateLimit,
+        refill_rate: 1,
+        capacity: 3
+      )
+
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+      ip = unique_ip()
+      connect_info = build_connect_info(ip: ip, token: encrypted_secret)
+
+      # All 3 connections should succeed, proving capacity=3 is applied
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      # Subsequent connections should be rate limited. Use Enum.any? to avoid
+      # flakiness from crossing second boundaries with the slow (1/s) refill rate.
+      rate_limited =
+        Enum.any?(1..3, fn _ ->
+          connect(Socket, attrs, connect_info: connect_info) == {:error, :rate_limit}
+        end)
+
+      assert rate_limited, "Expected at least one connection attempt to be rate limited"
+    end
+
     test "allows connections from different IPs with same token" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)

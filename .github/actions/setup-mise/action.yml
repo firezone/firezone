@@ -1,0 +1,36 @@
+---
+name: "Setup mise"
+description: "Installs mise with a pinned version and retry logic"
+inputs:
+  version:
+    description: "mise version to install"
+    required: false
+    default: "2026.3.10"
+  install_args:
+    description: "Arguments to pass to `mise install`"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      id: mise-1
+      continue-on-error: true
+      with:
+        version: ${{ inputs.version }}
+        install_args: ${{ inputs.install_args }}
+
+    - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      if: ${{ steps.mise-1.outcome == 'failure' }}
+      id: mise-2
+      continue-on-error: true
+      with:
+        version: ${{ inputs.version }}
+        install_args: ${{ inputs.install_args }}
+
+    - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      if: ${{ steps.mise-2.outcome == 'failure' }}
+      with:
+        version: ${{ inputs.version }}
+        install_args: ${{ inputs.install_args }}

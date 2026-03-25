@@ -77,16 +77,15 @@ defmodule Portal.Workers.SyncErrorNotification do
 
       admins ->
         increment_error_email_count(directory)
-
-        Enum.each(admins, fn admin ->
-          send_email_notification(admin, directory, frequency)
-        end)
+        send_email_notification(admins, directory, frequency)
     end
   end
 
-  defp send_email_notification(admin, directory, frequency) do
+  defp send_email_notification(admins, directory, frequency) do
+    recipient_emails = Enum.map(admins, & &1.email)
+
     Logger.info("Sending sync error email",
-      to: admin.email,
+      recipient_count: length(recipient_emails),
       directory_id: directory.id,
       directory_name: directory.name,
       frequency: frequency
@@ -94,19 +93,19 @@ defmodule Portal.Workers.SyncErrorNotification do
 
     # Attempt to send the email but log errors if it fails. Important not to raise here
     # otherwise we won't increment the error email count and potentially spam admins with emails.
-    Mailer.SyncEmail.sync_error_email(directory, admin.email)
-    |> Mailer.deliver()
+    Mailer.SyncEmail.sync_error_email(directory, recipient_emails)
+    |> Mailer.enqueue()
     |> case do
       {:ok, _result} ->
-        Logger.info("Sync error email sent successfully",
-          to: admin.email,
+        Logger.info("Sync error email enqueued successfully",
+          recipient_count: length(recipient_emails),
           directory_id: directory.id
         )
 
       {:error, reason} ->
-        Logger.error("Failed to send sync error email",
-          to: admin.email,
-          reason: reason,
+        Logger.error("Failed to enqueue sync error email",
+          recipient_count: length(recipient_emails),
+          reason: inspect(reason),
           directory_id: directory.id
         )
     end

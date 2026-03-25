@@ -72,12 +72,3 @@ Steps:
   ```
 
 When updating the billing plan in stripe, use the Stripe Testing Docs for how to add test payment info
-
-### Acceptance tests
-
-You can disable headless mode for the browser by adding
-
-```
-@tag debug: true
-feature ....
-```

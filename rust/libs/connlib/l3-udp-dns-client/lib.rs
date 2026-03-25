@@ -1,13 +1,16 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{
+        HashMap, VecDeque,
+        hash_map::{Entry, OccupiedEntry},
+    },
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
 use anyhow::{Context as _, Result, anyhow, bail};
-use ip_packet::IpPacket;
+use ip_packet::{FailedPacket, IpPacket, Layer4Protocol};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -105,14 +108,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Checks whether this client can handle the given packet.
     ///
     /// Only UDP packets for pending DNS queries are accepted.
-    pub fn accepts(&self, packet: &IpPacket) -> bool {
-        let Some(udp) = packet.as_udp() else {
-            #[cfg(debug_assertions)]
-            tracing::trace!(?packet, "Not a UDP packet");
-
-            return false;
-        };
-
+    pub fn accepts(&mut self, packet: &IpPacket) -> bool {
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             #[cfg(debug_assertions)]
             tracing::trace!("No source interface");
@@ -127,12 +123,39 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
+        if let Ok(Some((failed_packet, _))) = packet.icmp_error()
+            && self.entry_for_failed_packet(&failed_packet).is_some()
+        {
+            return true;
+        }
+
+        let Some(udp) = packet.as_udp() else {
+            #[cfg(debug_assertions)]
+            tracing::trace!(?packet, "Not a UDP packet");
+
+            return false;
+        };
+
         self.pending_queries_by_local_port
             .contains_key(&udp.destination_port())
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
+
+        if let Ok(Some((failed_packet, icmp_error))) = packet.icmp_error()
+            && let Some(entry) = self.entry_for_failed_packet(&failed_packet)
+        {
+            let pending_query = entry.remove();
+
+            self.query_results.push_back(QueryResult {
+                query: pending_query.message,
+                local: pending_query.local,
+                server: pending_query.server,
+                result: Err(anyhow!("Received ICMP error for DNS query: {icmp_error}")),
+            });
+            return;
+        }
 
         let Some(udp) = packet.as_udp() else {
             return;
@@ -248,6 +271,26 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             }
         }
     }
+
+    fn entry_for_failed_packet(
+        &mut self,
+        failed_packet: &FailedPacket,
+    ) -> Option<OccupiedEntry<'_, u16, PendingQuery>> {
+        let Layer4Protocol::Udp { src, dst } = failed_packet.layer4_protocol() else {
+            return None;
+        };
+
+        let dst_socket = SocketAddr::new(failed_packet.dst(), dst);
+        let Entry::Occupied(entry) = self.pending_queries_by_local_port.entry(src) else {
+            return None;
+        };
+
+        if entry.get().server != dst_socket {
+            return None;
+        };
+
+        Some(entry)
+    }
 }
 
 #[cfg(test)]
@@ -324,6 +367,32 @@ mod tests {
 
         // No pending queries, should return None
         assert!(client.poll_timeout().is_none());
+    }
+
+    #[test]
+    fn handles_icmp_error_for_pending_query() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone(), now).unwrap();
+
+        let packet = client.poll_outbound().unwrap();
+        let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
+
+        client.handle_inbound(icmp_error_response);
+
+        let query_result = client.poll_query_result().unwrap();
+
+        assert_eq!(query_result.query.id(), query.id());
+        assert_eq!(query_result.query.domain(), query.domain());
+        assert_eq!(query_result.local, local);
+        assert_eq!(query_result.server, server);
+        assert_eq!(
+            query_result.result.unwrap_err().to_string(),
+            "Received ICMP error for DNS query: Destination is unreachable (code: 0)"
+        );
     }
 
     fn create_test_client() -> Client {

@@ -16,11 +16,11 @@ runs:
   steps:
     - name: Tool Versions
       id: versions
-      uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+      uses: marocchino/tool-versions-action@4219f2e6bfdb4cce482b78f71ad9663e64f4d247 # v2.0.0
       with:
         path: elixir/.tool-versions
 
-    - uses: erlef/setup-beam@3580539ceec3dc05b0ed51e9e10b08eb7a7c2bb4 # v1.21.0
+    - uses: erlef/setup-beam@ee09b1e59bb240681c382eb1f0abc6a04af72764 # v1.23.0
       id: setup-beam
       with:
         otp-version: ${{ steps.versions.outputs.erlang }}
@@ -34,7 +34,7 @@ runs:
         mix local.rebar --force
 
     # Dependencies cache - keyed by mix.lock only (stable across source changes)
-    - uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+    - uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       name: Restore Elixir Deps Cache
       id: deps-cache
       with:
@@ -48,7 +48,7 @@ runs:
       run: mix deps.get --only ${{ inputs.mix_env }}
 
     # Build cache - keyed by source files for incremental compilation
-    - uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+    - uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       name: Restore Elixir Build Cache
       id: build-cache
       with:
@@ -63,14 +63,14 @@ runs:
       working-directory: ./elixir
       run: mix deps.compile --skip-umbrella-children
 
-    - uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+    - uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       name: Save Elixir Deps Cache
       if: ${{ github.ref_name == 'main' && steps.deps-cache.outputs.cache-hit != 'true' }}
       with:
         path: elixir/deps
         key: ${{ steps.deps-cache.outputs.cache-primary-key }}
 
-    - uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+    - uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       name: Save Elixir Build Cache
       if: ${{ github.ref_name == 'main' }}
       with:

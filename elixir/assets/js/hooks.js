@@ -418,17 +418,4 @@ Hooks.Toast = {
   },
 };
 
-Hooks.CloseWindow = {
-  mounted() {
-    const seconds = parseInt(this.el.dataset.seconds) || 5;
-
-    this.timer = setTimeout(() => {
-      window.close();
-    }, seconds * 1000);
-  },
-  destroyed() {
-    if (this.timer) clearTimeout(this.timer);
-  },
-};
-
 export default Hooks;

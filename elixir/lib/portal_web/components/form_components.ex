@@ -89,15 +89,7 @@ defmodule PortalWeb.FormComponents do
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
       if assigns.value_id do
-        Enum.map(field.value, fn
-          %Ecto.Changeset{} = value ->
-            value
-            |> Ecto.Changeset.apply_changes()
-            |> assigns.value_id.()
-
-          value ->
-            assigns.value_id.(value)
-        end)
+        resolve_field_value(field, assigns.value_id)
       else
         field.value
       end
@@ -340,6 +332,16 @@ defmodule PortalWeb.FormComponents do
       </.error>
     </div>
     """
+  end
+
+  defp resolve_field_value(field, value_id) do
+    Enum.map(field.value, fn
+      %Ecto.Changeset{} = value ->
+        value |> Ecto.Changeset.apply_changes() |> value_id.()
+
+      value ->
+        value_id.(value)
+    end)
   end
 
   ### Dialogs ###

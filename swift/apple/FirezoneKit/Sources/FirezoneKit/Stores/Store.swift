@@ -51,6 +51,7 @@ public final class Store: ObservableObject {
   private var lastSavedConfiguration: TunnelConfiguration?
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
+  private let tunnelManagerFactory: TunnelProviderManagerFactory
 
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
@@ -69,6 +70,7 @@ public final class Store: ObservableObject {
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
+      tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
@@ -76,6 +78,7 @@ public final class Store: ObservableObject {
       self.updateChecker = UpdateChecker(configuration: configuration, userDefaults: userDefaults)
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
+      self.tunnelManagerFactory = tunnelManagerFactory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
@@ -86,11 +89,13 @@ public final class Store: ObservableObject {
     public init(
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
       self.sessionNotification = sessionNotification
+      self.tunnelManagerFactory = tunnelManagerFactory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
@@ -345,7 +350,7 @@ public final class Store: ObservableObject {
 
   private func initVPNConfiguration() async throws {
     // Try to load existing configuration
-    if let manager = try await VPNConfigurationManager.load() {
+    if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.maybeMigrateConfiguration()
       self.vpnConfigurationManager = manager
     } else {
@@ -364,7 +369,9 @@ public final class Store: ObservableObject {
   }
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
-    self.vpnConfigurationManager = try await VPNConfigurationManager()
+    self.vpnConfigurationManager = try await VPNConfigurationManager(
+      manager: tunnelManagerFactory.createManager()
+    )
 
     try await setupTunnelObservers()
   }

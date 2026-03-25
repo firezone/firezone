@@ -1,6 +1,7 @@
 use super::{
     dns_records::DnsRecords,
-    sim_client::{RefClient, SimClient},
+    ref_client::RefClient,
+    sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
     transition::{Destination, ReplyTo},

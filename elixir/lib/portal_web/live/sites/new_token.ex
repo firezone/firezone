@@ -409,16 +409,14 @@ defmodule PortalWeb.Sites.NewToken do
     if socket.assigns.connected? do
       {:noreply, socket}
     else
-      connected? =
-        joins
-        |> Enum.any?(fn {_gateway_id, %{metas: metas}} ->
-          Enum.any?(metas, fn meta ->
-            Map.get(meta, :token_id) == socket.assigns.token.id
-          end)
-        end)
-
-      {:noreply, assign(socket, connected?: connected?)}
+      {:noreply, assign(socket, connected?: token_joined?(joins, socket.assigns.token.id))}
     end
+  end
+
+  defp token_joined?(joins, token_id) do
+    Enum.any?(joins, fn {_gateway_id, %{metas: metas}} ->
+      Enum.any?(metas, fn meta -> Map.get(meta, :token_id) == token_id end)
+    end)
   end
 
   defmodule Database do

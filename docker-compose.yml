@@ -56,8 +56,6 @@ services:
 
         exec su default -c "bin/server"
     depends_on:
-      vault:
-        condition: "service_healthy"
       postgres:
         condition: "service_healthy"
       portal-router:

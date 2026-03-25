@@ -1,21 +1,17 @@
-use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
-use std::task::{Context, Poll};
 use std::{
     io,
     os::fd::{AsRawFd as _, RawFd},
 };
 use telemetry::otel;
 use tokio::sync::mpsc;
-use tokio_util::sync::PollSender;
 
 const QUEUE_SIZE: usize = 10_000;
 
-#[derive(Debug)]
 pub struct Tun {
     name: String,
-    outbound_tx: PollSender<IpPacket>,
+    outbound_tx: mpsc::Sender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -80,38 +76,23 @@ impl Tun {
 
         Ok(Tun {
             name,
-            outbound_tx: PollSender::new(outbound_tx),
+            outbound_tx,
             inbound_rx,
         })
     }
 }
 
 impl tun::Tun for Tun {
+    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+        &self.outbound_tx
+    }
+
+    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+        &mut self.inbound_rx
+    }
+
     fn name(&self) -> &str {
         self.name.as_str()
-    }
-
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.outbound_tx
-            .poll_ready_unpin(cx)
-            .map_err(io::Error::other)
-    }
-
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.outbound_tx
-            .start_send_unpin(packet)
-            .map_err(io::Error::other)?;
-
-        Ok(())
-    }
-
-    fn poll_recv_many(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
-        max: usize,
-    ) -> Poll<usize> {
-        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 }
 

@@ -62,10 +62,9 @@ on:
         value: ${{ jobs.data-plane-linux.outputs.http_test_server_image }}
 
 permissions:
-  # write permission is required to create a github release
-  contents: write
-  id-token: write
-  packages: write
+  contents: write # create/update GitHub releases
+  id-token: write # OIDC auth
+  packages: write # push Docker images to GHCR
 
 jobs:
   update-release-draft:
@@ -76,14 +75,14 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.5.1
+          - release_name: gateway-1.5.2
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.7
+          - release_name: headless-client-1.5.8
             config_name: release-drafter-headless-client.yml
 
     steps:
-      - uses: release-drafter/release-drafter@6db134d15f3909ccc9eefd369f02bd1e9cffdf97 # v6.2.0
+      - uses: release-drafter/release-drafter@139054aeaa9adc52ab36ddf67437541f039b88e2 # v7.1.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -112,9 +111,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.7]
+        release_name: [headless-client-1.5.8]
         # mark:next-headless-version
-        version: [1.5.7]
+        version: [1.5.8]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -200,9 +199,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.7
+            release_name: headless-client-1.5.8
             # mark:next-headless-version
-            version: 1.5.7
+            version: 1.5.8
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -210,9 +209,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.5.1
+            release_name: gateway-1.5.2
             # mark:next-gateway-version
-            version: 1.5.1
+            version: 1.5.2
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -322,12 +321,12 @@ jobs:
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
           # We only version client and gateway
@@ -344,7 +343,7 @@ jobs:
       - name: Build Docker images (read-only cache)
         if: ${{ github.ref != 'refs/heads/main' }}
         id: build_ro
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -363,7 +362,7 @@ jobs:
       - name: Build Docker images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
         id: build_rw
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -416,7 +415,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.5.1
+            version: 1.5.2
           - name: client
             # mark:next-client-version
             version: 1.0.6
@@ -430,7 +429,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download digests
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
@@ -438,10 +437,10 @@ jobs:
       - name: Display structure of downloaded artifacts
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |

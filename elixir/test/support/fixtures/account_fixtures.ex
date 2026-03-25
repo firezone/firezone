@@ -16,6 +16,7 @@ defmodule Portal.AccountFixtures do
       name: "Account #{unique_num}",
       legal_name: "Legal Account #{unique_num}",
       slug: "account_#{unique_num}",
+      key: Portal.Account.new_key(),
       config: %{
         clients_upstream_dns: %{
           type: :custom,
@@ -30,7 +31,8 @@ defmodule Portal.AccountFixtures do
         policy_conditions: true,
         traffic_filters: true,
         idp_sync: true,
-        rest_api: true
+        rest_api: true,
+        client_to_client: false
       },
       limits: %{
         monthly_active_users_count: 100
@@ -54,7 +56,7 @@ defmodule Portal.AccountFixtures do
     attrs = valid_account_attrs(attrs)
 
     %Portal.Account{}
-    |> cast(attrs, [:name, :legal_name, :slug])
+    |> cast(attrs, [:name, :legal_name, :slug, :key])
     |> cast_embed(:config)
     |> cast_embed(:features)
     |> cast_embed(:limits)
@@ -123,6 +125,7 @@ defmodule Portal.AccountFixtures do
       :name,
       :legal_name,
       :slug,
+      :key,
       :disabled_at,
       :disabled_reason,
       :users_limit_exceeded,

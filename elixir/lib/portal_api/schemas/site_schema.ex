@@ -10,7 +10,7 @@ defmodule PortalAPI.Schemas.Site do
       description: "Site",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Site ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Site ID"},
         name: %Schema{type: :string, description: "Site Name"}
       },
       required: [:id, :name],

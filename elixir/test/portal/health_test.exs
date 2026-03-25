@@ -18,15 +18,6 @@ defmodule Portal.HealthTest do
   end
 
   describe "PortalWeb.Endpoint integration" do
-    test "GET /healthz returns 200" do
-      conn =
-        Plug.Test.conn(:get, "/healthz")
-        |> PortalWeb.Endpoint.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
-    end
-
     test "GET /readyz returns 200 when ready" do
       conn =
         Plug.Test.conn(:get, "/readyz")
@@ -39,15 +30,6 @@ defmodule Portal.HealthTest do
   end
 
   describe "PortalAPI.Endpoint integration" do
-    test "GET /healthz returns 200" do
-      conn =
-        Plug.Test.conn(:get, "/healthz")
-        |> PortalAPI.Endpoint.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
-    end
-
     test "GET /readyz returns 200 when ready" do
       conn =
         Plug.Test.conn(:get, "/readyz")
@@ -56,18 +38,6 @@ defmodule Portal.HealthTest do
       assert conn.status == 200
       assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
       assert is_binary(version)
-    end
-  end
-
-  describe "GET /healthz" do
-    test "returns 200 with status ok" do
-      conn =
-        :get
-        |> conn("/healthz")
-        |> Portal.Health.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
     end
   end
 
@@ -95,6 +65,48 @@ defmodule Portal.HealthTest do
 
       assert conn.status == 503
       assert %{"status" => "draining", "version" => version} = JSON.decode!(conn.resp_body)
+      assert is_binary(version)
+    end
+
+    test "returns 503 with status database_unavailable when repo is unreachable", %{
+      draining_file_path: draining_file_path
+    } do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        repo: :nonexistent_repo
+      )
+
+      conn =
+        :get
+        |> conn("/readyz")
+        |> Portal.Health.call([])
+
+      assert conn.status == 503
+
+      assert %{"status" => "database_unavailable", "version" => version} =
+               JSON.decode!(conn.resp_body)
+
+      assert is_binary(version)
+    end
+
+    test "returns 503 with status database_unavailable when replica repo is unreachable", %{
+      draining_file_path: draining_file_path
+    } do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        replica_repo: :nonexistent_repo
+      )
+
+      conn =
+        :get
+        |> conn("/readyz")
+        |> Portal.Health.call([])
+
+      assert conn.status == 503
+
+      assert %{"status" => "database_unavailable", "version" => version} =
+               JSON.decode!(conn.resp_body)
+
       assert is_binary(version)
     end
 

@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.ChannelTest do
   use PortalAPI.ChannelCase, async: true
   alias Portal.Changes
-  alias Portal.{Channels, PubSub}
+  alias Portal.{PG, PubSub}
   import Portal.Cache.Cacheable, only: [to_cache: 1]
 
   @test_user_agent "macOS/14.0 apple-client/1.3.0"
@@ -34,6 +34,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+
+    # Flush the channel's mailbox so :register is processed before returning.
+    # after_join sends `send(self(), :register)` then pushes "init"; by the time
+    # the caller receives "init" via assert_push, :register is still pending in the
+    # channel's mailbox. This ensures PG registration is complete.
+    :sys.get_state(socket.channel_pid)
 
     socket
   end
@@ -107,7 +113,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       presence = Portal.Presence.Gateways.Account.list(account.id)
 
@@ -117,6 +124,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     test "channel crash takes down the transport", %{gateway: gateway, site: site, token: token} do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       Process.flag(:trap_exit, true)
 
@@ -136,7 +144,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
 
       assert_push "init", %{
         account_slug: account_slug,
@@ -158,23 +166,199 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
-  describe "handle_info/2 pg_group_evicted" do
-    test "channel leaves pg group and stops receiving targeted messages", %{
+  describe "handle_info/2 pg scope crash" do
+    test "registers exactly once per key on join", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      pg_scope: scope
+    } do
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      assert [_] = :pg.get_members(scope, gateway.id)
+      assert [_] = :pg.get_members(scope, token.id)
+    end
+
+    test "re-registers with the pg scope after it crashes", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+
+      # Kill the pg scope — the supervisor restarts it, wiping all group memberships
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      Process.exit(old_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, :killed}
+
+      # While the scope is down (or restarted but channel not yet re-registered), delivery fails
+      assert {:error, :not_found} = PG.deliver(gateway.id, :ping)
+
+      # Channel receives the same :DOWN, calls reregister_pg_scope, and re-joins the group
+      Process.sleep(100)
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+    end
+
+    test "retries re-registration when the scope is still restarting", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      pg_scope: scope
+    } do
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+
+      # Stop the scope completely so it stays down (no supervisor restarts it)
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      stop_supervised!(scope)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+
+      # Channel's :DOWN handler fires — scope is nil, schedules :reregister_pg_scope retry
+      # Delivery fails while scope is down
+      assert {:error, :not_found} = PG.deliver(gateway.id, :ping)
+
+      # Start a fresh scope under the same name so the retry succeeds
+      start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+
+      # Wait for the 50ms retry + re-registration
+      Process.sleep(200)
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+    end
+
+    test "ignores :register when already registered to the current scope", %{
       gateway: gateway,
       site: site,
       token: token
     } do
       socket = join_channel(gateway, site, token)
-      # Flush :after_join before asserting group membership
+      assert_push "init", _
+
+      # Send :register while already registered — scope pid matches, noop
+      send(socket.channel_pid, :register)
       :sys.get_state(socket.channel_pid)
 
-      assert :ok = Channels.send_to_gateway(gateway.id, :ping)
+      assert :ok = PG.deliver(gateway.id, :ping)
+    end
 
-      group = {Portal.Channels, :gateway, gateway.id}
-      send(socket.channel_pid, {:pg_group_evicted, group})
+    test "retries :register when pg scope is not yet running", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      pg_scope: scope
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      # Stop the scope so PG.scope_pid() returns nil
+      old_pid = PG.scope_pid()
+      ref = Process.monitor(old_pid)
+      stop_supervised!(scope)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}
+
+      # Send :register while scope is nil — triggers nil path (log + retry in 50ms)
+      send(socket.channel_pid, :register)
       :sys.get_state(socket.channel_pid)
 
-      assert {:error, :not_found} = Channels.send_to_gateway(gateway.id, :ping)
+      # Start a fresh scope so the scheduled retry can succeed
+      start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+
+      # Wait for the 50ms retry + re-registration
+      Process.sleep(200)
+
+      assert :ok = PG.deliver(gateway.id, :ping)
+    end
+  end
+
+  describe "handle_info/2 :reject_access" do
+    test "pushes reject_access to the socket", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      client: client,
+      resource: resource
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      send(socket.channel_pid, {:reject_access, client.id, resource.id})
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
+      assert client_id == client.id
+      assert resource_id == resource.id
+    end
+  end
+
+  describe "handle_info/2 :disconnect" do
+    test "pushes disconnect event and closes the channel", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(gateway, site, token)
+
+      assert_push "init", _init_payload
+
+      PG.deliver(gateway.id, :disconnect)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "duplicate connection evicts the first gateway", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(gateway, site, token)
+
+      assert_push "init", _init_payload
+
+      # Simulate a second connection registering for the same gateway
+      PG.register(gateway.id)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+  end
+
+  describe "handle_info/2 :disconnect regression — shared token" do
+    test "multiple gateways sharing a token are not disconnected by each other", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+
+      gateway1 = gateway_fixture(account: account, site: site)
+      gateway2 = gateway_fixture(account: account, site: site)
+
+      socket1 = join_channel(gateway1, site, token)
+      assert_push "init", _
+
+      socket2 = join_channel(gateway2, site, token)
+      assert_push "init", _
+
+      # Both channels should still be alive — sharing a token must not
+      # cause one to evict the other (regression: PG.register on token_id
+      # used to send :disconnect to all existing members)
+      assert Process.alive?(socket1.channel_pid)
+      assert Process.alive?(socket2.channel_pid)
+
+      # Neither channel should have received a disconnect push
+      refute_push "disconnect", _
     end
   end
 
@@ -185,6 +369,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       send(socket.channel_pid, %Changes.Change{lsn: 100})
 
@@ -207,6 +392,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       expired_policy_authorization =
         policy_authorization_fixture(
@@ -284,6 +470,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       expired_policy_authorization =
         policy_authorization_fixture(
@@ -402,7 +589,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       :ok = PubSub.Changes.subscribe(account.id)
 
@@ -416,36 +604,30 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "slug" => "new-slug"
       }
 
-      Changes.Hooks.Accounts.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Accounts.on_update(lsn, old_data, data)
 
       assert_receive %Changes.Change{
-        lsn: 100,
+        lsn: ^lsn,
         old_struct: %Portal.Account{},
         struct: %Portal.Account{slug: "new-slug"}
       }
-
-      # Consume first init from join
-      assert_push "init", _payload
 
       assert_push "init", payload
 
       assert payload.account_slug == "new-slug"
     end
 
-    test "disconnects socket when token is deleted", %{
+    test "pushes disconnect event and closes when the token is deleted", %{
       account: account,
       gateway: gateway,
       site: site,
       token: token
     } do
-      _socket = join_channel(gateway, site, token)
+      Process.flag(:trap_exit, true)
+      join_channel(gateway, site, token)
 
-      # Consume the init message from join
       assert_push "init", _init_payload
-
-      # Subscribe to the token's socket topic (Portal.Sockets.socket_id returns "tokens:#{id}")
-      socket_topic = Portal.Sockets.socket_id(token.id)
-      :ok = PubSub.subscribe(socket_topic)
 
       data = %{
         "id" => token.id,
@@ -453,14 +635,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "type" => "site"
       }
 
-      Changes.Hooks.GatewayTokens.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.GatewayTokens.on_delete(lsn, data)
 
-      assert_receive %Phoenix.Socket.Broadcast{
-        topic: topic,
-        event: "disconnect"
-      }
-
-      assert topic == socket_topic
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
     end
 
     test "disconnect socket when gateway is deleted", %{
@@ -469,7 +648,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       Process.flag(:trap_exit, true)
 
@@ -480,10 +660,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "account_id" => account.id
       }
 
-      Changes.Hooks.Gateways.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Gateways.on_delete(lsn, data)
 
       assert_receive %Changes.Change{
-        lsn: 100,
+        lsn: ^lsn,
         old_struct: %Portal.Gateway{}
       }
 
@@ -502,6 +683,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -620,6 +802,64 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
+    test "does nothing when resource is incompatible with gateway version", %{
+      account: account,
+      actor: actor,
+      client: client,
+      site: site,
+      token: token,
+      group: group
+    } do
+      # Gateway with version 1.2.0 cannot handle internet resources (requires >= 1.3.0)
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_version: "1.2.0"
+        )
+
+      internet_site = internet_site_fixture(account: account)
+
+      resource =
+        internet_resource_fixture(
+          account: account,
+          site: internet_site
+        )
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+
+      send(
+        socket.channel_pid,
+        {:allow_access, {channel_pid, socket_ref},
+         %{
+           client_id: client.id,
+           client_ipv4: client.ipv4_address.address,
+           client_ipv6: client.ipv6_address.address,
+           resource: to_cache(resource),
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at,
+           client_payload: "DNS_Q"
+         }}
+      )
+
+      :sys.get_state(socket.channel_pid)
+      refute_push "allow_access", _
+    end
+
     test "does not send reject_access if another policy authorization is granting access to the same client and resource",
          %{
            account: account,
@@ -633,6 +873,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -711,12 +952,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "expires_at" => policy_authorization1.expires_at
       }
 
-      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
       policy_authorization_id = policy_authorization1.id
 
       assert_receive %Changes.Change{
-        lsn: 100,
+        lsn: ^lsn,
         old_struct: %Portal.PolicyAuthorization{id: ^policy_authorization_id}
       }
 
@@ -738,17 +980,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client: client,
       resource: resource,
       gateway: gateway,
-      relay: relay,
       site: site,
       token: token,
       subject: subject,
       group: group
     } do
-      :ok = Portal.Presence.Relays.connect(relay)
-
       socket = join_channel(gateway, site, token)
 
-      # Consume init and any relays_presence messages from join + relay connect
+      # Consume init message from join
       assert_push "init", _init_payload
 
       channel_pid = self()
@@ -795,7 +1034,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
       :sys.get_state(socket.channel_pid)
 
@@ -808,6 +1048,53 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert resource_id == resource.id
     end
 
+    test "does nothing when deleted policy authorization is not in the cache",
+         %{
+           account: account,
+           actor: actor,
+           client: client,
+           resource: resource,
+           gateway: gateway,
+           site: site,
+           token: token,
+           group: group
+         } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      # Create a policy_authorization but do NOT send :allow_access, so the
+      # gateway cache never learns about it.
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          gateway: gateway,
+          group: group
+        )
+
+      data = %{
+        "id" => policy_authorization.id,
+        "client_id" => client.id,
+        "resource_id" => resource.id,
+        "account_id" => account.id,
+        "gateway_id" => gateway.id,
+        "token_id" => policy_authorization.token_id,
+        "membership_id" => policy_authorization.membership_id,
+        "policy_id" => policy_authorization.policy_id,
+        "expires_at" => policy_authorization.expires_at
+      }
+
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
+
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "reject_access", _
+      refute_push "allow_access", _
+    end
+
     test "ignores policy authorization deletion for other policy authorizations",
          %{
            account: account,
@@ -815,20 +1102,18 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client: client,
            resource: resource,
            gateway: gateway,
-           relay: relay,
            site: site,
            token: token,
            subject: subject,
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
-
-      :ok = Portal.Presence.Relays.connect(relay)
 
       policy_authorization =
         policy_authorization_fixture(
@@ -949,7 +1234,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "expires_at" => other_policy_authorization1.expires_at
       }
 
-      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
       # Synchronize with the channel to ensure the change is fully processed
       # before asserting the push. The channel may make DB queries in
@@ -976,7 +1262,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "expires_at" => other_policy_authorization2.expires_at
       }
 
-      Changes.Hooks.PolicyAuthorizations.on_delete(200, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
       :sys.get_state(socket.channel_pid)
 
@@ -1003,6 +1290,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1043,7 +1331,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       data = Map.put(old_data, "name", "New Resource Name")
 
-      Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       cid_bytes = Ecto.UUID.dump!(client.id)
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -1070,6 +1359,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -1124,12 +1414,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "ip_stack" => "dual"
       }
 
-      :ok = Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      :ok = Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       resource_id = resource.id
 
       assert_receive %Changes.Change{
-        lsn: 100,
+        lsn: ^lsn,
         old_struct: %Portal.Resource{id: ^resource_id},
         struct: %Portal.Resource{id: ^resource_id, address: "new-address"}
       }
@@ -1155,6 +1446,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1204,7 +1496,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       assert_push "resource_updated", payload
 
@@ -1228,7 +1521,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       # The resource is already connected to the gateway via the setup
       # No policy authorizations exist yet, so the resource isn't in the cache
@@ -1251,7 +1545,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = Map.put(old_data, "filters", filters)
 
       # Trigger the resource update via the Changes hook which will broadcast to the channel
-      Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       # Should still receive the update even though resource isn't in cache
       assert_push "resource_updated", payload
@@ -1289,6 +1584,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         })
         |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
+      assert_push "init", _init_payload
+
       old_data = %{
         "id" => resource.id,
         "account_id" => resource.account_id,
@@ -1307,7 +1604,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = Map.put(old_data, "filters", filters)
 
       # Trigger the resource update
-      Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       # Gateway with version 1.1.0 should receive the adapted resource
       assert_push "resource_updated", payload
@@ -1331,6 +1629,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
@@ -1360,7 +1659,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
 
       # Trigger the resource update
-      Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       # Should not receive any update since the address can't be adapted for version < 1.2.0
       refute_push "resource_updated", _payload
@@ -1373,6 +1673,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       account: account
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
@@ -1402,7 +1703,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
 
       # Trigger the resource update
-      Changes.Hooks.Resources.on_update(100, old_data, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
       # Should receive the update with the adapted address (** becomes * for pre-1.2.0)
       assert_push "resource_updated", payload
@@ -1417,6 +1719,37 @@ defmodule PortalAPI.Gateway.ChannelTest do
                  %{protocol: :tcp, port_range_start: 443, port_range_end: 443}
                ]
              }
+    end
+
+    test "does not send resource_updated for static_device_pool filter changes", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      account: account
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      resource = static_device_pool_resource_fixture(account: account)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "name" => resource.name,
+        "type" => "static_device_pool",
+        "filters" => [],
+        "ip_stack" => nil
+      }
+
+      filters = [%{"protocol" => "tcp", "ports" => ["80"]}]
+      data = Map.put(old_data, "filters", filters)
+
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "resource_updated", _
     end
 
     test "subscribes for relays presence", %{
@@ -1577,6 +1910,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       candidates = ["foo", "bar"]
 
@@ -1600,6 +1934,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       candidates = ["foo", "bar"]
 
@@ -1628,6 +1963,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1692,6 +2028,70 @@ defmodule PortalAPI.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
+    test "does nothing when resource is incompatible with gateway version (request_connection)",
+         %{
+           account: account,
+           actor: actor,
+           client: client,
+           site: site,
+           token: token,
+           group: group
+         } do
+      # Gateway with version 1.2.0 cannot handle internet resources (requires >= 1.3.0)
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_version: "1.2.0"
+        )
+
+      internet_site = internet_site_fixture(account: account)
+
+      resource =
+        internet_resource_fixture(
+          account: account,
+          site: internet_site
+        )
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      public_key = Portal.ClientFixtures.generate_public_key()
+
+      send(
+        socket.channel_pid,
+        {:request_connection, {channel_pid, socket_ref},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render_legacy(
+               client,
+               public_key,
+               "RTC_SD",
+               preshared_key
+             ),
+           resource: to_cache(resource),
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at
+         }}
+      )
+
+      :sys.get_state(socket.channel_pid)
+      refute_push "request_connection", _
+    end
+
     test "request_connection tracks policy authorization and sends reject_access when policy authorization is deleted",
          %{
            account: account,
@@ -1699,13 +2099,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client: client,
            gateway: gateway,
            resource: resource,
-           relay: relay,
            site: site,
            token: token,
            subject: subject,
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -1713,8 +2113,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
       preshared_key = "PSK"
       public_key = Portal.ClientFixtures.generate_public_key()
-
-      :ok = Portal.Presence.Relays.connect(relay)
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1758,7 +2156,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "expires_at" => policy_authorization.expires_at
       }
 
-      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
       :sys.get_state(socket.channel_pid)
 
@@ -1783,6 +2182,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       group: group
     } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       policy_authorization =
         policy_authorization_fixture(
@@ -1880,6 +2280,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            group: group
          } do
       socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
       channel_pid = self()
       socket_ref = make_ref()
@@ -1938,7 +2339,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "expires_at" => policy_authorization.expires_at
       }
 
-      Changes.Hooks.PolicyAuthorizations.on_delete(100, data)
+      lsn = System.unique_integer([:positive, :monotonic])
+      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
       # Synchronize with the channel process to ensure it has fully processed
       # the %Change{} before asserting. `direct_broadcast!` places the message
@@ -1964,6 +2366,60 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       ref = push(socket, "unknown_message", %{})
       assert_reply ref, :error, %{reason: :unknown_message}
+    end
+
+    test "no_relays sends relays_presence with 2 selected relays", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay1)
+
+      relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
+      :ok = Portal.Presence.Relays.connect(relay2)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{})
+
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: [relay_view | _] = relays
+                  }
+
+      assert length(relays) == 4
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+    end
+
+    test "no_relays sends relays_presence with empty connected when no relays are online", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: []}
+
+      push(socket, "no_relays", %{})
+
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: []
+                  }
     end
 
     test "flow_authorized forwards reply to the client channel", %{
@@ -2195,7 +2651,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Channels.register_client(client.id)
+      :ok = PG.register(client.id)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -2240,7 +2696,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Channels.register_client(client.id)
+      :ok = PG.register(client.id)
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
@@ -2483,7 +2939,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Presence.Relays.connect(relay_mexico)
       :ok = Portal.Presence.Relays.connect(relay_sydney)
 
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
 
       # Should receive the 2 closest relays (Kansas and Mexico), not Sydney
       assert_push "init", %{relays: relays}
@@ -2536,7 +2992,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         :ok = Portal.Presence.Relays.connect(relay)
       end
 
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
 
       assert_push "init", %{relays: relays}
 
@@ -2576,7 +3032,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Presence.Relays.connect(relay_with_location_2)
       :ok = Portal.Presence.Relays.connect(relay_without_location)
 
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
 
       assert_push "init", %{relays: relays}
 
@@ -2608,13 +3064,52 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Presence.Relays.connect(relay1)
       :ok = Portal.Presence.Relays.connect(relay2)
 
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
 
       # Should still receive 2 relays (randomly selected)
       assert_push "init", %{relays: relays}
 
       relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
       assert length(relay_ids) <= 2
+    end
+
+    test "load_balance_relays defers relays with lat but nil lon", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      # Create a gateway with a known location (Houston area)
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 29.69,
+          last_seen_remote_ip_location_lon: -95.90
+        )
+
+      # Two relays with full coordinates — distances can be computed; these fill the 2 slots
+      relay_near_1 = relay_fixture(%{lat: 38.0, lon: -97.0})
+      relay_near_2 = relay_fixture(%{lat: 20.59, lon: -100.39})
+
+      # Relay with lat set but lon nil — hits the {_, nil} -> {nil, relay} branch;
+      # treated as having no location and deferred behind relays with full coords
+      relay_nil_lon = relay_fixture(%{lat: 1.0, lon: nil})
+
+      :ok = Portal.Presence.Relays.connect(relay_near_1)
+      :ok = Portal.Presence.Relays.connect(relay_near_2)
+      :ok = Portal.Presence.Relays.connect(relay_nil_lon)
+
+      join_channel(gateway, site, token)
+
+      assert_push "init", %{relays: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq()
+
+      # The relays with full coordinates should fill the 2 available slots
+      assert relay_near_1.id in relay_ids
+      assert relay_near_2.id in relay_ids
+      # The relay with nil lon should be deferred (treated as no-location)
+      refute relay_nil_lon.id in relay_ids
     end
 
     test "debounces multiple rapid presence_diff events", %{
@@ -2625,7 +3120,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Set debounce to 50ms so the test is fast but we can still observe coalescing
       Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 50)
 
-      _socket = join_channel(gateway, site, token)
+      join_channel(gateway, site, token)
 
       assert_push "init", %{relays: []}
 

@@ -467,7 +467,9 @@ actor Adapter {
     let resolvers = ScopedResolvers.getDefaultDNSServers(
       interfaceName: path.availableInterfaces.first?.name)
 
-    // Step 2: Validate addresses and filter out sentinel ranges
+    Log.debug("System DNS resolvers before filtering: \(resolvers)")
+
+    // Step 2: Validate addresses and filter out sentinel ranges and non-routable addresses
     var parsedResolvers: [String] = []
 
     for stringAddress in resolvers {
@@ -475,10 +477,16 @@ actor Adapter {
         if ipv4Address.isWithinSentinelRange() {
           Log.warning(
             "Not adding fetched system resolver because it's within sentinel range: \(ipv4Address)")
-        } else {
-          parsedResolvers.append("\(ipv4Address)")
+          continue
         }
 
+        if ipv4Address.isNonRoutable() {
+          Log.debug(
+            "Not adding fetched system resolver because it's non-routable: \(ipv4Address)")
+          continue
+        }
+
+        parsedResolvers.append("\(ipv4Address)")
         continue
       }
 
@@ -486,17 +494,31 @@ actor Adapter {
         if ipv6Address.isWithinSentinelRange() {
           Log.warning(
             "Not adding fetched system resolver because it's within sentinel range: \(ipv6Address)")
-        } else {
-          parsedResolvers.append("\(ipv6Address)")
+          continue
         }
 
+        if ipv6Address.isNonRoutable() {
+          Log.debug(
+            "Not adding fetched system resolver because it's non-routable: \(ipv6Address)")
+          continue
+        }
+
+        parsedResolvers.append("\(ipv6Address)")
         continue
       }
 
       Log.warning("IP address \(stringAddress) did not parse as either IPv4 or IPv6")
     }
 
-    // Step 3: Send to connlib
+    // Step 3: Fall back to Cloudflare DNS if no usable resolvers remain
+    if parsedResolvers.isEmpty {
+      parsedResolvers = ["1.1.1.1", "2606:4700:4700::1111"]
+      Log.debug(
+        "No usable system DNS resolvers found after filtering; using fallback resolvers: \(parsedResolvers)"
+      )
+    }
+
+    // Step 4: Send to connlib
     Log.log("Sending resolvers to connlib: \(parsedResolvers)")
     sendCommand(.setDns(parsedResolvers))
   }
@@ -573,10 +595,25 @@ extension IPv4Address {
   func isWithinSentinelRange() -> Bool {
     return "\(self)".hasPrefix("100.100.111.")
   }
+
+  /// 127.0.0.0/8 (loopback) or 169.254.0.0/16 (link-local)
+  func isNonRoutable() -> Bool {
+    let bytes = rawValue
+    return bytes[bytes.startIndex] == 127
+      || (bytes[bytes.startIndex] == 169 && bytes[bytes.startIndex + 1] == 254)
+  }
 }
 
 extension IPv6Address {
   func isWithinSentinelRange() -> Bool {
     return "\(self)".hasPrefix("fd00:2021:1111:8000:100:100:111:")
+  }
+
+  /// ::1/128 (loopback) or fe80::/10 (link-local)
+  func isNonRoutable() -> Bool {
+    let bytes = Array(rawValue)
+    let isLoopback = bytes == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    let isLinkLocal = bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80
+    return isLoopback || isLinkLocal
   }
 }

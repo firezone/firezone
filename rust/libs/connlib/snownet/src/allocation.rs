@@ -10,6 +10,7 @@ use ip_packet::Ecn;
 use logging::err_with_src;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
+use smallvec::SmallVec;
 use std::{
     collections::{BTreeMap, VecDeque},
     iter,
@@ -341,11 +342,15 @@ impl Allocation {
 
         if message.method() != BINDING && !passed_message_integrity_check {
             // We don't want to `remove` the message here otherwise an attacker could change our state with unauthenticated messages.
-            let request = self
-                .sent_requests
-                .get(&transaction_id)
-                .map(|(_, r, _)| r.attributes().map(display_attr).collect::<Vec<_>>());
-            let response = message.attributes().map(display_attr).collect::<Vec<_>>();
+            let request = self.sent_requests.get(&transaction_id).map(|(_, r, _)| {
+                r.attributes()
+                    .map(display_attr)
+                    .collect::<SmallVec<[_; 16]>>()
+            });
+            let response = message
+                .attributes()
+                .map(display_attr)
+                .collect::<SmallVec<[_; 16]>>();
 
             tracing::warn!(?request, ?response, "Message integrity check failed");
             return true; // The message still indicated that it was for this `Allocation`.
@@ -364,8 +369,11 @@ impl Allocation {
             let request = original_request
                 .attributes()
                 .map(display_attr)
-                .collect::<Vec<_>>();
-            let response = message.attributes().map(display_attr).collect::<Vec<_>>();
+                .collect::<SmallVec<[_; 16]>>();
+            let response = message
+                .attributes()
+                .map(display_attr)
+                .collect::<SmallVec<[_; 16]>>();
 
             tracing::debug!(target: "wire::turn", ?request, ?response);
         }
@@ -463,7 +471,7 @@ impl Allocation {
             }
 
             if error.code() == UnknownAttribute::CODEPOINT {
-                let attributes = message.unknown_attributes().collect::<Vec<_>>();
+                let attributes = message.unknown_attributes().collect::<SmallVec<[_; 16]>>();
 
                 tracing::warn!(
                     ?attributes,
@@ -770,7 +778,7 @@ impl Allocation {
                 tracing::debug!(%number, %peer, "Channel is due for a refresh");
             })
             .map(|(number, peer)| make_channel_bind_request(peer, number, self.software.clone()))
-            .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
+            .collect::<SmallVec<[_; 16]>>();
 
         for message in channel_refresh_messages {
             self.authenticate_and_queue(message, None, now);

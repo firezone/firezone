@@ -16,11 +16,7 @@ defmodule PortalAPI.Client.Views.Interface do
         %{type: :custom, addresses: addresses} when is_list(addresses) and addresses != [] ->
           do53 = Enum.map(addresses, fn %{address: address} -> %{ip: address} end)
           # Legacy field - append normalized port for backwards compatibility
-          legacy_dns =
-            Enum.map(addresses, fn %{address: address} ->
-              ip = if String.contains?(address, ":"), do: "[#{address}]", else: address
-              %{protocol: :ip_port, address: "#{ip}:53"}
-            end)
+          legacy_dns = Enum.map(addresses, &format_legacy_dns_address/1)
 
           {do53, [], legacy_dns}
 
@@ -44,5 +40,10 @@ defmodule PortalAPI.Client.Views.Interface do
       # Legacy field
       upstream_dns: upstream_dns
     }
+  end
+
+  defp format_legacy_dns_address(%{address: address}) do
+    ip = if String.contains?(address, ":"), do: "[#{address}]", else: address
+    %{protocol: :ip_port, address: "#{ip}:53"}
   end
 end

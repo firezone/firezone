@@ -104,6 +104,7 @@ defmodule Portal.MixProject do
       # Email
       {:gen_smtp, "~> 1.0"},
       {:multipart, "~> 0.6.0"},
+      {:swoosh, "~> 1.24.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
@@ -135,7 +136,7 @@ defmodule Portal.MixProject do
        override: true},
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
-      {:opentelemetry_oban, "~> 1.1.1"},
+      {:opentelemetry_oban, "~> 1.2.0"},
       {:opentelemetry_telemetry, "~> 1.1", override: true},
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 2.0"},
@@ -144,7 +145,7 @@ defmodule Portal.MixProject do
       # TODO: Remove override when this issue is resolved:
       # https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/428
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
-      {:sentry, "~> 11.0"},
+      {:sentry, "~> 12.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
       {:req, "~> 0.5.15"},
@@ -155,7 +156,6 @@ defmodule Portal.MixProject do
 
       # Test deps
       {:bypass, "~> 2.1", only: :test},
-      {:wallaby, "~> 0.30.0", only: :test},
       {:floki, "~> 0.38.0", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},

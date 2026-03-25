@@ -12,20 +12,20 @@ env:
 
 permissions:
   contents: "read"
-  id-token: "write"
+  id-token: "write" # OIDC auth
 
 jobs:
   update-release-draft:
     permissions:
       contents: write # for updating the release draft
-      id-token: write
+      id-token: write # OIDC auth
     name: update-release-draft
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.11
+      RELEASE_NAME: gui-client-1.5.12
     steps:
-      - uses: release-drafter/release-drafter@6db134d15f3909ccc9eefd369f02bd1e9cffdf97 # v6.2.0
+      - uses: release-drafter/release-drafter@139054aeaa9adc52ab36ddf67437541f039b88e2 # v7.1.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -94,7 +94,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     permissions:
       contents: write # for attaching the build artifacts to the release
-      id-token: write
+      id-token: write # OIDC auth
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -113,19 +113,19 @@ jobs:
             pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.11_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.12_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.11_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.12_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.11_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.12_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.11
+      FIREZONE_GUI_VERSION: 1.5.12
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
       TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}.sh
       TARGET_DIR: ../target

@@ -37,6 +37,8 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     "resources" => Portal.Resource,
     "sites" => Portal.Site,
     "client_tokens" => Portal.ClientToken,
+    "outbound_emails" => Portal.OutboundEmail,
+    "outbound_email_deliveries" => Portal.OutboundEmailDelivery,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider
   }
 
@@ -57,6 +59,9 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
   # Ignore token writes for relays since these are not expected to have an account_id
   def on_write(state, _lsn, _op, "tokens", %{"type" => "relay"}, _data), do: state
   def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay"}), do: state
+
+  # Global suppression rows are not account-scoped and should not enter account audit logs.
+  def on_write(state, _lsn, _op, "email_suppressions", _old_data, _data), do: state
 
   # Handle accounts specially
   def on_write(state, lsn, op, "accounts", %{"id" => account_id} = old_data, data) do

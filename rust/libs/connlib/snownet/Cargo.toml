@@ -23,6 +23,7 @@ rand = { workspace = true }
 ringbuffer = { workspace = true }
 sha1 = { workspace = true }
 sha2 = { workspace = true }
+smallvec = { workspace = true }
 str0m = { workspace = true }
 stun_codec = { workspace = true }
 telemetry = { workspace = true }

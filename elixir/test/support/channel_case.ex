@@ -74,6 +74,11 @@ defmodule PortalAPI.ChannelCase do
   end
 
   setup tags do
+    # Isolate pg channels scope per test to prevent interference between async tests
+    scope = :"Portal.PG.#{inspect(make_ref())}"
+    start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
+    Portal.Config.put_env_override(:portal, :pg_scope, scope)
+
     # Isolate relay presence per test to prevent interference between async tests
     Portal.Config.put_env_override(
       :portal,
@@ -97,6 +102,6 @@ defmodule PortalAPI.ChannelCase do
       end)
     end
 
-    tags
+    Map.put(tags, :pg_scope, scope)
   end
 end

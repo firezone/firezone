@@ -21,6 +21,7 @@ derive_more = { workspace = true, features = ["debug", "from", "display"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
+eventloop-budget = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
@@ -45,6 +46,7 @@ secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+smallvec = { workspace = true, features = ["const_generics"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
@@ -66,7 +68,7 @@ rand = { workspace = true }
 sha2 = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
-tokio = { workspace = true, features = ["process"] }
+tokio = { workspace = true, features = ["process", "test-util"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bench]]

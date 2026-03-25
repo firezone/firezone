@@ -10,9 +10,9 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Policy",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Policy ID"},
-        group_id: %Schema{type: :string, description: "Group ID", nullable: true},
-        resource_id: %Schema{type: :string, description: "Resource ID"},
+        id: %Schema{type: :string, format: :uuid, description: "Policy ID"},
+        group_id: %Schema{type: :string, format: :uuid, description: "Group ID", nullable: true},
+        resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description", nullable: true}
       },
       required: [:id, :group_id, :resource_id, :description],

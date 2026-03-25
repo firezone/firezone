@@ -164,6 +164,7 @@ if config_env() == :prod do
     internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 
   config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
+  config :portal, country_code_blocklist: env_var_to_config!(:country_code_blocklist)
 
   config :portal,
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
@@ -243,10 +244,7 @@ if config_env() == :prod do
     {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
 
     # Delete expired portal sessions every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
-
-    # Delete expired authentication cache entries every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteExpiredAuthenticationCacheEntries}
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions}
   ]
 
   config :portal, Oban,
@@ -273,7 +271,8 @@ if config_env() == :prod do
           google_sync: 5,
           okta_scheduler: 1,
           okta_sync: 5,
-          sync_error_notifications: 1
+          sync_error_notifications: 1,
+          outbound_emails: 1
         ],
         else: []
       ),
@@ -352,6 +351,10 @@ if config_env() == :prod do
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
       capacity: env_var_to_config!(:api_capacity)
+
+    config :portal, PortalAPI.Sockets.RateLimit,
+      refill_rate: env_var_to_config!(:api_socket_refill_rate),
+      capacity: env_var_to_config!(:api_socket_capacity)
 
     config :portal,
       api_external_url: api_external_url
@@ -461,6 +464,18 @@ if config_env() == :prod do
            adapter: env_var_to_config!(:outbound_email_adapter),
            from_email: env_var_to_config!(:outbound_email_from)
          ] ++ env_var_to_config!(:outbound_email_adapter_opts)
+
+  config :portal,
+         Portal.Mailer.Secondary,
+         [
+           adapter: env_var_to_config!(:secondary_outbound_email_adapter),
+           from_email: env_var_to_config!(:outbound_email_from)
+         ] ++ env_var_to_config!(:secondary_outbound_email_adapter_opts)
+
+  config :portal,
+         Portal.AzureCommunicationServices,
+         event_grid_webhook_signing_secret:
+           env_var_to_config!(:acs_event_grid_webhook_signing_secret)
 
   # Sentry
 

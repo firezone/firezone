@@ -37,6 +37,8 @@ defmodule Portal.Application do
       Portal.Repo.Replica,
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
+      # Named pg scope for Portal.PG, isolated so a crash here does not affect replication
+      %{id: Portal.PG, start: {:pg, :start_link, [Portal.PG]}},
       Portal.PubSub,
 
       # Application services

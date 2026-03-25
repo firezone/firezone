@@ -10,6 +10,13 @@ on:
   pull_request_review:
     types: [submitted]
 
+permissions:
+  contents: write # push commits to PR branches
+  pull-requests: write # create/update PRs and post comments
+  issues: write # comment on and close issues
+  id-token: write # OIDC auth
+  actions: read
+
 jobs:
   claude:
     if: |
@@ -27,10 +34,10 @@ jobs:
         (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
+      contents: write # push commits to PR branches
+      pull-requests: write # create/update PRs and post comments
+      issues: write # comment on and close issues
+      id-token: write # OIDC auth
       actions: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -39,7 +46,7 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@ba7fa4bcf054319261202aef93d71a89112a8d00 # v1.0.64
+        uses: anthropics/claude-code-action@6062f3709600659be5e47fcddf2cf76993c235c2 # v1.0.76
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           custom_instructions: "Read docs/AGENT.md for project-specific guidelines before starting any task."

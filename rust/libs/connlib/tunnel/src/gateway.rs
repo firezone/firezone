@@ -115,12 +115,10 @@ impl GatewayState {
 
         anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
 
-        let peer = self
+        let (cid, peer) = self
             .peers
             .peer_by_ip_mut(dst)
             .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
-
-        let cid = peer.id();
 
         flow_tracker::inbound_tun::record_client(cid);
 
@@ -250,8 +248,6 @@ impl GatewayState {
     ) {
         self.node
             .add_remote_candidate(conn_id, ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events();
     }
 
     pub fn remove_ice_candidate(
@@ -262,8 +258,6 @@ impl GatewayState {
     ) {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
-        self.node.handle_timeout(now);
-        self.drain_node_events();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]

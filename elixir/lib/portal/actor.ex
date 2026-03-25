@@ -55,29 +55,34 @@ defmodule Portal.Actor do
         nil
 
       email when is_binary(email) ->
-        case String.split(email, "@", parts: 2) do
-          [local, domain] ->
-            # 1. Trim and downcase domain
-            local = String.trim(local)
-            domain = String.trim(domain) |> String.downcase()
+        case encode_email(email) do
+          {:ok, encoded} ->
+            encoded
 
-            # 2. Convert internationalized domains to punycode
-            case try_encode_domain(domain) do
-              {:ok, punycode_domain} ->
-                local <> "@" <> to_string(punycode_domain)
-
-              _error ->
-                add_error(changeset, field, "has an invalid domain")
-                email
-            end
-
-          # No @ sign, return as-is (will be caught by validate_email)
-          _ ->
+          :error ->
+            add_error(changeset, field, "has an invalid domain")
             email
         end
 
       other ->
         other
     end)
+  end
+
+  defp encode_email(email) do
+    case String.split(email, "@", parts: 2) do
+      [local, domain] ->
+        local = String.trim(local)
+        domain = String.trim(domain) |> String.downcase()
+
+        case try_encode_domain(domain) do
+          {:ok, punycode_domain} -> {:ok, local <> "@" <> to_string(punycode_domain)}
+          _error -> :error
+        end
+
+      # No @ sign, return as-is (will be caught by validate_email)
+      _ ->
+        {:ok, email}
+    end
   end
 end

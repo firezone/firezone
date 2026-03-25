@@ -24,7 +24,7 @@ defmodule PortalWeb.LiveHooks.FetchAccount do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped() |> Safe.one()
+      query |> Safe.unscoped(:replica) |> Safe.one()
     end
   end
 end

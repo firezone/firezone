@@ -6,12 +6,19 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
   data-plane-dev-images:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
     with:
       image_prefix: "dev"
       stage: "debug"
@@ -21,6 +28,10 @@ jobs:
   data-plane-test-images:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
     with:
       image_prefix: "debug"
       stage: "debug"
@@ -30,6 +41,10 @@ jobs:
   data-plane-prod-images:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
     with:
       profile: "release"
       stage: "release"
@@ -38,6 +53,10 @@ jobs:
   data-plane-perf-images:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
     with:
       image_prefix: "perf"
       profile: "release"
@@ -47,11 +66,17 @@ jobs:
   control-plane-images:
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
+    permissions:
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
 
   # Build loadtest binaries for QA environment.
   loadtest-binaries:
     uses: ./.github/workflows/_loadtest.yml
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage uploads
 
   notify:
     needs: [data-plane-prod-images, control-plane-images, loadtest-binaries]
@@ -73,20 +98,33 @@ jobs:
     needs: [data-plane-perf-images, control-plane-images]
     uses: ./.github/workflows/_perf_tests.yml
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      pull-requests: write # post perf result comments
+      checks: write # Bencher check annotations
 
   # To have proper test coverage, we need to run `rust` and `elixir` on `main`.
 
   rust:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
 
   elixir:
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
+    permissions:
+      checks: write # dorny/test-reporter
 
   swift:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
+    permissions:
+      contents: write # release draft and build artifact uploads
+      id-token: write # OIDC auth
 
   coverage-finish:
     name: coverage-finish

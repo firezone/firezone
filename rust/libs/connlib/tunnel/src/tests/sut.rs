@@ -10,6 +10,7 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
+use crate::messages::client::FailReason;
 use crate::messages::gateway::{Client, Subject};
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
@@ -624,12 +625,6 @@ impl TunnelTest {
                 now,
             );
 
-            if let Some((next, reason)) = self.poll_timeout()
-                && next < now
-            {
-                tracing::error!(?next, ?now, %reason, "State machine requested time in the past");
-            }
-
             for (id, gateway) in self.gateways.iter_mut() {
                 let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
                     continue;
@@ -659,7 +654,6 @@ impl TunnelTest {
                     Err(ClientEventError::Client { id, error: e }) => {
                         tracing::debug!("Failed to handle ClientEvent: {e}");
 
-                        // Simulate WebSocket reconnect ...
                         let client = self.clients.get_mut(&id).unwrap();
                         client.exec_mut(|c| {
                             c.update_relays(iter::empty(), self.relays.iter(), now);
@@ -668,7 +662,6 @@ impl TunnelTest {
                     Err(ClientEventError::Gateway { id, error: e }) => {
                         tracing::debug!("Failed to handle GatewayEvent: {e}");
 
-                        // Simulate WebSocket reconnect ...
                         let gateway = self.gateways.get_mut(&id).unwrap();
                         gateway
                             .exec_mut(|g| g.update_relays(iter::empty(), self.relays.iter(), now))
@@ -1169,7 +1162,13 @@ impl TunnelTest {
                         .clients
                         .get_mut(&src)
                         .expect("unknown source client")
-                        .exec_mut(|c| c.sut.set_client_offline(ipv4)),
+                        .exec_mut(|c| {
+                            c.sut.handle_client_device_access_denied(
+                                ipv4,
+                                FailReason::NotFound,
+                                now,
+                            )
+                        }),
                 }
 
                 Ok(())

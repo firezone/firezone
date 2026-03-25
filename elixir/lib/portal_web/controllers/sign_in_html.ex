@@ -4,7 +4,7 @@ defmodule PortalWeb.SignInHTML do
   def client_redirect(assigns) do
     ~H"""
     <!DOCTYPE html>
-    <html lang="en" style="scrollbar-gutter: stable;">
+    <html lang="en" class="scrollbar-gutter-stable">
       <head>
         <meta charset="utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
@@ -82,7 +82,7 @@ defmodule PortalWeb.SignInHTML do
   def headless_client_token(assigns) do
     ~H"""
     <!DOCTYPE html>
-    <html lang="en" style="scrollbar-gutter: stable;">
+    <html lang="en" class="scrollbar-gutter-stable">
       <head>
         <meta charset="utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
@@ -108,30 +108,13 @@ defmodule PortalWeb.SignInHTML do
           nonce={@conn.private[:csp_nonce]}
           href={~p"/assets/main.css"}
         />
-        <script nonce={@conn.private[:csp_nonce]}>
-          function copyToken() {
-            const token = document.getElementById('token-value').textContent;
-
-            if (!navigator.clipboard) {
-              alert('Clipboard API not available. Please copy the token manually.');
-              return;
-            }
-
-            navigator.clipboard.writeText(token).then(() => {
-              const button = document.getElementById('copy-button');
-              const originalText = button.textContent;
-              button.textContent = 'Copied!';
-              button.classList.add('bg-green-600');
-              button.classList.remove('bg-accent-500', 'hover:bg-accent-700');
-              setTimeout(() => {
-                button.textContent = originalText;
-                button.classList.remove('bg-green-600');
-                button.classList.add('bg-accent-500', 'hover:bg-accent-700');
-              }, 2000);
-            }).catch(() => {
-              alert('Failed to copy token. Please copy it manually.');
-            });
-          }
+        <script
+          defer
+          phx-track-static
+          type="text/javascript"
+          nonce={@conn.private[:csp_nonce]}
+          src={~p"/assets/app.js"}
+        >
         </script>
       </head>
       <body class="bg-neutral-50">
@@ -184,7 +167,8 @@ defmodule PortalWeb.SignInHTML do
                       <button
                         id="copy-button"
                         type="button"
-                        onclick="copyToken()"
+                        data-copy-token-button
+                        data-copy-target="#token-value"
                         class="px-4 py-2 text-sm font-medium text-white bg-accent-500 rounded-sm hover:bg-accent-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 transition-colors"
                       >
                         Copy token to clipboard

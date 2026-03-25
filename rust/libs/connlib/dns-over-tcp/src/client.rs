@@ -6,7 +6,7 @@ use std::{
 
 use crate::codec;
 use anyhow::{Context as _, Result, anyhow, bail};
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::{
     InMemoryDevice, Interface, PollResult, SocketSet, create_interface, create_tcp_socket,
 };
@@ -136,13 +136,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     ///
     /// Only TCP packets originating from one of the connected DNS resolvers are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
-        let Some(tcp) = packet.as_tcp() else {
-            #[cfg(debug_assertions)]
-            tracing::trace!(?packet, "Not a TCP packet");
-
-            return false;
-        };
-
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             #[cfg(debug_assertions)]
             tracing::trace!("No source interface");
@@ -156,6 +149,22 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             IpAddr::V6(v6) if v6 != ipv6_source => return false,
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
+
+        if let Ok(Some((failed_packet, _))) = packet.icmp_error()
+            && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
+            && self
+                .sockets_by_remote
+                .contains_key(&SocketAddr::new(failed_packet.dst(), dst))
+        {
+            return true;
+        }
+
+        let Some(tcp) = packet.as_tcp() else {
+            #[cfg(debug_assertions)]
+            tracing::trace!(?packet, "Not a TCP packet");
+
+            return false;
+        };
 
         let remote = SocketAddr::new(packet.source(), tcp.source_port());
         let has_socket = self.sockets_by_remote.contains_key(&remote);
@@ -177,6 +186,42 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// To actually process the packets in the buffer, [`Client::handle_timeout`] must be called.
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
+
+        if let Ok(Some((failed_packet, icmp_error))) = packet.icmp_error()
+            && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
+            && let server = SocketAddr::new(failed_packet.dst(), dst)
+            && let Some(handle) = self.sockets_by_remote.get(&server)
+            && let Some((ipv4_source, ipv6_source)) = self.source_ips
+        {
+            let socket = self.sockets.get_mut::<l3_tcp::Socket>(*handle);
+            socket.abort();
+
+            let local_port = *self
+                .local_ports_by_socket
+                .get(handle)
+                .expect("must always have a port for each socket");
+
+            let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
+
+            let pending_queries = self
+                .pending_queries_by_remote_and_local
+                .entry((server, local_endpoint))
+                .or_default();
+            let sent_queries = self
+                .sent_queries_by_remote_and_local
+                .entry((server, local_endpoint))
+                .or_default();
+
+            self.query_results.extend(fail_all_queries(
+                &anyhow!("Received ICMP error for DNS query: {icmp_error}"),
+                server,
+                local_endpoint,
+                pending_queries,
+                sent_queries,
+            ));
+
+            return;
+        }
 
         self.device.receive(packet);
     }
@@ -456,4 +501,52 @@ fn try_recv_response(socket: &mut l3_tcp::Socket) -> Result<Option<dns_types::Re
     let maybe_response = codec::try_recv(socket)?;
 
     Ok(maybe_response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handles_icmp_error_for_pending_query() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+        let mut client = create_test_client(now);
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone()).unwrap();
+        client.handle_timeout(now);
+        client.handle_timeout(now);
+
+        let packet = client.poll_outbound().unwrap();
+        let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
+
+        client.handle_inbound(icmp_error_response);
+
+        let query_result = client.poll_query_result().unwrap();
+
+        assert_eq!(query_result.query.id(), query.id());
+        assert_eq!(query_result.query.domain(), query.domain());
+        assert_eq!(query_result.local, local);
+        assert_eq!(query_result.server, server);
+        assert_eq!(
+            query_result.result.unwrap_err().to_string(),
+            "Received ICMP error for DNS query: Destination is unreachable (code: 0)"
+        );
+    }
+
+    fn create_test_client(now: Instant) -> Client {
+        let seed = [0u8; 32];
+        let mut client = Client::new(now, seed);
+        client.set_source_interface(Ipv4Addr::new(10, 0, 0, 1), Ipv6Addr::LOCALHOST);
+        client
+    }
+
+    fn create_test_query() -> dns_types::Query {
+        use std::str::FromStr;
+        let domain = dns_types::DomainName::from_str("example.com").unwrap();
+        dns_types::Query::new(domain, dns_types::RecordType::A)
+    }
 }

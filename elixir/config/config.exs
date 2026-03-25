@@ -84,9 +84,12 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     gateway_tokens
     policies
     resources
+    static_device_pool_members
     client_tokens
     one_time_passcodes
     portal_sessions
+    outbound_emails
+    outbound_email_deliveries
     ipv4_addresses
     ipv6_addresses
     api_tokens
@@ -134,6 +137,7 @@ config :portal, Portal.Changes.ReplicationConnection,
     sites
     policies
     resources
+    static_device_pool_members
     client_tokens
     google_auth_providers
     entra_auth_providers
@@ -170,6 +174,8 @@ config :portal, Portal.Health,
   web_endpoint: PortalWeb.Endpoint,
   api_endpoint: PortalAPI.Endpoint,
   ops_endpoint: PortalOps.Endpoint,
+  repo: Portal.Repo,
+  replica_repo: Portal.Repo.Replica,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
@@ -312,12 +318,14 @@ config :portal,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
+config :portal, country_code_blocklist: []
+
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self'",
+    "script-src 'self'"
   ]
 
 config :portal, api_url_override: "ws://localhost:13001/"
@@ -375,6 +383,10 @@ config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
   capacity: 200
 
+config :portal, PortalAPI.Sockets.RateLimit,
+  refill_rate: 1,
+  capacity: 1
+
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
@@ -410,6 +422,13 @@ config :swoosh, :api_client, Swoosh.ApiClient.Req
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
   from_email: "test@firez.one"
+
+config :portal, Portal.Mailer.Secondary,
+  adapter: Portal.Mailer.NoopAdapter,
+  from_email: "test@firez.one",
+  req_opts: [retry: :transient]
+
+config :portal, Portal.AzureCommunicationServices, event_grid_webhook_signing_secret: nil
 
 config :esbuild,
   version: "0.25.4",

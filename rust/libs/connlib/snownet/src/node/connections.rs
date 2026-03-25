@@ -1,28 +1,33 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     hash::Hash,
     iter,
     time::{Duration, Instant},
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
 use rand::Rng;
+use str0m::ice::{StunMessage, TransId};
 
 use crate::{
     ConnectionStats, Event,
-    node::{Connection, allocations::Allocations},
+    node::{Connection, allocations::Allocations, inflight_stun_requests::InflightStunRequests},
 };
 
 pub struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
+    established_by_local_ufrag: BTreeMap<String, TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
     disconnected_session_indices: BTreeMap<usize, Instant>,
+
+    connections_with_removed_relays: BTreeSet<TId>,
+    disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -30,9 +35,12 @@ impl<TId, RId> Default for Connections<TId, RId> {
         Self {
             established: Default::default(),
             established_by_wireguard_session_index: Default::default(),
+            established_by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_session_indices: Default::default(),
+            connections_with_removed_relays: Default::default(),
+            disconnected_ufrags: Default::default(),
         }
     }
 }
@@ -57,6 +65,8 @@ where
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
             self.disconnected_ids.insert(id, now);
+            self.disconnected_ufrags
+                .insert(conn.agent.local_credentials().ufrag.to_owned(), now);
         }
 
         self.disconnected_ids
@@ -65,6 +75,8 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_session_indices
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_ufrags
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
     }
 
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
@@ -72,44 +84,60 @@ where
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
+        self.established_by_local_ufrag
+            .remove(&connection.agent.local_credentials().ufrag);
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
         self.disconnected_session_indices
             .insert(connection.index.global(), now);
+        self.disconnected_ufrags
+            .insert(connection.agent.local_credentials().ufrag.to_owned(), now);
 
         Some(connection)
     }
 
-    pub(crate) fn check_relays_available(
+    pub(crate) fn migrate_relays(
         &mut self,
+        removed_allocations: impl Iterator<Item = RId>,
         allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         rng: &mut impl Rng,
         now: Instant,
     ) {
-        for (cid, c) in self.iter_established_mut() {
-            if allocations.contains(&c.relay.id) {
-                continue; // Our relay is still there, no problems.
-            }
+        // Temporarily take ownership of buffer to satisfy borrow-checker.
+        let mut connections_with_removed_relays =
+            std::mem::take(&mut self.connections_with_removed_relays);
 
-            let Some((rid, allocation)) = allocations.sample(rng) else {
-                if !c.relay.logged_sample_failure {
-                    tracing::debug!(%cid, "Failed to sample new relay for connection");
-                }
-                c.relay.logged_sample_failure = true;
+        for removed_relay in removed_allocations {
+            for (cid, c) in self.iter_mut_by_relay(removed_relay) {
+                let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
+                    let was_inserted = connections_with_removed_relays.insert(cid);
+
+                    if was_inserted {
+                        tracing::debug!(%cid, "Failed to sample new relay for connection");
+                    }
+
+                    continue;
+                };
+
+                c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+            }
+        }
+
+        for cid in connections_with_removed_relays {
+            let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
+                self.connections_with_removed_relays.insert(cid);
 
                 continue;
             };
 
-            tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
+            let Ok(c) = self.get_mut(&cid, now) else {
+                continue;
+            };
 
-            c.relay.id = rid;
-
-            for candidate in allocation.current_relay_candidates() {
-                c.add_local_candidate(cid, &candidate, pending_events, now);
-            }
+            c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
         }
     }
 
@@ -123,6 +151,7 @@ where
         index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
+        let local_ufrag = connection.agent.local_credentials().ufrag.to_owned();
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
@@ -130,6 +159,7 @@ where
             .retain(|_, c| c != &id);
         self.established_by_wireguard_session_index
             .insert(index.global(), id);
+        self.established_by_local_ufrag.insert(local_ufrag, id);
 
         existing
     }
@@ -151,7 +181,7 @@ where
         let connection = self
             .established
             .get_mut(id)
-            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok(connection)
     }
@@ -164,16 +194,14 @@ where
         let id = self
             .established_by_wireguard_session_index
             .get(&index.global())
-            .context(UnknownConnection::by_index(
-                index.global(),
-                &self.disconnected_session_indices,
-                now,
-            ))?;
+            .with_context(|| {
+                UnknownConnection::by_index(index.global(), &self.disconnected_session_indices, now)
+            })?;
 
         let connection = self
             .established
             .get_mut(id)
-            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok((*id, connection))
     }
@@ -187,13 +215,48 @@ where
             .established
             .iter_mut()
             .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .context(UnknownConnection::by_public_key(
-                key,
-                &self.disconnected_public_keys,
-                now,
-            ))?;
+            .with_context(|| {
+                UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
+            })?;
 
         Ok((*id, conn))
+    }
+
+    pub(crate) fn get_established_mut_for_stun_message(
+        &mut self,
+        message: &StunMessage,
+        inflight_stun_requests: &mut InflightStunRequests<TId>,
+        now: Instant,
+    ) -> Result<(TId, &mut Connection<RId>)> {
+        if message.is_binding_request() {
+            let (ufrag, _) = message
+                .split_username()
+                .context("Binding request does not have a USERNAME attribute")?;
+            let id = self
+                .established_by_local_ufrag
+                .get(ufrag)
+                .ok_or(UnknownConnection::by_local_ufrag(
+                    ufrag,
+                    &self.disconnected_ufrags,
+                    now,
+                ))
+                .copied()?;
+            let conn = self.get_mut(&id, now)?;
+
+            return Ok((id, conn));
+        }
+
+        if message.is_successful_binding_response() {
+            let trans_id = message.trans_id();
+            let id = inflight_stun_requests
+                .remove(trans_id)
+                .ok_or(UnknownConnection::by_trans_id(trans_id))?;
+            let conn = self.get_mut(&id, now)?;
+
+            return Ok((id, conn));
+        }
+
+        bail!("STUN message is not a BINDING")
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
@@ -312,6 +375,28 @@ impl UnknownConnection {
         }
     }
 
+    fn by_local_ufrag(
+        key: &str,
+        disconnected_ufrags: &BTreeMap<String, Instant>,
+        now: Instant,
+    ) -> Self {
+        Self {
+            id: key.to_owned(),
+            kind: "ufrag",
+            disconnected_for: disconnected_ufrags
+                .get(key)
+                .map(|disconnected| now.duration_since(*disconnected)),
+        }
+    }
+
+    fn by_trans_id(key: TransId) -> Self {
+        Self {
+            id: format!("{key:?}"),
+            kind: "STUN trans ID",
+            disconnected_for: None,
+        }
+    }
+
     pub fn recently_disconnected(&self) -> bool {
         self.disconnected_for.is_some()
     }
@@ -348,10 +433,13 @@ mod tests {
     use ringbuffer::AllocRingBuffer;
     use str0m::ice::IceAgent;
 
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
     use crate::{
-        IceConfig,
-        node::{ConnectionState, SelectedRelay},
+        IceConfig, RelaySocket,
+        node::{ConnectionState, SelectedRelay, SessionId, allocations::Allocations},
     };
+    use stun_codec::rfc5389::attributes::{Realm, Username};
 
     use super::*;
 
@@ -394,8 +482,70 @@ mod tests {
         assert_disconnected(&mut connections, id, idx, key, now, false);
     }
 
+    #[test]
+    fn can_make_u256_out_of_byte_array() {
+        let bytes = random();
+        let _num = into_u256(bytes);
+    }
+
+    #[test]
+    fn u256_renders_as_int() {
+        let num = into_u256([1; 32]);
+
+        assert_eq!(
+            num.to_string(),
+            "454086624460063511464984254936031011189294057512315937409637584344757371137"
+        );
+    }
+
+    #[test]
+    fn migrate_relay_retries_connections_that_previously_had_no_allocation() {
+        let mut connections: Connections<u32, u32> = Connections::default();
+        let mut allocations: Allocations<u32> = Allocations::default();
+        let now = Instant::now();
+        let mut rng = rand::thread_rng();
+
+        // Insert a connection that is using relay id 1.
+        let conn = new_connection(12345, 1, [1u8; 32]);
+        connections.insert_established(1, conn.index, conn);
+
+        // First call: relay 1 is removed but no allocations are available.
+        let mut pending_events = VecDeque::new();
+        connections.migrate_relays(
+            std::iter::once(1u32),
+            &allocations,
+            &mut pending_events,
+            &mut rng,
+            now,
+        );
+
+        // The connection still uses relay 1 because no new relay was available.
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 1);
+
+        allocations.upsert(
+            2,
+            RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478)),
+            Username::new("user".to_owned()).unwrap(),
+            "pass".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+
+        connections.migrate_relays(
+            std::iter::empty(),
+            &allocations,
+            &mut pending_events,
+            &mut rng,
+            now,
+        );
+
+        // The connection should now be using the new relay (id 2).
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
+    }
+
     fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
-        let conn = new_connection(12345, [1u8; 32]);
+        let conn = new_connection(12345, 0, [1u8; 32]);
         let id = 1;
         let idx = conn.index;
         let key = conn.tunnel.remote_static_public();
@@ -441,7 +591,7 @@ mod tests {
         assert_eq!(err.recently_disconnected(), is_recently_disconnected);
     }
 
-    fn new_connection(idx: u32, key: [u8; 32]) -> Connection<u32> {
+    fn new_connection(idx: u32, relay_id: u32, key: [u8; 32]) -> Connection<u32> {
         let private = StaticSecret::random_from_rng(rand::thread_rng());
         let new_local = Index::new_local(idx);
 
@@ -463,10 +613,7 @@ mod tests {
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
             next_wg_timer_update: Instant::now(),
             last_proactive_handshake_sent_at: None,
-            relay: SelectedRelay {
-                id: 0,
-                logged_sample_failure: false,
-            },
+            relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),
                 ip_buffer: AllocRingBuffer::new(1),
@@ -474,28 +621,13 @@ mod tests {
             disconnected_at: None,
             stats: Default::default(),
             intent_sent_at: Instant::now(),
-            signalling_completed_at: Instant::now(),
+            candidate_timeout: None,
             first_handshake_completed_at: None,
             buffer: Default::default(),
             buffer_pool: BufferPool::new(0, "test"),
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
+            poll_timeout_cache: Default::default(),
         }
-    }
-
-    #[test]
-    fn can_make_u256_out_of_byte_array() {
-        let bytes = random();
-        let _num = into_u256(bytes);
-    }
-
-    #[test]
-    fn u256_renders_as_int() {
-        let num = into_u256([1; 32]);
-
-        assert_eq!(
-            num.to_string(),
-            "454086624460063511464984254936031011189294057512315937409637584344757371137"
-        );
     }
 }

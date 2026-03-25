@@ -41,12 +41,14 @@ defmodule Portal.RemoteIp.XForwardedForParser do
       {:error, _} ->
         trimmed
         |> normalize_address()
-        |> then(fn candidate ->
-          case :inet.parse_strict_address(to_charlist(candidate)) do
-            {:ok, ip} -> [ip]
-            {:error, _} -> []
-          end
-        end)
+        |> parse_normalized_ip()
+    end
+  end
+
+  defp parse_normalized_ip(candidate) do
+    case :inet.parse_strict_address(to_charlist(candidate)) do
+      {:ok, ip} -> [ip]
+      {:error, _} -> []
     end
   end
 

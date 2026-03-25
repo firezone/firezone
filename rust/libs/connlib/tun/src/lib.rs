@@ -1,8 +1,3 @@
-use std::{
-    io,
-    task::{Context, Poll},
-};
-
 use ip_packet::IpPacket;
 
 #[cfg(target_family = "unix")]
@@ -11,18 +6,11 @@ pub mod ioctl;
 pub mod unix;
 
 pub trait Tun: Send + Sync + 'static {
-    /// Check if more packets can be sent.
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
-    /// Send a packet.
-    fn send(&mut self, packet: IpPacket) -> io::Result<()>;
+    /// Get a reference to the sender for outbound packets.
+    fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket>;
 
-    /// Receive a batch of packets up to `max`.
-    fn poll_recv_many(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
-        max: usize,
-    ) -> Poll<usize>;
+    /// Get a mutable reference to the receiver for inbound packets.
+    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket>;
 
     /// The name of the TUN device.
     fn name(&self) -> &str;

@@ -153,16 +153,26 @@ defmodule PortalAPI.ResourceController do
   end
 
   defp create_changeset(attrs, subject) do
-    %Portal.Resource{}
-    |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
-    |> Portal.Resource.changeset()
-    |> Ecto.Changeset.validate_required(~w[name type site_id]a)
-    |> Ecto.Changeset.put_change(:account_id, subject.account.id)
+    changeset =
+      %Portal.Resource{account_id: subject.account.id}
+      |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
+      |> Portal.Resource.changeset()
+
+    required =
+      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
+        ~w[name type]a
+      else
+        ~w[name type site_id]a
+      end
+
+    changeset
+    |> Ecto.Changeset.validate_required(required)
+    |> Database.validate_static_device_pool_feature_enabled(subject.account)
   end
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
+    alias Portal.{Features, Safe}
 
     def list_resources(subject, opts \\ []) do
       from(r in Portal.Resource, as: :resources)
@@ -183,6 +193,27 @@ defmodule PortalAPI.ResourceController do
       end
     end
 
+    def validate_static_device_pool_feature_enabled(changeset, account) do
+      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool and
+           not client_to_client_enabled?(account) do
+        Ecto.Changeset.add_error(
+          changeset,
+          :type,
+          "device pools are not enabled for this account"
+        )
+      else
+        changeset
+      end
+    end
+
+    def client_to_client_enabled?(account) do
+      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
+
+      account_feature_enabled? = account.features.client_to_client == true
+
+      Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
+    end
+
     def update_resource(resource, attrs, subject) do
       resource
       |> changeset(attrs, subject)
@@ -201,14 +232,24 @@ defmodule PortalAPI.ResourceController do
       |> Safe.insert()
     end
 
-    defp changeset(resource, attrs, _subject) do
+    defp changeset(resource, attrs, subject) do
       update_fields = ~w[address address_description name type ip_stack site_id]a
-      required_fields = ~w[name type site_id]a
 
-      resource
-      |> Ecto.Changeset.cast(attrs, update_fields)
+      changeset =
+        resource
+        |> Ecto.Changeset.cast(attrs, update_fields)
+        |> Portal.Resource.changeset()
+
+      required_fields =
+        if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
+          ~w[name type]a
+        else
+          ~w[name type site_id]a
+        end
+
+      changeset
       |> Ecto.Changeset.validate_required(required_fields)
-      |> Portal.Resource.changeset()
+      |> validate_static_device_pool_feature_enabled(subject.account)
     end
 
     def cursor_fields do

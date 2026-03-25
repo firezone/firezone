@@ -376,21 +376,6 @@ defmodule PortalWeb.Settings.BillingTest do
       assert html =~ "Priority email and dedicated Slack support"
     end
 
-    test "renders danger zone section", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/billing")
-
-      assert html =~ "Danger zone"
-      assert html =~ "Terminate account"
-      assert html =~ "contact support"
-    end
-
     test "renders Contact sales link", %{
       account: account,
       actor: actor,

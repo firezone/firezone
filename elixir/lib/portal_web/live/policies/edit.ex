@@ -291,7 +291,7 @@ defmodule PortalWeb.Policies.Edit do
 
     defp get_group_idp_id(group_id, subject) do
       from(g in Group, where: g.id == ^group_id, select: g.idp_id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.one()
     end
 

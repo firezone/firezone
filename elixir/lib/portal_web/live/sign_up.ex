@@ -396,6 +396,14 @@ defmodule PortalWeb.SignUp do
              :error,
              "We encountered a temporary error creating your account. Please try again."
            )}
+
+        {:error, _step, _reason, _effects_so_far} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "We encountered an unexpected error creating your account. Please try again."
+           )}
       end
     else
       {:noreply, assign(socket, form: to_form(changeset))}
@@ -406,12 +414,13 @@ defmodule PortalWeb.SignUp do
     import Ecto.Changeset
 
     %Portal.Account{id: Map.get(attrs, :id)}
-    |> cast(attrs, [:name, :legal_name, :slug])
+    |> cast(attrs, [:name, :legal_name, :slug, :key])
     |> maybe_default_legal_name()
     |> maybe_generate_slug()
+    |> put_change(:key, Portal.Account.new_key())
     |> put_default_config()
     |> cast_embed(:metadata)
-    |> validate_required([:name, :legal_name, :slug])
+    |> validate_required([:name, :legal_name, :slug, :key])
     |> Portal.Account.changeset()
   end
 
@@ -548,6 +557,7 @@ defmodule PortalWeb.SignUp do
 
   defmodule Database do
     import Ecto.Changeset
+    require Logger
 
     alias Portal.{
       Actor,
@@ -570,13 +580,13 @@ defmodule PortalWeb.SignUp do
 
       Ecto.Multi.new()
       |> Ecto.Multi.run(:account, fn _repo, _changes ->
-        %{
+        attrs = %{
           id: account_id,
           name: registration.account.name,
           metadata: %{stripe: stripe_metadata}
         }
-        |> changeset_fns.account.()
-        |> insert()
+
+        insert_account_with_key_retry(attrs, changeset_fns.account)
       end)
       |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
         changeset_fns.everyone_group.(account)
@@ -610,6 +620,21 @@ defmodule PortalWeb.SignUp do
         )
       end)
       |> Safe.transact()
+      |> case do
+        {:ok, _} = ok ->
+          ok
+
+        {:error, step, reason, changes} = error ->
+          :ok =
+            Logger.error("Failed to register account during sign-up",
+              account_id: account_id,
+              step: step,
+              reason: inspect(reason),
+              completed_steps: Map.keys(changes)
+            )
+
+          error
+      end
     end
 
     def create_email_provider(account) do
@@ -658,6 +683,28 @@ defmodule PortalWeb.SignUp do
     def insert(changeset) do
       Safe.unscoped(changeset)
       |> Safe.insert()
+    end
+
+    def insert_account_with_key_retry(attrs, changeset_fn, retries \\ 5) do
+      changeset_fn.(attrs)
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, account} ->
+          {:ok, account}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          if retries > 0 and key_taken?(changeset) do
+            insert_account_with_key_retry(attrs, changeset_fn, retries - 1)
+          else
+            {:error, changeset}
+          end
+      end
+    end
+
+    defp key_taken?(%Ecto.Changeset{errors: errors}) do
+      Keyword.has_key?(errors, :key) and
+        match?({"has already been taken", _}, Keyword.get(errors, :key))
     end
 
     def slug_exists?(slug) do

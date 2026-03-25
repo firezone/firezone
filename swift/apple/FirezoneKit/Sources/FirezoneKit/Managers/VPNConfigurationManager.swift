@@ -10,6 +10,44 @@
 import Foundation
 import NetworkExtension
 
+// MARK: - Protocols
+
+@MainActor
+public protocol TunnelProviderManager: AnyObject {
+  var isEnabled: Bool { get set }
+  var localizedDescription: String? { get set }
+  var protocolConfiguration: NEVPNProtocol? { get set }
+  var connection: NEVPNConnection { get }
+
+  func saveToPreferences() async throws
+  func loadFromPreferences() async throws
+}
+
+@MainActor
+public protocol TunnelProviderManagerFactory {
+  func loadAllFromPreferences() async throws -> [any TunnelProviderManager]
+  func createManager() -> any TunnelProviderManager
+}
+
+// MARK: - NetworkExtension Conformances
+
+extension NETunnelProviderManager: TunnelProviderManager {}
+
+@MainActor
+public final class NETunnelProviderManagerFactory: TunnelProviderManagerFactory {
+  public init() {}
+
+  public func loadAllFromPreferences() async throws -> [any TunnelProviderManager] {
+    try await NETunnelProviderManager.loadAllFromPreferences()
+  }
+
+  public func createManager() -> any TunnelProviderManager {
+    NETunnelProviderManager()
+  }
+}
+
+// MARK: - VPNConfigurationManager
+
 enum VPNConfigurationManagerError: Error {
   case managerNotInitialized
 
@@ -25,7 +63,7 @@ enum VPNConfigurationManagerError: Error {
 // we isolate to @MainActor to align with this design.
 @MainActor
 public final class VPNConfigurationManager {
-  let manager: NETunnelProviderManager
+  let manager: any TunnelProviderManager
 
   // App cannot run without bundle identifier - force unwrap is safe
   // swiftlint:disable:next force_unwrapping
@@ -33,9 +71,8 @@ public final class VPNConfigurationManager {
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
-  init() async throws {
+  init(manager: any TunnelProviderManager) async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
-    let manager = NETunnelProviderManager()
 
     protocolConfiguration.providerConfiguration = nil
     protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
@@ -49,7 +86,7 @@ public final class VPNConfigurationManager {
     self.manager = manager
   }
 
-  init(from manager: NETunnelProviderManager) {
+  init(from manager: any TunnelProviderManager) {
     self.manager = manager
   }
 
@@ -69,10 +106,12 @@ public final class VPNConfigurationManager {
     return providerConfiguration
   }
 
-  static func load() async throws -> VPNConfigurationManager? {
+  static func load(using factory: TunnelProviderManagerFactory) async throws
+    -> VPNConfigurationManager?
+  {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
-    let managers = try await NETunnelProviderManager.loadAllFromPreferences()
+    let managers = try await factory.loadAllFromPreferences()
 
     for manager in managers where manager.localizedDescription == bundleDescription {
       return VPNConfigurationManager(from: manager)
