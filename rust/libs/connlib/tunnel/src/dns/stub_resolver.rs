@@ -345,6 +345,7 @@ impl DeviceStubResolver {
     /// Attempts to match the given domain against device pool patterns.
     ///
     /// Returns the [`ResourceId`] of the first matching device pool, if any.
+    #[allow(dead_code)] // Will be used when DNS query interception is wired up.
     pub(crate) fn match_device_pool_linear(
         &self,
         domain: &dns_types::DomainName,
