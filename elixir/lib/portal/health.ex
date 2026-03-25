@@ -4,7 +4,7 @@ defmodule Portal.Health do
 
   - `/healthz` - Liveness check, always returns 200 OK
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
-                503 when draining or starting
+                503 when draining, database unavailable or starting
 
   Can be used in two ways:
 
