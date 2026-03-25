@@ -91,7 +91,6 @@ export default function Android() {
           Fixes an issue where the WebSocket connection to the control plane was
           lost under load.
         </ChangeItem>
-      </Unreleased>
       </Entry>
       <Entry version="1.5.8" date={new Date("2025-12-23")}>
         <ChangeItem pull={11077}>
