@@ -82,13 +82,6 @@ struct Args {
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
-    /// The Google Project ID to embed in spans.
-    ///
-    /// Set this if you are running on Google Cloud but using the OTLP trace collector.
-    /// OTLP is vendor-agnostic but for spans to be correctly recognised by Google Cloud, they need the project ID to be set.
-    #[arg(long, env, hide = true)]
-    google_cloud_project_id: Option<String>,
-
     /// Enable offloading of TURN traffic to an eBPF program.
     ///
     /// Requires the name of the network interface the XDP program should be loaded onto.
@@ -393,11 +386,11 @@ fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    match (args.log_format, args.google_cloud_project_id.clone()) {
-        (LogFormat::Human, _) => tracing_subscriber::fmt::layer()
+    match args.log_format {
+        LogFormat::Human => tracing_subscriber::fmt::layer()
             .with_ansi(logging::stdout_supports_ansi())
             .boxed(),
-        (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
+        LogFormat::Json => tracing_subscriber::fmt::layer().json().boxed(),
     }
 }
 
