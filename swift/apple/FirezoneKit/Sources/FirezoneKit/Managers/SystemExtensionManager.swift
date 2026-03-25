@@ -10,7 +10,7 @@
   public enum SystemExtensionError: Error {
     case unknownResult(OSSystemExtensionRequest.Result)
 
-    var description: String {
+    public var description: String {
       switch self {
       case .unknownResult(let result):
         return "Unknown result: \(result)"
