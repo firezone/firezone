@@ -1,6 +1,6 @@
 defmodule Portal.Health do
   @moduledoc """
-  Health check plug that handles liveness and readiness probes.
+  Health check plug that handles readiness probes.
 
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
                 503 when draining or starting
