@@ -7,10 +7,6 @@ name = "Inflector"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
-dependencies = [
- "lazy_static",
- "regex",
-]
 
 [[package]]
 name = "actix-codec"
@@ -2622,7 +2618,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-opentelemetry",
- "tracing-stackdriver",
  "tracing-subscriber",
  "trackable",
  "url",
@@ -8396,22 +8391,6 @@ checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
 dependencies = [
  "serde",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-stackdriver"
-version = "0.12.0"
-source = "git+https://github.com/thomaseizinger/tracing-stackdriver?branch=bump-otel-0.30#0b86826d6229cefca4d567c04dce4ff18aaf534b"
-dependencies = [
- "Inflector",
- "opentelemetry",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "time",
- "tracing-core",
- "tracing-opentelemetry",
- "tracing-subscriber",
 ]
 
 [[package]]
