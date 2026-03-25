@@ -2,6 +2,7 @@ defmodule PortalAPI.FlowLogController do
   use PortalAPI, :controller
   import Ecto.Changeset
   alias Portal.FlowLog
+  alias PortalAPI.ProblemDetails
   alias __MODULE__.Database
 
   @top_level_keys ~w(flow_id device_id role flow_start flow_end)
@@ -10,11 +11,7 @@ defmodule PortalAPI.FlowLogController do
 
   def create(conn, %{"flow_logs" => records})
       when is_list(records) and length(records) > @max_batch_size do
-    conn
-    |> put_status(400)
-    |> Phoenix.Controller.json(%{
-      error: %{reason: "batch size exceeds maximum of #{@max_batch_size}"}
-    })
+    ProblemDetails.send(conn, 400, "Batch size exceeds maximum of #{@max_batch_size}")
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
@@ -38,17 +35,16 @@ defmodule PortalAPI.FlowLogController do
       |> put_view(json: PortalAPI.FlowLogJSON)
       |> render(:accepted)
     else
-      conn
-      |> put_status(422)
-      |> put_view(json: PortalAPI.FlowLogJSON)
-      |> render(:errors, errors: Enum.reverse(errors))
+      validation_errors = render_validation_errors(Enum.reverse(errors))
+
+      ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
+        validation_errors: validation_errors
+      })
     end
   end
 
   def create(conn, _params) do
-    conn
-    |> put_status(400)
-    |> Phoenix.Controller.json(%{error: %{reason: "expected a \"flow_logs\" array"}})
+    ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
 
   defp validate_record(record, index, _account_id, _now, {valid, invalid})
@@ -74,6 +70,22 @@ defmodule PortalAPI.FlowLogController do
     %FlowLog{}
     |> cast(attrs, @cast_fields)
     |> FlowLog.changeset()
+  end
+
+  defp render_validation_errors(errors) do
+    Map.new(errors, fn
+      {index, :not_a_map} ->
+        {index, %{record: ["must be a JSON object"]}}
+
+      {index, changeset} ->
+        {index, Ecto.Changeset.traverse_errors(changeset, &translate_error/1)}
+    end)
+  end
+
+  defp translate_error({msg, opts}) do
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", fn _ -> to_string(value) end)
+    end)
   end
 
   defp to_attrs(record, account_id, now) do

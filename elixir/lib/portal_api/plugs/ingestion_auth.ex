@@ -1,6 +1,7 @@
 defmodule PortalAPI.Plugs.IngestionAuth do
   import Plug.Conn
   alias Portal.Authentication
+  alias PortalAPI.ProblemDetails
 
   def init(opts), do: opts
 
@@ -13,11 +14,7 @@ defmodule PortalAPI.Plugs.IngestionAuth do
       |> assign(:token_id, token_id)
     else
       _ ->
-        conn
-        |> put_status(401)
-        |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
-        |> Phoenix.Controller.render(:"401")
-        |> halt()
+        ProblemDetails.send(conn, 401, "Missing or invalid authorization token")
     end
   end
 end

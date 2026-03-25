@@ -48,7 +48,8 @@ defmodule PortalAPI.FlowLogControllerTest do
     test "returns 401 when unauthenticated", %{conn: conn} do
       conn = post(conn, "/ingestion/flow_logs", %{"flow_logs" => [build_flow_record()]})
 
-      assert json_response(conn, 401)
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns 400 when batch exceeds 10k records", %{conn: conn, account: account} do
@@ -59,8 +60,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => records})
 
-      assert %{"error" => %{"reason" => "batch size exceeds maximum of 10000"}} =
-               json_response(conn, 400)
+      assert %{
+               "type" => "about:blank",
+               "status" => 400,
+               "title" => "Bad Request",
+               "detail" => "Batch size exceeds maximum of 10000"
+             } = json_response(conn, 400)
     end
 
     test "returns 400 when flow_logs key is missing", %{conn: conn, account: account} do
@@ -69,8 +74,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"something" => "else"})
 
-      assert %{"error" => %{"reason" => "expected a \"flow_logs\" array"}} =
-               json_response(conn, 400)
+      assert %{
+               "type" => "about:blank",
+               "status" => 400,
+               "title" => "Bad Request",
+               "detail" => "Expected a \"flow_logs\" array"
+             } = json_response(conn, 400)
     end
 
     test "returns 400 when flow_logs is not a list", %{conn: conn, account: account} do
@@ -79,8 +88,11 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => "not a list"})
 
-      assert %{"error" => %{"reason" => "expected a \"flow_logs\" array"}} =
-               json_response(conn, 400)
+      assert %{
+               "type" => "about:blank",
+               "status" => 400,
+               "title" => "Bad Request"
+             } = json_response(conn, 400)
     end
 
     test "returns 202 with gateway token", %{conn: conn, account: account} do
@@ -156,7 +168,13 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => [record]})
 
-      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "title" => "Unprocessable Content",
+               "validation_errors" => errors
+             } = json_response(conn, 422)
+
       assert Map.has_key?(errors, "0")
     end
 
@@ -168,7 +186,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => [record]})
 
-      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => errors
+             } = json_response(conn, 422)
+
       assert Map.has_key?(errors, "0")
     end
 
@@ -180,7 +203,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => [record]})
 
-      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => errors
+             } = json_response(conn, 422)
+
       assert Map.has_key?(errors, "0")
     end
 
@@ -196,7 +224,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => [record]})
 
-      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => errors
+             } = json_response(conn, 422)
+
       assert Map.has_key?(errors, "0")
     end
 
@@ -237,7 +270,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => ["not a map", 42, nil]})
 
-      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => errors
+             } = json_response(conn, 422)
+
       assert errors["0"]["record"] == ["must be a JSON object"]
       assert errors["1"]["record"] == ["must be a JSON object"]
       assert errors["2"]["record"] == ["must be a JSON object"]
@@ -255,7 +293,12 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize_gateway(account)
         |> post("/ingestion/flow_logs", %{"flow_logs" => [good_record, bad_record]})
 
-      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => errors
+             } = json_response(conn, 422)
+
       assert Map.has_key?(errors, "1")
       assert length(Repo.all(FlowLog)) == 1
     end

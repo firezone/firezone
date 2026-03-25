@@ -24,10 +24,7 @@ defmodule PortalAPI.Plugs.IngestionRateLimit do
 
         conn
         |> put_resp_header("retry-after", Integer.to_string(retry_after))
-        |> put_status(429)
-        |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
-        |> Phoenix.Controller.render(:"429")
-        |> halt()
+        |> PortalAPI.ProblemDetails.send(429, "Rate limit exceeded, retry after #{retry_after}s")
     end
   end
 
