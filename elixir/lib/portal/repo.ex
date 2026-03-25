@@ -7,6 +7,28 @@ defmodule Portal.Repo do
   alias Portal.Repo.Paginator
   require Ecto.Query
 
+  defoverridable get_dynamic_repo: 0
+
+  @doc """
+  Overrides `Ecto.Repo.get_dynamic_repo/0` to walk the process hierarchy
+  (`$callers` then `$ancestors`) when the current process has no dynamic repo set.
+
+  This allows child processes (channels, tasks, GenServers) to automatically
+  inherit the pool repo (e.g. `Portal.Repo.Web`) from their parent without
+  explicit propagation at each spawn boundary.
+  """
+  def get_dynamic_repo do
+    case Process.get({__MODULE__, :dynamic_repo}) do
+      nil ->
+        repo = Portal.Repo.DynamicRepoResolver.inherit(__MODULE__)
+        if repo != __MODULE__, do: put_dynamic_repo(repo)
+        repo
+
+      repo ->
+        repo
+    end
+  end
+
   def valid_uuid?(binary) when is_binary(binary),
     do: match?(<<_::64, ?-, _::32, ?-, _::32, ?-, _::32, ?-, _::96>>, binary)
 

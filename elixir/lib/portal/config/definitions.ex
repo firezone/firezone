@@ -46,24 +46,12 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
-  Enabled or disable background job workers (eg. syncing IdP directory) for the app instance.
-  """
-  defconfig(:background_jobs_enabled, :boolean, default: false)
-
-  @doc """
   Region identifier used to target direct_broadcast! to web/api nodes.
 
   In a multi-region deployment, this ensures change events are only sent to
   web and api nodes in the same region. Maps to the `REGION` env var.
   """
   defconfig(:region, :string, default: "")
-
-  @doc """
-  Role of this node in the deployment.
-
-  Used to conditionally enable node-specific services.
-  """
-  defconfig(:node_type, :string, default: "portal")
 
   @doc """
   Enable or disable the Changes (CDC) replication consumer for this app instance.
@@ -319,6 +307,26 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_pool_size, :integer,
     default: fn -> :erlang.system_info(:logical_processors_available) * 2 end
   )
+
+  @doc """
+  Size of the primary connection pool for PortalWeb (HTTP + LiveView) queries.
+  """
+  defconfig(:database_pool_size_web, :integer, default: 2)
+
+  @doc """
+  Size of the primary connection pool for PortalAPI (REST + Sockets) queries.
+  """
+  defconfig(:database_pool_size_api, :integer, default: 5)
+
+  @doc """
+  Size of the replica connection pool for PortalWeb (HTTP + LiveView) queries.
+  """
+  defconfig(:database_pool_size_web_replica, :integer, default: 2)
+
+  @doc """
+  Size of the replica connection pool for PortalAPI (REST + Sockets) queries.
+  """
+  defconfig(:database_pool_size_api_replica, :integer, default: 5)
 
   @doc """
   The target threshold for the length of time in milliseconds that a query should wait in the queue

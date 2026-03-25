@@ -6,6 +6,20 @@ defmodule Portal.Repo.Replica do
 
   alias Portal.Repo.{List, Paginator}
 
+  defoverridable get_dynamic_repo: 0
+
+  def get_dynamic_repo do
+    case Process.get({__MODULE__, :dynamic_repo}) do
+      nil ->
+        repo = Portal.Repo.DynamicRepoResolver.inherit(__MODULE__)
+        if repo != __MODULE__, do: put_dynamic_repo(repo)
+        repo
+
+      repo ->
+        repo
+    end
+  end
+
   @spec list(
           queryable :: Ecto.Queryable.t(),
           query_module :: module(),

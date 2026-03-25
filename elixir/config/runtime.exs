@@ -42,8 +42,7 @@ if config_env() == :prod do
            {:queue_target, env_var_to_config!(:database_queue_target)},
            {:queue_interval, env_var_to_config!(:database_queue_interval)},
            {:ssl, env_var_to_config!(:database_ssl)},
-           {:parameters, env_var_to_config!(:database_parameters)},
-           {:hostname, env_var_to_config!(:database_host_replica)}
+           {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
            if(env_var_to_config!(:database_socket_options) != [],
              do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
@@ -52,7 +51,85 @@ if config_env() == :prod do
            if(env_var_to_config(:database_password),
              do: [{:password, env_var_to_config!(:database_password)}],
              else: []
+           ) ++
+           if(env_var_to_config(:database_socket_dir),
+             do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+             else: [{:hostname, env_var_to_config!(:database_host_replica)}]
            )
+
+  # Shared connection options for isolated primary pools
+  primary_pool_base_opts =
+    [
+      {:database, env_var_to_config!(:database_name)},
+      {:username, env_var_to_config!(:database_user)},
+      {:port, env_var_to_config!(:database_port)},
+      {:queue_target, env_var_to_config!(:database_queue_target)},
+      {:queue_interval, env_var_to_config!(:database_queue_interval)},
+      {:ssl, env_var_to_config!(:database_ssl)}
+    ] ++
+      if(env_var_to_config!(:database_socket_options) != [],
+        do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+        else: []
+      ) ++
+      if(env_var_to_config(:database_password),
+        do: [{:password, env_var_to_config!(:database_password)}],
+        else: []
+      ) ++
+      if(env_var_to_config(:database_socket_dir),
+        do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+        else: [{:hostname, env_var_to_config!(:database_host)}]
+      )
+
+  # Shared connection options for isolated replica pools
+  replica_pool_base_opts =
+    [
+      {:database, env_var_to_config!(:database_name)},
+      {:username, env_var_to_config!(:database_user)},
+      {:port, env_var_to_config!(:database_port)},
+      {:queue_target, env_var_to_config!(:database_queue_target)},
+      {:queue_interval, env_var_to_config!(:database_queue_interval)},
+      {:ssl, env_var_to_config!(:database_ssl)}
+    ] ++
+      if(env_var_to_config!(:database_socket_options) != [],
+        do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+        else: []
+      ) ++
+      if(env_var_to_config(:database_password),
+        do: [{:password, env_var_to_config!(:database_password)}],
+        else: []
+      ) ++
+      if(env_var_to_config(:database_socket_dir),
+        do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+        else: [{:hostname, env_var_to_config!(:database_host_replica)}]
+      )
+
+  database_parameters = env_var_to_config!(:database_parameters)
+
+  # Isolated primary connection pools
+  for {repo, pool_size_key, app_name} <- [
+        {Portal.Repo.Web, :database_pool_size_web, "web"},
+        {Portal.Repo.Api, :database_pool_size_api, "api"}
+      ] do
+    config :portal,
+           repo,
+           [
+             {:pool_size, env_var_to_config!(pool_size_key)},
+             {:parameters, Keyword.merge(database_parameters, application_name: app_name)}
+           ] ++ primary_pool_base_opts
+  end
+
+  # Isolated replica connection pools
+  for {repo, pool_size_key, app_name} <- [
+        {Portal.Repo.Replica.Web, :database_pool_size_web_replica, "replica-web"},
+        {Portal.Repo.Replica.Api, :database_pool_size_api_replica, "replica-api"}
+      ] do
+    config :portal,
+           repo,
+           [
+             {:pool_size, env_var_to_config!(pool_size_key)},
+             {:parameters, Keyword.merge(database_parameters, application_name: app_name)}
+           ] ++ replica_pool_base_opts
+  end
 
   config :portal, Portal.ChangeLogs.ReplicationConnection,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
@@ -148,7 +225,6 @@ if config_env() == :prod do
            )
 
   config :portal, region: env_var_to_config!(:region)
-  config :portal, node_type: env_var_to_config!(:node_type)
 
   config :portal, Portal.Cluster,
     adapter: env_var_to_config!(:erlang_cluster_adapter),
@@ -186,8 +262,6 @@ if config_env() == :prod do
 
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
-  background_jobs_enabled = env_var_to_config!(:background_jobs_enabled)
-
   oban_crontab = [
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
@@ -248,34 +322,23 @@ if config_env() == :prod do
   ]
 
   config :portal, Oban,
-    # Disable peer election and plugins on web/api nodes to avoid DB row-lock
-    # contention during blue/green deploys. With pool_size=2, Oban.Peers.Database
-    # transactions competing for the oban_peers lock can starve the connection pool.
-    peer: if(background_jobs_enabled, do: Oban.Peers.Database, else: false),
-    plugins:
-      if(background_jobs_enabled,
-        do: [
-          {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
-          {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(120)},
-          {Oban.Plugins.Cron, crontab: oban_crontab}
-        ],
-        else: []
-      ),
-    queues:
-      if(background_jobs_enabled,
-        do: [
-          default: 10,
-          entra_scheduler: 1,
-          entra_sync: 5,
-          google_scheduler: 1,
-          google_sync: 5,
-          okta_scheduler: 1,
-          okta_sync: 5,
-          sync_error_notifications: 1,
-          outbound_emails: 1
-        ],
-        else: []
-      ),
+    peer: Oban.Peers.Database,
+    plugins: [
+      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+      {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(120)},
+      {Oban.Plugins.Cron, crontab: oban_crontab}
+    ],
+    queues: [
+      default: 10,
+      entra_scheduler: 1,
+      entra_sync: 5,
+      google_scheduler: 1,
+      google_sync: 5,
+      okta_scheduler: 1,
+      okta_sync: 5,
+      sync_error_notifications: 1,
+      outbound_emails: 1
+    ],
     engine: Oban.Engines.Basic,
     repo: Portal.Repo
 
@@ -404,7 +467,7 @@ if config_env() == :prod do
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
         service: %{
-          name: System.get_env("NODE_TYPE", "portal"),
+          name: "portal",
           namespace: "firezone",
           version: System.get_env("RELEASE_VSN"),
           instance: %{id: System.get_env("NODE_NAME")}

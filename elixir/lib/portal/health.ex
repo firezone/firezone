@@ -76,18 +76,29 @@ defmodule Portal.Health do
     |> File.exists?()
   end
 
+  @repos [
+    Portal.Repo,
+    Portal.Repo.Replica,
+    Portal.Repo.Web,
+    Portal.Repo.Api,
+    Portal.Repo.Replica.Web,
+    Portal.Repo.Replica.Api
+  ]
+
+  # sobelow_skip ["SQL.Query"]
   defp repos_ready? do
     config = Portal.Config.fetch_env!(:portal, Portal.Health)
-    repo = Keyword.fetch!(config, :repo)
-    replica_repo = Keyword.fetch!(config, :replica_repo)
+    repos = Keyword.get(config, :repos, @repos)
+    query = Keyword.get(config, :repo_check_query, "SELECT 1")
 
-    try do
-      %{num_rows: 1} = Ecto.Adapters.SQL.query!(repo, "SELECT 1", [])
-      %{num_rows: 1} = Ecto.Adapters.SQL.query!(replica_repo, "SELECT 1", [])
-      true
-    rescue
-      _ -> false
-    end
+    Enum.all?(repos, fn repo ->
+      try do
+        %{num_rows: 1} = Ecto.Adapters.SQL.query!(repo, query, [])
+        true
+      rescue
+        _ -> false
+      end
+    end)
   end
 
   defp endpoints_ready? do
