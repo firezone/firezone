@@ -49,16 +49,23 @@ fn internet_resource_name() -> String {
 }
 
 /// Description of a static device pool resource.
+///
+/// Static device pools don't participate in DNS resolution on the client.
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionStaticDevicePool {
-    /// Resource's id.
     pub id: ResourceId,
-    /// Name of the resource.
-    ///
-    /// Used only for display.
     pub name: String,
-    /// DNS pattern for the pool. `None` if the pool doesn't participate in DNS resolution.
-    pub address: Option<String>,
+}
+
+/// Description of a dynamic device pool resource.
+///
+/// Dynamic device pools have a DNS pattern that connlib matches against to resolve device addresses.
+#[derive(Debug, Deserialize)]
+pub struct ResourceDescriptionDynamicDevicePool {
+    pub id: ResourceId,
+    pub name: String,
+    /// DNS pattern for the pool (e.g. `*.devices.example.com`).
+    pub address: String,
 }
 
 /// Description of an internet resource.
@@ -83,6 +90,7 @@ pub enum ResourceDescription {
     Cidr(serde_json::Value),
     Internet(serde_json::Value),
     StaticDevicePool(serde_json::Value),
+    DynamicDevicePool(serde_json::Value),
     #[serde(other)]
     Unknown, // Important for forwards-compatibility with future resource types.
 }
@@ -572,8 +580,7 @@ mod tests {
             {
                 "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "type": "static_device_pool",
-                "name": "IoT Devices",
-                "address": null
+                "name": "IoT Devices"
             }
         ]"#;
 
@@ -588,7 +595,33 @@ mod tests {
             panic!("Expected StaticDevicePool");
         };
         let desc = ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
-        assert!(desc.address.is_none());
+        assert_eq!(desc.name, "IoT Devices");
+    }
+
+    #[test]
+    fn can_deserialize_dynamic_device_pool_resource() {
+        let resources = r#"[
+            {
+                "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "type": "dynamic_device_pool",
+                "name": "Employee Laptops",
+                "address": "*.laptops.example.com"
+            }
+        ]"#;
+
+        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+
+        assert!(matches!(
+            parsed[0],
+            ResourceDescription::DynamicDevicePool(_)
+        ));
+
+        let ResourceDescription::DynamicDevicePool(json) = &parsed[0] else {
+            panic!("Expected DynamicDevicePool");
+        };
+        let desc = ResourceDescriptionDynamicDevicePool::deserialize(json).unwrap();
+        assert_eq!(desc.name, "Employee Laptops");
+        assert_eq!(desc.address, "*.laptops.example.com");
     }
 
     #[test]

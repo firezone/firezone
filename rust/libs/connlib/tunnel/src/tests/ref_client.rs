@@ -330,7 +330,7 @@ impl RefClient {
                 Resource::Dns(d) => self.add_dns_resource(d),
                 Resource::Cidr(c) => self.add_cidr_resource(c),
                 Resource::Internet(i) => self.add_internet_resource(i),
-                Resource::DevicePool(_) => {}
+                Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {}
             }
         }
     }
@@ -872,7 +872,10 @@ impl RefClient {
 
     fn internet_resource(&self) -> Option<ResourceId> {
         self.resources.iter().find_map(|r| match r {
-            Resource::Dns(_) | Resource::Cidr(_) | Resource::DevicePool(_) => None,
+            Resource::Dns(_)
+            | Resource::Cidr(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => None,
             Resource::Internet(internet_resource) => Some(internet_resource.id),
         })
     }

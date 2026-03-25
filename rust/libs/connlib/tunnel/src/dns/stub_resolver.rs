@@ -736,44 +736,43 @@ mod tests {
     }
 
     #[test]
-    fn device_pool_wildcard_match() {
+    fn dynamic_device_pool_wildcard_match() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
         resolver.add_resource(rid, "*.devices.example.com".to_owned());
 
-        let matched = resolver
-            .match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
+        let matched =
+            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
 
         assert_eq!(matched, Some(rid));
     }
 
     #[test]
-    fn device_pool_no_match_for_unrelated_domain() {
+    fn dynamic_device_pool_no_match_for_unrelated_domain() {
         let mut resolver = DeviceStubResolver::default();
         resolver.add_resource(ResourceId::from_u128(1), "*.devices.example.com".to_owned());
 
-        let matched = resolver
-            .match_device_pool_linear(&"foo.other.example.com".parse().unwrap());
+        let matched = resolver.match_device_pool_linear(&"foo.other.example.com".parse().unwrap());
 
         assert_eq!(matched, None);
     }
 
     #[test]
-    fn device_pool_remove_resource() {
+    fn dynamic_device_pool_remove_resource() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
         resolver.add_resource(rid, "*.devices.example.com".to_owned());
 
         resolver.remove_resource(rid);
 
-        let matched = resolver
-            .match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
+        let matched =
+            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
 
         assert_eq!(matched, None);
     }
 
     #[test]
-    fn device_pool_prioritises_specific_over_wildcard() {
+    fn dynamic_device_pool_prioritises_specific_over_wildcard() {
         let mut resolver = DeviceStubResolver::default();
         let wildcard = ResourceId::from_u128(1);
         let specific = ResourceId::from_u128(2);
@@ -781,14 +780,14 @@ mod tests {
         resolver.add_resource(wildcard, "**.devices.example.com".to_owned());
         resolver.add_resource(specific, "foo.devices.example.com".to_owned());
 
-        let matched = resolver
-            .match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
+        let matched =
+            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
 
         assert_eq!(matched, Some(specific));
     }
 
     #[test]
-    fn device_pool_invalid_pattern_returns_false() {
+    fn dynamic_device_pool_invalid_pattern_returns_false() {
         let mut resolver = DeviceStubResolver::default();
         let added = resolver.add_resource(ResourceId::from_u128(1), "[invalid".to_owned());
 

@@ -139,9 +139,9 @@ pub struct ClientState {
     /// Manages the DNS configuration.
     dns_config: DnsConfig,
 
-    /// Manages internal dns records and emits forwarding event when not internally handled
+    /// Resolves DNS queries for DNS resources by assigning proxy IPs and managing records.
     resource_stub_resolver: ResourceStubResolver,
-    /// Matches DNS queries against device pool patterns.
+    /// Resolves DNS queries for dynamic device pool resources by matching against pool patterns.
     device_stub_resolver: DeviceStubResolver,
     /// Caches responses from DNS servers.
     dns_cache: DnsCache,
@@ -783,7 +783,7 @@ impl ClientState {
             Resource::Dns(_) => {
                 self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
             }
-            Resource::DevicePool(_) => {}
+            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {}
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
@@ -1074,7 +1074,10 @@ impl ClientState {
 
     fn internet_resource(&self) -> Option<&InternetResource> {
         self.resources_by_id.values().find_map(|r| match r {
-            Resource::Dns(_) | Resource::Cidr(_) | Resource::DevicePool(_) => None,
+            Resource::Dns(_)
+            | Resource::Cidr(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => None,
             Resource::Internet(internet_resource) => Some(internet_resource),
         })
     }
@@ -1823,12 +1826,10 @@ impl ClientState {
             }
             Resource::Cidr(cidr) => self.routing_table.upsert_cidr(cidr.address, cidr.id),
             Resource::Internet(_) => self.is_internet_resource_active,
-            Resource::DevicePool(pool) => match &pool.address {
-                Some(address) => self
-                    .device_stub_resolver
-                    .add_resource(pool.id, address.clone()),
-                None => false,
-            },
+            Resource::StaticDevicePool(_) => false,
+            Resource::DynamicDevicePool(pool) => self
+                .device_stub_resolver
+                .add_resource(pool.id, pool.address.clone()),
         };
 
         if activated {
@@ -1869,7 +1870,8 @@ impl ClientState {
             Resource::Dns(_) => self.resource_stub_resolver.remove_resource(id),
             Resource::Cidr(_) => {}
             Resource::Internet(_) => self.is_internet_resource_active = false,
-            Resource::DevicePool(_) => self.device_stub_resolver.remove_resource(id),
+            Resource::StaticDevicePool(_) => {}
+            Resource::DynamicDevicePool(_) => self.device_stub_resolver.remove_resource(id),
         }
 
         let name = resource.name();
