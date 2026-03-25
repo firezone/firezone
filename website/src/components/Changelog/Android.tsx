@@ -21,7 +21,7 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
-        <ChangeItem pull="12416">
+        <ChangeItem pull={12416}>
           Does not send a notification in case the user explicitly signs out.
         </ChangeItem>
       </Unreleased>
