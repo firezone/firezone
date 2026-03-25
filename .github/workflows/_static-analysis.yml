@@ -62,7 +62,7 @@ jobs:
       MISE_EXPERIMENTAL: 1
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: ./.github/actions/setup-mise
       - uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         name: Restore pip cache
         id: pip-cache
