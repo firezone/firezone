@@ -47,6 +47,7 @@ defmodule Portal.Gateway do
     changeset
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)
+    |> validate_length(:external_id, max: 255)
     |> unique_constraint(:name, name: :gateways_site_id_name_index)
     |> unique_constraint(:external_id)
     |> assoc_constraint(:account)

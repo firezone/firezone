@@ -44,6 +44,10 @@ defmodule Portal.GatewaySession do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:account_id, :gateway_id, :gateway_token_id])
+    |> validate_length(:user_agent, max: 255)
+    |> validate_length(:version, max: 255)
+    |> validate_length(:remote_ip_location_region, max: 255)
+    |> validate_length(:remote_ip_location_city, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:gateway)
     |> assoc_constraint(:gateway_token)

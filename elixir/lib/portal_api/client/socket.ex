@@ -41,8 +41,11 @@ defmodule PortalAPI.Client.Socket do
          false <- Portal.Billing.client_connect_restricted?(subject.account),
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
+         {:ok, _} <- apply_action(changeset, :validate),
          {:ok, client} <- Database.find_or_create_client(changeset, attrs) do
       version = derive_version(subject.context.user_agent)
+      {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
+      subject = %{subject | context: context}
       session = build_session(client, token_id, public_key, subject, version)
       Portal.ClientSession.Buffer.insert(session)
       set_connect_attributes(token_id, client, subject, version)

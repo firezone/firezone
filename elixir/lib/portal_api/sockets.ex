@@ -42,7 +42,20 @@ defmodule PortalAPI.Sockets do
 
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
-    Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
+
+    detail = changeset_error_detail(changeset)
+
+    body =
+      JSON.encode!(%{
+        type: "about:blank",
+        title: "Bad Request",
+        status: 400,
+        detail: detail
+      })
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/problem+json")
+    |> Plug.Conn.send_resp(400, body)
   end
 
   # We use 503 instead of 429 because connlib treats 429 as fatal until
@@ -68,6 +81,58 @@ defmodule PortalAPI.Sockets do
       end
 
     real_ip || peer_data.address
+  end
+
+  @session_field_limits %{
+    user_agent: 255,
+    remote_ip_location_region: 255,
+    remote_ip_location_city: 255
+  }
+
+  def truncate_session_fields(context, version) do
+    context =
+      Enum.reduce(@session_field_limits, context, fn {field, max}, ctx ->
+        value = Map.get(ctx, field)
+
+        if is_binary(value) and String.length(value) > max do
+          Logger.warning("Truncated session field",
+            field: field,
+            original_length: String.length(value),
+            max_length: max
+          )
+
+          Map.put(ctx, field, String.slice(value, 0, max))
+        else
+          ctx
+        end
+      end)
+
+    version =
+      if is_binary(version) and String.length(version) > 255 do
+        Logger.warning("Truncated session field",
+          field: :version,
+          original_length: String.length(version),
+          max_length: 255
+        )
+
+        String.slice(version, 0, 255)
+      else
+        version
+      end
+
+    {context, version}
+  end
+
+  defp changeset_error_detail(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.map_join("; ", fn {field, messages} ->
+      "#{field} #{Enum.join(messages, ", ")}"
+    end)
   end
 
   defp extract_token_from_header(%{x_headers: x_headers}) when is_list(x_headers) do

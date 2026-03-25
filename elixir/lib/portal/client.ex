@@ -66,6 +66,11 @@ defmodule Portal.Client do
     changeset
     |> trim_change(~w[name external_id]a)
     |> validate_length(:name, min: 1, max: 255)
+    |> validate_length(:external_id, max: 255)
+    |> validate_length(:device_serial, max: 255)
+    |> validate_length(:device_uuid, max: 255)
+    |> validate_length(:identifier_for_vendor, max: 255)
+    |> validate_length(:firebase_installation_id, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> unique_constraint([:actor_id, :external_id],
