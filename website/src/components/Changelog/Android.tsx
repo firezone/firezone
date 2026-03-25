@@ -22,7 +22,7 @@ export default function Android() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="12416">
-          Doesn't send a notification in case the user explicitly signs out.
+          Does not send a notification in case the user explicitly signs out.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2026-03-24")}>
