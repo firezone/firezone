@@ -148,6 +148,37 @@ defmodule Portal.AzureCommunicationServicesTest do
       assert suppressed == 1
     end
 
+    test "marks a recipient failed and inserts a suppression for unknown status" do
+      account = account_fixture()
+
+      entry =
+        outbound_email_fixture(account,
+          message_id: "message-failed",
+          recipients: ["failed@example.com"]
+        )
+
+      assert :ok =
+               AzureCommunicationServices.handle_event_grid_events([
+                 delivery_report_event(
+                   "message-failed",
+                   "failed@example.com",
+                   "Failed",
+                   "Unknown delivery failure"
+                 )
+               ])
+
+      delivery = delivery!(entry, "failed@example.com")
+      assert delivery.status == :failed
+      assert delivery.failure_code == "Failed"
+      assert delivery.failure_message == "Unknown delivery failure"
+
+      suppressed =
+        from(s in Portal.EmailSuppression, where: s.email == "failed@example.com")
+        |> Repo.aggregate(:count, :email)
+
+      assert suppressed == 1
+    end
+
     test "ignores out-of-order delivery events (stale: already terminal)" do
       account = account_fixture()
 
