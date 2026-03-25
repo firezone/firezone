@@ -206,9 +206,14 @@ impl ResourceStubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<Resource> {
-        if let Some((pattern, r)) = match_pattern_linear(&self.dns_resources, domain) {
-            tracing::trace!(id = %r.id, %pattern, %domain, "Matched resource");
-            return Some(*r);
+        let name = Candidate::from_domain(domain);
+
+        for (pattern, r) in &self.dns_resources {
+            if pattern.matches(&name) {
+                tracing::trace!(id = %r.id, %pattern, %domain, "Matched resource");
+
+                return Some(*r);
+            }
         }
 
         if tracing::enabled!(tracing::Level::TRACE) {
@@ -350,22 +355,17 @@ impl DeviceStubResolver {
         &self,
         domain: &dns_types::DomainName,
     ) -> Option<ResourceId> {
-        let (pattern, id) = match_pattern_linear(&self.device_pools, domain)?;
-        tracing::trace!(resource_id = %id, %pattern, %domain, "Matched device pool");
-        Some(*id)
+        let name = Candidate::from_domain(domain);
+
+        for (pattern, id) in &self.device_pools {
+            if pattern.matches(&name) {
+                tracing::trace!(resource_id = %id, %pattern, %domain, "Matched device pool");
+                return Some(*id);
+            }
+        }
+
+        None
     }
-}
-
-/// Performs a linear scan over `patterns`, returning the first entry whose key matches `domain`.
-///
-/// This is O(N) and **must not** be called in the hot-path of packet routing.
-fn match_pattern_linear<'a, T>(
-    patterns: &'a BTreeMap<Pattern, T>,
-    domain: &dns_types::DomainName,
-) -> Option<(&'a Pattern, &'a T)> {
-    let name = Candidate::from_domain(domain);
-
-    patterns.iter().find(|(pattern, _)| pattern.matches(&name))
 }
 
 pub(crate) fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
