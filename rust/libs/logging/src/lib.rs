@@ -39,6 +39,7 @@ pub use capturing_writer::CapturingWriter;
 pub use display_btree_set::DisplayBTreeSet;
 pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
+pub use tracing_macros::trace_dbg as dbg;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(

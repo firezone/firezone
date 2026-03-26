@@ -4266,6 +4266,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-log",
+ "tracing-macros",
  "tracing-subscriber",
  "windows",
 ]
@@ -8363,6 +8364,14 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-macros"
+version = "0.1.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=main#412986fb2fcfcd231844eb14cf66665936c6ecfc"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]
