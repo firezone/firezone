@@ -478,6 +478,202 @@ defmodule PortalWeb.Live.ActorsTest do
       # Form should show a validation error or remain on the edit page
       assert html =~ "actor-form"
     end
+
+    test "prevents promoting user to admin when admin limit is reached", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      other_actor = actor_fixture(account: account, type: :account_user)
+
+      # Set admin limit to 1 (the setup admin already counts)
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
+
+      lv
+      |> form("#actor-form",
+        actor: %{
+          "name" => other_actor.name,
+          "email" => other_actor.email,
+          "type" => "account_admin_user"
+        }
+      )
+      |> render_submit()
+
+      # The error should be visible in the rendered LV
+      html = render(lv)
+      assert html =~ "Admin user limit reached for your account"
+
+      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
+      assert updated.type == :account_user
+    end
+
+    test "allows promoting user to admin when under the limit", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      other_actor = actor_fixture(account: account, type: :account_user)
+
+      # Set admin limit to 5 (plenty of room)
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
+
+      lv
+      |> form("#actor-form",
+        actor: %{
+          "name" => other_actor.name,
+          "email" => other_actor.email,
+          "type" => "account_admin_user"
+        }
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
+      assert updated.type == :account_admin_user
+    end
+
+    test "allows promoting user to admin when limit is nil", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      other_actor = actor_fixture(account: account, type: :account_user)
+
+      # nil limit means unlimited
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: nil}
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
+
+      lv
+      |> form("#actor-form",
+        actor: %{
+          "name" => other_actor.name,
+          "email" => other_actor.email,
+          "type" => "account_admin_user"
+        }
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
+      assert updated.type == :account_admin_user
+    end
+
+    test "allows demoting admin to user even when admin limit is reached", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      other_admin = actor_fixture(account: account, type: :account_admin_user)
+
+      # Set admin limit to 1 — both admins are over the limit
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_admin.id}/edit")
+
+      lv
+      |> form("#actor-form",
+        actor: %{
+          "name" => other_admin.name,
+          "email" => other_admin.email,
+          "type" => "account_user"
+        }
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_admin.id)
+      assert updated.type == :account_user
+    end
+  end
+
+  describe "handle_event create_user admin limits" do
+    test "prevents creating admin user when admin limit is reached", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      # Set admin limit to 1 (the setup admin already counts)
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_user")
+
+      html =
+        lv
+        |> form("#user-form",
+          actor: %{
+            "name" => "New Admin",
+            "email" => "new-admin@example.com",
+            "type" => "account_admin_user",
+            "allow_email_otp_sign_in" => "true"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Admin user limit reached for your account"
+      refute Repo.get_by(Portal.Actor, account_id: account.id, email: "new-admin@example.com")
+    end
+
+    test "allows creating admin user when under the limit", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      # Set admin limit to 5 (plenty of room)
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_user")
+
+      lv
+      |> form("#user-form",
+        actor: %{
+          "name" => "New Admin",
+          "email" => "new-admin@example.com",
+          "type" => "account_admin_user",
+          "allow_email_otp_sign_in" => "true"
+        }
+      )
+      |> render_submit()
+
+      assert Repo.get_by(Portal.Actor, account_id: account.id, email: "new-admin@example.com")
+    end
   end
 
   describe "handle_event delete (extended)" do

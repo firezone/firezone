@@ -119,6 +119,17 @@ defmodule PortalAPI.ActorController do
 
   defp check_billing_limits(_account, _type), do: :ok
 
+  defp check_role_promotion_limits(account, actor, changeset) do
+    new_type = get_change(changeset, :type)
+
+    if actor.type != :account_admin_user and new_type == :account_admin_user and
+         not Billing.can_create_admin_users?(account) do
+      {:error, :forbidden, reason: "Admins limit reached"}
+    else
+      :ok
+    end
+  end
+
   operation :update,
     summary: "Update an Actor",
     parameters: [
@@ -138,9 +149,11 @@ defmodule PortalAPI.ActorController do
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "actor" => params}) do
     subject = conn.assigns.subject
+    account = subject.account
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
          changeset <- actor_changeset(actor, params),
+         :ok <- check_role_promotion_limits(account, actor, changeset),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
       render(conn, :show, actor: actor)
     else

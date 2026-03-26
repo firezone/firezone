@@ -315,6 +315,170 @@ defmodule PortalAPI.ActorControllerTest do
       assert resp["data"]["name"] == actor.name
       assert resp["data"]["type"] == attrs["type"]
     end
+
+    test "returns error when promoting to admin and admin limit reached", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_user)
+
+      # Create an admin to fill the limit
+      actor_fixture(account: account, type: :account_admin_user)
+
+      # Set admin limit to 1 (the existing admin already fills it)
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
+      )
+      |> Repo.update!()
+
+      attrs = %{"type" => "account_admin_user"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert resp = json_response(conn, 403)
+      assert resp == %{"error" => %{"reason" => "Admins limit reached"}}
+    end
+
+    test "allows promoting to admin when under the limit", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_user)
+
+      # Set admin limit to 5 (plenty of room)
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
+      )
+      |> Repo.update!()
+
+      attrs = %{"type" => "account_admin_user"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert json_response(conn, 200)
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
+               :account_admin_user
+    end
+
+    test "allows promoting to admin when limit is nil", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_user)
+
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: nil}
+      )
+      |> Repo.update!()
+
+      attrs = %{"type" => "account_admin_user"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert json_response(conn, 200)
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
+               :account_admin_user
+    end
+
+    test "allows demoting admin to user even when admin limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      admin = actor_fixture(account: account, type: :account_admin_user)
+
+      # Create a second admin so the first can be demoted
+      actor_fixture(account: account, type: :account_admin_user)
+
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
+      )
+      |> Repo.update!()
+
+      attrs = %{"type" => "account_user"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{admin.id}", actor: attrs)
+
+      assert json_response(conn, 200)
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: admin.id).type ==
+               :account_user
+    end
+
+    test "returns error when creating admin user and admin limit reached", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      # Create an admin to fill the limit
+      actor_fixture(account: account, type: :account_admin_user)
+
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
+      )
+      |> Repo.update!()
+
+      attrs = %{
+        "name" => "New Admin",
+        "email" => "new-admin@example.com",
+        "type" => "account_admin_user"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert resp = json_response(conn, 403)
+      assert resp == %{"error" => %{"reason" => "Admins limit reached"}}
+    end
+
+    test "allows creating admin user when under the limit", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      Ecto.Changeset.change(account,
+        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
+      )
+      |> Repo.update!()
+
+      attrs = %{
+        "name" => "New Admin",
+        "email" => "new-admin@example.com",
+        "type" => "account_admin_user"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert json_response(conn, 201)
+    end
   end
 
   describe "delete/2" do

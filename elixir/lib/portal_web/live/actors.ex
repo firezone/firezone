@@ -313,35 +313,12 @@ defmodule PortalWeb.Actors do
     actor = socket.assigns.actor
     changeset = changeset(actor, attrs)
 
-    # Prevent changing the last admin to account_user
-    new_type = get_change(changeset, :type)
+    case validate_role_change(changeset, actor, socket) do
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset))}
 
-    if actor.type == :account_admin_user and new_type == :account_user and
-         not other_enabled_admins_exist?(actor, socket.assigns.subject) do
-      changeset =
-        add_error(
-          changeset,
-          :type,
-          "Cannot change role. At least one admin must remain in the account."
-        )
-
-      {:noreply, assign(socket, form: to_form(changeset))}
-    else
-      case Database.update(changeset, socket.assigns.subject) do
-        {:ok, actor} ->
-          socket =
-            socket
-            |> put_flash(:success_inline, "Actor updated successfully")
-            |> reload_live_table!("actors")
-            |> push_patch(
-              to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
-            )
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset))}
-      end
+      :ok ->
+        save_actor(changeset, socket)
     end
   end
 
@@ -556,6 +533,62 @@ defmodule PortalWeb.Actors do
       end
     else
       {:noreply, put_flash(socket, :error, "Cannot send welcome email to this actor")}
+    end
+  end
+
+  defp validate_role_change(changeset, actor, socket) do
+    new_type = get_change(changeset, :type)
+
+    cond do
+      # Prevent changing the last admin to account_user
+      actor.type == :account_admin_user and new_type == :account_user and
+          not other_enabled_admins_exist?(actor, socket.assigns.subject) ->
+        changeset =
+          changeset
+          |> add_error(
+            :type,
+            "Cannot change role. At least one admin must remain in the account."
+          )
+          |> Map.put(:action, :validate)
+
+        {:error, changeset}
+
+      # Prevent promoting to admin when admin limit is reached
+      actor.type != :account_admin_user and new_type == :account_admin_user and
+          not Portal.Billing.can_create_admin_users?(
+            Database.fetch_account(socket.assigns.account.id)
+          ) ->
+        changeset =
+          changeset
+          |> add_error(
+            :type,
+            "Admin user limit reached for your account"
+          )
+          |> Map.put(:action, :validate)
+
+        {:error, changeset}
+
+      # Role change allowed
+      true ->
+        :ok
+    end
+  end
+
+  defp save_actor(changeset, socket) do
+    case Database.update(changeset, socket.assigns.subject) do
+      {:ok, actor} ->
+        socket =
+          socket
+          |> put_flash(:success_inline, "Actor updated successfully")
+          |> reload_live_table!("actors")
+          |> push_patch(
+            to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
+          )
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
 
@@ -1952,6 +1985,12 @@ defmodule PortalWeb.Actors do
       all()
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_account(account_id) do
+      from(a in Portal.Account, where: a.id == ^account_id)
+      |> Safe.unscoped(:replica)
+      |> Safe.one!(fallback_to_primary: true)
     end
 
     def get_actor(id, subject) do
