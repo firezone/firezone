@@ -1,8 +1,9 @@
 defmodule PortalAPI.Gateway.ChannelTest do
   use PortalAPI.ChannelCase, async: true
   alias Portal.Changes
-  alias Portal.{PG, PubSub}
+  alias Portal.PG
   import Portal.Cache.Cacheable, only: [to_cache: 1]
+  import Portal.SchemaHelpers, only: [struct_from_params: 2]
 
   @test_user_agent "macOS/14.0 apple-client/1.3.0"
 
@@ -589,29 +590,19 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      :ok = PubSub.Changes.subscribe(account.id)
-
-      old_data = %{
-        "id" => account.id,
-        "slug" => account.slug
-      }
-
-      data = %{
-        "id" => account.id,
-        "slug" => "new-slug"
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Accounts.on_update(lsn, old_data, data)
 
-      assert_receive %Changes.Change{
-        lsn: ^lsn,
-        old_struct: %Portal.Account{},
-        struct: %Portal.Account{slug: "new-slug"}
-      }
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: account,
+        struct: %{account | slug: "new-slug"}
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       assert_push "init", payload
 
@@ -643,30 +634,22 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
 
     test "disconnect socket when gateway is deleted", %{
-      account: account,
       gateway: gateway,
       site: site,
       token: token
     } do
-      join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
       Process.flag(:trap_exit, true)
 
-      :ok = PubSub.Changes.subscribe(account.id)
-
-      data = %{
-        "id" => gateway.id,
-        "account_id" => account.id
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Gateways.on_delete(lsn, data)
 
-      assert_receive %Changes.Change{
-        lsn: ^lsn,
-        old_struct: %Portal.Gateway{}
-      }
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: gateway
+      })
 
       assert_receive {:EXIT, _pid, _reason}
     end
@@ -882,8 +865,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       in_one_hour = DateTime.utc_now() |> DateTime.add(1, :hour)
       in_one_day = DateTime.utc_now() |> DateTime.add(1, :day)
 
-      :ok = PubSub.Changes.subscribe(account.id)
-
       policy_authorization1 =
         policy_authorization_fixture(
           account: account,
@@ -940,27 +921,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      data = %{
-        "id" => policy_authorization1.id,
-        "client_id" => client.id,
-        "resource_id" => resource.id,
-        "account_id" => account.id,
-        "token_id" => policy_authorization1.token_id,
-        "gateway_id" => gateway.id,
-        "policy_id" => policy_authorization1.policy_id,
-        "membership_id" => policy_authorization1.membership_id,
-        "expires_at" => policy_authorization1.expires_at
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
-      policy_authorization_id = policy_authorization1.id
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: policy_authorization1
+      })
 
-      assert_receive %Changes.Change{
-        lsn: ^lsn,
-        old_struct: %Portal.PolicyAuthorization{id: ^policy_authorization_id}
-      }
+      :sys.get_state(socket.channel_pid)
 
       refute_push "allow_access", _payload
       refute_push "reject_access", %{}
@@ -1006,18 +975,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      data = %{
-        "id" => policy_authorization.id,
-        "client_id" => client.id,
-        "resource_id" => resource.id,
-        "account_id" => account.id,
-        "gateway_id" => gateway.id,
-        "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.membership_id,
-        "policy_id" => policy_authorization.policy_id,
-        "expires_at" => policy_authorization.expires_at
-      }
-
       send(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
@@ -1035,7 +992,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "allow_access", %{}
 
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: policy_authorization
+      })
 
       :sys.get_state(socket.channel_pid)
 
@@ -1074,20 +1036,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      data = %{
-        "id" => policy_authorization.id,
-        "client_id" => client.id,
-        "resource_id" => resource.id,
-        "account_id" => account.id,
-        "gateway_id" => gateway.id,
-        "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.membership_id,
-        "policy_id" => policy_authorization.policy_id,
-        "expires_at" => policy_authorization.expires_at
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: policy_authorization
+      })
 
       :sys.get_state(socket.channel_pid)
 
@@ -1222,24 +1177,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
                }
              }
 
-      data = %{
-        "id" => other_policy_authorization1.id,
-        "client_id" => other_policy_authorization1.client_id,
-        "resource_id" => other_policy_authorization1.resource_id,
-        "account_id" => other_policy_authorization1.account_id,
-        "gateway_id" => other_policy_authorization1.gateway_id,
-        "token_id" => other_policy_authorization1.token_id,
-        "policy_id" => other_policy_authorization1.policy_id,
-        "membership_id" => other_policy_authorization1.membership_id,
-        "expires_at" => other_policy_authorization1.expires_at
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
-      # Synchronize with the channel to ensure the change is fully processed
-      # before asserting the push. The channel may make DB queries in
-      # reauthorize_policy_authorization which can be slow under CI load.
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: other_policy_authorization1
+      })
+
       :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{
@@ -1250,20 +1195,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert client_id == other_client.id
       assert resource_id == resource.id
 
-      data = %{
-        "id" => other_policy_authorization2.id,
-        "client_id" => other_policy_authorization2.client_id,
-        "resource_id" => other_policy_authorization2.resource_id,
-        "account_id" => other_policy_authorization2.account_id,
-        "gateway_id" => other_policy_authorization2.gateway_id,
-        "token_id" => other_policy_authorization2.token_id,
-        "policy_id" => other_policy_authorization2.policy_id,
-        "membership_id" => other_policy_authorization2.membership_id,
-        "expires_at" => other_policy_authorization2.expires_at
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: other_policy_authorization2
+      })
 
       :sys.get_state(socket.channel_pid)
 
@@ -1323,16 +1261,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      old_data = %{
-        "id" => resource.id,
-        "account_id" => resource.account_id,
-        "name" => resource.name
-      }
-
-      data = Map.put(old_data, "name", "New Resource Name")
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: resource,
+        struct: %{resource | name: "New Resource Name"}
+      })
 
       cid_bytes = Ecto.UUID.dump!(client.id)
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -1376,8 +1312,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      :ok = PubSub.Changes.subscribe(account.id)
-
       send(
         socket.channel_pid,
         {:allow_access, {channel_pid, socket_ref},
@@ -1394,36 +1328,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      old_data = %{
-        "id" => resource.id,
-        "account_id" => resource.account_id,
-        "address" => resource.address,
-        "name" => resource.name,
-        "type" => "dns",
-        "filters" => [],
-        "ip_stack" => "dual"
-      }
-
-      data = %{
-        "id" => resource.id,
-        "account_id" => resource.account_id,
-        "address" => "new-address",
-        "name" => resource.name,
-        "type" => "dns",
-        "filters" => [],
-        "ip_stack" => "dual"
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      :ok = Changes.Hooks.Resources.on_update(lsn, old_data, data)
 
-      resource_id = resource.id
-
-      assert_receive %Changes.Change{
-        lsn: ^lsn,
-        old_struct: %Portal.Resource{id: ^resource_id},
-        struct: %Portal.Resource{id: ^resource_id, address: "new-address"}
-      }
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: resource,
+        struct: %{resource | address: "new-address"}
+      })
 
       :sys.get_state(socket.channel_pid)
 
@@ -1497,7 +1409,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = Map.put(old_data, "filters", filters)
 
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       assert_push "resource_updated", payload
 
@@ -1521,7 +1441,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
       # The resource is already connected to the gateway via the setup
@@ -1544,9 +1464,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      # Trigger the resource update via the Changes hook which will broadcast to the channel
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       # Should still receive the update even though resource isn't in cache
       assert_push "resource_updated", payload
@@ -1572,7 +1499,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Create a new socket with the session set to an old version (< 1.2.0)
       session = %{build_gateway_session(gateway, token) | version: "1.1.0"}
 
-      {:ok, _, _socket} =
+      {:ok, _, socket} =
         PortalAPI.Gateway.Socket
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
@@ -1603,9 +1530,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      # Trigger the resource update
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       # Gateway with version 1.1.0 should receive the adapted resource
       assert_push "resource_updated", payload
@@ -1658,9 +1592,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Only change filters to trigger the filter-change handler
       data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
 
-      # Trigger the resource update
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       # Should not receive any update since the address can't be adapted for version < 1.2.0
       refute_push "resource_updated", _payload
@@ -1702,9 +1643,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Only change filters, not address, to trigger the filter-change handler
       data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
 
-      # Trigger the resource update
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       # Should receive the update with the adapted address (** becomes * for pre-1.2.0)
       assert_push "resource_updated", payload
@@ -1745,7 +1693,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = Map.put(old_data, "filters", filters)
 
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.Resources.on_update(lsn, old_data, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: struct_from_params(Portal.Resource, old_data),
+        struct: struct_from_params(Portal.Resource, data)
+      })
 
       :sys.get_state(socket.channel_pid)
 
@@ -2144,20 +2098,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "request_connection", %{}
 
-      data = %{
-        "id" => policy_authorization.id,
-        "client_id" => client.id,
-        "resource_id" => resource.id,
-        "account_id" => account.id,
-        "gateway_id" => gateway.id,
-        "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.membership_id,
-        "policy_id" => policy_authorization.policy_id,
-        "expires_at" => policy_authorization.expires_at
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: policy_authorization
+      })
 
       :sys.get_state(socket.channel_pid)
 
@@ -2327,26 +2274,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "authorize_flow", %{}
 
-      data = %{
-        "id" => policy_authorization.id,
-        "client_id" => client.id,
-        "resource_id" => resource.id,
-        "account_id" => account.id,
-        "gateway_id" => gateway.id,
-        "token_id" => policy_authorization.token_id,
-        "membership_id" => policy_authorization.membership_id,
-        "policy_id" => policy_authorization.policy_id,
-        "expires_at" => policy_authorization.expires_at
-      }
-
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.PolicyAuthorizations.on_delete(lsn, data)
 
-      # Synchronize with the channel process to ensure it has fully processed
-      # the %Change{} before asserting. `direct_broadcast!` places the message
-      # in the channel's mailbox before `on_delete` returns, so `:sys.get_state`
-      # (called after) is queued behind it. By the time it returns, the channel
-      # has completed `handle_change` and pushed `reject_access`.
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: policy_authorization
+      })
+
       :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{
