@@ -114,7 +114,7 @@ defmodule Portal.MixProject do
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
-      {:hammer, github: "firezone/hammer"},
+      {:hammer, github: "firezone/hammer", ref: "d7c365f"},
 
       # Observability
       {:telemetry, "~> 1.0"},
