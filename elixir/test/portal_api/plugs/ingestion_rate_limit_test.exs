@@ -6,7 +6,7 @@ defmodule PortalAPI.Plugs.IngestionRateLimitTest do
   import Portal.TokenFixtures
 
   setup do
-    account = account_fixture(limits: %{ingestion_refill_rate: 5, ingestion_capacity: 5})
+    account = account_fixture(limits: %{ingestion_refill_rate: 1, ingestion_capacity: 5})
     site = site_fixture(account: account)
     token = gateway_token_fixture(account: account, site: site)
     encoded = encode_gateway_token(token)
