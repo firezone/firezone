@@ -5,7 +5,7 @@ use super::{
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::messages::Filter;
-use crate::proptest::{domain_label, host_v4, host_v6};
+use crate::proptest::{domain_label, filters, host_v4, host_v6};
 use crate::{client, dns};
 use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -261,6 +261,14 @@ impl ReferenceState {
                     )
                 },
             )
+            .with_if_not_empty(1, state.cidr_and_dns_resources_on_client(), |resources| {
+                (sample::select(resources), filters()).prop_map(|((_, resource), new_filters)| {
+                    Transition::ChangeFiltersOfResource {
+                        resource,
+                        new_filters,
+                    }
+                })
+            })
             .with_if_not_empty(1, state.all_resource_ids(), |resource_ids| {
                 sample::select(resource_ids).prop_map(Transition::RemoveResource)
             })
@@ -648,6 +656,26 @@ impl ReferenceState {
                     })
                 }
             }
+            Transition::ChangeFiltersOfResource {
+                resource,
+                new_filters,
+            } => {
+                state
+                    .portal
+                    .change_filters_of_resource(resource.id(), new_filters.clone());
+
+                let new_resource = resource.clone().with_new_filters(new_filters.clone());
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| match &new_resource {
+                        client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
+                        client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
+                        client::Resource::Internet(_) => {
+                            unreachable!()
+                        }
+                    })
+                }
+            }
             Transition::SetInternetResourceState {
                 client_id: client,
                 active,
@@ -849,6 +877,16 @@ impl ReferenceState {
             }
             Transition::MoveResourceToNewSite { resource, new_site } => {
                 resource.sites() != BTreeSet::from([new_site])
+                    && state
+                        .clients
+                        .values()
+                        .any(|c| c.inner().has_resource(resource.id()))
+            }
+            Transition::ChangeFiltersOfResource {
+                resource,
+                new_filters,
+            } => {
+                resource.filters() != new_filters.as_slice()
                     && state
                         .clients
                         .values()

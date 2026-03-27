@@ -261,7 +261,9 @@ impl RefClient {
         let rid = r.id();
 
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r) || existing.has_different_site(&r))
+            && (existing.has_different_address(&r)
+                || existing.has_different_site(&r)
+                || existing.has_different_filters(&r))
         {
             self.remove_resource(&existing.id());
         }
@@ -281,7 +283,8 @@ impl RefClient {
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
             && (existing.has_different_address(&r)
                 || existing.has_different_ip_stack(&r)
-                || existing.has_different_site(&r))
+                || existing.has_different_site(&r)
+                || existing.has_different_filters(&r))
         {
             self.remove_resource(&existing.id());
         }

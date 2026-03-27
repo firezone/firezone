@@ -286,6 +286,24 @@ impl StubPortal {
         tracing::error!(%rid, "Unknown resource");
     }
 
+    pub(crate) fn change_filters_of_resource(
+        &mut self,
+        rid: ResourceId,
+        new_filters: Vec<crate::messages::Filter>,
+    ) {
+        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
+            resource.filters = new_filters;
+            return;
+        }
+
+        if let Some(resource) = self.dns_resources.get_mut(&rid) {
+            resource.filters = new_filters;
+            return;
+        }
+
+        tracing::error!(%rid, "Unknown resource");
+    }
+
     pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             self.sites_by_resource.insert(rid, site.id);

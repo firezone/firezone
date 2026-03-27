@@ -215,6 +215,16 @@ impl TunnelTest {
                     client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
                 }
             }
+            Transition::ChangeFiltersOfResource {
+                resource,
+                new_filters,
+            } => {
+                let new_resource = resource.with_new_filters(new_filters);
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                }
+            }
             Transition::RemoveResource(rid) => {
                 for (client_id, client) in &mut state.clients {
                     client.exec_mut(|c| c.sut.remove_resource(rid, now));

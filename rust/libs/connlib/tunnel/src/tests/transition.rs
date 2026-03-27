@@ -34,6 +34,11 @@ pub(crate) enum Transition {
     },
     /// Move a CIDR/DNS resource to a new site.
     MoveResourceToNewSite { resource: Resource, new_site: Site },
+    /// Change the traffic filters of a resource.
+    ChangeFiltersOfResource {
+        resource: Resource,
+        new_filters: Vec<Filter>,
+    },
 
     /// Toggle the Internet Resource on / off
     SetInternetResourceState { client_id: ClientId, active: bool },
@@ -145,6 +150,7 @@ impl Transition {
             | Transition::ChangeCidrResourceAddress { .. }
             | Transition::MoveResourceToNewSite { .. }
             | Transition::DeauthorizeWhileGatewayIsPartitioned(_)
+            | Transition::ChangeFiltersOfResource { .. }
             | Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. }
             | Transition::SendUdpPacket { .. }

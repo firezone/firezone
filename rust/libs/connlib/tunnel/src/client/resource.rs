@@ -205,6 +205,14 @@ impl Resource {
         }
     }
 
+    pub fn filters(&self) -> &[Filter] {
+        match self {
+            Resource::Dns(r) => &r.filters,
+            Resource::Cidr(r) => &r.filters,
+            Resource::Internet(_) => &[],
+        }
+    }
+
     /// Returns the [`Site`] of a [`Resource`] if there is exactly one site.
     pub fn site(
         &self,
@@ -257,6 +265,10 @@ impl Resource {
         self.sites() != other.sites()
     }
 
+    pub fn has_different_filters(&self, other: &Resource) -> bool {
+        self.filters() != other.filters()
+    }
+
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
             Resource::Dns(_) | Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {
@@ -299,6 +311,15 @@ impl Resource {
             }),
             Resource::StaticDevicePool(r) => Self::StaticDevicePool(r),
             Resource::DynamicDevicePool(r) => Self::DynamicDevicePool(r),
+        }
+    }
+
+    #[cfg(all(test, feature = "proptest"))]
+    pub fn with_new_filters(self, filters: Vec<Filter>) -> Self {
+        match self {
+            Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
+            Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
+            Resource::Internet(_) => self,
         }
     }
 }
