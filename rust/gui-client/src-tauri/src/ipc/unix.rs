@@ -80,7 +80,7 @@ impl Server {
         {
             // TODO: Change this to `notify_service_controller` and put it in
             // the same place in the Tunnel service's main loop as in the Headless Client.
-            sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
+            sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
         Ok(Self { listener, id })
