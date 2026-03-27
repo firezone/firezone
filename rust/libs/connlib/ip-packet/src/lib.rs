@@ -1003,7 +1003,7 @@ pub enum Ecn {
     Ce = 0b11,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum UnsupportedProtocol {
     #[error("Unsupported IP protocol: {0:?}")]
     UnsupportedIpPayload(IpNumber),
