@@ -8,7 +8,6 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -18,6 +17,7 @@ use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::gateway::unroutable_packet::UnroutablePacket;
 use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
+use crate::routing_table::{self, RoutingTable};
 use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
 
@@ -33,7 +33,7 @@ pub struct ClientOnGateway {
     resources: BTreeMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
     internet_resource_enabled: Option<ResourceId>,
-    filters: IpNetworkTable<(FilterEngine, ResourceId)>,
+    routing_table: RoutingTable<RouteEntry>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
@@ -59,7 +59,7 @@ impl ClientOnGateway {
             gateway_tun,
             flow_properties,
             resources: BTreeMap::new(),
-            filters: IpNetworkTable::new(),
+            routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
             nat_table: Default::default(),
             buffered_events: Default::default(),
@@ -86,7 +86,7 @@ impl ClientOnGateway {
         resolved_ips: BTreeSet<IpAddr>,
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
-        if self.have_proxy_ips_been_reassigned(resource_id, &name, &proxy_ips) {
+        if self.have_proxy_ips_been_reassigned(&name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
             self.nat_table = Default::default();
@@ -124,10 +124,13 @@ impl ClientOnGateway {
 
             tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
 
-            self.permanent_translations.insert(
-                proxy_ip,
-                TranslationState::new(resource_id, maybe_real_ip.copied(), name.clone()),
-            );
+            let state = self
+                .permanent_translations
+                .entry(proxy_ip)
+                .or_insert_with(|| TranslationState::new(name.clone()));
+
+            state.resources.insert(resource_id);
+            state.resolved_ip = maybe_real_ip.copied();
         }
 
         domains.insert(name, resolved_ips);
@@ -231,7 +234,6 @@ impl ClientOnGateway {
     /// reuse a proxy IP previously assigned to a different domain.
     fn have_proxy_ips_been_reassigned(
         &self,
-        resource_id: ResourceId,
         name: &DomainName,
         proxy_ips: &BTreeSet<IpAddr>,
     ) -> bool {
@@ -240,7 +242,7 @@ impl ClientOnGateway {
                 continue;
             };
 
-            if state.resource_id != resource_id || state.domain != name {
+            if state.domain != name {
                 return true;
             }
         }
@@ -253,7 +255,7 @@ impl ClientOnGateway {
     // This recalculate the ip-table rules, this allows us to remove and add resources and keep the allow-list correct
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
-        self.filters = IpNetworkTable::new();
+        self.routing_table = RoutingTable::new();
         self.recalculate_cidr_filters();
         self.recalculate_dns_filters();
 
@@ -273,25 +275,38 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                insert_filters(&mut self.filters, *ip, *id, filters);
+                let filter = FilterEngine::with_filters(filters);
+                tracing::trace!(%ip, filters = ?filter, "Installing new filters");
+                self.routing_table.upsert(
+                    *ip,
+                    RouteEntry {
+                        filter,
+                        resource_id: *id,
+                    },
+                );
             }
         }
     }
 
     fn recalculate_dns_filters(&mut self) {
-        for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
-            let Some(resource) = self.resources.get(resource_id) else {
-                continue;
-            };
+        for (addr, TranslationState { resources, .. }) in &self.permanent_translations {
+            for resource_id in resources {
+                let Some(resource) = self.resources.get(resource_id) else {
+                    continue;
+                };
 
-            debug_assert!(resource.is_dns());
+                debug_assert!(resource.is_dns());
 
-            insert_filters(
-                &mut self.filters,
-                IpNetwork::from(*addr),
-                *resource_id,
-                iter::once(resource.filters()),
-            );
+                let filter = FilterEngine::with_filters(iter::once(resource.filters()));
+                tracing::trace!(ip = %addr, filters = ?filter, "Installing new filters");
+                self.routing_table.upsert(
+                    IpNetwork::from(*addr),
+                    RouteEntry {
+                        filter,
+                        resource_id: *resource_id,
+                    },
+                );
+            }
         }
     }
 
@@ -443,7 +458,7 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
@@ -479,7 +494,7 @@ impl ClientOnGateway {
     ///
     /// If traffic with this resource is allowed, the resource ID is returned.
     fn classify_resource(
-        &self,
+        &mut self,
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> anyhow::Result<ResourceId> {
@@ -490,17 +505,17 @@ impl ClientOnGateway {
             return Ok(rid);
         }
 
-        let (_, (filter, rid)) = self
-            .filters
-            .longest_match(resource_ip)
-            .context("No filter")
+        let entry = self
+            .routing_table
+            .matches(resource_ip, protocol.clone())
             .context(NotAllowedResource(resource_ip))?;
 
-        filter
+        entry
+            .filter
             .apply(protocol)
             .context(NotAllowedResource(resource_ip))?;
 
-        Ok(*rid)
+        Ok(entry.resource_id)
     }
 
     pub fn id(&self) -> ClientId {
@@ -648,11 +663,27 @@ impl ResourceOnGateway {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct RouteEntry {
+    resource_id: ResourceId,
+    filter: FilterEngine,
+}
+
+impl routing_table::RouteEntry for RouteEntry {
+    fn filter(&self) -> &FilterEngine {
+        &self.filter
+    }
+
+    fn resource_id(&self) -> ResourceId {
+        self.resource_id
+    }
+}
+
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
 struct TranslationState {
-    /// Which (DNS) resource we belong to.
-    resource_id: ResourceId,
+    /// Which (DNS) resources we belong to.
+    resources: BTreeSet<ResourceId>,
     /// The IP we have resolved for the domain.
     resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
@@ -660,10 +691,10 @@ struct TranslationState {
 }
 
 impl TranslationState {
-    fn new(resource_id: ResourceId, resolved_ip: Option<IpAddr>, domain: DomainName) -> Self {
+    fn new(domain: DomainName) -> Self {
         Self {
-            resource_id,
-            resolved_ip,
+            resources: BTreeSet::default(),
+            resolved_ip: None,
             domain,
         }
     }
@@ -671,18 +702,6 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
-}
-
-fn insert_filters<'a>(
-    filter_store: &mut IpNetworkTable<(FilterEngine, ResourceId)>,
-    ip: IpNetwork,
-    id: ResourceId,
-    filters: impl Iterator<Item = &'a Vec<Filter>> + Clone,
-) {
-    let filter_engine = FilterEngine::with_filters(filters);
-
-    tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-    filter_store.insert(ip, (filter_engine, id));
 }
 
 #[cfg(test)]
@@ -1219,6 +1238,89 @@ mod tests {
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
     }
 
+    // Two distinct DNS resources both using "foo.com" as their address:
+    //   - foo_dns_resource:  allows UDP/80
+    //   - foo_dns_resource2: allows TCP/443
+    //
+    // setup_nat is called for each with the same proxy IP and the same domain.
+    // Because the stored domain matches the incoming name,
+    // have_proxy_ips_been_reassigned returns false and no state reset occurs.
+    // The second resource's ID is appended to state.resources while the
+    // existing TranslationState (and its resolved IP) is preserved.
+    #[test]
+    fn multiple_resources_can_share_same_proxy_ip() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_tun(),
+            gateway_tun(),
+            flow_tracker::ClientProperties::default(),
+        );
+
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(foo_dns_resource2(), None);
+
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
+        )
+        .unwrap();
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource2_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
+        )
+        .unwrap();
+
+        // A UDP/80 packet is permitted by foo_dns_resource's filter.
+        let udp_request = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            proxy_ip4_1(),
+            1,
+            foo_allowed_port(),
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(
+            matches!(
+                peer.translate_outbound(udp_request, now).unwrap(),
+                TranslateOutboundResult::Send(_)
+            ),
+            "UDP/{} packet to shared proxy IP should be forwarded",
+            foo_allowed_port(),
+        );
+
+        // A TCP/443 packet is permitted by foo_dns_resource2's filter.
+        let IpAddr::V4(proxy_ip4_1) = proxy_ip4_1() else {
+            unreachable!("proxy_ip4_1 is always IPv4")
+        };
+        let tcp_request = ip_packet::make::tcp_packet(
+            client_tun_ipv4(),
+            proxy_ip4_1,
+            2,
+            foo_allowed_port2(),
+            TcpFlags::default(),
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(
+            matches!(
+                peer.translate_outbound(tcp_request, now).unwrap(),
+                TranslateOutboundResult::Send(_)
+            ),
+            "TCP/{} packet to shared proxy IP should be forwarded",
+            foo_allowed_port2(),
+        );
+    }
+
     #[test]
     fn no_translate_outbound_icmp_error() {
         let _guard = logging::test("trace");
@@ -1261,6 +1363,20 @@ mod tests {
         )
     }
 
+    fn foo_dns_resource2() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: foo_resource2_id(),
+                address: foo_name(),
+                name: "foo2".to_string(),
+                filters: vec![Filter::Tcp(PortRange {
+                    port_range_end: foo_allowed_port2(),
+                    port_range_start: foo_allowed_port2(),
+                })],
+            },
+        )
+    }
+
     fn baz_dns_resource() -> crate::messages::gateway::ResourceDescription {
         crate::messages::gateway::ResourceDescription::Dns(
             crate::messages::gateway::ResourceDescriptionDns {
@@ -1296,6 +1412,10 @@ mod tests {
 
     fn foo_allowed_port() -> u16 {
         80
+    }
+
+    fn foo_allowed_port2() -> u16 {
+        443
     }
 
     fn bar_allowed_port() -> u16 {
@@ -1382,6 +1502,10 @@ mod tests {
 
     fn foo_resource_id() -> ResourceId {
         "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
+    }
+
+    fn foo_resource2_id() -> ResourceId {
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa".parse().unwrap()
     }
 
     fn bar_resource_id() -> ResourceId {
