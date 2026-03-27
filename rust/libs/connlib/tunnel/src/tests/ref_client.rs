@@ -609,9 +609,7 @@ impl RefClient {
         proto: Protocol,
     ) -> Option<DnsResource> {
         self.dns_resource_by_domain(domain, |r| {
-            FilterEngine::with_filters(iter::once(&r.filters))
-                .apply(Ok(proto))
-                .is_ok()
+            FilterEngine::new(&r.filters).apply(Ok(proto)).is_ok()
         })
     }
 
@@ -769,9 +767,7 @@ impl RefClient {
         proto: Protocol,
     ) -> Option<ResourceId> {
         self.cidr_resource_by_ip(ip, |r| {
-            FilterEngine::with_filters(iter::once(&r.filters))
-                .apply(Ok(proto))
-                .is_ok()
+            FilterEngine::new(&r.filters).apply(Ok(proto)).is_ok()
         })
     }
 
@@ -875,7 +871,7 @@ impl RefClient {
         };
 
         let maybe_active_cidr_resource = self.cidr_resource_by_ip(server.ip(), |r| {
-            let filter_engine = FilterEngine::with_filters(iter::once(&r.filters));
+            let filter_engine = FilterEngine::new(&r.filters);
 
             filter_engine.apply(Ok(Protocol::Udp(53))).is_ok()
                 && filter_engine.apply(Ok(Protocol::Tcp(53))).is_ok()

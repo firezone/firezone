@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque, btree_map};
-use std::iter;
 use std::net::IpAddr;
 use std::time::Instant;
 
@@ -267,7 +266,7 @@ impl ClientOnGateway {
     fn recalculate_cidr_filters(&mut self) {
         for (id, resource) in self.resources.iter().filter(|(_, r)| r.is_cidr()) {
             for ip in &resource.ips() {
-                let filter = FilterEngine::with_filters(iter::once(resource.filters()));
+                let filter = FilterEngine::new(resource.filters());
                 tracing::trace!(%ip, filters = ?filter, "Installing new filters");
                 self.routing_table.upsert(
                     *ip,
@@ -289,7 +288,7 @@ impl ClientOnGateway {
 
                 debug_assert!(resource.is_dns());
 
-                let filter = FilterEngine::with_filters(iter::once(resource.filters()));
+                let filter = FilterEngine::new(resource.filters());
                 tracing::trace!(ip = %addr, filters = ?filter, "Installing new filters");
                 self.routing_table.upsert(
                     IpNetwork::from(*addr),
@@ -597,13 +596,11 @@ impl ResourceOnGateway {
         }
     }
 
-    fn filters(&self) -> &Vec<Filter> {
-        const EMPTY: &Vec<Filter> = &Vec::new();
-
+    fn filters(&self) -> &[Filter] {
         match self {
             ResourceOnGateway::Cidr { filters, .. } => filters,
             ResourceOnGateway::Dns { filters, .. } => filters,
-            ResourceOnGateway::Internet { .. } => EMPTY,
+            ResourceOnGateway::Internet { .. } => &[],
         }
     }
 

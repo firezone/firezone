@@ -1682,7 +1682,7 @@ impl ClientState {
                                 resource_id: *rid,
                                 domain: record.domain.clone(),
                                 pattern: pattern.clone(),
-                                filter: FilterEngine::with_filters(iter::once(&dns.filters)),
+                                filter: FilterEngine::new(&dns.filters),
                             },
                         );
                     }
@@ -1844,7 +1844,7 @@ impl ClientState {
                 cidr.address,
                 CidrEntry {
                     resource_id: cidr.id,
-                    filter: FilterEngine::with_filters(iter::once(&cidr.filters)),
+                    filter: FilterEngine::new(&cidr.filters),
                 },
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
