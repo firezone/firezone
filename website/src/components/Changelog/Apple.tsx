@@ -30,6 +30,9 @@ export default function Apple() {
           non-routable addresses (loopback, link-local), preventing tunnel
           bootstrap failures.
         </ChangeItem>
+        <ChangeItem pull={12684}>
+          Takes into account traffic filters when routing packets to resources.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.14" date={new Date("2026-03-17")}>
         <ChangeItem pull={12407}>

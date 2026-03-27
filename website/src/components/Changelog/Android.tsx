@@ -24,6 +24,9 @@ export default function Android() {
         <ChangeItem pull={12416}>
           Does not send a notification in case the user explicitly signs out.
         </ChangeItem>
+        <ChangeItem pull={12684}>
+          Takes into account traffic filters when routing packets to resources.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2026-03-24")}>
         <ChangeItem pull={12355}>
