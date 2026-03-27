@@ -235,7 +235,7 @@ windows-implement = "0.60.0"
 windows-native-keyring-store = "0.4.0"
 windows-service = "0.8.0"
 winreg = "0.56.0"
-zbus = "5.13.1"
+zbus = "5.14.0"
 zip = { version = "8.0.0", default-features = false }
 
 [workspace.lints.clippy]
