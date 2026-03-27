@@ -138,18 +138,17 @@ impl ResourceStubResolver {
         };
 
         let is_new = self.dns_resources.insert(Resource {
-            pattern: parsed_pattern,
+            pattern: parsed_pattern.clone(),
             id,
             ip_stack,
         });
-        let has_records = self
+        let overlaps_with_resolved_domain = self
             .fqdn_to_ips
-            .values()
-            .flat_map(|(_, r)| r)
-            .any(|(_, r)| r == &id);
+            .keys()
+            .any(|domain| parsed_pattern.matches(&Candidate::from_domain(domain)));
 
-        // If we have pre-initialized records, we need to update the routing table which happens via `Event::RecordsChanged`.
-        if is_new && has_records {
+        // Required to update the routing table correctly.
+        if is_new || overlaps_with_resolved_domain {
             self.events.push_back(Event::RecordsChanged(self.records()));
         }
 
@@ -218,7 +217,7 @@ impl ResourceStubResolver {
             self.ips_to_fqdn.insert(*ip, fqdn.clone());
         }
         for resource in resources {
-            assigned_resources.insert((resource.pattern, resource.id));
+            records_changed |= assigned_resources.insert((resource.pattern, resource.id));
         }
 
         let ips = ips.clone();
