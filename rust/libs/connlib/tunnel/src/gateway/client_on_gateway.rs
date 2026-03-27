@@ -18,7 +18,6 @@ use crate::gateway::unroutable_packet::UnroutablePacket;
 use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
 use crate::routing_table::{self, RoutingTable};
-use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
 
 /// The state of one client on a gateway.
@@ -268,14 +267,7 @@ impl ClientOnGateway {
     fn recalculate_cidr_filters(&mut self) {
         for (id, resource) in self.resources.iter().filter(|(_, r)| r.is_cidr()) {
             for ip in &resource.ips() {
-                let filters = self.resources.values().filter_map(|r| {
-                    r.ips()
-                        .iter()
-                        .any(|r_ip| network_contains_network(*r_ip, *ip))
-                        .then_some(r.filters())
-                });
-
-                let filter = FilterEngine::with_filters(filters);
+                let filter = FilterEngine::with_filters(iter::once(resource.filters()));
                 tracing::trace!(%ip, filters = ?filter, "Installing new filters");
                 self.routing_table.upsert(
                     *ip,

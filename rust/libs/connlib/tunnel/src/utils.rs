@@ -57,10 +57,6 @@ pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String,
         .collect()
 }
 
-pub(crate) fn network_contains_network(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
-    ip_a.contains(ip_b.network_address()) && ip_a.netmask() <= ip_b.netmask()
-}
-
 #[expect(dead_code)]
 pub(crate) fn ipv4(ip: IpNetwork) -> Option<Ipv4Network> {
     match ip {
