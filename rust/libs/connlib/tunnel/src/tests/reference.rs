@@ -238,6 +238,14 @@ impl ReferenceState {
                 sample::select(resources)
                     .prop_map(|(_, resource)| Transition::AddResource(resource))
             })
+            .with_if_not_empty(
+                5,
+                state.unknown_dns_resources_for_already_queried_domains(),
+                |resources| {
+                    sample::select(resources)
+                        .prop_map(|(_, resource)| Transition::AddResource(resource))
+                },
+            )
             .with_if_not_empty(1, state.cidr_resources_on_client(), |resources| {
                 (sample::select(resources), cidr_resource_address()).prop_map(
                     |((_, resource), new_address)| Transition::ChangeCidrResourceAddress {
@@ -1386,6 +1394,41 @@ impl ReferenceState {
                 all_resources.retain(|r| !client.inner().has_resource(r.id()));
 
                 all_resources.into_iter().map(|r| (*id, r))
+            })
+            .collect()
+    }
+
+    /// DNS resources not yet known to a client but whose address pattern matches a domain that
+    /// client has already queried.
+    ///
+    /// connlib's `StubResolver` allows associating different resources with the same IPs and that
+    /// state needs to be correct, even if we add a new resource that we have already assigned IPs for.
+    fn unknown_dns_resources_for_already_queried_domains(
+        &self,
+    ) -> Vec<(ClientId, client::Resource)> {
+        let all_resources = self.portal.all_resources();
+
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                let ref_client = client.inner();
+                let queried_domains: Vec<_> = ref_client.dns_records.keys().cloned().collect();
+
+                all_resources
+                    .iter()
+                    .filter(|r| {
+                        let client::Resource::Dns(dns) = r else {
+                            return false;
+                        };
+
+                        !ref_client.has_resource(dns.id)
+                            && queried_domains
+                                .iter()
+                                .any(|domain| is_subdomain(domain, &dns.address))
+                    })
+                    .cloned()
+                    .map(move |r| (*client_id, r))
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
