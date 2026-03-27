@@ -145,18 +145,18 @@ defmodule PortalWeb.Clients.Index do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Presence.Clients, ClientSession, Safe}
-    alias Portal.Client
+    alias Portal.{ClientSession, Device, Presence.Clients, Safe}
 
     def list_clients(subject, opts \\ []) do
       base_query =
-        from(c in Client, as: :clients)
+        from(c in Device, as: :clients)
+        |> where([clients: c], c.type == :client)
         |> join(
           :left_lateral,
           [clients: c],
           s in subquery(
             from(s in ClientSession,
-              where: s.client_id == parent_as(:clients).id,
+              where: s.device_id == parent_as(:clients).id,
               where: s.account_id == parent_as(:clients).account_id,
               order_by: [desc: s.inserted_at],
               limit: 1

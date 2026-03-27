@@ -98,11 +98,11 @@ defmodule PortalWeb.Gateways.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv4 Address</:label>
-            <:value>{@gateway.ipv4_address.address}</:value>
+            <:value>{@gateway.ipv4}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv6 Address</:label>
-            <:value>{@gateway.ipv6_address.address}</:value>
+            <:value>{@gateway.ipv6}</:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
@@ -179,15 +179,14 @@ defmodule PortalWeb.Gateways.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Safe
-    alias Portal.Gateway
-    alias Portal.GatewaySession
+    alias Portal.{Device, GatewaySession, Safe}
 
     def get_gateway!(id, subject) do
       gateway =
-        from(g in Gateway, as: :gateways)
+        from(g in Device, as: :gateways)
+        |> where([gateways: g], g.type == :gateway)
         |> where([gateways: g], g.id == ^id)
-        |> preload([:site, :ipv4_address, :ipv6_address])
+        |> preload(:site)
         |> Safe.scoped(subject, :replica)
         |> Safe.one!(fallback_to_primary: true)
 
@@ -197,7 +196,7 @@ defmodule PortalWeb.Gateways.Show do
     defp preload_latest_session(gateway) do
       session =
         from(s in GatewaySession,
-          where: s.gateway_id == ^gateway.id,
+          where: s.device_id == ^gateway.id,
           where: s.account_id == ^gateway.account_id,
           order_by: [desc: s.inserted_at],
           limit: 1

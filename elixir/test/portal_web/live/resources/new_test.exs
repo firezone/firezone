@@ -368,7 +368,7 @@ defmodule PortalWeb.Live.Resources.NewTest do
     assert flash["success"] =~ "Resource My Device Pool created successfully"
 
     member =
-      Repo.get_by(Portal.StaticDevicePoolMember, %{resource_id: resource.id, client_id: client.id})
+      Repo.get_by(Portal.StaticDevicePoolMember, %{resource_id: resource.id, device_id: client.id})
 
     assert member
   end

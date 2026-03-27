@@ -1,14 +1,14 @@
 defmodule Portal.Crypto do
-  alias Portal.{Client, Gateway}
+  alias Portal.Device
 
   @doc """
   Generates a WireGuard pre-shared key for a client-gateway or client-to-client pair.
   A distinct salt prefix is used for each pair type to avoid key reuse.
   """
   def psk(
-        %Client{id: client_a_id, psk_base: client_a_psk_base},
+        %Device{type: :client, id: client_a_id, psk_base: client_a_psk_base},
         client_a_pubkey,
-        %Client{id: client_b_id, psk_base: client_b_psk_base},
+        %Device{type: :client, id: client_b_id, psk_base: client_b_psk_base},
         client_b_pubkey
       )
       when not (is_nil(client_a_id) or is_nil(client_a_pubkey) or is_nil(client_a_psk_base) or
@@ -20,9 +20,9 @@ defmodule Portal.Crypto do
   end
 
   def psk(
-        %Client{id: client_id, psk_base: client_psk_base},
+        %Device{type: :client, id: client_id, psk_base: client_psk_base},
         client_pubkey,
-        %Gateway{id: gateway_id, psk_base: gateway_psk_base},
+        %Device{type: :gateway, id: gateway_id, psk_base: gateway_psk_base},
         gateway_pubkey
       )
       when not (is_nil(client_id) or is_nil(client_pubkey) or is_nil(client_psk_base) or

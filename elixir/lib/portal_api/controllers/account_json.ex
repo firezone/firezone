@@ -57,7 +57,7 @@ defmodule PortalAPI.AccountJSON do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Actor
-    alias Portal.Client
+    alias Portal.Device
 
     def count_users_for_account(account) do
       from(a in Actor,
@@ -90,10 +90,11 @@ defmodule PortalAPI.AccountJSON do
     end
 
     def count_1m_active_users_for_account(account) do
-      from(c in Client, as: :clients)
+      from(c in Device, as: :clients)
+      |> where([clients: c], c.type == :client)
       |> where([clients: c], c.account_id == ^account.id)
       |> join(:inner, [clients: c], s in Portal.ClientSession,
-        on: s.client_id == c.id and s.account_id == c.account_id,
+        on: s.device_id == c.id and s.account_id == c.account_id,
         as: :session
       )
       |> where([session: s], s.inserted_at > ago(1, "month"))

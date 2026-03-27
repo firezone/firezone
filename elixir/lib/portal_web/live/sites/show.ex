@@ -231,7 +231,7 @@ defmodule PortalWeb.Sites.Show do
               </code>
             </:col>
             <:col :let={gateway} label="version">
-              <.version_status outdated={Portal.Gateway.gateway_outdated?(gateway)} />
+              <.version_status outdated={Portal.Device.gateway_outdated?(gateway)} />
               {gateway.latest_session && gateway.latest_session.version}
             </:col>
             <:col :let={gateway} label="status">
@@ -504,7 +504,7 @@ defmodule PortalWeb.Sites.Show do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Gateway
+    alias Portal.Device
 
     def get_site!(id, subject) do
       from(s in Portal.Site, as: :sites)
@@ -520,7 +520,8 @@ defmodule PortalWeb.Sites.Show do
     end
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateway, as: :gateways)
+      from(g in Device, as: :gateways)
+      |> where([gateways: g], g.type == :gateway)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
@@ -545,13 +546,13 @@ defmodule PortalWeb.Sites.Show do
       sessions_by_gateway_id =
         from(s in Portal.GatewaySession,
           where: s.account_id in ^account_ids,
-          where: s.gateway_id in ^gateway_ids,
-          distinct: s.gateway_id,
-          order_by: [asc: s.gateway_id, desc: s.inserted_at]
+          where: s.device_id in ^gateway_ids,
+          distinct: s.device_id,
+          order_by: [asc: s.device_id, desc: s.inserted_at]
         )
         |> Safe.unscoped(:replica)
         |> Safe.all()
-        |> Map.new(&{&1.gateway_id, &1})
+        |> Map.new(&{&1.device_id, &1})
 
       Enum.map(gateways, fn gateway ->
         %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}
@@ -590,7 +591,10 @@ defmodule PortalWeb.Sites.Show do
 
     def count_site_deletion_stats(site, subject) do
       gateways =
-        from(g in Gateway, where: g.site_id == ^site.id)
+        from(g in Device,
+          where: g.type == :gateway,
+          where: g.site_id == ^site.id
+        )
         |> Safe.scoped(subject, :replica)
         |> Safe.aggregate(:count)
 

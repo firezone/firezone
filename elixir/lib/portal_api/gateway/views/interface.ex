@@ -1,10 +1,10 @@
 defmodule PortalAPI.Gateway.Views.Interface do
-  alias Portal.Gateway
+  alias Portal.Device
 
-  def render(%Gateway{} = gateway) do
+  def render(%Device{} = gateway) do
     %{
-      ipv4: gateway.ipv4_address.address,
-      ipv6: gateway.ipv6_address.address
+      ipv4: gateway.ipv4,
+      ipv6: gateway.ipv6
     }
   end
 end

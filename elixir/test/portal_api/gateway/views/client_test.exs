@@ -2,14 +2,13 @@
 
 defmodule PortalAPI.Gateway.Views.ClientTest do
   use ExUnit.Case, async: true
-  alias Portal.{Client, IPv4Address, IPv6Address}
+  alias Portal.Device
 
   defp client do
-    %Client{
-      ipv4_address: %IPv4Address{address: %Postgrex.INET{address: {100, 64, 0, 1}}},
-      ipv6_address: %IPv6Address{
-        address: %Postgrex.INET{address: {64_768, 8_225, 4_369, 0, 0, 0, 0, 1}}
-      }
+    %Device{
+      type: :client,
+      ipv4: %Postgrex.INET{address: {100, 64, 0, 1}},
+      ipv6: %Postgrex.INET{address: {64_768, 8_225, 4_369, 0, 0, 0, 0, 1}}
     }
   end
 

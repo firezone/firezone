@@ -4,18 +4,18 @@ defmodule Portal.Presence do
     pubsub_server: Portal.PubSub
 
   alias Portal.PubSub
-  alias Portal.Client
-  alias Portal.Gateway
+  alias Portal.Device
 
   defmodule Clients do
-    def connect(%Client{} = client, token_id, session_meta \\ %{}) do
-      with :ok <- __MODULE__.Account.track(client.account_id, client.id, session_meta),
-           :ok <- __MODULE__.Actor.track(client.actor_id, client.id, token_id) do
+    def connect(device, token_id, session_meta \\ %{})
+
+    def connect(%Device{type: :client} = device, token_id, session_meta) do
+      with :ok <- __MODULE__.Account.track(device.account_id, device.id, session_meta),
+           :ok <- __MODULE__.Actor.track(device.actor_id, device.id, token_id) do
         :ok
       end
     end
 
-    # Functions moved from Portal.Clients
     @doc false
     def preload_clients_presence([client]) do
       __MODULE__.Account.get(client.account_id, client.id)
@@ -27,7 +27,6 @@ defmodule Portal.Presence do
     end
 
     def preload_clients_presence(clients) do
-      # we fetch list of account clients for every account_id present in the clients list
       connected_clients =
         clients
         |> Enum.map(& &1.account_id)
@@ -200,12 +199,11 @@ defmodule Portal.Presence do
   end
 
   defmodule Gateways do
-    def connect(%Gateway{} = gateway, token_id, session_meta \\ %{}) do
-      # Site must be tracked before Account so that when the Account presence
-      # broadcast fires and the LiveView reloads, site presence is already
-      # visible via Portal.Presence.Gateways.Site.list/1.
-      with :ok <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id),
-           :ok <- __MODULE__.Account.track(gateway.account_id, gateway.id, session_meta) do
+    def connect(device, token_id, session_meta \\ %{})
+
+    def connect(%Device{type: :gateway} = device, token_id, session_meta) do
+      with :ok <- __MODULE__.Site.track(device.site_id, device.id, token_id),
+           :ok <- __MODULE__.Account.track(device.account_id, device.id, session_meta) do
         :ok
       end
     end
@@ -228,9 +226,10 @@ defmodule Portal.Presence do
     end
 
     defp gateway_from_presence_meta(gateway_id, account_id, meta) do
-      %Gateway{
+      %Device{
         id: gateway_id,
         account_id: account_id,
+        type: :gateway,
         site_id: meta.site_id,
         psk_base: meta.psk_base,
         online?: true,
@@ -259,7 +258,6 @@ defmodule Portal.Presence do
     end
 
     def preload_gateways_presence(gateways) do
-      # we fetch list of account gateways for every account_id present in the gateways list
       connected_gateways =
         gateways
         |> Enum.map(& &1.account_id)

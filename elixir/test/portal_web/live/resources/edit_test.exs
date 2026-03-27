@@ -222,12 +222,12 @@ defmodule PortalWeb.Live.Resources.EditTest do
 
     assert Repo.get_by(Portal.StaticDevicePoolMember, %{
              resource_id: resource.id,
-             client_id: new_client.id
+             device_id: new_client.id
            })
 
     assert Repo.get_by(Portal.StaticDevicePoolMember, %{
              resource_id: resource.id,
-             client_id: existing_client.id
+             device_id: existing_client.id
            })
   end
 
@@ -294,12 +294,12 @@ defmodule PortalWeb.Live.Resources.EditTest do
 
     assert Repo.get_by(Portal.StaticDevicePoolMember, %{
              resource_id: resource.id,
-             client_id: client_to_keep.id
+             device_id: client_to_keep.id
            })
 
     refute Repo.get_by(Portal.StaticDevicePoolMember, %{
              resource_id: resource.id,
-             client_id: client_to_remove.id
+             device_id: client_to_remove.id
            })
   end
 end

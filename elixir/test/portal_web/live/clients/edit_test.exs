@@ -151,7 +151,7 @@ defmodule PortalWeb.Live.Clients.EditTest do
 
     assert_redirected(lv, ~p"/#{account}/clients/#{client}")
 
-    assert updated_client = Repo.get_by(Portal.Client, id: client.id)
+    assert updated_client = Repo.get_by(Portal.Device, id: client.id, type: :client)
     assert updated_client.name == attrs.name
   end
 end

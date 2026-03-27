@@ -112,9 +112,8 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     entra_directories
     okta_directories
     google_directories
-    clients
+    devices
     sites
-    gateways
     gateway_tokens
     policies
     resources
@@ -163,10 +162,9 @@ config :portal, Portal.Changes.ReplicationConnection,
     accounts
     actors
     memberships
-    clients
+    devices
     external_identities
     policy_authorizations
-    gateways
     gateway_tokens
     sites
     policies

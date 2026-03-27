@@ -29,7 +29,7 @@ defmodule PortalAPI.GatewayController do
     list_opts =
       params
       |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, [:online?, :ipv4_address, :ipv6_address])
+      |> Keyword.put(:preload, [:online?])
 
     list_opts =
       if site_id = params["site_id"] do
@@ -110,11 +110,12 @@ defmodule PortalAPI.GatewayController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Gateway
+    alias Portal.Device
     alias Portal.Presence
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateway, as: :gateways)
+      from(d in Device, as: :gateways)
+      |> where([gateways: d], d.type == :gateway)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
@@ -144,15 +145,14 @@ defmodule PortalAPI.GatewayController do
     end
 
     defp filter_by_site_id(queryable, site_id) do
-      dynamic = dynamic([gateways: g], g.site_id == ^site_id)
+      dynamic = dynamic([gateways: d], d.site_id == ^site_id)
       {queryable, dynamic}
     end
 
     def fetch_gateway(id, subject) do
       result =
-        from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.id == ^id)
-        |> preload([:ipv4_address, :ipv6_address])
+        from(d in Device, as: :gateways)
+        |> where([gateways: d], d.id == ^id and d.type == :gateway)
         |> Safe.scoped(subject, :replica)
         |> Safe.one()
 

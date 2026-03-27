@@ -213,10 +213,10 @@
 #
 #     gateway1 =
 #       Repo.insert!(
-#         %Portal.Gateway{
+#         %Portal.Device{
 #           account_id: account.id,
 #           site_id: site.id,
-#           external_id: "test-gateway-us-east",
+#           firezone_id: "test-gateway-us-east",
 #           name: "Gateway US East",
 #           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
 #           last_seen_user_agent: "Linux/1.0.0",
@@ -229,10 +229,10 @@
 #
 #     gateway2 =
 #       Repo.insert!(
-#         %Portal.Gateway{
+#         %Portal.Device{
 #           account_id: account.id,
 #           group_id: group.id,
-#           external_id: "test-gateway-eu-west",
+#           firezone_id: "test-gateway-eu-west",
 #           name: "Gateway EU West",
 #           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
 #           last_seen_user_agent: "Linux/1.0.1",

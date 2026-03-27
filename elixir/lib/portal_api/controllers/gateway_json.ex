@@ -1,5 +1,6 @@
 defmodule PortalAPI.GatewayJSON do
   alias PortalAPI.Pagination
+  alias Portal.Device
 
   @doc """
   Renders a list of Gateways.
@@ -18,13 +19,13 @@ defmodule PortalAPI.GatewayJSON do
     %{data: data(gateway)}
   end
 
-  defp data(%Portal.Gateway{} = gateway) do
+  defp data(%Device{} = device) do
     %{
-      id: gateway.id,
-      name: gateway.name,
-      ipv4: gateway.ipv4_address.address,
-      ipv6: gateway.ipv6_address.address,
-      online: gateway.online?
+      id: device.id,
+      name: device.name,
+      ipv4: device.ipv4,
+      ipv6: device.ipv6,
+      online: device.online?
     }
   end
 end

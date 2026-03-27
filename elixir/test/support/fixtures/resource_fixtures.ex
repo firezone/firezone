@@ -217,9 +217,9 @@ defmodule Portal.ResourceFixtures do
         %{
           account_id: account.id,
           resource_id: resource.id,
-          client_id: client.id
+          device_id: client.id
         },
-        [:account_id, :resource_id, :client_id]
+        [:account_id, :resource_id, :device_id]
       )
       |> Portal.StaticDevicePoolMember.changeset()
       |> Portal.Repo.insert!()

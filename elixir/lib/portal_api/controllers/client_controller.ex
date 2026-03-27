@@ -31,7 +31,7 @@ defmodule PortalAPI.ClientController do
     list_opts =
       params
       |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, [:online?, :ipv4_address, :ipv6_address])
+      |> Keyword.put(:preload, [:online?])
 
     with {:ok, clients, metadata} <- Database.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
@@ -99,15 +99,15 @@ defmodule PortalAPI.ClientController do
     Error.handle(conn, {:error, :bad_request})
   end
 
-  defp update_changeset(client, attrs) do
+  defp update_changeset(device, attrs) do
     import Ecto.Changeset
     update_fields = ~w[name]a
-    required_fields = ~w[external_id name]a
+    required_fields = ~w[firezone_id name]a
 
-    client
+    device
     |> cast(attrs, update_fields)
     |> validate_required(required_fields)
-    |> Portal.Client.changeset()
+    |> Portal.Device.changeset()
   end
 
   operation(:verify,
@@ -196,10 +196,11 @@ defmodule PortalAPI.ClientController do
   defmodule Database do
     import Ecto.Query
     alias Portal.{Presence.Clients, Safe}
-    alias Portal.Client
+    alias Portal.Device
 
     def list_clients(subject, opts \\ []) do
-      from(c in Client, as: :clients)
+      from(d in Device, as: :clients)
+      |> where([clients: d], d.type == :client)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
@@ -219,9 +220,8 @@ defmodule PortalAPI.ClientController do
 
     def fetch_client(id, subject) do
       result =
-        from(c in Client, as: :clients)
-        |> where([clients: c], c.id == ^id)
-        |> preload([:ipv4_address, :ipv6_address])
+        from(d in Device, as: :clients)
+        |> where([clients: d], d.id == ^id and d.type == :client)
         |> Safe.scoped(subject, :replica)
         |> Safe.one()
 

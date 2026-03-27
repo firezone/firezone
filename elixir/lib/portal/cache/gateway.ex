@@ -20,7 +20,7 @@ defmodule Portal.Cache.Gateway do
     = ~ 7 MB
   """
 
-  alias Portal.{Cache, Gateway}
+  alias Portal.{Cache, Device}
   alias __MODULE__.Database
   import Ecto.UUID, only: [dump!: 1, load!: 1]
 
@@ -39,7 +39,7 @@ defmodule Portal.Cache.Gateway do
   @doc """
     Fetches relevant policy_authorizations from the DB and transforms them into the cache format.
   """
-  @spec hydrate(Gateway.t()) :: t()
+  @spec hydrate(Device.t()) :: t()
   def hydrate(gateway) do
     OpenTelemetry.Tracer.with_span "Portal.Cache.hydrate_policy_authorizations",
       attributes: %{
@@ -148,7 +148,7 @@ defmodule Portal.Cache.Gateway do
   end
 
   defp policy_authorization_key(%Portal.PolicyAuthorization{
-         client_id: client_id,
+         initiating_device_id: client_id,
          resource_id: resource_id
        }) do
     {dump!(client_id), dump!(resource_id)}
@@ -226,16 +226,16 @@ defmodule Portal.Cache.Gateway do
 
     @infinity ~U[9999-12-31 23:59:59.999999Z]
 
-    def all_gateway_policy_authorizations_for_cache!(%Portal.Gateway{} = gateway) do
+    def all_gateway_policy_authorizations_for_cache!(%{account_id: _, id: _} = gateway) do
       now = DateTime.utc_now()
 
       from(f in Portal.PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^gateway.account_id)
-      |> where([policy_authorizations: f], f.gateway_id == ^gateway.id)
+      |> where([policy_authorizations: f], f.receiving_device_id == ^gateway.id)
       |> where([policy_authorizations: f], f.expires_at > ^now)
       |> select(
         [policy_authorizations: f],
-        {{f.client_id, f.resource_id}, {f.id, f.expires_at}}
+        {{f.initiating_device_id, f.resource_id}, {f.id, f.expires_at}}
       )
       |> Safe.unscoped(:replica)
       |> Safe.all()
@@ -243,7 +243,8 @@ defmodule Portal.Cache.Gateway do
 
     def fetch_client_by_id(account_id, id) do
       client =
-        from(c in Portal.Client, as: :clients)
+        from(c in Portal.Device, as: :clients)
+        |> where([clients: c], c.type == :client)
         |> where([clients: c], c.account_id == ^account_id and c.id == ^id)
         |> Safe.unscoped(:replica)
         |> Safe.one()
@@ -257,7 +258,8 @@ defmodule Portal.Cache.Gateway do
 
     def fetch_gateway_by_id(account_id, id) do
       result =
-        from(g in Portal.Gateway, as: :gateways)
+        from(g in Portal.Device, as: :gateways)
+        |> where([gateways: g], g.type == :gateway)
         |> where([gateways: g], g.account_id == ^account_id and g.id == ^id)
         |> Safe.unscoped(:replica)
         |> Safe.one()
@@ -325,11 +327,14 @@ defmodule Portal.Cache.Gateway do
 
     def reauthorize_policy_authorization(%Portal.PolicyAuthorization{} = policy_authorization) do
       with {:ok, client} <-
-             fetch_client_by_id(policy_authorization.account_id, policy_authorization.client_id),
+             fetch_client_by_id(
+               policy_authorization.account_id,
+               policy_authorization.initiating_device_id
+             ),
            {:ok, session} <-
              fetch_latest_session_for_client(
                policy_authorization.account_id,
-               policy_authorization.client_id
+               policy_authorization.initiating_device_id
              ),
            {:ok, token} <-
              fetch_client_token_by_id(
@@ -337,7 +342,10 @@ defmodule Portal.Cache.Gateway do
                policy_authorization.token_id
              ),
            {:ok, gateway} <-
-             fetch_gateway_by_id(policy_authorization.account_id, policy_authorization.gateway_id),
+             fetch_gateway_by_id(
+               policy_authorization.account_id,
+               policy_authorization.receiving_device_id
+             ),
            # We only want to reauthorize the resource for this gateway if the resource is still connected to its
            # site.
            policies when policies != [] <-
@@ -366,8 +374,8 @@ defmodule Portal.Cache.Gateway do
              create_policy_authorization_changeset(%{
                token_id: policy_authorization.token_id,
                policy_id: policy.id,
-               client_id: policy_authorization.client_id,
-               gateway_id: policy_authorization.gateway_id,
+               initiating_device_id: policy_authorization.initiating_device_id,
+               receiving_device_id: policy_authorization.receiving_device_id,
                resource_id: policy_authorization.resource_id,
                membership_id: membership_id,
                account_id: policy_authorization.account_id,
@@ -398,7 +406,7 @@ defmodule Portal.Cache.Gateway do
     defp fetch_latest_session_for_client(account_id, client_id) do
       result =
         from(s in Portal.ClientSession,
-          where: s.account_id == ^account_id and s.client_id == ^client_id,
+          where: s.account_id == ^account_id and s.device_id == ^client_id,
           order_by: [desc: s.inserted_at],
           limit: 1
         )
@@ -480,7 +488,7 @@ defmodule Portal.Cache.Gateway do
 
     defp ensure_client_conforms_policy_conditions(
            %Portal.Policy{} = policy,
-           %Portal.Client{} = client,
+           client,
            %Portal.ClientSession{} = session,
            auth_provider_id
          ) do
@@ -494,7 +502,7 @@ defmodule Portal.Cache.Gateway do
 
     defp ensure_client_conforms_policy_conditions(
            %Portal.Cache.Cacheable.Policy{} = policy,
-           %Portal.Client{} = client,
+           client,
            %Portal.ClientSession{} = session,
            auth_provider_id
          ) do
@@ -526,7 +534,8 @@ defmodule Portal.Cache.Gateway do
     end
 
     defp create_policy_authorization_changeset(attrs) do
-      fields = ~w[token_id policy_id client_id gateway_id resource_id membership_id
+      fields =
+        ~w[token_id policy_id initiating_device_id receiving_device_id resource_id membership_id
                   account_id
                   expires_at
                   client_remote_ip client_user_agent

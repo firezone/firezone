@@ -1,5 +1,5 @@
 defmodule Portal.ComponentVersions do
-  alias Portal.{Client, ComponentVersions}
+  alias Portal.{ComponentVersions, Device}
   use Supervisor
   require Logger
 
@@ -27,7 +27,7 @@ defmodule Portal.ComponentVersions do
     ComponentVersions.component_version(:gateway)
   end
 
-  def client_version(%Client{} = client) do
+  def client_version(%Device{type: :client} = client) do
     client
     |> get_component_type()
     |> component_version()
@@ -51,12 +51,17 @@ defmodule Portal.ComponentVersions do
     end
   end
 
-  def get_component_type(%Client{actor: %Portal.Actor{type: :service_account}}), do: :headless
+  def get_component_type(%Device{
+        type: :client,
+        actor: %Portal.Actor{type: :service_account}
+      }),
+      do: :headless
 
-  def get_component_type(%Client{latest_session: %{user_agent: ua}}) when is_binary(ua),
-    do: get_component_type_from_user_agent(ua)
+  def get_component_type(%Device{type: :client, latest_session: %{user_agent: ua}})
+      when is_binary(ua),
+      do: get_component_type_from_user_agent(ua)
 
-  def get_component_type(%Client{}), do: :gui
+  def get_component_type(%Device{type: :client}), do: :gui
 
   def get_component_type_from_user_agent("Mac OS" <> _rest), do: :apple
   def get_component_type_from_user_agent("iOS" <> _rest), do: :apple

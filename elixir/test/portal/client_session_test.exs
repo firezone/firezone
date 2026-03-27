@@ -17,7 +17,7 @@ defmodule Portal.ClientSessionTest do
         |> ClientSession.changeset()
 
       assert errors_on(changeset).account_id
-      assert errors_on(changeset).client_id
+      assert errors_on(changeset).device_id
       assert errors_on(changeset).client_token_id
     end
 
@@ -32,12 +32,12 @@ defmodule Portal.ClientSessionTest do
         |> Ecto.Changeset.cast(
           %{
             account_id: account.id,
-            client_id: client.id,
+            device_id: client.id,
             client_token_id: token.id,
             user_agent: "Test/1.0",
             version: "1.0.0"
           },
-          [:account_id, :client_id, :client_token_id, :user_agent, :version]
+          [:account_id, :device_id, :client_token_id, :user_agent, :version]
         )
         |> ClientSession.changeset()
 
@@ -55,10 +55,10 @@ defmodule Portal.ClientSessionTest do
                |> Ecto.Changeset.cast(
                  %{
                    account_id: Ecto.UUID.generate(),
-                   client_id: client.id,
+                   device_id: client.id,
                    client_token_id: token.id
                  },
-                 [:account_id, :client_id, :client_token_id]
+                 [:account_id, :device_id, :client_token_id]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
@@ -66,25 +66,26 @@ defmodule Portal.ClientSessionTest do
       assert errors_on(changeset).account
     end
 
-    test "enforces client association constraint" do
+    test "enforces device association constraint" do
       account = account_fixture()
       actor = actor_fixture(account: account)
       token = client_token_fixture(account: account, actor: actor)
+      device_id = Ecto.UUID.generate()
 
       assert {:error, changeset} =
                %ClientSession{}
                |> Ecto.Changeset.cast(
                  %{
                    account_id: account.id,
-                   client_id: Ecto.UUID.generate(),
+                   device_id: device_id,
                    client_token_id: token.id
                  },
-                 [:account_id, :client_id, :client_token_id]
+                 [:account_id, :device_id, :client_token_id]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
 
-      assert errors_on(changeset).client
+      assert errors_on(changeset).device
     end
 
     test "enforces client_token association constraint" do
@@ -97,10 +98,10 @@ defmodule Portal.ClientSessionTest do
                |> Ecto.Changeset.cast(
                  %{
                    account_id: account.id,
-                   client_id: client.id,
+                   device_id: client.id,
                    client_token_id: Ecto.UUID.generate()
                  },
-                 [:account_id, :client_id, :client_token_id]
+                 [:account_id, :device_id, :client_token_id]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
@@ -120,7 +121,7 @@ defmodule Portal.ClientSessionTest do
 
       assert session.id
       assert session.account_id
-      assert session.client_id
+      assert session.device_id
       assert session.client_token_id
       assert session.user_agent
       assert session.remote_ip
@@ -143,7 +144,7 @@ defmodule Portal.ClientSessionTest do
       client = client_fixture(account: account, actor: actor)
       session = client_session_fixture(account: account, actor: actor, client: client)
 
-      assert session.client_id == client.id
+      assert session.device_id == client.id
     end
 
     test "session belongs to a client_token" do

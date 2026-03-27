@@ -1011,7 +1011,7 @@ defmodule PortalWeb.Policies.Components do
     end
 
     def list_policy_authorizations_for(
-          %Portal.Client{} = client,
+          %Portal.Device{type: :client} = client,
           %Portal.Authentication.Subject{} = subject,
           opts
         ) do
@@ -1031,7 +1031,7 @@ defmodule PortalWeb.Policies.Components do
     end
 
     def list_policy_authorizations_for(
-          %Portal.Gateway{} = gateway,
+          %Portal.Device{type: :gateway} = gateway,
           %Portal.Authentication.Subject{} = subject,
           opts
         ) do
@@ -1110,7 +1110,7 @@ defmodule PortalWeb.Policies.Components do
       queryable
       |> select(
         [policy_authorizations: policy_authorizations],
-        {{policy_authorizations.client_id, policy_authorizations.resource_id},
+        {{policy_authorizations.initiating_device_id, policy_authorizations.resource_id},
          {policy_authorizations.id, policy_authorizations.expires_at}}
       )
     end
@@ -1155,7 +1155,7 @@ defmodule PortalWeb.Policies.Components do
       where(
         queryable,
         [policy_authorizations: policy_authorizations],
-        policy_authorizations.client_id == ^client_id
+        policy_authorizations.initiating_device_id == ^client_id
       )
     end
 
@@ -1169,7 +1169,7 @@ defmodule PortalWeb.Policies.Components do
       where(
         queryable,
         [policy_authorizations: policy_authorizations],
-        policy_authorizations.gateway_id == ^gateway_id
+        policy_authorizations.receiving_device_id == ^gateway_id
       )
     end
 

@@ -11,6 +11,7 @@ defmodule PortalAPI.Schemas.Client do
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Client ID"},
+        firezone_id: %Schema{type: :string, description: "Firezone ID"},
         actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
         name: %Schema{
           type: :string,
@@ -61,7 +62,7 @@ defmodule PortalAPI.Schemas.Client do
       required: [
         :id,
         :actor_id,
-        :external_id,
+        :firezone_id,
         :name,
         :ipv4,
         :ipv6,
@@ -71,7 +72,7 @@ defmodule PortalAPI.Schemas.Client do
       ],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "external_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+        "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
         "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
         "name" => "John's Macbook Air",
         "ipv4" => "100.64.0.1",
@@ -145,7 +146,7 @@ defmodule PortalAPI.Schemas.Client do
       example: %{
         "data" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "external_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+          "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
           "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
           "name" => "John's Macbook Air",
           "ipv4" => "100.64.0.1",
@@ -180,7 +181,7 @@ defmodule PortalAPI.Schemas.Client do
         "data" => [
           %{
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "external_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+            "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
             "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
             "name" => "John's Macbook Air",
             "ipv4" => "100.64.0.1",
@@ -196,7 +197,7 @@ defmodule PortalAPI.Schemas.Client do
           },
           %{
             "id" => "9a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "external_id" => "6c37c0042f40bbb16e007d0d6c8e77c0ac2cab3cc3b923c42d1157a934e436ac",
+            "firezone_id" => "6c37c0042f40bbb16e007d0d6c8e77c0ac2cab3cc3b923c42d1157a934e436ac",
             "actor_id" => "2ecc106b-75c1-48a5-846c-14782180c1ff",
             "name" => "iPad",
             "ipv4" => "100.64.0.2",

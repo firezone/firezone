@@ -1,15 +1,15 @@
 defmodule PortalAPI.Gateway.Views.Client do
-  alias Portal.Client
+  alias Portal.Device
 
-  def render(%Client{} = client, public_key, preshared_key, user_agent) do
+  def render(%Device{} = client, public_key, preshared_key, user_agent) do
     {os_name, os_version, client_version} = parse_user_agent(user_agent)
 
     %{
       id: client.id,
       public_key: public_key,
       preshared_key: preshared_key,
-      ipv4: client.ipv4_address.address,
-      ipv6: client.ipv6_address.address,
+      ipv4: client.ipv4,
+      ipv6: client.ipv6,
       version: client_version,
       device_serial: client.device_serial,
       device_os_name: os_name,
@@ -34,7 +34,7 @@ defmodule PortalAPI.Gateway.Views.Client do
   end
 
   # DEPRECATED IN 1.4
-  def render_legacy(%Client{} = client, public_key, client_payload, preshared_key) do
+  def render_legacy(%Device{} = client, public_key, client_payload, preshared_key) do
     %{
       id: client.id,
       payload: client_payload,
@@ -42,8 +42,8 @@ defmodule PortalAPI.Gateway.Views.Client do
         persistent_keepalive: 25,
         public_key: public_key,
         preshared_key: preshared_key,
-        ipv4: client.ipv4_address.address,
-        ipv6: client.ipv6_address.address
+        ipv4: client.ipv4,
+        ipv6: client.ipv6
       }
     }
   end

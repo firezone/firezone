@@ -9,9 +9,8 @@ defmodule Portal.PolicyAuthorization do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           policy_id: Ecto.UUID.t(),
-          client_id: Ecto.UUID.t(),
-          receiving_client_id: Ecto.UUID.t() | nil,
-          gateway_id: Ecto.UUID.t() | nil,
+          initiating_device_id: Ecto.UUID.t(),
+          receiving_device_id: Ecto.UUID.t(),
           resource_id: Ecto.UUID.t(),
           token_id: Ecto.UUID.t(),
           # nil for "Everyone" group policies which have no explicit membership
@@ -29,9 +28,17 @@ defmodule Portal.PolicyAuthorization do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     belongs_to :policy, Portal.Policy
-    belongs_to :client, Portal.Client
-    belongs_to :receiving_client, Portal.Client
-    belongs_to :gateway, Portal.Gateway
+    field :initiating_device_id, :binary_id
+    field :receiving_device_id, :binary_id
+
+    belongs_to :client, Portal.Device,
+      foreign_key: :initiating_device_id,
+      define_field: false
+
+    belongs_to :gateway, Portal.Device,
+      foreign_key: :receiving_device_id,
+      define_field: false
+
     belongs_to :resource, Portal.Resource
     belongs_to :token, Portal.ClientToken
     belongs_to :membership, Portal.Membership
@@ -48,17 +55,13 @@ defmodule Portal.PolicyAuthorization do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
+    |> validate_required([:initiating_device_id, :receiving_device_id])
     |> assoc_constraint(:token)
     |> assoc_constraint(:policy)
     |> assoc_constraint(:client)
-    |> assoc_constraint(:receiving_client)
     |> assoc_constraint(:gateway)
     |> assoc_constraint(:resource)
     |> assoc_constraint(:account)
     |> assoc_constraint(:membership)
-    |> check_constraint(:gateway_id,
-      name: :policy_authorizations_gateway_or_receiving_client_required,
-      message: "either gateway_id or receiving_client_id must be set"
-    )
   end
 end

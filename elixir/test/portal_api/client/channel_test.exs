@@ -9,6 +9,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.GatewayFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -30,9 +31,12 @@ defmodule PortalAPI.Client.ChannelTest do
         end
       end)
 
+    # Fetch the Device row matching the client — the channel now expects Device structs
+    device = fetch_device!(client)
+
     # Build a ClientSession struct to match what Socket.connect does
     session = %Portal.ClientSession{
-      client_id: client.id,
+      device_id: client.id,
       account_id: client.account_id,
       public_key: Portal.ClientFixtures.generate_public_key(),
       user_agent: subject.context.user_agent,
@@ -47,7 +51,7 @@ defmodule PortalAPI.Client.ChannelTest do
     {:ok, _reply, socket} =
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
-        client: client,
+        client: device,
         session: session,
         subject: subject,
         client_version: client_version
@@ -109,7 +113,7 @@ defmodule PortalAPI.Client.ChannelTest do
         user_agent: "Linux/24.04 connlib/1.3.0"
       )
 
-    client = client_fixture(account: account, actor: actor)
+    client = client_fixture(account: account, actor: actor) |> fetch_device!()
 
     site = site_fixture(account: account)
     gateway_token = gateway_token_fixture(account: account, site: site)
@@ -292,12 +296,14 @@ defmodule PortalAPI.Client.ChannelTest do
       # because it is linked to the created test channel process
       Process.flag(:trap_exit, true)
 
+      device = fetch_device!(client)
+
       {:ok, _reply, _socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
+          client: device,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -441,8 +447,8 @@ defmodule PortalAPI.Client.ChannelTest do
       refute Enum.any?(resources, &(&1.id == offline_resource.id))
 
       assert interface == %{
-               ipv4: client.ipv4_address.address,
-               ipv6: client.ipv6_address.address,
+               ipv4: client.ipv4,
+               ipv6: client.ipv6,
                upstream_dns: [
                  %{address: "[1:2:3:4:5:6:7:8]:53", protocol: :ip_port},
                  %{protocol: :ip_port, address: "1.1.1.1:53"},
@@ -472,7 +478,7 @@ defmodule PortalAPI.Client.ChannelTest do
     #     account: account,
     #     actor: actor,
     #     client: other_client,
-    #     receiving_client_id: client.id,
+    #     receiving_device_id: client.id,
     #     expires_at: DateTime.add(DateTime.utc_now(), 60, :second)
     #   )
     #
@@ -480,14 +486,14 @@ defmodule PortalAPI.Client.ChannelTest do
     #     account: account,
     #     actor: actor,
     #     client: other_client,
-    #     receiving_client_id: client.id
+    #     receiving_device_id: client.id
     #   )
     #
     #   _socket = join_channel(client, subject)
     #
     #   assert_push "init", %{authorized_ipv4s: authorized_ipv4s}
     #
-    #   assert authorized_ipv4s == [Portal.Types.INET.to_string(other_client.ipv4_address.address)]
+    #   assert authorized_ipv4s == [Portal.Types.INET.to_string(other_client.ipv4)]
     # end
 
     test "only sends the same resource once", %{
@@ -513,7 +519,7 @@ defmodule PortalAPI.Client.ChannelTest do
       |> socket("client:#{client.id}", %{
         client: client,
         session: %Portal.ClientSession{
-          client_id: client.id,
+          device_id: client.id,
           account_id: client.account_id,
           public_key: Portal.ClientFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
@@ -593,7 +599,7 @@ defmodule PortalAPI.Client.ChannelTest do
       |> socket("client:#{client.id}", %{
         client: client,
         session: %Portal.ClientSession{
-          client_id: client.id,
+          device_id: client.id,
           account_id: client.account_id,
           public_key: Portal.ClientFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
@@ -639,7 +645,7 @@ defmodule PortalAPI.Client.ChannelTest do
       |> socket("client:#{client.id}", %{
         client: client,
         session: %Portal.ClientSession{
-          client_id: client.id,
+          device_id: client.id,
           account_id: client.account_id,
           public_key: Portal.ClientFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
@@ -690,7 +696,7 @@ defmodule PortalAPI.Client.ChannelTest do
       public_key = Portal.ClientFixtures.generate_public_key()
 
       session = %Portal.ClientSession{
-        client_id: client.id,
+        device_id: client.id,
         account_id: client.account_id,
         public_key: public_key,
         user_agent: subject.context.user_agent,
@@ -786,7 +792,7 @@ defmodule PortalAPI.Client.ChannelTest do
       |> socket("client:#{client.id}", %{
         client: client,
         session: %Portal.ClientSession{
-          client_id: client.id,
+          device_id: client.id,
           account_id: client.account_id,
           public_key: Portal.ClientFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
@@ -1611,8 +1617,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert payload == %{
                interface: %{
-                 ipv4: client.ipv4_address.address,
-                 ipv6: client.ipv6_address.address,
+                 ipv4: client.ipv4,
+                 ipv6: client.ipv6,
                  search_domain: "new.example.com",
                  upstream_dns: [
                    %{address: "[1:2:3:4:5:6:7:8]:53", protocol: :ip_port},
@@ -1915,7 +1921,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert payload == resource.id
     end
 
-    test "for client updates preserves ipv4_address and ipv6_address in socket assigns", %{
+    test "for client updates preserves ipv4 and ipv6 in socket assigns", %{
       client: client,
       subject: subject
     } do
@@ -1924,14 +1930,14 @@ defmodule PortalAPI.Client.ChannelTest do
 
       # Verify the client starts with addresses loaded
       state = :sys.get_state(socket.channel_pid)
-      assert state.assigns.client.ipv4_address != nil
-      assert state.assigns.client.ipv6_address != nil
-      original_ipv4 = state.assigns.client.ipv4_address
-      original_ipv6 = state.assigns.client.ipv6_address
+      assert state.assigns.client.ipv4 != nil
+      assert state.assigns.client.ipv6 != nil
+      original_ipv4 = state.assigns.client.ipv4
+      original_ipv6 = state.assigns.client.ipv6
 
       # Simulate a client update event (e.g. name change) - the struct from
       # the CDC event won't have associations preloaded
-      updated_client = %{client | name: "Updated Name", ipv4_address: nil, ipv6_address: nil}
+      updated_client = %{client | name: "Updated Name", ipv4: nil, ipv6: nil}
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -1943,8 +1949,8 @@ defmodule PortalAPI.Client.ChannelTest do
       # Verify the socket still has the original addresses preserved
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.client.name == "Updated Name"
-      assert state.assigns.client.ipv4_address == original_ipv4
-      assert state.assigns.client.ipv6_address == original_ipv6
+      assert state.assigns.client.ipv4 == original_ipv4
+      assert state.assigns.client.ipv6 == original_ipv6
     end
 
     test "for client deletions disconnects socket", %{
@@ -2723,7 +2729,7 @@ defmodule PortalAPI.Client.ChannelTest do
       candidates = ["cand1", "cand2"]
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       :ok = PG.register(target_client.id)
 
@@ -2765,7 +2771,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       # Do NOT PG.register target_client.id
 
       push(socket, "new_client_ice_candidates", %{
@@ -2790,7 +2796,7 @@ defmodule PortalAPI.Client.ChannelTest do
       candidates = ["cand1", "cand2"]
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       :ok = PG.register(target_client.id)
 
       push(socket, "invalidate_client_ice_candidates", %{
@@ -2832,7 +2838,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       # Do NOT PG.register target_client.id
       target_client_id = target_client.id
 
@@ -3181,13 +3187,13 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert policy_authorization =
                Repo.get_by(Portal.PolicyAuthorization,
-                 client_id: client.id,
+                 initiating_device_id: client.id,
                  resource_id: resource.id
                )
 
-      assert policy_authorization.client_id == client.id
+      assert policy_authorization.initiating_device_id == client.id
       assert policy_authorization.resource_id == resource_id
-      assert policy_authorization.gateway_id == gateway.id
+      assert policy_authorization.receiving_device_id == gateway.id
       assert policy_authorization.policy_id == policy.id
       assert policy_authorization.token_id == subject.credential.id
 
@@ -3199,15 +3205,15 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4_address.address,
-         gateway.ipv6_address.address, preshared_key, ice_credentials}
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
+         ice_credentials}
       )
 
       gateway_group_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.latest_session.public_key
-      gateway_ipv4 = gateway.ipv4_address.address
-      gateway_ipv6 = gateway.ipv6_address.address
+      gateway_ipv4 = gateway.ipv4
+      gateway_ipv6 = gateway.ipv6
 
       assert_push "flow_created", %{
         gateway_public_key: ^gateway_public_key,
@@ -3242,7 +3248,7 @@ defmodule PortalAPI.Client.ChannelTest do
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
-      client = client_fixture(account: account, actor: actor)
+      client = client_fixture(account: account, actor: actor) |> fetch_device!()
       membership_fixture(account: account, actor: actor, group: group)
 
       identity = identity_fixture(account: account, actor: actor)
@@ -3253,7 +3259,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> socket("client:#{client.id}", %{
           client: client,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -3342,7 +3348,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> socket("client:#{client.id}", %{
           client: client,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -3459,7 +3465,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
-               gateway_id: gateway2.id,
+               receiving_device_id: gateway2.id,
                account_id: account.id
              )
 
@@ -3473,7 +3479,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert Repo.get_by(Portal.PolicyAuthorization,
                resource_id: resource.id,
-               gateway_id: gateway1.id,
+               receiving_device_id: gateway1.id,
                account_id: account.id
              )
     end
@@ -3581,8 +3587,8 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4_address.address,
-         gateway.ipv6_address.address, payload.preshared_key, payload.ice_credentials}
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         payload.ice_credentials}
       )
 
       # The late connect should be ignored — no "flow_created" push
@@ -3636,8 +3642,8 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4_address.address,
-         gateway.ipv6_address.address, payload.preshared_key, payload.ice_credentials}
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         payload.ice_credentials}
       )
 
       assert_push "flow_created", %{resource_id: resource_id}
@@ -4033,7 +4039,7 @@ defmodule PortalAPI.Client.ChannelTest do
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
-      client = client_fixture(account: account, actor: actor)
+      client = client_fixture(account: account, actor: actor) |> fetch_device!()
       membership_fixture(account: account, actor: actor, group: group)
 
       identity = identity_fixture(account: account, actor: actor)
@@ -4044,7 +4050,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> socket("client:#{client.id}", %{
           client: client,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -4104,7 +4110,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> socket("client:#{client.id}", %{
           client: client,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -4423,7 +4429,7 @@ defmodule PortalAPI.Client.ChannelTest do
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
-      client = client_fixture(account: account, actor: actor)
+      client = client_fixture(account: account, actor: actor) |> fetch_device!()
       membership_fixture(account: account, actor: actor, group: group)
 
       identity = identity_fixture(account: account, actor: actor)
@@ -4434,7 +4440,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> socket("client:#{client.id}", %{
           client: client,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -4779,7 +4785,7 @@ defmodule PortalAPI.Client.ChannelTest do
       group: group
     } do
       actor = actor_fixture(type: :service_account, account: account)
-      client = client_fixture(account: account, actor: actor)
+      client = client_fixture(account: account, actor: actor) |> fetch_device!()
       membership_fixture(account: account, actor: actor, group: group)
 
       identity = identity_fixture(account: account, actor: actor)
@@ -4790,7 +4796,7 @@ defmodule PortalAPI.Client.ChannelTest do
         |> socket("client:#{client.id}", %{
           client: client,
           session: %Portal.ClientSession{
-            client_id: client.id,
+            device_id: client.id,
             account_id: client.account_id,
             public_key: Portal.ClientFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
@@ -5024,7 +5030,7 @@ defmodule PortalAPI.Client.ChannelTest do
       enable_feature(:client_to_client)
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       target_subject =
         subject_fixture(
@@ -5043,16 +5049,16 @@ defmodule PortalAPI.Client.ChannelTest do
       join_channel(target_client, target_subject)
       assert_push "init", _
 
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       target_client_id = target_client.id
       target_client_name = target_client.name
       initiating_client_id = client.id
       initiating_client_name = client.name
 
-      {a, b, c, d} = target_client.ipv4_address.address.address
+      {a, b, c, d} = target_client.ipv4.address
       target_client_fqdns = ["#{a}-#{b}-#{c}-#{d}.#{account.key}.fz.internal"]
 
-      {a, b, c, d} = client.ipv4_address.address.address
+      {a, b, c, d} = client.ipv4.address
       initiating_client_fqdns = ["#{a}-#{b}-#{c}-#{d}.#{account.key}.fz.internal"]
 
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
@@ -5082,7 +5088,7 @@ defmodule PortalAPI.Client.ChannelTest do
       enable_feature(:client_to_client)
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       target_subject =
         subject_fixture(
@@ -5098,7 +5104,7 @@ defmodule PortalAPI.Client.ChannelTest do
       join_channel(target_client, target_subject)
       assert_push "init", _
 
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
 
       assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :forbidden}
@@ -5113,14 +5119,14 @@ defmodule PortalAPI.Client.ChannelTest do
       enable_feature(:client_to_client)
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
       initiating_socket = join_channel(client, subject)
       assert_push "init", _
 
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4_address.address)
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
 
       assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :offline}
@@ -5134,7 +5140,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       other_account = account_fixture()
       other_actor = actor_fixture(account: other_account)
-      other_client = client_fixture(account: other_account, actor: other_actor)
+      other_client = client_fixture(account: other_account, actor: other_actor) |> fetch_device!()
 
       other_subject =
         subject_fixture(
@@ -5150,7 +5156,7 @@ defmodule PortalAPI.Client.ChannelTest do
       join_channel(other_client, other_subject)
       assert_push "init", _
 
-      other_ip = Portal.Types.INET.to_string(other_client.ipv4_address.address)
+      other_ip = Portal.Types.INET.to_string(other_client.ipv4)
 
       push(initiating_socket, "request_device_access", %{"ipv4" => other_ip})
 
@@ -5244,7 +5250,7 @@ defmodule PortalAPI.Client.ChannelTest do
       policy_fixture(account: account, group: group, resource: pool_resource)
 
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       socket = join_channel(client, subject)
       assert_push "init", _
@@ -5256,7 +5262,7 @@ defmodule PortalAPI.Client.ChannelTest do
           id: Ecto.UUID.generate(),
           account_id: account.id,
           resource_id: pool_resource.id,
-          client_id: target_client.id
+          device_id: target_client.id
         }
       })
 
@@ -5280,7 +5286,7 @@ defmodule PortalAPI.Client.ChannelTest do
           id: Ecto.UUID.generate(),
           account_id: account.id,
           resource_id: Ecto.UUID.generate(),
-          client_id: Ecto.UUID.generate()
+          device_id: Ecto.UUID.generate()
         }
       })
 
@@ -5295,7 +5301,7 @@ defmodule PortalAPI.Client.ChannelTest do
       group: group
     } do
       target_actor = actor_fixture(account: account)
-      target_client = client_fixture(account: account, actor: target_actor)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       pool_resource =
         static_device_pool_resource_fixture(account: account, clients: [target_client])
@@ -5315,7 +5321,7 @@ defmodule PortalAPI.Client.ChannelTest do
           id: Ecto.UUID.generate(),
           account_id: account.id,
           resource_id: pool_resource.id,
-          client_id: target_client.id
+          device_id: target_client.id
         }
       })
 
@@ -5336,8 +5342,8 @@ defmodule PortalAPI.Client.ChannelTest do
         id: Ecto.UUID.generate(),
         token_id: subject.credential.id,
         policy_id: policy.id,
-        client_id: client.id,
-        gateway_id: gateway.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
         resource_id: resource.id,
         membership_id: membership.id,
         account_id: subject.account.id,
@@ -5363,8 +5369,8 @@ defmodule PortalAPI.Client.ChannelTest do
         id: policy_authorization_id,
         token_id: subject.credential.id,
         policy_id: policy_id,
-        client_id: client_id,
-        gateway_id: gateway_id,
+        initiating_device_id: client_id,
+        receiving_device_id: gateway_id,
         resource_id: resource_id,
         membership_id: nil,
         account_id: subject.account.id,
@@ -5400,8 +5406,8 @@ defmodule PortalAPI.Client.ChannelTest do
         id: Ecto.UUID.generate(),
         token_id: subject.credential.id,
         policy_id: policy.id,
-        client_id: client.id,
-        gateway_id: gateway.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
         resource_id: resource.id,
         membership_id: membership.id,
         account_id: subject.account.id,
@@ -5425,8 +5431,8 @@ defmodule PortalAPI.Client.ChannelTest do
         id: Ecto.UUID.generate(),
         token_id: nil,
         policy_id: Ecto.UUID.generate(),
-        client_id: Ecto.UUID.generate(),
-        gateway_id: Ecto.UUID.generate(),
+        initiating_device_id: Ecto.UUID.generate(),
+        receiving_device_id: Ecto.UUID.generate(),
         resource_id: Ecto.UUID.generate(),
         membership_id: nil,
         account_id: subject.account.id,

@@ -7,7 +7,7 @@ defmodule Portal.ClientSession.Buffer do
   @flush_interval :timer.seconds(5)
   @flush_threshold 1_000
 
-  @drop_keys [:__struct__, :__meta__, :account, :client, :client_token]
+  @drop_keys [:__struct__, :__meta__, :account, :device, :client_token]
 
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -76,7 +76,7 @@ defmodule Portal.ClientSession.Buffer do
 
     if skipped > 0 do
       Logger.warning(
-        "Skipped #{skipped} client sessions due to deleted associations (tokens/accounts/clients)"
+        "Skipped #{skipped} client sessions due to deleted associations (tokens/accounts/devices)"
       )
     end
 
@@ -116,8 +116,8 @@ defmodule Portal.ClientSession.Buffer do
       filter_by_existing(entries, :account_id, Portal.Account)
     end
 
-    defp filter_existing(entries, "client_sessions_client_id_fkey") do
-      filter_by_composite(entries, :client_id, Portal.Client)
+    defp filter_existing(entries, "client_sessions_device_id_fkey") do
+      filter_by_composite(entries, :device_id, Portal.Device)
     end
 
     defp filter_existing(entries, "client_sessions_client_token_id_fkey") do

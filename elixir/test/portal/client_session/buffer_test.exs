@@ -24,7 +24,7 @@ defmodule Portal.ClientSession.BufferTest do
   defp build_session(ctx, overrides \\ %{}) do
     defaults = %{
       account_id: ctx.account.id,
-      client_id: ctx.client.id,
+      device_id: ctx.client.id,
       client_token_id: ctx.token.id,
       user_agent: "macOS/14.0 apple-client/1.3.0",
       remote_ip: {100, 64, 0, 1},
@@ -48,7 +48,7 @@ defmodule Portal.ClientSession.BufferTest do
 
       [persisted] = Repo.all(ClientSession)
       assert persisted.account_id == ctx.account.id
-      assert persisted.client_id == ctx.client.id
+      assert persisted.device_id == ctx.client.id
       assert persisted.client_token_id == ctx.token.id
       assert persisted.user_agent == "macOS/14.0 apple-client/1.3.0"
       assert persisted.remote_ip.address == {100, 64, 0, 1}
@@ -214,13 +214,20 @@ defmodule Portal.ClientSession.BufferTest do
       assert Repo.all(ClientSession) == []
     end
 
-    test "skips sessions with deleted clients and inserts the rest", ctx do
+    test "skips sessions with deleted devices and inserts the rest", ctx do
       valid_session = build_session(ctx)
 
       actor = actor_fixture(account: ctx.account)
       other_client = client_fixture(account: ctx.account, actor: actor)
-      orphan_session = build_session(ctx, %{client_id: other_client.id})
-      Repo.delete!(other_client)
+      orphan_session = build_session(ctx, %{device_id: other_client.id})
+
+      other_device =
+        Repo.get_by!(Portal.Device,
+          account_id: other_client.account_id,
+          id: other_client.id
+        )
+
+      Repo.delete!(other_device)
 
       Buffer.insert(orphan_session, ctx.buffer)
       Buffer.insert(valid_session, ctx.buffer)
@@ -228,7 +235,7 @@ defmodule Portal.ClientSession.BufferTest do
 
       sessions = Repo.all(ClientSession)
       assert length(sessions) == 1
-      assert hd(sessions).client_id == ctx.client.id
+      assert hd(sessions).device_id == ctx.client.id
     end
 
     test "does not crash the buffer process when tokens are deleted", ctx do

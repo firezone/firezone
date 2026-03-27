@@ -1,10 +1,10 @@
 defmodule Portal.Changes.Hooks.GatewaysTest do
   use Portal.DataCase, async: true
-  import Portal.Changes.Hooks.Gateways
+  import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
   import Portal.GatewayFixtures
   alias Portal.Changes.Change
-  alias Portal.Gateway
+  alias Portal.Device
   alias Portal.PubSub
 
   describe "insert/1" do
@@ -15,7 +15,14 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
 
   describe "update/2" do
     test "update returns :ok" do
-      assert :ok = on_update(0, %{}, %{})
+      account = account_fixture()
+
+      assert :ok =
+               on_update(
+                 0,
+                 %{"id" => Ecto.UUID.generate(), "type" => "gateway", "account_id" => account.id},
+                 %{"id" => Ecto.UUID.generate(), "type" => "gateway", "account_id" => account.id}
+               )
     end
   end
 
@@ -28,6 +35,7 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
 
       old_data = %{
         "id" => gateway.id,
+        "type" => "gateway",
         "account_id" => account.id,
         "name" => "Test Gateway"
       }
@@ -36,7 +44,7 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
 
       assert_receive %Change{
         op: :delete,
-        old_struct: %Gateway{} = deleted_gateway,
+        old_struct: %Device{} = deleted_gateway,
         lsn: 0
       }
 

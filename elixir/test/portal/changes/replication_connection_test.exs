@@ -276,10 +276,9 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       tables_to_hooks = %{
         "accounts" => Portal.Changes.Hooks.Accounts,
         "memberships" => Portal.Changes.Hooks.Memberships,
-        "clients" => Portal.Changes.Hooks.Clients,
+        "devices" => Portal.Changes.Hooks.Devices,
         "policy_authorizations" => Portal.Changes.Hooks.PolicyAuthorizations,
         "sites" => Portal.Changes.Hooks.Sites,
-        "gateways" => Portal.Changes.Hooks.Gateways,
         "policies" => Portal.Changes.Hooks.Policies,
         "resources" => Portal.Changes.Hooks.Resources,
         "client_tokens" => Portal.Changes.Hooks.ClientTokens
@@ -290,11 +289,10 @@ defmodule Portal.Changes.ReplicationConnectionTest do
                [
                  "accounts",
                  "memberships",
-                 "clients",
+                 "devices",
                  "client_tokens",
                  "policy_authorizations",
                  "sites",
-                 "gateways",
                  "policies",
                  "resources"
                ]

@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Authentication
-  alias Portal.{Gateway, GatewaySession, Version}
+  alias Portal.{Device, GatewaySession, Version}
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -36,6 +36,7 @@ defmodule PortalAPI.Gateway.Socket do
 
   defp do_connect(encoded_token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
+    attrs = normalize_device_attrs(attrs)
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
@@ -66,6 +67,17 @@ defmodule PortalAPI.Gateway.Socket do
 
       {:ok, socket}
     else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        changeset = public_socket_changeset(changeset)
+        trace = Process.info(self(), :current_stacktrace)
+
+        Logger.info("Gateway socket connection failed",
+          error: {:error, changeset},
+          stacktrace: trace
+        )
+
+        {:error, changeset}
+
       error ->
         trace = Process.info(self(), :current_stacktrace)
         Logger.info("Gateway socket connection failed", error: error, stacktrace: trace)
@@ -75,23 +87,25 @@ defmodule PortalAPI.Gateway.Socket do
   end
 
   defp insert_changeset(site, attrs) do
-    insert_fields = ~w[external_id name]a
-    required_fields = ~w[external_id name]a
+    insert_fields = ~w[firezone_id name]a
+    required_fields = ~w[firezone_id name]a
 
-    %Gateway{}
+    %Device{}
     |> cast(attrs, insert_fields)
     |> put_default_value(:name, fn ->
       Portal.Crypto.random_token(5, encoder: :user_friendly)
     end)
-    |> Portal.Gateway.changeset()
-    |> validate_required(required_fields)
+    |> put_change(:type, :gateway)
     |> put_change(:account_id, site.account_id)
     |> put_change(:site_id, site.id)
+    |> validate_required(required_fields)
+    |> Device.changeset()
+    |> public_socket_changeset()
   end
 
   defp build_session(gateway, token_id, public_key, context, version) do
     %GatewaySession{
-      gateway_id: gateway.id,
+      device_id: gateway.id,
       account_id: gateway.account_id,
       gateway_token_id: token_id,
       public_key: public_key,
@@ -126,11 +140,31 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
+  defp normalize_device_attrs(attrs) do
+    firezone_id =
+      attrs["external_id"] || attrs[:external_id] || attrs["firezone_id"] || attrs[:firezone_id]
+
+    if firezone_id do
+      Map.put(attrs, "firezone_id", firezone_id)
+    else
+      attrs
+    end
+  end
+
+  defp public_socket_changeset(changeset) do
+    %{changeset | errors: rename_firezone_id_errors(changeset.errors)}
+  end
+
+  defp rename_firezone_id_errors(errors) do
+    Enum.map(errors, fn
+      {:firezone_id, details} -> {:external_id, details}
+      error -> error
+    end)
+  end
+
   defmodule Database do
     import Ecto.Query
-    alias Portal.Gateway
-    alias Portal.IPv4Address
-    alias Portal.IPv6Address
+    alias Portal.Device
 
     alias Portal.Safe
     alias Portal.Site
@@ -150,19 +184,19 @@ defmodule PortalAPI.Gateway.Socket do
       end
     end
 
-    @dialyzer {:no_opaque, [find_or_create_gateway: 1, insert_new_gateway: 2]}
+    @dialyzer {:no_opaque, [find_or_create_gateway: 1]}
     def find_or_create_gateway(changeset) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       site_id = Ecto.Changeset.get_field(changeset, :site_id)
-      external_id = Ecto.Changeset.get_field(changeset, :external_id)
+      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
       existing =
-        if external_id do
-          from(g in Gateway,
-            where: g.account_id == ^account_id,
-            where: g.site_id == ^site_id,
-            where: g.external_id == ^external_id,
-            preload: [:ipv4_address, :ipv6_address]
+        if firezone_id do
+          from(d in Device,
+            where: d.account_id == ^account_id,
+            where: d.site_id == ^site_id,
+            where: d.firezone_id == ^firezone_id,
+            where: d.type == :gateway
           )
           |> Safe.unscoped(:replica)
           |> Safe.one(fallback_to_primary: true)
@@ -171,26 +205,9 @@ defmodule PortalAPI.Gateway.Socket do
       if existing do
         {:ok, existing}
       else
-        insert_new_gateway(changeset, account_id)
-      end
-    end
-
-    defp insert_new_gateway(changeset, account_id) do
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert(:gateway, changeset)
-      |> Ecto.Multi.run(:ipv4_address, fn _repo, %{gateway: gateway} ->
-        IPv4Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
-      end)
-      |> Ecto.Multi.run(:ipv6_address, fn _repo, %{gateway: gateway} ->
-        IPv6Address.allocate_next_available_address(account_id, gateway_id: gateway.id)
-      end)
-      |> Safe.transact()
-      |> case do
-        {:ok, %{gateway: gateway, ipv4_address: ipv4_address, ipv6_address: ipv6_address}} ->
-          {:ok, %{gateway | ipv4_address: ipv4_address, ipv6_address: ipv6_address}}
-
-        {:error, :gateway, changeset, _effects_so_far} ->
-          {:error, changeset}
+        changeset
+        |> Safe.unscoped()
+        |> Safe.insert()
       end
     end
   end

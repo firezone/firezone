@@ -5,7 +5,7 @@ defmodule Portal.ClientSession do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
-          client_id: Ecto.UUID.t(),
+          device_id: Ecto.UUID.t(),
           client_token_id: Ecto.UUID.t(),
           user_agent: String.t() | nil,
           remote_ip: :inet.ip_address() | nil,
@@ -26,7 +26,7 @@ defmodule Portal.ClientSession do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
-    belongs_to :client, Portal.Client, references: :id
+    belongs_to :device, Portal.Device, foreign_key: :device_id, references: :id
     belongs_to :client_token, Portal.ClientToken, references: :id
 
     field :public_key, :string
@@ -43,13 +43,13 @@ defmodule Portal.ClientSession do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :client_id, :client_token_id])
+    |> validate_required([:account_id, :device_id, :client_token_id])
     |> validate_length(:user_agent, max: 255)
     |> validate_length(:version, max: 255)
     |> validate_length(:remote_ip_location_region, max: 255)
     |> validate_length(:remote_ip_location_city, max: 255)
     |> assoc_constraint(:account)
-    |> assoc_constraint(:client)
+    |> assoc_constraint(:device)
     |> assoc_constraint(:client_token)
   end
 end

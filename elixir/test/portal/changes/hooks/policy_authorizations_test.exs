@@ -22,8 +22,8 @@ defmodule Portal.Changes.Hooks.PolicyAuthorizationsTest do
       old_data = %{
         "id" => "00000000-0000-0000-0000-000000000001",
         "account_id" => "00000000-0000-0000-0000-000000000000",
-        "client_id" => "00000000-0000-0000-0000-000000000002",
-        "gateway_id" => "00000000-0000-0000-0000-000000000003",
+        "initiating_device_id" => "00000000-0000-0000-0000-000000000002",
+        "receiving_device_id" => "00000000-0000-0000-0000-000000000003",
         "resource_id" => "00000000-0000-0000-0000-000000000004",
         "token_id" => "00000000-0000-0000-0000-000000000005",
         "membership_id" => "00000000-0000-0000-0000-000000000006",
@@ -41,8 +41,13 @@ defmodule Portal.Changes.Hooks.PolicyAuthorizationsTest do
 
       assert policy_authorization.id == "00000000-0000-0000-0000-000000000001"
       assert policy_authorization.account_id == "00000000-0000-0000-0000-000000000000"
-      assert policy_authorization.client_id == "00000000-0000-0000-0000-000000000002"
-      assert policy_authorization.gateway_id == "00000000-0000-0000-0000-000000000003"
+
+      assert policy_authorization.initiating_device_id ==
+               "00000000-0000-0000-0000-000000000002"
+
+      assert policy_authorization.receiving_device_id ==
+               "00000000-0000-0000-0000-000000000003"
+
       assert policy_authorization.resource_id == "00000000-0000-0000-0000-000000000004"
       assert policy_authorization.token_id == "00000000-0000-0000-0000-000000000005"
       assert policy_authorization.membership_id == "00000000-0000-0000-0000-000000000006"

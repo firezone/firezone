@@ -149,7 +149,7 @@ defmodule PortalAPI.ClientSessionControllerTest do
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["id"] == session.id
-      assert data["client_id"] == session.client_id
+      assert data["client_id"] == session.device_id
       assert data["client_token_id"] == session.client_token_id
     end
 

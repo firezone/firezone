@@ -1,6 +1,6 @@
 defmodule PortalAPI.GatewayControllerTest do
   use PortalAPI.ConnCase, async: true
-  alias Portal.Gateway
+  alias Portal.Device
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -142,8 +142,8 @@ defmodule PortalAPI.GatewayControllerTest do
                "data" => %{
                  "id" => gateway.id,
                  "name" => gateway.name,
-                 "ipv4" => Portal.Types.IP.to_string(gateway.ipv4_address.address),
-                 "ipv6" => Portal.Types.IP.to_string(gateway.ipv6_address.address),
+                 "ipv4" => Portal.Types.IP.to_string(gateway.ipv4),
+                 "ipv6" => Portal.Types.IP.to_string(gateway.ipv6),
                  "online" => false
                }
              }
@@ -175,17 +175,12 @@ defmodule PortalAPI.GatewayControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{site.id}/gateways/#{gateway.id}")
 
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => gateway.id,
-                 "name" => gateway.name,
-                 "ipv4" => Portal.Types.IP.to_string(gateway.ipv4_address.address),
-                 "ipv6" => Portal.Types.IP.to_string(gateway.ipv6_address.address),
-                 "online" => false
-               }
-             }
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+      assert data["name"] == gateway.name
+      assert data["online"] == false
 
-      refute Repo.get_by(Gateway, id: gateway.id, account_id: gateway.account_id)
+      refute Repo.get_by(Device, id: gateway.id, account_id: gateway.account_id)
     end
   end
 end

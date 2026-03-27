@@ -1,8 +1,8 @@
 defmodule Portal.Version do
   alias Portal.{
-    Client,
     ClientSession,
-    ComponentVersions
+    ComponentVersions,
+    Device
   }
 
   def fetch_version(user_agent) when is_binary(user_agent) do
@@ -40,8 +40,15 @@ defmodule Portal.Version do
     end
   end
 
-  def resource_cannot_change_sites_on_client?(%Client{latest_session: nil}), do: false
+  def resource_cannot_change_sites_on_client?(%Device{
+        type: :client,
+        latest_session: nil
+      }),
+      do: false
 
-  def resource_cannot_change_sites_on_client?(%Client{latest_session: session}),
-    do: resource_cannot_change_sites_on_client?(session)
+  def resource_cannot_change_sites_on_client?(%Device{
+        type: :client,
+        latest_session: session
+      }),
+      do: resource_cannot_change_sites_on_client?(session)
 end

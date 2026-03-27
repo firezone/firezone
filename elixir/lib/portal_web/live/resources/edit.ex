@@ -415,7 +415,7 @@ defmodule PortalWeb.Resources.Edit do
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
-      |> preload([:site, static_pool_members: [client: [:ipv4_address, :ipv6_address]]])
+      |> preload([:site, static_pool_members: :client])
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end

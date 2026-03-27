@@ -129,11 +129,11 @@ defmodule PortalWeb.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv4 Address</:label>
-            <:value>{@client.ipv4_address.address}</:value>
+            <:value>{@client.ipv4}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Tunnel Interface IPv6 Address</:label>
-            <:value>{@client.ipv6_address.address}</:value>
+            <:value>{@client.ipv6}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -211,7 +211,7 @@ defmodule PortalWeb.Clients.Show do
             <:label>
               <.popover>
                 <:target>
-                  File ID
+                  Firezone ID
                   <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
                 </:target>
                 <:content>
@@ -219,7 +219,7 @@ defmodule PortalWeb.Clients.Show do
                 </:content>
               </.popover>
             </:label>
-            <:value>{@client.external_id}</:value>
+            <:value>{@client.firezone_id}</:value>
           </.vertical_table_row>
           <.vertical_table_row :for={{{title, helptext}, value} <- hardware_ids(@client)}>
             <:label>
@@ -302,7 +302,7 @@ defmodule PortalWeb.Clients.Show do
           </:col>
           <:col :let={policy_authorization} label="gateway" class="w-3/12">
             <.link
-              navigate={~p"/#{@account}/gateways/#{policy_authorization.gateway_id}"}
+              navigate={~p"/#{@account}/gateways/#{policy_authorization.receiving_device_id}"}
               class={[link_style()]}
             >
               {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}
@@ -478,21 +478,21 @@ defmodule PortalWeb.Clients.Show do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, ClientSession, Safe}
-    alias Portal.Client
+    alias Portal.{ClientSession, Device, Presence.Clients, Safe}
 
     def get_client!(id, subject) do
       client =
-        from(c in Client, as: :clients)
+        from(c in Device, as: :clients)
+        |> where([clients: c], c.type == :client)
         |> where([clients: c], c.id == ^id)
-        |> preload([:actor, :ipv4_address, :ipv6_address])
+        |> preload(:actor)
         |> Safe.scoped(subject, :replica)
         |> Safe.one!(fallback_to_primary: true)
 
       session =
         from(s in ClientSession,
           where: s.account_id == ^client.account_id,
-          where: s.client_id == ^client.id,
+          where: s.device_id == ^client.id,
           order_by: [desc: s.inserted_at],
           limit: 1
         )
@@ -566,7 +566,7 @@ defmodule PortalWeb.Clients.Show do
     end
 
     def list_policy_authorizations_for(
-          %Portal.Client{} = client,
+          %Portal.Device{type: :client} = client,
           %Portal.Authentication.Subject{} = subject,
           opts
         ) do
@@ -586,7 +586,7 @@ defmodule PortalWeb.Clients.Show do
     end
 
     def list_policy_authorizations_for(
-          %Portal.Gateway{} = gateway,
+          %Portal.Device{type: :gateway} = gateway,
           %Portal.Authentication.Subject{} = subject,
           opts
         ) do
@@ -665,7 +665,7 @@ defmodule PortalWeb.Clients.Show do
       queryable
       |> select(
         [policy_authorizations: policy_authorizations],
-        {{policy_authorizations.client_id, policy_authorizations.resource_id},
+        {{policy_authorizations.initiating_device_id, policy_authorizations.resource_id},
          {policy_authorizations.id, policy_authorizations.expires_at}}
       )
     end
@@ -710,7 +710,7 @@ defmodule PortalWeb.Clients.Show do
       where(
         queryable,
         [policy_authorizations: policy_authorizations],
-        policy_authorizations.client_id == ^client_id
+        policy_authorizations.initiating_device_id == ^client_id
       )
     end
 
@@ -724,7 +724,7 @@ defmodule PortalWeb.Clients.Show do
       where(
         queryable,
         [policy_authorizations: policy_authorizations],
-        policy_authorizations.gateway_id == ^gateway_id
+        policy_authorizations.receiving_device_id == ^gateway_id
       )
     end
 

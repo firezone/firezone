@@ -77,7 +77,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
       assert :ok = perform_job(DeleteOldClientSessions, %{})
 
       remaining =
-        from(s in ClientSession, where: s.client_id == ^client.id)
+        from(s in ClientSession, where: s.device_id == ^client.id)
         |> Repo.all()
 
       assert length(remaining) == 1

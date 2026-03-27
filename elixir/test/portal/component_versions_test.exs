@@ -54,7 +54,8 @@ defmodule Portal.ComponentVersionsTest do
 
   describe "get_component_type/1" do
     test "returns :headless for service_account actors" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         actor: %Portal.Actor{type: :service_account},
         latest_session: nil
       }
@@ -63,7 +64,8 @@ defmodule Portal.ComponentVersionsTest do
     end
 
     test "returns :apple for Mac OS user agent" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         actor: %Portal.Actor{type: :account_user},
         latest_session: %{user_agent: "Mac OS/14.0"}
       }
@@ -72,7 +74,8 @@ defmodule Portal.ComponentVersionsTest do
     end
 
     test "returns :apple for iOS user agent" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         actor: %Portal.Actor{type: :account_user},
         latest_session: %{user_agent: "iOS/17.0"}
       }
@@ -81,7 +84,8 @@ defmodule Portal.ComponentVersionsTest do
     end
 
     test "returns :android for Android user agent" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         actor: %Portal.Actor{type: :account_user},
         latest_session: %{user_agent: "Android/14"}
       }
@@ -90,7 +94,8 @@ defmodule Portal.ComponentVersionsTest do
     end
 
     test "returns :gui for other user agents" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         actor: %Portal.Actor{type: :account_user},
         latest_session: %{user_agent: "Windows/10"}
       }
@@ -99,7 +104,8 @@ defmodule Portal.ComponentVersionsTest do
     end
 
     test "returns :gui when latest_session is nil" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         actor: %Portal.Actor{type: :account_user},
         latest_session: nil
       }

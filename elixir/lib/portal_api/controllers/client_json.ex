@@ -1,6 +1,6 @@
 defmodule PortalAPI.ClientJSON do
   alias PortalAPI.Pagination
-  alias Portal.Client
+  alias Portal.Device
 
   @doc """
   Renders a list of Clients.
@@ -19,22 +19,22 @@ defmodule PortalAPI.ClientJSON do
     %{data: data(client)}
   end
 
-  defp data(%Client{} = client) do
+  defp data(%Device{} = device) do
     %{
-      id: client.id,
-      external_id: client.external_id,
-      actor_id: client.actor_id,
-      name: client.name,
-      ipv4: client.ipv4_address.address,
-      ipv6: client.ipv6_address.address,
-      online: client.online?,
-      device_serial: client.device_serial,
-      device_uuid: client.device_uuid,
-      identifier_for_vendor: client.identifier_for_vendor,
-      firebase_installation_id: client.firebase_installation_id,
-      verified_at: client.verified_at,
-      created_at: client.inserted_at,
-      updated_at: client.updated_at
+      id: device.id,
+      firezone_id: device.firezone_id,
+      actor_id: device.actor_id,
+      name: device.name,
+      ipv4: device.ipv4,
+      ipv6: device.ipv6,
+      online: device.online?,
+      device_serial: device.device_serial,
+      device_uuid: device.device_uuid,
+      identifier_for_vendor: device.identifier_for_vendor,
+      firebase_installation_id: device.firebase_installation_id,
+      verified_at: device.verified_at,
+      created_at: device.inserted_at,
+      updated_at: device.updated_at
     }
   end
 end

@@ -841,13 +841,13 @@ defmodule Portal.Safe do
   # Oban.Job permissions - admin only
   def permit(:read, Oban.Job, :account_admin_user), do: :ok
 
-  # Client permissions
-  def permit(_action, Portal.Client, :account_admin_user), do: :ok
-  def permit(_action, Portal.Client, :api_client), do: :ok
-  def permit(:read, Portal.Client, :account_user), do: :ok
-  def permit(:update, Portal.Client, :account_user), do: :ok
-  def permit(:read, Portal.Client, :service_account), do: :ok
-  def permit(:update, Portal.Client, :service_account), do: :ok
+  # Device permissions (union of Client + Gateway)
+  def permit(_action, Portal.Device, :account_admin_user), do: :ok
+  def permit(_action, Portal.Device, :api_client), do: :ok
+  def permit(:read, Portal.Device, :account_user), do: :ok
+  def permit(:update, Portal.Device, :account_user), do: :ok
+  def permit(:read, Portal.Device, :service_account), do: :ok
+  def permit(:update, Portal.Device, :service_account), do: :ok
 
   # ClientSession permissions
   def permit(_action, Portal.ClientSession, :account_admin_user), do: :ok
@@ -866,11 +866,6 @@ defmodule Portal.Safe do
   def permit(:insert, Portal.PolicyAuthorization, _), do: :ok
   # Only admin can delete policy_authorizations
   def permit(_action, Portal.PolicyAuthorization, :account_admin_user), do: :ok
-
-  # Gateway permissions
-  def permit(_action, Portal.Gateway, :account_admin_user), do: :ok
-  def permit(_action, Portal.Gateway, :api_client), do: :ok
-  def permit(:read, Portal.Gateway, _), do: :ok
 
   # Site permissions
   def permit(_action, Portal.Site, :account_admin_user), do: :ok

@@ -1,5 +1,5 @@
 defmodule PortalAPI.Client.Views.Interface do
-  alias Portal.Client
+  alias Portal.Device
 
   @doh_providers %{
     google: [%{url: "https://dns.google/dns-query"}],
@@ -8,7 +8,7 @@ defmodule PortalAPI.Client.Views.Interface do
     opendns: [%{url: "https://doh.opendns.com/dns-query"}]
   }
 
-  def render(%Client{} = client) do
+  def render(%Device{} = client) do
     dns_config = Map.get(client.account.config, :clients_upstream_dns)
 
     {upstream_do53, upstream_doh, upstream_dns} =
@@ -34,8 +34,8 @@ defmodule PortalAPI.Client.Views.Interface do
       search_domain: client.account.config.search_domain,
       upstream_do53: upstream_do53,
       upstream_doh: upstream_doh,
-      ipv4: client.ipv4_address.address,
-      ipv6: client.ipv6_address.address,
+      ipv4: client.ipv4,
+      ipv6: client.ipv6,
 
       # Legacy field
       upstream_dns: upstream_dns

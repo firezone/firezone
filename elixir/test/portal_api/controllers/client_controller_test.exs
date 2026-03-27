@@ -1,6 +1,6 @@
 defmodule PortalAPI.ClientControllerTest do
   use PortalAPI.ConnCase, async: true
-  alias Portal.Client
+  alias Portal.Device
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -132,10 +132,10 @@ defmodule PortalAPI.ClientControllerTest do
 
       assert data["id"] == client.id
       assert data["name"] == client.name
-      assert data["ipv4"] == to_string(client.ipv4_address.address)
-      assert data["ipv6"] == to_string(client.ipv6_address.address)
+      assert data["ipv4"] == to_string(client.ipv4)
+      assert data["ipv6"] == to_string(client.ipv6)
       assert data["actor_id"] == client.actor_id
-      assert data["external_id"] == client.external_id
+      assert data["firezone_id"] == client.firezone_id
       assert data["online"] == false
     end
   end
@@ -239,7 +239,7 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["name"] == client.name
       assert data["online"] == false
 
-      refute Repo.get_by(Client, id: client.id, account_id: client.account_id)
+      refute Repo.get_by(Device, id: client.id, account_id: client.account_id)
     end
   end
 end

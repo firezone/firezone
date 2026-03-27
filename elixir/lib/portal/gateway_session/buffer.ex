@@ -7,7 +7,7 @@ defmodule Portal.GatewaySession.Buffer do
   @flush_interval :timer.seconds(5)
   @flush_threshold 1_000
 
-  @drop_keys [:__struct__, :__meta__, :account, :gateway, :gateway_token]
+  @drop_keys [:__struct__, :__meta__, :account, :device, :gateway_token]
 
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -76,7 +76,7 @@ defmodule Portal.GatewaySession.Buffer do
 
     if skipped > 0 do
       Logger.warning(
-        "Skipped #{skipped} gateway sessions due to deleted associations (tokens/accounts/gateways)"
+        "Skipped #{skipped} gateway sessions due to deleted associations (tokens/accounts/devices)"
       )
     end
 
@@ -116,8 +116,8 @@ defmodule Portal.GatewaySession.Buffer do
       filter_by_existing(entries, :account_id, Portal.Account)
     end
 
-    defp filter_existing(entries, "gateway_sessions_gateway_id_fkey") do
-      filter_by_composite(entries, :gateway_id, Portal.Gateway)
+    defp filter_existing(entries, "gateway_sessions_device_id_fkey") do
+      filter_by_composite(entries, :device_id, Portal.Device)
     end
 
     defp filter_existing(entries, "gateway_sessions_gateway_token_id_fkey") do

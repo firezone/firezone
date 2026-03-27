@@ -412,8 +412,8 @@ defmodule PortalWeb.Resources.Components do
 
   defp client_details(client) do
     [
-      client.ipv4_address && Portal.Types.INET.to_string(client.ipv4_address.address),
-      client.ipv6_address && Portal.Types.INET.to_string(client.ipv6_address.address),
+      client.ipv4 && Portal.Types.INET.to_string(client.ipv4),
+      client.ipv6 && Portal.Types.INET.to_string(client.ipv6),
       client.device_serial,
       client.device_uuid,
       client.id
@@ -437,7 +437,7 @@ defmodule PortalWeb.Resources.Components do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Features, Safe, Resource, StaticDevicePoolMember}
+    alias Portal.{Device, Features, Resource, Safe, StaticDevicePoolMember}
 
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
@@ -468,9 +468,9 @@ defmodule PortalWeb.Resources.Components do
     end
 
     def get_client(client_id, subject) do
-      from(c in Portal.Client, as: :clients)
+      from(c in Device, as: :clients)
+      |> where([clients: c], c.type == :client)
       |> where([clients: c], c.id == ^client_id)
-      |> preload([:ipv4_address, :ipv6_address])
       |> Safe.scoped(subject, :replica)
       |> Safe.one(fallback_to_primary: true)
     end
@@ -483,13 +483,11 @@ defmodule PortalWeb.Resources.Components do
       pattern = "%#{search_term}%"
 
       query =
-        from(c in Portal.Client, as: :clients)
+        from(c in Device, as: :clients)
+        |> where([clients: c], c.type == :client)
         |> join(:inner, [clients: c], a in assoc(c, :actor), as: :actors)
-        |> join(:left, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
-        |> join(:left, [clients: c], ipv6 in assoc(c, :ipv6_address), as: :ipv6)
         |> where([clients: c], c.id not in ^selected_ids)
         |> where(^client_search_filter(pattern))
-        |> preload([:ipv4_address, :ipv6_address])
         |> limit(10)
 
       case query |> Safe.scoped(subject, :replica) |> Safe.all() do
@@ -505,18 +503,18 @@ defmodule PortalWeb.Resources.Components do
 
     defp client_search_filter(pattern) do
       dynamic(
-        [clients: c, actors: a, ipv4: ipv4, ipv6: ipv6],
+        [clients: c, actors: a],
         ilike(c.name, ^pattern) or
           ilike(a.name, ^pattern) or
           ilike(coalesce(a.email, ""), ^pattern) or
           ilike(type(c.id, :string), ^pattern) or
-          ilike(coalesce(c.external_id, ""), ^pattern) or
+          ilike(coalesce(c.firezone_id, ""), ^pattern) or
           ilike(coalesce(c.device_serial, ""), ^pattern) or
           ilike(coalesce(c.device_uuid, ""), ^pattern) or
           ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or
           ilike(coalesce(c.firebase_installation_id, ""), ^pattern) or
-          ilike(type(ipv4.address, :string), ^pattern) or
-          ilike(type(ipv6.address, :string), ^pattern)
+          ilike(type(c.ipv4, :string), ^pattern) or
+          ilike(type(c.ipv6, :string), ^pattern)
       )
     end
 
@@ -528,7 +526,8 @@ defmodule PortalWeb.Resources.Components do
         |> Enum.map(& &1.id)
         |> Enum.uniq()
 
-      from(c in Portal.Client, as: :clients)
+      from(c in Device, as: :clients)
+      |> where([clients: c], c.type == :client)
       |> where([clients: c], c.id in ^ids)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
@@ -567,7 +566,7 @@ defmodule PortalWeb.Resources.Components do
       existing_client_ids =
         from(m in StaticDevicePoolMember,
           where: m.resource_id == ^resource.id,
-          select: m.client_id
+          select: m.device_id
         )
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
@@ -598,7 +597,7 @@ defmodule PortalWeb.Resources.Components do
 
     defp maybe_delete_pool_members(resource, to_remove, subject) do
       case from(m in StaticDevicePoolMember,
-             where: m.resource_id == ^resource.id and m.client_id in ^to_remove
+             where: m.resource_id == ^resource.id and m.device_id in ^to_remove
            )
            |> Safe.scoped(subject)
            |> Safe.delete_all() do
@@ -611,11 +610,12 @@ defmodule PortalWeb.Resources.Components do
 
     defp maybe_insert_pool_members(resource, to_add, subject) do
       entries =
-        Enum.map(to_add, fn client_id ->
+        Enum.map(to_add, fn device_id ->
           %{
             account_id: resource.account_id,
             resource_id: resource.id,
-            client_id: client_id,
+            device_id: device_id,
+            device_type: :client,
             id: Ecto.UUID.generate()
           }
         end)
@@ -623,7 +623,7 @@ defmodule PortalWeb.Resources.Components do
       case Safe.scoped(subject)
            |> Safe.insert_all(StaticDevicePoolMember, entries,
              on_conflict: :nothing,
-             conflict_target: [:account_id, :resource_id, :client_id]
+             conflict_target: [:account_id, :resource_id, :device_id]
            ) do
         {:error, reason} -> {:error, reason}
         {_, _} -> :ok

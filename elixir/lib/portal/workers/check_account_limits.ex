@@ -187,7 +187,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Actor
-    alias Portal.Client
+    alias Portal.Device
 
     @doc """
     Fetches all counts for all active accounts in batched GROUP BY queries.
@@ -303,13 +303,14 @@ defmodule Portal.Workers.CheckAccountLimits do
     defp count_1m_active_users_by_account do
       # Use a subquery to get distinct actor_ids per account, then count
       subquery =
-        from(c in Client, as: :clients)
+        from(c in Device, as: :clients)
+        |> where([clients: c], c.type == :client)
         |> join(:inner, [clients: c], acc in Account,
           on: acc.id == c.account_id and is_nil(acc.disabled_at),
           as: :account
         )
         |> join(:inner, [clients: c], s in Portal.ClientSession,
-          on: s.client_id == c.id and s.account_id == c.account_id,
+          on: s.device_id == c.id and s.account_id == c.account_id,
           as: :session
         )
         |> where([session: s], s.inserted_at > ago(1, "month"))

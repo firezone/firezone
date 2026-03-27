@@ -46,7 +46,7 @@ defmodule Portal.Cache.ClientTest do
         end
 
       session = %Portal.ClientSession{
-        client_id: client.id,
+        device_id: client.id,
         account_id: client.account_id,
         user_agent: subject.context.user_agent,
         remote_ip: subject.context.remote_ip,
@@ -266,7 +266,7 @@ defmodule Portal.Cache.ClientTest do
       policy_fixture(account: account, group: group, resource: resource)
 
       session = %Portal.ClientSession{
-        client_id: client.id,
+        device_id: client.id,
         account_id: client.account_id,
         user_agent: subject.context.user_agent,
         remote_ip: subject.context.remote_ip
@@ -274,7 +274,7 @@ defmodule Portal.Cache.ClientTest do
 
       cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
 
-      target_ipv4 = target_client.ipv4_address.address.address
+      target_ipv4 = target_client.ipv4.address
 
       assert :ok = Cache.authorize_device_access(cache, target_ipv4)
     end
@@ -288,7 +288,7 @@ defmodule Portal.Cache.ClientTest do
       target_client = client_fixture(account: account, actor: target_actor)
 
       session = %Portal.ClientSession{
-        client_id: client.id,
+        device_id: client.id,
         account_id: client.account_id,
         user_agent: subject.context.user_agent,
         remote_ip: subject.context.remote_ip
@@ -296,7 +296,7 @@ defmodule Portal.Cache.ClientTest do
 
       cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
 
-      target_ipv4 = target_client.ipv4_address.address.address
+      target_ipv4 = target_client.ipv4.address
 
       assert {:error, :forbidden} = Cache.authorize_device_access(cache, target_ipv4)
     end

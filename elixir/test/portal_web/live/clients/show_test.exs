@@ -103,8 +103,8 @@ defmodule PortalWeb.Live.Clients.ShowTest do
     assert table["last started"]
     assert table["version"] =~ session.version
     assert table["user agent"] =~ session.user_agent
-    assert table["tunnel interface ipv4 address"] =~ to_string(client.ipv4_address.address)
-    assert table["tunnel interface ipv6 address"] =~ to_string(client.ipv6_address.address)
+    assert table["tunnel interface ipv4 address"] =~ to_string(client.ipv4)
+    assert table["tunnel interface ipv6 address"] =~ to_string(client.ipv6)
 
     table =
       lv
@@ -112,7 +112,7 @@ defmodule PortalWeb.Live.Clients.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["file id"] == client.external_id
+    assert table["firezone id"] == client.firezone_id
 
     assert table["verification"] =~ "Not Verified"
     assert table["device serial"] =~ to_string(client.device_serial)
@@ -348,6 +348,10 @@ defmodule PortalWeb.Live.Clients.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/clients")
 
-    refute Repo.get_by(Portal.Client, id: client.id, account_id: client.account_id)
+    refute Repo.get_by(Portal.Device,
+             id: client.id,
+             account_id: client.account_id,
+             type: :client
+           )
   end
 end

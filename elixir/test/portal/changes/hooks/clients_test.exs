@@ -1,11 +1,11 @@
 defmodule Portal.Changes.Hooks.ClientsTest do
   use Portal.DataCase, async: true
-  import Portal.Changes.Hooks.Clients
+  import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
   import Portal.ClientFixtures
   import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
-  alias Portal.Client
+  alias Portal.Device
   alias Portal.PubSub
 
   describe "insert/1" do
@@ -27,8 +27,8 @@ defmodule Portal.Changes.Hooks.ClientsTest do
 
       assert_receive %Change{
         op: :update,
-        old_struct: %Client{} = old_client,
-        struct: %Client{} = new_client,
+        old_struct: %Device{} = old_client,
+        struct: %Device{} = new_client,
         lsn: 0
       }
 
@@ -44,11 +44,17 @@ defmodule Portal.Changes.Hooks.ClientsTest do
 
       old_data = %{
         "id" => client.id,
+        "type" => "client",
         "verified_at" => "2023-10-01T00:00:00Z",
         "account_id" => client.account_id
       }
 
-      data = %{"id" => client.id, "verified_at" => nil, "account_id" => client.account_id}
+      data = %{
+        "id" => client.id,
+        "type" => "client",
+        "verified_at" => nil,
+        "account_id" => client.account_id
+      }
 
       policy_authorization =
         policy_authorization_fixture(client: client, account: account)
@@ -57,8 +63,8 @@ defmodule Portal.Changes.Hooks.ClientsTest do
 
       assert_receive %Change{
         op: :update,
-        old_struct: %Client{},
-        struct: %Client{} = new_client,
+        old_struct: %Device{},
+        struct: %Device{} = new_client,
         lsn: 0
       }
 
@@ -74,10 +80,10 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       client = client_fixture(account: account)
       :ok = PubSub.Changes.subscribe(client.account_id)
 
-      old_data = %{"id" => client.id, "account_id" => client.account_id}
+      old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
 
       assert :ok == on_delete(0, old_data)
-      assert_receive %Change{op: :delete, old_struct: %Client{} = deleted_client, lsn: 0}
+      assert_receive %Change{op: :delete, old_struct: %Device{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
     end
   end

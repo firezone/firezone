@@ -3,6 +3,7 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
 
   import Portal.AccountFixtures
   import Portal.ClientFixtures
+  import Portal.DeviceFixtures
 
   alias PortalAPI.Client.Views.Interface
 
@@ -22,13 +23,14 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
           }
         )
 
-      client = client_fixture(account: account) |> Repo.preload(:account)
+      client = client_fixture(account: account)
+      device = fetch_device!(client) |> Repo.preload(:account)
 
-      result = Interface.render(client)
+      result = Interface.render(device)
 
       assert result.search_domain == "example.com"
-      assert result.ipv4 == client.ipv4_address.address
-      assert result.ipv6 == client.ipv6_address.address
+      assert result.ipv4 == device.ipv4
+      assert result.ipv6 == device.ipv6
 
       assert result.upstream_do53 == [
                %{ip: "1.1.1.1"},
@@ -57,9 +59,10 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
           }
         )
 
-      client = client_fixture(account: account) |> Repo.preload(:account)
+      client = client_fixture(account: account)
+      device = fetch_device!(client) |> Repo.preload(:account)
 
-      result = Interface.render(client)
+      result = Interface.render(device)
 
       assert result.upstream_doh == [
                %{url: "https://doh.opendns.com/dns-query"}

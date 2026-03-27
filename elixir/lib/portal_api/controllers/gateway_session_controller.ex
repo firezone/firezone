@@ -73,7 +73,7 @@ defmodule PortalAPI.GatewaySessionController do
       query =
         case params do
           %{"gateway_id" => gateway_id} ->
-            where(query, [gateway_sessions: gs], gs.gateway_id == ^gateway_id)
+            where(query, [gateway_sessions: gs], gs.device_id == ^gateway_id)
 
           _ ->
             query

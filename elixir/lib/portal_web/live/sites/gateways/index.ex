@@ -138,7 +138,7 @@ defmodule PortalWeb.Sites.Gateways.Index do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, Gateway, GatewaySession}
+    alias Portal.{Device, GatewaySession, Safe}
 
     def get_site!(id, subject) do
       from(s in Portal.Site, as: :sites)
@@ -148,7 +148,8 @@ defmodule PortalWeb.Sites.Gateways.Index do
     end
 
     def list_gateways(subject, opts \\ []) do
-      from(g in Gateway, as: :gateways)
+      from(g in Device, as: :gateways)
+      |> where([gateways: g], g.type == :gateway)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
@@ -174,13 +175,13 @@ defmodule PortalWeb.Sites.Gateways.Index do
       sessions_by_gateway_id =
         from(s in GatewaySession,
           where: s.account_id in ^account_ids,
-          where: s.gateway_id in ^gateway_ids,
-          distinct: s.gateway_id,
-          order_by: [asc: s.gateway_id, desc: s.inserted_at]
+          where: s.device_id in ^gateway_ids,
+          distinct: s.device_id,
+          order_by: [asc: s.device_id, desc: s.inserted_at]
         )
         |> Safe.unscoped(:replica)
         |> Safe.all()
-        |> Map.new(&{&1.gateway_id, &1})
+        |> Map.new(&{&1.device_id, &1})
 
       Enum.map(gateways, fn gateway ->
         %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}

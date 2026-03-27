@@ -17,7 +17,7 @@ defmodule Portal.GatewaySessionTest do
         |> GatewaySession.changeset()
 
       assert errors_on(changeset).account_id
-      assert errors_on(changeset).gateway_id
+      assert errors_on(changeset).device_id
       assert errors_on(changeset).gateway_token_id
     end
 
@@ -32,12 +32,12 @@ defmodule Portal.GatewaySessionTest do
         |> Ecto.Changeset.cast(
           %{
             account_id: account.id,
-            gateway_id: gateway.id,
+            device_id: gateway.id,
             gateway_token_id: token.id,
             user_agent: "Linux/6.1.0 connlib/1.0.0 (x86_64)",
             version: "1.0.0"
           },
-          [:account_id, :gateway_id, :gateway_token_id, :user_agent, :version]
+          [:account_id, :device_id, :gateway_token_id, :user_agent, :version]
         )
         |> GatewaySession.changeset()
 
@@ -55,11 +55,11 @@ defmodule Portal.GatewaySessionTest do
                |> Ecto.Changeset.cast(
                  %{
                    account_id: Ecto.UUID.generate(),
-                   gateway_id: gateway.id,
+                   device_id: gateway.id,
                    gateway_token_id: token.id,
                    public_key: gateway.latest_session.public_key
                  },
-                 [:account_id, :gateway_id, :gateway_token_id, :public_key]
+                 [:account_id, :device_id, :gateway_token_id, :public_key]
                )
                |> GatewaySession.changeset()
                |> Repo.insert()
@@ -67,26 +67,27 @@ defmodule Portal.GatewaySessionTest do
       assert errors_on(changeset).account
     end
 
-    test "enforces gateway association constraint" do
+    test "enforces device association constraint" do
       account = account_fixture()
       site = site_fixture(account: account)
       token = gateway_token_fixture(account: account, site: site)
+      device_id = Ecto.UUID.generate()
 
       assert {:error, changeset} =
                %GatewaySession{}
                |> Ecto.Changeset.cast(
                  %{
                    account_id: account.id,
-                   gateway_id: Ecto.UUID.generate(),
+                   device_id: device_id,
                    gateway_token_id: token.id,
                    public_key: "dGVzdHB1YmxpY2tleXRlc3RwdWJsaWNrZXl0ZXN0cHU="
                  },
-                 [:account_id, :gateway_id, :gateway_token_id, :public_key]
+                 [:account_id, :device_id, :gateway_token_id, :public_key]
                )
                |> GatewaySession.changeset()
                |> Repo.insert()
 
-      assert errors_on(changeset).gateway
+      assert errors_on(changeset).device
     end
 
     test "enforces gateway_token association constraint" do
@@ -99,11 +100,11 @@ defmodule Portal.GatewaySessionTest do
                |> Ecto.Changeset.cast(
                  %{
                    account_id: account.id,
-                   gateway_id: gateway.id,
+                   device_id: gateway.id,
                    gateway_token_id: Ecto.UUID.generate(),
                    public_key: gateway.latest_session.public_key
                  },
-                 [:account_id, :gateway_id, :gateway_token_id, :public_key]
+                 [:account_id, :device_id, :gateway_token_id, :public_key]
                )
                |> GatewaySession.changeset()
                |> Repo.insert()
@@ -123,7 +124,7 @@ defmodule Portal.GatewaySessionTest do
 
       assert session.id
       assert session.account_id
-      assert session.gateway_id
+      assert session.device_id
       assert session.gateway_token_id
       assert session.user_agent
       assert session.remote_ip
@@ -146,7 +147,7 @@ defmodule Portal.GatewaySessionTest do
       gateway = gateway_fixture(account: account, site: site)
       session = gateway_session_fixture(account: account, site: site, gateway: gateway)
 
-      assert session.gateway_id == gateway.id
+      assert session.device_id == gateway.id
     end
 
     test "session belongs to a gateway_token" do

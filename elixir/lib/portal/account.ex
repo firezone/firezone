@@ -32,18 +32,15 @@ defmodule Portal.Account do
     has_many :auth_providers, Portal.AuthProvider
     has_many :external_identities, Portal.ExternalIdentity
 
-    has_many :ipv4_addresses, Portal.IPv4Address
-    has_many :ipv6_addresses, Portal.IPv6Address
-
     has_many :policies, Portal.Policy
 
     has_many :policy_authorizations, Portal.PolicyAuthorization
 
     has_many :resources, Portal.Resource
 
-    has_many :clients, Portal.Client
-
-    has_many :gateways, Portal.Gateway
+    has_many :devices, Portal.Device
+    has_many :clients, Portal.Device, where: [type: :client]
+    has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
 
     has_many :client_tokens, Portal.ClientToken

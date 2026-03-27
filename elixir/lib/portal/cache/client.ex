@@ -52,7 +52,7 @@ defmodule Portal.Cache.Client do
 
   """
 
-  alias Portal.{Authentication, Client, ClientSession, Cache, Resource, Policy, Version}
+  alias Portal.{Authentication, ClientSession, Cache, Resource, Policy, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -96,7 +96,7 @@ defmodule Portal.Cache.Client do
 
   @spec authorize_resource(
           t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Ecto.UUID.t(),
           Authentication.Subject.t()
@@ -182,7 +182,7 @@ defmodule Portal.Cache.Client do
 
   @spec recompute_connectable_resources(
           t() | nil,
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t(),
           Keyword.t()
@@ -239,7 +239,7 @@ defmodule Portal.Cache.Client do
 
   @spec add_membership(
           t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
@@ -266,7 +266,7 @@ defmodule Portal.Cache.Client do
   @spec delete_membership(
           t(),
           Portal.Membership.t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
@@ -309,7 +309,7 @@ defmodule Portal.Cache.Client do
   @spec update_resources_with_site_name(
           t(),
           Portal.Site.t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
@@ -351,7 +351,7 @@ defmodule Portal.Cache.Client do
   @spec add_policy(
           t(),
           Policy.t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
@@ -404,7 +404,7 @@ defmodule Portal.Cache.Client do
   @spec delete_policy(
           t(),
           Policy.t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
@@ -452,7 +452,7 @@ defmodule Portal.Cache.Client do
   @spec update_resource(
           t(),
           Portal.Resource.t(),
-          Portal.Client.t(),
+          Portal.Device.t(),
           Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
@@ -509,11 +509,11 @@ defmodule Portal.Cache.Client do
         ) :: {:ok, t()}
   def add_static_device_pool_member(cache, %Portal.StaticDevicePoolMember{} = member, subject) do
     if connectable_resource?(cache, member.resource_id) do
-      ipv4 = Database.get_client_ipv4(member.client_id, subject)
+      ipv4 = Database.get_client_ipv4(member.device_id, subject)
 
       updated =
         if ipv4 do
-          Map.put(cache.connectable_devices, member.client_id, ipv4)
+          Map.put(cache.connectable_devices, member.device_id, ipv4)
         else
           cache.connectable_devices
         end
@@ -527,7 +527,7 @@ defmodule Portal.Cache.Client do
   @spec delete_static_device_pool_member(t(), Portal.StaticDevicePoolMember.t()) ::
           {:ok, {byte(), byte(), byte(), byte()} | nil, t()}
   def delete_static_device_pool_member(cache, %Portal.StaticDevicePoolMember{} = member) do
-    {ipv4, updated} = Map.pop(cache.connectable_devices, member.client_id)
+    {ipv4, updated} = Map.pop(cache.connectable_devices, member.device_id)
     {:ok, ipv4, %{cache | connectable_devices: updated}}
   end
 
@@ -607,7 +607,7 @@ defmodule Portal.Cache.Client do
 
   defp filter_by_conforming_policies_for_client(
          policies,
-         %Client{} = client,
+         client,
          %ClientSession{} = session,
          auth_provider_id
        ) do
@@ -654,7 +654,7 @@ defmodule Portal.Cache.Client do
 
   defp ensure_client_conforms_policy_conditions(
          %Portal.Policy{} = policy,
-         %Portal.Client{} = client,
+         client,
          %ClientSession{} = session,
          auth_provider_id
        ) do
@@ -668,7 +668,7 @@ defmodule Portal.Cache.Client do
 
   defp ensure_client_conforms_policy_conditions(
          %Cache.Cacheable.Policy{} = policy,
-         %Portal.Client{} = client,
+         client,
          %ClientSession{} = session,
          auth_provider_id
        ) do
@@ -818,8 +818,8 @@ defmodule Portal.Cache.Client do
       |> where([resources: r], r.id in ^resource_ids)
       |> join(:inner, [resources: r], m in assoc(r, :static_pool_members), as: :members)
       |> join(:inner, [members: m], c in assoc(m, :client), as: :clients)
-      |> join(:inner, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
-      |> select([members: m, ipv4: ipv4], {m.client_id, ipv4.address})
+      |> where([clients: c], c.type == :client)
+      |> select([members: m, clients: c], {m.device_id, c.ipv4})
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do
@@ -827,14 +827,16 @@ defmodule Portal.Cache.Client do
           %{}
 
         rows ->
-          Map.new(rows, fn {client_id, ipv4} -> {Ecto.UUID.cast!(client_id), ipv4.address} end)
+          Map.new(rows, fn {device_id, ipv4} -> {Ecto.UUID.cast!(device_id), ipv4.address} end)
       end
     end
 
     def get_client_ipv4(client_id, subject) do
-      from(c in Portal.Client, where: c.id == ^client_id)
-      |> join(:inner, [c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
-      |> select([ipv4: ipv4], ipv4.address)
+      from(c in Portal.Device,
+        where: c.type == :client,
+        where: c.id == ^client_id
+      )
+      |> select([c], c.ipv4)
       |> Safe.scoped(subject, :replica)
       |> Safe.one()
       |> case do
@@ -859,14 +861,13 @@ defmodule Portal.Cache.Client do
       now = DateTime.utc_now()
 
       from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
-      |> where([policy_authorizations: pa], pa.receiving_client_id == ^client_id)
+      |> where([policy_authorizations: pa], pa.receiving_device_id == ^client_id)
       |> where([policy_authorizations: pa], pa.expires_at > ^now)
-      |> join(:inner, [policy_authorizations: pa], c in Portal.Client,
-        on: c.id == pa.client_id,
+      |> join(:inner, [policy_authorizations: pa], c in Portal.Device,
+        on: c.id == pa.initiating_device_id and c.type == :client,
         as: :clients
       )
-      |> join(:inner, [clients: c], ipv4 in assoc(c, :ipv4_address), as: :ipv4)
-      |> select([ipv4: ipv4], ipv4.address)
+      |> select([clients: c], c.ipv4)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do

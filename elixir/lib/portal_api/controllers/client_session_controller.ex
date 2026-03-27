@@ -79,7 +79,7 @@ defmodule PortalAPI.ClientSessionController do
       query =
         case params do
           %{"client_id" => client_id} ->
-            where(query, [client_sessions: cs], cs.client_id == ^client_id)
+            where(query, [client_sessions: cs], cs.device_id == ^client_id)
 
           _ ->
             query

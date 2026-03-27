@@ -5,8 +5,7 @@ defmodule Portal.GatewayFixtures do
 
   import Portal.AccountFixtures
   import Portal.SiteFixtures
-  import Portal.IPv4AddressFixtures
-  import Portal.IPv6AddressFixtures
+  import Portal.DeviceFixtures
   import Portal.TokenFixtures
 
   @doc """
@@ -17,7 +16,7 @@ defmodule Portal.GatewayFixtures do
 
     Enum.into(attrs, %{
       name: "Gateway #{unique_num}",
-      external_id: "gateway_#{unique_num}",
+      firezone_id: "gateway_#{unique_num}",
       public_key: generate_public_key()
     })
   end
@@ -56,8 +55,7 @@ defmodule Portal.GatewayFixtures do
         :last_seen_at
       ])
 
-    # Build gateway attrs (without session fields)
-    gateway_attrs =
+    device_attrs =
       attrs
       |> Map.drop([
         :account,
@@ -76,29 +74,50 @@ defmodule Portal.GatewayFixtures do
       |> valid_gateway_attrs()
 
     {:ok, gateway} =
-      %Portal.Gateway{}
-      |> Ecto.Changeset.cast(gateway_attrs, [
+      %Portal.Device{}
+      |> Ecto.Changeset.cast(device_attrs, [
         :name,
-        :external_id
+        :firezone_id
       ])
+      |> Ecto.Changeset.put_change(:type, :gateway)
+      |> Ecto.Changeset.put_change(:account_id, account.id)
+      |> Ecto.Changeset.put_change(:site_id, site.id)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:site, site)
-      |> Portal.Gateway.changeset()
-      |> Portal.Repo.insert()
+      |> Portal.Device.changeset()
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.insert()
 
-    # Create address records for the gateway (unless explicitly set to nil)
-    Map.get_lazy(attrs, :ipv4_address, fn -> ipv4_address_fixture(gateway: gateway) end)
-    Map.get_lazy(attrs, :ipv6_address, fn -> ipv6_address_fixture(gateway: gateway) end)
+    ipv4 =
+      attrs
+      |> Map.fetch(:ipv4_address)
+      |> case do
+        {:ok, value} -> extract_address(value)
+        :error -> valid_ipv4_address_attrs().address
+      end
+
+    ipv6 =
+      attrs
+      |> Map.fetch(:ipv6_address)
+      |> case do
+        {:ok, value} -> extract_address(value)
+        :error -> valid_ipv6_address_attrs().address
+      end
+
+    gateway =
+      gateway
+      |> maybe_sync_device_ipv4(ipv4)
+      |> maybe_sync_device_ipv6(ipv6)
 
     # Always create a gateway session (gateways always have sessions in practice)
     token = gateway_token_fixture(account: account, site: site)
 
-    public_key = Map.get(gateway_attrs, :public_key, generate_public_key())
+    public_key = Map.get(device_attrs, :public_key, generate_public_key())
 
     session =
       %Portal.GatewaySession{
         account_id: account.id,
-        gateway_id: gateway.id,
+        device_id: gateway.id,
         gateway_token_id: token.id,
         public_key: public_key,
         user_agent: Map.get(session_attrs, :last_seen_user_agent, "Firezone-Gateway/1.3.0"),
@@ -113,7 +132,7 @@ defmodule Portal.GatewayFixtures do
 
     # Return gateway with addresses preloaded and latest session set
     gateway
-    |> Portal.Repo.preload([:ipv4_address, :ipv6_address])
+    |> Portal.Repo.preload(:site)
     |> Map.put(:latest_session, session)
   end
 
@@ -166,4 +185,14 @@ defmodule Portal.GatewayFixtures do
     :crypto.strong_rand_bytes(32)
     |> Base.encode64()
   end
+
+  defp maybe_sync_device_ipv4(device, nil), do: device
+  defp maybe_sync_device_ipv4(device, ipv4), do: sync_device_ipv4(device, ipv4)
+
+  defp maybe_sync_device_ipv6(device, nil), do: device
+  defp maybe_sync_device_ipv6(device, ipv6), do: sync_device_ipv6(device, ipv6)
+
+  defp extract_address(nil), do: nil
+  defp extract_address(%Postgrex.INET{} = address), do: address
+  defp extract_address(%{address: %Postgrex.INET{} = address}), do: address
 end

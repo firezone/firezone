@@ -4,11 +4,11 @@ defmodule PortalAPI.Client.Channel do
 
   alias Portal.{
     Cache,
+    Device,
     PG,
     Changes.Change,
     Features,
     PubSub,
-    Gateway,
     Presence,
     Authentication
   }
@@ -429,7 +429,7 @@ defmodule PortalAPI.Client.Channel do
         socket.assigns.subject.context.remote_ip_location_lon
       }
 
-      gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
       gateway_public_key = gateway.latest_session.public_key
 
       policy_authorization_id = Ecto.UUID.generate()
@@ -566,7 +566,7 @@ defmodule PortalAPI.Client.Channel do
         socket.assigns.subject.context.remote_ip_location_lon
       }
 
-      gateway = Gateway.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       reply =
         {:ok,
@@ -635,8 +635,8 @@ defmodule PortalAPI.Client.Channel do
              {:allow_access, {self(), socket_ref(socket)},
               %{
                 client_id: socket.assigns.client.id,
-                client_ipv4: socket.assigns.client.ipv4_address.address,
-                client_ipv6: socket.assigns.client.ipv6_address.address,
+                client_ipv4: socket.assigns.client.ipv4,
+                client_ipv6: socket.assigns.client.ipv6,
                 resource: resource,
                 policy_authorization_id: policy_authorization_id,
                 authorization_expires_at: expires_at,
@@ -751,10 +751,20 @@ defmodule PortalAPI.Client.Channel do
            find_online_client_by_ipv4(account_id, ipv4_tuple) do
       client = socket.assigns.client
       client_public_key = socket.assigns.session.public_key
-      target_client = %Portal.Client{id: target_client_id, psk_base: target_meta.psk_base}
+
+      target_client = %Portal.Device{
+        id: target_client_id,
+        psk_base: target_meta.psk_base,
+        type: :client
+      }
 
       preshared_key =
-        Portal.Crypto.psk(client, client_public_key, target_client, target_meta.public_key)
+        Portal.Crypto.psk(
+          client,
+          client_public_key,
+          target_client,
+          target_meta.public_key
+        )
 
       ice_credentials =
         generate_ice_credentials(
@@ -772,11 +782,10 @@ defmodule PortalAPI.Client.Channel do
          %{
            client_id: client.id,
            client_name: client.name,
-           client_fqdns:
-             client_fqdns(client.ipv4_address && client.ipv4_address.address, account_key),
+           client_fqdns: client_fqdns(client.ipv4, account_key),
            client_public_key: client_public_key,
-           client_ipv4: client.ipv4_address && client.ipv4_address.address,
-           client_ipv6: client.ipv6_address && client.ipv6_address.address,
+           client_ipv4: client.ipv4,
+           client_ipv6: client.ipv6,
            preshared_key: preshared_key,
            local_ice_credentials: ice_credentials.receiver,
            remote_ice_credentials: ice_credentials.initiator,
@@ -1124,19 +1133,19 @@ defmodule PortalAPI.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Portal.Client{} = old_client,
-           struct: %Portal.Client{id: client_id} = client
+           old_struct: %Portal.Device{id: client_id} = old_client,
+           struct: %Portal.Device{id: client_id} = client
          },
          %{assigns: %{client: %{id: id} = current_client}} = socket
        )
        when id == client_id do
-    # Update socket with the new client state, preserving loaded associations
+    # Update socket with the new client state, preserving IPs and associations
     updated_client = %{
       client
       | account: current_client.account,
         actor: current_client.actor,
-        ipv4_address: current_client.ipv4_address,
-        ipv6_address: current_client.ipv6_address
+        ipv4: current_client.ipv4,
+        ipv6: current_client.ipv6
     }
 
     socket = assign(socket, :client, updated_client)
@@ -1156,7 +1165,7 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.Client{id: id}},
+         %Change{op: :delete, old_struct: %Portal.Device{id: id}},
          %{assigns: %{client: %{id: client_id}}} = socket
        )
        when id == client_id do
@@ -1361,12 +1370,12 @@ defmodule PortalAPI.Client.Channel do
 
   defp async_create_policy_authorization(
          policy_authorization_id,
-         %Portal.Client{
+         %Portal.Device{
            id: client_id,
            account_id: account_id,
            actor_id: actor_id
          },
-         %Portal.Gateway{
+         %{
            id: gateway_id,
            account_id: account_id
          } = gateway,
@@ -1390,8 +1399,8 @@ defmodule PortalAPI.Client.Channel do
       id: policy_authorization_id,
       token_id: token_id,
       policy_id: policy_id,
-      client_id: client_id,
-      gateway_id: gateway_id,
+      initiating_device_id: client_id,
+      receiving_device_id: gateway_id,
       resource_id: resource_id,
       membership_id: membership_id,
       account_id: account_id,
@@ -1419,8 +1428,8 @@ defmodule PortalAPI.Client.Channel do
           reason: :changeset_error,
           changeset_errors: inspect(changeset.errors),
           policy_id: attrs.policy_id,
-          client_id: attrs.client_id,
-          gateway_id: attrs.gateway_id,
+          initiating_device_id: attrs.initiating_device_id,
+          receiving_device_id: attrs.receiving_device_id,
           resource_id: attrs.resource_id,
           membership_id: attrs.membership_id
         )
@@ -1430,8 +1439,8 @@ defmodule PortalAPI.Client.Channel do
           policy_authorization_id: attrs.id,
           reason: inspect(reason),
           policy_id: attrs.policy_id,
-          client_id: attrs.client_id,
-          gateway_id: attrs.gateway_id,
+          initiating_device_id: attrs.initiating_device_id,
+          receiving_device_id: attrs.receiving_device_id,
           resource_id: attrs.resource_id,
           membership_id: attrs.membership_id
         )
@@ -1443,8 +1452,8 @@ defmodule PortalAPI.Client.Channel do
         reason: Exception.message(exception),
         stacktrace: Exception.format_stacktrace(__STACKTRACE__),
         policy_id: attrs.policy_id,
-        client_id: attrs.client_id,
-        gateway_id: attrs.gateway_id,
+        initiating_device_id: attrs.initiating_device_id,
+        receiving_device_id: attrs.receiving_device_id,
         resource_id: attrs.resource_id,
         membership_id: attrs.membership_id
       )
@@ -1454,7 +1463,7 @@ defmodule PortalAPI.Client.Channel do
     import Ecto.Changeset
 
     fields =
-      ~w[id token_id policy_id client_id receiving_client_id gateway_id resource_id membership_id
+      ~w[id token_id policy_id initiating_device_id receiving_device_id resource_id membership_id
                 account_id
                 expires_at
                 client_remote_ip client_user_agent
@@ -1462,9 +1471,7 @@ defmodule PortalAPI.Client.Channel do
 
     %Portal.PolicyAuthorization{}
     |> cast(attrs, fields)
-    |> validate_required(
-      fields -- [:membership_id, :receiving_client_id, :gateway_id, :gateway_remote_ip]
-    )
+    |> validate_required(fields -- [:membership_id, :gateway_remote_ip])
     |> Portal.PolicyAuthorization.changeset()
   end
 
@@ -1509,12 +1516,8 @@ defmodule PortalAPI.Client.Channel do
 
       sup_pid ->
         session_meta = %{
-          ipv4:
-            socket.assigns.client.ipv4_address &&
-              socket.assigns.client.ipv4_address.address.address,
-          ipv6:
-            socket.assigns.client.ipv6_address &&
-              socket.assigns.client.ipv6_address.address.address,
+          ipv4: socket.assigns.client.ipv4 && socket.assigns.client.ipv4.address,
+          ipv6: socket.assigns.client.ipv6 && socket.assigns.client.ipv6.address,
           name: socket.assigns.client.name,
           public_key: socket.assigns.session.public_key,
           psk_base: socket.assigns.client.psk_base

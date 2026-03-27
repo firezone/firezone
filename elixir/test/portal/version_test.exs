@@ -92,14 +92,15 @@ defmodule Portal.VersionTest do
     end
   end
 
-  describe "resource_cannot_change_sites_on_client?/1 with Client" do
+  describe "resource_cannot_change_sites_on_client?/1 with Device" do
     test "client with nil latest_session returns false" do
-      client = %Portal.Client{latest_session: nil}
+      client = %Portal.Device{type: :client, latest_session: nil}
       refute Portal.Version.resource_cannot_change_sites_on_client?(client)
     end
 
     test "client delegates to session" do
-      client = %Portal.Client{
+      client = %Portal.Device{
+        type: :client,
         latest_session: %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}
       }
 

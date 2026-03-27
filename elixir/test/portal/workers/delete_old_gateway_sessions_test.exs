@@ -47,7 +47,7 @@ defmodule Portal.Workers.DeleteOldGatewaySessionsTest do
 
       # Make ALL sessions for this gateway old (including the one created by gateway_fixture)
       Repo.update_all(
-        from(s in GatewaySession, where: s.gateway_id == ^gateway.id),
+        from(s in GatewaySession, where: s.device_id == ^gateway.id),
         set: [inserted_at: DateTime.utc_now() |> DateTime.add(-91, :day)]
       )
 
@@ -73,14 +73,14 @@ defmodule Portal.Workers.DeleteOldGatewaySessionsTest do
 
       # Set all sessions (including the one from gateway_fixture) to the same timestamp
       Repo.update_all(
-        from(s in GatewaySession, where: s.gateway_id == ^gateway.id),
+        from(s in GatewaySession, where: s.device_id == ^gateway.id),
         set: [inserted_at: old_timestamp]
       )
 
       assert :ok = perform_job(DeleteOldGatewaySessions, %{})
 
       remaining =
-        from(s in GatewaySession, where: s.gateway_id == ^gateway.id)
+        from(s in GatewaySession, where: s.device_id == ^gateway.id)
         |> Repo.all()
 
       # gateway_fixture creates 1 session + 3 from fixture = 4 total, only 1 kept

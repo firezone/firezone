@@ -11,14 +11,13 @@ defmodule Portal.Repo.Seeds do
     AuthProvider,
     Account,
     Actor,
-    Client,
     ClientSession,
     Crypto,
     EmailOTP,
     Entra,
     ExternalIdentity,
+    Device,
     PolicyAuthorization,
-    Gateway,
     GatewaySession,
     Google,
     Group,
@@ -27,6 +26,7 @@ defmodule Portal.Repo.Seeds do
     OIDC,
     Policy,
     Resource,
+    Safe,
     Site,
     ClientToken,
     Userpass
@@ -89,48 +89,6 @@ defmodule Portal.Repo.Seeds do
     {:ok, resource}
   end
 
-  # Allocate tunnel IP addresses for clients/gateways
-  # Uses monotonic counter for sequential unique addresses
-  # Must be called AFTER the client/gateway is created, passing its ID
-  defp create_tunnel_ip_addresses(account_id, opts) do
-    client_id = Keyword.get(opts, :client_id)
-    gateway_id = Keyword.get(opts, :gateway_id)
-
-    # Offset by 1 since unique_integer starts at 0
-    offset = System.unique_integer([:positive, :monotonic]) + 1
-
-    # CGNAT range: 100.64.0.0/11 - offset into last two octets
-    # Using offset directly, max 8190 addresses (32 * 256 - 2)
-    ipv4_third = rem(div(offset, 256), 32)
-    ipv4_fourth = rem(offset, 256)
-
-    # fd00:2021:1111::/107 range - offset into last word
-    # Using offset directly for simplicity
-    ipv6_w8 = offset
-
-    ipv4 = {100, 64, ipv4_third, ipv4_fourth}
-    ipv6 = {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0, ipv6_w8}
-
-    # Create address records with client/gateway FK
-    %Portal.IPv4Address{
-      account_id: account_id,
-      address: ipv4,
-      client_id: client_id,
-      gateway_id: gateway_id
-    }
-    |> Repo.insert!()
-
-    %Portal.IPv6Address{
-      account_id: account_id,
-      address: ipv6,
-      client_id: client_id,
-      gateway_id: gateway_id
-    }
-    |> Repo.insert!()
-
-    :ok
-  end
-
   # Helper function to create gateway directly without context module
   defp create_gateway(attrs, context) do
     # Extract version from user agent
@@ -144,22 +102,33 @@ defmodule Portal.Repo.Seeds do
     # Get the site to get the account_id
     site_id = attrs["site_id"] || attrs[:site_id]
     site = Repo.get_by!(Site, id: site_id)
-    external_id = attrs["external_id"] || attrs[:external_id]
+    firezone_id = attrs["firezone_id"] || attrs[:firezone_id]
 
     public_key = attrs["public_key"] || attrs[:public_key]
 
     # First create the gateway
     gateway =
-      %Gateway{
-        site_id: site_id,
-        account_id: site.account_id,
-        name: attrs["name"] || attrs[:name],
-        external_id: external_id
-      }
-      |> Repo.insert!()
+      %Device{}
+      |> Ecto.Changeset.cast(
+        %{
+          name: attrs["name"] || attrs[:name],
+          firezone_id: firezone_id
+        },
+        [:name, :firezone_id]
+      )
+      |> Ecto.Changeset.put_change(:type, :gateway)
+      |> Ecto.Changeset.put_change(:account_id, site.account_id)
+      |> Ecto.Changeset.put_change(:site_id, site_id)
+      |> Device.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, gateway} ->
+          gateway
 
-    # Then create tunnel IP addresses with gateway FK
-    create_tunnel_ip_addresses(site.account_id, gateway_id: gateway.id)
+        {:error, changeset} ->
+          raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+      end
 
     # Find the latest gateway token for the site
     gateway_token =
@@ -174,7 +143,7 @@ defmodule Portal.Repo.Seeds do
     # Create a gateway session
     %GatewaySession{
       account_id: site.account_id,
-      gateway_id: gateway.id,
+      device_id: gateway.id,
       gateway_token_id: gateway_token.id,
       public_key: public_key,
       user_agent: context.user_agent,
@@ -187,7 +156,7 @@ defmodule Portal.Repo.Seeds do
     }
     |> Repo.insert!()
 
-    {:ok, Repo.preload(gateway, [:ipv4_address, :ipv6_address])}
+    {:ok, gateway}
   end
 
   # Helper function to create client directly without context module
@@ -196,27 +165,41 @@ defmodule Portal.Repo.Seeds do
     version =
       user_agent |> String.split(" connlib/") |> List.last() |> String.split(" ") |> List.first()
 
-    external_id = attrs["external_id"] || attrs[:external_id]
+    firezone_id = attrs["firezone_id"] || attrs[:firezone_id]
 
     # First create the client
     public_key = attrs["public_key"] || attrs[:public_key]
 
     client =
-      %Client{
-        account_id: subject.account.id,
-        actor_id: subject.actor.id,
-        name: attrs["name"] || attrs[:name],
-        external_id: external_id,
-        identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
-        device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
-        device_serial: attrs["device_serial"] || attrs[:device_serial]
-      }
-      |> Repo.insert!()
+      %Device{}
+      |> Ecto.Changeset.cast(
+        %{
+          name: attrs["name"] || attrs[:name],
+          firezone_id: firezone_id,
+          identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
+          device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
+          device_serial: attrs["device_serial"] || attrs[:device_serial]
+        },
+        [:name, :firezone_id, :identifier_for_vendor, :device_uuid, :device_serial]
+      )
+      |> Ecto.Changeset.put_change(:type, :client)
+      |> Ecto.Changeset.put_change(:account_id, subject.account.id)
+      |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+      |> Device.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, client} ->
+          client
+
+        {:error, changeset} ->
+          raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+      end
 
     # Create a client session
     Repo.insert!(%ClientSession{
       account_id: subject.account.id,
-      client_id: client.id,
+      device_id: client.id,
       client_token_id: client_token_id,
       public_key: public_key,
       user_agent: user_agent,
@@ -224,10 +207,7 @@ defmodule Portal.Repo.Seeds do
       version: version
     })
 
-    # Then create tunnel IP addresses with client FK
-    create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
-
-    {:ok, Repo.preload(client, [:ipv4_address, :ipv6_address])}
+    {:ok, client}
   end
 
   def seed do
@@ -576,38 +556,49 @@ defmodule Portal.Repo.Seeds do
 
         client_name = String.split(user_agent, "/") |> List.first()
 
-        # Create client directly using Repo since context modules are removed
+        # Create the client directly without going through a context module
         # Extract version from user agent (e.g., "Ubuntu/22.4.0 connlib/1.2.2" -> "1.2.2")
         version =
           user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
         # Generate UUID first so we can use it for deterministic tunnel IPs
-        external_id = Ecto.UUID.generate()
+        firezone_id = Ecto.UUID.generate()
 
         # First create the client
         client =
-          %Client{
-            account_id: subject.account.id,
-            actor_id: subject.actor.id,
-            name: "My #{client_name} #{i}",
-            external_id: external_id,
-            identifier_for_vendor: Ecto.UUID.generate()
-          }
-          |> Repo.insert!()
+          %Device{}
+          |> Ecto.Changeset.cast(
+            %{
+              name: "My #{client_name} #{i}",
+              firezone_id: firezone_id,
+              identifier_for_vendor: Ecto.UUID.generate()
+            },
+            [:name, :firezone_id, :identifier_for_vendor]
+          )
+          |> Ecto.Changeset.put_change(:type, :client)
+          |> Ecto.Changeset.put_change(:account_id, subject.account.id)
+          |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+          |> Device.changeset()
+          |> Safe.unscoped()
+          |> Safe.insert()
+          |> case do
+            {:ok, client} ->
+              client
+
+            {:error, changeset} ->
+              raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+          end
 
         # Create a client session
         Repo.insert!(%ClientSession{
           account_id: subject.account.id,
-          client_id: client.id,
+          device_id: client.id,
           client_token_id: token.id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           user_agent: user_agent,
           remote_ip: subject.context.remote_ip,
           version: version
         })
-
-        # Then create tunnel IP addresses with client FK
-        create_tunnel_ip_addresses(subject.account.id, client_id: client.id)
       end
     end
 
@@ -743,7 +734,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User iPhone",
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
         },
@@ -756,7 +747,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User Android",
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}"
         },
@@ -769,7 +760,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User Surface",
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "WIN-#{Ecto.UUID.generate()}"
         },
@@ -782,7 +773,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User Rendering Station",
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "UB-#{Ecto.UUID.generate()}"
         },
@@ -795,7 +786,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ Admin Laptop",
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_serial: "FVFHF246Q72Z",
           device_uuid: "#{Ecto.UUID.generate()}"
@@ -1053,7 +1044,7 @@ defmodule Portal.Repo.Seeds do
       create_gateway(
         %{
           site_id: site.id,
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
@@ -1069,7 +1060,7 @@ defmodule Portal.Repo.Seeds do
       create_gateway(
         %{
           site_id: site.id,
-          external_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
         },
@@ -1086,7 +1077,7 @@ defmodule Portal.Repo.Seeds do
         create_gateway(
           %{
             site_id: site.id,
-            external_id: Ecto.UUID.generate(),
+            firezone_id: Ecto.UUID.generate(),
             name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
           },
@@ -1101,14 +1092,14 @@ defmodule Portal.Repo.Seeds do
     IO.puts("Created gateways:")
     gateway_name = "#{site.name}-#{gateway1.name}"
     IO.puts("  #{gateway_name}:")
-    IO.puts("    External UUID: #{gateway1.external_id}")
-    IO.puts("    IPv4: #{gateway1.ipv4_address.address} IPv6: #{gateway1.ipv6_address.address}")
+    IO.puts("    Firezone ID: #{gateway1.firezone_id}")
+    IO.puts("    IPv4: #{gateway1.ipv4} IPv6: #{gateway1.ipv6}")
     IO.puts("")
 
     gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
-    IO.puts("    External UUID: #{gateway2.external_id}")
-    IO.puts("    IPv4: #{gateway2.ipv4_address.address} IPv6: #{gateway2.ipv6_address.address}")
+    IO.puts("    Firezone ID: #{gateway2.firezone_id}")
+    IO.puts("    IPv4: #{gateway2.ipv4} IPv6: #{gateway2.ipv6}")
     IO.puts("")
 
     {:ok, dns_google_resource} =
@@ -1460,8 +1451,8 @@ defmodule Portal.Repo.Seeds do
     # Create policy_authorization directly without context module
     _policy_authorization =
       %PolicyAuthorization{
-        client_id: user_iphone.id,
-        gateway_id: gateway1.id,
+        initiating_device_id: user_iphone.id,
+        receiving_device_id: gateway1.id,
         resource_id: cidr_resource.id,
         policy_id: policy.id,
         membership_id: membership.id,

@@ -1,7 +1,7 @@
 defmodule PortalAPI.Gateway.Views.PolicyAuthorization do
   def render(policy_authorization, expires_at_unix) do
     %{
-      client_id: policy_authorization.client_id,
+      client_id: policy_authorization.initiating_device_id,
       resource_id: policy_authorization.resource_id,
       expires_at: expires_at_unix
     }

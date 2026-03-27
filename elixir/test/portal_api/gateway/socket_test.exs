@@ -32,14 +32,35 @@ defmodule PortalAPI.Gateway.SocketTest do
       # Attrs without token param, but with other required fields
       attrs =
         valid_gateway_attrs()
-        |> Map.take([:external_id, :public_key])
+        |> Map.take([:firezone_id, :public_key])
         |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
 
       connect_info = build_connect_info(token: encrypted_secret)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
-      assert gateway.external_id == attrs["external_id"]
+      assert gateway.firezone_id == attrs["firezone_id"]
+    end
+
+    test "accepts external_id as the public parameter name" do
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs =
+        valid_gateway_attrs()
+        |> Map.take([:firezone_id, :public_key])
+        |> then(fn attrs ->
+          %{
+            "external_id" => attrs.firezone_id,
+            "public_key" => attrs.public_key
+          }
+        end)
+
+      connect_info = build_connect_info(token: encrypted_secret)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert gateway = Map.fetch!(socket.assigns, :gateway)
+      assert gateway.firezone_id == attrs["external_id"]
     end
 
     test "x-authorization header takes precedence over token param" do
@@ -74,7 +95,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
-      assert gateway.external_id == attrs["external_id"]
+      assert gateway.firezone_id == attrs["external_id"]
 
       assert session = Map.fetch!(socket.assigns, :session)
       assert session.public_key == attrs["public_key"]
@@ -88,7 +109,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       Portal.GatewaySession.Buffer.flush()
 
       [persisted_session] = Repo.all(Portal.GatewaySession)
-      assert persisted_session.gateway_id == gateway.id
+      assert persisted_session.device_id == gateway.id
       assert persisted_session.user_agent == connect_info.user_agent
       assert persisted_session.remote_ip_location_region == "Ukraine"
       assert persisted_session.remote_ip_location_city == "Kyiv"
@@ -139,7 +160,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture(account: account, site: site)
       encrypted_secret = encode_gateway_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret, external_id: gateway.external_id)
+      attrs = connect_attrs(token: encrypted_secret, external_id: gateway.firezone_id)
       connect_info = build_connect_info()
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
@@ -153,7 +174,7 @@ defmodule PortalAPI.Gateway.SocketTest do
         from(gs in Portal.GatewaySession, where: gs.gateway_token_id == ^token.id)
         |> Repo.one!()
 
-      assert session.gateway_id == gateway.id
+      assert session.device_id == gateway.id
       assert session.remote_ip_location_region == "Ukraine"
       assert session.remote_ip_location_city == "Kyiv"
       assert session.remote_ip_location_lat == 50.4333
@@ -166,14 +187,21 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       # Create existing gateway with specific IPs
       existing_gateway = gateway_fixture(account: account, site: site)
-      original_ipv4 = existing_gateway.ipv4_address.address
-      original_ipv6 = existing_gateway.ipv6_address.address
+
+      existing_device =
+        Portal.Repo.get_by!(Portal.Device,
+          id: existing_gateway.id,
+          account_id: existing_gateway.account_id
+        )
+
+      original_ipv4 = existing_device.ipv4
+      original_ipv6 = existing_device.ipv6
 
       # Create a new token for same site
       token = gateway_token_fixture(account: account, site: site)
       encrypted_secret = encode_gateway_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
+      attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.firezone_id)
       connect_info = build_connect_info()
 
       # Reconnect
@@ -181,8 +209,8 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert gateway = socket.assigns.gateway
 
       # Verify IPs are preserved
-      assert gateway.ipv4_address.address == original_ipv4
-      assert gateway.ipv6_address.address == original_ipv6
+      assert gateway.ipv4 == original_ipv4
+      assert gateway.ipv6 == original_ipv6
     end
 
     test "returns error when token is invalid" do
@@ -295,7 +323,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
   defp connect_attrs(attrs) do
     valid_gateway_attrs()
-    |> Map.take([:external_id, :public_key])
+    |> then(fn attrs -> %{external_id: attrs.firezone_id, public_key: attrs.public_key} end)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end

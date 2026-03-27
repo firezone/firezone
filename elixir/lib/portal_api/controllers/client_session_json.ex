@@ -16,7 +16,7 @@ defmodule PortalAPI.ClientSessionJSON do
   defp data(%ClientSession{} = session) do
     %{
       id: session.id,
-      client_id: session.client_id,
+      client_id: session.device_id,
       client_token_id: session.client_token_id,
       last_seen_user_agent: session.user_agent,
       last_seen_remote_ip: session.remote_ip && "#{session.remote_ip}",

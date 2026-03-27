@@ -272,8 +272,8 @@ defmodule Portal.Resource do
         changeset
       else
         changeset
-        |> validate_not_in_cidr(:address, Portal.IPv4Address.reserved_cidr())
-        |> validate_not_in_cidr(:address, Portal.IPv6Address.reserved_cidr())
+        |> validate_not_in_cidr(:address, Portal.Device.reserved_ipv4_cidr())
+        |> validate_not_in_cidr(:address, Portal.Device.reserved_ipv6_cidr())
       end
     end
   end

@@ -203,7 +203,7 @@ defmodule PortalWeb.Policies.Show do
           </:col>
           <:col :let={policy_authorization} label="client, actor" class="w-3/12">
             <.link
-              navigate={~p"/#{@account}/clients/#{policy_authorization.client_id}"}
+              navigate={~p"/#{@account}/clients/#{policy_authorization.initiating_device_id}"}
               class={link_style()}
             >
               {policy_authorization.client.name}
@@ -221,7 +221,7 @@ defmodule PortalWeb.Policies.Show do
           </:col>
           <:col :let={policy_authorization} label="gateway" class="w-3/12">
             <.link
-              navigate={~p"/#{@account}/gateways/#{policy_authorization.gateway_id}"}
+              navigate={~p"/#{@account}/gateways/#{policy_authorization.receiving_device_id}"}
               class={link_style()}
             >
               {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}

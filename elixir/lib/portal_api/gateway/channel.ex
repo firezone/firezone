@@ -5,6 +5,7 @@ defmodule PortalAPI.Gateway.Channel do
 
   alias Portal.{
     Cache,
+    Device,
     PG,
     Changes.Change,
     PubSub,
@@ -407,8 +408,8 @@ defmodule PortalAPI.Gateway.Channel do
             socket.assigns.gateway.site_id,
             socket.assigns.gateway.id,
             socket.assigns.session.public_key,
-            socket.assigns.gateway.ipv4_address.address,
-            socket.assigns.gateway.ipv6_address.address,
+            socket.assigns.gateway.ipv4,
+            socket.assigns.gateway.ipv6,
             preshared_key,
             ice_credentials
           }
@@ -598,8 +599,8 @@ defmodule PortalAPI.Gateway.Channel do
            op: :delete,
            old_struct:
              %Portal.PolicyAuthorization{
-               gateway_id: gateway_id,
-               client_id: client_id,
+               receiving_device_id: gateway_id,
+               initiating_device_id: client_id,
                resource_id: resource_id
              } =
                policy_authorization
@@ -663,7 +664,7 @@ defmodule PortalAPI.Gateway.Channel do
   defp handle_change(
          %Change{
            op: :delete,
-           old_struct: %Portal.Gateway{id: gateway_id}
+           old_struct: %Device{id: gateway_id}
          },
          %{
            assigns: %{gateway: %{id: gateway_id}}

@@ -37,7 +37,7 @@ defmodule Portal.Workers.DeleteOldGatewaySessions do
               # deterministic tiebreaker when multiple sessions share the same
               # inserted_at (e.g. from a batch flush), ensuring exactly one is kept.
               |> over(
-                partition_by: s.gateway_id,
+                partition_by: s.device_id,
                 order_by: [desc: s.inserted_at, desc: s.id]
               )
           }

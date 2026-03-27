@@ -46,20 +46,23 @@ defmodule Portal.PolicyAuthorizationFixtures do
   def policy_authorization_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    # Get or create account
+    # Get or create account — check explicit :account first, then infer from associations
     account =
       cond do
+        account = Map.get(attrs, :account) ->
+          account
+
         client = Map.get(attrs, :client) ->
-          client.account || Portal.Repo.preload(client, :account).account
+          Portal.Repo.preload(client, :account).account
 
         gateway = Map.get(attrs, :gateway) ->
-          gateway.account || Portal.Repo.preload(gateway, :account).account
+          Portal.Repo.preload(gateway, :account).account
 
         resource = Map.get(attrs, :resource) ->
-          resource.account || Portal.Repo.preload(resource, :account).account
+          Portal.Repo.preload(resource, :account).account
 
         true ->
-          Map.get(attrs, :account) || account_fixture()
+          account_fixture()
       end
 
     # Get or create actor
@@ -139,8 +142,8 @@ defmodule Portal.PolicyAuthorizationFixtures do
       ])
       |> Map.put(:account_id, account.id)
       |> Map.put(:policy_id, policy.id)
-      |> Map.put(:client_id, client.id)
-      |> Map.put(:gateway_id, gateway.id)
+      |> Map.put(:initiating_device_id, client.id)
+      |> Map.put(:receiving_device_id, gateway.id)
       |> Map.put(:resource_id, resource.id)
       |> Map.put(:token_id, token.id)
       |> Map.put(:membership_id, membership.id)
@@ -152,9 +155,8 @@ defmodule Portal.PolicyAuthorizationFixtures do
       |> Ecto.Changeset.cast(pa_attrs, [
         :account_id,
         :policy_id,
-        :client_id,
-        :receiving_client_id,
-        :gateway_id,
+        :initiating_device_id,
+        :receiving_device_id,
         :resource_id,
         :token_id,
         :membership_id,

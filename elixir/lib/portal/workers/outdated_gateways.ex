@@ -13,7 +13,7 @@ defmodule Portal.Workers.OutdatedGateways do
   require OpenTelemetry.Tracer
 
   alias __MODULE__.Database
-  alias Portal.{Gateway, Mailer}
+  alias Portal.{Device, Mailer}
 
   @impl Oban.Worker
   def perform(_job) do
@@ -29,7 +29,7 @@ defmodule Portal.Workers.OutdatedGateways do
       incompatible_client_count = Database.count_incompatible_for(account, latest_version)
 
       all_online_gateways_for_account(account)
-      |> Enum.filter(&Gateway.gateway_outdated?/1)
+      |> Enum.filter(&Device.gateway_outdated?/1)
       |> send_notifications(account, incompatible_client_count)
     end)
   end
@@ -120,8 +120,8 @@ defmodule Portal.Workers.OutdatedGateways do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Client
     alias Portal.ClientSession
+    alias Portal.Device
 
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
@@ -158,14 +158,15 @@ defmodule Portal.Workers.OutdatedGateways do
     def count_incompatible_for(account, gateway_version) do
       %{major: g_major, minor: g_minor} = Version.parse!(gateway_version)
 
-      from(c in Client, as: :clients)
+      from(c in Device, as: :clients)
+      |> where([clients: c], c.type == :client)
       |> where([clients: c], c.account_id == ^account.id)
       |> join(
         :inner_lateral,
         [clients: c],
         s in subquery(
           from(s in ClientSession,
-            where: s.client_id == parent_as(:clients).id,
+            where: s.device_id == parent_as(:clients).id,
             where: s.account_id == parent_as(:clients).account_id,
             order_by: [desc: s.inserted_at],
             limit: 1
@@ -192,7 +193,8 @@ defmodule Portal.Workers.OutdatedGateways do
 
     def all_gateways_for_account!(account) do
       gateways =
-        from(g in Portal.Gateway,
+        from(g in Device,
+          where: g.type == :gateway,
           where: g.account_id == ^account.id
         )
         |> Safe.unscoped(:replica)
@@ -208,13 +210,13 @@ defmodule Portal.Workers.OutdatedGateways do
       sessions_by_gateway_id =
         from(s in Portal.GatewaySession,
           where: s.account_id in ^account_ids,
-          where: s.gateway_id in ^gateway_ids,
-          distinct: s.gateway_id,
-          order_by: [asc: s.gateway_id, desc: s.inserted_at]
+          where: s.device_id in ^gateway_ids,
+          distinct: s.device_id,
+          order_by: [asc: s.device_id, desc: s.inserted_at]
         )
         |> Safe.unscoped(:replica)
         |> Safe.all()
-        |> Map.new(&{&1.gateway_id, &1})
+        |> Map.new(&{&1.device_id, &1})
 
       Enum.map(gateways, fn gateway ->
         %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}

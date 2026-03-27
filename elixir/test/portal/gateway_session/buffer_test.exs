@@ -29,7 +29,7 @@ defmodule Portal.GatewaySession.BufferTest do
   defp build_session(ctx, overrides \\ %{}) do
     defaults = %{
       account_id: ctx.account.id,
-      gateway_id: ctx.gateway.id,
+      device_id: ctx.gateway.id,
       gateway_token_id: ctx.token.id,
       public_key: ctx.gateway.latest_session.public_key,
       user_agent: "Linux/6.1.0 connlib/1.3.0 (x86_64)",
@@ -57,7 +57,7 @@ defmodule Portal.GatewaySession.BufferTest do
         Repo.all(from(s in GatewaySession, where: s.gateway_token_id == ^ctx.token.id))
 
       assert persisted.account_id == ctx.account.id
-      assert persisted.gateway_id == ctx.gateway.id
+      assert persisted.device_id == ctx.gateway.id
       assert persisted.gateway_token_id == ctx.token.id
       assert persisted.user_agent == "Linux/6.1.0 connlib/1.3.0 (x86_64)"
       assert persisted.remote_ip.address == {100, 64, 0, 1}
@@ -216,12 +216,19 @@ defmodule Portal.GatewaySession.BufferTest do
       assert count_sessions(ctx) == 0
     end
 
-    test "skips sessions with deleted gateways and inserts the rest", ctx do
+    test "skips sessions with deleted devices and inserts the rest", ctx do
       valid_session = build_session(ctx)
 
       other_gateway = gateway_fixture(account: ctx.account)
-      orphan_session = build_session(ctx, %{gateway_id: other_gateway.id})
-      Repo.delete!(other_gateway)
+      orphan_session = build_session(ctx, %{device_id: other_gateway.id})
+
+      other_device =
+        Repo.get_by!(Portal.Device,
+          account_id: other_gateway.account_id,
+          id: other_gateway.id
+        )
+
+      Repo.delete!(other_device)
 
       Buffer.insert(orphan_session, ctx.buffer)
       Buffer.insert(valid_session, ctx.buffer)

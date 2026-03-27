@@ -41,7 +41,7 @@ defmodule Portal.GatewaySessionFixtures do
         :version
       ])
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:gateway_id, gateway.id)
+      |> Ecto.Changeset.put_change(:device_id, gateway.id)
       |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
       |> Portal.GatewaySession.changeset()
       |> Portal.Repo.insert()

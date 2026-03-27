@@ -56,13 +56,22 @@ defmodule Portal.CryptoTest do
 
       other_client = client_fixture(account: account)
       other_public_key = Portal.ClientFixtures.generate_public_key()
-      other_psk = psk(other_client, other_public_key, gateway, gateway_public_key)
+
+      other_psk =
+        psk(other_client, other_public_key, gateway, gateway_public_key)
 
       assert other_psk != psk1
 
       other_gateway = gateway_fixture(account: account)
       other_gateway_public_key = other_gateway.latest_session.public_key
-      other_psk = psk(client, client_public_key, other_gateway, other_gateway_public_key)
+
+      other_psk =
+        psk(
+          client,
+          client_public_key,
+          other_gateway,
+          other_gateway_public_key
+        )
 
       assert other_psk != psk1
     end
@@ -84,7 +93,6 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      # Generate PSK
       result = psk(client, client_public_key, gateway, gateway_public_key)
 
       # Manually compute expected result to verify algorithm
@@ -104,7 +112,6 @@ defmodule Portal.CryptoTest do
       gateway: gateway,
       gateway_public_key: gateway_public_key
     } do
-      # Create two clients with potentially similar data
       client1 = client_fixture(account: account)
       client2 = client_fixture(account: account)
       public_key = Portal.ClientFixtures.generate_public_key()
@@ -112,7 +119,6 @@ defmodule Portal.CryptoTest do
       psk1 = psk(client1, public_key, gateway, gateway_public_key)
       psk2 = psk(client2, public_key, gateway, gateway_public_key)
 
-      # Different client IDs should produce different PSKs
       refute psk1 == psk2
     end
 
@@ -124,8 +130,21 @@ defmodule Portal.CryptoTest do
       gateway1 = gateway_fixture(account: account)
       gateway2 = gateway_fixture(account: account)
 
-      psk1 = psk(client, client_public_key, gateway1, gateway1.latest_session.public_key)
-      psk2 = psk(client, client_public_key, gateway2, gateway2.latest_session.public_key)
+      psk1 =
+        psk(
+          client,
+          client_public_key,
+          gateway1,
+          gateway1.latest_session.public_key
+        )
+
+      psk2 =
+        psk(
+          client,
+          client_public_key,
+          gateway2,
+          gateway2.latest_session.public_key
+        )
 
       refute psk1 == psk2
     end

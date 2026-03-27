@@ -1,7 +1,6 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Portal.{Authentication, ClientSession, Version}
-  alias Portal.Client
+  alias Portal.{Authentication, ClientSession, Device, Version}
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -40,6 +39,7 @@ defmodule PortalAPI.Client.Socket do
 
   defp do_connect(token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :client)
+    attrs = normalize_device_attrs(attrs)
 
     with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
            Authentication.authenticate(token, context),
@@ -56,24 +56,25 @@ defmodule PortalAPI.Client.Socket do
       set_connect_attributes(token_id, client, subject, version)
       {:ok, assign_connect(socket, subject, client, session, version)}
     else
-      {:error, :unauthorized} ->
-        OpenTelemetry.Tracer.set_status(:error, "unauthorized")
+      {:error, :invalid_token} ->
+        OpenTelemetry.Tracer.set_status(:error, "invalid_token")
         {:error, :invalid_token}
 
       true ->
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
         {:error, :limits_exceeded}
 
-      {:error, reason} ->
-        OpenTelemetry.Tracer.set_status(:error, inspect(reason))
-        Logger.debug("Error connecting client websocket: #{inspect(reason)}")
-        {:error, reason}
+      {:error, %Ecto.Changeset{} = changeset} ->
+        changeset = public_socket_changeset(changeset)
+        OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
+        Logger.debug("Error connecting client websocket: #{inspect(changeset)}")
+        {:error, changeset}
     end
   end
 
   defp build_session(client, token_id, public_key, subject, version) do
     %ClientSession{
-      client_id: client.id,
+      device_id: client.id,
       account_id: client.account_id,
       client_token_id: token_id,
       public_key: public_key,
@@ -109,20 +110,22 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp insert_changeset(actor, subject, attrs) do
-    required_fields = ~w[external_id name]a
+    required_fields = ~w[firezone_id name]a
 
     hardware_identifiers =
       ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
 
     insert_fields = required_fields ++ hardware_identifiers
 
-    %Client{}
+    %Device{}
     |> cast(attrs, insert_fields)
     |> put_default_value(:name, &generate_name/0)
+    |> put_change(:type, :client)
     |> put_change(:actor_id, actor.id)
     |> put_change(:account_id, actor.account_id)
     |> validate_required(required_fields)
-    |> Portal.Client.changeset()
+    |> Device.changeset()
+    |> public_socket_changeset()
     |> validate_user_agent(subject.context.user_agent)
   end
 
@@ -172,31 +175,51 @@ defmodule PortalAPI.Client.Socket do
 
   defp derive_version(_), do: nil
 
+  defp normalize_device_attrs(attrs) do
+    firezone_id =
+      attrs["external_id"] || attrs[:external_id] || attrs["firezone_id"] || attrs[:firezone_id]
+
+    if firezone_id do
+      Map.put(attrs, "firezone_id", firezone_id)
+    else
+      attrs
+    end
+  end
+
+  defp public_socket_changeset(changeset) do
+    %{changeset | errors: rename_firezone_id_errors(changeset.errors)}
+  end
+
+  defp rename_firezone_id_errors(errors) do
+    Enum.map(errors, fn
+      {:firezone_id, details} -> {:external_id, details}
+      error -> error
+    end)
+  end
+
   ## Database
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.Client
-    alias Portal.IPv4Address
-    alias Portal.IPv6Address
+    alias Portal.Device
     alias Portal.Safe
     require Logger
 
     @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
 
-    @dialyzer {:no_opaque, [find_or_create_client: 2, insert_new_client: 2]}
+    @dialyzer {:no_opaque, [find_or_create_client: 2]}
     def find_or_create_client(changeset, attrs) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
-      external_id = Ecto.Changeset.get_field(changeset, :external_id)
+      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
       existing =
-        if external_id do
-          from(c in Client,
-            where: c.account_id == ^account_id,
-            where: c.actor_id == ^actor_id,
-            where: c.external_id == ^external_id,
-            preload: [:ipv4_address, :ipv6_address]
+        if firezone_id do
+          from(d in Device,
+            where: d.account_id == ^account_id,
+            where: d.actor_id == ^actor_id,
+            where: d.firezone_id == ^firezone_id,
+            where: d.type == :client
           )
           |> Safe.unscoped(:replica)
           |> Safe.one(fallback_to_primary: true)
@@ -206,26 +229,9 @@ defmodule PortalAPI.Client.Socket do
         check_hardware_id_mismatch(existing, attrs)
         {:ok, existing}
       else
-        insert_new_client(changeset, account_id)
-      end
-    end
-
-    defp insert_new_client(changeset, account_id) do
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert(:client, changeset)
-      |> Ecto.Multi.run(:ipv4_address, fn _repo, %{client: client} ->
-        IPv4Address.allocate_next_available_address(account_id, client_id: client.id)
-      end)
-      |> Ecto.Multi.run(:ipv6_address, fn _repo, %{client: client} ->
-        IPv6Address.allocate_next_available_address(account_id, client_id: client.id)
-      end)
-      |> Safe.transact()
-      |> case do
-        {:ok, %{client: client, ipv4_address: ipv4_address, ipv6_address: ipv6_address}} ->
-          {:ok, %{client | ipv4_address: ipv4_address, ipv6_address: ipv6_address}}
-
-        {:error, :client, changeset, _effects_so_far} ->
-          {:error, changeset}
+        changeset
+        |> Safe.unscoped()
+        |> Safe.insert()
       end
     end
 

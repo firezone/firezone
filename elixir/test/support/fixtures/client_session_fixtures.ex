@@ -36,7 +36,7 @@ defmodule Portal.ClientSessionFixtures do
         :version
       ])
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:client_id, client.id)
+      |> Ecto.Changeset.put_change(:device_id, client.id)
       |> Ecto.Changeset.put_change(:client_token_id, token.id)
       |> Portal.ClientSession.changeset()
       |> Portal.Repo.insert()

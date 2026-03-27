@@ -11,7 +11,7 @@ defmodule PortalWeb.Clients.Edit do
     socket =
       assign(socket,
         client: client,
-        form: to_form(changeset),
+        form: to_form(changeset, as: :client),
         page_title: "Edit Client #{client.name}"
       )
 
@@ -61,10 +61,10 @@ defmodule PortalWeb.Clients.Edit do
   def handle_event("change", %{"client" => attrs}, socket) do
     changeset =
       update_changeset(socket.assigns.client, attrs)
-      |> Portal.Client.changeset()
+      |> Portal.Device.changeset()
       |> Map.put(:action, :insert)
 
-    {:noreply, assign(socket, form: to_form(changeset))}
+    {:noreply, assign(socket, form: to_form(changeset, as: :client))}
   end
 
   def handle_event("submit", %{"client" => attrs}, socket) do
@@ -75,23 +75,23 @@ defmodule PortalWeb.Clients.Edit do
       {:noreply, socket}
     else
       {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, assign(socket, form: to_form(changeset, as: :client))}
     end
   end
 
   defp update_changeset(client, attrs) do
     client
     |> cast(attrs, [:name])
-    |> validate_required([:external_id, :name])
+    |> validate_required([:firezone_id, :name])
   end
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, Safe}
-    alias Portal.Client
+    alias Portal.{Device, Presence.Clients, Safe}
 
     def get_client!(id, subject) do
-      from(c in Client, as: :clients)
+      from(c in Device, as: :clients)
+      |> where([clients: c], c.type == :client)
       |> where([clients: c], c.id == ^id)
       |> preload(:actor)
       |> Safe.scoped(subject, :replica)

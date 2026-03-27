@@ -92,8 +92,8 @@ defmodule PortalWeb.Live.Gateways.ShowTest do
     assert table["status"] =~ "Offline"
     assert table["version"] =~ gateway.latest_session.version
     assert table["user agent"] =~ gateway.latest_session.user_agent
-    assert table["tunnel interface ipv4 address"] =~ to_string(gateway.ipv4_address.address)
-    assert table["tunnel interface ipv6 address"] =~ to_string(gateway.ipv6_address.address)
+    assert table["tunnel interface ipv4 address"] =~ to_string(gateway.ipv4)
+    assert table["tunnel interface ipv6 address"] =~ to_string(gateway.ipv6)
   end
 
   test "renders gateway status", %{
@@ -136,7 +136,11 @@ defmodule PortalWeb.Live.Gateways.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/sites/#{gateway.site}")
 
-    refute Repo.get_by(Portal.Gateway, id: gateway.id, account_id: gateway.account_id)
+    refute Repo.get_by(Portal.Device,
+             id: gateway.id,
+             account_id: gateway.account_id,
+             type: :gateway
+           )
   end
 
   test "updates gateway status on presence event", %{

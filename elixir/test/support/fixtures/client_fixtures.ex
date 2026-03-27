@@ -5,8 +5,7 @@ defmodule Portal.ClientFixtures do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.IPv4AddressFixtures
-  import Portal.IPv6AddressFixtures
+  import Portal.DeviceFixtures
 
   @doc """
   Generate valid client attributes with sensible defaults.
@@ -16,7 +15,7 @@ defmodule Portal.ClientFixtures do
 
     Enum.into(attrs, %{
       name: "Client #{unique_num}",
-      external_id: "client_#{unique_num}",
+      firezone_id: "client_#{unique_num}",
       device_serial: "SN#{unique_num}",
       device_uuid: "UUID-#{unique_num}",
       firebase_installation_id: "firebase_#{unique_num}"
@@ -44,34 +43,53 @@ defmodule Portal.ClientFixtures do
     # Get or create actor
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
-    # Build client attrs
-    client_attrs =
+    device_attrs =
       attrs
       |> Map.drop([:account, :actor, :ipv4_address, :ipv6_address])
       |> valid_client_attrs()
 
-    {:ok, client} =
-      %Portal.Client{}
-      |> Ecto.Changeset.cast(client_attrs, [
+    {:ok, device} =
+      %Portal.Device{}
+      |> Ecto.Changeset.cast(device_attrs, [
         :name,
-        :external_id,
+        :firezone_id,
         :device_serial,
         :device_uuid,
         :identifier_for_vendor,
         :firebase_installation_id,
         :verified_at
       ])
+      |> Ecto.Changeset.put_change(:type, :client)
+      |> Ecto.Changeset.put_change(:account_id, account.id)
+      |> Ecto.Changeset.put_change(:actor_id, actor.id)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)
-      |> Portal.Client.changeset()
-      |> Portal.Repo.insert()
+      |> Portal.Device.changeset()
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.insert()
 
-    # Create address records for the client (unless explicitly set to nil)
-    Map.get_lazy(attrs, :ipv4_address, fn -> ipv4_address_fixture(client: client) end)
-    Map.get_lazy(attrs, :ipv6_address, fn -> ipv6_address_fixture(client: client) end)
+    ipv4 =
+      attrs
+      |> Map.fetch(:ipv4_address)
+      |> case do
+        {:ok, value} -> extract_address(value)
+        :error -> valid_ipv4_address_attrs().address
+      end
 
-    # Return client with addresses preloaded
-    Portal.Repo.preload(client, [:ipv4_address, :ipv6_address])
+    ipv6 =
+      attrs
+      |> Map.fetch(:ipv6_address)
+      |> case do
+        {:ok, value} -> extract_address(value)
+        :error -> valid_ipv6_address_attrs().address
+      end
+
+    device =
+      device
+      |> maybe_sync_device_ipv4(ipv4)
+      |> maybe_sync_device_ipv6(ipv6)
+
+    Portal.Repo.preload(device, :actor)
   end
 
   @doc """
@@ -135,6 +153,16 @@ defmodule Portal.ClientFixtures do
     |> Ecto.Changeset.change(verified_at: DateTime.utc_now())
     |> Portal.Repo.update!()
   end
+
+  defp maybe_sync_device_ipv4(device, nil), do: device
+  defp maybe_sync_device_ipv4(device, ipv4), do: sync_device_ipv4(device, ipv4)
+
+  defp maybe_sync_device_ipv6(device, nil), do: device
+  defp maybe_sync_device_ipv6(device, ipv6), do: sync_device_ipv6(device, ipv6)
+
+  defp extract_address(nil), do: nil
+  defp extract_address(%Postgrex.INET{} = address), do: address
+  defp extract_address(%{address: %Postgrex.INET{} = address}), do: address
 
   @doc """
   Generate a random WireGuard public key for tests.

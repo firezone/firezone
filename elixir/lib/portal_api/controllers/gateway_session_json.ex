@@ -16,7 +16,7 @@ defmodule PortalAPI.GatewaySessionJSON do
   defp data(%GatewaySession{} = session) do
     %{
       id: session.id,
-      gateway_id: session.gateway_id,
+      gateway_id: session.device_id,
       gateway_token_id: session.gateway_token_id,
       last_seen_user_agent: session.user_agent,
       last_seen_remote_ip: session.remote_ip && "#{session.remote_ip}",
