@@ -572,16 +572,23 @@ impl TunnelTest {
             .iter()
             .map(|(id, g)| (*id, g.inner()))
             .collect();
+        let ref_gateways = ref_state
+            .gateways
+            .iter()
+            .map(|(id, g)| (*id, g.inner()))
+            .collect();
 
         // System-wide packet assertions
         assert_icmp_packets_properties(
             &all_ref_clients,
+            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,
         );
         assert_udp_packets_properties(
             &all_ref_clients,
+            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,

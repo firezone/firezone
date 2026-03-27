@@ -165,6 +165,14 @@ impl Resource {
         }
     }
 
+    #[cfg(all(feature = "proptest", test))]
+    pub fn into_cidr(self) -> Option<CidrResource> {
+        match self {
+            Resource::Cidr(c) => Some(c),
+            Resource::Dns(_) | Resource::Internet(_) => None,
+        }
+    }
+
     pub fn address_string(&self) -> Option<String> {
         match self {
             Resource::Dns(d) => Some(d.address.clone()),

@@ -11,6 +11,7 @@ use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
+use ip_packet::Protocol;
 use itertools::Itertools;
 use proptest::collection::btree_set;
 use proptest::{prelude::*, sample};
@@ -869,7 +870,12 @@ impl ReferenceState {
                 };
 
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state.is_valid_dst_domain(client_id, name, src)
+                    && state.is_valid_dst_domain(
+                        client_id,
+                        name,
+                        src,
+                        Protocol::IcmpEcho(identifier.0),
+                    )
             }
             Transition::SendUdpPacket {
                 client_id,
@@ -884,7 +890,7 @@ impl ReferenceState {
                 };
 
                 ref_client.is_valid_udp_packet(sport, dport, payload)
-                    && state.is_valid_dst_domain(client_id, name, src)
+                    && state.is_valid_dst_domain(client_id, name, src, Protocol::Udp(dport.0))
             }
             Transition::ConnectTcp {
                 client_id,
@@ -897,7 +903,7 @@ impl ReferenceState {
                     return false;
                 };
 
-                state.is_valid_dst_domain(client_id, name, src)
+                state.is_valid_dst_domain(client_id, name, src, Protocol::Tcp(dport.0))
                     && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
             }
             Transition::SendIcmpPacket {
@@ -913,7 +919,7 @@ impl ReferenceState {
                 };
 
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state.is_valid_dst_ip(*dst)
+                    && state.is_valid_dst_ip(*dst, Protocol::IcmpEcho(identifier.0))
             }
             Transition::SendUdpPacket {
                 client_id,
@@ -927,7 +933,8 @@ impl ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_udp_packet(sport, dport, payload) && state.is_valid_dst_ip(*dst)
+                ref_client.is_valid_udp_packet(sport, dport, payload)
+                    && state.is_valid_dst_ip(*dst, Protocol::Udp(dport.0))
             }
             Transition::ConnectTcp {
                 client_id,
@@ -941,7 +948,7 @@ impl ReferenceState {
                     return false;
                 };
 
-                state.is_valid_dst_ip(*dst_ip)
+                state.is_valid_dst_ip(*dst_ip, Protocol::Tcp(dport.0))
                     && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -1100,11 +1107,11 @@ impl ReferenceState {
         }
     }
 
-    fn is_valid_dst_ip(&self, dst: IpAddr) -> bool {
+    fn is_valid_dst_ip(&self, dst: IpAddr, proto: Protocol) -> bool {
         let rid = self
             .clients
             .values()
-            .find_map(|c| c.inner().cidr_resource_by_ip(dst));
+            .find_map(|c| c.inner().cidr_resource_by_ip_and_proto(dst, proto));
 
         let Some(rid) = rid else {
             // As long as the packet is valid it's always valid to send to a non-resource
@@ -1132,11 +1139,17 @@ impl ReferenceState {
         self.gateways.contains_key(gateway)
     }
 
-    fn is_valid_dst_domain(&self, client_id: &ClientId, name: &DomainName, src: &IpAddr) -> bool {
+    fn is_valid_dst_domain(
+        &self,
+        client_id: &ClientId,
+        name: &DomainName,
+        src: &IpAddr,
+        proto: Protocol,
+    ) -> bool {
         let resource = self
             .clients
             .values()
-            .find_map(|c| c.inner().dns_resource_by_domain(name));
+            .find_map(|c| c.inner().dns_resource_by_domain_and_proto(name, proto));
 
         let Some(resource) = resource else {
             return false;
@@ -1259,7 +1272,7 @@ impl ReferenceState {
             .filter(|d| {
                 self.clients
                     .values()
-                    .any(|c| c.inner().dns_resource_by_domain(d).is_some())
+                    .any(|c| c.inner().dns_resource_by_domain(d, |_| true).is_some())
             })
             .collect::<BTreeSet<_>>();
 

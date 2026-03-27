@@ -11,7 +11,7 @@ use connlib_model::GatewayId;
 use proptest::prelude::*;
 use std::{
     collections::BTreeSet,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
 
@@ -51,6 +51,13 @@ impl RefGateway {
         });
 
         SimGateway::new(id, sut, tcp_resources, self.site_specific_dns_records, now)
+    }
+
+    pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
+        match dst {
+            IpAddr::V4(_) => self.tunnel_ip4.into(),
+            IpAddr::V6(_) => self.tunnel_ip6.into(),
+        }
     }
 
     pub fn dns_records(&self) -> &DnsRecords {

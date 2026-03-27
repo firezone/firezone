@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::IpNetwork;
-use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -67,7 +67,7 @@ pub(crate) struct SimClient {
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tests::tcp::Client,
-    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IpPacket>,
+    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
 }
 
 impl SimClient {
@@ -277,7 +277,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
-            Ok(Some((failed_packet, _))) => {
+            Ok(Some((failed_packet, icmp_error))) => {
                 match failed_packet.layer4_protocol() {
                     Layer4Protocol::Udp { src, dst } => {
                         self.received_udp_replies
@@ -285,7 +285,7 @@ impl SimClient {
                     }
                     Layer4Protocol::Tcp { src, dst } => {
                         self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), packet.clone());
+                            .insert((SPort(src), DPort(dst)), icmp_error);
 
                         // Allow the client to process the ICMP error.
                         self.tcp_client.handle_inbound(packet);
