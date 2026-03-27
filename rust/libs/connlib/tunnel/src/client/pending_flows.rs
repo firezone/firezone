@@ -158,7 +158,7 @@ mod tests {
     use connlib_model::{Site, SiteId};
     use ip_network::IpNetwork;
 
-    use crate::client::CidrResource;
+    use crate::client::resource::CidrResource;
 
     use super::*;
 
