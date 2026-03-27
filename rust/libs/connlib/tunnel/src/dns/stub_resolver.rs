@@ -146,10 +146,11 @@ impl ResourceStubResolver {
             .fqdn_to_ips
             .keys()
             .any(|domain| parsed_pattern.matches(&Candidate::from_domain(domain)));
+        let records = self.records();
 
         // Required to update the routing table correctly.
-        if is_new || overlaps_with_resolved_domain {
-            self.events.push_back(Event::RecordsChanged(self.records()));
+        if (is_new || overlaps_with_resolved_domain) && !records.is_empty() {
+            self.events.push_back(Event::RecordsChanged(records));
         }
 
         is_new
