@@ -115,6 +115,25 @@ config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
 
 ###############################
+##### CertCache ###############
+###############################
+
+cert_fetch_fn = fn ->
+  cert_path = System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem")
+  key_path = System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
+
+  with {:ok, cert} <- File.read(cert_path),
+       {:ok, key} <- File.read(key_path) do
+    {:ok, cert, key}
+  end
+end
+
+config :portal, Portal.CertCache, [
+  {Portal.CertCache.Web, fetch_fn: cert_fetch_fn},
+  {Portal.CertCache.Api, fetch_fn: cert_fetch_fn}
+]
+
+###############################
 ##### PortalWeb Endpoint ######
 ###############################
 
@@ -124,8 +143,11 @@ config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
-    certfile: System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem"),
-    keyfile: System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
+    thousand_island_options: [
+      transport_options: [
+        sni_fun: fn _hostname -> Portal.CertCache.get_opts(Portal.CertCache.Web) end
+      ]
+    ]
   ],
   code_reloader: true,
   debug_errors: true,

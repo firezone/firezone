@@ -150,6 +150,18 @@ defmodule Portal.Config.Definitions do
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
 
   @doc """
+  HTTPS port for the web endpoint. When set, PortalWeb terminates TLS
+  using certificates managed by Portal.CertCache.
+  """
+  defconfig(:phoenix_https_web_port, :integer, default: nil)
+
+  @doc """
+  HTTPS port for the API endpoint. When set, PortalAPI terminates TLS
+  using certificates managed by Portal.CertCache.
+  """
+  defconfig(:phoenix_https_api_port, :integer, default: nil)
+
+  @doc """
   Internal port to listen on for the Phoenix server for the `web` application.
   """
   defconfig(:phoenix_http_web_port, :integer,

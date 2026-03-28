@@ -73,7 +73,8 @@ defmodule Portal.Application do
       client_session_buffer() ++
       gateway_session_buffer() ++
       rate_limit() ++
-      telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
+      telemetry() ++
+      oban() ++ cert_cache() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
   end
 
   defp configure_logger do
@@ -164,6 +165,11 @@ defmodule Portal.Application do
         enabled
       end
     end)
+  end
+
+  defp cert_cache do
+    configs = Application.get_env(:portal, Portal.CertCache, [])
+    for {name, opts} <- configs, do: {Portal.CertCache, [name: name] ++ opts}
   end
 
   defp rate_limit do

@@ -343,6 +343,47 @@ if config_env() == :prod do
     repo: Portal.Repo
 
   ###############################
+  ##### CertCache ###############
+  ###############################
+
+  cert_caches =
+    []
+    |> then(fn acc ->
+      if env_var_to_config(:phoenix_https_web_port) do
+        [
+          {Portal.CertCache.Web,
+           fetch_fn: fn ->
+             with {:ok, cert} <- File.read(System.fetch_env!("TLS_WEB_CERT_PATH")),
+                  {:ok, key} <- File.read(System.fetch_env!("TLS_WEB_KEY_PATH")) do
+               {:ok, cert, key}
+             end
+           end}
+          | acc
+        ]
+      else
+        acc
+      end
+    end)
+    |> then(fn acc ->
+      if env_var_to_config(:phoenix_https_api_port) do
+        [
+          {Portal.CertCache.Api,
+           fetch_fn: fn ->
+             with {:ok, cert} <- File.read(System.fetch_env!("TLS_API_CERT_PATH")),
+                  {:ok, key} <- File.read(System.fetch_env!("TLS_API_KEY_PATH")) do
+               {:ok, cert, key}
+             end
+           end}
+          | acc
+        ]
+      else
+        acc
+      end
+    end)
+
+  if cert_caches != [], do: config(:portal, Portal.CertCache, cert_caches)
+
+  ###############################
   ##### PortalWeb Endpoint ######
   ###############################
 
@@ -354,29 +395,50 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
-    config :portal, PortalWeb.Endpoint,
-      http: [
-        ip: env_var_to_config!(:phoenix_listen_address).address,
-        port: env_var_to_config!(:phoenix_http_web_port),
-        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-      ],
-      url: [
-        scheme: web_external_url_scheme,
-        host: web_external_url_host,
-        port: web_external_url_port,
-        path: web_external_url_path
-      ],
-      secret_key_base: env_var_to_config!(:secret_key_base),
-      check_origin:
+    web_https_opts =
+      if env_var_to_config(:phoenix_https_web_port) do
         [
-          "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
-          "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
-          "#{web_external_url_scheme}://#{web_external_url_host}",
-          "#{web_external_url_scheme}://*.#{web_external_url_host}"
-        ] ++ env_var_to_config!(:websocket_additional_origins),
-      live_view: [
-        signing_salt: env_var_to_config!(:live_view_signing_salt)
-      ]
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_https_web_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [
+                sni_fun: fn _hostname -> Portal.CertCache.get_opts(Portal.CertCache.Web) end
+              ]
+            ]
+          ]
+        ]
+      else
+        []
+      end
+
+    config :portal,
+           PortalWeb.Endpoint,
+           [
+             http: [
+               ip: env_var_to_config!(:phoenix_listen_address).address,
+               port: env_var_to_config!(:phoenix_http_web_port),
+               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+             ],
+             url: [
+               scheme: web_external_url_scheme,
+               host: web_external_url_host,
+               port: web_external_url_port,
+               path: web_external_url_path
+             ],
+             secret_key_base: env_var_to_config!(:secret_key_base),
+             check_origin:
+               [
+                 "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
+                 "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
+                 "#{web_external_url_scheme}://#{web_external_url_host}",
+                 "#{web_external_url_scheme}://*.#{web_external_url_host}"
+               ] ++ env_var_to_config!(:websocket_additional_origins),
+             live_view: [
+               signing_salt: env_var_to_config!(:live_view_signing_salt)
+             ]
+           ] ++ web_https_opts
 
     config :portal, PortalWeb.RateLimit,
       refill_rate: env_var_to_config!(:web_refill_rate),
@@ -397,19 +459,40 @@ if config_env() == :prod do
       path: api_external_url_path
     } = URI.parse(api_external_url)
 
-    config :portal, PortalAPI.Endpoint,
-      http: [
-        ip: env_var_to_config!(:phoenix_listen_address).address,
-        port: env_var_to_config!(:phoenix_http_api_port),
-        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-      ],
-      url: [
-        scheme: api_external_url_scheme,
-        host: api_external_url_host,
-        port: api_external_url_port,
-        path: api_external_url_path
-      ],
-      secret_key_base: env_var_to_config!(:secret_key_base)
+    api_https_opts =
+      if env_var_to_config(:phoenix_https_api_port) do
+        [
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_https_api_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [
+                sni_fun: fn _hostname -> Portal.CertCache.get_opts(Portal.CertCache.Api) end
+              ]
+            ]
+          ]
+        ]
+      else
+        []
+      end
+
+    config :portal,
+           PortalAPI.Endpoint,
+           [
+             http: [
+               ip: env_var_to_config!(:phoenix_listen_address).address,
+               port: env_var_to_config!(:phoenix_http_api_port),
+               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+             ],
+             url: [
+               scheme: api_external_url_scheme,
+               host: api_external_url_host,
+               port: api_external_url_port,
+               path: api_external_url_path
+             ],
+             secret_key_base: env_var_to_config!(:secret_key_base)
+           ] ++ api_https_opts
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
