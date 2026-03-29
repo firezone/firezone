@@ -69,16 +69,14 @@ defmodule Portal.PubSub do
     # In dev / test region we don't have a cluster / region; send to self
     defp target_nodes(""), do: [Node.self()]
 
-    # Node names: portal-{region}-{type}-{index}-{hash}@{ip}
     defp target_nodes(region) do
-      web_prefix = "portal-" <> region <> "-web"
-      api_prefix = "portal-" <> region <> "-api"
+      nodes =
+        Node.list()
+        |> Enum.filter(fn node ->
+          node |> Atom.to_string() |> String.contains?(region)
+        end)
 
-      Node.list()
-      |> Enum.filter(fn node ->
-        name = Atom.to_string(node)
-        String.starts_with?(name, web_prefix) or String.starts_with?(name, api_prefix)
-      end)
+      [Node.self() | nodes]
     end
   end
 end
