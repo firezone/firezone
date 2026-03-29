@@ -4,12 +4,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REGION_HOSTS = [
-  "australiaeast-app.firezone.dev",
-  "australiaeast-api.firezone.dev",
-  "centralus-app.firezone.dev",
-  "centralus-api.firezone.dev",
-  "northeurope-app.firezone.dev",
-  "northeurope-api.firezone.dev",
+  "australiaeast-portal.firezone.dev",
+  "northeurope-portal.firezone.dev",
+  "centralus-portal.firezone.dev",
 ];
 
 const PUBLIC_JSON_PATH = resolve("public/portal-ips.json");
@@ -59,20 +56,11 @@ async function computePortalIps() {
     regionalHosts[host] = await resolveHost(host);
   }
 
-  const appHosts = REGION_HOSTS.filter((host) => host.includes("-app."));
-  const apiHosts = REGION_HOSTS.filter((host) => host.includes("-api."));
-
-  const appIpv4 = sortUnique(
-    appHosts.flatMap((host) => regionalHosts[host].ipv4)
+  const allIpv4 = sortUnique(
+    REGION_HOSTS.flatMap((host) => regionalHosts[host].ipv4)
   );
-  const appIpv6 = sortUnique(
-    appHosts.flatMap((host) => regionalHosts[host].ipv6)
-  );
-  const apiIpv4 = sortUnique(
-    apiHosts.flatMap((host) => regionalHosts[host].ipv4)
-  );
-  const apiIpv6 = sortUnique(
-    apiHosts.flatMap((host) => regionalHosts[host].ipv6)
+  const allIpv6 = sortUnique(
+    REGION_HOSTS.flatMap((host) => regionalHosts[host].ipv6)
   );
 
   return {
@@ -81,12 +69,12 @@ async function computePortalIps() {
     regional_hosts: regionalHosts,
     endpoints: {
       "app.firezone.dev": {
-        ipv4: appIpv4,
-        ipv6: appIpv6,
+        ipv4: allIpv4,
+        ipv6: allIpv6,
       },
       "api.firezone.dev": {
-        ipv4: apiIpv4,
-        ipv6: apiIpv6,
+        ipv4: allIpv4,
+        ipv6: allIpv6,
       },
     },
   };
