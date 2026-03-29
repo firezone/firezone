@@ -8368,7 +8368,7 @@ dependencies = [
 [[package]]
 name = "tracing-macros"
 version = "0.1.0"
-source = "git+https://github.com/tokio-rs/tracing?branch=main#412986fb2fcfcd231844eb14cf66665936c6ecfc"
+source = "git+https://github.com/tokio-rs/tracing?branch=main#9545be16f5df3ce78df50340a66845e23372ff41"
 dependencies = [
  "tracing",
 ]
