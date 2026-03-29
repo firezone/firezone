@@ -9,8 +9,8 @@ defmodule Portal.Presence do
 
   defmodule Clients do
     def connect(%Client{} = client, token_id, session_meta \\ %{}) do
-      with {:ok, _} <- __MODULE__.Account.track(client.account_id, client.id, session_meta),
-           {:ok, _} <- __MODULE__.Actor.track(client.actor_id, client.id, token_id) do
+      with :ok <- __MODULE__.Account.track(client.account_id, client.id, session_meta),
+           :ok <- __MODULE__.Actor.track(client.actor_id, client.id, token_id) do
         :ok
       end
     end
@@ -51,12 +51,16 @@ defmodule Portal.Presence do
 
     defmodule Account do
       def track(account_id, client_id, session_meta \\ %{}) do
-        Portal.Presence.track(
-          self(),
-          topic(account_id),
-          client_id,
-          Map.merge(session_meta, %{online_at: System.system_time(:second)})
-        )
+        meta = Map.merge(session_meta, %{online_at: System.system_time(:second)})
+
+        case Portal.Presence.track(self(), topic(account_id), client_id, meta) do
+          {:ok, _} ->
+            :ok
+
+          {:error, {:already_tracked, _, _, _}} ->
+            Portal.Presence.update(self(), topic(account_id), client_id, meta)
+            :ok
+        end
       end
 
       def subscribe(account_id) do
@@ -92,12 +96,16 @@ defmodule Portal.Presence do
 
     defmodule Actor do
       def track(actor_id, client_id, token_id) do
-        Portal.Presence.track(
-          self(),
-          topic(actor_id),
-          client_id,
-          %{token_id: token_id}
-        )
+        meta = %{token_id: token_id}
+
+        case Portal.Presence.track(self(), topic(actor_id), client_id, meta) do
+          {:ok, _} ->
+            :ok
+
+          {:error, {:already_tracked, _, _, _}} ->
+            Portal.Presence.update(self(), topic(actor_id), client_id, meta)
+            :ok
+        end
       end
 
       def get(actor_id, client_id) do
@@ -196,8 +204,8 @@ defmodule Portal.Presence do
       # Site must be tracked before Account so that when the Account presence
       # broadcast fires and the LiveView reloads, site presence is already
       # visible via Portal.Presence.Gateways.Site.list/1.
-      with {:ok, _} <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id),
-           {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id, session_meta) do
+      with :ok <- __MODULE__.Site.track(gateway.site_id, gateway.id, token_id),
+           :ok <- __MODULE__.Account.track(gateway.account_id, gateway.id, session_meta) do
         :ok
       end
     end
@@ -269,12 +277,16 @@ defmodule Portal.Presence do
 
     defmodule Account do
       def track(account_id, gateway_id, session_meta \\ %{}) do
-        Portal.Presence.track(
-          self(),
-          topic(account_id),
-          gateway_id,
-          Map.merge(session_meta, %{online_at: System.system_time(:second)})
-        )
+        meta = Map.merge(session_meta, %{online_at: System.system_time(:second)})
+
+        case Portal.Presence.track(self(), topic(account_id), gateway_id, meta) do
+          {:ok, _} ->
+            :ok
+
+          {:error, {:already_tracked, _, _, _}} ->
+            Portal.Presence.update(self(), topic(account_id), gateway_id, meta)
+            :ok
+        end
       end
 
       def subscribe(account_id) do
@@ -302,12 +314,16 @@ defmodule Portal.Presence do
 
     defmodule Site do
       def track(site_id, gateway_id, token_id) do
-        Portal.Presence.track(
-          self(),
-          topic(site_id),
-          gateway_id,
-          %{token_id: token_id}
-        )
+        meta = %{token_id: token_id}
+
+        case Portal.Presence.track(self(), topic(site_id), gateway_id, meta) do
+          {:ok, _} ->
+            :ok
+
+          {:error, {:already_tracked, _, _, _}} ->
+            Portal.Presence.update(self(), topic(site_id), gateway_id, meta)
+            :ok
+        end
       end
 
       def subscribe(site_id) do

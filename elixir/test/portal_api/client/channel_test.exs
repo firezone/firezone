@@ -916,6 +916,66 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 presence shard crash" do
+    test "re-tracks presence when it receives :DOWN from a monitored presence pid", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+
+      # Simulate a Presence shard crash by sending a :DOWN for one of the
+      # monitored presence pids. We can't kill real shards in async tests
+      # because they're shared across all tests.
+      channel_state = :sys.get_state(socket.channel_pid)
+      [{shard_pid, _ref} | _] = channel_state.assigns.presence_monitors
+      send(socket.channel_pid, {:DOWN, make_ref(), :process, shard_pid, :killed})
+      :sys.get_state(socket.channel_pid)
+
+      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+    end
+
+    test "retries tracking when Presence supervisor name is temporarily unregistered", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      # Temporarily unregister the Presence name so track_presence hits the nil branch
+      presence_pid = Process.whereis(Portal.Presence)
+      Process.unregister(Portal.Presence)
+
+      send(socket.channel_pid, :track_presence)
+      :sys.get_state(socket.channel_pid)
+
+      # Re-register before the 50ms retry fires
+      Process.register(presence_pid, Portal.Presence)
+
+      # Wait for the retry to fire and succeed
+      Process.sleep(100)
+      :sys.get_state(socket.channel_pid)
+
+      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+    end
+
+    test "re-tracks presence when already tracked (idempotent)", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      # Send :track_presence while already tracked — should not crash
+      send(socket.channel_pid, :track_presence)
+      :sys.get_state(socket.channel_pid)
+
+      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+    end
+  end
+
   describe "handle_info/2 :disconnect" do
     test "pushes disconnect event and closes the channel", %{
       client: client,
