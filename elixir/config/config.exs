@@ -204,7 +204,6 @@ config :portal, Portal.Telemetry,
   enabled: true
 
 config :portal, Portal.Health,
-  health_port: 4000,
   web_endpoint: PortalWeb.Endpoint,
   api_endpoint: PortalAPI.Endpoint,
   ops_endpoint: PortalOps.Endpoint,

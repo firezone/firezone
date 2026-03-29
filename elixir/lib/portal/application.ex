@@ -53,9 +53,7 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions,
-      # Health check server (always enabled)
-      Portal.Health
+      Portal.ComponentVersions
     ]
 
     endpoint_children = [

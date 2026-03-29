@@ -141,14 +141,5 @@ defmodule Portal.HealthTest do
       refute conn.halted
       assert conn.status == nil
     end
-
-    test "returns 404 when used as standalone server" do
-      conn =
-        :get
-        |> conn("/unknown")
-        |> Portal.Health.Server.call([])
-
-      assert conn.status == 404
-    end
   end
 end

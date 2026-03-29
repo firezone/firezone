@@ -5,39 +5,13 @@ defmodule Portal.Health do
   - `/readyz` - Readiness check, returns 200 when endpoints are ready,
                 503 when draining, database unavailable or starting
 
-  Can be used in two ways:
-
-  1. As a plug in Phoenix endpoints (passes through non-health routes):
+  Used as a plug in Phoenix endpoints (passes through non-health routes):
 
       plug Portal.Health
-
-  2. As a standalone server on a dedicated port (returns 404 for unknown routes):
-
-      children = [Portal.Health]
   """
   import Plug.Conn
 
   @behaviour Plug
-
-  def child_spec(_opts) do
-    config = Portal.Config.fetch_env!(:portal, Portal.Health)
-    port = Keyword.fetch!(config, :health_port)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Bandit, :start_link,
-         [
-           [
-             plug: Portal.Health.Server,
-             scheme: :http,
-             port: port,
-             thousand_island_options: [num_acceptors: 2]
-           ]
-         ]},
-      type: :supervisor
-    }
-  end
 
   @impl true
   def init(opts), do: opts
@@ -109,18 +83,5 @@ defmodule Portal.Health do
 
     Process.whereis(web_endpoint) != nil and Process.whereis(api_endpoint) != nil and
       Process.whereis(ops_endpoint) != nil
-  end
-end
-
-defmodule Portal.Health.Server do
-  @moduledoc false
-  # Wrapper for standalone health server that returns 404 for unknown routes
-  use Plug.Builder
-
-  plug Portal.Health
-  plug :not_found
-
-  defp not_found(conn, _opts) do
-    Plug.Conn.send_resp(conn, 404, "Not found")
   end
 end

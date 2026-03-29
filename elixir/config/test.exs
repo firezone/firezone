@@ -15,9 +15,6 @@ config :portal, sql_sandbox: true
 # Replica is not used in tests; use the primary DB instead
 config :portal, replica_repo: Portal.Repo
 
-# Use ephemeral port for health server to avoid conflicts between test runs
-config :portal, Portal.Health, health_port: 0
-
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,

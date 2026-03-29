@@ -641,19 +641,6 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
-  The port for the internal health endpoint.
-  """
-  defconfig(:health_port, :integer,
-    default: 4000,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than: 0,
-        less_than_or_equal_to: 65_535
-      )
-    end
-  )
-
-  @doc """
   Path to the file that signals the service is draining.
 
   When this file exists, the `/readyz` endpoint will return 503 with status "draining".

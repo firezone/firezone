@@ -504,8 +504,6 @@ if config_env() == :prod do
       ]
   end
 
-  config :portal, Portal.Health, health_port: env_var_to_config!(:health_port)
-
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
