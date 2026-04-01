@@ -153,13 +153,29 @@ defmodule Portal.Config.Definitions do
   HTTPS port for the web endpoint. When set, PortalWeb terminates TLS
   using certificates managed by Portal.CertCache.
   """
-  defconfig(:phoenix_https_web_port, :integer, default: nil)
+  defconfig(:phoenix_https_web_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
 
   @doc """
   HTTPS port for the API endpoint. When set, PortalAPI terminates TLS
   using certificates managed by Portal.CertCache.
   """
-  defconfig(:phoenix_https_api_port, :integer, default: nil)
+  defconfig(:phoenix_https_api_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
 
   @doc """
   Internal port to listen on for the Phoenix server for the `web` application.
