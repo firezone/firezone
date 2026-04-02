@@ -395,8 +395,12 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
-    web_https_opts =
+    web_listener_opts =
       if env_var_to_config(:phoenix_https_web_port) do
+        if System.get_env("PHOENIX_HTTP_WEB_PORT") do
+          raise "Cannot set both PHOENIX_HTTPS_WEB_PORT and PHOENIX_HTTP_WEB_PORT. Use one or the other."
+        end
+
         [
           https: [
             ip: env_var_to_config!(:phoenix_listen_address).address,
@@ -410,17 +414,18 @@ if config_env() == :prod do
           ]
         ]
       else
-        []
+        [
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_http_web_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
       end
 
     config :portal,
            PortalWeb.Endpoint,
            [
-             http: [
-               ip: env_var_to_config!(:phoenix_listen_address).address,
-               port: env_var_to_config!(:phoenix_http_web_port),
-               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-             ],
              url: [
                scheme: web_external_url_scheme,
                host: web_external_url_host,
@@ -438,7 +443,7 @@ if config_env() == :prod do
              live_view: [
                signing_salt: env_var_to_config!(:live_view_signing_salt)
              ]
-           ] ++ web_https_opts
+           ] ++ web_listener_opts
 
     config :portal, PortalWeb.RateLimit,
       refill_rate: env_var_to_config!(:web_refill_rate),
@@ -459,8 +464,12 @@ if config_env() == :prod do
       path: api_external_url_path
     } = URI.parse(api_external_url)
 
-    api_https_opts =
+    api_listener_opts =
       if env_var_to_config(:phoenix_https_api_port) do
+        if System.get_env("PHOENIX_HTTP_API_PORT") do
+          raise "Cannot set both PHOENIX_HTTPS_API_PORT and PHOENIX_HTTP_API_PORT. Use one or the other."
+        end
+
         [
           https: [
             ip: env_var_to_config!(:phoenix_listen_address).address,
@@ -474,17 +483,18 @@ if config_env() == :prod do
           ]
         ]
       else
-        []
+        [
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_http_api_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
       end
 
     config :portal,
            PortalAPI.Endpoint,
            [
-             http: [
-               ip: env_var_to_config!(:phoenix_listen_address).address,
-               port: env_var_to_config!(:phoenix_http_api_port),
-               http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-             ],
              url: [
                scheme: api_external_url_scheme,
                host: api_external_url_host,
@@ -492,7 +502,7 @@ if config_env() == :prod do
                path: api_external_url_path
              ],
              secret_key_base: env_var_to_config!(:secret_key_base)
-           ] ++ api_https_opts
+           ] ++ api_listener_opts
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
