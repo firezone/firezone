@@ -21,7 +21,7 @@ if git diff --staged --quiet; then
     echo "No changes to commit for $component $version; skipping PR."
     exit 0
 fi
-git commit -m "chore: bump versions for $component  to $version"
+git commit -m "chore: bump versions for $component to $version"
 
 # Create PR
 git push -u origin HEAD --force
