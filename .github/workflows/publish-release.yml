@@ -79,6 +79,26 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
             $SOURCE_TAG
 
+  # WINGET_TOKEN requirements (read this before debugging auth failures):
+  #
+  # Must be a **classic** PAT owned by `firezone-bot` with the `public_repo`
+  # scope, and `firezone-bot` must be a write collaborator on the fork
+  # `firezone/winget-pkgs`.
+  #
+  # We deliberately do NOT grant the `workflow` scope. That means
+  # `komac sync-fork` will fail ("UpdateRef" denied) whenever upstream
+  # microsoft/winget-pkgs has new commits touching `.github/workflows/*`,
+  # because syncing the fork would require writing workflow files. When that
+  # happens, sync `firezone/winget-pkgs` manually (e.g. via the GitHub "Sync
+  # fork" button on the repo page) and re-run this job. The tradeoff: adding
+  # `workflow` scope would grant the bot write access to workflow files in
+  # every repo where it is a collaborator, which we consider too broad.
+  #
+  # Do NOT switch to a fine-grained PAT: komac opens the winget PR from
+  # `firezone/winget-pkgs` into `microsoft/winget-pkgs`, and fine-grained PATs
+  # cannot create PRs into repos outside their resource owner — the push
+  # succeeds but `komac update --submit` fails with "Resource not accessible
+  # by personal access token / failed to create pull request".
   publish-clients-to-winget:
     name: Publish ${{ matrix.identifier }} to winget
     runs-on: windows-latest
