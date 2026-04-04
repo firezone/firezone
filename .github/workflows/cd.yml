@@ -19,6 +19,7 @@ jobs:
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
     with:
       image_prefix: "dev"
       stage: "debug"
@@ -32,6 +33,7 @@ jobs:
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
     with:
       image_prefix: "debug"
       stage: "debug"
@@ -45,6 +47,7 @@ jobs:
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
     with:
       profile: "release"
       stage: "release"
@@ -57,6 +60,7 @@ jobs:
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
     with:
       image_prefix: "perf"
       profile: "release"
@@ -69,6 +73,7 @@ jobs:
     permissions:
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
 
   # Build loadtest binaries for QA environment.
   loadtest-binaries:
