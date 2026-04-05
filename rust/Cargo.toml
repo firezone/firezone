@@ -186,7 +186,7 @@ specta-typescript = "0.0.9"
 str0m = { version = "0.17.0", default-features = false }
 strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
-subprocess = "1.0.0"
+subprocess = "1.0.3"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
