@@ -64,7 +64,7 @@ backoff = { version = "0.4.0", features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
-bnum = "0.13.0"
+bnum = "0.14.4"
 boringtun = { version = "0.6.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
