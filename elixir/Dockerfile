@@ -1,4 +1,4 @@
-ARG ALPINE_VERSION="3.20.6"
+ARG ALPINE_VERSION="3.23.3"
 ARG ERLANG_VERSION="28.3"
 # curl -fsSL https://github.com/erlang/otp/releases/download/OTP-28.3/otp_src_28.3.tar.gz | sha256sum
 ARG ERLANG_DOWNLOAD_SHA256="1956ad6584678b631ab4f9b8aebe2dac037cd7401abb44564a01134ff0ac5bed"
