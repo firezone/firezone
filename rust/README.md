@@ -8,6 +8,22 @@ We target the last stable release of Rust using [`rust-toolchain.toml`](./rust-t
 If you are using `rustup`, that is automatically handled for you.
 Otherwise, ensure you have the latest stable version of Rust installed.
 
+## Prerequisites (Ubuntu)
+
+Install system dependencies:
+
+```bash
+sudo apt-get install build-essential pkg-config libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev
+```
+
+Install the eBPF toolchain and linker (required by the relay crate):
+
+```bash
+rustup toolchain install nightly-2025-05-30-x86_64-unknown-linux-gnu
+rustup component add rust-src --toolchain nightly-2025-05-30-x86_64-unknown-linux-gnu
+cargo install bpf-linker
+```
+
 ## Reading Client logs
 
 The Client logs are written as [JSONL](https://jsonlines.org/) for machine-readability.
