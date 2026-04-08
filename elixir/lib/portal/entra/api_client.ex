@@ -122,8 +122,7 @@ defmodule Portal.Entra.APIClient do
         %{
           id: Integer.to_string(index),
           method: "GET",
-          url:
-            "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname"
+          url: "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname"
         }
       end)
 
