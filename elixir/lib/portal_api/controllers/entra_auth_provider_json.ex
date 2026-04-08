@@ -18,6 +18,7 @@ defmodule PortalAPI.EntraAuthProviderJSON do
       context: provider.context,
       client_session_lifetime_secs: provider.client_session_lifetime_secs,
       portal_session_lifetime_secs: provider.portal_session_lifetime_secs,
+      email_claim: provider.email_claim,
       is_disabled: provider.is_disabled,
       is_default: provider.is_default,
       inserted_at: provider.inserted_at,

@@ -799,6 +799,32 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Edit Test Entra"
       assert html =~ "Provider Verification"
     end
+
+    test "allows changing email_claim", %{account: account, actor: actor, conn: conn} do
+      provider =
+        entra_provider_fixture(account: account, name: "Test Entra", is_verified: true)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      assert html =~ "Email Claim"
+
+      lv
+      |> form("#auth-provider-form", %{
+        "auth_provider" => %{"email_claim" => "email"}
+      })
+      |> render_change()
+
+      lv |> form("#auth-provider-form") |> render_submit()
+
+      html = render(lv)
+      assert html =~ "saved"
+
+      updated = Portal.Repo.get!(Portal.Entra.AuthProvider, provider.id)
+      assert updated.email_claim == "email"
+    end
   end
 
   describe "edit okta provider" do

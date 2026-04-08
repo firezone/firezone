@@ -21,6 +21,7 @@ defmodule PortalAPI.EntraDirectoryJSON do
       synced_at: directory.synced_at,
       error_message: directory.error_message,
       errored_at: directory.errored_at,
+      email_field: directory.email_field,
       sync_all_groups: directory.sync_all_groups,
       inserted_at: directory.inserted_at,
       updated_at: directory.updated_at

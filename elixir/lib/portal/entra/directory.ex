@@ -24,6 +24,7 @@ defmodule Portal.Entra.Directory do
     field :error_email_count, :integer, default: 0, read_after_writes: true
     field :sync_all_groups, :boolean, default: false, read_after_writes: true
     field :is_verified, :boolean, default: false, read_after_writes: true
+    field :email_field, :string, default: "userPrincipalName"
 
     timestamps()
   end
@@ -34,6 +35,7 @@ defmodule Portal.Entra.Directory do
     |> validate_length(:tenant_id, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
+    |> validate_inclusion(:email_field, ~w[mail userPrincipalName])
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
     |> unique_constraint(:tenant_id,

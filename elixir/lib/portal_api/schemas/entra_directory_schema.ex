@@ -28,6 +28,11 @@ defmodule PortalAPI.Schemas.EntraDirectory do
           format: :"date-time",
           description: "Error email timestamp"
         },
+        email_field: %Schema{
+          type: :string,
+          description: "Graph API user field to use as email",
+          enum: ["mail", "userPrincipalName"]
+        },
         sync_all_groups: %Schema{type: :boolean, description: "Sync all groups"},
         inserted_at: %Schema{
           type: :string,

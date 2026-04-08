@@ -1050,7 +1050,7 @@ defmodule PortalWeb.OIDCControllerTest do
     # Test length validation for profile fields
     # Format: {field_name, claim_name, limit}
     for {field, claim, limit} <- [
-          {"email", "email", 255},
+          {"email", "email", 160},
           {"issuer", "iss", 2048},
           {"idp_id", "sub", 255},
           {"name", "name", 255},
@@ -1067,7 +1067,14 @@ defmodule PortalWeb.OIDCControllerTest do
         %{field: field, claim: claim, limit: limit} = ctx
 
         actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
-        long_value = String.duplicate("a", limit + 1)
+
+        long_value =
+          if claim == "email" do
+            suffix = "@example.com"
+            String.duplicate("a", limit + 1 - String.length(suffix)) <> suffix
+          else
+            String.duplicate("a", limit + 1)
+          end
 
         overrides = %{claim => long_value}
 
@@ -1115,7 +1122,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
         assert log =~ "OIDC profile validation failed"
         assert log =~ "field=#{field}"
-        assert log =~ "length=#{limit + 1}"
+        assert log =~ "length=#{String.length(long_value)}"
       end
     end
   end

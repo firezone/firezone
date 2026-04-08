@@ -339,11 +339,17 @@ defmodule Portal.Changeset do
   end
 
   @email_regex ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+  @email_max_length 160
+
+  def valid_email?(value) when is_binary(value),
+    do: String.length(value) <= @email_max_length and Regex.match?(@email_regex, value)
+
+  def valid_email?(_), do: false
 
   def validate_email(%Ecto.Changeset{} = changeset, field) do
     changeset
     |> validate_format(field, @email_regex, message: "is an invalid email address")
-    |> validate_length(field, max: 160)
+    |> validate_length(field, max: @email_max_length)
   end
 
   def normalize_url(%Ecto.Changeset{} = changeset, field) do

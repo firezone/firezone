@@ -2996,6 +2996,35 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert updated.name == "Updated Entra Name"
     end
 
+    test "allows changing email_field for Entra directory", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      directory = entra_directory_fixture(account: account, name: "Entra Test", is_verified: true)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/#{directory.id}/edit")
+
+      assert html =~ "Email Field"
+
+      lv
+      |> form("#directory-form", %{
+        "directory" => %{"email_field" => "userPrincipalName"}
+      })
+      |> render_change()
+
+      lv |> form("#directory-form") |> render_submit()
+
+      html = render(lv)
+      assert html =~ "Directory saved successfully"
+
+      updated = Portal.Repo.get!(Entra.Directory, directory.id)
+      assert updated.email_field == "userPrincipalName"
+    end
+
     test "editing Okta directory does not clear legacy_service_account_key", %{
       account: account,
       actor: actor,

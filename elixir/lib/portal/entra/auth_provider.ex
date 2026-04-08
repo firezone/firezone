@@ -40,6 +40,7 @@ defmodule Portal.Entra.AuthProvider do
     field :is_default, :boolean, read_after_writes: true, default: false
 
     field :name, :string, default: "Entra"
+    field :email_claim, :string, default: "upn"
 
     timestamps()
   end
@@ -68,6 +69,7 @@ defmodule Portal.Entra.AuthProvider do
       name: :entra_auth_providers_account_id_name_index,
       message: "An Entra authentication provider with this name already exists."
     )
+    |> validate_inclusion(:email_claim, ~w[email upn preferred_username])
     |> check_constraint(:context, name: :context_must_be_valid)
   end
 

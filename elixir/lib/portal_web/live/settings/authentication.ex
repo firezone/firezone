@@ -40,7 +40,7 @@ defmodule PortalWeb.Settings.Authentication do
     EmailOTP.AuthProvider => @common_fields,
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
-    Entra.AuthProvider => @common_fields ++ ~w[is_verified]a,
+    Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
       @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified is_legacy]a
@@ -922,6 +922,23 @@ defmodule PortalWeb.Settings.Authentication do
               Session lifetime for Client applications (1 hour to 90 days). Default: 7 days (604800).
             </p>
           </div>
+        </div>
+
+        <div :if={@type == "entra"}>
+          <.input
+            field={@form[:email_claim]}
+            type="select"
+            label="Email Claim"
+            options={[
+              {"UPN (upn)", "upn"},
+              {"Email (email)", "email"},
+              {"Preferred Username (preferred_username)", "preferred_username"}
+            ]}
+            required
+          />
+          <p class="mt-1 text-xs text-neutral-600">
+            The OIDC claim to use as the user's email address during sign-in.
+          </p>
         </div>
 
         <div :if={@type == "okta"}>

@@ -112,7 +112,7 @@ defmodule PortalWeb.OIDCController do
          {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
          {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
-         {:ok, identity} <- upsert_identity(account, claims, userinfo),
+         {:ok, identity} <- upsert_identity(account, provider, claims, userinfo),
          :ok <- check_admin(identity, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
@@ -247,8 +247,11 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp upsert_identity(account, claims, userinfo) do
-    with {:ok, identity_profile} <- IdentityProfile.build(claims, userinfo, account.id) do
+  defp upsert_identity(account, provider, claims, userinfo) do
+    email_claim = Map.get(provider, :email_claim)
+
+    with {:ok, identity_profile} <-
+           IdentityProfile.build(claims, userinfo, account.id, email_claim: email_claim) do
       maybe_log_unverified_email(account, identity_profile)
 
       Database.upsert_identity(

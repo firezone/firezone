@@ -74,7 +74,8 @@ defmodule Portal.EntraDirectoryFixtures do
         :disabled_reason,
         :error_message,
         :error_email_count,
-        :sync_all_groups
+        :sync_all_groups,
+        :email_field
       ])
       |> Portal.Entra.Directory.changeset()
       |> Portal.Repo.insert()

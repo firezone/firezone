@@ -359,7 +359,9 @@ defmodule Portal.Entra.Sync do
           fetched_count: length(users)
         )
 
-        Enum.map(users, fn user -> map_user_to_identity(user, directory.id) end)
+        Enum.map(users, fn user ->
+          map_user_to_identity(user, directory.id, directory.email_field)
+        end)
 
       {:error, error} ->
         raise Entra.SyncError,
@@ -443,7 +445,9 @@ defmodule Portal.Entra.Sync do
 
     # Build identities for these members
     identities =
-      Enum.map(user_members, fn member -> map_user_to_identity(member, directory.id) end)
+      Enum.map(user_members, fn member ->
+        map_user_to_identity(member, directory.id, directory.email_field)
+      end)
 
     # Build memberships (group_idp_id, user_idp_id)
     memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
@@ -576,7 +580,9 @@ defmodule Portal.Entra.Sync do
 
     # Build identities for these members
     identities =
-      Enum.map(user_members, fn member -> map_user_to_identity(member, directory.id) end)
+      Enum.map(user_members, fn member ->
+        map_user_to_identity(member, directory.id, directory.email_field)
+      end)
 
     # Build memberships (group_idp_id, user_idp_id)
     memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
@@ -696,12 +702,7 @@ defmodule Portal.Entra.Sync do
     )
   end
 
-  defp map_user_to_identity(user, directory_id) do
-    # Map Microsoft Graph user fields to our identity schema
-    # Note: 'mail' is the primary email, userPrincipalName is the UPN (user@domain.com)
-    # We prefer 'mail' but fall back to userPrincipalName if mail is null
-    #
-    # Validate that critical fields are present
+  defp map_user_to_identity(user, directory_id, email_field) do
     unless user["id"] do
       raise Entra.SyncError,
         error: {:validation, "user missing 'id' field"},
@@ -709,11 +710,11 @@ defmodule Portal.Entra.Sync do
         step: :process_user
     end
 
-    primary_email = user["mail"] || user["userPrincipalName"]
+    primary_email = user[email_field]
 
-    unless primary_email do
+    unless Portal.Changeset.valid_email?(primary_email) do
       raise Entra.SyncError,
-        error: {:validation, "user '#{user["id"]}' missing 'mail' field"},
+        error: {:validation, "user '#{user["id"]}' has no valid email in '#{email_field}' field"},
         directory_id: directory_id,
         step: :process_user
     end

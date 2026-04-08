@@ -27,17 +27,21 @@ defmodule PortalWeb.OIDC.IdentityProfile do
           email_verified: boolean()
         }
 
-  @spec build(map(), map(), Ecto.UUID.t()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
-  def build(claims, userinfo, account_id) do
-    email = claims["email"]
+  @spec build(map(), map(), Ecto.UUID.t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def build(claims, userinfo, account_id, opts \\ []) do
+    email = resolve_email(claims, Keyword.get(opts, :email_claim))
     idp_id = claims["oid"] || claims["sub"]
     issuer = claims["iss"]
-    profile_attrs = extract_profile_attrs(claims, userinfo)
+
+    profile_attrs =
+      claims
+      |> extract_profile_attrs(userinfo)
+      |> Map.put("email", email)
+      |> maybe_populate_name()
 
     attrs =
       profile_attrs
       |> Map.put("account_id", account_id)
-      |> Map.put("email", email)
       |> Map.put("issuer", issuer)
       |> Map.put("idp_id", idp_id)
 
@@ -65,7 +69,6 @@ defmodule PortalWeb.OIDC.IdentityProfile do
     %ExternalIdentity{}
     |> cast(attrs, @idp_fields ++ ~w[account_id actor_id]a)
     |> validate_required(~w[email issuer idp_id name account_id]a)
-    |> validate_length(:email, max: 255)
     |> validate_length(:issuer, max: 2048)
     |> validate_length(:idp_id, max: 255)
     |> validate_length(:name, max: 255)
@@ -76,7 +79,11 @@ defmodule PortalWeb.OIDC.IdentityProfile do
     |> validate_length(:preferred_username, max: 255)
     |> validate_length(:profile, max: 2048)
     |> validate_length(:picture, max: 2048)
+    |> Portal.Changeset.validate_email(:email)
   end
+
+  defp resolve_email(claims, nil), do: claims["email"]
+  defp resolve_email(claims, email_claim), do: claims[email_claim]
 
   defp extract_profile_attrs(claims, userinfo) do
     Map.merge(claims, userinfo)
@@ -92,7 +99,6 @@ defmodule PortalWeb.OIDC.IdentityProfile do
       "picture"
     ])
     |> sanitize_string_fields()
-    |> maybe_populate_name()
   end
 
   # Ensure all profile fields are strings or nil - some IdPs may return unexpected types

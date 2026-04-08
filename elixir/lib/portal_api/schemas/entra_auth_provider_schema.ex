@@ -27,6 +27,11 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
           type: :integer,
           description: "Portal session lifetime in seconds"
         },
+        email_claim: %Schema{
+          type: :string,
+          description: "OIDC claim to use as email",
+          enum: ["email", "upn", "preferred_username"]
+        },
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
         is_default: %Schema{type: :boolean, description: "Whether provider is default"},
         inserted_at: %Schema{

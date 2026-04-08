@@ -26,7 +26,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   @common_fields ~w[name is_disabled disabled_reason is_verified error_message]a
 
   @fields %{
-    Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
+    Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups email_field]a,
     Google.Directory =>
       @common_fields ++ ~w[domain impersonation_email group_sync_mode orgunit_sync_enabled]a,
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
@@ -1011,6 +1011,22 @@ defmodule PortalWeb.Settings.DirectorySync do
             </label>
           </div>
         </fieldset>
+
+        <div :if={@type == "entra"}>
+          <.input
+            field={@form[:email_field]}
+            type="select"
+            label="Email Field"
+            options={[
+              {"User Principal Name (userPrincipalName)", "userPrincipalName"},
+              {"Mail (mail)", "mail"}
+            ]}
+            required
+          />
+          <p class="mt-1 text-xs text-neutral-600">
+            The Microsoft Graph user field to use as the primary email during directory sync.
+          </p>
+        </div>
 
         <div :if={@type == "google"}>
           <.input
