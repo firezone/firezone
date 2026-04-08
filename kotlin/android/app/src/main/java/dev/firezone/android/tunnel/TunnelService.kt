@@ -16,12 +16,13 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.Log
+import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
@@ -51,6 +52,7 @@ import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.enforceLogSizeCap
+import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.use
@@ -88,6 +90,7 @@ class TunnelService : VpnService() {
     private var disconnectCallback: DisconnectMonitor? = null
 
     private var logCleanupJob: Job? = null
+    private var featureFlagPollJob: Job? = null
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
@@ -300,12 +303,18 @@ class TunnelService : VpnService() {
 
             serviceScope.launch {
                 try {
+                    // Set telemetry environment and user context
+                    val deviceIdValue = deviceId()
+                    Telemetry.setEnvironmentOrClose(config.apiUrl)
+                    Telemetry.setFirezoneId(deviceIdValue)
+                    Telemetry.setAccountSlug(config.accountSlug)
+
                     Session
                         .newAndroid(
                             apiUrl = config.apiUrl,
                             token = token,
                             accountSlug = config.accountSlug,
-                            deviceId = deviceId(),
+                            deviceId = deviceIdValue,
                             deviceName = getDeviceName(),
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
@@ -316,19 +325,19 @@ class TunnelService : VpnService() {
                             startNetworkMonitoring()
                             startDisconnectMonitoring()
                             startLogCleanup()
+                            startFeatureFlagPoll()
 
-                            eventLoop(session, commandChannel!!)
+                            val stopReason = eventLoop(session, commandChannel!!)
 
-                            Log.i(TAG, "Event-loop finished")
+                            Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            if (startedByUser) {
+                            if (startedByUser && stopReason != StopReason.ExplicitDisconnect) {
                                 // Show dismissable disconnected notification
                                 TunnelNotification.showDisconnectedNotification(context)
                             }
                         }
                 } catch (e: ConnlibException) {
                     Log.e(TAG, "Failed to start session", e)
-
                     e.close()
                 } finally {
                     commandChannel = null
@@ -336,6 +345,7 @@ class TunnelService : VpnService() {
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
+                    stopFeatureFlagPoll()
 
                     // Stop the foreground notification
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -438,6 +448,23 @@ class TunnelService : VpnService() {
         logCleanupJob = null
     }
 
+    private fun startFeatureFlagPoll() {
+        featureFlagPollJob =
+            serviceScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    val active = isLogStreamingActive()
+                    Log.setStreamingActive(active)
+                    delay(FEATURE_FLAG_POLL_INTERVAL_MS)
+                }
+            }
+    }
+
+    private fun stopFeatureFlagPoll() {
+        featureFlagPollJob?.cancel()
+        featureFlagPollJob = null
+        Log.setStreamingActive(false)
+    }
+
     fun setServiceStateMutableStateFlow(stateFlow: MutableStateFlow<State?>) {
         serviceStateMutableStateFlow = stateFlow
 
@@ -518,6 +545,14 @@ class TunnelService : VpnService() {
         data object Reset : TunnelCommand()
     }
 
+    enum class StopReason {
+        ExplicitDisconnect,
+        Disconnected,
+        EventChannelClosed,
+        CommandChannelClosed,
+        Error,
+    }
+
     private fun resourceById(resourceId: String): Pair<Resource, Site>? {
         val resource = _tunnelResources.find { it.id == resourceId } ?: return null
         val site = resource.sites?.firstOrNull() ?: return null
@@ -534,7 +569,7 @@ class TunnelService : VpnService() {
     private suspend fun eventLoop(
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
-    ) {
+    ): StopReason {
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
@@ -542,16 +577,20 @@ class TunnelService : VpnService() {
                 }
             }
 
-        var running = true
+        var explicitDisconnect = false
+        var stopReason: StopReason? = null
 
-        while (running) {
+        while (stopReason == null) {
             try {
                 select<Unit> {
                     commandChannel.onReceive { command ->
                         when (command) {
                             is TunnelCommand.Disconnect -> {
+                                explicitDisconnect = true
                                 session.disconnect()
-                                // Sending disconnect will close the event-stream which will exit this loop
+
+                                // Sending disconnect will close the event-stream which will exit this loop.
+                                // We don't want to bail out here right away to allow connlib to clean up after itself.
                             }
 
                             is TunnelCommand.SetInternetResourceState -> {
@@ -613,7 +652,7 @@ class TunnelService : VpnService() {
                                     repo.clearToken()
                                     repo.clearActorName()
 
-                                    running = false
+                                    stopReason = StopReason.Disconnected
                                 }
 
                                 is Event.GatewayVersionMismatch -> {
@@ -636,17 +675,27 @@ class TunnelService : VpnService() {
 
                                 null -> {
                                     Log.i(TAG, "Event channel closed")
-                                    running = false
+                                    stopReason = StopReason.EventChannelClosed
                                 }
                             }
                         }
                     }
                 }
             } catch (e: ClosedReceiveChannelException) {
-                running = false
+                stopReason = StopReason.CommandChannelClosed
+            } catch (e: CancellationException) {
+                stopReason = StopReason.CommandChannelClosed
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error in event loop", e)
+                stopReason = StopReason.Error
             }
+        }
+
+        return if (explicitDisconnect) {
+            StopReason.ExplicitDisconnect
+        } else {
+            stopReason
         }
     }
 
@@ -705,8 +754,10 @@ class TunnelService : VpnService() {
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
+        private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
 
-        private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+        private val MANAGED_CONFIGURATIONS =
+            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")

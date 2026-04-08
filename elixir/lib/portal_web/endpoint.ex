@@ -41,6 +41,7 @@ defmodule PortalWeb.Endpoint do
   plug Portal.Plugs.CountryCodeBlocklist
 
   plug Plug.RequestId
+  plug PortalWeb.Plugs.PutDynamicRepo
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   # Serve at "/" the static files from "priv/static" directory.

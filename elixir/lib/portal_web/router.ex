@@ -59,17 +59,18 @@ defmodule PortalWeb.Router do
     end
   end
 
-  scope "/sign_up", PortalWeb do
+  scope "/", PortalWeb do
     pipe_through :public
 
-    live "/", SignUp
-  end
-
-  # Maintained from the LaunchHN - show SignUp form
-  scope "/try", PortalWeb do
-    pipe_through :public
-
-    live "/", SignUp
+    live_session :public_sign_up,
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox
+      ] do
+      live "/sign_up", SignUp
+      # Maintained from the LaunchHN - show SignUp form
+      live "/try", SignUp
+    end
   end
 
   scope "/auth", PortalWeb do
@@ -112,6 +113,7 @@ defmodule PortalWeb.Router do
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox,
         PortalWeb.LiveHooks.FetchAccount,
         PortalWeb.LiveHooks.FetchSubject,
@@ -123,6 +125,7 @@ defmodule PortalWeb.Router do
     live_session :email_otp_verify,
       session: {PortalWeb.Cookie.EmailOTP, :fetch_state, []},
       on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox,
         PortalWeb.LiveHooks.FetchAccount,
         PortalWeb.LiveHooks.FetchSubject,
@@ -169,6 +172,7 @@ defmodule PortalWeb.Router do
 
     live_session :ensure_authenticated,
       on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox,
         PortalWeb.LiveHooks.FetchAccount,
         PortalWeb.LiveHooks.FetchSubject,

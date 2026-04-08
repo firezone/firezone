@@ -81,7 +81,8 @@ defmodule PortalAPI.SocketsTest do
       result = Sockets.handle_error(conn, :invalid_token)
 
       assert result.status == 401
-      assert result.resp_body == "Invalid token"
+      assert json_body(result)["detail"] == "Invalid token"
+      assert_problem_json(result)
     end
 
     test "returns 401 for missing_token" do
@@ -90,7 +91,8 @@ defmodule PortalAPI.SocketsTest do
       result = Sockets.handle_error(conn, :missing_token)
 
       assert result.status == 401
-      assert result.resp_body == "Missing token"
+      assert json_body(result)["detail"] == "Missing token"
+      assert_problem_json(result)
     end
 
     test "returns 402 for seats_limit_exceeded" do
@@ -100,9 +102,11 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 402
 
-      assert result.resp_body ==
+      assert json_body(result)["detail"] ==
                "This account is temporarily suspended from client authentication " <>
                  "due to exceeding billing limits. Please contact your administrator to add more seats."
+
+      assert_problem_json(result)
     end
 
     test "returns 403 for account_disabled" do
@@ -111,7 +115,8 @@ defmodule PortalAPI.SocketsTest do
       result = Sockets.handle_error(conn, :account_disabled)
 
       assert result.status == 403
-      assert result.resp_body == "The account is disabled"
+      assert json_body(result)["detail"] == "The account is disabled"
+      assert_problem_json(result)
     end
 
     test "returns 403 for unauthenticated" do
@@ -120,7 +125,8 @@ defmodule PortalAPI.SocketsTest do
       result = Sockets.handle_error(conn, :unauthenticated)
 
       assert result.status == 403
-      assert result.resp_body == "Forbidden"
+      assert json_body(result)["detail"] == "Forbidden"
+      assert_problem_json(result)
     end
 
     test "returns 503 with retry-after header for rate_limit" do
@@ -129,8 +135,35 @@ defmodule PortalAPI.SocketsTest do
       result = Sockets.handle_error(conn, :rate_limit)
 
       assert result.status == 503
-      assert result.resp_body == "Service Unavailable"
+      assert json_body(result)["detail"] == "Service Unavailable"
       assert Plug.Conn.get_resp_header(result, "retry-after") == ["1"]
+      assert_problem_json(result)
     end
+
+    test "returns 400 with changeset errors" do
+      conn = Plug.Test.conn(:get, "/")
+
+      changeset =
+        {%{}, %{name: :string}}
+        |> Ecto.Changeset.cast(%{}, [:name])
+        |> Ecto.Changeset.validate_required([:name])
+
+      result = Sockets.handle_error(conn, changeset)
+
+      assert result.status == 400
+      assert json_body(result)["detail"] =~ "name"
+      assert_problem_json(result)
+    end
+  end
+
+  defp json_body(conn), do: JSON.decode!(conn.resp_body)
+
+  defp assert_problem_json(conn) do
+    [content_type] = Plug.Conn.get_resp_header(conn, "content-type")
+    assert content_type =~ "application/problem+json"
+    body = json_body(conn)
+    assert body["type"] == "about:blank"
+    assert is_integer(body["status"])
+    assert is_binary(body["title"])
   end
 end

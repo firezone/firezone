@@ -417,20 +417,10 @@ impl Io {
     }
 
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
         let mut any_pending = false;
 
-        loop {
-            if self.sockets.poll_send_ready(cx)?.is_pending() {
-                any_pending = true;
-                break;
-            }
-
-            let Some(datagram) = datagrams.next() else {
-                break;
-            };
-
-            self.sockets.send(datagram)?;
+        if self.flush_gso_queue(cx)?.is_pending() {
+            any_pending = true
         }
 
         if self.tun.poll_flush(cx)?.is_pending() {
@@ -439,6 +429,22 @@ impl Io {
 
         if any_pending {
             return Poll::Pending;
+        }
+
+        Poll::Ready(Ok(()))
+    }
+
+    pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        let mut datagrams = self.gso_queue.datagrams();
+
+        loop {
+            ready!(self.sockets.poll_send_ready(cx)?);
+
+            let Some(datagram) = datagrams.next() else {
+                break;
+            };
+
+            self.sockets.send(datagram)?;
         }
 
         Poll::Ready(Ok(()))

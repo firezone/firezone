@@ -16,6 +16,11 @@ defmodule PortalAPI.Gateway.Socket do
 
   @impl true
   def connect(attrs, socket, connect_info) do
+    unless Application.get_env(:portal, :sql_sandbox) do
+      Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
+      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
+    end
+
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
@@ -36,8 +41,10 @@ defmodule PortalAPI.Gateway.Socket do
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
          changeset = insert_changeset(site, attrs),
+         {:ok, _} <- apply_action(changeset, :validate),
          {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
       version = derive_version(context.user_agent)
+      {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       session = build_session(gateway, gateway_token.id, public_key, context, version)
       GatewaySession.Buffer.insert(session)
 

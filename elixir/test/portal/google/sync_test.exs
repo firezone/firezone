@@ -61,8 +61,9 @@ defmodule Portal.Google.SyncTest do
 
   describe "perform/1" do
     setup do
-      # Set up test configuration for API client
-      original_config = Application.get_env(:portal, APIClient)
+      # Set up test configuration for API client. Use a process-scoped override
+      # (via Portal.Config.put_env_override) instead of Application.put_env so
+      # that concurrent async tests don't clobber each other's global config.
       original_log_level = Logger.level()
 
       test_config = [
@@ -84,7 +85,7 @@ defmodule Portal.Google.SyncTest do
         req_opts: [plug: {Req.Test, APIClient}, retry: false]
       ]
 
-      Application.put_env(:portal, APIClient, test_config)
+      Portal.Config.put_env_override(:portal, APIClient, test_config)
       Logger.configure(level: :debug)
 
       # Set up default stub
@@ -94,7 +95,6 @@ defmodule Portal.Google.SyncTest do
 
       on_exit(fn ->
         Logger.configure(level: original_log_level)
-        Application.put_env(:portal, APIClient, original_config)
       end)
 
       :ok
@@ -1523,9 +1523,9 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account)
 
-      config = Application.get_env(:portal, APIClient)
+      config = Process.get({:portal, APIClient})
 
-      Application.put_env(
+      Portal.Config.put_env_override(
         :portal,
         APIClient,
         Keyword.put(config, :service_account_key, %{invalid: true})

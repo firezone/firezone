@@ -213,6 +213,72 @@ defmodule Portal.Authentication do
     "." <> Plug.Crypto.sign(key_base, salt <> type, body)
   end
 
+  # Ingestion authentication
+  #
+  # Introspects the token by attempting a cheap crypto decode against known salts
+  # (gateway, then client) to identify the token type before doing any DB work.
+  # This avoids needing the caller to know the token type upfront.
+  #
+  # Accepts a Plug.Conn so it can build the appropriate auth context only when
+  # needed (client tokens require a Context; gateway tokens do not).
+  def authenticate_ingestion(encoded_token, %Plug.Conn{} = conn)
+      when is_binary(encoded_token) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    base_salt = Keyword.fetch!(config, :salt)
+
+    with [nonce, signed] <- String.split(encoded_token, ".", parts: 2),
+         {:ok, token_type, payload} <-
+           identify_token_type(signed, key_base, base_salt) do
+      verify_identified_token(token_type, nonce, payload, encoded_token, conn)
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  @ingestion_salts [
+    {:gateway, "gateway"},
+    {:gateway, "gateway_group"},
+    {:client, "client"}
+  ]
+
+  defp identify_token_type(signed, key_base, base_salt) do
+    Enum.find_value(@ingestion_salts, {:error, :invalid_token}, fn {type, salt} ->
+      case Plug.Crypto.verify(key_base, base_salt <> salt, signed, max_age: :infinity) do
+        {:ok, payload} -> {:ok, type, payload}
+        {:error, _} -> nil
+      end
+    end)
+  end
+
+  defp verify_identified_token(
+         :gateway,
+         nonce,
+         {account_id, id, fragment},
+         _encoded_token,
+         _conn
+       ) do
+    with {:ok, token} <- Database.fetch_gateway_token(account_id, id),
+         :ok <- verify_secret_hash(token, nonce, fragment) do
+      account = Database.get_account_by_id!(token.account_id)
+      {:ok, :gateway, account, token.id}
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  defp verify_identified_token(:client, _nonce, _payload, encoded_token, conn) do
+    context =
+      Context.build(conn.remote_ip, conn.assigns[:user_agent], conn.req_headers, :client)
+
+    with {:ok, token} <- use_token(encoded_token, context),
+         {:ok, subject} <- build_subject(token, context) do
+      {:ok, :client, subject.account, token.id}
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
   def verify_relay_token(encoded_token) when is_binary(encoded_token) do
     verify_infrastructure_token(
       encoded_token,

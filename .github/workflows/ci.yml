@@ -280,6 +280,7 @@ jobs:
     permissions:
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
 
   monitor-control-plane:
     needs: [control-plane]
@@ -300,6 +301,7 @@ jobs:
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
       image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}

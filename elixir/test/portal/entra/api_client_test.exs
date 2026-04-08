@@ -296,8 +296,7 @@ defmodule Portal.Entra.APIClientTest do
               "mail" => "user1@example.com",
               "userPrincipalName" => "user1@example.com",
               "givenName" => "User",
-              "surname" => "One",
-              "aboutMe" => "Test user"
+              "surname" => "One"
             },
             %{
               "id" => "user2",
@@ -319,7 +318,7 @@ defmodule Portal.Entra.APIClientTest do
       assert query_params["$top"] == "999"
 
       assert query_params["$select"] ==
-               "id,displayName,mail,userPrincipalName,givenName,surname,aboutMe"
+               "id,displayName,mail,userPrincipalName,givenName,surname"
     end
 
     test "streams multiple pages of members" do
@@ -414,8 +413,14 @@ defmodule Portal.Entra.APIClientTest do
 
       assert_receive {:batch_request, batch_request}
       assert length(batch_request["requests"]) == 3
-      assert Enum.at(batch_request["requests"], 0)["method"] == "GET"
-      assert Enum.at(batch_request["requests"], 0)["url"] =~ "/users/user1"
+      expected_select = "id,displayName,mail,userPrincipalName,givenName,surname"
+
+      Enum.zip(batch_request["requests"], user_ids)
+      |> Enum.each(fn {request, user_id} ->
+        assert request["method"] == "GET"
+        assert request["url"] == "/users/#{user_id}?$select=#{expected_select}"
+        refute request["url"] =~ "aboutMe"
+      end)
     end
 
     test "handles partial failures in batch request" do

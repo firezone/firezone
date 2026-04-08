@@ -89,6 +89,25 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     {ast, issues}
   end
 
+  # Allow Portal.Repo.put_dynamic_repo - pool routing, not a database operation
+  defp traverse(
+         {{:., _meta, [{:__aliases__, _, [:Portal, :Repo]}, :put_dynamic_repo]}, _, _} = ast,
+         issues,
+         _issue_meta
+       ) do
+    {ast, issues}
+  end
+
+  # Allow Portal.Repo.Replica.put_dynamic_repo
+  defp traverse(
+         {{:., _meta, [{:__aliases__, _, [:Portal, :Repo, :Replica]}, :put_dynamic_repo]}, _, _} =
+           ast,
+         issues,
+         _issue_meta
+       ) do
+    {ast, issues}
+  end
+
   # Check for direct Portal.Repo calls
   defp traverse(
          {{:., meta, [{:__aliases__, _, [:Portal, :Repo]}, _]}, _, _} = ast,

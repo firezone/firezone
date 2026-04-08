@@ -246,8 +246,7 @@ defmodule Portal.Telemetry do
 
     # Common attributes for all metrics to enable splitting by node in Azure Monitor
     node_attrs = %{
-      "node_name" => System.get_env("NODE_NAME", to_string(node())),
-      "node_type" => System.get_env("NODE_TYPE", "unknown")
+      "node_name" => System.get_env("NODE_NAME", to_string(node()))
     }
 
     # Observable gauges for BEAM health

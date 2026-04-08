@@ -99,7 +99,7 @@ defmodule Portal.AzureCommunicationServices do
       status: :failed,
       failure_code: to_string(status),
       failure_message: details,
-      suppress?: false
+      suppress?: true
     }
   end
 

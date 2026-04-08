@@ -18,15 +18,6 @@ defmodule Portal.HealthTest do
   end
 
   describe "PortalWeb.Endpoint integration" do
-    test "GET /healthz returns 200" do
-      conn =
-        Plug.Test.conn(:get, "/healthz")
-        |> PortalWeb.Endpoint.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
-    end
-
     test "GET /readyz returns 200 when ready" do
       conn =
         Plug.Test.conn(:get, "/readyz")
@@ -39,15 +30,6 @@ defmodule Portal.HealthTest do
   end
 
   describe "PortalAPI.Endpoint integration" do
-    test "GET /healthz returns 200" do
-      conn =
-        Plug.Test.conn(:get, "/healthz")
-        |> PortalAPI.Endpoint.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
-    end
-
     test "GET /readyz returns 200 when ready" do
       conn =
         Plug.Test.conn(:get, "/readyz")
@@ -56,18 +38,6 @@ defmodule Portal.HealthTest do
       assert conn.status == 200
       assert %{"status" => "ready", "version" => version} = JSON.decode!(conn.resp_body)
       assert is_binary(version)
-    end
-  end
-
-  describe "GET /healthz" do
-    test "returns 200 with status ok" do
-      conn =
-        :get
-        |> conn("/healthz")
-        |> Portal.Health.call([])
-
-      assert conn.status == 200
-      assert JSON.decode!(conn.resp_body) == %{"status" => "ok"}
     end
   end
 
@@ -96,6 +66,49 @@ defmodule Portal.HealthTest do
       assert conn.status == 503
       assert %{"status" => "draining", "version" => version} = JSON.decode!(conn.resp_body)
       assert is_binary(version)
+    end
+
+    test "returns 503 when repo check query raises", %{
+      draining_file_path: draining_file_path
+    } do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        repo_check_query: "INVALID SQL"
+      )
+
+      conn =
+        :get
+        |> conn("/readyz")
+        |> Portal.Health.call([])
+
+      assert conn.status == 503
+
+      assert %{"status" => "database_unavailable", "version" => _} =
+               JSON.decode!(conn.resp_body)
+    end
+
+    test "returns 200 when all configured repos are reachable", %{
+      draining_file_path: draining_file_path
+    } do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        repos: [
+          Portal.Repo,
+          Portal.Repo.Replica,
+          Portal.Repo.Web,
+          Portal.Repo.Api,
+          Portal.Repo.Replica.Web,
+          Portal.Repo.Replica.Api
+        ]
+      )
+
+      conn =
+        :get
+        |> conn("/readyz")
+        |> Portal.Health.call([])
+
+      assert conn.status == 200
+      assert %{"status" => "ready"} = JSON.decode!(conn.resp_body)
     end
 
     test "returns 503 with status starting when an endpoint is not ready", %{
@@ -127,15 +140,6 @@ defmodule Portal.HealthTest do
       # Portal.Health passes through unknown routes (doesn't halt)
       refute conn.halted
       assert conn.status == nil
-    end
-
-    test "returns 404 when used as standalone server" do
-      conn =
-        :get
-        |> conn("/unknown")
-        |> Portal.Health.Server.call([])
-
-      assert conn.status == 404
     end
   end
 end

@@ -44,7 +44,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "tim
 tracing = { workspace = true, features = ["log"] }
 tracing-core = { workspace = true }
 tracing-opentelemetry = { workspace = true }
-tracing-stackdriver = { workspace = true, features = ["opentelemetry"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 trackable = { workspace = true }
 url = { workspace = true }

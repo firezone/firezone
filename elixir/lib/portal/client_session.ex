@@ -44,6 +44,10 @@ defmodule Portal.ClientSession do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:account_id, :client_id, :client_token_id])
+    |> validate_length(:user_agent, max: 255)
+    |> validate_length(:version, max: 255)
+    |> validate_length(:remote_ip_location_region, max: 255)
+    |> validate_length(:remote_ip_location_city, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:client)
     |> assoc_constraint(:client_token)

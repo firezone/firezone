@@ -15,6 +15,10 @@ defmodule Portal.Application do
     :ok = OpentelemetryLoggerMetadata.setup()
     :ok = OpentelemetryEcto.setup([:portal, :repo])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :replica])
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :web])
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :api])
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica, :web])
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica, :api])
     :ok = OpentelemetryBandit.setup()
     :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
     :ok = OpentelemetryOban.setup()
@@ -35,6 +39,11 @@ defmodule Portal.Application do
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
+      # Isolated connection pools (web/api)
+      Portal.Repo.Web,
+      Portal.Repo.Api,
+      Portal.Repo.Replica.Web,
+      Portal.Repo.Replica.Api,
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
       # Named pg scope for Portal.PG, isolated so a crash here does not affect replication
@@ -44,9 +53,7 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions,
-      # Health check server (always enabled)
-      Portal.Health
+      Portal.ComponentVersions
     ]
 
     endpoint_children = [
@@ -160,12 +167,7 @@ defmodule Portal.Application do
   end
 
   defp rate_limit do
-    case Portal.Config.get_env(:portal, :node_type, "portal") do
-      "api" -> [PortalAPI.RateLimit]
-      "web" -> [PortalWeb.RateLimit]
-      "portal" -> [PortalAPI.RateLimit, PortalWeb.RateLimit]
-      _ -> []
-    end
+    [PortalAPI.RateLimit, PortalWeb.RateLimit]
   end
 
   defp verify_geolix_databases do

@@ -4,7 +4,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import dev.firezone.android.core.Log
 import dev.firezone.android.tunnel.TunnelService
 
 // None of the TunnelService lifecycle callbacks are called when a user disconnects the VPN

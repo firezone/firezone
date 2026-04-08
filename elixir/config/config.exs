@@ -46,6 +46,40 @@ config :portal, Portal.Repo.Replica,
   queue_interval: 1000,
   parameters: [application_name: "replica"]
 
+# Isolated primary connection pools (web/api)
+for {repo, app_name} <- [
+      {Portal.Repo.Web, "web"},
+      {Portal.Repo.Api, "api"}
+    ] do
+  config :portal, repo,
+    hostname: "localhost",
+    username: "postgres",
+    password: "postgres",
+    database: "firezone_dev",
+    show_sensitive_data_on_connection_error: true,
+    pool_size: :erlang.system_info(:logical_processors_available) * 2,
+    queue_target: 500,
+    queue_interval: 1000,
+    parameters: [application_name: app_name]
+end
+
+# Isolated replica connection pools (web/api)
+for {repo, app_name} <- [
+      {Portal.Repo.Replica.Web, "replica-web"},
+      {Portal.Repo.Replica.Api, "replica-api"}
+    ] do
+  config :portal, repo,
+    hostname: "localhost",
+    username: "postgres",
+    password: "postgres",
+    database: "firezone_dev",
+    show_sensitive_data_on_connection_error: true,
+    pool_size: :erlang.system_info(:logical_processors_available) * 2,
+    queue_target: 500,
+    queue_interval: 1000,
+    parameters: [application_name: app_name]
+end
+
 config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: "change_logs_slot",
   publication_name: "change_logs_publication",
@@ -170,7 +204,6 @@ config :portal, Portal.Telemetry,
   enabled: true
 
 config :portal, Portal.Health,
-  health_port: 4000,
   web_endpoint: PortalWeb.Endpoint,
   api_endpoint: PortalAPI.Endpoint,
   ops_endpoint: PortalOps.Endpoint,

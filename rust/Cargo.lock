@@ -7,10 +7,6 @@ name = "Inflector"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
-dependencies = [
- "lazy_static",
- "regex",
-]
 
 [[package]]
 name = "actix-codec"
@@ -881,7 +877,7 @@ dependencies = [
  "windows",
  "windows-core",
  "windows-implement",
- "winreg 0.55.0",
+ "winreg 0.56.0",
  "wintun",
  "zbus",
 ]
@@ -2512,7 +2508,7 @@ dependencies = [
  "windows",
  "windows-native-keyring-store",
  "windows-service",
- "winreg 0.55.0",
+ "winreg 0.56.0",
  "zip",
 ]
 
@@ -2622,7 +2618,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-opentelemetry",
- "tracing-stackdriver",
  "tracing-subscriber",
  "trackable",
  "url",
@@ -4140,9 +4135,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.182"
+version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libdbus-sys"
@@ -4271,6 +4266,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-log",
+ "tracing-macros",
  "tracing-subscriber",
  "windows",
 ]
@@ -6483,9 +6479,9 @@ dependencies = [
 
 [[package]]
 name = "sd-notify"
-version = "0.4.5"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b943eadf71d8b69e661330cb0e2656e31040acf21ee7708e2c238a0ec6af2bf4"
+checksum = "3e4ef7359e694bfaf1dd27a30f9d760b54c00dfae9f19bd0c05a39bc9128fe76"
 dependencies = [
  "libc",
 ]
@@ -7257,23 +7253,22 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
  "strum_macros",
 ]
 
 [[package]]
 name = "strum_macros"
-version = "0.27.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c77a8c5abcaf0f9ce05d62342b7d298c346515365c36b673df4ebe3ced01fde8"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "rustversion",
  "syn 2.0.117",
 ]
 
@@ -7294,9 +7289,9 @@ dependencies = [
 
 [[package]]
 name = "subprocess"
-version = "1.0.0"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98e067360c7f5a302e35c9f9cd24cb583c378fbedc73d0237284dbdd0650fcc5"
+checksum = "e5b79b2cfda2d2dd2ef0640364f88f55f0ee895b1fdac29ab010b8c8ba1eb303"
 dependencies = [
  "libc",
  "winapi",
@@ -8041,9 +8036,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.49.0"
+version = "1.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72a2903cd7736441aac9df9d7688bd0ce48edccaadf181c3b90be801e81d3d86"
+checksum = "27ad5e34374e03cfffefc301becb44e9dc3c17584f414349ebe29ed26661822d"
 dependencies = [
  "bytes",
  "libc",
@@ -8371,6 +8366,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-macros"
+version = "0.1.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=main#412986fb2fcfcd231844eb14cf66665936c6ecfc"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "tracing-opentelemetry"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8399,26 +8402,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tracing-stackdriver"
-version = "0.12.0"
-source = "git+https://github.com/thomaseizinger/tracing-stackdriver?branch=bump-otel-0.30#0b86826d6229cefca4d567c04dce4ff18aaf534b"
-dependencies = [
- "Inflector",
- "opentelemetry",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "time",
- "tracing-core",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "tracing-subscriber"
-version = "0.3.22"
+version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f30143827ddab0d256fd843b7a66d164e9f271cfa0dde49142c5ca0ca291f1e"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
  "matchers",
  "nu-ansi-term",
@@ -9793,12 +9780,12 @@ dependencies = [
 
 [[package]]
 name = "winreg"
-version = "0.55.0"
+version = "0.56.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
+checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -742,19 +742,11 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "uses configured batch endpoint when provided" do
-      original_config = Application.get_env(:portal, APIClient)
-
       custom_endpoint = "https://batch.googleapis.test/custom-batch"
 
-      Application.put_env(
-        :portal,
-        APIClient,
-        Keyword.put(original_config, :batch_endpoint, custom_endpoint)
-      )
-
-      on_exit(fn ->
-        Application.put_env(:portal, APIClient, original_config)
-      end)
+      # Use a process-scoped override so concurrent async tests don't clobber
+      # each other's global Application env for Portal.Google.APIClient.
+      Portal.Config.put_env_override(:portal, APIClient, batch_endpoint: custom_endpoint)
 
       Req.Test.expect(APIClient, fn conn ->
         assert conn.host == "batch.googleapis.test"

@@ -13,6 +13,8 @@ defmodule Portal.Accounts.Limits do
     field :api_tokens_per_client_count, :integer, default: 100
     field :api_refill_rate, :integer
     field :api_capacity, :integer
+    field :ingestion_refill_rate, :integer
+    field :ingestion_capacity, :integer
   end
 
   def changeset(limits \\ %__MODULE__{}, attrs) do
@@ -26,6 +28,8 @@ defmodule Portal.Accounts.Limits do
       api_tokens_per_client_count
       api_refill_rate
       api_capacity
+      ingestion_refill_rate
+      ingestion_capacity
     ]a
 
     limits
@@ -37,5 +41,7 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:account_admin_users_count, greater_than_or_equal_to: 0)
     |> validate_number(:api_clients_count, greater_than_or_equal_to: 0)
     |> validate_number(:api_tokens_per_client_count, greater_than_or_equal_to: 0)
+    |> validate_number(:ingestion_refill_rate, greater_than_or_equal_to: 0)
+    |> validate_number(:ingestion_capacity, greater_than_or_equal_to: 0)
   end
 end

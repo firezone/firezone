@@ -51,19 +51,8 @@ defmodule PortalAPI.Gateway.Channel do
       token_id: socket.assigns.token_id
     )
 
-    session = socket.assigns.session
-
-    session_meta = %{
-      site_id: gateway.site_id,
-      public_key: session.public_key,
-      psk_base: gateway.psk_base,
-      version: session.version,
-      remote_ip: session.remote_ip,
-      remote_ip_location_lat: session.remote_ip_location_lat,
-      remote_ip_location_lon: session.remote_ip_location_lon
-    }
-
-    :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
+    # Track gateway presence and monitor tracker shard processes for crash recovery
+    socket = track_presence(socket)
 
     :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
 
@@ -373,17 +362,26 @@ defmodule PortalAPI.Gateway.Channel do
     {:stop, :shutdown, socket}
   end
 
-  # The pg scope crashed and restarted — re-register so targeted messages keep working.
-  # pid-matching against pg_scope_pid ensures we only react to the pg scope we monitored.
-  def handle_info(
-        {:DOWN, _ref, :process, pid, _reason},
-        %{assigns: %{pg_scope_pid: pid}} = socket
-      ) do
-    register(socket)
+  # A monitored process crashed — determine which subsystem it belongs to and recover.
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
+    cond do
+      pid == socket.assigns[:pg_scope_pid] ->
+        register(socket)
+
+      Enum.any?(socket.assigns[:presence_monitors] || [], fn {p, _ref} -> p == pid end) ->
+        {:noreply, track_presence(socket)}
+
+      true ->
+        {:noreply, socket}
+    end
   end
 
   def handle_info(:register, socket) do
     register(socket)
+  end
+
+  def handle_info(:track_presence, socket) do
+    {:noreply, track_presence(socket)}
   end
 
   # Catch-all for messages we don't handle
@@ -771,6 +769,44 @@ defmodule PortalAPI.Gateway.Channel do
         :ok = PG.register(socket.assigns.gateway.id)
         :ok = PG.join(socket.assigns.token_id)
         {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+    end
+  end
+
+  # Tracks gateway presence and monitors Presence tracker shard processes so we
+  # can re-track if any crash. Monitoring the supervisor alone is insufficient
+  # because individual shard crashes under :one_for_one don't kill the supervisor.
+  defp track_presence(socket) do
+    case Process.whereis(Portal.Presence) do
+      nil ->
+        Process.send_after(self(), :track_presence, 50)
+        socket
+
+      sup_pid ->
+        gateway = socket.assigns.gateway
+        session = socket.assigns.session
+
+        session_meta = %{
+          site_id: gateway.site_id,
+          public_key: session.public_key,
+          psk_base: gateway.psk_base,
+          version: session.version,
+          remote_ip: session.remote_ip,
+          remote_ip_location_lat: session.remote_ip_location_lat,
+          remote_ip_location_lon: session.remote_ip_location_lon
+        }
+
+        :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
+
+        for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
+          Process.demonitor(ref, [:flush])
+        end
+
+        monitors =
+          for {_, pid, _, _} <- Supervisor.which_children(sup_pid), is_pid(pid) do
+            {pid, Process.monitor(pid)}
+          end
+
+        assign(socket, presence_monitors: monitors)
     end
   end
 

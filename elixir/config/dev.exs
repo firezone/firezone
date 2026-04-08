@@ -27,6 +27,10 @@ db_opts = [
 
 config :portal, Portal.Repo, db_opts
 config :portal, Portal.Repo.Replica, db_opts
+config :portal, Portal.Repo.Web, db_opts
+config :portal, Portal.Repo.Api, db_opts
+config :portal, Portal.Repo.Replica.Web, db_opts
+config :portal, Portal.Repo.Replica.Api, db_opts
 
 config :portal, Portal.ChangeLogs.ReplicationConnection,
   replication_slot_name: db_opts[:database] <> "_clog_slot",

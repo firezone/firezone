@@ -64,25 +64,8 @@ defmodule PortalAPI.Client.Channel do
     # Cache relay IDs and stamp secrets for tracking
     socket = cache_relays(socket, relays)
 
-    # Track client's presence with session metadata for client-to-client signaling
-    session_meta = %{
-      ipv4:
-        socket.assigns.client.ipv4_address &&
-          socket.assigns.client.ipv4_address.address.address,
-      ipv6:
-        socket.assigns.client.ipv6_address &&
-          socket.assigns.client.ipv6_address.address.address,
-      name: socket.assigns.client.name,
-      public_key: socket.assigns.session.public_key,
-      psk_base: socket.assigns.client.psk_base
-    }
-
-    :ok =
-      Presence.Clients.connect(
-        socket.assigns.client,
-        socket.assigns.subject.credential.id,
-        session_meta
-      )
+    # Track client's presence and monitor tracker shard processes for crash recovery
+    socket = track_presence(socket)
 
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
@@ -384,17 +367,26 @@ defmodule PortalAPI.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
-  # The pg scope crashed and restarted — re-register so targeted messages keep working.
-  # pid-matching against pg_scope_pid ensures we only react to the pg scope we monitored.
-  def handle_info(
-        {:DOWN, _ref, :process, pid, _reason},
-        %{assigns: %{pg_scope_pid: pid}} = socket
-      ) do
-    register(socket)
+  # A monitored process crashed — determine which subsystem it belongs to and recover.
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
+    cond do
+      pid == socket.assigns[:pg_scope_pid] ->
+        register(socket)
+
+      Enum.any?(socket.assigns[:presence_monitors] || [], fn {p, _ref} -> p == pid end) ->
+        {:noreply, track_presence(socket)}
+
+      true ->
+        {:noreply, socket}
+    end
   end
 
   def handle_info(:register, socket) do
     register(socket)
+  end
+
+  def handle_info(:track_presence, socket) do
+    {:noreply, track_presence(socket)}
   end
 
   # Catch-all for messages we don't handle
@@ -1341,77 +1333,6 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, assign(socket, cache: cache)}
   end
 
-  defmodule Database do
-    import Ecto.Query, only: [from: 2]
-
-    alias Portal.Features
-
-    def client_to_client_enabled?(account) do
-      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
-
-      account_feature_enabled? = account.features.client_to_client == true
-
-      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
-    end
-
-    def all_compatible_gateways_for_client_and_resource(
-          client_version,
-          resource,
-          account_id
-        ) do
-      resource_site_id = site_id_from_resource(resource)
-
-      site_gateways =
-        Presence.Gateways.all_connected_gateways(account_id)
-        |> Enum.filter(&(&1.site_id == resource_site_id))
-
-      compatible_gateways =
-        filter_compatible_gateways(site_gateways, resource, client_version)
-
-      cond do
-        compatible_gateways != [] ->
-          {:ok, compatible_gateways}
-
-        site_gateways != [] ->
-          {:error, :version_mismatch}
-
-        true ->
-          {:ok, []}
-      end
-    end
-
-    # Filters gateways by the resource type, gateway version, and client version.
-    defp filter_compatible_gateways(gateways, _resource, nil), do: gateways
-
-    defp filter_compatible_gateways(gateways, resource, client_version) do
-      case Version.parse(client_version) do
-        {:ok, version} ->
-          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
-
-        :error ->
-          []
-      end
-    end
-
-    defp compatible_gateway?(gateway, resource, version) do
-      gateway_version_str = gateway.latest_session && gateway.latest_session.version
-
-      case gateway_version_str && Version.parse(gateway_version_str) do
-        {:ok, gateway_version} ->
-          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
-            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
-
-        _ ->
-          false
-      end
-    end
-
-    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
-      Ecto.UUID.load!(site.id)
-    end
-  end
-
   defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
     relays
     |> Enum.shuffle()
@@ -1485,8 +1406,7 @@ defmodule PortalAPI.Client.Channel do
   def do_create_policy_authorization(attrs, subject) do
     changeset = create_policy_authorization_changeset(attrs)
 
-    Portal.Safe.scoped(changeset, subject)
-    |> Portal.Safe.insert()
+    Database.insert_policy_authorization(changeset, subject)
     |> case do
       {:ok, _} ->
         :ok
@@ -1573,6 +1493,124 @@ defmodule PortalAPI.Client.Channel do
         :ok = PG.register(socket.assigns.client.id)
         :ok = PG.join(socket.assigns.subject.credential.id)
         {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+    end
+  end
+
+  # Tracks client presence and monitors Presence tracker shard processes so we
+  # can re-track if any crash. Monitoring the supervisor alone is insufficient
+  # because individual shard crashes under :one_for_one don't kill the supervisor.
+  defp track_presence(socket) do
+    case Process.whereis(Portal.Presence) do
+      nil ->
+        Process.send_after(self(), :track_presence, 50)
+        socket
+
+      sup_pid ->
+        session_meta = %{
+          ipv4:
+            socket.assigns.client.ipv4_address &&
+              socket.assigns.client.ipv4_address.address.address,
+          ipv6:
+            socket.assigns.client.ipv6_address &&
+              socket.assigns.client.ipv6_address.address.address,
+          name: socket.assigns.client.name,
+          public_key: socket.assigns.session.public_key,
+          psk_base: socket.assigns.client.psk_base
+        }
+
+        :ok =
+          Presence.Clients.connect(
+            socket.assigns.client,
+            socket.assigns.subject.credential.id,
+            session_meta
+          )
+
+        for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
+          Process.demonitor(ref, [:flush])
+        end
+
+        monitors =
+          for {_, pid, _, _} <- Supervisor.which_children(sup_pid), is_pid(pid) do
+            {pid, Process.monitor(pid)}
+          end
+
+        assign(socket, presence_monitors: monitors)
+    end
+  end
+
+  defmodule Database do
+    import Ecto.Query, only: [from: 2]
+
+    alias Portal.Features
+
+    def client_to_client_enabled?(account) do
+      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
+
+      account_feature_enabled? = account.features.client_to_client == true
+
+      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
+    end
+
+    def all_compatible_gateways_for_client_and_resource(
+          client_version,
+          resource,
+          account_id
+        ) do
+      resource_site_id = site_id_from_resource(resource)
+
+      site_gateways =
+        Portal.Presence.Gateways.all_connected_gateways(account_id)
+        |> Enum.filter(&(&1.site_id == resource_site_id))
+
+      compatible_gateways =
+        filter_compatible_gateways(site_gateways, resource, client_version)
+
+      cond do
+        compatible_gateways != [] ->
+          {:ok, compatible_gateways}
+
+        site_gateways != [] ->
+          {:error, :version_mismatch}
+
+        true ->
+          {:ok, []}
+      end
+    end
+
+    def insert_policy_authorization(changeset, subject) do
+      Portal.Safe.scoped(changeset, subject)
+      |> Portal.Safe.insert()
+    end
+
+    # Filters gateways by the resource type, gateway version, and client version.
+    defp filter_compatible_gateways(gateways, _resource, nil), do: gateways
+
+    defp filter_compatible_gateways(gateways, resource, client_version) do
+      case Version.parse(client_version) do
+        {:ok, version} ->
+          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
+
+        :error ->
+          []
+      end
+    end
+
+    defp compatible_gateway?(gateway, resource, version) do
+      gateway_version_str = gateway.latest_session && gateway.latest_session.version
+
+      case gateway_version_str && Version.parse(gateway_version_str) do
+        {:ok, gateway_version} ->
+          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
+            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
+            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
+
+        _ ->
+          false
+      end
+    end
+
+    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
+      Ecto.UUID.load!(site.id)
     end
   end
 end

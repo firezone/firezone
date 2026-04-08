@@ -2,12 +2,12 @@
 package dev.firezone.android.features.customuri.ui
 
 import android.content.Intent
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

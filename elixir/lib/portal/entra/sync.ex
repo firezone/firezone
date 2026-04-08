@@ -733,7 +733,7 @@ defmodule Portal.Entra.Sync do
       given_name: user["givenName"],
       family_name: user["surname"],
       preferred_username: user["userPrincipalName"],
-      profile: user["aboutMe"]
+      profile: nil
     }
   end
 

@@ -167,6 +167,9 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/reference/restricted-regions">
               Restricted regions
             </SidebarItem>
+            <SidebarItem href="/kb/reference/subprocessors">
+              Subprocessors
+            </SidebarItem>
           </SidebarCollapse>
         </SidebarItemGroup>
       </SidebarItems>

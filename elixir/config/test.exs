@@ -15,9 +15,6 @@ config :portal, sql_sandbox: true
 # Replica is not used in tests; use the primary DB instead
 config :portal, replica_repo: Portal.Repo
 
-# Use ephemeral port for health server to avoid conflicts between test runs
-config :portal, Portal.Health, health_port: 0
-
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,
@@ -29,6 +26,18 @@ config :portal, Portal.Repo.Replica,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
+
+for repo <- [
+      Portal.Repo.Web,
+      Portal.Repo.Api,
+      Portal.Repo.Replica.Web,
+      Portal.Repo.Replica.Api
+    ] do
+  config :portal, repo,
+    database: "firezone_test#{partition_suffix}",
+    pool: Ecto.Adapters.SQL.Sandbox,
+    queue_target: 1000
+end
 
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.

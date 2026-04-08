@@ -90,5 +90,5 @@ pub(crate) fn write_token(path: &Path, token: &str) -> Result<()> {
 }
 
 pub(crate) fn notify_service_controller() -> Result<()> {
-    Ok(sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?)
+    Ok(sd_notify::notify(&[sd_notify::NotifyState::Ready])?)
 }

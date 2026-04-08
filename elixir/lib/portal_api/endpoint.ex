@@ -26,6 +26,7 @@ defmodule PortalAPI.Endpoint do
   plug Portal.Plugs.CountryCodeBlocklist
 
   plug Plug.RequestId
+  plug PortalAPI.Plugs.PutDynamicRepo
   # TODO: Rework LoggerJSON to use Telemetry and integrate it
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]

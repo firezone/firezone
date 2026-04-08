@@ -17,7 +17,11 @@ git checkout -b "chore/publish-$component-$version"
 "$path_to_bump_versions"
 
 git add -A
-git commit -m "chore: bump versions for $component  to $version"
+if git diff --staged --quiet; then
+    echo "No changes to commit for $component $version; skipping PR."
+    exit 0
+fi
+git commit -m "chore: bump versions for $component to $version"
 
 # Create PR
 git push -u origin HEAD --force
