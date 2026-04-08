@@ -48,9 +48,6 @@ fn internet_resource_name() -> String {
     "Internet Resource".to_string()
 }
 
-/// Description of a static device pool resource.
-///
-/// Static device pools don't participate in DNS resolution on the client.
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionStaticDevicePool {
     pub id: ResourceId,
