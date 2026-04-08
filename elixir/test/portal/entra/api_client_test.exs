@@ -319,7 +319,7 @@ defmodule Portal.Entra.APIClientTest do
       assert query_params["$top"] == "999"
 
       assert query_params["$select"] ==
-               "id,displayName,mail,userPrincipalName,givenName,surname,aboutMe"
+               "id,displayName,mail,userPrincipalName,givenName,surname"
     end
 
     test "streams multiple pages of members" do
