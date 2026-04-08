@@ -141,7 +141,7 @@ pub struct ClientState {
 
     /// Resolves DNS queries for DNS resources by assigning proxy IPs and managing records.
     resource_stub_resolver: ResourceStubResolver,
-    /// Resolves DNS queries for dynamic device pool resources by matching against pool patterns.
+    /// Resolves DNS queries for devices.
     device_stub_resolver: DeviceStubResolver,
     /// Caches responses from DNS servers.
     dns_cache: DnsCache,
