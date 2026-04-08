@@ -2,6 +2,7 @@ experimental_monorepo_root = true
 
 [monorepo]
 config_roots = [
+    "elixir",
     "kotlin/android",
     "rust",
     "swift/apple",

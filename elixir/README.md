@@ -9,10 +9,11 @@ This is not an in depth guide for setting up all dependencies, but it should giv
 Prerequisites:
 
 - All prerequisites in the [CONTRIBUTING](../docs/CONTRIBUTING.md) guide
-- Install ASDF and all plugins/tools from `.tool-version` in the top level of the Firezone repo
-- Install [pnpm](https://pnpm.io/)
+- Install all tools from `.tool-versions` in the `elixir/` directory using
+  [Mise](https://mise.jdx.dev/) (`mise install`) or
+  [asdf](https://asdf-vm.com/) (`asdf install`)
 
-From the top level director of the Firezone repo start the Postgres container:
+From the top level directory of the Firezone repo start the Postgres container:
 
 ```
 docker compose up -d postgres
