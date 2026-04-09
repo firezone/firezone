@@ -104,7 +104,7 @@ defmodule Portal.MixProject do
       # Email
       {:gen_smtp, "~> 1.0"},
       {:multipart, "~> 0.6.0"},
-      {:swoosh, "~> 1.24.0"},
+      {:swoosh, "~> 1.25.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
