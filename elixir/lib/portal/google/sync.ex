@@ -515,7 +515,8 @@ defmodule Portal.Google.Sync do
 
   # Fetches and upserts a sub-group discovered during BFS by calling get_group to
   # retrieve its display name and email. Returns :ok on success or :skip if the
-  # group no longer exists in Google (404).
+  # group no longer exists (404) or is inaccessible (403, e.g. external groups
+  # from another domain).
   defp fetch_and_upsert_discovered_group(directory, access_token, synced_at, group_id) do
     Logger.debug("Fetching discovered sub-group",
       google_directory_id: directory.id,
@@ -551,6 +552,14 @@ defmodule Portal.Google.Sync do
 
       {:error, :not_found} ->
         Logger.debug("Discovered sub-group no longer exists in Google, skipping",
+          google_directory_id: directory.id,
+          group_id: group_id
+        )
+
+        :skip
+
+      {:error, :forbidden} ->
+        Logger.debug("Discovered sub-group is not accessible (external group?), skipping",
           google_directory_id: directory.id,
           group_id: group_id
         )

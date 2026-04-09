@@ -1173,6 +1173,59 @@ defmodule Portal.Google.SyncTest do
       assert hd(groups).idp_id == "group1"
     end
 
+    test "BFS skips sub-groups that are inaccessible (403, e.g. external domain groups)" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      # 2. Groups → group1
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Top", "email" => "top@example.com"}]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # 4. group1 members → GROUP from external domain
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "external_group", "type" => "GROUP", "email" => "team@otherdomain.com"}
+          ]
+        })
+      end)
+
+      # 5. get_group("external_group") → 403
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/external_group")
+
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{
+          "error" => %{"code" => 403, "message" => "Not Authorized to access this resource/api"}
+        })
+      end)
+
+      # No members call for external_group — it was skipped
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      # Only group1 exists; external_group was silently skipped
+      groups = Repo.all(Portal.Group)
+      assert length(groups) == 1
+      assert hd(groups).idp_id == "group1"
+    end
+
     test "group_sync_mode :filtered issues separate email and name prefix queries, then syncs members" do
       account = account_fixture()
 

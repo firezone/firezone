@@ -62,10 +62,12 @@ defmodule Portal.Google.APIClient do
   Returns `{:ok, group_map}` on success, or `{:error, reason}` on failure.
   A 404 response returns `{:error, :not_found}`.
   """
-  @spec get_group(String.t(), String.t()) :: {:ok, map()} | {:error, :not_found | term()}
+  @spec get_group(String.t(), String.t()) ::
+          {:ok, map()} | {:error, :not_found | :forbidden | term()}
   def get_group(access_token, group_key) do
     case get("/admin/directory/v1/groups/#{URI.encode(group_key)}", access_token) do
       {:ok, %Req.Response{status: 200, body: body}} -> {:ok, body}
+      {:ok, %Req.Response{status: 403}} -> {:error, :forbidden}
       {:ok, %Req.Response{status: 404}} -> {:error, :not_found}
       {:ok, %Req.Response{} = response} -> {:error, response}
       {:error, _} = error -> error
