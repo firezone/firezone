@@ -1,9 +1,7 @@
-ARG ALPINE_VERSION="3.20"
-
 ARG PACKAGE
 
 # Base image which is used to run the application binary
-FROM alpine:${ALPINE_VERSION} AS runtime_base
+FROM alpine:3.23 AS runtime_base
 
 ENV LANG=C.UTF-8 \
     TERM=xterm \
