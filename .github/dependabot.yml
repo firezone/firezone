@@ -279,6 +279,20 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: docker
+    directories:
+      - /rust
+      - /elixir
+      - /scripts/router
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 100
+    groups:
+      security-all:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
   # Tauri group
   - package-ecosystem: npm
     directory: rust/gui-client/
