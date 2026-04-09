@@ -119,12 +119,14 @@ function expect_error() {
 
 # Extract flow logs from gateway for a given protocol
 # Returns flow log lines (use with readarray)
+# Filters out zero-byte RST'd flows from Happy Eyeballs connection racing
 # Usage: readarray -t flows < <(get_flow_logs "tcp")
 function get_flow_logs() {
     local protocol="$1"
 
     docker compose logs gateway --since 30s 2>/dev/null |
-        grep "flow_logs::${protocol}.*flow completed" || true
+        grep "flow_logs::${protocol}.*flow completed" |
+        grep -v "rx_bytes=0 tx_bytes=0" || true
 }
 
 # Extract a field value from a flow log line
