@@ -150,6 +150,38 @@ defmodule Portal.MailerTest do
       assert "other@example.com" in bcc_addresses
     end
 
+    test "filters @firezone.invalid recipients before inserting the job" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "missing-email-123@firezone.invalid"})
+        |> Swoosh.Email.to({"", "allowed@example.com"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Invalid Filtered")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, job} = enqueue(email)
+      assert Enum.map(job.args["request"]["to"], & &1["address"]) == ["allowed@example.com"]
+    end
+
+    test "skips queueing when all recipients are @firezone.invalid" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "missing-email-123@firezone.invalid"})
+        |> Swoosh.Email.bcc({"", "missing-email-456@Firezone.Invalid"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("All Invalid")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, :suppressed} = enqueue(email)
+      assert Repo.aggregate(Oban.Job, :count, :id) == 0
+    end
+
     test "filters suppressed bcc recipients before inserting the job" do
       account = account_fixture()
 

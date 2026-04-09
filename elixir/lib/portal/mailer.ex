@@ -193,7 +193,8 @@ defmodule Portal.Mailer do
           acc,
           field,
           Enum.reject(recipients, fn %{"address" => address} ->
-            EmailSuppression.normalize_email(address) in suppressed_emails
+            undeliverable_address?(address) or
+              EmailSuppression.normalize_email(address) in suppressed_emails
           end)
         )
       end)
@@ -202,6 +203,12 @@ defmodule Portal.Mailer do
       [] -> :fully_suppressed
       _ -> {:ok, filtered_request}
     end
+  end
+
+  defp undeliverable_address?(address) do
+    address
+    |> String.downcase()
+    |> String.ends_with?("@firezone.invalid")
   end
 
   defp recipient_addresses(request) do
