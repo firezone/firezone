@@ -93,7 +93,7 @@ defmodule Portal.MixProject do
       {:argon2_elixir, "~> 4.0"},
 
       # Background jobs
-      {:oban, "~> 2.19"},
+      {:oban, "~> 2.21"},
       {:oban_web, "~> 2.11"},
 
       # Erlang clustering
