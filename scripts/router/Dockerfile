@@ -1,6 +1,7 @@
 FROM alpine:3.23
 
-RUN apk add --no-cache iproute2 nftables jq bash
+RUN apk add --no-cache iproute2 nftables jq bash \
+    && apk upgrade --no-cache
 
 HEALTHCHECK --interval=1s --timeout=1s --retries=5 CMD [ "sh", "-c", "test $(cat /tmp/setup_done) = 1" ]
 

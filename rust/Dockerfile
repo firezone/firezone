@@ -11,7 +11,8 @@ ENV LANG=C.UTF-8 \
 WORKDIR /bin
 
 ## curl is needed to run tests (`main` runs CI against `release` images) and `firezone-relay` needs `curl` in its entry script.
-RUN apk add --no-cache --update curl
+RUN apk add --no-cache --update curl \
+    && apk upgrade --no-cache
 
 # Gateway specific runtime base image
 FROM runtime_base AS runtime_firezone-gateway
