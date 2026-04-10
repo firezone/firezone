@@ -12,6 +12,8 @@ defmodule PortalWeb.Actors do
   import Ecto.Changeset
   import PortalWeb.Clients.Components, only: [client_os_icon_name: 1]
 
+  require Logger
+
   def mount(_params, _session, socket) do
     socket =
       socket
@@ -279,7 +281,7 @@ defmodule PortalWeb.Actors do
         )
 
       case result do
-        {:ok, {actor, {:ok, nil}}} ->
+        {:ok, {actor, nil}} ->
           socket =
             socket
             |> reload_live_table!("actors")
@@ -289,7 +291,7 @@ defmodule PortalWeb.Actors do
 
           {:noreply, socket}
 
-        {:ok, {actor, {:ok, {_token, encoded_token}}}} ->
+        {:ok, {actor, {_token, encoded_token}}} ->
           socket =
             socket
             |> reload_live_table!("actors")
@@ -300,8 +302,22 @@ defmodule PortalWeb.Actors do
 
           {:noreply, socket}
 
-        {:error, changeset} ->
+        {:error, %Ecto.Changeset{} = changeset} ->
           {:noreply, assign(socket, form: to_form(changeset))}
+
+        {:error, reason} ->
+          Logger.error("Failed to create service account",
+            reason: inspect(reason),
+            account_id: account.id,
+            subject_actor_id: socket.assigns.subject.actor.id
+          )
+
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "A temporary error occurred while creating the service account. Please try again."
+           )}
       end
     else
       {:noreply,
@@ -2179,7 +2195,7 @@ defmodule PortalWeb.Actors do
     def create_service_account_with_token(changeset, token_expiration, subject, token_creator_fn) do
       Safe.transact(fn ->
         with {:ok, actor} <- create(changeset, subject),
-             token_result <- token_creator_fn.(actor, token_expiration, subject) do
+             {:ok, token_result} <- token_creator_fn.(actor, token_expiration, subject) do
           {:ok, {actor, token_result}}
         end
       end)

@@ -402,6 +402,37 @@ defmodule PortalWeb.Live.ActorsTest do
                type: :service_account
              )
     end
+
+    test "shows temporary-error flash when token creation fails with non-changeset error", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      unique_num = System.unique_integer([:positive, :monotonic])
+      sa_name = "My Service Account #{unique_num}"
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_service_account")
+
+      # An unparseable date causes create_actor_token/3 to return
+      # {:error, :invalid_date} — a non-changeset error tuple — which previously
+      # crashed the LV via to_form(:invalid_date).
+      html =
+        lv
+        |> form("#service-account-form", actor: %{"name" => sa_name})
+        |> render_submit(%{"token_expiration" => "not-a-date"})
+
+      assert html =~ "A temporary error occurred"
+      assert html =~ "Please try again"
+
+      refute Repo.get_by(Portal.Actor,
+               account_id: account.id,
+               name: sa_name,
+               type: :service_account
+             )
+    end
   end
 
   describe "edit actor" do
