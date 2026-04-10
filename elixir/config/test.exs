@@ -240,15 +240,19 @@ config :geolix,
     %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
   ]
 
-ex_unit_config =
-  [
-    formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-    capture_log: true
-  ] ++
-    case System.get_env("CI_ASSERT_RECEIVE_TIMEOUT_MS") do
-      nil -> []
-      timeout -> [assert_receive_timeout: String.to_integer(timeout)]
-    end
+default_assert_receive_timeout = 1_000
+
+assert_receive_timeout =
+  case System.get_env("CI_ASSERT_RECEIVE_TIMEOUT_MS") do
+    nil -> default_assert_receive_timeout
+    timeout -> max(String.to_integer(timeout), default_assert_receive_timeout)
+  end
+
+ex_unit_config = [
+  formatters: [JUnitFormatter, ExUnit.CLIFormatter],
+  capture_log: true,
+  assert_receive_timeout: assert_receive_timeout
+]
 
 config :ex_unit, ex_unit_config
 

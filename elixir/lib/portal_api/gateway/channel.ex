@@ -56,7 +56,7 @@ defmodule PortalAPI.Gateway.Channel do
 
     :ok = PubSub.Changes.subscribe(socket.assigns.gateway.account_id)
 
-    send(self(), :register)
+    {:noreply, socket} = register(socket)
 
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)

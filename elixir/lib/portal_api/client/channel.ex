@@ -61,15 +61,17 @@ defmodule PortalAPI.Client.Channel do
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.Global.subscribe()
 
-    # Cache relay IDs and stamp secrets for tracking
-    socket = cache_relays(socket, relays)
-
-    # Track client's presence and monitor tracker shard processes for crash recovery
-    socket = track_presence(socket)
+    socket =
+      socket
+      # Cache relay IDs and stamp secrets for tracking
+      |> cache_relays(relays)
+      |> assign(cache: cache, pending_flows: %{})
+      # Track client's presence and monitor tracker shard processes for crash recovery
+      |> track_presence()
 
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
-    send(self(), :register)
+    {:noreply, socket} = register(socket)
 
     push(socket, "init", %{
       # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
@@ -92,7 +94,7 @@ defmodule PortalAPI.Client.Channel do
         })
     })
 
-    {:noreply, assign(socket, cache: cache, pending_flows: %{})}
+    {:noreply, socket}
   end
 
   ####################################

@@ -54,12 +54,6 @@ defmodule PortalAPI.Client.ChannelTest do
       })
       |> subscribe_and_join(PortalAPI.Client.Channel, "client")
 
-    # Flush the channel's mailbox so :register is processed before returning.
-    # after_join sends `send(self(), :register)` then pushes "init"; by the time
-    # the caller receives "init" via assert_push, :register is still pending in the
-    # channel's mailbox. This ensures PG registration is complete.
-    :sys.get_state(socket.channel_pid)
-
     socket
   end
 
