@@ -7,6 +7,11 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 // Starts up a WinTun device, claims all routes, and checks if we can still make
 // TCP connections outside of our tunnel.
+//
+// The destination must be genuinely remote: on Windows, `tcp_socket_factory`
+// rewrites the host route for the destination IP via the physical interface,
+// which breaks any attempt to connect to the machine's own IP (Windows refuses
+// to loop self-traffic back when it's been routed out the wire).
 #[tokio::test]
 #[ignore = "Needs admin / sudo and Internet"]
 async fn no_packet_loops_tcp() {
@@ -31,11 +36,20 @@ async fn no_packet_loops_tcp() {
     let socket = tcp_socket_factory(remote).unwrap();
     let mut stream = socket.connect(remote).await.unwrap();
 
-    // Send an HTTP request
-    stream.write_all("GET /\r\n\r\n".as_bytes()).await.unwrap();
+    // Send a well-formed HTTP/1.0 request so the server doesn't just hang up.
+    // We don't care about the response body — only that bytes flow back, which
+    // proves the TCP handshake completed and the socket bypassed the TUN.
+    stream
+        .write_all(b"GET / HTTP/1.0\r\nHost: 1.1.1.1\r\n\r\n")
+        .await
+        .unwrap();
     let mut bytes = vec![];
     stream.read_to_end(&mut bytes).await.unwrap();
-    let s = String::from_utf8(bytes).unwrap();
 
-    assert!(s.contains("Bad Request"));
+    assert!(
+        bytes.starts_with(b"HTTP/1."),
+        "Expected an HTTP response, got {} bytes: {:?}",
+        bytes.len(),
+        String::from_utf8_lossy(&bytes),
+    );
 }
