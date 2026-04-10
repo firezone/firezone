@@ -416,7 +416,7 @@ defmodule PortalWeb.Live.ActorsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors/add_service_account")
 
-      # An unparseable date causes create_actor_token/3 to return
+      # An unparsable date causes create_actor_token/3 to return
       # {:error, :invalid_date} — a non-changeset error tuple — which previously
       # crashed the LV via to_form(:invalid_date).
       html =
