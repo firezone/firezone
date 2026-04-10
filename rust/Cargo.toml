@@ -206,7 +206,7 @@ test-case = "3.3.1"
 test-strategy = "0.4.5"
 thiserror = "2.0.18"
 time = "0.3.46"
-tokio = "1.50.0"
+tokio = "1.51.0"
 tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.18"
 tokio-tungstenite = "0.28.0"
