@@ -292,6 +292,13 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      # The hexpm/elixir image tag encodes its alpine version, and elixir/Dockerfile's
+      # runtime stage uses a separate `FROM alpine:...` that has to stay in sync. Group
+      # them so a hexpm/elixir bump and the matching alpine bump land in one PR.
+      alpine-base:
+        patterns:
+          - "alpine"
+          - "hexpm/elixir"
 
   # Tauri group
   - package-ecosystem: npm
