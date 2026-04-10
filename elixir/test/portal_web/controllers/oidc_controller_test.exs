@@ -642,6 +642,43 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) ==
                "Identity provider returned an error (HTTP 418). Please try again."
     end
+
+    test "redirects client sign-in errors to the dedicated client auth error page", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      Mocks.OIDC.set_token_error(400, %{"error" => "invalid_grant"})
+
+      auth_state = build_oidc_auth_state(account, provider, params: client_params())
+
+      log =
+        capture_log(fn ->
+          conn = perform_callback(conn, auth_state)
+
+          location = redirected_to(conn)
+          assert String.starts_with?(location, "/#{account.slug}/sign_in/client_auth_error?")
+
+          query =
+            location
+            |> URI.parse()
+            |> Map.fetch!(:query)
+            |> URI.decode_query()
+
+          assert query["as"] == "client"
+          assert query["state"] == "client-state"
+          assert query["nonce"] == "client-nonce"
+
+          assert query["error"] ==
+                   "The authorization code has expired or was already used. Please try signing in again."
+        end)
+
+      assert log =~ "OIDC sign-in redirecting with error"
+      assert log =~ "account_id=#{account.id}"
+
+      assert log =~
+               "The authorization code has expired or was already used. Please try signing in again."
+    end
   end
 
   describe "callback/2 successful authentication" do
@@ -1586,7 +1623,7 @@ defmodule PortalWeb.OIDCControllerTest do
       conn: conn
     } do
       account = account_fixture()
-      %{provider: provider} = setup_oidc_provider(account)
+      %{provider: provider} = setup_oidc_provider(account, is_default: true)
 
       for params <- [
             %{
@@ -1611,7 +1648,7 @@ defmodule PortalWeb.OIDCControllerTest do
         failed_conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", params)
         failed_location = redirected_to(failed_conn)
 
-        assert String.starts_with?(failed_location, "/#{account.slug}?")
+        assert String.starts_with?(failed_location, "/#{account.slug}/sign_in/client_auth_error?")
 
         failed_query = failed_location |> URI.parse() |> Map.get(:query) |> URI.decode_query()
 
@@ -1619,23 +1656,75 @@ defmodule PortalWeb.OIDCControllerTest do
         assert failed_query["state"] == params["state"]
         assert failed_query["nonce"] == params["nonce"]
         assert failed_query["redirect_to"] == params["redirect_to"]
+        assert failed_query["error"] =~ "Unable to fetch discovery document"
 
         Mocks.OIDC.stub_discovery_document()
+
+        retry_params = Map.drop(failed_query, ["error"])
 
         retry_conn =
           get(
             recycle(conn),
-            "/#{account.id}/sign_in/oidc/#{provider.id}",
-            failed_query
+            "/#{account.slug}",
+            retry_params
           )
 
-        assert redirected_to(retry_conn) =~ "/authorize"
-        cookie = oidc_cookie_from_response(retry_conn)
+        provider_retry_path = redirected_to(retry_conn)
+        assert provider_retry_path =~ "/sign_in/oidc/#{provider.id}"
+
+        provider_conn =
+          get(
+            recycle(conn),
+            provider_retry_path
+          )
+
+        assert redirected_to(provider_conn) =~ "/authorize"
+        cookie = oidc_cookie_from_response(provider_conn)
         assert cookie.params["as"] == params["as"]
         assert cookie.params["state"] == params["state"]
         assert cookie.params["nonce"] == params["nonce"]
         assert cookie.params["redirect_to"] == params["redirect_to"]
       end
+    end
+
+    test "redirects client authorization errors to the dedicated client auth error page", %{
+      conn: conn
+    } do
+      account = account_fixture()
+      Mocks.OIDC.stub_connection_refused()
+      %{provider: provider} = setup_oidc_provider(account)
+
+      log =
+        capture_log(fn ->
+          conn =
+            get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", %{
+              "as" => "client",
+              "state" => "client-state",
+              "nonce" => "client-nonce"
+            })
+
+          location = redirected_to(conn)
+          assert String.starts_with?(location, "/#{account.slug}/sign_in/client_auth_error?")
+
+          query =
+            location
+            |> URI.parse()
+            |> Map.fetch!(:query)
+            |> URI.decode_query()
+
+          assert query["as"] == "client"
+          assert query["state"] == "client-state"
+          assert query["nonce"] == "client-nonce"
+
+          assert query["error"] ==
+                   "Unable to fetch discovery document: Connection refused. The identity provider may be down."
+        end)
+
+      assert log =~ "OIDC sign-in redirecting with error"
+      assert log =~ "account_id=#{account.id}"
+
+      assert log =~
+               "Unable to fetch discovery document: Connection refused. The identity provider may be down."
     end
   end
 

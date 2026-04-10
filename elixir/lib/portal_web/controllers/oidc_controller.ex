@@ -163,10 +163,12 @@ defmodule PortalWeb.OIDCController do
     )
 
     error = authorization_error_message(reason)
+    log_sign_in_redirect_error(account.id, error)
+    path = error_path_for_context(account.slug, params, error)
 
     conn
     |> put_flash(:error, error)
-    |> redirect(to: error_path(account.slug, params))
+    |> redirect(to: path)
   end
 
   defp authorization_error_reason(%Req.TransportError{reason: reason}), do: inspect(reason)
@@ -488,13 +490,17 @@ defmodule PortalWeb.OIDCController do
 
   defp fetch_error_context(conn) do
     case conn.assigns[:oidc_error_context] do
-      %{account_slug: slug, params: params} -> {slug, params || %{}}
-      nil -> {"", %{}}
+      %{account_id: account_id, account_slug: slug, params: params} ->
+        {account_id, slug, params || %{}}
+
+      nil ->
+        {nil, "", %{}}
     end
   end
 
   defp put_oidc_error_context(conn, %Cookie.AuthenticationState{} = cookie) do
     Plug.Conn.assign(conn, :oidc_error_context, %{
+      account_id: cookie.account_id,
       account_slug: cookie.account_slug,
       params: cookie.params || %{},
       auth_provider_id: cookie.auth_provider_id
@@ -621,15 +627,44 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp redirect_with_error_context(conn, error) do
-    {account_slug, original_params} = fetch_error_context(conn)
-    redirect_for_error(conn, error, error_path(account_slug, original_params))
+    {account_id, account_slug, original_params} = fetch_error_context(conn)
+    log_sign_in_redirect_error(account_id, error)
+    redirect_for_error(conn, error, error_path_for_context(account_slug, original_params, error))
+  end
+
+  defp log_sign_in_redirect_error(nil, _error), do: :ok
+
+  defp log_sign_in_redirect_error(account_id, error) do
+    Logger.info("OIDC sign-in redirecting with error",
+      account_id: account_id,
+      error: error
+    )
   end
 
   defp error_path(account_slug, params), do: ~p"/#{account_slug}?#{sanitize(params)}"
 
+  defp error_path_for_context(account_slug, params, error) do
+    if client_context?(params) and account_slug != "" do
+      ~p"/#{account_slug}/sign_in/client_auth_error?#{client_error_params(params, error)}"
+    else
+      error_path(account_slug, params)
+    end
+  end
+
+  defp client_error_params(params, error) do
+    params
+    |> sanitize()
+    |> Map.put("error", error)
+  end
+
   defp sanitize(params) do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
+
+  defp client_context?(%{"as" => as}) when as in ["client", "gui-client", "headless-client"],
+    do: true
+
+  defp client_context?(_params), do: false
 
   defmodule Database do
     import Ecto.Query

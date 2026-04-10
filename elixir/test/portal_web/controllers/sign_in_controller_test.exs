@@ -49,12 +49,56 @@ defmodule PortalWeb.SignInControllerTest do
       account: account
     } do
       conn = get(conn, ~p"/#{account}/sign_in/client_redirect")
-      assert redirected_to(conn, 302) =~ ~p"/#{account}/sign_in/client_auth_error"
+      redirect_path = redirected_to(conn, 302)
+      assert redirect_path =~ ~p"/#{account}/sign_in/client_auth_error"
+
+      query =
+        redirect_path
+        |> URI.parse()
+        |> Map.fetch!(:query)
+        |> URI.decode_query()
+
+      assert query["error"] == "Please close this window and start the sign in process again."
     end
 
     test "displays account name on client auth error page", %{conn: conn, account: account} do
       conn = get(conn, ~p"/#{account}/sign_in/client_auth_error")
       assert html_response(conn, 200) =~ account.name
+    end
+
+    test "displays the error and retry link with params preserved", %{
+      conn: conn,
+      account: account
+    } do
+      conn =
+        get(
+          conn,
+          ~p"/#{account}/sign_in/client_auth_error?#{%{"as" => "client", "state" => "retry-state", "nonce" => "retry-nonce", "error" => "The authorization code has expired or was already used. Please try signing in again."}}"
+        )
+
+      html = html_response(conn, 200)
+
+      assert html =~
+               "The authorization code has expired or was already used. Please try signing in again."
+
+      [retry_path] =
+        Regex.run(
+          ~r/<a href="([^"]+)"[^>]*>\s*Return to sign in\s*<\/a>/s,
+          html,
+          capture: :all_but_first
+        )
+
+      query =
+        retry_path
+        |> String.replace("&amp;", "&")
+        |> URI.parse()
+        |> Map.fetch!(:query)
+        |> URI.decode_query()
+
+      assert String.starts_with?(retry_path, ~s(/#{account.slug}?))
+      assert query["as"] == "client"
+      assert query["state"] == "retry-state"
+      assert query["nonce"] == "retry-nonce"
     end
   end
 end
