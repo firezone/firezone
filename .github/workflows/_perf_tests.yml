@@ -74,7 +74,7 @@ jobs:
           ./scripts/tests/perf/${{ matrix.test }}.sh
           jq '{ "${{ matrix.flavour }}-${{ matrix.test }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.flavour }}-${{ matrix.test }}.json > ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
       - name: "Save performance test results: ${{ matrix.flavour }}-${{ matrix.test }}"
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           overwrite: true
           name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-iperf3results

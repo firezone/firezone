@@ -316,7 +316,7 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload `.deb` artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
@@ -385,7 +385,7 @@ jobs:
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           overwrite: true
           name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
