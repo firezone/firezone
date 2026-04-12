@@ -181,7 +181,7 @@ dependencies {
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.58")
-    implementation("androidx.browser:browser:1.9.0")
+    implementation("androidx.browser:browser:1.10.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
     kapt("androidx.hilt:hilt-compiler:1.3.0")
