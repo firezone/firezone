@@ -111,6 +111,31 @@ defmodule Portal.HealthTest do
       assert %{"status" => "ready"} = JSON.decode!(conn.resp_body)
     end
 
+    test "checks repos in parallel", %{draining_file_path: draining_file_path} do
+      Portal.Config.put_env_override(:portal, Portal.Health,
+        draining_file_path: draining_file_path,
+        repos: [
+          Portal.Repo,
+          Portal.Repo.Replica,
+          Portal.Repo.Web,
+          Portal.Repo.Api,
+          Portal.Repo.Replica.Web,
+          Portal.Repo.Replica.Api
+        ],
+        repo_check_query: "SELECT 1 FROM pg_sleep(0.25)"
+      )
+
+      {duration_us, conn} =
+        :timer.tc(fn ->
+          :get
+          |> conn("/readyz")
+          |> Portal.Health.call([])
+        end)
+
+      assert conn.status == 200
+      assert div(duration_us, 1_000) < 900
+    end
+
     test "returns 503 with status starting when an endpoint is not ready", %{
       draining_file_path: draining_file_path
     } do

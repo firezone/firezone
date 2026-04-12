@@ -59,20 +59,26 @@ defmodule Portal.Health do
     Portal.Repo.Replica.Api
   ]
 
-  # sobelow_skip ["SQL.Query"]
   defp repos_ready? do
     config = Portal.Config.fetch_env!(:portal, Portal.Health)
     repos = Keyword.get(config, :repos, @repos)
     query = Keyword.get(config, :repo_check_query, "SELECT 1")
 
-    Enum.all?(repos, fn repo ->
-      try do
-        %{num_rows: 1} = Ecto.Adapters.SQL.query!(repo, query, [])
-        true
-      rescue
-        _ -> false
-      end
+    repos
+    |> Task.async_stream(&repo_ready?(&1, query),
+      max_concurrency: max(length(repos), 1),
+      ordered: false,
+      timeout: :infinity
+    )
+    |> Enum.all?(fn
+      {:ok, true} -> true
+      _ -> false
     end)
+  end
+
+  # sobelow_skip ["SQL.Query"]
+  defp repo_ready?(repo, query) do
+    match?({:ok, %{num_rows: 1}}, Ecto.Adapters.SQL.query(repo, query, []))
   end
 
   defp endpoints_ready? do
