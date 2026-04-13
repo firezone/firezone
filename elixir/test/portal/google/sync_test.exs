@@ -237,6 +237,43 @@ defmodule Portal.Google.SyncTest do
       assert length(memberships) == 2
     end
 
+    test "skips group members without a binary email" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "DevOps", "email" => "devops@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "bad_user", "type" => "USER", "email" => nil},
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        respond_with_batch_users(conn, [%{"id" => "user1", "primaryEmail" => "user1@example.com"}])
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      identities = Repo.all(Portal.ExternalIdentity)
+      assert Enum.map(identities, & &1.idp_id) == ["user1"]
+    end
+
     test "raises SyncError when access token request fails" do
       account = account_fixture()
       directory = google_directory_fixture(account: account)
@@ -1991,7 +2028,7 @@ defmodule Portal.Google.SyncTest do
                )
     end
 
-    test "Sync batch upsert wrappers return :error and log on database failures" do
+    test "Sync batch upsert wrappers raise and log on database failures" do
       directory = %Portal.Google.Directory{
         id: Ecto.UUID.generate(),
         account_id: Ecto.UUID.generate()
@@ -1999,10 +2036,11 @@ defmodule Portal.Google.SyncTest do
 
       identity_log =
         capture_log(fn ->
-          assert :error ==
-                   Sync.batch_upsert_identities(directory, DateTime.utc_now(), [
-                     %{idp_id: "user1", email: "broken@example.com", name: "Broken User"}
-                   ])
+          assert_raise SyncError, ~r/batch_upsert_identities/, fn ->
+            Sync.batch_upsert_identities(directory, DateTime.utc_now(), [
+              %{idp_id: "user1", email: "broken@example.com", name: "Broken User"}
+            ])
+          end
         end)
 
       assert identity_log =~ "Failed to upsert identities"

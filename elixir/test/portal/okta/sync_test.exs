@@ -8,6 +8,7 @@ defmodule Portal.Okta.SyncTest do
 
   alias Portal.Okta.APIClient
   alias Portal.Okta.Sync
+  alias Portal.Okta.Sync.Database
   alias Portal.Okta.SyncError
   alias Portal.ExternalIdentity
   alias Portal.Group
@@ -143,6 +144,110 @@ defmodule Portal.Okta.SyncTest do
       assert updated_directory.error_message == nil
     end
 
+    test "reconnects orphaned policies after sync" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      group =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "group_123",
+          name: "Engineering"
+        )
+
+      resource = Portal.ResourceFixtures.resource_fixture(account: account)
+
+      policy =
+        Portal.PolicyFixtures.policy_fixture(account: account, group: group, resource: resource)
+
+      {1, _} =
+        Repo.update_all(
+          from(p in Portal.Policy, where: p.id == ^policy.id),
+          set: [group_id: nil, group_idp_id: group.idp_id]
+        )
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => @test_access_token,
+              "token_type" => "DPoP",
+              "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123", "label" => "Test App"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appuser_1",
+                "_embedded" => %{
+                  "user" => %{
+                    "id" => "user_123",
+                    "profile" => %{
+                      "email" => "alice@example.com",
+                      "firstName" => "Alice",
+                      "lastName" => "Smith"
+                    }
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appgroup_1",
+                "_embedded" => %{
+                  "group" => %{
+                    "id" => "group_123",
+                    "profile" => %{"name" => "Engineering"}
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/groups/group_123/users") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "user_123",
+                "status" => "ACTIVE",
+                "profile" => %{
+                  "email" => "alice@example.com",
+                  "firstName" => "Alice",
+                  "lastName" => "Smith"
+                }
+              }
+            ])
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+
+      assert Repo.get_by!(Portal.Policy, account_id: account.id, id: policy.id).group_id ==
+               group.id
+    end
+
     test "handles missing directory gracefully" do
       non_existent_id = Ecto.UUID.generate()
 
@@ -151,6 +256,10 @@ defmodule Portal.Okta.SyncTest do
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
       assert Repo.all(Group) == []
+    end
+
+    test "returns :ok for jobs without a directory_id arg" do
+      assert :ok = Sync.perform(%Oban.Job{args: %{"foo" => "bar"}})
     end
 
     test "handles disabled directory" do
@@ -298,6 +407,153 @@ defmodule Portal.Okta.SyncTest do
       end
     end
 
+    test "raises SyncError when duplicate app users cause identity upsert failure" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => @test_access_token,
+              "token_type" => "DPoP",
+              "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123", "label" => "Test App"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            duplicate_user = %{
+              "id" => "appuser_1",
+              "_embedded" => %{
+                "user" => %{
+                  "id" => "user_123",
+                  "profile" => %{
+                    "email" => "alice@example.com",
+                    "firstName" => "Alice",
+                    "lastName" => "Smith"
+                  }
+                }
+              }
+            }
+
+            Req.Test.json(conn, [duplicate_user, duplicate_user])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            Req.Test.json(conn, [])
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      error =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      assert error.step == :batch_upsert_identities
+    end
+
+    test "raises SyncError when duplicate group members cause membership upsert failure" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => @test_access_token,
+              "token_type" => "DPoP",
+              "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123", "label" => "Test App"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appuser_1",
+                "_embedded" => %{
+                  "user" => %{
+                    "id" => "user_123",
+                    "profile" => %{
+                      "email" => "alice@example.com",
+                      "firstName" => "Alice",
+                      "lastName" => "Smith"
+                    }
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appgroup_1",
+                "_embedded" => %{
+                  "group" => %{
+                    "id" => "group_123",
+                    "profile" => %{"name" => "Engineering"}
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/groups/group_123/users") ->
+            duplicate_member = %{
+              "id" => "user_123",
+              "status" => "ACTIVE",
+              "profile" => %{
+                "email" => "alice@example.com",
+                "firstName" => "Alice",
+                "lastName" => "Smith"
+              }
+            }
+
+            Req.Test.json(conn, [duplicate_member, duplicate_member])
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      error =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      assert error.step == :batch_upsert_memberships
+    end
+
     test "raises SyncError when access token fetch fails" do
       account = account_fixture(features: %{idp_sync: true})
 
@@ -355,6 +611,40 @@ defmodule Portal.Okta.SyncTest do
       assert_raise SyncError, ~r/scopes: missing.*okta\.users\.read/, fn ->
         perform_job(Sync, %{directory_id: directory.id})
       end
+    end
+
+    test "raises SyncError when introspect response is missing the scope field" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => @test_access_token,
+              "token_type" => "DPoP",
+              "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{"active" => true})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert_raise SyncError,
+                   ~r/missing okta\.apps\.read, okta\.users\.read, okta\.groups\.read/,
+                   fn ->
+                     perform_job(Sync, %{directory_id: directory.id})
+                   end
     end
 
     test "raises SyncError when apps fetch fails" do
@@ -442,6 +732,226 @@ defmodule Portal.Okta.SyncTest do
       assert updated_directory.errored_at == nil
       assert updated_directory.is_disabled == false
       refute is_nil(updated_directory.synced_at)
+    end
+
+    test "raises SyncError when app user streaming yields an error" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            conn
+            |> Plug.Conn.put_status(500)
+            |> Req.Test.json(%{"error" => "boom"})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      error =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      assert error.step == :stream_app_users
+    end
+
+    test "raises SyncError when app group streaming yields an error" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            Req.Test.json(conn, [])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            conn
+            |> Plug.Conn.put_status(500)
+            |> Req.Test.json(%{"error" => "boom"})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      error =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      assert error.step == :stream_app_groups
+    end
+
+    test "ignores inactive group members" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 20, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appuser_1",
+                "_embedded" => %{
+                  "user" => %{
+                    "id" => "user_123",
+                    "profile" => %{
+                      "email" => "alice@example.com",
+                      "firstName" => "Alice",
+                      "lastName" => "Smith"
+                    }
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appgroup_1",
+                "_embedded" => %{
+                  "group" => %{
+                    "id" => "group_123",
+                    "profile" => %{"name" => "Engineering"}
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/groups/group_123/users") ->
+            Req.Test.json(conn, [
+              %{"id" => "user_123", "status" => "ACTIVE"},
+              %{"id" => "user_456", "status" => "SUSPENDED"}
+            ])
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+
+      memberships = Repo.all(Membership)
+      assert length(memberships) == 1
+    end
+
+    test "raises SyncError when group member streaming yields an error" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      Req.Test.expect(APIClient, 20, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            Req.Test.json(conn, [])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            Req.Test.json(conn, [
+              %{
+                "id" => "appgroup_1",
+                "_embedded" => %{
+                  "group" => %{
+                    "id" => "group_123",
+                    "profile" => %{"name" => "Engineering"}
+                  }
+                }
+              }
+            ])
+
+          String.contains?(path, "/groups/group_123/users") ->
+            conn
+            |> Plug.Conn.put_status(500)
+            |> Req.Test.json(%{"error" => "boom"})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      error =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      assert error.step == :stream_group_members
     end
   end
 
@@ -925,6 +1435,79 @@ defmodule Portal.Okta.SyncTest do
 
       # Should succeed even though nothing is returned (first sync)
       assert :ok = perform_job(Sync, %{directory_id: directory.id})
+    end
+  end
+
+  describe "database helpers" do
+    test "cover empty and error branches" do
+      now = DateTime.utc_now()
+      account_id = Ecto.UUID.generate()
+      directory_id = Ecto.UUID.generate()
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+
+      Portal.GroupFixtures.group_fixture(
+        account: account,
+        directory: base_directory,
+        idp_id: "group1"
+      )
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: "https://okta.example",
+        idp_id: "user1"
+      )
+
+      assert {:ok, %{upserted_identities: 0}} =
+               Database.batch_upsert_identities(
+                 account_id,
+                 "https://okta.example",
+                 directory_id,
+                 now,
+                 []
+               )
+
+      assert {:ok, %{upserted_groups: 0}} =
+               Database.batch_upsert_groups(account_id, directory_id, now, [])
+
+      assert {:ok, %{upserted_memberships: 0}} =
+               Database.batch_upsert_memberships(
+                 account_id,
+                 "https://okta.example",
+                 directory_id,
+                 now,
+                 []
+               )
+
+      assert {:error, _reason} =
+               Database.batch_upsert_identities(
+                 account_id,
+                 "https://okta.example",
+                 directory_id,
+                 now,
+                 [%{idp_id: "user1", email: "u1@example.com", name: "User 1"}]
+               )
+
+      assert {:error, _reason} =
+               Database.batch_upsert_groups(
+                 account_id,
+                 directory_id,
+                 now,
+                 [%{idp_id: "group1", name: "Group 1"}]
+               )
+
+      assert {:error, _reason} =
+               Database.batch_upsert_memberships(
+                 account.id,
+                 "https://okta.example",
+                 directory.id,
+                 now,
+                 [{"group1", "user1"}, {"group1", "user1"}]
+               )
     end
   end
 end

@@ -619,7 +619,10 @@ defmodule Portal.Entra.Sync do
           entra_directory_id: directory.id
         )
 
-        :error
+        raise Entra.SyncError,
+          error: {:database, "failed to upsert identities: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_identities
     end
   end
 
@@ -657,7 +660,10 @@ defmodule Portal.Entra.Sync do
           entra_directory_id: directory.id
         )
 
-        :error
+        raise Entra.SyncError,
+          error: {:database, "failed to upsert memberships: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_memberships
     end
   end
 

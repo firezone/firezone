@@ -917,7 +917,10 @@ defmodule Portal.Google.Sync do
           google_directory_id: directory.id
         )
 
-        :error
+        raise Google.SyncError,
+          error: {:database, "failed to upsert identities: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_identities
     end
   end
 

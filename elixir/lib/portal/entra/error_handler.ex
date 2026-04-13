@@ -10,8 +10,10 @@ defmodule Portal.Entra.ErrorHandler do
   alias __MODULE__.Database
   require Logger
 
-  def handle(%Entra.SyncError{error: error}, directory_id) do
-    type = classify(error)
+  @non_disabling_steps [:batch_upsert_identities, :batch_upsert_memberships]
+
+  def handle(%Entra.SyncError{error: error, step: step}, directory_id) do
+    type = classify(error, step)
     message = format(error)
     action(type, message, directory_id)
   end
@@ -23,6 +25,9 @@ defmodule Portal.Entra.ErrorHandler do
 
   defp format_generic(error) when is_exception(error), do: Exception.message(error)
   defp format_generic(error), do: inspect(error)
+
+  defp classify(_error, step) when step in @non_disabling_steps, do: :internal
+  defp classify(error, _step), do: classify(error)
 
   # Classification
 
@@ -117,6 +122,15 @@ defmodule Portal.Entra.ErrorHandler do
   defp format(msg) when is_binary(msg), do: msg
 
   # Action
+
+  defp action(:internal, message, directory_id) do
+    Logger.warning("Internal Entra sync error will not change directory state",
+      directory_id: directory_id,
+      error_message: message
+    )
+
+    :ok
+  end
 
   defp action(type, message, directory_id) do
     now = DateTime.utc_now()
