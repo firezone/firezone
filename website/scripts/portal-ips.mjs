@@ -81,7 +81,8 @@ async function computePortalIps() {
 }
 
 function normalizeForCompare(payload) {
-  const { generated_at: _generatedAt, ...rest } = payload;
+  const rest = { ...payload };
+  delete rest.generated_at;
   return rest;
 }
 
@@ -131,7 +132,7 @@ if (mode === "update") {
 let snapshot;
 try {
   snapshot = readSnapshot();
-} catch (error) {
+} catch {
   console.error("Missing src/data/portal-ips.json");
   console.error("Run `pnpm update:portal-ips` to generate it.");
   process.exit(1);
