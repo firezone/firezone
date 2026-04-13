@@ -3,14 +3,19 @@ defmodule Portal.Workers.OutboundEmail do
   Oban worker that submits a queued email using the secondary outbound adapter.
   """
 
-  use Oban.Worker, queue: :outbound_emails, max_attempts: 1
+  use Oban.Worker, queue: :outbound_emails, max_attempts: 3
 
   alias Portal.Mailer
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "request" => request}}) do
-    email = request |> deserialize() |> put_acs_client_options()
+  def perform(%Oban.Job{id: job_id, args: %{"account_id" => account_id, "request" => request}}) do
+    email =
+      request
+      |> deserialize()
+      |> put_acs_client_options()
+      |> put_operation_id(job_id)
+
     result = Mailer.deliver_secondary(email)
     persist_delivery_result(result, account_id, email)
   end
@@ -61,7 +66,7 @@ defmodule Portal.Workers.OutboundEmail do
       reason: inspect(reason)
     )
 
-    {:discard, reason}
+    {:error, reason}
   end
 
   defp email_addresses(%Swoosh.Email{} = email) do
@@ -105,4 +110,13 @@ defmodule Portal.Workers.OutboundEmail do
 
   defp response_message_id(response) when is_map(response), do: response[:id] || response["id"]
   defp response_message_id(_response), do: nil
+
+  defp put_operation_id(%Swoosh.Email{} = email, job_id) do
+    Swoosh.Email.put_provider_option(email, :operation_id, job_operation_id(job_id))
+  end
+
+  defp job_operation_id(job_id) do
+    {:ok, uuid} = Ecto.UUID.load(<<0::64, job_id::64>>)
+    uuid
+  end
 end

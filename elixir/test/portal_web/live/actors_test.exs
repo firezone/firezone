@@ -402,6 +402,102 @@ defmodule PortalWeb.Live.ActorsTest do
                type: :service_account
              )
     end
+
+    test "creates a new service account without a token when expiration is blank", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      unique_num = System.unique_integer([:positive, :monotonic])
+      sa_name = "My Service Account #{unique_num}"
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_service_account")
+
+      result =
+        lv
+        |> form("#service-account-form", actor: %{"name" => sa_name})
+        |> render_submit(%{"token_expiration" => ""})
+
+      case result do
+        {:error, {:live_redirect, %{to: path}}} ->
+          assert path =~ "/actors/"
+
+        html when is_binary(html) ->
+          assert html =~ sa_name
+      end
+
+      created_actor =
+        Repo.get_by!(Portal.Actor,
+          account_id: account.id,
+          name: sa_name,
+          type: :service_account
+        )
+        |> Repo.preload(:client_tokens)
+
+      assert created_actor.client_tokens == []
+    end
+
+    test "re-renders the form when service account attrs are invalid", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      invalid_name = String.duplicate("a", 256)
+      expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_service_account")
+
+      html =
+        lv
+        |> form("#service-account-form", actor: %{"name" => invalid_name})
+        |> render_submit(%{"token_expiration" => expiration})
+
+      assert html =~ "Add Service Account"
+      assert html =~ "service-account-form"
+
+      refute Repo.get_by(Portal.Actor,
+               account_id: account.id,
+               name: invalid_name,
+               type: :service_account
+             )
+    end
+
+    test "shows temporary-error flash when token creation fails with non-changeset error", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      unique_num = System.unique_integer([:positive, :monotonic])
+      sa_name = "My Service Account #{unique_num}"
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/add_service_account")
+
+      # An unparsable date causes create_actor_token/3 to return
+      # {:error, :invalid_date} — a non-changeset error tuple — which previously
+      # crashed the LV via to_form(:invalid_date).
+      html =
+        lv
+        |> form("#service-account-form", actor: %{"name" => sa_name})
+        |> render_submit(%{"token_expiration" => "not-a-date"})
+
+      assert html =~ "A temporary error occurred"
+      assert html =~ "Please try again"
+
+      refute Repo.get_by(Portal.Actor,
+               account_id: account.id,
+               name: sa_name,
+               type: :service_account
+             )
+    end
   end
 
   describe "edit actor" do
