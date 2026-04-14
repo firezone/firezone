@@ -678,7 +678,9 @@ impl ReferenceState {
                     client.exec_mut(|c| match &new_resource {
                         client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
                         client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
-                        client::Resource::Internet(_) => {
+                        client::Resource::Internet(_)
+                        | client::Resource::StaticDevicePool(_)
+                        | client::Resource::DynamicDevicePool(_) => {
                             unreachable!()
                         }
                     })

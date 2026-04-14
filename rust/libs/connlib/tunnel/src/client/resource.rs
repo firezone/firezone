@@ -169,7 +169,10 @@ impl Resource {
     pub fn into_cidr(self) -> Option<CidrResource> {
         match self {
             Resource::Cidr(c) => Some(c),
-            Resource::Dns(_) | Resource::Internet(_) => None,
+            Resource::Dns(_)
+            | Resource::Internet(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => None,
         }
     }
 
@@ -209,7 +212,9 @@ impl Resource {
         match self {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
-            Resource::Internet(_) => &[],
+            Resource::Internet(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => &[],
         }
     }
 
@@ -319,7 +324,9 @@ impl Resource {
         match self {
             Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
             Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::Internet(_) => self,
+            Resource::Internet(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => self,
         }
     }
 }

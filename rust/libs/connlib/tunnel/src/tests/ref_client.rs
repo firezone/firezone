@@ -994,7 +994,9 @@ impl RefClient {
             resources => resources.iter().any(|r| match r {
                 Resource::Cidr(cidr) => filter_allows(&cidr.filters),
                 Resource::Dns(dns) => filter_allows(&dns.filters),
-                Resource::Internet(_) => unreachable!(),
+                Resource::Internet(_)
+                | Resource::StaticDevicePool(_)
+                | Resource::DynamicDevicePool(_) => unreachable!(),
             }),
         }
     }
