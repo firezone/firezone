@@ -83,19 +83,6 @@ where
         }
     }
 
-    /// Retains only the entries for which `predicate` returns `true`.
-    pub fn retain<F>(&mut self, mut predicate: F)
-    where
-        F: FnMut(&K, &V) -> bool,
-    {
-        self.inner.retain(|k, entry| predicate(k, &entry.value));
-        let live = &self.inner;
-        self.expiration.retain(|_, keys| {
-            keys.retain(|k| live.contains_key(k));
-            !keys.is_empty()
-        });
-    }
-
     pub fn poll_timeout(&self) -> Option<Instant> {
         self.expiration.keys().next().cloned()
     }

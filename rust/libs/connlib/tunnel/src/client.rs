@@ -365,7 +365,13 @@ impl ClientState {
             "Device pool domain resolution failed"
         );
 
-        let response = dns_types::Response::nxdomain(&pending.query);
+        let response = match failed.reason {
+            FailReason::NotFound => dns_types::Response::nxdomain(&pending.query),
+            FailReason::Offline
+            | FailReason::VersionMismatch
+            | FailReason::Forbidden
+            | FailReason::Unknown => dns_types::Response::servfail(&pending.query),
+        };
         self.send_dns_response(pending.local, pending.remote, pending.transport, response);
     }
 
