@@ -1214,6 +1214,7 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
+            ClientEvent::DevicePoolDomainResolveIntent { .. } => Ok(()),
         }
     }
 

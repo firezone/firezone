@@ -1,10 +1,12 @@
-pub(crate) mod pattern;
-pub(crate) mod stub_resolver;
+pub(crate) mod device_stub_resolver;
+mod pattern;
+pub(crate) mod resource_stub_resolver;
 
-pub(crate) use pattern::Pattern;
-pub(crate) use stub_resolver::{DeviceStubResolver, ResolveStrategy, ResourceStubResolver};
+pub(crate) use device_stub_resolver::DeviceStubResolver;
+use pattern::Pattern;
+pub(crate) use resource_stub_resolver::{ResolveStrategy, ResourceStubResolver};
 
-pub use stub_resolver::DnsResourceRecord;
+pub use resource_stub_resolver::DnsResourceRecord;
 
 use anyhow::Result;
 use dns_types::DoHUrl;
