@@ -119,6 +119,8 @@ config :portal, Portal.Entra.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Workers.SyncErrorNotification, []
+
 config :portal, Portal.Telemetry, enabled: false
 
 config :opentelemetry_experimental, sdk_disabled: true

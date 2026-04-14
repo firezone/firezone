@@ -1,5 +1,5 @@
 defmodule Portal.Workers.SyncErrorNotificationTest do
-  use Portal.DataCase, async: false
+  use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
   import ExUnit.CaptureLog
@@ -19,12 +19,6 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
 
   defmodule FailingMailer do
     def enqueue(:failing_email), do: {:error, :injected_failure}
-  end
-
-  setup do
-    Application.delete_env(:portal, SyncErrorNotification)
-    on_exit(fn -> Application.delete_env(:portal, SyncErrorNotification) end)
-    :ok
   end
 
   describe "perform/1" do
@@ -147,7 +141,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
 
     test "logs enqueue failures and still increments error_email_count" do
-      Application.put_env(:portal, SyncErrorNotification,
+      Portal.Config.put_env_override(:portal, SyncErrorNotification,
         mailer_module: FailingMailer,
         sync_email_module: FailingSyncEmail
       )

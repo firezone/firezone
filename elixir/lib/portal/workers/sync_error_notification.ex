@@ -112,12 +112,12 @@ defmodule Portal.Workers.SyncErrorNotification do
   end
 
   defp mailer_module do
-    Application.get_env(:portal, __MODULE__, [])
+    Portal.Config.get_env(:portal, __MODULE__, [])
     |> Keyword.get(:mailer_module, Mailer)
   end
 
   defp sync_email_module do
-    Application.get_env(:portal, __MODULE__, [])
+    Portal.Config.get_env(:portal, __MODULE__, [])
     |> Keyword.get(:sync_email_module, Mailer.SyncEmail)
   end
 
