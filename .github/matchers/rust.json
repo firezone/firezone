@@ -2,7 +2,7 @@
   "problemMatcher": [
     {
       "owner": "cargo-clippy",
-      "fileLocation": ["relative", "rust"],
+      "fromPath": "rust/",
       "pattern": [
         {
           "regexp": "^(?:\\x1b\\[[\\d;]+m)*(warning|error)(?:\\x1b\\[[\\d;]+m)*(\\[.+?\\])?(?:\\x1b\\[[\\d;]+m)*:(?:\\x1b\\[[\\d;]+m)* (.+?)(?:\\x1b\\[[\\d;]+m)*$",

@@ -2,7 +2,6 @@
   "problemMatcher": [
     {
       "owner": "swiftlint",
-      "fileLocation": "absolute",
       "pattern": [
         {
           "regexp": "^(.+):(\\d+):(\\d+): (warning|error): (.+)$",
