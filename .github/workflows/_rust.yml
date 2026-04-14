@@ -55,6 +55,16 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
+      - name: Guard RUSTSEC-2026-0097 allowlist assumption
+        run: |
+          # RUSTSEC-2026-0097 is allowlisted because rand's `log` feature is not enabled,
+          # meaning the vulnerable re-entrant ThreadRng code path is compiled out.
+          # If a dependency ever enables rand/log, the allowlist is no longer valid.
+          if cargo tree -e features 2>/dev/null | grep -q 'rand feature "log"'; then
+            echo "::error::rand's 'log' feature is now enabled — RUSTSEC-2026-0097 allowlist in deny.toml is no longer safe to keep"
+            exit 1
+          fi
+        shell: bash
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
 
