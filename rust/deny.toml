@@ -112,6 +112,12 @@ ignore = [
 
     "RUSTSEC-2025-0057", # `fxhash` is unmaintained, used by transitive dependencies. See #10297.
 
+    # `rand` unsoundness via re-entrant ThreadRng access from a custom logger (GHSA-cq8v-f236-94qc).
+    # Not exploitable: rand's `log` feature is not enabled (verified via `cargo tree -e features`),
+    # so the log!() call sites in rand's reseeding path are compiled out entirely.
+    # Upgrading to rand 0.9 is blocked by x25519-dalek requiring rand_core 0.6.
+    "RUSTSEC-2026-0097",
+
     # `rust-unic` crates are unmaintained but still pulled in via tauri.
     "RUSTSEC-2025-0075",
     "RUSTSEC-2025-0080",
