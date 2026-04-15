@@ -217,7 +217,18 @@ impl DeviceStubResolver {
     }
 
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
-        self.resolved.poll_timeout()
+        let cache_timeout = self.resolved.poll_timeout();
+
+        let pending_timeout = self
+            .pending
+            .values()
+            .map(|q| q.created_at + QUERY_TIMEOUT)
+            .min();
+
+        match (cache_timeout, pending_timeout) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 }
 
