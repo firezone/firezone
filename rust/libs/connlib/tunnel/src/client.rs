@@ -1541,6 +1541,19 @@ impl ClientState {
             .device_stub_resolver
             .match_device_pool_linear(&domain_name)
         {
+            // Device pools are IPv4-only; answer AAAA and other non-A queries
+            // immediately with NOERROR + no records (the name exists, we just
+            // don't have records of the requested type).
+            if message.qtype() != dns_types::RecordType::A {
+                return Some(
+                    dns_types::ResponseBuilder::for_query(
+                        &message,
+                        dns_types::ResponseCode::NOERROR,
+                    )
+                    .build(),
+                );
+            }
+
             let domain = domain_name.to_string();
 
             if let Some(ipv4) = self.device_stub_resolver.cached_resolution(&domain, now) {
@@ -2418,6 +2431,72 @@ mod tests {
         assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
         assert_eq!(response.domain().to_string(), "device-1.pool.example.com");
         assert_eq!(a_record_ips(&response), vec![resolved_ip]);
+    }
+
+    #[test]
+    fn aaaa_query_for_device_pool_returns_noerror_with_no_records() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+
+        let _ = state
+            .dns_config
+            .update_system_resolvers(vec!["1.1.1.1".parse().unwrap()]);
+        state.update_interface_config(interface(
+            Ipv4Addr::new(100, 82, 80, 16),
+            Ipv6Addr::LOCALHOST,
+        ));
+        drain_events(&mut state);
+
+        let IpAddr::V4(sentinel_ip) = state.dns_config.mapping().sentinel_ips()[0] else {
+            panic!("expected IPv4 sentinel");
+        };
+
+        let pool = Resource::DynamicDevicePool(resource::DynamicDevicePoolResource {
+            id: ResourceId::from_u128(42),
+            name: "Test Pool".to_owned(),
+            address: "*.pool.example.com".to_owned(),
+        });
+        state.add_resource(pool, now);
+        drain_events(&mut state);
+
+        // Send an AAAA query for a device pool domain.
+        let query = dns_types::Query::new(
+            "device-1.pool.example.com".parse().unwrap(),
+            dns_types::RecordType::AAAA,
+        );
+        let query_bytes = query.into_bytes();
+        let dns_packet = ip_packet::make::udp_packet(
+            Ipv4Addr::new(100, 82, 80, 16),
+            sentinel_ip,
+            12345,
+            53,
+            &query_bytes,
+        )
+        .unwrap();
+
+        assert!(state.handle_tun_input(dns_packet, now).is_none());
+
+        // Should get an immediate NOERROR response with no records —
+        // no portal round-trip needed for non-A queries.
+        let response = parse_dns_response(
+            &state
+                .poll_packets()
+                .expect("expected a DNS response packet"),
+        );
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
+        assert_eq!(
+            response.records().count(),
+            0,
+            "AAAA response for IPv4-only device pool must have no records"
+        );
+
+        // No resolve intent should have been emitted.
+        while let Some(event) = state.poll_event() {
+            assert!(
+                !matches!(event, ClientEvent::DevicePoolDomainResolveIntent { .. }),
+                "AAAA query must not trigger a portal round-trip"
+            );
+        }
     }
 
     fn assert_no_device_connection_intent(state: &mut ClientState) {
