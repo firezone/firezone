@@ -344,6 +344,7 @@ impl ClientState {
             .device_stub_resolver
             .remove_pending(resource_id, &domain, now)
         else {
+            tracing::debug!(%resource_id, %domain, ?reason, "Received device pool resolution failure for unknown query");
             return;
         };
 
