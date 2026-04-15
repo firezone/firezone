@@ -2,8 +2,8 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
-    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
-    InternetResource,
+    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES,
+    IPV6_RESOURCES, InternetResource,
 };
 use crate::messages::{UpstreamDo53, UpstreamDoH};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
@@ -97,6 +97,8 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 ],
                 1..5,
             );
+            let device_pool_resources =
+                collection::btree_set(dynamic_device_pool_resource(), 0..=2);
             let internet_resource = internet_resource(Just(internet_site.clone()));
 
             // Assign between 1 and 3 gateways to each site.
@@ -116,6 +118,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 gateways_by_site,
                 cidr_resources,
                 dns_resources,
+                device_pool_resources,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
@@ -123,22 +126,25 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
             )
         })
         .prop_flat_map(
+            #[allow(clippy::type_complexity)]
             |(
                 clients,
                 gateways_by_site,
                 cidr_resources,
                 dns_resources,
+                device_pool_resources,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
                 upstream_doh_servers,
-            )| {
+            )|{
                 (
                     Just(clients),
                     Just(gateways_by_site),
                     Just(cidr_resources),
                     search_domain(dns_resources.clone()),
                     Just(dns_resources),
+                    Just(device_pool_resources),
                     Just(internet_resource),
                     Just(gateway_selector),
                     Just(upstream_do53_servers),
@@ -153,6 +159,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 cidr_resources,
                 search_domain,
                 dns_resources,
+                device_pool_resources,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
@@ -164,6 +171,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     gateway_selector,
                     cidr_resources,
                     dns_resources,
+                    device_pool_resources,
                     internet_resource,
                     search_domain,
                     upstream_do53_servers,

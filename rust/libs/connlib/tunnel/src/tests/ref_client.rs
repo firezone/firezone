@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     ClientState,
-    client::{CidrResource, DnsResource, InternetResource, Resource},
+    client::{CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource},
     dns,
     messages::{Interface, UpstreamDo53, UpstreamDoH},
 };
@@ -162,7 +162,12 @@ impl RefClient {
         }
 
         let Some(site) = self.site_for_resource(*resource) else {
-            tracing::error!(%resource, "No site for resource");
+            // Device pool resources have no site, so this is expected for them.
+            if !self.resources.iter().any(|r| {
+                matches!(r, Resource::DynamicDevicePool(dp) if dp.id == *resource)
+            }) {
+                tracing::error!(%resource, "No site for resource");
+            }
             return;
         };
 
@@ -321,6 +326,19 @@ impl RefClient {
         }
     }
 
+    pub(crate) fn add_dynamic_device_pool_resource(&mut self, r: DynamicDevicePoolResource) {
+        let r = Resource::DynamicDevicePool(r);
+        let rid = r.id();
+
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
+            && existing.has_different_address(&r)
+        {
+            self.remove_resource(&existing.id());
+        }
+
+        self.resources.push(r);
+    }
+
     /// Re-adds all resources in the order they have been initially added.
     pub(crate) fn readd_all_resources(&mut self) {
         self.cidr_resources = IpNetworkTable::new();
@@ -330,7 +348,10 @@ impl RefClient {
                 Resource::Dns(d) => self.add_dns_resource(d),
                 Resource::Cidr(c) => self.add_cidr_resource(c),
                 Resource::Internet(i) => self.add_internet_resource(i),
-                Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {}
+                Resource::StaticDevicePool(_) => {}
+                Resource::DynamicDevicePool(d) => {
+                    self.add_dynamic_device_pool_resource(d);
+                }
             }
         }
     }
@@ -368,9 +389,8 @@ impl RefClient {
         self.resources
             .iter()
             .filter_map(move |r| {
-                maybe_online_sites
-                    .contains(r.site().unwrap())
-                    .then_some(r.id())
+                let site = r.site().ok()?;
+                maybe_online_sites.contains(site).then_some(r.id())
             })
             .collect()
     }
@@ -564,6 +584,12 @@ impl RefClient {
             }
         }
 
+        // Device pool queries are answered locally by the client and never
+        // forwarded to a gateway, so they must not trigger resource connections.
+        if self.matches_device_pool(&query.domain) {
+            return;
+        }
+
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
@@ -574,6 +600,12 @@ impl RefClient {
             self.connect_to_internet_or_cidr_resource(resource);
             self.set_resource_online(resource);
         }
+    }
+
+    fn matches_device_pool(&self, domain: &DomainName) -> bool {
+        self.resources.iter().any(|r| {
+            matches!(r, Resource::DynamicDevicePool(dp) if dns::is_subdomain(domain, &dp.address))
+        })
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {

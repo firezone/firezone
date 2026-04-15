@@ -25,6 +25,8 @@ use boringtun::x25519;
 pub(crate) use resource::CidrResource;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
+#[cfg(all(feature = "proptest", test))]
+pub(crate) use resource::DynamicDevicePoolResource;
 pub(crate) use resource::{InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;

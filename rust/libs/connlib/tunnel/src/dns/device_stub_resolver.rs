@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     iter,
     net::{Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
@@ -39,7 +39,7 @@ pub struct DeviceStubResolver {
     /// Keyed by `(ResourceId, domain)` — the same pair the portal includes in its response.
     /// If multiple queries arrive for the same domain while waiting, we keep only the latest.
     /// Entries expire after [`QUERY_TIMEOUT`] if the portal never responds.
-    pending: HashMap<(ResourceId, String), PendingQuery>,
+    pending: BTreeMap<(ResourceId, String), PendingQuery>,
 }
 
 pub struct PendingQuery {

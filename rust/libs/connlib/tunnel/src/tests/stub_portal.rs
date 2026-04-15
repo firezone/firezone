@@ -28,6 +28,8 @@ use std::{
     time::Instant,
 };
 
+use crate::client::DynamicDevicePoolResource;
+
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
@@ -40,6 +42,7 @@ pub(crate) struct StubPortal {
     // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
     cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
     dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    device_pool_resources: BTreeMap<ResourceId, DynamicDevicePoolResource>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -57,6 +60,7 @@ impl StubPortal {
         gateway_selector: Selector,
         cidr_resources: BTreeSet<client::CidrResource>,
         dns_resources: BTreeSet<client::DnsResource>,
+        device_pool_resources: BTreeSet<DynamicDevicePoolResource>,
         internet_resource: client::InternetResource,
         search_domain: Option<DomainName>,
         upstream_do53: Vec<UpstreamDo53>,
@@ -67,6 +71,10 @@ impl StubPortal {
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
         let dns_resources = dns_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>();
+        let device_pool_resources = device_pool_resources
             .into_iter()
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
@@ -140,6 +148,7 @@ impl StubPortal {
             ),
             cidr_resources,
             dns_resources,
+            device_pool_resources,
             internet_resource,
             search_domain,
             upstream_do53,
@@ -157,6 +166,12 @@ impl StubPortal {
                     .values()
                     .cloned()
                     .map(client::Resource::Dns),
+            )
+            .chain(
+                self.device_pool_resources
+                    .values()
+                    .cloned()
+                    .map(client::Resource::DynamicDevicePool),
             )
             .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),

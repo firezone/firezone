@@ -461,6 +461,47 @@ impl ReferenceState {
                 },
             )
             .with_if_not_empty(
+                2,
+                (
+                    state.device_pool_resources_on_client(),
+                    state.reachable_dns_servers(),
+                ),
+                |(device_pools, dns_servers)| {
+                    (
+                        sample::select(device_pools),
+                        sample::select(dns_servers),
+                    )
+                        .prop_flat_map(
+                            |((client_id, resource), (dns_client_id, dns_server))| {
+                                if client_id != dns_client_id {
+                                    return Just(Transition::SendDnsQueries(Vec::new())).boxed();
+                                }
+
+                                let base = resource
+                                    .address
+                                    .trim_start_matches("*.")
+                                    .to_owned();
+
+                                dns_queries(
+                                    (
+                                        domain_label().prop_map(move |label| {
+                                            format!("{label}.{base}").parse().unwrap()
+                                        }),
+                                        Just(vec![RecordType::A]),
+                                    ),
+                                    Just(dns_server),
+                                )
+                                .prop_map(move |queries| {
+                                    Transition::SendDnsQueries(
+                                        queries.into_iter().map(|q| (client_id, q)).collect(),
+                                    )
+                                })
+                                .boxed()
+                            },
+                        )
+                },
+            )
+            .with_if_not_empty(
                 1,
                 state.resolved_ip4_for_non_resources(&state.global_dns_records, now),
                 |values| {
@@ -568,8 +609,10 @@ impl ReferenceState {
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
-                        client::Resource::StaticDevicePool(_)
-                        | client::Resource::DynamicDevicePool(_) => {}
+                        client::Resource::StaticDevicePool(_) => {}
+                        client::Resource::DynamicDevicePool(r) => {
+                            client.add_dynamic_device_pool_resource(r.clone());
+                        }
                     });
                 }
             }
@@ -1488,6 +1531,33 @@ impl ReferenceState {
 
     fn all_client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+
+    fn device_pool_resources_on_client(
+        &self,
+    ) -> Vec<(ClientId, client::DynamicDevicePoolResource)> {
+        let device_pool_resources = self
+            .portal
+            .all_resources()
+            .into_iter()
+            .filter_map(|r| match r {
+                client::Resource::DynamicDevicePool(r) => Some(r),
+                client::Resource::Dns(_)
+                | client::Resource::Cidr(_)
+                | client::Resource::Internet(_)
+                | client::Resource::StaticDevicePool(_) => None,
+            })
+            .collect::<Vec<_>>();
+
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                device_pool_resources
+                    .iter()
+                    .filter(|r| client.inner().has_resource(r.id))
+                    .map(move |r| (*client_id, r.clone()))
+            })
+            .collect()
     }
 
     /// Generates a list of Client ID <> TUN IPv4 tuples without the entries of each ID's own IP.

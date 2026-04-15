@@ -1214,7 +1214,33 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
-            ClientEvent::DevicePoolDomainResolveIntent { .. } => Ok(()),
+            ClientEvent::DevicePoolDomainResolveIntent {
+                resource_id,
+                domain,
+            } => {
+                let tunnel_ips = self
+                    .clients
+                    .iter()
+                    .filter(|(id, _)| **id != src)
+                    .map(|(_, c)| c.inner().sut.tunnel_ip_config().unwrap().v4)
+                    .collect::<Vec<_>>();
+
+                if let Some(ipv4) = tunnel_ips.first().copied() {
+                    let client = self.clients.get_mut(&src).unwrap();
+                    client.exec_mut(|c| {
+                        c.sut.handle_device_pool_domain_resolved(
+                            crate::messages::client::DevicePoolDomainResolved {
+                                resource_id,
+                                domain,
+                                ipv4,
+                            },
+                            now,
+                        );
+                    });
+                }
+
+                Ok(())
+            }
         }
     }
 
