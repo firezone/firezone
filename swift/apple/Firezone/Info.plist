@@ -25,9 +25,9 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2025 Firezone, Inc. All rights reserved.</string>
 	<key>NSSupportsAutomaticTermination</key>
-	<true/>
+	<false/>
 	<key>NSSupportsSuddenTermination</key>
-	<true/>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
