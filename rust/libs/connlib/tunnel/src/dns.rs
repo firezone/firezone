@@ -2,7 +2,7 @@ pub(crate) mod device_stub_resolver;
 mod pattern;
 pub(crate) mod resource_stub_resolver;
 
-pub(crate) use device_stub_resolver::DeviceStubResolver;
+pub(crate) use device_stub_resolver::{DeviceStubResolver, PendingQuery};
 use pattern::Pattern;
 pub(crate) use resource_stub_resolver::{ResolveStrategy, ResourceStubResolver};
 
