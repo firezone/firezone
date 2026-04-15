@@ -10,7 +10,7 @@ export default function Page() {
       authorTitle="Senior Fullstack Engineer"
       authorAvatarSrc="/images/avatars/brian.png"
       title="A New Look for Firezone"
-      date="April 14, 2026"
+      date="2026-04-15"
     >
       <Content />
     </Post>
