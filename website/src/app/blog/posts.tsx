@@ -16,7 +16,7 @@ export default function Posts() {
       date: "April 14, 2026",
       href: "/blog/new-ui-launch",
       authorName: "Brian Manifold",
-      authorAvatarSrc: gravatar("bmanifold@firezone.dev"),
+      authorAvatarSrc: "/images/avatars/brian.png",
       type: "Announcement",
       description: (
         <p className="mb-2">
