@@ -6,6 +6,9 @@
 #
 # Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
 
+[settings]
+auto_install = false
+
 [task_config]
 includes = ["mise-tasks"]
 

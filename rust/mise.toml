@@ -2,6 +2,9 @@
 #
 # Usage: mise run <task> (from this directory) or mise //rust:<task> (from repo root)
 
+[settings]
+auto_install = false
+
 [env]
 # Match CI environment - enables tokio unstable features and denies warnings
 RUSTFLAGS = "--cfg tokio_unstable"
