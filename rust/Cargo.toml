@@ -112,6 +112,7 @@ hyper-util = "0.1.20"
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
+is = "0.8.0"
 itertools = "0.14.0"
 jni = "0.21.1"
 keyring-core = "0.7.3"
@@ -183,7 +184,6 @@ socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.3" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-is = "0.8.0"
 strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
 subprocess = "1.0.3"
