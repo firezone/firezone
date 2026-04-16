@@ -1468,9 +1468,9 @@ dependencies = [
  "boringtun",
  "derive_more 2.1.1",
  "ip_network",
+ "is",
  "itertools",
  "serde",
- "str0m",
  "uuid",
 ]
 
@@ -1920,21 +1920,6 @@ dependencies = [
  "block-buffer",
  "crypto-common",
  "subtle",
-]
-
-[[package]]
-name = "dimpl"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da42827f6904e69bf1cc78ddcb74fab007a2b476099ab0a42e8cacf1ea1f6c0"
-dependencies = [
- "arrayvec",
- "log",
- "nom 8.0.0",
- "once_cell",
- "rand 0.9.1",
- "subtle",
- "time",
 ]
 
 [[package]]
@@ -3858,6 +3843,21 @@ checksum = "dbc5ebe9c3a1a7a5127f920a418f7585e9e758e911d0466ed004f393b0e380b2"
 dependencies = [
  "memchr",
  "serde",
+]
+
+[[package]]
+name = "is"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40cf23944e1280f3b2959321a1ef776c14503af8e1e5efca32147a9136a5f8dc"
+dependencies = [
+ "crc",
+ "hmac",
+ "serde",
+ "sha1",
+ "str0m-proto",
+ "subtle",
+ "tracing",
 ]
 
 [[package]]
@@ -6473,21 +6473,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sctp-proto"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2213ed8f5ff249a7cf15be660536310010f34a79495fe9f1aadf789495ede24"
-dependencies = [
- "bytes",
- "crc",
- "log",
- "rand 0.9.1",
- "rustc-hash",
- "slab",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "sd-notify"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7020,6 +7005,7 @@ dependencies = [
  "hex-display",
  "hmac",
  "ip-packet",
+ "is",
  "itertools",
  "logging",
  "once_cell",
@@ -7028,7 +7014,6 @@ dependencies = [
  "sha1",
  "sha2",
  "smallvec",
- "str0m",
  "stun_codec",
  "telemetry",
  "thiserror 2.0.18",
@@ -7179,30 +7164,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
-name = "str0m"
-version = "0.17.0"
-source = "git+https://github.com/algesten/str0m?branch=main#da92bfa3b7449228db8449dd529d4681c8b83c8c"
-dependencies = [
- "arrayvec",
- "combine",
- "crc",
- "dimpl",
- "fastrand",
- "sctp-proto",
- "serde",
- "str0m-proto",
- "subtle",
- "time",
- "tracing",
-]
-
-[[package]]
 name = "str0m-proto"
-version = "0.2.0"
-source = "git+https://github.com/algesten/str0m?branch=main#da92bfa3b7449228db8449dd529d4681c8b83c8c"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "222a6a5a946631a167c1b0282846bfa33b0f8098b8dd565237809735656ed63f"
 dependencies = [
  "base64ct",
- "dimpl",
+ "fastrand",
+ "serde",
  "subtle",
  "time",
 ]

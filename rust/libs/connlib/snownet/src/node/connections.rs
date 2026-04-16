@@ -8,8 +8,8 @@ use std::{
 
 use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
+use is::stun::{StunMessage, TransId};
 use rand::Rng;
-use str0m::ice::{StunMessage, TransId};
 
 use crate::{
     ConnectionStats, Event,
@@ -429,9 +429,9 @@ mod tests {
         x25519::{PublicKey, StaticSecret},
     };
     use bufferpool::BufferPool;
+    use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
-    use str0m::ice::IceAgent;
 
     use std::net::{Ipv4Addr, SocketAddrV4};
 
@@ -596,7 +596,7 @@ mod tests {
         let new_local = Index::new_local(idx);
 
         Connection {
-            agent: IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER),
+            agent: IceAgent::new(is::IceCreds::new()),
             index: new_local,
             tunnel: Tunn::new_at(
                 private,

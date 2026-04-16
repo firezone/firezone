@@ -9,7 +9,7 @@ boringtun = { workspace = true }
 derive_more = { workspace = true, features = ["from"] }
 ip_network = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
-str0m = { workspace = true }
+is = { workspace = true }
 uuid = { workspace = true, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]

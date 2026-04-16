@@ -7,6 +7,7 @@ use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
+use is::Candidate;
 use logging::err_with_src;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
@@ -17,7 +18,6 @@ use std::{
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
-use str0m::{Candidate, net::Protocol};
 use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
     rfc5389::{
@@ -536,7 +536,7 @@ impl Allocation {
                     SocketAddr::V6(_) => &mut self.ip6_host_candidate,
                 };
 
-                let maybe_candidate = Candidate::host(local, Protocol::Udp).ok();
+                let maybe_candidate = Candidate::host(local, "udp").ok();
                 if update_candidate(maybe_candidate, current_host_candidate, &mut self.events) {
                     self.log_update(now);
                 }
@@ -1347,7 +1347,7 @@ fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
         return None;
     };
 
-    let new_candidate = match Candidate::server_reflexive(a.address(), local, Protocol::Udp) {
+    let new_candidate = match Candidate::server_reflexive(a.address(), local, "udp") {
         Ok(c) => c,
         Err(e) => {
             tracing::debug!(
@@ -1375,7 +1375,7 @@ fn relay_candidate(
             return None;
         };
 
-        let new_candidate = match Candidate::relayed(addr, local, Protocol::Udp) {
+        let new_candidate = match Candidate::relayed(addr, local, "udp") {
             Ok(c) => c,
             Err(e) => {
                 tracing::debug!(
@@ -2201,20 +2201,20 @@ mod tests {
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
-            Some(Event::New(Candidate::host(PEER1, Protocol::Udp).unwrap()))
+            Some(Event::New(Candidate::host(PEER1, "udp").unwrap()))
         );
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
             Some(Event::New(
-                Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
+                Candidate::server_reflexive(PEER1, PEER1, "udp").unwrap()
             ))
         );
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
             Some(Event::New(
-                Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()
             ))
         );
         let next_event = allocation.poll_event();
@@ -2261,13 +2261,13 @@ mod tests {
         assert_eq!(
             allocation.poll_event(),
             Some(Event::Invalid(
-                Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()
             ))
         );
         assert_eq!(
             allocation.poll_event(),
             Some(Event::Invalid(
-                Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()
             ))
         );
         assert!(allocation.poll_event().is_none());
@@ -2575,8 +2575,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
             ]
         )
     }
@@ -2595,8 +2595,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
             ]
         )
     }
@@ -2627,8 +2627,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
             ]
         );
         assert_eq!(
@@ -2716,14 +2716,10 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                Event::New(Candidate::host(PEER2_IP4, Protocol::Udp).unwrap()),
-                Event::New(
-                    Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, Protocol::Udp).unwrap()
-                ),
-                Event::New(Candidate::host(PEER2_IP6, Protocol::Udp).unwrap()),
-                Event::New(
-                    Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, Protocol::Udp).unwrap()
-                )
+                Event::New(Candidate::host(PEER2_IP4, "udp").unwrap()),
+                Event::New(Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, "udp").unwrap()),
+                Event::New(Candidate::host(PEER2_IP6, "udp").unwrap()),
+                Event::New(Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, "udp").unwrap())
             ]
         )
     }

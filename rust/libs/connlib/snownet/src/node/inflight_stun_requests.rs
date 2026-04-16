@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use str0m::ice::TransId;
+use is::stun::TransId;
 
 /// For how long we will at most keep around an inflight STUN request ID.
 const TTL: Duration = Duration::from_secs(10);

@@ -9,7 +9,7 @@ The control plane components are built in Elixir and reside in `elixir/`.
 ## Data plane architecture
 
 At the core of the data plane resides a shared library called [`connlib`](../rust/libs/connlib).
-It combines ICE (using the `str0m` library) and WireGuard (using the `boringtun` library) to establish on-the-fly tunnels between Clients and Gateways.
+It combines ICE (using the `is` library) and WireGuard (using the `boringtun` library) to establish on-the-fly tunnels between Clients and Gateways.
 The entry-point for the data plane is [`Tunnel`](../rust/libs/connlib/tunnel) which acts as a big event-loop combining three components:
 
 - A platform-specific TUN device

@@ -5,9 +5,9 @@ use std::{
 };
 
 use ip_packet::IpPacket;
+use is::IceAgent;
+use is::IceConnectionState;
 use ringbuffer::AllocRingBuffer;
-use str0m::IceConnectionState;
-use str0m::ice::IceAgent;
 
 use crate::IceConfig;
 

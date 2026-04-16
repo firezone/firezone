@@ -91,15 +91,15 @@ impl IpStack {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IceCandidate(str0m::Candidate);
+pub struct IceCandidate(is::Candidate);
 
-impl From<str0m::Candidate> for IceCandidate {
-    fn from(value: str0m::Candidate) -> Self {
+impl From<is::Candidate> for IceCandidate {
+    fn from(value: is::Candidate) -> Self {
         Self(value)
     }
 }
 
-impl From<IceCandidate> for str0m::Candidate {
+impl From<IceCandidate> for is::Candidate {
     fn from(value: IceCandidate) -> Self {
         value.0
     }
@@ -134,7 +134,7 @@ impl<'de> Deserialize<'de> for IceCandidate {
         use serde::de::Error as _;
 
         let string = String::deserialize(deserializer)?;
-        let candidate = str0m::Candidate::from_sdp_string(&string).map_err(D::Error::custom)?;
+        let candidate = is::Candidate::from_sdp_string(&string).map_err(D::Error::custom)?;
 
         Ok(IceCandidate(candidate))
     }
@@ -148,13 +148,12 @@ mod tests {
 
     #[test]
     fn ice_candidate_ordering() {
-        let host = IceCandidate::from(str0m::Candidate::host(sock("1.1.1.1:80"), "udp").unwrap());
+        let host = IceCandidate::from(is::Candidate::host(sock("1.1.1.1:80"), "udp").unwrap());
         let srflx = IceCandidate::from(
-            str0m::Candidate::server_reflexive(sock("1.1.1.1:80"), sock("3.3.3.3:80"), "udp")
-                .unwrap(),
+            is::Candidate::server_reflexive(sock("1.1.1.1:80"), sock("3.3.3.3:80"), "udp").unwrap(),
         );
         let relay = IceCandidate::from(
-            str0m::Candidate::relayed(sock("1.1.1.1:80"), sock("2.2.2.2:80"), "udp").unwrap(),
+            is::Candidate::relayed(sock("1.1.1.1:80"), sock("2.2.2.2:80"), "udp").unwrap(),
         );
 
         let candidate_set = BTreeSet::from([relay.clone(), host.clone(), srflx.clone()]);

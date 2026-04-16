@@ -26,6 +26,9 @@ use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use hex_display::HexDisplayExt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
+use is::stun::{StunMessage, StunPacket};
+use is::{Candidate, CandidateKind, IceConnectionState};
+use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
@@ -39,9 +42,6 @@ use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use std::{iter, mem};
-use str0m::ice::{IceAgent, IceAgentEvent, StunMessage, StunPacket};
-use str0m::net::Protocol;
-use str0m::{Candidate, CandidateKind, IceConnectionState};
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
 // Note: Taken from boringtun
@@ -947,7 +947,7 @@ where
         let handled = c.agent.handle_packet(
             now,
             StunPacket {
-                proto: Protocol::Udp,
+                proto: "udp".try_into().expect("UDP is a valid protocol"),
                 source: from,
                 destination,
                 message,
@@ -1128,7 +1128,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         .filter_map(|(ip, base)| {
             let addr = SocketAddr::new(ip, base.port());
 
-            Candidate::server_reflexive(addr, base, Protocol::Udp)
+            Candidate::server_reflexive(addr, base, "udp")
                 .inspect_err(
                     |e| tracing::debug!(%addr, %base, "Failed to create optimistic candidate: {e}"),
                 )
@@ -1177,9 +1177,9 @@ pub struct Credentials {
 }
 
 #[doc(hidden)] // Not public API.
-impl From<Credentials> for str0m::IceCreds {
+impl From<Credentials> for is::IceCreds {
     fn from(value: Credentials) -> Self {
-        str0m::IceCreds {
+        is::IceCreds {
             ufrag: value.username,
             pass: value.password,
         }
@@ -1187,8 +1187,8 @@ impl From<Credentials> for str0m::IceCreds {
 }
 
 #[cfg(test)]
-impl From<str0m::IceCreds> for Credentials {
-    fn from(value: str0m::IceCreds) -> Self {
+impl From<is::IceCreds> for Credentials {
+    fn from(value: is::IceCreds) -> Self {
         Credentials {
             username: value.ufrag,
             password: value.pass,
@@ -1531,11 +1531,11 @@ where
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    tracing::warn!("str0m emitted invalid STUN message: {e}")
+                    tracing::warn!("`is` emitted invalid STUN message: {e}")
                 }
             }
 
-            // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
+            // Check if `is` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
                 self.stats.stun_bytes_to_peer_direct += stun_packet_bytes.len();
 
@@ -2001,7 +2001,7 @@ where
 }
 
 fn new_agent(role: IceRole) -> IceAgent {
-    let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
+    let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
     agent.set_timing_advance(Duration::ZERO);
 
@@ -2092,7 +2092,7 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
-        let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
+        let mut agent = IceAgent::new(is::IceCreds::new());
         agent.add_remote_candidate(host);
         agent.add_remote_candidate(srvflx);
 
@@ -2118,7 +2118,7 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
-        let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
+        let mut agent = IceAgent::new(is::IceCreds::new());
         agent.add_remote_candidate(host);
         agent.add_remote_candidate(srvflx);
 
@@ -2145,7 +2145,7 @@ mod tests {
         let srflx3 =
             Candidate::server_reflexive(SocketAddr::new(addr3, 40000), base, "udp").unwrap();
 
-        let mut agent = IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER);
+        let mut agent = IceAgent::new(is::IceCreds::new());
         agent.add_remote_candidate(host);
         agent.add_remote_candidate(srflx1);
         agent.add_remote_candidate(srflx2);
