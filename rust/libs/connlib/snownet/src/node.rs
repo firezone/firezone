@@ -10,7 +10,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
-use crate::node::connections::Connections;
+use crate::node::connections::{CandidateEpoch, Connections};
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
 use crate::stats::{ConnectionStats, NodeStats};
@@ -27,8 +27,7 @@ use core::fmt;
 use hex_display::HexDisplayExt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use is::stun::{StunMessage, StunPacket};
-use is::{Candidate, CandidateKind, IceConnectionState};
-use is::{IceAgent, IceAgentEvent};
+use is::{Candidate, CandidateKind, IceAgent, IceAgentEvent, IceConnectionState};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
@@ -332,7 +331,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = new_agent(ice_role);
+        let (mut agent, candidate_epoch) = new_agent(ice_role);
         default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
@@ -351,6 +350,7 @@ where
         let connection = self.init_connection(
             cid,
             agent,
+            candidate_epoch,
             remote,
             preshared_key,
             selected_relay,
@@ -719,7 +719,11 @@ where
                         &mut self.pending_events,
                     );
 
-                    tracing::info!(%rid, address = ?server, "Replaced TURN server")
+                    // Bump candidate epoch when a relay gets replaced to prefer
+                    // the candidates of the new ones over the older ones.
+                    for (_, c) in self.connections.iter_mut() {
+                        c.candidate_epoch.inc();
+                    }
                 }
             }
         }
@@ -753,6 +757,7 @@ where
         &mut self,
         cid: TId,
         mut agent: IceAgent,
+        candidate_epoch: CandidateEpoch,
         remote: PublicKey,
         key: x25519::StaticSecret,
         relay: RId,
@@ -794,6 +799,7 @@ where
 
         Connection {
             agent,
+            candidate_epoch,
             index,
             tunnel,
             next_wg_timer_update: now,
@@ -1251,6 +1257,7 @@ impl fmt::Debug for Transmit {
 #[derive(derive_more::Debug)]
 struct Connection<RId> {
     agent: IceAgent,
+    candidate_epoch: CandidateEpoch,
 
     index: Index,
     #[debug(skip)]
@@ -1899,6 +1906,20 @@ where
     where
         TId: fmt::Display,
     {
+        if let Some(c) = self
+            .agent
+            .remote_candidates()
+            .filter(|c| c.kind() == candidate.kind())
+            .filter(|c| c.addr().is_ipv4() == candidate.addr().is_ipv4())
+            .max_by_key(|c| c.prio())
+            && c.prio() < candidate.prio()
+        {
+            // This heuristic is not 100% fool-proof but restarting ICE is idempotent.
+
+            tracing::debug!("Remote likely advanced ICE epoch");
+            self.ice_restart(true, true);
+        }
+
         self.agent.add_remote_candidate(candidate);
         self.candidate_timeout = None;
 
@@ -1950,9 +1971,54 @@ where
 
         self.relay.id = new_relay;
 
+        self.candidate_epoch.inc();
+
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
+    }
+
+    /// Our flavour of "ICE restart".
+    ///
+    /// Typically during an ICE restart, the remote credentials and candidates are cleared.
+    /// This however would require the remote to resend those to us.
+    ///
+    /// In Firezone, ICE credentials are deterministically assigned based on parties' session keys.
+    /// Those should never change during a given Firezone session.
+    ///
+    /// The candidates may be the same in case the roaming event was triggered erroneously.
+    /// Even if they are not, performing an ICE restart clears the internal nomination state
+    /// and therefore both new and old candidates are considered equal and the new best one will win.
+    fn ice_restart(&mut self, keep_local: bool, keep_remote: bool) {
+        if self.agent.state() == IceConnectionState::Checking {
+            tracing::trace!("Agent is already checking candidates, skipping ICE restart");
+            return;
+        }
+
+        let current_remote_candidates = self
+            .agent
+            .remote_candidates()
+            .collect::<SmallVec<[Candidate; 8]>>();
+        let remote_credentials = self
+            .agent
+            .remote_credentials()
+            .expect("should always know remote credentials")
+            .clone();
+
+        self.agent
+            .ice_restart(self.agent.local_credentials().clone(), keep_local);
+        self.agent.set_remote_credentials(remote_credentials);
+
+        if keep_remote {
+            for c in current_remote_candidates {
+                self.agent.add_remote_candidate(c);
+            }
+        }
+
+        self.first_handshake_completed_at = None;
+        self.last_proactive_handshake_sent_at = None;
+        self.poll_timeout_cache = TimeoutCache::default();
+        self.candidate_epoch.inc();
     }
 }
 
@@ -2000,12 +2066,16 @@ where
     Some(transmit)
 }
 
-fn new_agent(role: IceRole) -> IceAgent {
+fn new_agent(role: IceRole) -> (IceAgent, CandidateEpoch) {
+    let candidate_epoch = CandidateEpoch::default();
+
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
     agent.set_timing_advance(Duration::ZERO);
+    agent.set_max_stun_rto(Duration::from_secs(25));
+    agent.set_local_preference(connections::LocalPreference::new(candidate_epoch.clone()));
 
-    agent
+    (agent, candidate_epoch)
 }
 
 /// A session ID is constant for as long as a [`Node`] is operational.
@@ -2038,7 +2108,7 @@ mod tests {
 
     #[test]
     fn client_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2049,7 +2119,7 @@ mod tests {
     // otherwise we cannot migrate an existing tunnel to a new candidate pair.
     #[test]
     fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2058,7 +2128,7 @@ mod tests {
 
     #[test]
     fn client_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::client_idle().apply(&mut agent);
 
@@ -2067,7 +2137,7 @@ mod tests {
 
     #[test]
     fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::server_default().apply(&mut agent);
 
@@ -2076,7 +2146,7 @@ mod tests {
 
     #[test]
     fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::server_idle().apply(&mut agent);
 
