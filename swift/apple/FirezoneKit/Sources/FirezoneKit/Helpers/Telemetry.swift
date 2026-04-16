@@ -7,6 +7,10 @@
 import Sentry
 
 public enum Telemetry {
+  #if canImport(MetricKit)
+    private static let terminationReporter = MetricKitTerminationReporter()
+  #endif
+
   /// Sets the Sentry user on both the scope (for error events) and log attributes.
   public static func setUser(firezoneId: String, accountSlug: String) {
     Log.info("Configuring Sentry user: firezone_id=\(firezoneId), account_slug=\(accountSlug)")
@@ -28,6 +32,10 @@ public enum Telemetry {
       options.enableAppHangTracking = enableAppHangTracking
       options.enableLogs = true
     }
+
+    #if canImport(MetricKit)
+      terminationReporter.startIfSupported()
+    #endif
   }
 
   public static func setEnvironmentOrClose(_ apiURL: String) {
