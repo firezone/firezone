@@ -238,6 +238,7 @@ pub enum EgressMessages {
         resource_id: ResourceId,
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
+        trigger: TriggerKind,
     },
     RequestDeviceAccess {
         ipv4: Ipv4Addr,
@@ -247,6 +248,16 @@ pub enum EgressMessages {
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum TriggerKind {
+    TcpPacket { port: u16 },
+    UdpPacket { port: u16 },
+    IcmpPacket,
+    DnsQueryForSite,
+    IcmpProhibited,
 }
 
 #[cfg(test)]
@@ -540,12 +551,65 @@ mod tests {
     }
 
     #[test]
-    fn serialize_create_flow_message() {
+    fn serialize_create_flow_message_tcp() {
         let message = EgressMessages::CreateFlow {
             resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
             preferred_gateways: Vec::new(),
+            trigger: TriggerKind::TcpPacket { port: 22 },
         };
-        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"trigger":{"kind":"tcp_packet","port":22}}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_create_flow_message_udp() {
+        let message = EgressMessages::CreateFlow {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
+            trigger: TriggerKind::UdpPacket { port: 22 },
+        };
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"trigger":{"kind":"udp_packet","port":22}}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_create_flow_message_icmp() {
+        let message = EgressMessages::CreateFlow {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
+            trigger: TriggerKind::IcmpPacket,
+        };
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"trigger":{"kind":"icmp_packet"}}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_create_flow_message_dns_query_for_site() {
+        let message = EgressMessages::CreateFlow {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
+            trigger: TriggerKind::DnsQueryForSite,
+        };
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"trigger":{"kind":"dns_query_for_site"}}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_create_flow_message_icmp_prohibited() {
+        let message = EgressMessages::CreateFlow {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
+            trigger: TriggerKind::IcmpProhibited,
+        };
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"trigger":{"kind":"icmp_prohibited"}}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

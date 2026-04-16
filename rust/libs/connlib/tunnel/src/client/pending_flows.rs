@@ -5,16 +5,24 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, UnsupportedProtocol};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
-use crate::{client::Resource, dns, unique_packet_buffer::UniquePacketBuffer};
+use crate::{
+    client::Resource, dns, messages::client::TriggerKind, unique_packet_buffer::UniquePacketBuffer,
+};
 
 #[derive(Default)]
 pub struct PendingFlows {
     inner: HashMap<ResourceId, PendingFlow>,
 
-    connection_intents: VecDeque<ResourceId>,
+    connection_intents: VecDeque<ResourceConnectionIntent>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ResourceConnectionIntent {
+    pub resource: ResourceId,
+    pub trigger: TriggerKind,
 }
 
 impl PendingFlows {
@@ -28,6 +36,13 @@ impl PendingFlows {
     ) {
         let trigger = trigger.into();
         let trigger_name = trigger.name();
+        let trigger_kind = match trigger.kind() {
+            Ok(trigger_kind) => trigger_kind,
+            Err(e) => {
+                tracing::debug!("Failed to compute trigger kind: {e}");
+                return;
+            }
+        };
 
         if !resources_by_id.contains_key(&rid) {
             tracing::debug!(%rid, "Resource not found, skipping connection intent");
@@ -51,14 +66,17 @@ impl PendingFlows {
         tracing::debug!(trigger = %trigger_name, "Sending connection intent");
 
         pending_flow.last_intent_sent_at = now;
-        self.connection_intents.push_back(rid);
+        self.connection_intents.push_back(ResourceConnectionIntent {
+            resource: rid,
+            trigger: trigger_kind,
+        });
     }
 
     pub fn remove(&mut self, rid: &ResourceId) -> Option<PendingFlow> {
         self.inner.remove(rid)
     }
 
-    pub fn poll_connection_intents(&mut self) -> Option<ResourceId> {
+    pub fn poll_connection_intents(&mut self) -> Option<ResourceConnectionIntent> {
         self.connection_intents.pop_front()
     }
 }
@@ -137,6 +155,22 @@ impl ConnectionTrigger {
             }
         }
     }
+
+    fn kind(&self) -> Result<TriggerKind, UnsupportedProtocol> {
+        let trigger_kind = match self {
+            ConnectionTrigger::PacketForResource(ip_packet) => {
+                match ip_packet.destination_protocol()? {
+                    ip_packet::Protocol::Tcp(port) => TriggerKind::TcpPacket { port },
+                    ip_packet::Protocol::Udp(port) => TriggerKind::UdpPacket { port },
+                    ip_packet::Protocol::IcmpEcho(_) => TriggerKind::IcmpPacket,
+                }
+            }
+            ConnectionTrigger::DnsQueryForSite(_) => TriggerKind::DnsQueryForSite,
+            ConnectionTrigger::IcmpDestinationUnreachableProhibited => TriggerKind::IcmpProhibited,
+        };
+
+        Ok(trigger_kind)
+    }
 }
 
 impl From<IpPacket> for ConnectionTrigger {
@@ -170,7 +204,13 @@ mod tests {
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
         pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+        assert_eq!(
+            pending_flows.poll_connection_intents(),
+            Some(ResourceConnectionIntent {
+                resource: rid,
+                trigger: TriggerKind::UdpPacket { port: 1 }
+            })
+        );
 
         now += Duration::from_secs(1);
 
@@ -186,12 +226,24 @@ mod tests {
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
         pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+        assert_eq!(
+            pending_flows.poll_connection_intents(),
+            Some(ResourceConnectionIntent {
+                resource: rid,
+                trigger: TriggerKind::UdpPacket { port: 1 }
+            })
+        );
 
         now += Duration::from_secs(3);
 
         pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+        assert_eq!(
+            pending_flows.poll_connection_intents(),
+            Some(ResourceConnectionIntent {
+                resource: rid,
+                trigger: TriggerKind::UdpPacket { port: 1 }
+            })
+        );
     }
 
     #[test]
@@ -208,9 +260,21 @@ mod tests {
         ]);
 
         pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
+        assert_eq!(
+            pending_flows.poll_connection_intents(),
+            Some(ResourceConnectionIntent {
+                resource: rid1,
+                trigger: TriggerKind::UdpPacket { port: 1 }
+            })
+        );
         pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, now);
-        assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
+        assert_eq!(
+            pending_flows.poll_connection_intents(),
+            Some(ResourceConnectionIntent {
+                resource: rid2,
+                trigger: TriggerKind::UdpPacket { port: 1 }
+            })
+        );
     }
 
     fn trigger(payload: u8) -> IpPacket {

@@ -319,11 +319,13 @@ impl Eventloop {
             ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
+                trigger,
             } => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         preferred_gateways,
+                        trigger,
                     }))
                     .await
                     .context("Failed to send message to portal")?;

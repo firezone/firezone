@@ -18,6 +18,7 @@ use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
+use messages::client::TriggerKind;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -580,6 +581,7 @@ pub enum ClientEvent {
     ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
+        trigger: TriggerKind,
     },
     DeviceConnectionIntent {
         ipv4: Ipv4Addr,

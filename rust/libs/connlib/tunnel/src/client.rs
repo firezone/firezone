@@ -1727,10 +1727,11 @@ impl ClientState {
             return Some(ClientEvent::ResourcesChanged { resources });
         }
 
-        if let Some(resource) = self.pending_flows.poll_connection_intents() {
+        if let Some(i) = self.pending_flows.poll_connection_intents() {
             return Some(ClientEvent::ResourceConnectionIntent {
-                resource,
-                preferred_gateways: self.preferred_gateways(resource),
+                resource: i.resource,
+                preferred_gateways: self.preferred_gateways(i.resource),
+                trigger: i.trigger,
             });
         }
 

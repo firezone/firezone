@@ -1052,6 +1052,7 @@ impl TunnelTest {
             ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
+                trigger: _,
             } => {
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
