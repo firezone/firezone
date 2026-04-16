@@ -123,7 +123,7 @@ where
                     continue;
                 };
 
-                c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+                c.migrate_relay(cid, new_relay, new_allocation, pending_events);
             }
         }
 
@@ -138,7 +138,7 @@ where
                 continue;
             };
 
-            c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+            c.migrate_relay(cid, new_relay, new_allocation, pending_events);
         }
     }
 
@@ -274,9 +274,10 @@ where
         self.established.len()
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+    pub(crate) fn ice_restart(&mut self) {
+        for c in self.established.values_mut() {
+            c.ice_restart(false, true);
+        }
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -433,7 +434,7 @@ mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
 
     use crate::{
-        IceConfig, RelaySocket,
+        RelaySocket,
         node::{ConnectionState, SelectedRelay, SessionId, allocations::Allocations},
     };
     use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -616,7 +617,6 @@ mod tests {
                 wg_buffer: AllocRingBuffer::new(1),
                 ip_buffer: AllocRingBuffer::new(1),
             },
-            disconnected_at: None,
             stats: Default::default(),
             intent_sent_at: Instant::now(),
             candidate_timeout: None,

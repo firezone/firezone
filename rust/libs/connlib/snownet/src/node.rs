@@ -49,9 +49,6 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Grace-period for when we will act on an ICE disconnect.
-const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
@@ -155,46 +152,14 @@ where
     }
 
     /// Resets this [`Node`].
-    ///
-    /// # Implementation note
-    ///
-    /// This also clears all [`Allocation`]s.
-    /// An [`Allocation`] on a TURN server is identified by the client's 3-tuple (IP, port, protocol).
-    /// Thus, clearing the [`Allocation`]'s state here without closing it means we won't be able to make a new one until:
-    /// - it times out
-    /// - we change our IP or port
-    ///
-    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
-    pub fn reset(&mut self, now: Instant) {
+    pub fn reset(&mut self) {
         self.allocations.clear();
 
         self.buffered_transmits.clear();
-
         self.pending_events.clear();
-
-        let closed_connections = self
-            .connections
-            .iter_ids()
-            .map(Event::ConnectionClosed)
-            .collect::<Vec<_>>();
-        let num_connections = closed_connections.len();
-
-        self.pending_events.extend(closed_connections);
-
-        self.connections.clear();
-        self.buffered_transmits.clear();
         self.inflight_stun_requests.clear();
 
-        self.private_key = StaticSecret::random_from_rng(&mut self.rng);
-        self.public_key = (&self.private_key).into();
-        self.rate_limiter = Arc::new(RateLimiter::new_at(
-            &self.public_key,
-            HANDSHAKE_RATE_LIMIT,
-            now,
-        ));
-        self.session_id = SessionId::new(self.public_key);
-
-        tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
+        self.connections.ice_restart();
     }
 
     pub fn num_connections(&self) -> usize {
@@ -225,10 +190,6 @@ where
         // - Remote ICE credentials
         // - Remote public key
         // - Preshared key
-        //
-        // Only if all of those things are the same, will:
-        // - ICE be able to establish a connection
-        // - boringtun be able to handshake a session
         if let Ok(c) = self.connections.get_mut(&cid, now)
             && c.agent.local_credentials() == &local_creds
             && c.agent
@@ -239,30 +200,6 @@ where
             && c.agent.controlling() == matches!(ice_role, IceRole::Controlling)
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
-
-            // Take all current candidates.
-            let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
-
-            // Re-seed connection with all candidates.
-            let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
-
-            // Tell the remote about all of them.
-            self.pending_events.extend(
-                std::iter::empty()
-                    .chain(current_candidates)
-                    .chain(new_candidates)
-                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
-            );
-
-            // Initiate a new WG session.
-            //
-            // We can have up to 8 concurrent WireGuard sessions in boringtun before the oldest one gets overwritten.
-            // Also, whilst we are handshaking a new session, we won't send another handshake.
-            // Thus, even rapid successive connection upserts should be handled just fine.
-            if c.agent.controlling() {
-                c.initiate_wg_session(&mut self.allocations, &mut self.buffered_transmits, now);
-            }
 
             return Ok(());
         }
@@ -420,7 +357,7 @@ where
             return;
         };
 
-        c.remove_remote_candidate(cid, candidate, now);
+        c.remove_remote_candidate(candidate, now);
     }
 
     /// Decapsulate an incoming packet.
@@ -550,8 +487,7 @@ where
     /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
         self.allocations.handle_timeout(now);
-
-        self.allocations_drain_events(now);
+        self.allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(
@@ -748,7 +684,6 @@ where
                 wg_buffer: AllocRingBuffer::new(128),
                 ip_buffer: AllocRingBuffer::new(128),
             },
-            disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
@@ -979,14 +914,14 @@ where
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
-    fn allocations_drain_events(&mut self, now: Instant) {
+    fn allocations_drain_events(&mut self) {
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        c.add_local_candidate(cid, &candidate, &mut self.pending_events);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1009,20 +944,6 @@ where
 
         Ok(rid)
     }
-}
-
-/// Seeds the agent with all local candidates, returning an iterator of all candidates that should be signalled to the remote.
-fn seed_agent_with_local_candidates<'a, RId>(
-    selected_relay: RId,
-    agent: &'a mut IceAgent,
-    allocations: &Allocations<RId>,
-) -> impl Iterator<Item = Candidate> + use<'a, RId>
-where
-    RId: Ord + fmt::Display + Copy,
-{
-    allocations
-        .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| agent.add_local_candidate(c).cloned())
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1206,7 +1127,6 @@ struct Connection<RId> {
     relay: SelectedRelay<RId>,
 
     state: ConnectionState,
-    disconnected_at: Option<Instant>,
 
     stats: ConnectionStats,
     intent_sent_at: Instant,
@@ -1248,20 +1168,9 @@ where
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
-            .chain(
-                self.disconnect_timeout()
-                    .map(|instant| (instant, "disconnect timeout")),
-            )
-            .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
-    }
-
-    fn disconnect_timeout(&self) -> Option<Instant> {
-        let disconnected_at = self.disconnected_at?;
-
-        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     fn handle_timeout<TId>(
@@ -1290,15 +1199,6 @@ where
             return;
         }
 
-        if self
-            .disconnect_timeout()
-            .is_some_and(|timeout| now >= timeout)
-        {
-            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
-            self.state = ConnectionState::Failed;
-            return;
-        }
-
         self.handle_tunnel_timeout(now, allocations, transmits);
 
         // If this was a scheduled update, hop to the next interval.
@@ -1315,23 +1215,6 @@ where
 
         while let Some(event) = self.agent.poll_event() {
             match event {
-                IceAgentEvent::DiscoveredRecv { .. } => {}
-                IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
-
-                    self.disconnected_at = Some(now);
-                }
-                IceAgentEvent::IceConnectionStateChange(
-                    IceConnectionState::Checking | IceConnectionState::Connected,
-                ) => {
-                    let existing = self.disconnected_at.take();
-
-                    if let Some(disconnected_at) = existing {
-                        let offline = now.duration_since(disconnected_at);
-
-                        tracing::debug!(?offline, "ICE agent reconnected");
-                    }
-                }
                 IceAgentEvent::NominatedSend {
                     destination,
                     source,
@@ -1437,7 +1320,9 @@ where
                         self.initiate_wg_session(allocations, transmits, now);
                     }
                 }
-                IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
+                IceAgentEvent::IceRestart(_)
+                | IceAgentEvent::DiscoveredRecv { .. }
+                | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
         }
 
@@ -1817,10 +1702,7 @@ where
         generate_optimistic_candidates(&mut self.agent);
     }
 
-    fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
-    where
-        TId: fmt::Display,
-    {
+    fn remove_remote_candidate(&mut self, candidate: Candidate, now: Instant) {
         self.agent.invalidate_candidate(&candidate);
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
     }

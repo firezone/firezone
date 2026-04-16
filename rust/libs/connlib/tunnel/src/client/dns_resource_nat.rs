@@ -199,10 +199,6 @@ impl DnsResourceNat {
         self.inner.retain(|(_, candidate), _| candidate != domain);
     }
 
-    pub fn clear(&mut self) {
-        self.inner.clear();
-    }
-
     pub(crate) fn on_domain_status(
         &mut self,
         gid: GatewayId,
