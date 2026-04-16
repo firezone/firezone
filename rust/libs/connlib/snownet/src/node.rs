@@ -10,7 +10,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
-use crate::node::connections::Connections;
+use crate::node::connections::{CandidateEpoch, Connections};
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
 use crate::stats::{ConnectionStats, NodeStats};
@@ -332,7 +332,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = new_agent(ice_role);
+        let (mut agent, candidate_epoch) = new_agent(ice_role);
         default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
@@ -351,6 +351,7 @@ where
         let connection = self.init_connection(
             cid,
             agent,
+            candidate_epoch,
             remote,
             preshared_key,
             selected_relay,
@@ -669,7 +670,13 @@ where
         to_add: &BTreeSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
-        // First, invalidate all candidates from relays that we should stop using.
+        // First, bump the candidate epoch.
+        //
+        // Changes to our relays are semantically equivalent to roaming network interfaces.
+        // Bumping the epoch ensures the remote can detect this.
+        self.connections.bump_candidate_epoch();
+
+        // Second, invalidate all candidates from relays that we should stop using.
         for rid in &to_remove {
             let Some(allocation) = self.allocations.remove_by_id(rid) else {
                 tracing::debug!(%rid, "Cannot delete unknown allocation");
@@ -686,7 +693,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, insert new relays.
+        // Third, insert new relays.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -718,8 +725,6 @@ where
                         &previous,
                         &mut self.pending_events,
                     );
-
-                    tracing::info!(%rid, address = ?server, "Replaced TURN server")
                 }
             }
         }
@@ -729,7 +734,7 @@ where
             .map(|(id, _, _, _, _)| *id)
             .collect::<BTreeSet<_>>();
 
-        // Third, check if other relays are still present.
+        // Fourth, check if other relays are still present.
         for (_, previous_allocation) in self
             .allocations
             .iter_mut()
@@ -738,7 +743,7 @@ where
             previous_allocation.refresh(now);
         }
 
-        // Fourth, migrate existing connections away from removed relays.
+        // Fifth, migrate existing connections away from removed relays.
         self.connections.migrate_relays(
             to_remove.into_iter(),
             &self.allocations,
@@ -753,6 +758,7 @@ where
         &mut self,
         cid: TId,
         mut agent: IceAgent,
+        candidate_epoch: CandidateEpoch,
         remote: PublicKey,
         key: x25519::StaticSecret,
         relay: RId,
@@ -794,6 +800,7 @@ where
 
         Connection {
             agent,
+            candidate_epoch,
             index,
             tunnel,
             next_wg_timer_update: now,
@@ -1251,6 +1258,7 @@ impl fmt::Debug for Transmit {
 #[derive(derive_more::Debug)]
 struct Connection<RId> {
     agent: IceAgent,
+    candidate_epoch: CandidateEpoch,
 
     index: Index,
     #[debug(skip)]
@@ -2000,12 +2008,16 @@ where
     Some(transmit)
 }
 
-fn new_agent(role: IceRole) -> IceAgent {
+fn new_agent(role: IceRole) -> (IceAgent, CandidateEpoch) {
+    let candidate_epoch = CandidateEpoch::default();
+
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
     agent.set_timing_advance(Duration::ZERO);
+    agent.set_max_stun_rto(Duration::from_secs(25));
+    agent.set_local_preference(connections::LocalPreference::new(candidate_epoch.clone()));
 
-    agent
+    (agent, candidate_epoch)
 }
 
 /// A session ID is constant for as long as a [`Node`] is operational.
@@ -2038,7 +2050,7 @@ mod tests {
 
     #[test]
     fn client_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2049,7 +2061,7 @@ mod tests {
     // otherwise we cannot migrate an existing tunnel to a new candidate pair.
     #[test]
     fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2058,7 +2070,7 @@ mod tests {
 
     #[test]
     fn client_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::client_idle().apply(&mut agent);
 
@@ -2067,7 +2079,7 @@ mod tests {
 
     #[test]
     fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::server_default().apply(&mut agent);
 
@@ -2076,7 +2088,7 @@ mod tests {
 
     #[test]
     fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _) = new_agent(IceRole::Controlling);
 
         IceConfig::server_idle().apply(&mut agent);
 

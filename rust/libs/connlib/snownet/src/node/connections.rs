@@ -3,6 +3,7 @@ use std::{
     fmt,
     hash::Hash,
     iter,
+    sync::{Arc, atomic::AtomicU32},
     time::{Duration, Instant},
 };
 
@@ -175,6 +176,12 @@ where
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
         self.established.iter_mut().map(|(id, c)| (*id, c))
+    }
+
+    pub(crate) fn bump_candidate_epoch(&mut self) {
+        for c in self.established.values_mut() {
+            c.candidate_epoch.inc();
+        }
     }
 
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
@@ -597,6 +604,7 @@ mod tests {
 
         Connection {
             agent: IceAgent::new(is::IceCreds::new()),
+            candidate_epoch: CandidateEpoch::default(), // Not connected to the agent but doesn't matter because this is a unit-test.
             index: new_local,
             tunnel: Tunn::new_at(
                 private,
@@ -629,5 +637,55 @@ mod tests {
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),
         }
+    }
+}
+
+/// Models the current epoch of our candidates.
+///
+/// ICE selects the best candidate to use based on the concept of "priority".
+/// The priority of a candidate pair is calculated based on the priority of the two candidates and some other variables.
+/// Each agent can additionally define a "local preference" that is taken into account whenever the priority of a candidate is calculated.
+///
+/// We use this feature of local preference to model candidates of different epochs
+/// where an epoch is roughly equivalent to the time a device is connected to a particular network.
+///
+/// The epoch starts at 0 and can be incremented at will.
+///
+/// A candidate with a higher epoch will therefore be immediately preferred over a candidate of the same kind from a previous epoch.
+/// We use this to e.g. switch from one server-reflexive candidate to another one when we roam without having to reset the ICE state
+/// on the remote side.
+/// In other words, either side of the connection can keep sending new candidates and if any of the newly formed candidate pairs are
+/// successful, the connection will immediately migrate over.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CandidateEpoch {
+    epoch: Arc<AtomicU32>,
+}
+
+impl CandidateEpoch {
+    fn current(&self) -> u32 {
+        self.epoch.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn inc(&self) {
+        self.epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        tracing::debug!(current = %self.current(), "Bumping candidate epoch");
+    }
+}
+
+pub(crate) struct LocalPreference {
+    epoch: CandidateEpoch,
+}
+
+impl LocalPreference {
+    pub(crate) fn new(epoch: CandidateEpoch) -> Self {
+        Self { epoch }
+    }
+}
+
+impl is::LocalPreference for LocalPreference {
+    fn calculate(&self, c: &is::Candidate, same_kind: usize) -> u32 {
+        is::default_local_preference(c, same_kind) + self.epoch.current()
     }
 }
