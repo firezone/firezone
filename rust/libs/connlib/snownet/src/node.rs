@@ -1899,6 +1899,20 @@ where
     where
         TId: fmt::Display,
     {
+        if let Some(c) = self
+            .agent
+            .remote_candidates()
+            .filter(|c| c.kind() == candidate.kind())
+            .filter(|c| c.addr().is_ipv4() == candidate.addr().is_ipv4())
+            .max_by_key(|c| c.prio())
+            && c.prio() < candidate.prio()
+        {
+            // This heuristic is not 100% fool-proof but restarting ICE is idempotent.
+
+            tracing::debug!("Remote likely advanced ICE epoch");
+            self.ice_restart();
+        }
+
         self.agent.add_remote_candidate(candidate);
         self.candidate_timeout = None;
 
@@ -1953,6 +1967,29 @@ where
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
+    }
+
+    /// Our flavour of "ICE restart".
+    ///
+    /// Typically during an ICE restart, the remote credentials and candidates are cleared.
+    /// This however would require the remote to resend those to us again.
+    /// In Firezone, ICE credentials are deterministically assigned based on parties' session keys.
+    /// Those should never change during a given Firezone session.
+    ///
+    /// The candidates may be the same in case the roaming event was triggered erroneously.
+    /// Even if they are not, recreating the candidate pairs just clears the internal nomination state
+    /// and therefore both new and old candidates are considered equal and the new best one will win.
+    fn ice_restart(&mut self) {
+        if self.agent.state() == IceConnectionState::Checking {
+            tracing::trace!("Agent is already checking candidates, skipping ICE restart");
+            return;
+        }
+
+        self.agent.recreate_candidate_pairs();
+
+        self.first_handshake_completed_at = None;
+        self.last_proactive_handshake_sent_at = None;
+        self.poll_timeout_cache = TimeoutCache::default();
     }
 }
 
