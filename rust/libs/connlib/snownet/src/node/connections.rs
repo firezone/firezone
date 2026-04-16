@@ -283,10 +283,6 @@ where
         self.established.keys().copied()
     }
 
-    pub(crate) fn all_idle(&self) -> bool {
-        self.established.values().all(|c| c.is_idle())
-    }
-
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
@@ -627,8 +623,6 @@ mod tests {
             first_handshake_completed_at: None,
             buffer: Default::default(),
             buffer_pool: BufferPool::new(0, "test"),
-            default_ice_config: IceConfig::client_default(),
-            idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),
         }
     }

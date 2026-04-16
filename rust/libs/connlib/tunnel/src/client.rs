@@ -728,8 +728,6 @@ impl ClientState {
             client_ice.into(),
             gateway_ice.into(),
             snownet::IceRole::Controlling,
-            snownet::IceConfig::client_default(),
-            snownet::IceConfig::client_idle(),
             now,
         ) {
             Ok(()) => {}
@@ -821,8 +819,6 @@ impl ClientState {
             local_client_ice.into(),
             remote_client_ice.into(),
             ice_role.into(),
-            snownet::IceConfig::client_default(),
-            snownet::IceConfig::client_default(),
             now,
         )?;
 
