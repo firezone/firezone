@@ -214,8 +214,7 @@ where
     ///
     /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
     pub fn reset(&mut self, now: Instant) {
-        self.allocations.clear();
-
+        self.allocations.reset(now);
         self.buffered_transmits.clear();
 
         self.pending_events.clear();
