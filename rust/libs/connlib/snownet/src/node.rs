@@ -296,17 +296,14 @@ where
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
 
-            // Re-seed connection with all candidates.
-            let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
-
             // Tell the remote about all of them.
             self.pending_events.extend(
-                std::iter::empty()
-                    .chain(current_candidates)
-                    .chain(new_candidates)
+                current_candidates
+                    .into_iter()
                     .map(|candidate| new_ice_candidate_event(cid, candidate)),
             );
+
+            c.ice_restart();
 
             // Initiate a new WG session.
             //
@@ -1069,20 +1066,6 @@ where
 
         Ok(rid)
     }
-}
-
-/// Seeds the agent with all local candidates, returning an iterator of all candidates that should be signalled to the remote.
-fn seed_agent_with_local_candidates<'a, RId>(
-    selected_relay: RId,
-    agent: &'a mut IceAgent,
-    allocations: &Allocations<RId>,
-) -> impl Iterator<Item = Candidate> + use<'a, RId>
-where
-    RId: Ord + fmt::Display + Copy,
-{
-    allocations
-        .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| agent.add_local_candidate(c).cloned())
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
