@@ -6,13 +6,14 @@ defmodule Portal.Google.Sync do
   1. Upsert seed groups (based on group_sync_mode), collect group idp_ids.
   2. Upsert org units (if orgunit_sync_enabled), collect {idp_id, path} pairs.
   3. Org unit member sync: per org unit, fetch users, upsert identities directly
-     from the users payload (deduped via seen_user_ids), and upsert memberships.
+     from the users payload (deduped via synced_user_ids), and upsert memberships.
   4. BFS group member sync: for each group, fetch direct members, upsert identities,
      discover GROUP-type members as sub-groups (fetching each via get_group for its
      display name), upsert them, and recurse. We collect direct user memberships and
      the group graph during traversal, then compute flattened memberships in-memory
-     and upsert them in batches. A `seen_user_ids` set is threaded through to skip
-     redundant batch_get_users calls for users already fetched in an earlier group.
+     and upsert them in batches. Separate `fetched_user_ids` and `synced_user_ids`
+     sets are threaded through traversal so users are fetched at most once even if
+     they are later filtered out as suspended or archived.
   Finally, delete everything with a stale last_synced_at.
   """
   use Oban.Worker,
@@ -165,8 +166,8 @@ defmodule Portal.Google.Sync do
 
     # Phase 3: Org unit member sync.
     # Per org unit: fetch users → upsert identities directly from user payload (deduped)
-    # → upsert memberships. Returns the set of user IDs already synced.
-    seen_user_ids =
+    # → upsert memberships. Returns the set of active user IDs already synced.
+    synced_user_ids =
       sync_org_unit_members_phase(
         directory,
         access_token,
@@ -183,7 +184,7 @@ defmodule Portal.Google.Sync do
       access_token,
       synced_at,
       group_idp_ids,
-      seen_user_ids
+      synced_user_ids
     )
 
     :ok
@@ -321,13 +322,14 @@ defmodule Portal.Google.Sync do
          access_token,
          synced_at,
          seed_group_idp_ids,
-         seen_user_ids
+         synced_user_ids
        ) do
     visited = MapSet.new(seed_group_idp_ids)
     queue = :queue.from_list(seed_group_idp_ids)
 
     initial_state = %{
-      seen_user_ids: seen_user_ids,
+      fetched_user_ids: synced_user_ids,
+      synced_user_ids: synced_user_ids,
       direct_users_by_group: %{},
       children_by_group: %{}
     }
@@ -341,7 +343,7 @@ defmodule Portal.Google.Sync do
       final_state.direct_users_by_group
     )
 
-    final_state.seen_user_ids
+    final_state.synced_user_ids
   end
 
   defp do_bfs(directory, access_token, synced_at, queue, visited, state) do
@@ -377,20 +379,22 @@ defmodule Portal.Google.Sync do
     {user_tuples, sub_group_ids} = fetch_group_members(directory, access_token, group_idp_id)
     direct_user_ids = user_ids_set_from_memberships(user_tuples)
 
-    next_seen_user_ids =
+    {next_fetched_user_ids, next_synced_user_ids, synced_direct_user_ids} =
       sync_new_user_identities(
         directory,
         access_token,
         synced_at,
         direct_user_ids,
-        state.seen_user_ids
+        state.fetched_user_ids,
+        state.synced_user_ids
       )
 
     next_state =
       state
-      |> put_group_direct_users(group_idp_id, direct_user_ids)
+      |> put_group_direct_users(group_idp_id, synced_direct_user_ids)
       |> put_group_children(group_idp_id, sub_group_ids)
-      |> Map.put(:seen_user_ids, next_seen_user_ids)
+      |> Map.put(:fetched_user_ids, next_fetched_user_ids)
+      |> Map.put(:synced_user_ids, next_synced_user_ids)
 
     {next_queue, next_visited} =
       enqueue_discovered_sub_groups(
@@ -756,14 +760,16 @@ defmodule Portal.Google.Sync do
           count: length(users)
         )
 
+        syncable_users = Enum.filter(users, &syncable_user?(&1, directory.id))
+
         tuples =
-          Enum.map(users, fn user ->
+          Enum.map(syncable_users, fn user ->
             validate_ou_member!(user, ou_idp_id, directory)
             {ou_idp_id, user["id"]}
           end)
 
         users_by_id =
-          Enum.reduce(users, users_by_id_acc, fn user, acc ->
+          Enum.reduce(syncable_users, users_by_id_acc, fn user, acc ->
             Map.put(acc, user["id"], user)
           end)
 
@@ -774,37 +780,11 @@ defmodule Portal.Google.Sync do
     end)
   end
 
-  # Identity sync (shared by group BFS and org unit phases)
-
-  defp sync_identities_for_users(_directory, _access_token, _synced_at, []), do: :ok
-
-  defp sync_identities_for_users(directory, access_token, synced_at, user_idp_ids) do
-    Logger.debug("Fetching user details for #{length(user_idp_ids)} users via batch API",
-      google_directory_id: directory.id
-    )
-
-    users =
-      case Google.APIClient.batch_get_users(access_token, user_idp_ids) do
-        {:ok, users} ->
-          users
-
-        {:error, error} ->
-          raise Google.SyncError,
-            error: error,
-            directory_id: directory.id,
-            step: :batch_get_users
-      end
-
-    identities = Enum.map(users, &map_user_to_identity(&1, directory.id))
-
-    identities
-    |> Enum.chunk_every(@db_batch_size)
-    |> Enum.each(&batch_upsert_identities(directory, synced_at, &1))
-  end
-
   defp sync_identities_for_user_payloads(_directory, _synced_at, []), do: :ok
 
   defp sync_identities_for_user_payloads(directory, synced_at, users) do
+    users = Enum.filter(users, &syncable_user?(&1, directory.id))
+
     identities = Enum.map(users, &map_user_to_identity(&1, directory.id))
 
     identities
@@ -812,14 +792,36 @@ defmodule Portal.Google.Sync do
     |> Enum.each(&batch_upsert_identities(directory, synced_at, &1))
   end
 
-  defp sync_new_user_identities(directory, access_token, synced_at, user_ids, seen_user_ids) do
+  defp sync_new_user_identities(
+         directory,
+         access_token,
+         synced_at,
+         user_ids,
+         fetched_user_ids,
+         synced_user_ids
+       ) do
+    already_synced_user_ids = MapSet.intersection(user_ids, synced_user_ids)
+
     new_user_idp_ids =
       user_ids
-      |> Enum.reject(&MapSet.member?(seen_user_ids, &1))
+      |> Enum.reject(&MapSet.member?(fetched_user_ids, &1))
 
-    sync_identities_for_users(directory, access_token, synced_at, new_user_idp_ids)
+    syncable_users = fetch_syncable_users(directory, access_token, new_user_idp_ids)
+    sync_identities_for_user_payloads(directory, synced_at, syncable_users)
 
-    Enum.reduce(new_user_idp_ids, seen_user_ids, &MapSet.put(&2, &1))
+    newly_synced_user_ids =
+      syncable_users
+      |> Enum.map(& &1["id"])
+      |> MapSet.new()
+
+    next_fetched_user_ids =
+      Enum.reduce(new_user_idp_ids, fetched_user_ids, &MapSet.put(&2, &1))
+
+    next_synced_user_ids =
+      Enum.reduce(newly_synced_user_ids, synced_user_ids, &MapSet.put(&2, &1))
+
+    {next_fetched_user_ids, next_synced_user_ids,
+     MapSet.union(already_synced_user_ids, newly_synced_user_ids)}
   end
 
   defp user_ids_from_membership_tuples(user_tuples) do
@@ -834,6 +836,40 @@ defmodule Portal.Google.Sync do
     memberships
     |> Enum.chunk_every(@db_batch_size)
     |> Enum.each(&batch_upsert_memberships(directory, synced_at, &1))
+  end
+
+  defp fetch_syncable_users(_directory, _access_token, []), do: []
+
+  defp fetch_syncable_users(directory, access_token, user_idp_ids) do
+    users =
+      case Google.APIClient.batch_get_users(access_token, user_idp_ids) do
+        {:ok, users} ->
+          users
+
+        {:error, error} ->
+          raise Google.SyncError,
+            error: error,
+            directory_id: directory.id,
+            step: :batch_get_users
+      end
+
+    Enum.filter(users, &syncable_user?(&1, directory.id))
+  end
+
+  defp syncable_user?(user, directory_id) do
+    case {Map.fetch(user, "suspended"), Map.fetch(user, "archived")} do
+      {{:ok, suspended}, {:ok, archived}} ->
+        suspended != true and archived != true
+
+      _ ->
+        Logger.warning("Skipping Google user with missing suspended/archived flags",
+          google_directory_id: directory_id,
+          google_user_id: Map.get(user, "id", "unknown"),
+          google_user_email: Map.get(user, "primaryEmail", Map.get(user, "email", "unknown"))
+        )
+
+        false
+    end
   end
 
   defp map_user_to_identity(user, directory_id) do

@@ -1,5 +1,6 @@
 defmodule Portal.Entra.APIClientTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
 
   alias Portal.Entra.APIClient
 
@@ -283,27 +284,31 @@ defmodule Portal.Entra.APIClientTest do
       Req.Test.expect(APIClient, fn conn ->
         # Verify the transitive members endpoint is being called
         assert conn.method == "GET"
-        assert conn.request_path == "/v1.0/groups/#{group_id}/transitiveMembers"
+
+        assert conn.request_path ==
+                 "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
+
+        assert {"consistencylevel", "eventual"} in conn.req_headers
 
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:members_request, conn.query_params})
 
         Req.Test.json(conn, %{
           "value" => [
-            %{
+            active_entra_user(%{
               "id" => "user1",
               "displayName" => "User One",
               "mail" => "user1@example.com",
               "userPrincipalName" => "user1@example.com",
               "givenName" => "User",
               "surname" => "One"
-            },
-            %{
+            }),
+            active_entra_user(%{
               "id" => "user2",
               "displayName" => "User Two",
               "mail" => "user2@example.com",
               "userPrincipalName" => "user2@example.com"
-            }
+            })
           ]
         })
       end)
@@ -315,10 +320,12 @@ defmodule Portal.Entra.APIClientTest do
       assert [[%{"id" => "user1"}, %{"id" => "user2"}]] = result
 
       assert_receive {:members_request, query_params}
+      assert query_params["$count"] == "true"
+      assert query_params["$filter"] == "accountEnabled eq true"
       assert query_params["$top"] == "999"
 
       assert query_params["$select"] ==
-               "id,displayName,mail,userPrincipalName,givenName,surname"
+               "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
     end
 
     test "streams multiple pages of members" do
@@ -336,13 +343,13 @@ defmodule Portal.Entra.APIClientTest do
           case current_page do
             0 ->
               %{
-                "value" => [%{"id" => "user1"}],
+                "value" => [active_entra_user(%{"id" => "user1"})],
                 "@odata.nextLink" =>
-                  "https://graph.microsoft.com/v1.0/groups/#{group_id}/transitiveMembers?$skiptoken=xyz"
+                  "https://graph.microsoft.com/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user?$skiptoken=xyz"
               }
 
             1 ->
-              %{"value" => [%{"id" => "user2"}]}
+              %{"value" => [active_entra_user(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -353,6 +360,55 @@ defmodule Portal.Entra.APIClientTest do
         |> Enum.to_list()
 
       assert [[%{"id" => "user1"}], [%{"id" => "user2"}]] = result
+    end
+
+    test "filters disabled users from transitive member pages" do
+      group_id = "group_123"
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "value" => [
+            %{"id" => "user1", "accountEnabled" => true},
+            %{"id" => "user2", "accountEnabled" => false}
+          ]
+        })
+      end)
+
+      result =
+        APIClient.stream_group_transitive_members(@test_access_token, group_id)
+        |> Enum.to_list()
+
+      assert [[%{"id" => "user1"}]] = result
+    end
+
+    test "logs and skips transitive members missing accountEnabled" do
+      group_id = "group_123"
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "value" => [
+            %{"id" => "user1", "displayName" => "User One", "mail" => "user1@example.com"},
+            %{
+              "id" => "user2",
+              "displayName" => "User Two",
+              "mail" => "user2@example.com",
+              "accountEnabled" => true
+            }
+          ]
+        })
+      end)
+
+      log =
+        capture_log(fn ->
+          result =
+            APIClient.stream_group_transitive_members(@test_access_token, group_id)
+            |> Enum.to_list()
+
+          assert [[%{"id" => "user2", "accountEnabled" => true}]] = result
+        end)
+
+      assert log =~ "Skipping Entra user with missing accountEnabled field"
+      assert log =~ "user1"
     end
   end
 
@@ -377,7 +433,8 @@ defmodule Portal.Entra.APIClientTest do
               "body" => %{
                 "id" => "user1",
                 "displayName" => "User One",
-                "mail" => "user1@example.com"
+                "mail" => "user1@example.com",
+                "accountEnabled" => true
               }
             },
             %{
@@ -386,7 +443,8 @@ defmodule Portal.Entra.APIClientTest do
               "body" => %{
                 "id" => "user2",
                 "displayName" => "User Two",
-                "mail" => "user2@example.com"
+                "mail" => "user2@example.com",
+                "accountEnabled" => true
               }
             },
             %{
@@ -395,7 +453,8 @@ defmodule Portal.Entra.APIClientTest do
               "body" => %{
                 "id" => "user3",
                 "displayName" => "User Three",
-                "mail" => "user3@example.com"
+                "mail" => "user3@example.com",
+                "accountEnabled" => true
               }
             }
           ]
@@ -413,7 +472,7 @@ defmodule Portal.Entra.APIClientTest do
 
       assert_receive {:batch_request, batch_request}
       assert length(batch_request["requests"]) == 3
-      expected_select = "id,displayName,mail,userPrincipalName,givenName,surname"
+      expected_select = "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
 
       Enum.zip(batch_request["requests"], user_ids)
       |> Enum.each(fn {request, user_id} ->
@@ -435,7 +494,8 @@ defmodule Portal.Entra.APIClientTest do
               "body" => %{
                 "id" => "user1",
                 "displayName" => "User One",
-                "mail" => "user1@example.com"
+                "mail" => "user1@example.com",
+                "accountEnabled" => true
               }
             },
             %{
@@ -452,6 +512,85 @@ defmodule Portal.Entra.APIClientTest do
       assert {:ok, users} = APIClient.batch_get_users(@test_access_token, user_ids)
       assert length(users) == 1
       assert Enum.at(users, 0)["id"] == "user1"
+    end
+
+    test "filters disabled users from successful batch results" do
+      user_ids = ["user1", "user2"]
+
+      Req.Test.expect(APIClient, fn conn ->
+        batch_response = %{
+          "responses" => [
+            %{
+              "id" => "1",
+              "status" => 200,
+              "body" => %{
+                "id" => "user1",
+                "displayName" => "User One",
+                "mail" => "user1@example.com",
+                "accountEnabled" => true
+              }
+            },
+            %{
+              "id" => "2",
+              "status" => 200,
+              "body" => %{
+                "id" => "user2",
+                "displayName" => "User Two",
+                "mail" => "user2@example.com",
+                "accountEnabled" => false
+              }
+            }
+          ]
+        }
+
+        Req.Test.json(conn, batch_response)
+      end)
+
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, user_ids)
+      assert Enum.map(users, & &1["id"]) == ["user1"]
+    end
+
+    test "logs and skips batch users missing accountEnabled" do
+      user_ids = ["user1", "user2"]
+
+      Req.Test.expect(APIClient, fn conn ->
+        batch_response = %{
+          "responses" => [
+            %{
+              "id" => "1",
+              "status" => 200,
+              "body" => %{
+                "id" => "user1",
+                "displayName" => "User One",
+                "mail" => "user1@example.com",
+                "userPrincipalName" => "user1@example.com"
+              }
+            },
+            %{
+              "id" => "2",
+              "status" => 200,
+              "body" => %{
+                "id" => "user2",
+                "displayName" => "User Two",
+                "mail" => "user2@example.com",
+                "userPrincipalName" => "user2@example.com",
+                "accountEnabled" => true
+              }
+            }
+          ]
+        }
+
+        Req.Test.json(conn, batch_response)
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, users} = APIClient.batch_get_users(@test_access_token, user_ids)
+          assert Enum.map(users, & &1["id"]) == ["user2"]
+        end)
+
+      assert log =~ "Skipping Entra user with missing accountEnabled field"
+      assert log =~ "user1"
     end
 
     test "returns error when all batch requests fail" do
@@ -646,5 +785,9 @@ defmodule Portal.Entra.APIClientTest do
 
       assert [{:error, %Req.TransportError{reason: :timeout}}] = result
     end
+  end
+
+  defp active_entra_user(attrs) do
+    Map.put_new(attrs, "accountEnabled", true)
   end
 end

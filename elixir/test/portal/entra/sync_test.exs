@@ -95,7 +95,8 @@ defmodule Portal.Entra.SyncTest do
                     "mail" => "direct@example.com",
                     "userPrincipalName" => "direct@example.com",
                     "givenName" => "Direct",
-                    "surname" => "User"
+                    "surname" => "User",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -104,7 +105,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "transitiveMembers") ->
             Req.Test.json(conn, %{
               "value" => [
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice_123",
                   "displayName" => "Alice Smith",
@@ -112,14 +113,14 @@ defmodule Portal.Entra.SyncTest do
                   "userPrincipalName" => "alice@example.com",
                   "givenName" => "Alice",
                   "surname" => "Smith"
-                },
-                %{
+                }),
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_bob_123",
                   "displayName" => "Bob Jones",
                   "mail" => "bob@example.com",
                   "userPrincipalName" => "bob@example.com"
-                }
+                })
               ]
             })
 
@@ -186,26 +187,26 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_sales_123/transitiveMembers") ->
             Req.Test.json(conn, %{
               "value" => [
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_carol_123",
                   "displayName" => "Carol Davis",
                   "mail" => "carol@example.com",
                   "userPrincipalName" => "carol@example.com"
-                }
+                })
               ]
             })
 
           String.contains?(path, "group_eng_123/transitiveMembers") ->
             Req.Test.json(conn, %{
               "value" => [
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_dave_123",
                   "displayName" => "Dave Wilson",
                   "mail" => "dave@example.com",
                   "userPrincipalName" => "dave@example.com"
-                }
+                })
               ]
             })
 
@@ -233,6 +234,207 @@ defmodule Portal.Entra.SyncTest do
       # Verify memberships created (2 memberships)
       memberships = Repo.all(Membership)
       assert length(memberships) == 2
+    end
+
+    test "skips disabled users from direct assignments and group memberships" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: false)
+
+      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
+      directory_sync_client_id = api_client_config[:client_id]
+
+      auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
+      auth_provider_client_id = auth_provider_config[:client_id]
+
+      Req.Test.expect(APIClient, 20, fn %{request_path: path, query_string: query} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => "test_token",
+              "token_type" => "Bearer",
+              "expires_in" => 3600
+            })
+
+          path == "/v1.0/servicePrincipals" ->
+            params = URI.decode_query(query)
+            filter = params["$filter"]
+
+            cond do
+              String.contains?(filter, directory_sync_client_id) ->
+                Req.Test.json(conn, %{
+                  "value" => [
+                    %{"id" => @test_service_principal_id, "appId" => directory_sync_client_id}
+                  ]
+                })
+
+              String.contains?(filter, auth_provider_client_id) ->
+                Req.Test.json(conn, %{"value" => []})
+
+              true ->
+                Req.Test.json(conn, %{"value" => []})
+            end
+
+          String.contains?(path, "appRoleAssignedTo") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{
+                  "id" => "assignment1",
+                  "principalId" => "user_direct_active",
+                  "principalType" => "User",
+                  "principalDisplayName" => "Direct Active"
+                },
+                %{
+                  "id" => "assignment2",
+                  "principalId" => "user_direct_disabled",
+                  "principalType" => "User",
+                  "principalDisplayName" => "Direct Disabled"
+                },
+                %{
+                  "id" => "assignment3",
+                  "principalId" => "group_eng_123",
+                  "principalType" => "Group",
+                  "principalDisplayName" => "Engineering"
+                }
+              ]
+            })
+
+          String.ends_with?(path, "/$batch") ->
+            Req.Test.json(conn, %{
+              "responses" => [
+                %{
+                  "id" => "1",
+                  "status" => 200,
+                  "body" => %{
+                    "id" => "user_direct_active",
+                    "displayName" => "Direct Active",
+                    "mail" => "active-direct@example.com",
+                    "userPrincipalName" => "active-direct@example.com",
+                    "givenName" => "Direct",
+                    "surname" => "Active",
+                    "accountEnabled" => true
+                  }
+                },
+                %{
+                  "id" => "2",
+                  "status" => 200,
+                  "body" => %{
+                    "id" => "user_direct_disabled",
+                    "displayName" => "Direct Disabled",
+                    "mail" => "disabled-direct@example.com",
+                    "userPrincipalName" => "disabled-direct@example.com",
+                    "givenName" => "Direct",
+                    "surname" => "Disabled",
+                    "accountEnabled" => false
+                  }
+                }
+              ]
+            })
+
+          String.contains?(path, "transitiveMembers") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_group_active",
+                  "displayName" => "Group Active",
+                  "mail" => "group-active@example.com",
+                  "userPrincipalName" => "group-active@example.com",
+                  "givenName" => "Group",
+                  "surname" => "Active",
+                  "accountEnabled" => true
+                },
+                %{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_group_disabled",
+                  "displayName" => "Group Disabled",
+                  "mail" => "group-disabled@example.com",
+                  "userPrincipalName" => "group-disabled@example.com",
+                  "givenName" => "Group",
+                  "surname" => "Disabled",
+                  "accountEnabled" => false
+                }
+              ]
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+
+      identities = Repo.all(ExternalIdentity)
+      identity_emails = Enum.map(identities, & &1.email) |> Enum.sort()
+      assert identity_emails == ["active-direct@example.com", "group-active@example.com"]
+
+      memberships = Repo.all(Membership)
+      assert length(memberships) == 1
+    end
+
+    test "deletes previously synced disabled users on a later sync" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: false)
+
+      expect_entra_direct_assignment_sync([
+        %{
+          "id" => "user_active_123",
+          "displayName" => "Active User",
+          "mail" => "active@example.com",
+          "userPrincipalName" => "active@example.com",
+          "givenName" => "Active",
+          "surname" => "User",
+          "accountEnabled" => true
+        },
+        %{
+          "id" => "user_disable_123",
+          "displayName" => "Disable Me",
+          "mail" => "disable-me@example.com",
+          "userPrincipalName" => "disable-me@example.com",
+          "givenName" => "Disable",
+          "surname" => "Me",
+          "accountEnabled" => true
+        }
+      ])
+
+      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+
+      disabled_identity =
+        Repo.get_by!(ExternalIdentity,
+          directory_id: directory.id,
+          idp_id: "user_disable_123"
+        )
+
+      disabled_actor = Repo.get_by!(Actor, id: disabled_identity.actor_id)
+
+      expect_entra_direct_assignment_sync([
+        %{
+          "id" => "user_active_123",
+          "displayName" => "Active User",
+          "mail" => "active@example.com",
+          "userPrincipalName" => "active@example.com",
+          "givenName" => "Active",
+          "surname" => "User",
+          "accountEnabled" => true
+        },
+        %{
+          "id" => "user_disable_123",
+          "displayName" => "Disable Me",
+          "mail" => "disable-me@example.com",
+          "userPrincipalName" => "disable-me@example.com",
+          "givenName" => "Disable",
+          "surname" => "Me",
+          "accountEnabled" => false
+        }
+      ])
+
+      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+
+      identities = Repo.all(ExternalIdentity)
+      assert Enum.map(identities, & &1.email) == ["active@example.com"]
+      assert Repo.all(Membership) == []
+
+      refute Repo.get_by(ExternalIdentity, id: disabled_identity.id)
+      refute Repo.get_by(Actor, id: disabled_actor.id)
     end
 
     test "handles missing directory gracefully" do
@@ -337,7 +539,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "new_user_123",
                     "displayName" => "New User",
                     "mail" => "new@example.com",
-                    "userPrincipalName" => "new@example.com"
+                    "userPrincipalName" => "new@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -433,13 +636,13 @@ defmodule Portal.Entra.SyncTest do
             Req.Test.json(conn, %{
               "value" => [
                 # This user should be included
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_123",
                   "displayName" => "Test User",
                   "mail" => "user@example.com",
                   "userPrincipalName" => "user@example.com"
-                },
+                }),
                 # This group should be filtered out
                 %{
                   "@odata.type" => "#microsoft.graph.group",
@@ -521,7 +724,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_123",
                     "displayName" => "Test User",
                     "mail" => nil,
-                    "userPrincipalName" => "testuser@example.onmicrosoft.com"
+                    "userPrincipalName" => "testuser@example.onmicrosoft.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -598,7 +802,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user1_123",
                     "displayName" => "User One",
                     "mail" => "user1@example.com",
-                    "userPrincipalName" => "user1@example.com"
+                    "userPrincipalName" => "user1@example.com",
+                    "accountEnabled" => true
                   }
                 },
                 %{
@@ -727,11 +932,11 @@ defmodule Portal.Entra.SyncTest do
         if String.contains?(path, "transitiveMembers") do
           Req.Test.json(conn, %{
             "value" => [
-              %{
+              active_entra_user(%{
                 "@odata.type" => "#microsoft.graph.user",
                 "displayName" => "User Without ID",
                 "mail" => "user@example.com"
-              }
+              })
             ]
           })
         else
@@ -861,7 +1066,8 @@ defmodule Portal.Entra.SyncTest do
                         "id" => "user_dir_sync_123",
                         "displayName" => "Directory Sync User",
                         "mail" => "dirsync@example.com",
-                        "userPrincipalName" => "dirsync@example.com"
+                        "userPrincipalName" => "dirsync@example.com",
+                        "accountEnabled" => true
                       }
                     }
 
@@ -873,7 +1079,8 @@ defmodule Portal.Entra.SyncTest do
                         "id" => "user_auth_123",
                         "displayName" => "Auth Provider User",
                         "mail" => "authprovider@example.com",
-                        "userPrincipalName" => "authprovider@example.com"
+                        "userPrincipalName" => "authprovider@example.com",
+                        "accountEnabled" => true
                       }
                     }
 
@@ -979,7 +1186,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_engineering_123/transitiveMembers") ->
             Req.Test.json(conn, %{
               "value" => [
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice_123",
                   "displayName" => "Alice Engineer",
@@ -987,8 +1194,8 @@ defmodule Portal.Entra.SyncTest do
                   "userPrincipalName" => "alice@example.com",
                   "givenName" => "Alice",
                   "surname" => "Engineer"
-                },
-                %{
+                }),
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_bob_123",
                   "displayName" => "Bob Engineer",
@@ -996,7 +1203,7 @@ defmodule Portal.Entra.SyncTest do
                   "userPrincipalName" => "bob@example.com",
                   "givenName" => "Bob",
                   "surname" => "Engineer"
-                }
+                })
               ]
             })
 
@@ -1004,7 +1211,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_sales_123/transitiveMembers") ->
             Req.Test.json(conn, %{
               "value" => [
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_carol_123",
                   "displayName" => "Carol Sales",
@@ -1012,7 +1219,7 @@ defmodule Portal.Entra.SyncTest do
                   "userPrincipalName" => "carol@example.com",
                   "givenName" => "Carol",
                   "surname" => "Sales"
-                }
+                })
               ]
             })
 
@@ -1118,7 +1325,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_legacy_123",
                     "displayName" => "Legacy User",
                     "mail" => "legacy@example.com",
-                    "userPrincipalName" => "legacy@example.com"
+                    "userPrincipalName" => "legacy@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -1295,7 +1503,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_123",
                     "displayName" => "Test User",
                     "mail" => "test@example.com",
-                    "userPrincipalName" => "test@example.com"
+                    "userPrincipalName" => "test@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -1823,12 +2032,12 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_123/transitiveMembers") ->
             Req.Test.json(conn, %{
               "value" => [
-                %{
+                active_entra_user(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "displayName" => "User Without ID",
                   "mail" => "user@example.com",
                   "userPrincipalName" => "user@example.com"
-                }
+                })
               ]
             })
 
@@ -1890,7 +2099,8 @@ defmodule Portal.Entra.SyncTest do
                   "body" => %{
                     "displayName" => "Test User",
                     "mail" => "test@example.com",
-                    "userPrincipalName" => "test@example.com"
+                    "userPrincipalName" => "test@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -1958,7 +2168,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_123",
                     "displayName" => "Test User",
                     "mail" => "not-an-email",
-                    "userPrincipalName" => "test@example.com"
+                    "userPrincipalName" => "test@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -2076,20 +2287,22 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_123",
                     "displayName" => "Direct User",
                     "mail" => "direct@example.com",
-                    "userPrincipalName" => "direct@example.com"
+                    "userPrincipalName" => "direct@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
             })
 
           String.contains?(path, "group_123/transitiveMembers") ->
-            duplicate_member = %{
-              "@odata.type" => "#microsoft.graph.user",
-              "id" => "user_123",
-              "displayName" => "Direct User",
-              "mail" => "direct@example.com",
-              "userPrincipalName" => "direct@example.com"
-            }
+            duplicate_member =
+              active_entra_user(%{
+                "@odata.type" => "#microsoft.graph.user",
+                "id" => "user_123",
+                "displayName" => "Direct User",
+                "mail" => "direct@example.com",
+                "userPrincipalName" => "direct@example.com"
+              })
 
             Req.Test.json(conn, %{"value" => [duplicate_member, duplicate_member]})
 
@@ -2156,7 +2369,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_123",
                     "displayName" => "User One",
                     "mail" => "shared@example.com",
-                    "userPrincipalName" => "shared@example.com"
+                    "userPrincipalName" => "shared@example.com",
+                    "accountEnabled" => true
                   }
                 },
                 %{
@@ -2166,7 +2380,8 @@ defmodule Portal.Entra.SyncTest do
                     "id" => "user_456",
                     "displayName" => "User Two",
                     "mail" => "shared@example.com",
-                    "userPrincipalName" => "shared@example.com"
+                    "userPrincipalName" => "shared@example.com",
+                    "accountEnabled" => true
                   }
                 }
               ]
@@ -2266,6 +2481,75 @@ defmodule Portal.Entra.SyncTest do
     {api_client_config[:client_id], auth_provider_config[:client_id]}
   end
 
+  defp expect_entra_direct_assignment_sync(batch_users) do
+    {directory_sync_client_id, auth_provider_client_id} = entra_client_ids()
+
+    Req.Test.expect(APIClient, 5, fn %{request_path: path, query_string: query} = conn ->
+      cond do
+        String.ends_with?(path, "/oauth2/v2.0/token") ->
+          Req.Test.json(conn, %{
+            "access_token" => "test_token",
+            "token_type" => "Bearer",
+            "expires_in" => 3600
+          })
+
+        path == "/v1.0/servicePrincipals" ->
+          params = URI.decode_query(query)
+          filter = params["$filter"]
+
+          cond do
+            String.contains?(filter, directory_sync_client_id) ->
+              Req.Test.json(conn, %{
+                "value" => [
+                  %{"id" => @test_service_principal_id, "appId" => directory_sync_client_id}
+                ]
+              })
+
+            String.contains?(filter, auth_provider_client_id) ->
+              Req.Test.json(conn, %{"value" => []})
+
+            true ->
+              Req.Test.json(conn, %{"value" => []})
+          end
+
+        String.contains?(path, "appRoleAssignedTo") ->
+          Req.Test.json(conn, %{
+            "value" => [
+              %{
+                "id" => "assignment1",
+                "principalId" => "user_active_123",
+                "principalType" => "User",
+                "principalDisplayName" => "Active User"
+              },
+              %{
+                "id" => "assignment2",
+                "principalId" => "user_disable_123",
+                "principalType" => "User",
+                "principalDisplayName" => "Disable Me"
+              }
+            ]
+          })
+
+        String.ends_with?(path, "/$batch") ->
+          responses =
+            batch_users
+            |> Enum.with_index(1)
+            |> Enum.map(fn {user, index} ->
+              %{
+                "id" => Integer.to_string(index),
+                "status" => 200,
+                "body" => active_entra_user(user)
+              }
+            end)
+
+          Req.Test.json(conn, %{"responses" => responses})
+
+        true ->
+          Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+      end
+    end)
+  end
+
   # Helper to receive all messages of a given type
   defp receive_all_messages(tag, acc \\ []) do
     receive do
@@ -2273,5 +2557,9 @@ defmodule Portal.Entra.SyncTest do
     after
       0 -> acc
     end
+  end
+
+  defp active_entra_user(attrs) do
+    Map.put_new(attrs, "accountEnabled", true)
   end
 end

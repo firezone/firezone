@@ -47,7 +47,7 @@ defmodule Portal.Google.SyncTest do
 
     parts =
       Enum.map(users, fn user ->
-        json = JSON.encode!(user)
+        json = user |> active_google_user() |> JSON.encode!()
 
         "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
       end)
@@ -185,11 +185,11 @@ defmodule Portal.Google.SyncTest do
 
         Req.Test.json(conn, %{
           "users" => [
-            %{
+            active_google_user(%{
               "id" => "user1",
               "primaryEmail" => "user1@example.com",
               "name" => %{"fullName" => "User One", "givenName" => "User", "familyName" => "One"}
-            }
+            })
           ]
         })
       end)
@@ -656,6 +656,228 @@ defmodule Portal.Google.SyncTest do
       new_identities = Repo.all(Portal.ExternalIdentity)
       assert length(new_identities) == 1
       assert hd(new_identities).idp_id == "new_user"
+    end
+
+    test "skips suspended and archived users and removes their stale identities" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
+
+      for {email, idp_id} <- [
+            {"suspended@example.com", "suspended_user"},
+            {"archived@example.com", "archived_user"}
+          ] do
+        {:ok, actor} =
+          %Portal.Actor{
+            type: :account_user,
+            account_id: account.id,
+            email: email,
+            name: email,
+            created_by_directory_id: directory.id
+          }
+          |> Repo.insert()
+
+        {:ok, _identity} =
+          %Portal.ExternalIdentity{
+            account_id: account.id,
+            actor_id: actor.id,
+            directory_id: directory.id,
+            idp_id: idp_id,
+            email: email,
+            issuer: "https://accounts.google.com",
+            last_synced_at: old_synced_at
+          }
+          |> Repo.insert()
+      end
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "active_user", "type" => "USER", "email" => "active@example.com"},
+            %{"id" => "suspended_user", "type" => "USER", "email" => "suspended@example.com"},
+            %{"id" => "archived_user", "type" => "USER", "email" => "archived@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "active_user",
+            "primaryEmail" => "active@example.com",
+            "name" => %{"fullName" => "Active User"}
+          },
+          %{
+            "id" => "suspended_user",
+            "primaryEmail" => "suspended@example.com",
+            "name" => %{"fullName" => "Suspended User"},
+            "suspended" => true
+          },
+          %{
+            "id" => "archived_user",
+            "primaryEmail" => "archived@example.com",
+            "name" => %{"fullName" => "Archived User"},
+            "archived" => true
+          }
+        ])
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      identities = Repo.all(Portal.ExternalIdentity)
+      assert Enum.map(identities, & &1.email) == ["active@example.com"]
+
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 1
+
+      refute Repo.get_by(Portal.Actor, email: "suspended@example.com")
+      refute Repo.get_by(Portal.Actor, email: "archived@example.com")
+    end
+
+    test "deletes previously synced suspended users on a later sync" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          group_sync_mode: :all,
+          orgunit_sync_enabled: false
+        )
+
+      expect_google_group_sync_round(
+        [
+          %{"id" => "active_user", "type" => "USER", "email" => "active@example.com"},
+          %{"id" => "user_to_suspend", "type" => "USER", "email" => "suspend-me@example.com"}
+        ],
+        [
+          %{
+            "id" => "active_user",
+            "primaryEmail" => "active@example.com",
+            "name" => %{"fullName" => "Active User"}
+          },
+          %{
+            "id" => "user_to_suspend",
+            "primaryEmail" => "suspend-me@example.com",
+            "name" => %{"fullName" => "Suspend Me"}
+          }
+        ]
+      )
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      suspended_identity =
+        Repo.get_by!(Portal.ExternalIdentity,
+          directory_id: directory.id,
+          idp_id: "user_to_suspend"
+        )
+
+      suspended_actor = Repo.get_by!(Portal.Actor, id: suspended_identity.actor_id)
+
+      expect_google_group_sync_round(
+        [
+          %{"id" => "active_user", "type" => "USER", "email" => "active@example.com"},
+          %{"id" => "user_to_suspend", "type" => "USER", "email" => "suspend-me@example.com"}
+        ],
+        [
+          %{
+            "id" => "active_user",
+            "primaryEmail" => "active@example.com",
+            "name" => %{"fullName" => "Active User"}
+          },
+          %{
+            "id" => "user_to_suspend",
+            "primaryEmail" => "suspend-me@example.com",
+            "name" => %{"fullName" => "Suspend Me"},
+            "suspended" => true
+          }
+        ]
+      )
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      identities = Repo.all(Portal.ExternalIdentity)
+      assert Enum.map(identities, & &1.email) == ["active@example.com"]
+      assert length(Repo.all(Portal.Membership)) == 1
+
+      refute Repo.get_by(Portal.ExternalIdentity, id: suspended_identity.id)
+      refute Repo.get_by(Portal.Actor, id: suspended_actor.id)
+    end
+
+    test "does not refetch suspended users that appear in multiple groups" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"},
+            %{"id" => "group2", "name" => "Operations", "email" => "ops@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "suspended_user", "type" => "USER", "email" => "suspended@example.com"}
+          ]
+        })
+      end)
+
+      # The suspended user should only be fetched once across both groups.
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/batch")
+
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "suspended_user",
+            "primaryEmail" => "suspended@example.com",
+            "name" => %{"fullName" => "Suspended User"},
+            "suspended" => true
+          }
+        ])
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group2/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "suspended_user", "type" => "USER", "email" => "suspended@example.com"}
+          ]
+        })
+      end)
+
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      assert Repo.all(Portal.ExternalIdentity) == []
+      assert Repo.all(Portal.Membership) == []
     end
 
     test "uses legacy service account key when present" do
@@ -1927,7 +2149,9 @@ defmodule Portal.Google.SyncTest do
       end)
 
       Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => [%{"primaryEmail" => "missing-id@example.com"}]})
+        Req.Test.json(conn, %{
+          "users" => [active_google_user(%{"primaryEmail" => "missing-id@example.com"})]
+        })
       end)
 
       assert_raise SyncError, ~r/user missing 'id' field in org unit ou1/, fn ->
@@ -1958,11 +2182,11 @@ defmodule Portal.Google.SyncTest do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "users" => [
-            %{
+            active_google_user(%{
               "id" => "ou_user_1",
               "primaryEmail" => "ou1@example.com",
               "name" => %{"fullName" => "OU User"}
-            }
+            })
           ]
         })
       end)
@@ -2056,5 +2280,35 @@ defmodule Portal.Google.SyncTest do
 
       assert memberships_log =~ "Failed to upsert memberships"
     end
+  end
+
+  defp expect_google_group_sync_round(group_members, batch_users) do
+    Req.Test.expect(APIClient, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+    end)
+
+    Req.Test.expect(APIClient, fn conn ->
+      Req.Test.json(conn, %{
+        "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+      })
+    end)
+
+    Req.Test.expect(APIClient, fn conn ->
+      assert String.contains?(conn.request_path, "/groups/group1/members")
+      Req.Test.json(conn, %{"members" => group_members})
+    end)
+
+    Req.Test.expect(APIClient, fn conn ->
+      assert conn.method == "POST"
+      assert String.contains?(conn.request_path, "/batch")
+
+      respond_with_batch_users(conn, batch_users)
+    end)
+  end
+
+  defp active_google_user(attrs) do
+    attrs
+    |> Map.put_new("suspended", false)
+    |> Map.put_new("archived", false)
   end
 end
