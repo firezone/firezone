@@ -7,11 +7,11 @@ pub(crate) fn ignore_resource_filter() -> bool {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct MaliciousBehaviour {
-    pub ignore_resource_filters: bool,
+    pub(crate) ignore_resource_filters: bool,
 }
 
 impl MaliciousBehaviour {
-    pub fn guard(&self) -> Guard {
+    pub(crate) fn guard(&self) -> Guard {
         FEATURES.with(|f| f.set(*self));
         Guard
     }
