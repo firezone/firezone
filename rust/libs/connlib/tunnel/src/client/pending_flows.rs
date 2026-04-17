@@ -32,12 +32,12 @@ impl PendingFlows {
         let trigger_name = trigger.name();
 
         let Some(resource) = resources_by_id.get(&rid) else {
-            tracing::debug!(%rid, "Resource not found, skipping connection intent");
+            tracing::debug!("Resource not found, skipping connection intent");
             return;
         };
 
         if !is_trigger_allowed(&trigger, resource) {
-            tracing::debug!(%rid, "Trigger filtered by resource filters, dropping");
+            tracing::debug!("Trigger filtered by resource filters, dropping");
             return;
         }
 

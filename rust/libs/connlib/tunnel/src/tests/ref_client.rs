@@ -441,7 +441,9 @@ impl RefClient {
 
             tracing::Span::current().record("resource", tracing::field::display(resource));
 
-            if !self.resource_filter_allows(resource, proto) {
+            if !self.connected_resources().contains(&resource)
+                && !self.resource_filter_allows(resource, proto)
+            {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 return;
             }
@@ -533,6 +535,39 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery, upstream_do53: &[UpstreamDo53]) {
+        if let Some(resource) = self.is_site_specific_dns_query(query) {
+            self.set_resource_online(resource);
+            self.connected_dns_resources.insert(resource);
+            self.expect_dns_response(query);
+
+            return;
+        }
+
+        if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
+            self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
+
+            let proto = match query.transport {
+                DnsTransport::Udp { .. } => Protocol::Udp(53),
+                DnsTransport::Tcp => Protocol::Tcp(53),
+            };
+
+            if !self.connected_resources().contains(&resource)
+                && !self.resource_filter_allows(resource, proto)
+            {
+                tracing::debug!("Resource filter does not allow protocol, dropping");
+                return;
+            }
+
+            self.connect_to_internet_or_cidr_resource(resource);
+            self.set_resource_online(resource);
+
+            return;
+        }
+
+        self.expect_dns_response(query);
+    }
+
+    fn expect_dns_response(&mut self, query: &DnsQuery) {
         self.dns_records
             .entry(query.domain.clone())
             .or_default()
@@ -550,17 +585,6 @@ impl RefClient {
                 self.expected_tcp_dns_handshakes
                     .push_back((query.dns_server.clone(), query.query_id));
             }
-        }
-
-        if let Some(resource) = self.is_site_specific_dns_query(query) {
-            self.set_resource_online(resource);
-            self.connected_dns_resources.insert(resource);
-            return;
-        }
-
-        if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
-            self.connect_to_internet_or_cidr_resource(resource);
-            self.set_resource_online(resource);
         }
     }
 
