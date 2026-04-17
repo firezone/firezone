@@ -29,12 +29,39 @@ fi
 echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
 echo "Git SHA: ${GIT_SHA}"
 
-xcodebuild build \
-    -project Firezone.xcodeproj \
-    -scheme Firezone \
-    -configuration "${CONFIGURATION}" \
-    -sdk macosx \
-    -destination "platform=${PLATFORM},arch=${ARCH}" \
-    CONNLIB_TARGET_DIR="${RUST_TARGET_DIR}" \
-    GIT_SHA="${GIT_SHA}" \
+# PRETTY=1 force on, PRETTY=0 force off, unset = auto-detect xcbeautify
+if [ "${PRETTY:-}" = "0" ]; then
+    USE_PRETTY=false
+elif [ "${PRETTY:-}" = "1" ]; then
+    if ! command -v xcbeautify &>/dev/null; then
+        echo "Warning: PRETTY=1 but xcbeautify not found, install with: brew install xcbeautify" >&2
+        USE_PRETTY=false
+    else
+        USE_PRETTY=true
+    fi
+else
+    if command -v xcbeautify &>/dev/null; then
+        USE_PRETTY=true
+    else
+        USE_PRETTY=false
+    fi
+fi
+
+xcodebuild_args=(
+    build
+    -project Firezone.xcodeproj
+    -scheme Firezone
+    -configuration "${CONFIGURATION}"
+    -sdk macosx
+    -destination "platform=${PLATFORM},arch=${ARCH}"
+    CONNLIB_TARGET_DIR="${RUST_TARGET_DIR}"
+    GIT_SHA="${GIT_SHA}"
     ONLY_ACTIVE_ARCH=YES
+)
+
+if [ "$USE_PRETTY" = true ]; then
+    echo "(using xcbeautify)"
+    xcodebuild "${xcodebuild_args[@]}" 2>&1 | xcbeautify
+else
+    xcodebuild "${xcodebuild_args[@]}"
+fi

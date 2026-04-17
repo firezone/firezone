@@ -9,12 +9,6 @@ import NetworkExtension
 import System
 import os
 
-enum PacketTunnelProviderError: Error {
-  case tunnelConfigurationIsInvalid
-  case firezoneIdIsInvalid
-  case tokenNotFoundInKeychain
-}
-
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
   /// Task for consuming commands from Adapter. Uses CancellableTask for RAII cleanup.
@@ -112,9 +106,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
     let firezoneId = FirezoneId(uuid: rawId)
 
-    guard let apiURL = legacyConfiguration?["apiURL"] ?? tunnelConfiguration?.apiURL,
-      let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
-      let accountSlug = legacyConfiguration?["accountSlug"] ?? tunnelConfiguration?.accountSlug
+    guard let apiURL = tunnelConfiguration?.apiURL ?? legacyConfiguration?["apiURL"],
+      let logFilter = tunnelConfiguration?.logFilter ?? legacyConfiguration?["logFilter"],
+      let accountSlug = tunnelConfiguration?.accountSlug ?? legacyConfiguration?["accountSlug"]
     else {
       completionHandler(PacketTunnelProviderError.tunnelConfigurationIsInvalid)
       return
@@ -123,9 +117,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Telemetry.setEnvironmentOrClose(apiURL)
     Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
-    let enabled = legacyConfiguration?["internetResourceEnabled"]
     let internetResourceEnabled =
-      enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
+      tunnelConfiguration?.internetResourceEnabled
+      ?? (legacyConfiguration?["internetResourceEnabled"].map { $0 == "true" } ?? false)
 
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =

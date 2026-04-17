@@ -37,6 +37,7 @@ xcodebuild build \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$code_sign_identity" \
     PACKET_TUNNEL_PROVIDER_SUFFIX=-systemextension \
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) SYSTEM_EXTENSION' \
     OTHER_CODE_SIGN_FLAGS="--timestamp" \
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
     CONFIGURATION_BUILD_DIR="$temp_dir" \

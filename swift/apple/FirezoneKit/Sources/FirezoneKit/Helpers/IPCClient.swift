@@ -10,7 +10,7 @@ import SystemPackage
 
 // TODO: Use a more abstract IPC protocol to make this less terse
 
-enum IPCClient {
+public enum IPCClient {
   enum Error: Swift.Error {
     case decodeIPCDataFailed
     case noIPCData
@@ -34,7 +34,7 @@ enum IPCClient {
 
   // Auto-connect
   @MainActor
-  static func start(
+  public static func start(
     session: NETunnelProviderSession, configuration: TunnelConfiguration
   ) throws {
     let configData = try encoder.encode(configuration)
@@ -46,7 +46,7 @@ enum IPCClient {
 
   // Sign in
   @MainActor
-  static func start(
+  public static func start(
     session: NETunnelProviderSession, token: String, configuration: TunnelConfiguration
   ) throws {
     let configData = try encoder.encode(configuration)
@@ -59,7 +59,7 @@ enum IPCClient {
   }
 
   @MainActor
-  static func signOut(session: NETunnelProviderSession) async throws {
+  public static func signOut(session: NETunnelProviderSession) async throws {
     let message = ProviderMessage.signOut
     _ = try await sendProviderMessage(session: session, message: message)
 
@@ -153,7 +153,7 @@ enum IPCClient {
   ///
   /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
   /// The caller is responsible for consuming the stream in a task they manage.
-  static func vpnStatusUpdates(
+  public static func vpnStatusUpdates(
     session: NETunnelProviderSession
   ) -> AsyncStream<NEVPNStatus> {
     AsyncStream { continuation in
