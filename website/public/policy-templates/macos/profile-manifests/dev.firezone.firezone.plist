@@ -13,7 +13,7 @@
 	<key>pfm_format_version</key>
 	<integer>1</integer>
 	<key>pfm_last_modified</key>
-	<date>2025-05-23T07:58:48Z</date>
+	<date>2026-04-17T12:29:49Z</date>
 	<key>pfm_platforms</key>
 	<array>
 		<string>macOS</string>
@@ -197,7 +197,17 @@ A profile can consist of payloads with different version numbers. For example, c
 		</dict>
 		<dict>
 			<key>pfm_description</key>
-			<string>Start the Firezone client when the user logs into the machine. In many cases you probably want to configure this using a Managed Login Items payload instead. Requires the Firezone client to be running to take effect. Setting this field will override the user's setting. If unset, defaults to false.</string>
+			<string>Install a LaunchAgent that keeps the Firezone app running and relaunches it if macOS closes it. While this setting is enabled, startOnLogin is also enabled. Setting this field will override the user's setting. If unset, defaults to false.</string>
+			<key>pfm_name</key>
+			<string>keepAppRunning</string>
+			<key>pfm_title</key>
+			<string>Keep app running</string>
+			<key>pfm_type</key>
+			<string>boolean</string>
+		</dict>
+		<dict>
+			<key>pfm_description</key>
+			<string>Start the Firezone client when the user logs into the machine. In many cases you probably want to configure this using a Managed Login Items payload instead. This behavior is also enabled automatically when keepAppRunning is true. Requires the Firezone client to be running to take effect. Setting this field will override the user's setting. If unset, defaults to false.</string>
 			<key>pfm_name</key>
 			<string>startOnLogin</string>
 			<key>pfm_title</key>
@@ -235,6 +245,6 @@ A profile can consist of payloads with different version numbers. For example, c
 	<key>pfm_unique</key>
 	<true/>
 	<key>pfm_version</key>
-	<integer>1</integer>
+	<integer>2</integer>
 </dict>
 </plist>
