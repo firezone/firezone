@@ -74,6 +74,13 @@ public class Configuration: ObservableObject {
     set { defaults.set(newValue, forKey: Keys.disableUpdateCheck) }
   }
 
+  #if os(macOS)
+    var openWifiDiagnosticsOnDisconnect: Bool {
+      get { defaults.bool(forKey: Keys.openWifiDiagnosticsOnDisconnect) }
+      set { defaults.set(newValue, forKey: Keys.openWifiDiagnosticsOnDisconnect) }
+    }
+  #endif
+
   var supportURL: String {
     get { defaults.string(forKey: Keys.supportURL) ?? Self.defaultSupportURL }
     set { defaults.set(newValue, forKey: Keys.supportURL) }
@@ -115,6 +122,7 @@ public class Configuration: ObservableObject {
     static let startOnLogin = "startOnLogin"
     static let disableUpdateCheck = "disableUpdateCheck"
     static let supportURL = "supportURL"
+    static let openWifiDiagnosticsOnDisconnect = "openWifiDiagnosticsOnDisconnect"
   }
 
   private var defaults: UserDefaults

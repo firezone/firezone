@@ -297,6 +297,11 @@ public struct SettingsView: View {
             }
             .toggleStyle(.checkbox)
             .disabled(configuration.isStartOnLoginForced)
+
+            Toggle(isOn: $viewModel.openWifiDiagnosticsOnDisconnect) {
+              Text("Open Wi-Fi Diagnostics when internet connection is lost")
+            }
+            .toggleStyle(.checkbox)
           }
           .padding(10)
           Spacer()

@@ -20,6 +20,9 @@ class SettingsViewModel: ObservableObject {
   @Published var accountSlug: String
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
+  #if os(macOS)
+    @Published var openWifiDiagnosticsOnDisconnect: Bool
+  #endif
 
   init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
@@ -30,6 +33,9 @@ class SettingsViewModel: ObservableObject {
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
+    #if os(macOS)
+      openWifiDiagnosticsOnDisconnect = self.configuration.openWifiDiagnosticsOnDisconnect
+    #endif
 
     Publishers.MergeMany(
       $authURL,
@@ -61,6 +67,15 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
+    #if os(macOS)
+      $openWifiDiagnosticsOnDisconnect
+        .receive(on: RunLoop.main)
+        .sink(receiveValue: { [weak self] _ in
+          self?.updateDerivedState()
+        })
+        .store(in: &cancellables)
+    #endif
+
     updateDerivedState()
   }
 
@@ -73,6 +88,9 @@ class SettingsViewModel: ObservableObject {
       connectOnStart = Configuration.defaultConnectOnStart
     }
     if !configuration.isStartOnLoginForced { startOnLogin = Configuration.defaultStartOnLogin }
+    #if os(macOS)
+      openWifiDiagnosticsOnDisconnect = false
+    #endif
 
     updateDerivedState()
   }
@@ -86,6 +104,7 @@ class SettingsViewModel: ObservableObject {
     configuration.startOnLogin = startOnLogin
 
     #if os(macOS)
+      configuration.openWifiDiagnosticsOnDisconnect = openWifiDiagnosticsOnDisconnect
       try await configuration.updateAppService()
     #endif
 
@@ -125,7 +144,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   func isDefault() -> Bool {
-    return
+    var result =
       ((configuration.isAuthURLForced || authURL == Configuration.defaultAuthURL)
       && (configuration.isApiURLForced || apiURL == Configuration.defaultApiURL)
       && (configuration.isLogFilterForced || logFilter == Configuration.defaultLogFilter)
@@ -133,14 +152,24 @@ class SettingsViewModel: ObservableObject {
       && (configuration.isConnectOnStartForced
         || connectOnStart == Configuration.defaultConnectOnStart)
       && (configuration.isStartOnLoginForced || startOnLogin == Configuration.defaultStartOnLogin))
+    #if os(macOS)
+      result = result && !openWifiDiagnosticsOnDisconnect
+    #endif
+    return result
   }
 
   func isSaved() -> Bool {
-    return
+    var result =
       (authURL == configuration.authURL && apiURL == configuration.apiURL
       && logFilter == configuration.logFilter && accountSlug == configuration.accountSlug
       && connectOnStart == configuration.connectOnStart
       && startOnLogin == configuration.startOnLogin)
+    #if os(macOS)
+      result =
+        result
+        && openWifiDiagnosticsOnDisconnect == configuration.openWifiDiagnosticsOnDisconnect
+    #endif
+    return result
   }
 
   private func updateDerivedState() {

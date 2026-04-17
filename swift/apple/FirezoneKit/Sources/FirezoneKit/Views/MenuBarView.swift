@@ -21,6 +21,14 @@
 
       Divider()
 
+      // Wi-Fi Diagnostics hint when connectivity is lost
+      if store.vpnStatus == .reasserting {
+        Button("Open Wi-Fi Diagnostics…") {
+          store.openWifiDiagnostics()
+        }
+        Divider()
+      }
+
       // Resources (only when connected and not hidden by admin)
       if store.vpnStatus == .connected && !store.configuration.publishedHideResourceList {
         ResourcesSection()

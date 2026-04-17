@@ -59,6 +59,11 @@ public final class Store: ObservableObject {
   // Track which unreachable resource notifications we have already shown
   private var unreachableResources: Set<UnreachableResource> = []
 
+  #if os(macOS)
+    // Track previous VPN status so we only open diagnostics on transition to .reasserting
+    private var previousVPNStatus: NEVPNStatus?
+  #endif
+
   /// UserDefaults instance for persisting GUI state.
   let userDefaults: UserDefaults
 
@@ -244,6 +249,14 @@ public final class Store: ObservableObject {
     }
 
     #if os(macOS)
+      // Open Wi-Fi Diagnostics on transition to .reasserting if the user opted in
+      if newVPNStatus == .reasserting && previousVPNStatus != .reasserting
+        && configuration.openWifiDiagnosticsOnDisconnect
+      {
+        openWifiDiagnostics()
+      }
+      previousVPNStatus = newVPNStatus
+
       // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
       // from the tunnel process, because the UI process is not guaranteed to be alive.
       if vpnStatus == .disconnected {
@@ -439,6 +452,30 @@ public final class Store: ObservableObject {
     }
     try await IPCClient.clearLogs(session: session)
   }
+
+  #if os(macOS)
+    func openWifiDiagnostics() {
+      let appURL = URL(
+        fileURLWithPath:
+          "/System/Library/CoreServices/Applications/Wireless Diagnostics.app"
+      )
+
+      guard FileManager.default.fileExists(atPath: appURL.path) else {
+        Log.warning("Wireless Diagnostics app not found at \(appURL.path)")
+        return
+      }
+
+      Task {
+        do {
+          try await NSWorkspace.shared.openApplication(
+            at: appURL, configuration: .init()
+          )
+        } catch {
+          Log.error(error)
+        }
+      }
+    }
+  #endif
 
   // MARK: Private functions
 
