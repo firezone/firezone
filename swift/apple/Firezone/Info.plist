@@ -27,7 +27,7 @@
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
-	<false/>
+	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
