@@ -417,7 +417,8 @@ impl fmt::Display for UnknownConnection {
 }
 
 fn into_u256(key: [u8; 32]) -> bnum::Uint<32> {
-    bnum::types::U256::from_str_radix(&hex::encode(key), 16).unwrap()
+    bnum::types::U256::from_str_radix(&hex::encode(key), 16)
+        .expect("array of 32 u8's fits into u256")
 }
 
 #[cfg(test)]
