@@ -1859,6 +1859,7 @@ impl ClientState {
             self.log_activating_resource(&new_resource);
         }
 
+        self.drain_stub_resolver_events();
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
