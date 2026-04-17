@@ -833,8 +833,8 @@ impl RefClient {
         at: Instant,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
-            .iter()
-            .filter_map(move |(domain, _)| {
+            .keys()
+            .filter_map(move |domain| {
                 self.dns_resource_by_domain(domain, |_| true)
                     .is_none()
                     .then_some(global_dns_records.domain_ips_iter(domain, at))

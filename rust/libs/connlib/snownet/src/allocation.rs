@@ -2047,11 +2047,7 @@ mod tests {
 
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
-        loop {
-            let Some((timeout, _)) = allocation.poll_timeout() else {
-                break;
-            };
-
+        while let Some((timeout, _)) = allocation.poll_timeout() {
             assert_eq!(expected_backoffs.pop_front().unwrap(), timeout);
 
             assert!(allocation.poll_transmit().is_some());
@@ -2740,11 +2736,7 @@ mod tests {
             start,
         );
 
-        loop {
-            let Some((timeout, _)) = allocation.poll_timeout() else {
-                break;
-            };
-
+        while let Some((timeout, _)) = allocation.poll_timeout() {
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.
@@ -2760,10 +2752,7 @@ mod tests {
     fn allocation_can_be_freed_after_all_requests_time_out() {
         let mut allocation = Allocation::for_test_dual(Instant::now());
 
-        loop {
-            let Some((timeout, _)) = allocation.poll_timeout() else {
-                break;
-            };
+        while let Some((timeout, _)) = allocation.poll_timeout() {
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.
