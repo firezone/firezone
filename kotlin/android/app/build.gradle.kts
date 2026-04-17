@@ -233,7 +233,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.18.1@aar")
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.37.1")
+    implementation("io.sentry:sentry-android:8.38.0")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
