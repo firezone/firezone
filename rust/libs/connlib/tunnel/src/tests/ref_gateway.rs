@@ -2,7 +2,7 @@ use super::{
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
     sim_gateway::SimGateway,
-    sim_net::{Host, dual_ip_stack, host},
+    sim_net::{ExecMutScope, Host, dual_ip_stack, host},
     strategies::latency,
 };
 use crate::{GatewayState, IpConfig};
@@ -63,6 +63,12 @@ impl RefGateway {
     pub fn dns_records(&self) -> &DnsRecords {
         &self.site_specific_dns_records
     }
+}
+
+impl ExecMutScope for RefGateway {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
 }
 
 pub(crate) fn ref_gateway_host(

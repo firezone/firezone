@@ -6,6 +6,7 @@ use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
     InternetResource,
 };
+use crate::malicious_behaviour::MaliciousBehaviour;
 use crate::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
 use crate::tests::coin;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
@@ -74,6 +75,12 @@ fn srv_record() -> impl Strategy<Value = OwnedRecordData> {
 
 pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
     (10..max).prop_map(Duration::from_millis)
+}
+
+pub(crate) fn malicious_behaviour() -> impl Strategy<Value = MaliciousBehaviour> {
+    any::<bool>().prop_map(|ignore_resource_filters| MaliciousBehaviour {
+        ignore_resource_filters,
+    })
 }
 
 /// A [`Strategy`] for sampling a [`StubPortal`] that is configured with various [`Site`]s and gateways within those sites.

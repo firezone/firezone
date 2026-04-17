@@ -1,11 +1,14 @@
 use super::{
     QueryId,
     reference::PrivateKey,
-    sim_net::Host,
+    sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     transition::{DPort, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, DnsMapping, DnsResourceRecord, dns};
+use crate::{
+    ClientState, DnsMapping, DnsResourceRecord, dns,
+    malicious_behaviour::{Guard, MaliciousBehaviour},
+};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
 use dns_types::{DomainName, Query, RecordData, RecordType};
@@ -23,6 +26,9 @@ pub(crate) struct SimClient {
     id: ClientId,
 
     pub(crate) sut: ClientState,
+
+    /// The malicious behaviours sampled for this client.
+    malicious_behaviour: MaliciousBehaviour,
 
     /// The DNS records created on the client as a result of received DNS responses.
     ///
@@ -71,10 +77,16 @@ pub(crate) struct SimClient {
 }
 
 impl SimClient {
-    pub(crate) fn new(id: ClientId, sut: ClientState, now: Instant) -> Self {
+    pub(crate) fn new(
+        id: ClientId,
+        sut: ClientState,
+        malicious_behaviour: MaliciousBehaviour,
+        now: Instant,
+    ) -> Self {
         Self {
             id,
             sut,
+            malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
             sent_udp_dns_queries: Default::default(),
@@ -468,5 +480,13 @@ impl SimClient {
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
         self.tcp_client.reset();
+    }
+}
+
+impl ExecMutScope for SimClient {
+    type Guard = Guard;
+
+    fn enter(&self) -> Self::Guard {
+        self.malicious_behaviour.guard()
     }
 }

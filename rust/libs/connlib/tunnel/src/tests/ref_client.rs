@@ -3,8 +3,8 @@ use super::{
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
     sim_client::SimClient,
-    sim_net::{Host, any_ip_stack, host},
-    strategies::latency,
+    sim_net::{ExecMutScope, Host, any_ip_stack, host},
+    strategies::{latency, malicious_behaviour},
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
 use crate::{
@@ -12,8 +12,10 @@ use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     dns,
     filter_engine::FilterEngine,
+    malicious_behaviour::MaliciousBehaviour,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
+
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, RecordType};
@@ -47,6 +49,9 @@ pub struct RefClient {
     system_dns_resolvers: Vec<IpAddr>,
 
     routes: Vec<(ResourceId, IpNetwork)>,
+
+    /// Sampled malicious behaviours for this client.
+    pub(crate) malicious_behaviour: MaliciousBehaviour,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -146,7 +151,7 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(self.id, client_state, now)
+        SimClient::new(self.id, client_state, self.malicious_behaviour, now)
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -436,6 +441,11 @@ impl RefClient {
 
             tracing::Span::current().record("resource", tracing::field::display(resource));
 
+            if !self.resource_filter_allows(resource, proto) {
+                tracing::debug!("Resource filter does not allow protocol, dropping");
+                return;
+            }
+
             let Some(gateway) = gateway_by_resource(resource) else {
                 tracing::error!("No gateway for resource");
                 return;
@@ -464,10 +474,16 @@ impl RefClient {
         sport: SPort,
         dport: DPort,
     ) {
-        let Some(resource) = self.resource_by_dst(&dst, Protocol::Tcp(dport.0)) else {
+        let proto = Protocol::Tcp(dport.0);
+        let Some(resource) = self.resource_by_dst(&dst, proto) else {
             tracing::warn!("Unknown resource");
             return;
         };
+
+        if !self.resource_filter_allows(resource, proto) {
+            tracing::debug!("Resource filter does not allow protocol, dropping");
+            return;
+        }
 
         self.connect_to_resource(resource, dst.clone());
         self.set_resource_online(resource);
@@ -604,6 +620,17 @@ impl RefClient {
         }
 
         self.active_internet_resource()
+    }
+
+    fn resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
+        if self.malicious_behaviour.ignore_resource_filters {
+            return true;
+        }
+
+        self.resources
+            .iter()
+            .find(|r| r.id() == rid)
+            .is_some_and(|r| FilterEngine::new(r.filters()).apply(Ok(proto)).is_ok())
     }
 
     pub(crate) fn dns_resource_by_domain_and_proto(
@@ -1075,6 +1102,12 @@ fn is_subdomain(name: &str, record: &str) -> bool {
     }
 }
 
+impl ExecMutScope for RefClient {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
+}
+
 pub(crate) fn ref_client_host(
     id: ClientId,
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
@@ -1101,9 +1134,17 @@ fn ref_client(
         system_dns,
         any::<bool>(),
         private_key(),
+        malicious_behaviour(),
     )
         .prop_map(
-            move |(tunnel_ip4, tunnel_ip6, system_dns_resolvers, internet_resource_active, key)| {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                system_dns_resolvers,
+                internet_resource_active,
+                key,
+                malicious_behaviour,
+            )| {
                 RefClient {
                     id,
                     key,
@@ -1111,6 +1152,7 @@ fn ref_client(
                     tunnel_ip6,
                     system_dns_resolvers,
                     internet_resource_active,
+                    malicious_behaviour,
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),

@@ -35,6 +35,8 @@ mod expiring_map;
 mod filter_engine;
 mod gateway;
 mod io;
+#[cfg(test)]
+mod malicious_behaviour;
 pub mod messages;
 mod otel;
 mod p2p_control;

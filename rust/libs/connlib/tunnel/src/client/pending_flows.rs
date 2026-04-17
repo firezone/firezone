@@ -8,7 +8,9 @@ use connlib_model::ResourceId;
 use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
-use crate::{client::Resource, dns, unique_packet_buffer::UniquePacketBuffer};
+use crate::{
+    client::Resource, dns, filter_engine::FilterEngine, unique_packet_buffer::UniquePacketBuffer,
+};
 
 #[derive(Default)]
 pub struct PendingFlows {
@@ -29,10 +31,15 @@ impl PendingFlows {
         let trigger = trigger.into();
         let trigger_name = trigger.name();
 
-        if !resources_by_id.contains_key(&rid) {
+        let Some(resource) = resources_by_id.get(&rid) else {
             tracing::debug!(%rid, "Resource not found, skipping connection intent");
             return;
         };
+
+        if !is_trigger_allowed(&trigger, resource) {
+            tracing::debug!(%rid, "Trigger filtered by resource filters, dropping");
+            return;
+        }
 
         let pending_flow = self
             .inner
@@ -151,6 +158,31 @@ impl From<DnsQueryForSite> for ConnectionTrigger {
     }
 }
 
+/// Check whether the trigger's protocol is allowed by the resource's filters.
+fn is_trigger_allowed(trigger: &ConnectionTrigger, resource: &Resource) -> bool {
+    let protocol = match trigger {
+        ConnectionTrigger::PacketForResource(packet) => packet.destination_protocol(),
+        // DNS queries and ICMP errors are control-plane triggers, not subject to data-plane filters.
+        ConnectionTrigger::DnsQueryForSite(_)
+        | ConnectionTrigger::IcmpDestinationUnreachableProhibited => return true,
+    };
+
+    if FilterEngine::new(resource.filters())
+        .apply(protocol)
+        .is_ok()
+    {
+        return true;
+    }
+
+    #[cfg(test)]
+    if crate::malicious_behaviour::ignore_resource_filter() {
+        tracing::debug!("Malicious client: ignoring resource filter");
+        return true;
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
@@ -158,7 +190,9 @@ mod tests {
     use connlib_model::{Site, SiteId};
     use ip_network::IpNetwork;
 
-    use crate::client::resource::CidrResource;
+    use crate::{
+        client::resource::CidrResource, malicious_behaviour::MaliciousBehaviour, messages::Filter,
+    };
 
     use super::*;
 
@@ -169,12 +203,12 @@ mod tests {
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
-        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
+        pending_flows.on_not_connected_resource(rid, udp_trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(1);
 
-        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
+        pending_flows.on_not_connected_resource(rid, udp_trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), None);
     }
 
@@ -185,12 +219,12 @@ mod tests {
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
 
-        pending_flows.on_not_connected_resource(rid, trigger(1), &resources, now);
+        pending_flows.on_not_connected_resource(rid, udp_trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
 
         now += Duration::from_secs(3);
 
-        pending_flows.on_not_connected_resource(rid, trigger(2), &resources, now);
+        pending_flows.on_not_connected_resource(rid, udp_trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
     }
 
@@ -207,13 +241,46 @@ mod tests {
             (rid2, ipv6_localhost_resource()),
         ]);
 
-        pending_flows.on_not_connected_resource(rid1, trigger(1), &resources, now);
+        pending_flows.on_not_connected_resource(rid1, udp_trigger(1), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid1));
-        pending_flows.on_not_connected_resource(rid2, trigger(2), &resources, now);
+        pending_flows.on_not_connected_resource(rid2, udp_trigger(2), &resources, now);
         assert_eq!(pending_flows.poll_connection_intents(), Some(rid2));
     }
 
-    fn trigger(payload: u8) -> IpPacket {
+    #[test]
+    fn drops_packet_when_resource_filter_does_not_allow_protocol() {
+        let mut pending_flows = PendingFlows::default();
+        let now = Instant::now();
+        let resource = icmp_only_localhost_resource();
+        let rid = resource.id();
+        let resources = BTreeMap::from([(rid, resource)]);
+
+        // The trigger is a UDP packet, but the resource only permits ICMP.
+        pending_flows.on_not_connected_resource(rid, udp_trigger(1), &resources, now);
+
+        assert_eq!(pending_flows.poll_connection_intents(), None);
+    }
+
+    #[test]
+    fn malicious_client_can_ignore_resource_filter() {
+        let mut pending_flows = PendingFlows::default();
+        let now = Instant::now();
+        let resource = icmp_only_localhost_resource();
+        let rid = resource.id();
+        let resources = BTreeMap::from([(rid, resource)]);
+
+        let _guard = MaliciousBehaviour {
+            ignore_resource_filters: true,
+        }
+        .guard();
+
+        // The trigger is a UDP packet that the resource's filter would normally reject.
+        pending_flows.on_not_connected_resource(rid, udp_trigger(1), &resources, now);
+
+        assert_eq!(pending_flows.poll_connection_intents(), Some(rid));
+    }
+
+    fn udp_trigger(payload: u8) -> IpPacket {
         ip_packet::make::udp_packet(
             Ipv4Addr::LOCALHOST,
             Ipv4Addr::LOCALHOST,
@@ -243,6 +310,17 @@ mod tests {
             address_description: None,
             sites: vec![site1()],
             filters: Vec::default(),
+        })
+    }
+
+    fn icmp_only_localhost_resource() -> Resource {
+        Resource::Cidr(CidrResource {
+            id: ResourceId::from_u128(3),
+            address: IpNetwork::from(Ipv4Addr::LOCALHOST),
+            name: "localhost-icmp-only".to_owned(),
+            address_description: None,
+            sites: vec![site1()],
+            filters: vec![Filter::Icmp],
         })
     }
 

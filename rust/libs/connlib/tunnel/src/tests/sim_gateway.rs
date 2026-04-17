@@ -2,7 +2,7 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     icmp_error_hosts::{IcmpError, IcmpErrorHosts},
-    sim_net::Host,
+    sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
 use crate::GatewayState;
@@ -303,6 +303,12 @@ impl SimGateway {
 
         Some(transmit)
     }
+}
+
+impl ExecMutScope for SimGateway {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
 }
 
 fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {

@@ -1,5 +1,5 @@
 use super::{
-    sim_net::{Host, dual_ip_stack, host},
+    sim_net::{ExecMutScope, Host, dual_ip_stack, host},
     strategies::latency,
 };
 use bufferpool::Buffer;
@@ -196,6 +196,18 @@ impl SimRelay {
 
         (format!("{secs}:{username}"), password)
     }
+}
+
+impl ExecMutScope for SimRelay {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
+}
+
+impl ExecMutScope for u64 {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
 }
 
 pub(crate) fn ref_relay_host() -> impl Strategy<Value = Host<u64>> {
