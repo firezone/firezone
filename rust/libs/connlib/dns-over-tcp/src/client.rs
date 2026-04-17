@@ -20,8 +20,6 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 ///
 /// One of the design goals of this client is to always provide a result for a query.
 /// If the TCP connection fails, we report all currently pending queries to that resolver as failed.
-/// Additionally, every query has a deadline of [`QUERY_TIMEOUT`] after which it is failed,
-/// covering cases like TCP SYN timeouts or an unresponsive upstream resolver.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     device: InMemoryDevice,
     interface: Interface,
