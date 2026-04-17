@@ -416,10 +416,8 @@ impl fmt::Display for UnknownConnection {
     }
 }
 
-fn into_u256(key: [u8; 32]) -> bnum::BUint<4> {
-    // Note: `parse_str_radix` panics when the number is too big.
-    // We are passing 32 u8's though which fits exactly into a u256.
-    bnum::types::U256::parse_str_radix(&hex::encode(key), 16)
+fn into_u256(key: [u8; 32]) -> bnum::Uint<32> {
+    bnum::types::U256::from_str_radix(&hex::encode(key), 16).unwrap()
 }
 
 #[cfg(test)]
