@@ -18,7 +18,7 @@ use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::{IpAddr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Simulation state for a particular client.
@@ -102,7 +102,7 @@ impl SimClient {
             routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
-            tcp_dns_client: dns_over_tcp::Client::new(now, [0u8; 32]),
+            tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
