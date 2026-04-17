@@ -37,7 +37,7 @@
     "next-hubspot": "^2.0.1",
     "next-sitemap": "^4.2.3",
     "postcss": "8.5.9",
-    "posthog-js": "^1.364.7",
+    "posthog-js": "^1.367.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "react-fast-marquee": "^1.6.5",
