@@ -72,7 +72,7 @@ impl UnroutablePacket {
     pub fn unknown_resource(packet: &IpPacket) -> Self {
         Self {
             five_tuple: FiveTuple::for_packet(packet),
-            error: RoutingError::NotTunnelSourceIp,
+            error: RoutingError::UnknownResource,
         }
     }
 

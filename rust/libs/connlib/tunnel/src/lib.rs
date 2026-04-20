@@ -300,8 +300,10 @@ impl ClientTunnel {
                                 received.packet,
                                 now,
                             )
-                            .context("Failed to handle packet from network")
-                        {
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
@@ -510,8 +512,10 @@ impl GatewayTunnel {
                                 received.packet,
                                 now,
                             )
-                            .context("Failed to handle packet from network")
-                        {
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
@@ -716,6 +720,13 @@ pub(crate) struct NotAllowedResource(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to decapsulate '{0}' packet")]
 pub struct FailedToDecapsulate(packet_kind::Kind);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to handle packet from network (src {from} dst {local})")]
+pub struct FailedToHandleNetworkPacket {
+    local: SocketAddr,
+    from: SocketAddr,
+}
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
