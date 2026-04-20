@@ -94,7 +94,10 @@ defmodule PortalWeb.Settings.Notifications do
   def handle_event("save", %{"account" => attrs}, socket) do
     case update_notifications(socket.assigns.account, attrs, socket.assigns.subject) do
       {:ok, account} ->
-        {:noreply, assign(socket, account: account, form: to_form(build_changeset(account)))}
+        {:noreply,
+         socket
+         |> put_flash(:success, "Notification preferences saved.")
+         |> assign(account: account, form: to_form(build_changeset(account)))}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(Map.put(changeset, :action, :validate)))}
