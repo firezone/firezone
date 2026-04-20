@@ -7,6 +7,7 @@
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
+use crate::unroutable_packet::RoutingError;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{
     ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
@@ -79,9 +80,10 @@ pub type ClientTunnel = Tunnel<ClientState>;
 pub use client::ClientState;
 pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, UnroutablePacket};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use io::TunChannelClosed;
 pub use sockets::UdpSocketThreadStopped;
+pub use unroutable_packet::UnroutablePacket;
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -254,7 +256,7 @@ impl ClientTunnel {
                 if let Some(packets) = device {
                     for packet in packets {
                         match self.role_state.handle_tun_input(packet, now) {
-                            Some(transmit) => {
+                            Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
@@ -262,7 +264,8 @@ impl ClientTunnel {
                                     transmit.ecn,
                                 );
                             }
-                            None => self.io.schedule_timeout(now),
+                            Ok(None) => self.io.schedule_timeout(now),
+                            Err(e) => error.push(e),
                         }
                     }
 
@@ -452,9 +455,9 @@ impl GatewayTunnel {
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => {
                                 let routing_error = e
-                                    .any_downcast_ref::<gateway::UnroutablePacket>()
+                                    .any_downcast_ref::<UnroutablePacket>()
                                     .map(|e| e.reason())
-                                    .unwrap_or(gateway::RoutingError::Other);
+                                    .unwrap_or(RoutingError::Other);
 
                                 // TODO: Include more attributes here like IPv4/IPv6?
                                 self.io.inc_dropped_packet(&[

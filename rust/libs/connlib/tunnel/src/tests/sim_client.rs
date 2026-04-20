@@ -218,12 +218,19 @@ impl SimClient {
     ) -> Option<snownet::Transmit> {
         self.update_sent_requests(&packet, now);
 
-        let Some(transmit) = self.sut.handle_tun_input(packet, now) else {
-            self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
-            return None;
-        };
+        match self.sut.handle_tun_input(packet, now) {
+            Ok(Some(transmit)) => Some(transmit),
+            Ok(None) => {
+                self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
 
-        Some(transmit)
+                None
+            }
+            Err(e) => {
+                tracing::error!("{e:#}");
+
+                None
+            }
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -463,7 +470,7 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        let transmit = self.sut.handle_tun_input(reply, now)?;
+        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
 
         Some(transmit)
     }
