@@ -128,6 +128,7 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     okta_directories
     google_directories
     devices
+    device_trust_anchors
     sites
     gateway_tokens
     policies
