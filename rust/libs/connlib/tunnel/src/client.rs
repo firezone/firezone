@@ -1,53 +1,49 @@
+pub(crate) mod dns_config;
+
 mod client_on_client;
 mod dns_cache;
-pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_device_access;
 mod pending_flows;
 mod resource;
-
 mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-
-use crate::client::dns_config::DnsConfig;
-use crate::client::pending_device_access::PendingDeviceAccessRequests;
-use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
-use crate::client::tracked_state::TrackedState;
-use crate::filter_engine::FilterEngine;
-use crate::messages::client::FailReason;
-use crate::routing_table::{RouteEntry, RoutingTable};
-use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{CidrResource, DnsResource};
 pub(crate) use resource::{InternetResource, Resource};
 
-use dns_resource_nat::DnsResourceNat;
-use dns_types::{DomainName, ResponseCode};
-use ringbuffer::RingBuffer;
-use secrecy::ExposeSecret as _;
-use telemetry::{analytics, feature_flags};
-
+use crate::ClientEvent;
 use crate::client::dns_cache::DnsCache;
+use crate::client::dns_config::DnsConfig;
+use crate::client::pending_device_access::PendingDeviceAccessRequests;
+use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
+use crate::client::tracked_state::TrackedState;
 use crate::dns::{DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, stub_resolver};
-use crate::messages::{IceCredentials, SecretKey};
-use crate::messages::{IceRole, Interface as InterfaceConfig};
+use crate::filter_engine::FilterEngine;
+use crate::messages::{
+    IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
+};
 use crate::peer_store::PeerStore;
+use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
-use anyhow::{Context, ErrorExt};
+use anyhow::{Context, ErrorExt, Result};
+use boringtun::x25519;
 use connlib_model::{
     ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, ResourceId,
     ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
+use dns_resource_nat::DnsResourceNat;
+use dns_types::{DomainName, ResponseCode};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
-
-use crate::ClientEvent;
+use ringbuffer::RingBuffer;
+use secrecy::ExposeSecret as _;
 use snownet::{NoTurnServers, Node, RelaySocket, Transmit};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -55,6 +51,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
+use telemetry::{analytics, feature_flags};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
