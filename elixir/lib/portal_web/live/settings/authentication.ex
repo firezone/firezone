@@ -531,7 +531,7 @@ defmodule PortalWeb.Settings.Authentication do
             </tbody>
           </table>
         </div>
-        
+
     <!-- Add Provider Panel -->
         <div
           id="add-provider-panel"
@@ -621,7 +621,7 @@ defmodule PortalWeb.Settings.Authentication do
               </ul>
             </div>
           </div>
-          
+
     <!-- New Provider Form -->
           <div
             :if={@live_action == :new and assigns[:form] != nil}
@@ -680,7 +680,7 @@ defmodule PortalWeb.Settings.Authentication do
           </div>
         </div>
       </div>
-      
+
     <!-- Edit Provider Panel -->
       <div
         id="edit-provider-panel"

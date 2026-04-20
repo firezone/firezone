@@ -69,7 +69,7 @@ defmodule PortalWeb.Settings.DNS do
           </div>
         </div>
       </div>
-      
+
     <!-- Edit Panel -->
       <div
         id="edit-dns-panel"

@@ -450,7 +450,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             <% end %>
           </div>
         </div>
-        
+
     <!-- Add Directory Panel -->
         <div
           id="add-directory-panel"
@@ -526,7 +526,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               </ul>
             </div>
           </div>
-          
+
     <!-- New Directory Form -->
           <div
             :if={@live_action == :new and assigns[:form] != nil}
@@ -585,7 +585,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             </div>
           </div>
         </div>
-        
+
     <!-- Edit Directory Panel -->
         <div
           id="edit-directory-panel"
