@@ -7,7 +7,7 @@
     :phoenix_live_view,
     :plug
   ],
-  plugins: [Phoenix.LiveView.HTMLFormatter],
+  plugins: [Phoenix.LiveView.HTMLFormatter, TrailingWhitespaceFormatter],
   inputs: [
     "*.{ex,exs}",
     "{.credo,config,lib,test,priv}/**/*.{ex,exs,heex,xml.heex,html.heex}"
