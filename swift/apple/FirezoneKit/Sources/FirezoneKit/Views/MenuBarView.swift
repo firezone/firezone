@@ -129,16 +129,11 @@
     }
   }
 
-  /// System menu section (About, Admin Portal, Help, Settings)
+  /// System menu section (Admin Portal, Help, Settings)
   struct SystemMenuSection: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
-      Button("About Firezone") {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
-      }
-
       if !store.configuration.publishedHideAdminPortalMenuItem {
         Button("Admin Portal…") {
           openAdminPortal()
