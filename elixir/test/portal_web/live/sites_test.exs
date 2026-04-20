@@ -246,10 +246,22 @@ defmodule PortalWeb.SitesTest do
 
       html = render_click(lv, "deploy_gateway")
       assert html =~ "Deploy a Gateway"
-      assert html =~ "FIREZONE_TOKEN"
+      assert html =~ "Choose your deployment environment"
+
+      # Currently defaults to Debian/Ubuntu instructions
+      assert html =~ "Add the Firezone APT repository"
+
+      html = render_click(lv, "deploy_tab_selected", %{"tab" => "systemd-instructions"})
+      assert html =~ "Install via systemd"
+
+      html = render_click(lv, "deploy_tab_selected", %{"tab" => "docker-instructions"})
+      assert html =~ "docker run"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "terraform-instructions"})
-      assert html =~ "terraform"
+      assert html =~ "Terraform guides"
+
+      html = render_click(lv, "deploy_tab_selected", %{"tab" => "custom-instructions"})
+      assert html =~ "run the gateway binary directly"
 
       html = render_click(lv, "close_deploy")
       assert html =~ "Deploy gateway"

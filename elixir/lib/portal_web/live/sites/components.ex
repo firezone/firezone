@@ -675,13 +675,36 @@ defmodule PortalWeb.Sites.Components do
       <p class="text-sm text-[var(--text-secondary)] mb-3">
         Choose your deployment environment:
       </p>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <.deploy_tab_button deploy_tab={@deploy_tab} value="docker-instructions" label="Docker" />
-        <.deploy_tab_button deploy_tab={@deploy_tab} value="systemd-instructions" label="systemd" />
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <.deploy_tab_button
+          deploy_tab={@deploy_tab}
+          value="debian-instructions"
+          label="Debian/Ubuntu"
+          icon="os-debian"
+        />
+        <.deploy_tab_button
+          deploy_tab={@deploy_tab}
+          value="systemd-instructions"
+          label="systemd"
+          icon="remix-terminal-line"
+        />
+        <.deploy_tab_button
+          deploy_tab={@deploy_tab}
+          value="docker-instructions"
+          label="Docker"
+          icon="docker"
+        />
         <.deploy_tab_button
           deploy_tab={@deploy_tab}
           value="terraform-instructions"
           label="Terraform"
+          icon="terraform"
+        />
+        <.deploy_tab_button
+          deploy_tab={@deploy_tab}
+          value="custom-instructions"
+          label="Custom"
+          icon="remix-tools-line"
         />
       </div>
     </div>
@@ -691,6 +714,7 @@ defmodule PortalWeb.Sites.Components do
   attr :deploy_tab, :string, required: true
   attr :value, :string, required: true
   attr :label, :string, required: true
+  attr :icon, :string, required: true
 
   def deploy_tab_button(assigns) do
     ~H"""
@@ -698,7 +722,7 @@ defmodule PortalWeb.Sites.Components do
       phx-click="deploy_tab_selected"
       phx-value-tab={@value}
       class={[
-        "px-3 py-2 rounded text-xs font-medium border transition-colors",
+        "flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-medium border transition-colors",
         if(@deploy_tab == @value,
           do: "border-[var(--brand)] bg-[var(--brand-muted)] text-[var(--brand)]",
           else:
@@ -706,6 +730,7 @@ defmodule PortalWeb.Sites.Components do
         )
       ]}
     >
+      <.icon name={@icon} class="w-3.5 h-3.5 shrink-0" />
       {@label}
     </button>
     """
@@ -716,12 +741,14 @@ defmodule PortalWeb.Sites.Components do
 
   def site_deploy_instructions(assigns) do
     ~H"""
-    <.site_deploy_docker :if={@deploy_tab == "docker-instructions"} deploy_env={@deploy_env} />
+    <.site_deploy_debian :if={@deploy_tab == "debian-instructions"} />
     <.site_deploy_systemd :if={@deploy_tab == "systemd-instructions"} deploy_env={@deploy_env} />
+    <.site_deploy_docker :if={@deploy_tab == "docker-instructions"} deploy_env={@deploy_env} />
     <.site_deploy_terraform
       :if={@deploy_tab == "terraform-instructions"}
       deploy_env={@deploy_env}
     />
+    <.site_deploy_custom :if={@deploy_tab == "custom-instructions"} deploy_env={@deploy_env} />
     """
   end
 
@@ -753,33 +780,64 @@ defmodule PortalWeb.Sites.Components do
         phx-no-format
         phx-update="ignore"
       ><%= gateway_systemd_command(@deploy_env) %></.code_block>
-      <.site_deploy_debian />
     </div>
     """
   end
 
   def site_deploy_debian(assigns) do
     ~H"""
-    <div class="space-y-3">
-      <p class="text-xs font-semibold text-[var(--text-secondary)]">Debian/Ubuntu</p>
+    <div class="p-5 space-y-4">
+      <p class="text-xs text-[var(--text-secondary)]">
+        Add the Firezone APT repository:
+      </p>
       <.code_block
         id="deploy-code-debian-repo"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
       ><%= gateway_debian_apt_repository() %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+      Install the Firezone Gateway
+      </p>
       <.code_block
         id="deploy-code-debian-install"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
       ><%= gateway_debian_install() %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+      Launch the Firezone Gateway:
+      </p>
       <.code_block
         id="deploy-code-debian-auth"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
       ><%= gateway_debian_authenticate() %></.code_block>
+    </div>
+    """
+  end
+
+  attr :deploy_env, :any, default: nil
+
+  def site_deploy_custom(assigns) do
+    ~H"""
+    <div class="p-5 space-y-4">
+      <p class="text-xs text-[var(--text-secondary)]">
+        Set the <code class="font-mono">FIREZONE_TOKEN</code>
+        environment variable and run the gateway binary directly:
+      </p>
+      <.code_block
+        id="deploy-code-custom"
+        class="w-full text-xs whitespace-pre-line"
+        phx-no-format
+        phx-update="ignore"
+      ><%= gateway_token(@deploy_env) %></.code_block>
+      <p class="text-xs text-[var(--text-secondary)]">
+        <.website_link path="/kb/deploy/gateways">Gateway deployment guides</.website_link>
+      </p>
     </div>
     """
   end
@@ -798,7 +856,9 @@ defmodule PortalWeb.Sites.Components do
         phx-no-format
         phx-update="ignore"
       ><%= gateway_token(@deploy_env) %></.code_block>
-      <.website_link path="/kb/automate">Terraform guides</.website_link>
+      <p class="text-xs text-[var(--text-secondary)]">
+        <.website_link path="/kb/automate">Terraform guides</.website_link>
+      </p>
     </div>
     """
   end

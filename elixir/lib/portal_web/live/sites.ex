@@ -466,7 +466,7 @@ defmodule PortalWeb.Sites do
   defp base_site_deploy_state do
     %{
       env: nil,
-      tab: "docker-instructions",
+      tab: "debian-instructions",
       connected?: false,
       token: nil,
       subscribed_site_id: nil
@@ -666,7 +666,7 @@ defmodule PortalWeb.Sites do
      |> merge_state(:site_panel, %{view: :deploy})
      |> put_state(:site_deploy, %{
        env: env,
-       tab: "docker-instructions",
+       tab: "debian-instructions",
        token: token,
        connected?: false,
        subscribed_site_id: site.id
