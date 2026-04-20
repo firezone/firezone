@@ -350,29 +350,31 @@ defmodule PortalWeb.Settings.DNS do
                     name="account[config][clients_upstream_dns][addresses_sort][]"
                     value={address_form.index}
                   />
-                  <div class="flex gap-3 items-end">
-                    <div class="flex-1">
-                      <label
-                        for={address_form[:address].id}
-                        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
-                      >
-                        IP Address
-                      </label>
-                      <.input
-                        field={address_form[:address]}
-                        placeholder="E.g. 1.1.1.1"
-                        phx-debounce="300"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      name="account[config][clients_upstream_dns][addresses_drop][]"
-                      value={address_form.index}
-                      phx-click={JS.dispatch("change")}
-                      class="flex items-center justify-center w-9 h-9 rounded text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
+                  <div>
+                    <label
+                      for={address_form[:address].id}
+                      class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
                     >
-                      <.icon name="remix-delete-bin-line" class="w-4 h-4" />
-                    </button>
+                      IP Address
+                    </label>
+                    <div class="flex gap-2 items-start">
+                      <div class="flex-1">
+                        <.input
+                          field={address_form[:address]}
+                          placeholder="E.g. 1.1.1.1"
+                          phx-debounce="300"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        name="account[config][clients_upstream_dns][addresses_drop][]"
+                        value={address_form.index}
+                        phx-click={JS.dispatch("change")}
+                        class="flex items-center justify-center w-9 h-9 rounded text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
+                      >
+                        <.icon name="remix-delete-bin-line" class="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </.inputs_for>
 
