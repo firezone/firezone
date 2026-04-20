@@ -265,10 +265,16 @@ fn inclusion_threshold(rtts: &[Duration]) -> Option<Duration> {
         .map(|r| r.abs_diff(med))
         .collect::<SmallVec<[_; 8]>>();
     deviations.sort();
-    let mad = median(&deviations);
+    // Floor the MAD so that tightly-clustered relays don't collapse the
+    // threshold to a sub-millisecond window. A relay that is only a few ms
+    // slower than the leader should still be eligible.
+    let mad = median(&deviations).max(MAD_FLOOR);
 
     Some(med + 3 * mad)
 }
+
+/// Minimum effective MAD used when computing the inclusion threshold.
+const MAD_FLOOR: Duration = Duration::from_millis(2);
 
 /// Median of a sorted slice.
 ///
@@ -423,6 +429,17 @@ mod tests {
         let threshold = inclusion_threshold(&[ms(30), ms(32), ms(35), ms(40), ms(200)]).unwrap();
         assert!(threshold < ms(100));
         assert!(threshold >= ms(40));
+    }
+
+    #[test]
+    fn inclusion_threshold_floors_mad_so_tightly_clustered_relays_stay_in() {
+        // sorted = [30, 30, 30, 31] ⇒ median = 30, deviations = [0, 0, 0, 1].
+        // Raw MAD = 0, but the 2ms floor lifts the threshold to 30 + 3*2 = 36ms,
+        // keeping the 31ms relay in the pool.
+        assert_eq!(
+            inclusion_threshold(&[ms(30), ms(30), ms(30), ms(31)]),
+            Some(ms(36))
+        );
     }
 
     #[test]
