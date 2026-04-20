@@ -991,7 +991,7 @@ defmodule PortalWeb.Sites do
     import Ecto.Changeset
     alias Portal.{Safe, Site, Resource, Gateway}
 
-    @spec list_all_sites(Portal.Auth.Subject.t()) :: [Site.t()]
+    @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
     def list_all_sites(subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.managed_by == :account)
@@ -1007,7 +1007,7 @@ defmodule PortalWeb.Sites do
       |> Safe.list(__MODULE__, opts)
     end
 
-    @spec get_site(Ecto.UUID.t(), Portal.Auth.Subject.t()) :: Site.t() | nil
+    @spec get_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: Site.t() | nil
     def get_site(id, subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.id == ^id)
@@ -1015,7 +1015,9 @@ defmodule PortalWeb.Sites do
       |> Safe.one()
     end
 
-    @spec list_gateways_for_site(Ecto.UUID.t(), Portal.Auth.Subject.t()) :: [Gateway.t()]
+    @spec list_gateways_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
+            Gateway.t()
+          ]
     def list_gateways_for_site(site_id, subject) do
       gateway_ids =
         from(g in Gateway, where: g.site_id == ^site_id, select: g.id)
@@ -1052,7 +1054,9 @@ defmodule PortalWeb.Sites do
       end)
     end
 
-    @spec list_resources_for_site(Ecto.UUID.t(), Portal.Auth.Subject.t()) :: [Resource.t()]
+    @spec list_resources_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
+            Resource.t()
+          ]
     def list_resources_for_site(site_id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.site_id == ^site_id)
@@ -1104,7 +1108,7 @@ defmodule PortalWeb.Sites do
       |> Resource.changeset()
     end
 
-    @spec create_resource(map(), Portal.Auth.Subject.t()) ::
+    @spec create_resource(map(), Portal.Authentication.Subject.t()) ::
             {:ok, Resource.t()} | {:error, Ecto.Changeset.t()}
     def create_resource(attrs, subject) do
       new_resource_changeset(subject.account, attrs)
@@ -1119,7 +1123,7 @@ defmodule PortalWeb.Sites do
       end
     end
 
-    @spec change_site(Site.t(), map()) :: Ecto.Changeset.t()
+    @spec change_site(%Site{}, term()) :: Ecto.Changeset.t()
     def change_site(site, attrs \\ %{})
 
     def change_site(%Site{managed_by: :system} = site, attrs) do
@@ -1143,21 +1147,21 @@ defmodule PortalWeb.Sites do
       |> Site.changeset()
     end
 
-    @spec create_site(Ecto.Changeset.t(), Portal.Auth.Subject.t()) ::
+    @spec create_site(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
     def create_site(changeset, subject) do
       Safe.scoped(changeset, subject)
       |> Safe.insert()
     end
 
-    @spec update_site(Ecto.Changeset.t(), Portal.Auth.Subject.t()) ::
+    @spec update_site(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
     def update_site(changeset, subject) do
       Safe.scoped(changeset, subject)
       |> Safe.update()
     end
 
-    @spec delete_site(Site.t(), Portal.Auth.Subject.t()) ::
+    @spec delete_site(Site.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
     def delete_site(site, subject) do
       Safe.scoped(site, subject)

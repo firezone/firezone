@@ -1554,7 +1554,11 @@ defmodule PortalWeb.Actors do
       |> Safe.delete()
     end
 
-    @spec search_groups_for_actor(String.t(), Ecto.UUID.t() | nil, map()) ::
+    @spec search_groups_for_actor(
+            String.t(),
+            Ecto.UUID.t() | nil,
+            Portal.Authentication.Subject.t()
+          ) ::
             {:error, any()} | list(Portal.Group.t())
     def search_groups_for_actor(search_term, actor_id, subject) do
       query =
@@ -1582,7 +1586,7 @@ defmodule PortalWeb.Actors do
       end
     end
 
-    @spec add_group_member(Ecto.UUID.t(), Portal.Actor.t(), map()) ::
+    @spec add_group_member(Ecto.UUID.t(), Portal.Actor.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Portal.Membership.t()} | {:error, Ecto.Changeset.t()}
     def add_group_member(group_id, actor, subject) do
       import Ecto.Changeset
@@ -1594,7 +1598,7 @@ defmodule PortalWeb.Actors do
       |> Safe.insert()
     end
 
-    @spec remove_group_member(Ecto.UUID.t(), Portal.Actor.t(), map()) ::
+    @spec remove_group_member(Ecto.UUID.t(), Portal.Actor.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Portal.Membership.t()} | {:error, any()}
     def remove_group_member(group_id, actor, subject) do
       from(m in Portal.Membership, as: :memberships)

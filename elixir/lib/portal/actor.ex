@@ -7,6 +7,8 @@ defmodule Portal.Actor do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @type t :: %__MODULE__{}
+
   schema "actors" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true

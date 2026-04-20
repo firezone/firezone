@@ -28,7 +28,8 @@ defmodule Portal.MixProject do
       deps: deps(),
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
-        plt_add_apps: [:mix, :credo]
+        plt_add_apps: [:mix, :credo],
+        ignore_warnings: ".dialyzer_ignore.exs"
       ],
       aliases: aliases(),
       releases: releases()

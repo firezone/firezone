@@ -134,7 +134,7 @@ defmodule PortalWeb.Settings.Profile do
   defmodule Database do
     alias Portal.Safe
 
-    @spec update(Ecto.Changeset.t(), Portal.Subject.t()) ::
+    @spec update(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Portal.Actor.t()} | {:error, Ecto.Changeset.t()}
     def update(changeset, subject) do
       changeset

@@ -6,6 +6,8 @@ defmodule Portal.EmailOTP.AuthProvider do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @type t :: %__MODULE__{}
+
   @portal_session_lifetime_min 300
   @portal_session_lifetime_max 86_400
   @default_portal_session_lifetime_secs 28_800
