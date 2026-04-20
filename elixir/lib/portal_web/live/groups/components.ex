@@ -582,7 +582,17 @@ defmodule PortalWeb.Groups.Components do
                     )
                 end)
                 |> Enum.take(5)
-              end %>
+              end
+              selected_resource =
+                @grant_resource_id &&
+                  Enum.find(@available_resources, &(&1.id == @grant_resource_id))
+              filtered_resources =
+                if selected_resource &&
+                     not Enum.any?(filtered_resources, &(&1.id == selected_resource.id)) do
+                  [selected_resource | filtered_resources]
+                else
+                  filtered_resources
+                end %>
             <ul class="space-y-1">
               <li :for={resource <- filtered_resources}>
                 <button
