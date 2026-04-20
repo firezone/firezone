@@ -452,19 +452,6 @@ defmodule PortalWeb.LiveTable do
         of <span class="font-medium tabular-nums text-[var(--text-primary)]">{@metadata.count}</span>
       </span>
       <div class="flex items-center gap-4">
-        <div class="flex items-center gap-1.5">
-          <span>Per page</span>
-          <select
-            name="limit"
-            phx-change="change_limit"
-            phx-value-table_id={@id}
-            class="py-0.5 pl-2 pr-6 rounded border border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--text-primary)] text-xs outline-none focus:border-[var(--control-focus)] transition-colors cursor-pointer"
-          >
-            <option value="10" selected={@metadata.limit == 10}>10</option>
-            <option value="25" selected={@metadata.limit == 25}>25</option>
-            <option value="50" selected={@metadata.limit == 50}>50</option>
-          </select>
-        </div>
         <div class="flex items-center gap-0.5">
           <button
             disabled={is_nil(@metadata.previous_page_cursor)}
