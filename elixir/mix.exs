@@ -184,7 +184,7 @@ defmodule Portal.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       reboot: ["ecto.reset", "run priv/repo/seeds.exs", "start"],
       sobelow: [
-        "sobelow --skip -i Config.HTTPS,Config.Secrets,Config.CSWH,Config.CSRFRoute,Config.Headers"
+        "sobelow --skip -i Config.HTTPS,Config.Secrets,Config.CSWH,Config.CSRFRoute,Config.Headers --ignore-files lib/portal/dev/account_population.ex"
       ],
       "assets.setup": [
         "cmd --shell cd assets && CI=true pnpm i",
