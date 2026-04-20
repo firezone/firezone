@@ -213,7 +213,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <% end %>
         </div>
       </div>
-      
+
     <!-- Creation Panel (:new) -->
       <div
         id="api-client-new-panel"
@@ -255,7 +255,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 <.api_token_reveal encoded_token={@encoded_token} />
               <% end %>
             </div>
-            
+
     <!-- Panel footer -->
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
               <%= if is_nil(@encoded_token) do %>
@@ -285,7 +285,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           </.form>
         </div>
       </div>
-      
+
     <!-- Edit Panel (:edit) -->
       <div
         id="api-client-edit-panel"
@@ -332,7 +332,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 required
               />
             </div>
-            
+
     <!-- Panel footer -->
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
               <button
