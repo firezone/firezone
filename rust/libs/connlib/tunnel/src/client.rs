@@ -16,7 +16,6 @@ use crate::unroutable_packet::UnroutablePacket;
 pub(crate) use resource::{CidrResource, DnsResource};
 pub(crate) use resource::{InternetResource, Resource};
 
-use crate::ClientEvent;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
@@ -29,6 +28,7 @@ use crate::messages::{
 };
 use crate::peer_store::PeerStore;
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt, Result, bail};
 use boringtun::x25519;
@@ -441,32 +441,30 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Option<IpPacket> {
-        let (pid, packet) = self.node.decapsulate(
-            local,
-            from,
-            packet.as_ref(),
-            now,
-        )
-        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate: {e:#}"))
-        .ok()??;
+    ) -> Result<Option<IpPacket>> {
+        let Some((pid, packet)) = self
+            .node
+            .decapsulate(local, from, packet.as_ref(), now)
+            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
+        else {
+            return Ok(None);
+        };
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
-            return None;
+            return Ok(None);
         }
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
-            return None;
+            return Ok(None);
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             match (fz_p2p_control.event_type(), pid) {
                 (p2p_control::DOMAIN_STATUS_EVENT, ClientOrGatewayId::Gateway(gid)) => {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
-                        .inspect_err(|e| tracing::debug!("{e:#}"))
-                        .ok()?;
+                        .context("Failed to decode `DomainStatus`")?;
 
                     let buffered_packets = self.dns_resource_nat.on_domain_status(gid, res);
 
@@ -495,7 +493,7 @@ impl ClientState {
                 }
             };
 
-            return None;
+            return Ok(None);
         }
 
         match pid {
@@ -503,19 +501,17 @@ impl ClientState {
                 let Some(_peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
 
-                    return None;
+                    return Ok(None);
                 };
             }
             ClientOrGatewayId::Gateway(gid) => {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
                     tracing::error!(%gid, "Couldn't find connection by ID");
 
-                    return None;
+                    return Ok(None);
                 };
 
-                peer.ensure_allowed_src(&packet)
-                    .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
-                    .ok()?;
+                peer.ensure_allowed_src(&packet)?;
 
                 if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
@@ -536,7 +532,7 @@ impl ClientState {
             }
         }
 
-        Some(packet)
+        Ok(Some(packet))
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {

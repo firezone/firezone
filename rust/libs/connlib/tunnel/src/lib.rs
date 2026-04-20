@@ -255,7 +255,11 @@ impl ClientTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        match self.role_state.handle_tun_input(packet, now) {
+                        match self
+                            .role_state
+                            .handle_tun_input(packet, now)
+                            .context("Failed to handle packet from TUN device")
+                        {
                             Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
@@ -288,16 +292,21 @@ impl ClientTunnel {
                             ],
                         );
 
-                        match self.role_state.handle_network_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        ) {
-                            Some(packet) => self
+                        match self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .context("Failed to handle packet from network")
+                        {
+                            Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            None => self.io.schedule_timeout(now),
+                            Ok(None) => self.io.schedule_timeout(now),
+                            Err(e) => error.push(e),
                         };
                     }
 
@@ -443,7 +452,11 @@ impl GatewayTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        match self.role_state.handle_tun_input(packet, now) {
+                        match self
+                            .role_state
+                            .handle_tun_input(packet, now)
+                            .context("Failed to handle packet from TUN device")
+                        {
                             Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
@@ -489,12 +502,16 @@ impl GatewayTunnel {
                             ],
                         );
 
-                        match self.role_state.handle_network_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        ) {
+                        match self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .context("Failed to handle packet from network")
+                        {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
