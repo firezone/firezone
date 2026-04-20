@@ -325,7 +325,8 @@ defmodule PortalWeb.Clients do
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_client) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients")}
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients?#{params}")}
   end
 
   def handle_event("handle_keydown", _params, socket) do

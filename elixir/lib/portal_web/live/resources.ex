@@ -623,7 +623,8 @@ defmodule PortalWeb.Resources do
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_resource) do
-    {:noreply, push_patch(socket, to: resources_index_path(socket))}
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/resources?#{params}")}
   end
 
   def handle_event("handle_keydown", _params, socket) do

@@ -157,7 +157,8 @@ defmodule PortalWeb.Actors do
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_actor) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors")}
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
   end
 
   def handle_event(
@@ -165,7 +166,8 @@ defmodule PortalWeb.Actors do
         _params,
         %{assigns: %{actor_panel: %{creating_actor: true}}} = socket
       ) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors")}
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
   end
 
   def handle_event("handle_keydown", _params, socket) do
