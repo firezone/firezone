@@ -718,7 +718,7 @@ defmodule Portal.Entra.Sync do
         enabled != false
 
       :error ->
-        Logger.warning("Skipping Entra user with missing accountEnabled field",
+        Logger.error("Skipping Entra user with missing accountEnabled field",
           entra_directory_id: directory_id,
           entra_user_id: Map.get(user, "id", "unknown"),
           entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))

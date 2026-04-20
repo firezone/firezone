@@ -23,6 +23,7 @@ defmodule Portal.Okta.Sync do
     PROVISIONED
     RECOVERY
     PASSWORD_EXPIRED
+    LOCKED_OUT
   ]
 
   @impl Oban.Worker
@@ -445,7 +446,7 @@ defmodule Portal.Okta.Sync do
         if syncable_okta_user_status?(status), do: member["id"]
 
       :error ->
-        Logger.warning("Skipping Okta group member with missing status",
+        Logger.error("Skipping Okta group member with missing status",
           okta_directory_id: directory_id,
           okta_group_idp_id: group_idp_id,
           okta_user_id: Map.get(member, "id", "unknown")
@@ -461,7 +462,7 @@ defmodule Portal.Okta.Sync do
         syncable_okta_user_status?(status)
 
       :error ->
-        Logger.warning("Skipping Okta app user with missing status",
+        Logger.error("Skipping Okta app user with missing status",
           okta_directory_id: directory_id,
           okta_user_id: Map.get(user, "id", "unknown")
         )

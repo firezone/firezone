@@ -435,7 +435,7 @@ defmodule Portal.Google.APIClient do
         suspended != true and archived != true
 
       _ ->
-        Logger.warning("Skipping Google user with missing suspended/archived flags",
+        Logger.error("Skipping Google user with missing suspended/archived flags",
           google_user_id: Map.get(user, "id", "unknown"),
           google_user_email: Map.get(user, "primaryEmail", Map.get(user, "email", "unknown"))
         )

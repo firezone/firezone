@@ -84,9 +84,9 @@ Firezone treats **deleted** users and users in non-syncable Okta states as
 inactive for directory sync.
 
 - **Synced states:** `ACTIVE`, `STAGED`, `PROVISIONED`, `RECOVERY`, and
-  `PASSWORD_EXPIRED`
+  `PASSWORD_EXPIRED`, and `LOCKED_OUT`
 - **Filtered-out states:** Firezone excludes all other Okta states, including
-  `LOCKED_OUT`, `SUSPENDED`, and `DEPROVISIONED`.
+  `SUSPENDED` and `DEPROVISIONED`.
 - **Defense in depth:** Firezone re-checks `status` for both app users and
   group members after receiving each response.
 - **Defensive handling:** If Okta omits `status` unexpectedly, Firezone logs

@@ -351,9 +351,9 @@ Firezone removes deleted Okta users on the next sync. It also filters users by
 their Okta `status`.
 
 - **Synced states:** `ACTIVE`, `STAGED`, `PROVISIONED`, `RECOVERY`, and
-  `PASSWORD_EXPIRED`
+  `PASSWORD_EXPIRED`, and `LOCKED_OUT`
 - **Filtered-out states:** Firezone excludes all other Okta states, including
-  `LOCKED_OUT`, `SUSPENDED`, and `DEPROVISIONED`.
+  `SUSPENDED` and `DEPROVISIONED`.
 - **Defense in depth:** Firezone re-checks `status` after receiving both app
   user and group member payloads.
 - **Defensive handling:** If Okta omits `status` unexpectedly, Firezone logs

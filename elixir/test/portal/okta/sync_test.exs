@@ -265,7 +265,13 @@ defmodule Portal.Okta.SyncTest do
 
       identities = Repo.all(ExternalIdentity)
       identity_emails = Enum.map(identities, & &1.email) |> Enum.sort()
-      assert identity_emails == ["active@example.com", "provisioned@example.com"]
+
+      assert identity_emails == [
+               "active@example.com",
+               "locked-out@example.com",
+               "provisioned@example.com"
+             ]
+
       assert Repo.all(Group) == []
       assert Repo.all(Membership) == []
       assert log =~ "Skipping Okta app user with missing status"
@@ -1219,7 +1225,7 @@ defmodule Portal.Okta.SyncTest do
         end)
 
       memberships = Repo.all(Membership)
-      assert length(memberships) == 2
+      assert length(memberships) == 3
       assert log =~ "Skipping Okta group member with missing status"
       assert log =~ "user_missing_status"
     end
