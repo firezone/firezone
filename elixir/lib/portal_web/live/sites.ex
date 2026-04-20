@@ -933,15 +933,11 @@ defmodule PortalWeb.Sites do
   end
 
   defp unsubscribe_deploy_site_presence(socket) do
-    cond do
-      not connected?(socket) ->
-        socket
-
-      site_id = socket.assigns.site_deploy.subscribed_site_id ->
+    if connected?(socket) do
+      site_id = socket.assigns.site_deploy.subscribed_site_id
         :ok = PubSub.unsubscribe("presences:sites:#{site_id}")
         merge_state(socket, :site_deploy, %{subscribed_site_id: nil})
-
-      true ->
+    else
         socket
     end
   end
