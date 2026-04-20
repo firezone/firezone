@@ -157,7 +157,7 @@ impl GatewayState {
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
-            .context(FailedToDecapsulate(packet_kind::classify(packet)))?
+            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
         else {
             return Ok(None);
         };
