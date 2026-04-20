@@ -2135,32 +2135,36 @@ mod tests {
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv4() {
         let mut state = ClientState::for_test();
-        let now = Instant::now();
         let tun_ipv4 = Ipv4Addr::new(100, 82, 80, 16);
-
         state.update_interface_config(interface(tun_ipv4, Ipv6Addr::LOCALHOST));
-        drain_events(&mut state);
 
         let packet = ip_packet::make::udp_packet(tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
 
-        assert!(state.handle_tun_input(packet, now).unwrap().is_none());
+        assert_eq!(
+            state
+                .handle_tun_input(packet, Instant::now())
+                .unwrap_err()
+                .to_string(),
+            "Unroutable packet: Packet destination IP is TUN device"
+        );
         assert_no_device_connection_intent(&mut state);
     }
 
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv6() {
         let mut state = ClientState::for_test();
-        let now = Instant::now();
         let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
-
-        assert!(crate::is_peer(tun_ipv6.into()));
-
         state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
-        drain_events(&mut state);
 
         let packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
 
-        assert!(state.handle_tun_input(packet, now).unwrap().is_none());
+        assert_eq!(
+            state
+                .handle_tun_input(packet, Instant::now())
+                .unwrap_err()
+                .to_string(),
+            "Unroutable packet: Packet destination IP is TUN device"
+        );
         assert_no_device_connection_intent(&mut state);
     }
 
@@ -2295,10 +2299,6 @@ mod tests {
             upstream_doh: vec![],
             search_domain: None,
         }
-    }
-
-    fn drain_events(state: &mut ClientState) {
-        while state.poll_event().is_some() {}
     }
 
     fn assert_no_device_connection_intent(state: &mut ClientState) {
