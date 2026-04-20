@@ -544,50 +544,50 @@ defmodule PortalWeb.SignUp do
       {:noreply, assign(socket, step: :email_sent)}
     else
       changeset = Registration.changeset(attrs) |> Map.put(:action, :insert)
-
-      if changeset.valid? and socket.assigns.sign_up_enabled? do
-        registration = Ecto.Changeset.apply_changes(changeset)
-        existing_accounts = Database.find_accounts_by_owner_email(registration.email)
-
-        result =
-          if existing_accounts == [] do
-            send_verification_email(
-              registration.email,
-              registration.account.name,
-              registration.actor.name
-            )
-          else
-            send_existing_accounts_email(registration.email, existing_accounts)
-          end
-
-        case result do
-          {:ok, _} ->
-            {:noreply, assign(socket, step: :email_sent)}
-
-          {:error, :rate_limited} ->
-            new_changeset =
-              Ecto.Changeset.add_error(
-                changeset,
-                :email,
-                "Too many attempts. Please try again later."
-              )
-
-            {:noreply, assign(socket, form: to_form(new_changeset, as: :registration))}
-
-          {:error, _reason} ->
-            new_changeset =
-              Ecto.Changeset.add_error(
-                changeset,
-                :email,
-                "We were unable to send you an email. Please try again later."
-              )
-
-            {:noreply, assign(socket, form: to_form(new_changeset, as: :registration))}
-        end
-      else
-        {:noreply, assign(socket, form: to_form(changeset, as: :registration))}
-      end
+      {:noreply, apply_registration(socket, changeset)}
     end
+  end
+
+  defp apply_registration(socket, %{valid?: true} = changeset)
+       when socket.assigns.sign_up_enabled? do
+    registration = Ecto.Changeset.apply_changes(changeset)
+    existing_accounts = Database.find_accounts_by_owner_email(registration.email)
+
+    result =
+      if existing_accounts == [] do
+        send_verification_email(
+          registration.email,
+          registration.account.name,
+          registration.actor.name
+        )
+      else
+        send_existing_accounts_email(registration.email, existing_accounts)
+      end
+
+    case result do
+      {:ok, _} ->
+        assign(socket, step: :email_sent)
+
+      {:error, :rate_limited} ->
+        new_changeset =
+          Ecto.Changeset.add_error(changeset, :email, "Too many attempts. Please try again later.")
+
+        assign(socket, form: to_form(new_changeset, as: :registration))
+
+      {:error, _reason} ->
+        new_changeset =
+          Ecto.Changeset.add_error(
+            changeset,
+            :email,
+            "We were unable to send you an email. Please try again later."
+          )
+
+        assign(socket, form: to_form(new_changeset, as: :registration))
+    end
+  end
+
+  defp apply_registration(socket, changeset) do
+    assign(socket, form: to_form(changeset, as: :registration))
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────

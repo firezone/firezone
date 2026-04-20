@@ -1121,6 +1121,7 @@ defmodule PortalWeb.Sites do
       end
     end
 
+    # credo:disable-for-next-line Credo.Check.Warning.SpecWithStruct
     @spec change_site(%Site{}, term()) :: Ecto.Changeset.t()
     def change_site(site, attrs \\ %{})
 

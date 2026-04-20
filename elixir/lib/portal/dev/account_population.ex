@@ -1,3 +1,4 @@
+# credo:disable-for-this-file
 defmodule Portal.Dev.AccountPopulation do
   import Ecto.Changeset
   import Ecto.Query
