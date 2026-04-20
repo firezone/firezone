@@ -50,6 +50,7 @@ mod sockets;
 #[allow(clippy::unwrap_in_result)]
 mod tests;
 mod unique_packet_buffer;
+mod unroutable_packet;
 mod utils;
 
 const REALM: &str = "firezone";

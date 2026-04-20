@@ -13,10 +13,10 @@ use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::filter_engine::FilterEngine;
 use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
-use crate::gateway::unroutable_packet::UnroutablePacket;
 use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
 use crate::routing_table::{self, RoutingTable};
+use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
 
 /// The state of one client on a gateway.
@@ -706,8 +706,9 @@ mod tests {
     use ip_packet::make::TcpFlags;
 
     use crate::{
-        gateway::{RoutingError, nat_table},
+        gateway::nat_table,
         messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
+        unroutable_packet::RoutingError,
     };
 
     #[test]
