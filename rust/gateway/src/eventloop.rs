@@ -292,7 +292,7 @@ impl Eventloop {
                 return Err(e);
             }
 
-            tracing::warn!("Tunnel error: {e:#}");
+            tracing::debug!("Tunnel error: {e:#}");
         }
 
         Ok(())
