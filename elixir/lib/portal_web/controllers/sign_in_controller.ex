@@ -67,6 +67,6 @@ defmodule PortalWeb.SignInController do
     ~p"/#{account}/sign_in/client_auth_error?#{query}"
   end
 
-  defp retry_path(account, params) when map_size(params) == 0, do: ~p"/#{account}"
-  defp retry_path(account, params), do: ~p"/#{account}?#{params}"
+  defp retry_path(account, params) when map_size(params) == 0, do: ~p"/#{account}/sign_in"
+  defp retry_path(account, params), do: ~p"/#{account}/sign_in?#{params}"
 end

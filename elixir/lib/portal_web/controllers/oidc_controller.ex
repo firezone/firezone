@@ -641,7 +641,8 @@ defmodule PortalWeb.OIDCController do
     )
   end
 
-  defp error_path(account_slug, params), do: ~p"/#{account_slug}?#{sanitize(params)}"
+  defp error_path("", _params), do: ~p"/sign_in"
+  defp error_path(account_slug, params), do: ~p"/#{account_slug}/sign_in?#{sanitize(params)}"
 
   defp error_path_for_context(account_slug, params, error) do
     if client_context?(params) and account_slug != "" do

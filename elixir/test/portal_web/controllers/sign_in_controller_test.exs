@@ -95,7 +95,7 @@ defmodule PortalWeb.SignInControllerTest do
         |> Map.fetch!(:query)
         |> URI.decode_query()
 
-      assert String.starts_with?(retry_path, ~s(/#{account.slug}?))
+      assert String.starts_with?(retry_path, ~s(/#{account.slug}/sign_in?))
       assert query["as"] == "client"
       assert query["state"] == "retry-state"
       assert query["nonce"] == "retry-nonce"
