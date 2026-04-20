@@ -257,11 +257,9 @@ impl Eventloop {
                 continue;
             }
 
-            if e.any_is::<tunnel::UdpSocketThreadStopped>() {
-                return Err(e);
-            }
-
-            if e.any_is::<tunnel::TunChannelClosed>() {
+            if e.any_is::<tunnel::UdpSocketThreadStopped>()
+                || e.any_is::<tunnel::TunChannelClosed>()
+            {
                 return Err(e);
             }
 
