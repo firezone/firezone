@@ -530,6 +530,11 @@ mod tests {
             now,
             SessionId::new(PublicKey::from([0u8; 32])),
         );
+        // Simulate a successful response so the relay is eligible for sampling.
+        allocations
+            .get_mut_by_id(&2)
+            .unwrap()
+            .set_rtt(Duration::from_millis(20));
 
         connections.migrate_relays(
             std::iter::empty(),

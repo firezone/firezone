@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, btree_map::Entry},
     fmt,
     net::{IpAddr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use bufferpool::BufferPool;
@@ -152,10 +152,30 @@ where
         }
     }
 
+    /// Sample an allocation for a new connection, biased towards low RTT.
+    ///
+    /// We compute an inclusion threshold from the observed RTT distribution
+    /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
+    /// or below it. Allocations without an RTT measurement are skipped: we
+    /// don't know whether they are healthy yet.
     pub(crate) fn sample(&self, rng: &mut impl Rng) -> Option<(RId, &Allocation)> {
-        let (id, a) = self.inner.iter().choose(rng)?;
+        let candidates = self
+            .inner
+            .iter()
+            .filter_map(|(id, a)| Some((*id, a, a.rtt()?)))
+            .collect::<SmallVec<[_; 8]>>();
 
-        Some((*id, a))
+        let rtts = candidates
+            .iter()
+            .map(|(_, _, rtt)| *rtt)
+            .collect::<SmallVec<[_; 8]>>();
+        let threshold = inclusion_threshold(&rtts)?;
+
+        candidates
+            .iter()
+            .filter(|(_, _, rtt)| *rtt <= threshold)
+            .choose(rng)
+            .map(|(id, a, _)| (*id, *a))
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -221,6 +241,48 @@ pub(crate) enum MutAllocationRef<'a, RId> {
     Connected(RId, &'a mut Allocation),
 }
 
+/// Maximum RTT (inclusive) for a relay to be considered when sampling.
+///
+/// For 1-2 relays, MAD-based outlier detection degenerates (with two
+/// samples the median sits exactly between them and MAD = gap/2, so neither is
+/// ever an outlier). For those small-N cases we fall back to a relative
+/// tolerance from the leader. For 3+ relays we use the standard `median + 3·MAD`
+/// outlier rule, which adapts to whatever spread the data shows.
+fn inclusion_threshold(rtts: &[Duration]) -> Option<Duration> {
+    let min = rtts.iter().copied().min()?;
+
+    if rtts.len() <= 2 {
+        // Include relays within 1.5x of the leader.
+        return Some(min * 3 / 2);
+    }
+
+    let mut sorted = rtts.iter().copied().collect::<SmallVec<[_; 8]>>();
+    sorted.sort();
+    let med = median(&sorted);
+
+    let mut deviations = sorted
+        .iter()
+        .map(|r| r.abs_diff(med))
+        .collect::<SmallVec<[_; 8]>>();
+    deviations.sort();
+    let mad = median(&deviations);
+
+    Some(med + 3 * mad)
+}
+
+/// Median of a sorted slice.
+///
+/// For even-length slices, returns the average of the two middle elements.
+fn median(sorted: &[Duration]) -> Duration {
+    let n = sorted.len();
+
+    if n.is_multiple_of(2) {
+        (sorted[n / 2 - 1] + sorted[n / 2]) / 2
+    } else {
+        sorted[n / 2]
+    }
+}
+
 fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
     std::iter::empty()
         .chain(
@@ -262,6 +324,7 @@ mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
 
     use boringtun::x25519::PublicKey;
+    use rand::SeedableRng as _;
 
     use super::*;
 
@@ -336,6 +399,197 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn inclusion_threshold_falls_back_to_relative_for_small_n() {
+        // n=1: just the single relay; threshold is 1.5x its RTT.
+        assert_eq!(inclusion_threshold(&[ms(40)]), Some(ms(60)));
+
+        // n=2: 1.5x of the leader.
+        assert_eq!(inclusion_threshold(&[ms(40), ms(60)]), Some(ms(60)));
+    }
+
+    #[test]
+    fn inclusion_threshold_uses_mad_for_three_or_more_relays() {
+        // Tightly clustered: median=35, MAD=5, threshold=50; all kept.
+        assert_eq!(inclusion_threshold(&[ms(30), ms(35), ms(40)]), Some(ms(50)));
+
+        // One clear outlier: median=35, MAD=5, threshold=50; 200ms excluded.
+        assert_eq!(
+            inclusion_threshold(&[ms(30), ms(35), ms(200)]),
+            Some(ms(50))
+        );
+
+        // Many fast + one slow: outlier identified.
+        let threshold = inclusion_threshold(&[ms(30), ms(32), ms(35), ms(40), ms(200)]).unwrap();
+        assert!(threshold < ms(100));
+        assert!(threshold >= ms(40));
+    }
+
+    #[test]
+    fn inclusion_threshold_averages_two_middle_elements_for_even_n() {
+        // n=4 sorted = [30, 40, 50, 60]
+        // median = (40 + 50) / 2 = 45
+        // deviations from 45 = [15, 5, 5, 15] sorted = [5, 5, 15, 15]
+        // MAD = (5 + 15) / 2 = 10
+        // threshold = 45 + 3 * 10 = 75
+        assert_eq!(
+            inclusion_threshold(&[ms(30), ms(40), ms(50), ms(60)]),
+            Some(ms(75))
+        );
+    }
+
+    #[test]
+    fn sample_excludes_outlier_relay_among_many_fast_ones() {
+        let now = Instant::now();
+        let mut allocations = Allocations::default();
+
+        for (rid, port, rtt_ms) in [
+            (1u32, 11111u16, 30),
+            (2, 22222, 32),
+            (3, 33333, 35),
+            (4, 44444, 40),
+            (5, 55555, 200),
+        ] {
+            allocations.upsert(
+                rid,
+                RelaySocket::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                now,
+                SessionId::new(PublicKey::from([0u8; 32])),
+            );
+            allocations
+                .get_mut_by_id(&rid)
+                .unwrap()
+                .set_rtt(Duration::from_millis(rtt_ms));
+        }
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        for _ in 0..1000 {
+            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            assert_ne!(rid, 5, "outlier relay must not be selected");
+        }
+    }
+
+    #[test]
+    fn sample_distributes_load_across_similar_rtt_relays() {
+        let now = Instant::now();
+        let mut allocations = Allocations::default();
+
+        // 1ms apart: both relays should be picked roughly equally (uniform within bucket).
+        for (rid, port, rtt_ms) in [(1u32, 11111u16, 30), (2, 22222, 31)] {
+            allocations.upsert(
+                rid,
+                RelaySocket::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                now,
+                SessionId::new(PublicKey::from([0u8; 32])),
+            );
+            allocations
+                .get_mut_by_id(&rid)
+                .unwrap()
+                .set_rtt(Duration::from_millis(rtt_ms));
+        }
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut counts = [0u32; 2];
+
+        for _ in 0..10_000 {
+            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            counts[(rid - 1) as usize] += 1;
+        }
+
+        let ratio = counts[0] as f64 / counts[1] as f64;
+        assert!(
+            (0.9..=1.1).contains(&ratio),
+            "expected near-even split, got ratio {ratio}"
+        );
+    }
+
+    #[test]
+    fn sample_excludes_n2_relay_when_much_slower() {
+        let now = Instant::now();
+        let mut allocations = Allocations::default();
+
+        // 30ms vs 200ms with n=2 ⇒ 200ms is 6.7x the leader, well outside 1.5x.
+        for (rid, port, rtt_ms) in [(1u32, 11111u16, 30), (2, 22222, 200)] {
+            allocations.upsert(
+                rid,
+                RelaySocket::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                now,
+                SessionId::new(PublicKey::from([0u8; 32])),
+            );
+            allocations
+                .get_mut_by_id(&rid)
+                .unwrap()
+                .set_rtt(Duration::from_millis(rtt_ms));
+        }
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        for _ in 0..100 {
+            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            assert_eq!(rid, 1);
+        }
+    }
+
+    #[test]
+    fn sample_falls_back_to_only_remaining_relay_even_if_high_rtt() {
+        let now = Instant::now();
+        let mut allocations = Allocations::default();
+
+        allocations.upsert(
+            1,
+            RelaySocket::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111)),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+        allocations
+            .get_mut_by_id(&1)
+            .unwrap()
+            .set_rtt(Duration::from_millis(500));
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let (rid, _) = allocations.sample(&mut rng).unwrap();
+        assert_eq!(rid, 1);
+    }
+
+    #[test]
+    fn sample_excludes_allocations_without_rtt() {
+        let now = Instant::now();
+        let mut allocations = Allocations::default();
+
+        allocations.upsert(
+            1,
+            RelaySocket::from(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111)),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        assert_eq!(allocations.get_by_id(&1).unwrap().rtt(), None);
+        assert!(allocations.sample(&mut rng).is_none());
+    }
+
     const SERVER_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111));
     const SERVER2_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 22222));
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
 }

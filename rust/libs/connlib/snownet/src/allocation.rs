@@ -97,6 +97,10 @@ pub struct Allocation {
 
     explicit_failure: Option<FreeReason>,
 
+    /// Smoothed round-trip time to the relay, computed via an exponential moving
+    /// average over response times. `None` until we receive the first response.
+    rtt: Option<Duration>,
+
     buffer_pool: BufferPool<Vec<u8>>,
 }
 
@@ -248,6 +252,7 @@ impl Allocation {
             software: Software::new(format!("snownet; session={session_id}"))
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
+            rtt: None,
             buffer_pool,
         };
 
@@ -364,6 +369,8 @@ impl Allocation {
 
         let rtt = now.duration_since(backoff.start_time());
         Span::current().record("rtt", field::debug(rtt));
+
+        self.update_rtt(rtt);
 
         if tracing::enabled!(target: "wire::turn", tracing::Level::DEBUG) {
             let request = original_request
@@ -949,6 +956,26 @@ impl Allocation {
 
     pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
         &self.server == socket
+    }
+
+    /// The smoothed round-trip time to the relay.
+    ///
+    /// Returns `None` if we haven't received a response yet.
+    pub fn rtt(&self) -> Option<Duration> {
+        self.rtt
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_rtt(&mut self, rtt: Duration) {
+        self.rtt = Some(rtt);
+    }
+
+    fn update_rtt(&mut self, sample: Duration) {
+        // RFC 6298 SRTT-style EMA: srtt = 7/8 * srtt + 1/8 * sample.
+        self.rtt = Some(match self.rtt {
+            None => sample,
+            Some(srtt) => srtt * 7 / 8 + sample / 8,
+        });
     }
 
     fn log_update(&self, now: Instant) {
@@ -2665,6 +2692,40 @@ mod tests {
 
         assert!(socket.matches(SocketAddr::V4(RELAY_V4)));
         assert!(socket.matches(SocketAddr::V6(RELAY_V6)));
+    }
+
+    #[test]
+    fn rtt_is_tracked_after_response() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(start);
+
+        assert_eq!(allocation.rtt(), None);
+
+        let binding = allocation.next_message().unwrap();
+        let recv_at = start + Duration::from_millis(40);
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), recv_at);
+
+        assert_eq!(allocation.rtt(), Some(Duration::from_millis(40)));
+    }
+
+    #[test]
+    fn rtt_is_smoothed_over_multiple_responses() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(start);
+
+        // First response: BINDING (40ms)
+        let binding = allocation.next_message().unwrap();
+        let mut now = start + Duration::from_millis(40);
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), now);
+        assert_eq!(allocation.rtt(), Some(Duration::from_millis(40)));
+
+        // Second response: ALLOCATE (200ms after the request was sent)
+        let allocate = allocation.next_message().unwrap();
+        now += Duration::from_millis(200);
+        allocation.handle_test_input_ip4(allocate_response(&allocate, &[RELAY_ADDR_IP4]), now);
+
+        // EMA: 7/8 * 40ms + 1/8 * 200ms = 35ms + 25ms = 60ms
+        assert_eq!(allocation.rtt(), Some(Duration::from_millis(60)));
     }
 
     #[test]
