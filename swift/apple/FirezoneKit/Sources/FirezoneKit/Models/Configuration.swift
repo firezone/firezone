@@ -96,7 +96,7 @@ public class Configuration: ObservableObject {
   #endif
 
   static let defaultAccountSlug = ""
-  static let defaultSupportURL = "https://firezone.dev/support"
+  static let defaultSupportURL = "https://www.firezone.dev/support"
 
   // Bools are always default false
   static let defaultConnectOnStart = false

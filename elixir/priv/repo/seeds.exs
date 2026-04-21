@@ -1143,7 +1143,7 @@ defmodule Portal.Repo.Seeds do
           type: :dns,
           name: "*.firezone.dev",
           address: "*.firezone.dev",
-          address_description: "https://firezone.dev/",
+          address_description: "https://www.firezone.dev/",
           site_id: site.id,
           filters: []
         },

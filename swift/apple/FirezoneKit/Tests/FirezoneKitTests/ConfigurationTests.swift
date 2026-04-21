@@ -44,7 +44,7 @@ struct ConfigurationTests {
     // These assertions verify the actual values, not just self-comparison
     #expect(config.authURL.starts(with: "https://app.fire"))
     #expect(config.apiURL.starts(with: "wss://api.fire"))
-    #expect(config.supportURL == "https://firezone.dev/support")
+    #expect(config.supportURL == "https://www.firezone.dev/support")
     #expect(config.accountSlug.isEmpty)
 
     // Confirm nothing was written to UserDefaults (defaults are computed, not stored)
