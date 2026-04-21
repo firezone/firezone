@@ -624,13 +624,6 @@ impl RefClient {
         })
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
-        self.cidr_resources
-            .iter_ipv4()
-            .map(|(n, _)| n)
-            .collect_vec()
-    }
-
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
         self.resources
             .iter()

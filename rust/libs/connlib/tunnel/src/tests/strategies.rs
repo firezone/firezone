@@ -135,7 +135,6 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
             )
         })
         .prop_flat_map(
-            #[allow(clippy::type_complexity)]
             |(
                 clients,
                 gateways_by_site,
@@ -174,9 +173,8 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 mut cidr_resources,
                 extra_cidr,
                 search_domain,
-                dns_resources,
-                device_pool_resources,
                 mut dns_resources,
+                device_pool_resources,
                 extra_dns,
                 internet_resource,
                 gateway_selector,

@@ -11,9 +11,8 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use crate::unroutable_packet::UnroutablePacket;
 #[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::{CidrResource, DnsResource};
+pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
 pub(crate) use resource::{InternetResource, Resource};
 
 use crate::client::dns_cache::DnsCache;
@@ -21,13 +20,18 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
-use crate::dns::{DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, stub_resolver};
+use crate::dns::{
+    DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, device_stub_resolver,
+    resource_stub_resolver,
+};
 use crate::filter_engine::FilterEngine;
+use crate::messages::client::{DevicePoolDomainResolutionFailed, DevicePoolDomainResolved};
 use crate::messages::{
     IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
 use crate::peer_store::PeerStore;
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt, Result, bail};

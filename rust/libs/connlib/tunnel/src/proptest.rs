@@ -12,9 +12,9 @@ use std::{
 };
 
 use crate::client::{
-    client::{CidrResource, DnsResource, InternetResource, Resource},
-    messages::{Filter, PortRange},
+    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
 };
+use crate::messages::{Filter, PortRange};
 
 pub fn resource(
     sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
