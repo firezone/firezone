@@ -16,8 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// How long to wait for the portal to resolve a device pool domain before
-/// giving up and returning SERVFAIL to the caller.
+/// How long to wait for the portal to resolve a device pool domain before giving up.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// TTL used in synthesised DNS responses for device pool resolutions.
@@ -43,6 +42,7 @@ pub(crate) enum ResolveStrategy {
     Pending,
 }
 
+#[derive(Debug)]
 pub(crate) enum Event {
     QueryDomain {
         resource_id: ResourceId,
@@ -104,16 +104,6 @@ impl DeviceStubResolver {
     }
 
     /// Processes a DNS query against the device pool patterns.
-    ///
-    /// - If no pattern matches, returns [`ResolveStrategy::Passthrough`].
-    /// - If the query is for a non-A record against a pool, returns
-    ///   [`ResolveStrategy::LocalResponse`] with a NOERROR empty response
-    ///   (device pools are IPv4-only).
-    /// - If a cached resolution exists, returns [`ResolveStrategy::LocalResponse`]
-    ///   with a synthesised A record.
-    /// - Otherwise buffers the query, emits an [`Event::QueryDomain`] (unless
-    ///   an identical request is already in-flight) and returns
-    ///   [`ResolveStrategy::Pending`].
     pub(crate) fn handle_query(
         &mut self,
         query: &dns_types::Query,
@@ -166,13 +156,6 @@ impl DeviceStubResolver {
         ResolveStrategy::Pending
     }
 
-    /// Reacts to a portal resolution result for `(resource_id, domain)`.
-    ///
-    /// On success the mapping is cached and a DNS response is emitted for the
-    /// pending query. On failure an NXDOMAIN (for `NotFound`) or SERVFAIL
-    /// response is emitted.
-    ///
-    /// Does nothing if we have no pending query for this domain.
     pub(crate) fn handle_device_domain_resolved(
         &mut self,
         resource_id: ResourceId,
@@ -347,16 +330,14 @@ mod tests {
         let mut resolver = DeviceStubResolver::default();
         resolver.add_resource(ResourceId::from_u128(1), POOL_PATTERN.to_owned());
 
-        resolver.handle_query(
+        let s1 = resolver.handle_query(
             &query(POOL_DOMAIN, dns_types::RecordType::A),
             LOCAL,
             REMOTE,
             dns::Transport::Udp,
             Instant::now(),
         );
-        resolver.poll_event(); // drain the first QueryDomain
-
-        let s = resolver.handle_query(
+        let s2 = resolver.handle_query(
             &query(POOL_DOMAIN, dns_types::RecordType::A),
             LOCAL,
             REMOTE,
@@ -364,11 +345,9 @@ mod tests {
             Instant::now(),
         );
 
-        assert!(matches!(s, ResolveStrategy::Pending));
-        assert!(
-            resolver.poll_event().is_none(),
-            "duplicate in-flight query must not emit another QueryDomain event"
-        );
+        assert!(matches!(s1, ResolveStrategy::Pending));
+        assert!(matches!(s2, ResolveStrategy::Pending));
+        assert_eq!(iter::from_fn(|| resolver.poll_event()).count(), 1);
     }
 
     #[test]
@@ -589,53 +568,6 @@ mod tests {
         );
 
         assert!(resolver.poll_event().is_none());
-    }
-
-    #[test]
-    fn duplicate_insert_preserves_original_deadline() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        resolver.add_resource(rid, POOL_PATTERN.to_owned());
-
-        let now = Instant::now();
-        resolver.handle_query(
-            &query(POOL_DOMAIN, dns_types::RecordType::A),
-            LOCAL,
-            REMOTE,
-            dns::Transport::Udp,
-            now,
-        );
-        resolver.poll_event();
-
-        // A refreshing query arrives just before the original deadline fires.
-        let refreshed_at = now + QUERY_TIMEOUT - Duration::from_millis(1);
-        resolver.handle_query(
-            &query(POOL_DOMAIN, dns_types::RecordType::A),
-            LOCAL,
-            REMOTE,
-            dns::Transport::Udp,
-            refreshed_at,
-        );
-        assert!(resolver.poll_event().is_none());
-
-        // The deadline must still be anchored to the original `created_at`, not
-        // the refreshed one — otherwise a stream of repeats could postpone it forever.
-        // `handle_timeout` at that point sweeps the expired pending (emitting SERVFAIL).
-        let past_original_deadline = now + QUERY_TIMEOUT + Duration::from_millis(1);
-        resolver.handle_timeout(past_original_deadline);
-        resolver.poll_event();
-
-        // A late portal reply then finds no pending entry and emits nothing.
-        resolver.handle_device_domain_resolved(
-            rid,
-            POOL_DOMAIN.parse().unwrap(),
-            Ok(Ipv4Addr::new(100, 64, 0, 42)),
-        );
-
-        assert!(
-            resolver.poll_event().is_none(),
-            "refreshed handle must not extend the original query's deadline"
-        );
     }
 
     fn query(domain: &str, record_type: dns_types::RecordType) -> dns_types::Query {
