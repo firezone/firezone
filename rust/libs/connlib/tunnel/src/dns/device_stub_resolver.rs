@@ -287,13 +287,11 @@ mod tests {
             Instant::now(),
         );
 
-        match s {
-            ResolveStrategy::LocalResponse(resp) => {
-                assert_eq!(resp.response_code(), dns_types::ResponseCode::NOERROR);
-                assert_eq!(resp.records().count(), 0);
-            }
-            _ => panic!("expected LocalResponse"),
-        }
+        let ResolveStrategy::LocalResponse(resp) = s else {
+            panic!("expected LocalResponse")
+        };
+        assert_eq!(resp.response_code(), dns_types::ResponseCode::NOERROR);
+        assert_eq!(resp.records().count(), 0);
         assert!(resolver.poll_event().is_none());
     }
 
@@ -312,16 +310,15 @@ mod tests {
         );
 
         assert!(matches!(s, ResolveStrategy::Pending));
-        match resolver.poll_event() {
-            Some(Event::QueryDomain {
-                resource_id,
-                domain,
-            }) => {
-                assert_eq!(resource_id, rid);
-                assert_eq!(domain.to_string(), POOL_DOMAIN);
-            }
-            _ => panic!("expected QueryDomain event"),
-        }
+        let Some(Event::QueryDomain {
+            resource_id,
+            domain,
+        }) = resolver.poll_event()
+        else {
+            panic!("expected QueryDomain event")
+        };
+        assert_eq!(resource_id, rid);
+        assert_eq!(domain.to_string(), POOL_DOMAIN);
         assert!(resolver.poll_event().is_none());
     }
 
@@ -372,12 +369,10 @@ mod tests {
             Ok(Ipv4Addr::new(100, 64, 0, 42)),
         );
 
-        match resolver.poll_event() {
-            Some(Event::SendResponse { response, .. }) => {
-                assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
-            }
-            _ => panic!("expected SendResponse event"),
-        }
+        let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
+            panic!("expected SendResponse event")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
     }
 
     #[test]
@@ -402,12 +397,10 @@ mod tests {
             Err(FailReason::NotFound),
         );
 
-        match resolver.poll_event() {
-            Some(Event::SendResponse { response, .. }) => {
-                assert_eq!(response.response_code(), dns_types::ResponseCode::NXDOMAIN);
-            }
-            _ => panic!("expected SendResponse event"),
-        }
+        let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
+            panic!("expected SendResponse event")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NXDOMAIN);
     }
 
     #[test]
@@ -432,12 +425,10 @@ mod tests {
             Err(FailReason::Forbidden),
         );
 
-        match resolver.poll_event() {
-            Some(Event::SendResponse { response, .. }) => {
-                assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
-            }
-            _ => panic!("expected SendResponse event"),
-        }
+        let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
+            panic!("expected SendResponse event")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
     }
 
     #[test]
@@ -530,12 +521,10 @@ mod tests {
         let later = now + QUERY_TIMEOUT + Duration::from_millis(1);
         resolver.handle_timeout(later);
 
-        match resolver.poll_event() {
-            Some(Event::SendResponse { response, .. }) => {
-                assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
-            }
-            _ => panic!("expected SendResponse event"),
-        }
+        let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
+            panic!("expected SendResponse event")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
     }
 
     #[test]
