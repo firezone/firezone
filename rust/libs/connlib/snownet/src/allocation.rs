@@ -270,6 +270,7 @@ impl Allocation {
         self.allocation_lifetime = None;
         self.channel_bindings.clear();
         self.buffered_channel_bindings.clear();
+        self.explicit_failure = None;
 
         self.send_binding_requests(now);
     }
