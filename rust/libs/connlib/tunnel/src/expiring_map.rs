@@ -66,20 +66,20 @@ where
         Some(entry)
     }
 
-    /// Retains only the entries for which `predicate` returns `true`.
+    /// Removes and returns all entries for which `predicate` returns `true`.
     ///
     /// Removed entries do NOT produce [`Event::EntryExpired`].
-    #[allow(dead_code)] // TODO: remove when dynamic device pool lands
-    pub fn retain<F>(&mut self, mut predicate: F)
+    pub fn extract_if<F>(&mut self, mut predicate: F) -> impl Iterator<Item = (K, V)>
     where
         F: FnMut(&K, &V) -> bool,
     {
-        for (key, entry) in self
-            .inner
-            .extract_if(|k, entry| !predicate(k, &entry.value))
-        {
-            remove_from_expiration_bucket(&mut self.expiration, &key, entry.expires_at);
-        }
+        let expiration = &mut self.expiration;
+        self.inner
+            .extract_if(move |k, entry| predicate(k, &entry.value))
+            .map(move |(key, entry)| {
+                remove_from_expiration_bucket(expiration, &key, entry.expires_at);
+                (key, entry.value)
+            })
     }
 
     pub fn poll_timeout(&self) -> Option<Instant> {
@@ -284,36 +284,38 @@ mod tests {
     }
 
     #[test]
-    fn retain_removing_everything_leaves_empty_map() {
+    fn extract_if_removing_everything_leaves_empty_map() {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
         map.insert("a", 1, now, Duration::from_secs(1));
         map.insert("b", 2, now, Duration::from_secs(2));
 
-        map.retain(|_, _| false);
+        let removed = map.extract_if(|_, _| true).count();
 
+        assert_eq!(removed, 2);
         assert!(map.is_empty());
         assert_eq!(map.poll_timeout(), None, "expiration index must be empty");
     }
 
     #[test]
-    fn retain_removing_nothing_preserves_all_entries() {
+    fn extract_if_removing_nothing_preserves_all_entries() {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
         map.insert("a", 1, now, Duration::from_secs(1));
         map.insert("b", 2, now, Duration::from_secs(2));
 
-        map.retain(|_, _| true);
+        let removed = map.extract_if(|_, _| false).count();
 
+        assert_eq!(removed, 0);
         assert_eq!(map.get(&"a").unwrap().value, 1);
         assert_eq!(map.get(&"b").unwrap().value, 2);
         assert_eq!(map.poll_timeout(), Some(now + Duration::from_secs(1)));
     }
 
     #[test]
-    fn retain_multiple_entries_in_same_expiration_bucket() {
+    fn extract_if_multiple_entries_in_same_expiration_bucket() {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
@@ -321,8 +323,9 @@ mod tests {
         map.insert("drop1", 2, now, Duration::from_secs(1));
         map.insert("drop2", 3, now, Duration::from_secs(1));
 
-        map.retain(|k, _| *k == "keep");
+        let removed = map.extract_if(|k, _| *k != "keep").count();
 
+        assert_eq!(removed, 2);
         assert_eq!(map.get(&"keep").unwrap().value, 1);
         assert_eq!(map.get(&"drop1"), None);
         assert_eq!(map.get(&"drop2"), None);
@@ -332,15 +335,16 @@ mod tests {
     }
 
     #[test]
-    fn retain_drops_non_matching_entries_and_updates_expiration_index() {
+    fn extract_if_drops_matching_entries_and_updates_expiration_index() {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
         map.insert("keep", "value1", now, Duration::from_secs(1));
         map.insert("drop", "value2", now, Duration::from_secs(2));
 
-        map.retain(|k, _| *k == "keep");
+        let removed = map.extract_if(|k, _| *k == "drop").collect::<Vec<_>>();
 
+        assert_eq!(removed, vec![("drop", "value2")]);
         assert_eq!(map.get(&"keep").unwrap().value, "value1");
         assert_eq!(map.get(&"drop"), None);
         assert_eq!(
