@@ -536,9 +536,6 @@ defmodule PortalWeb.Groups.Components do
         </button>
         <span class="text-xs font-semibold text-[var(--text-primary)]">Grant access</span>
       </div>
-      <span class="text-xs text-[var(--text-tertiary)]">
-        {length(@available_resources)} available
-      </span>
     </div>
     <.form
       for={@grant_resource_form}
@@ -546,109 +543,157 @@ defmodule PortalWeb.Groups.Components do
       id="grant-resource-form"
       class="flex-1 flex flex-col overflow-hidden"
     >
-      <input type="hidden" name="policy[resource_id]" value={@grant_resource_id} />
       <div class="flex-1 overflow-y-auto">
         <div class="px-5 py-4 space-y-5">
           <div>
             <label class="block text-xs font-medium text-[var(--text-secondary)] mb-2">
-              Resource <span class="text-[var(--status-error)]">*</span>
+              Resources <span class="text-[var(--status-error)]">*</span>
             </label>
-            <div class="relative mb-2">
-              <.icon
-                name="remix-search-line"
-                class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
-              />
-              <input
-                type="text"
-                placeholder="Filter resources..."
-                value={@grant_resource_search}
-                phx-keyup="search_grant_resources"
-                phx-debounce="200"
-                autocomplete="off"
-                data-1p-ignore
-                class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
-              />
-            </div>
-            <% filtered_resources =
-              if @grant_resource_search == "" do
-                Enum.take(@available_resources, 5)
-              else
-                @available_resources
-                |> Enum.filter(fn r ->
-                  String.contains?(String.downcase(r.name), String.downcase(@grant_resource_search)) or
-                    String.contains?(
-                      String.downcase(r.address || ""),
-                      String.downcase(@grant_resource_search)
-                    )
-                end)
-                |> Enum.take(5)
-              end
-              selected_resource =
-                @grant_resource_id &&
-                  Enum.find(@available_resources, &(&1.id == @grant_resource_id))
-              filtered_resources =
-                if selected_resource &&
-                     not Enum.any?(filtered_resources, &(&1.id == selected_resource.id)) do
-                  [selected_resource | filtered_resources]
+            <% filtered_available =
+              @available_resources
+              |> Enum.reject(&(&1.id in @grant_selected_resource_ids))
+              |> then(fn resources ->
+                if @grant_resource_search == "" do
+                  resources
                 else
-                  filtered_resources
-                end %>
-            <ul class="space-y-1">
-              <li :for={resource <- filtered_resources}>
-                <button
-                  type="button"
-                  phx-click="select_grant_resource"
-                  phx-value-resource_id={resource.id}
-                  class={[
-                    "flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border cursor-pointer transition-colors",
-                    if @grant_resource_id == resource.id do
-                      "border-[var(--brand)] bg-[var(--brand-muted)]"
-                    else
-                      "border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)]"
-                    end
-                  ]}
-                >
-                  <div class="flex-1 min-w-0 text-left">
-                    <p class={[
-                      "text-sm font-medium truncate transition-colors",
-                      if(@grant_resource_id == resource.id,
-                        do: "text-[var(--brand)]",
-                        else: "text-[var(--text-primary)]"
+                  Enum.filter(resources, fn r ->
+                    String.contains?(
+                      String.downcase(r.name),
+                      String.downcase(@grant_resource_search)
+                    ) or
+                      String.contains?(
+                        String.downcase(r.address || ""),
+                        String.downcase(@grant_resource_search)
                       )
-                    ]}>
-                      {resource.name}
-                    </p>
-                    <p class="text-xs text-[var(--text-tertiary)] font-mono truncate">
-                      {resource.address}
-                    </p>
+                  end)
+                end
+              end)
+              selected_resources =
+                Enum.filter(@available_resources, &(&1.id in @grant_selected_resource_ids))
+              at_max = length(@grant_selected_resource_ids) >= 5 %>
+            <div class="flex gap-2 h-52">
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Available
+                  </span>
+                  <span class="text-[10px] text-[var(--text-muted)]">
+                    {length(filtered_available)}
+                  </span>
+                </div>
+                <div class="px-2 pt-1.5 shrink-0">
+                  <div class="relative">
+                    <.icon
+                      name="remix-search-line"
+                      class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search…"
+                      value={@grant_resource_search}
+                      phx-keyup="search_grant_resources"
+                      phx-debounce="200"
+                      autocomplete="off"
+                      data-1p-ignore
+                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                    />
                   </div>
-                  <.icon
-                    :if={@grant_resource_id == resource.id}
-                    name="remix-check-line"
-                    class="w-4 h-4 text-[var(--brand)] shrink-0"
-                  />
-                </button>
-              </li>
-            </ul>
-            <div
-              :if={@available_resources == []}
-              class="flex items-center justify-center h-24 text-sm text-[var(--text-tertiary)]"
-            >
-              All resources already have access.
+                </div>
+                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+                  <li :for={resource <- filtered_available}>
+                    <button
+                      type="button"
+                      phx-click="toggle_grant_resource"
+                      phx-value-resource_id={resource.id}
+                      disabled={at_max}
+                      class={[
+                        "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
+                        if at_max do
+                          "opacity-40 cursor-not-allowed"
+                        else
+                          "hover:bg-[var(--surface)] cursor-pointer"
+                        end
+                      ]}
+                    >
+                      <div class="flex-1 min-w-0">
+                        <p class="text-xs text-[var(--text-primary)] truncate">{resource.name}</p>
+                        <p class="text-[10px] text-[var(--text-tertiary)] font-mono truncate">
+                          {resource.address}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                  <li
+                    :if={@available_resources == []}
+                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                  >
+                    All resources already have access.
+                  </li>
+                  <li
+                    :if={@available_resources != [] && filtered_available == []}
+                    class="flex items-center justify-center h-12 text-xs text-[var(--text-tertiary)]"
+                  >
+                    No resources match.
+                  </li>
+                </ul>
+              </div>
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Selected
+                  </span>
+                  <span class={[
+                    "text-[10px] font-medium",
+                    if(length(@grant_selected_resource_ids) >= 5,
+                      do: "text-[var(--status-warning)]",
+                      else: "text-[var(--text-muted)]"
+                    )
+                  ]}>
+                    {length(@grant_selected_resource_ids)} / 5
+                  </span>
+                </div>
+                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+                  <li :for={resource <- selected_resources}>
+                    <button
+                      type="button"
+                      phx-click="toggle_grant_resource"
+                      phx-value-resource_id={resource.id}
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors cursor-pointer group"
+                    >
+                      <div class="flex-1 min-w-0">
+                        <p class="text-xs text-[var(--text-primary)] truncate">{resource.name}</p>
+                        <p class="text-[10px] text-[var(--text-tertiary)] font-mono truncate">
+                          {resource.address}
+                        </p>
+                      </div>
+                      <.icon
+                        name="remix-close-line"
+                        class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                      />
+                    </button>
+                  </li>
+                  <li
+                    :if={selected_resources == []}
+                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                  >
+                    No resources selected.
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div
-              :if={@available_resources != [] && filtered_resources == []}
-              class="flex items-center justify-center h-16 text-sm text-[var(--text-tertiary)]"
-            >
-              No resources match your search.
-            </div>
-            <p
-              :if={length(@available_resources) > 5 && filtered_resources != []}
-              class="mt-2 text-center text-[10px] text-[var(--text-muted)]"
-            >
-              Showing {length(filtered_resources)} of {length(@available_resources)} - type to narrow results
-            </p>
           </div>
+          <% allowed_conditions =
+            case @grant_selected_resource_ids do
+              [] ->
+                []
+
+              ids ->
+                ids
+                |> Enum.map(fn id -> Enum.find(@available_resources, &(&1.id == id)) end)
+                |> Enum.reject(&is_nil/1)
+                |> Enum.map(&available_conditions/1)
+                |> Enum.reduce(&Enum.filter(&2, fn c -> c in &1 end))
+            end %>
           <div class="border-t border-[var(--border)] pt-4">
             <div class="flex items-center justify-between mb-3">
               <h4 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
@@ -658,11 +703,7 @@ defmodule PortalWeb.Groups.Components do
                 </span>
               </h4>
               <div
-                :if={
-                  available_conditions(
-                    Enum.find(@available_resources, &(&1.id == @grant_resource_id))
-                  ) -- @active_conditions != []
-                }
+                :if={allowed_conditions -- @active_conditions != []}
                 class="relative"
               >
                 <button
@@ -676,12 +717,7 @@ defmodule PortalWeb.Groups.Components do
                   <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
                   <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-overlay)] shadow-lg py-1 overflow-hidden">
                     <button
-                      :for={
-                        type <-
-                          available_conditions(
-                            Enum.find(@available_resources, &(&1.id == @grant_resource_id))
-                          ) -- @active_conditions
-                      }
+                      :for={type <- allowed_conditions -- @active_conditions}
                       type="button"
                       phx-click="add_condition"
                       phx-value-type={type}
@@ -734,7 +770,7 @@ defmodule PortalWeb.Groups.Components do
         </button>
         <button
           type="submit"
-          disabled={is_nil(@grant_resource_id)}
+          disabled={@grant_selected_resource_ids == []}
           class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Grant access

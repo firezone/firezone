@@ -181,12 +181,12 @@ defmodule PortalWeb.GroupsTest do
       assert html =~ "Grant access"
       assert html =~ resource.name
 
-      html = render_click(lv, "select_grant_resource", %{"resource_id" => resource.id})
+      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
       assert html =~ resource.name
 
       html =
         lv
-        |> form("#grant-resource-form", policy: %{resource_id: resource.id})
+        |> form("#grant-resource-form")
         |> render_submit()
 
       assert html =~ resource.name
@@ -197,6 +197,106 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "open_grant_resource_form")
       assert html =~ "Grant access"
       assert render_click(lv, "close_grant_resource_form") =~ resource.name
+    end
+
+    test "grants access to multiple resources at once", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource1 = resource_fixture(account: account, name: "Resource Alpha")
+      resource2 = resource_fixture(account: account, name: "Resource Beta")
+      resource3 = resource_fixture(account: account, name: "Resource Gamma")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      render_click(lv, "open_grant_resource_form")
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource1.id})
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource2.id})
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource3.id})
+
+      lv |> form("#grant-resource-form") |> render_submit()
+
+      assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource1.id)
+      assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource2.id)
+      assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource3.id)
+    end
+
+    test "cannot select more than 5 resources", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      resources =
+        for i <- 1..6 do
+          resource_fixture(account: account, name: "Select Resource #{i}")
+        end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      render_click(lv, "open_grant_resource_form")
+
+      for resource <- Enum.take(resources, 5) do
+        render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      end
+
+      html = render(lv)
+      assert html =~ "5 / 5"
+
+      sixth = Enum.at(resources, 5)
+      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => sixth.id})
+
+      assert html =~ "5 / 5"
+    end
+
+    test "toggling a selected resource deselects it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Toggled Resource")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      render_click(lv, "open_grant_resource_form")
+
+      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      assert html =~ "1 / 5"
+
+      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      assert html =~ "0 / 5"
+    end
+
+    test "already-granted resources are not shown in available list", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Already Granted Resource")
+      _policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      html = render_click(lv, "open_grant_resource_form")
+
+      refute html =~ "Already Granted Resource"
     end
 
     test "disables, enables, and removes resource access", %{

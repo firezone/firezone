@@ -273,7 +273,7 @@ defmodule PortalWeb.Groups do
      |> merge_state(:group_resources,
        tab_view: :grant_form,
        available_resources: available,
-       grant_resource_id: nil,
+       grant_selected_resource_ids: [],
        grant_resource_form: to_grant_resource_form(),
        grant_resource_search: ""
      )
@@ -293,30 +293,64 @@ defmodule PortalWeb.Groups do
     {:noreply, merge_state(socket, :group_resources, grant_resource_search: search)}
   end
 
-  def handle_event("select_grant_resource", %{"resource_id" => resource_id}, socket) do
-    resource =
-      Enum.find(socket.assigns.group_resources.available_resources, &(&1.id == resource_id))
+  def handle_event("toggle_grant_resource", %{"resource_id" => resource_id}, socket) do
+    selected = socket.assigns.group_resources.grant_selected_resource_ids
 
-    allowed = available_conditions(resource)
-    active = Enum.filter(socket.assigns.grant_conditions.active_conditions, &(&1 in allowed))
+    updated =
+      if resource_id in selected do
+        List.delete(selected, resource_id)
+      else
+        if length(selected) < 5 do
+          selected ++ [resource_id]
+        else
+          selected
+        end
+      end
+
+    allowed =
+      updated
+      |> Enum.map(fn id ->
+        Enum.find(socket.assigns.group_resources.available_resources, &(&1.id == id))
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&available_conditions/1)
+      |> case do
+        [] -> []
+        lists -> Enum.reduce(lists, &(Enum.filter(&2, fn c -> c in &1 end)))
+      end
+
+    active =
+      Enum.filter(socket.assigns.grant_conditions.active_conditions, &(&1 in allowed))
 
     {:noreply,
      socket
-     |> merge_state(:group_resources, grant_resource_id: resource_id)
+     |> merge_state(:group_resources, grant_selected_resource_ids: updated)
      |> merge_state(:grant_conditions, active_conditions: active)}
   end
 
-  def handle_event("submit_grant_resource", %{"policy" => params}, socket) do
+  def handle_event("submit_grant_resource", params, socket) do
     group = socket.assigns.selected_group
+    selected_resource_ids = socket.assigns.group_resources.grant_selected_resource_ids
+    policy_params = Map.get(params, "policy", %{})
 
-    attrs =
-      params
-      |> Map.put("group_id", group.id)
+    condition_attrs =
+      policy_params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Map.put("group_id", group.id)
 
-    case Database.insert_policy(attrs, socket.assigns.subject) do
-      {:ok, _policy} ->
+    result =
+      Enum.reduce_while(selected_resource_ids, :ok, fn resource_id, :ok ->
+        attrs = Map.put(condition_attrs, "resource_id", resource_id)
+
+        case Database.insert_policy(attrs, socket.assigns.subject) do
+          {:ok, _policy} -> {:cont, :ok}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+      end)
+
+    case result do
+      :ok ->
         resources = Database.list_resources_for_group(group, socket.assigns.subject)
 
         {:noreply,
@@ -782,7 +816,7 @@ defmodule PortalWeb.Groups do
         resources: [],
         tab_view: :list,
         available_resources: [],
-        grant_resource_id: nil,
+        grant_selected_resource_ids: [],
         grant_resource_form: nil,
         grant_resource_search: "",
         resource_access_actions_open_id: nil,
