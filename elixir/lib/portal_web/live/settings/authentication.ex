@@ -514,9 +514,6 @@ defmodule PortalWeb.Settings.Authentication do
                 <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-48">
                   Sessions
                 </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
-                  Default
-                </th>
                 <th class="px-6 py-2.5 w-14"></th>
               </tr>
             </thead>
@@ -783,6 +780,12 @@ defmodule PortalWeb.Settings.Authentication do
                 {@provider.name}
               </span>
               <span
+                :if={@is_default && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke}
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--brand-muted)] text-[var(--brand)]"
+              >
+                Default
+              </span>
+              <span
                 :if={
                   @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete &&
                     !@is_pending_revoke
@@ -806,7 +809,7 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
       </td>
       <%= if @is_pending_revoke do %>
-        <td colspan="7" class="px-6 py-3">
+        <td colspan="6" class="px-6 py-3">
           <div class="flex items-center gap-4">
             <span class="text-xs text-orange-700">
               Revoke all sessions for this provider? This will immediately sign out all users authenticated this provider.
@@ -830,7 +833,7 @@ defmodule PortalWeb.Settings.Authentication do
         </td>
       <% else %>
         <%= if @is_pending_toggle do %>
-          <td colspan="7" class="px-6 py-3">
+          <td colspan="6" class="px-6 py-3">
             <div class="flex items-center gap-4">
               <span class="text-xs text-amber-700">
                 {if @provider.is_disabled,
@@ -857,7 +860,7 @@ defmodule PortalWeb.Settings.Authentication do
           </td>
         <% else %>
           <%= if @is_pending_delete do %>
-            <td colspan="7" class="px-6 py-3">
+            <td colspan="6" class="px-6 py-3">
               <div class="flex items-center gap-4">
                 <span class="text-xs text-red-700">
                   Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
@@ -910,15 +913,6 @@ defmodule PortalWeb.Settings.Authentication do
                   client
                 </span>
               </div>
-            </td>
-            <td class="px-6 py-3">
-              <span
-                :if={@is_default}
-                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--brand-muted)] text-[var(--brand)]"
-              >
-                Default
-              </span>
-              <span :if={not @is_default} class="text-xs text-[var(--text-tertiary)]">—</span>
             </td>
             <td class="px-6 py-3">
               <div class="flex justify-end">

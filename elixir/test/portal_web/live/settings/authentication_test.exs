@@ -210,14 +210,16 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      google_provider_fixture(account: account, is_default: true)
+      provider = google_provider_fixture(account: account, is_default: true)
+      other = oidc_provider_fixture(account: account, is_default: false)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "Default"
+      assert provider_row_text(html, provider.id) =~ "Default"
+      refute provider_row_text(html, other.id) =~ "Default"
     end
 
     test "renders LEGACY badge for legacy oidc provider", %{
@@ -225,14 +227,16 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      oidc_provider_fixture(account: account, is_legacy: true)
+      legacy_provider = oidc_provider_fixture(account: account, is_legacy: true)
+      new_provider = oidc_provider_fixture(account: account, is_legacy: false)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "Legacy"
+      assert provider_row_text(html, legacy_provider.id) =~ "Legacy"
+      refute provider_row_text(html, new_provider.id) =~ "Legacy"
     end
 
     test "renders session counts", %{account: account, actor: actor, conn: conn} do
@@ -282,12 +286,11 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert provider_row_text(html, provider.id) =~ "1d"
     end
 
-    test "shows default indicator for nil session lifetime", %{
+    test "shows schema default when session lifetime is nil", %{
       account: account,
       actor: actor,
       conn: conn
     } do
-      # Create provider without explicit session lifetime
       provider = google_provider_fixture(account: account, portal_session_lifetime_secs: nil)
 
       {:ok, _lv, html} =
@@ -295,7 +298,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert provider_row_text(html, provider.id) =~ "—"
+      # nil falls back to the schema default (28800s = 8h)
+      assert provider_row_text(html, provider.id) =~ "8h"
     end
 
     test "renders disabled portal/client for context-specific providers", %{
