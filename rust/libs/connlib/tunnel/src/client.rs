@@ -1965,9 +1965,9 @@ impl ClientState {
     fn log_activating_resource(&self, resource: &Resource) {
         let name = resource.name();
         let address = resource.address_string().map(tracing::field::display);
-        let sites = resource.sites_string();
+        let sites = resource.sites_string().map(tracing::field::display);
 
-        tracing::info!(%name, address, %sites, "Activating resource");
+        tracing::info!(%name, address, sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1998,9 +1998,9 @@ impl ClientState {
 
         let name = resource.name();
         let address = resource.address_string().map(tracing::field::display);
-        let sites = resource.sites_string();
+        let sites = resource.sites_string().map(tracing::field::display);
 
-        tracing::info!(%name, address, %sites, "Deactivating resource");
+        tracing::info!(%name, address, sites, "Deactivating resource");
 
         self.pending_flows.remove(&id);
 

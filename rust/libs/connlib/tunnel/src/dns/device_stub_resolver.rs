@@ -168,23 +168,22 @@ impl DeviceStubResolver {
         };
         let pending = entry.value;
 
+        tracing::debug!(%resource_id, %domain, ?result, "Device pool domain resolved");
+
         let response = match result {
             Ok(ipv4) => {
-                tracing::debug!(%resource_id, %domain, %ipv4, "Device pool domain resolved");
                 self.resolved
                     .insert(domain, CachedResolution { resource_id, ipv4 });
+
                 build_response(&pending.query, pending.query.domain(), ipv4)
             }
-            Err(reason) => {
-                tracing::debug!(%resource_id, %domain, ?reason, "Device pool domain resolution failed");
-                match reason {
-                    FailReason::NotFound => dns_types::Response::nxdomain(&pending.query),
-                    FailReason::Offline
-                    | FailReason::VersionMismatch
-                    | FailReason::Forbidden
-                    | FailReason::Unknown => dns_types::Response::servfail(&pending.query),
-                }
-            }
+            Err(FailReason::NotFound) => dns_types::Response::nxdomain(&pending.query),
+            Err(
+                FailReason::Offline
+                | FailReason::VersionMismatch
+                | FailReason::Forbidden
+                | FailReason::Unknown,
+            ) => dns_types::Response::servfail(&pending.query),
         };
 
         self.events.push_back(Event::SendResponse {
@@ -202,7 +201,7 @@ impl DeviceStubResolver {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.pending.handle_timeout(now);
         while let Some(expiring_map::Event::EntryExpired {
-            key: (_rid, domain),
+            key: (_, domain),
             value: pending,
         }) = self.pending.poll_event()
         {

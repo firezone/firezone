@@ -185,8 +185,12 @@ impl Resource {
         }
     }
 
-    pub fn sites_string(&self) -> String {
-        self.sites().iter().map(|s| &s.name).join("|")
+    pub fn sites_string(&self) -> Option<String> {
+        if self.sites().is_empty() {
+            return None;
+        }
+
+        Some(self.sites().iter().map(|s| &s.name).join("|"))
     }
 
     pub fn id(&self) -> ResourceId {
