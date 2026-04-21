@@ -152,6 +152,10 @@ final class KeepFirezoneRunningAppDelegate: NSObject, NSApplicationDelegate {
       .deletingLastPathComponent()
   }
 
+  // The bundle identifier of the main app.
+  //
+  // This is loaded from our own plist and embedded at compile-time
+  // so we can test this using a debug build from XCode as well.
   private var mainAppBundleIdentifier: String? {
     Bundle.main.object(forInfoDictionaryKey: Constants.mainAppBundleIdentifierInfoKey) as? String
   }
