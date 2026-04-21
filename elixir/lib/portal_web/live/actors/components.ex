@@ -1064,7 +1064,7 @@ defmodule PortalWeb.Actors.Components do
                   <.icon name="remix-user-line" class="w-3.5 h-3.5" /> User
                 </span>
                 <span class="text-[11px] text-[var(--text-tertiary)]">
-                  Sign in to Client apps and portal
+                  Sign in to Firezone Client apps
                 </span>
               </label>
             </div>
