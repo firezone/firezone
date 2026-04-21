@@ -37,6 +37,15 @@ public final class Store: ObservableObject {
     // Set to true to request the menu bar be opened programmatically.
     // The UI layer observes this and resets it after handling.
     @Published public var menuBarOpenRequested = false
+
+    public var quitMenuTitle: String {
+      switch vpnStatus {
+      case .connected, .connecting:
+        return "Disconnect and Quit"
+      default:
+        return "Quit"
+      }
+    }
   #endif
 
   private(set) var sessionNotification: SessionNotificationProtocol
@@ -181,6 +190,13 @@ public final class Store: ObservableObject {
     /// The UI layer observes `menuBarOpenRequested` and handles the actual opening.
     public func requestOpenMenuBar() {
       menuBarOpenRequested = true
+    }
+
+    public func quitApp() {
+      Task {
+        do { try await stop() } catch { Log.error(error) }
+        NSApp.terminate(nil)
+      }
     }
 
     /// Returns the appropriate icon name from asset catalog for the given state

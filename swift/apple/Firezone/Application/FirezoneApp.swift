@@ -81,6 +81,14 @@ struct FirezoneApp: App {
         }
       }
       .menuBarExtraStyle(.menu)
+      .commands {
+        CommandGroup(replacing: .appTermination) {
+          Button(store.quitMenuTitle) {
+            store.quitApp()
+          }
+          .keyboardShortcut("q")
+        }
+      }
     #endif
   }
 
