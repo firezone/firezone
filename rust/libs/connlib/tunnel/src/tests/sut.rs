@@ -1214,29 +1214,37 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
-            ClientEvent::DevicePoolDomainResolveIntent {
+            ClientEvent::DevicePoolDomainQueried {
                 resource_id,
                 domain,
             } => {
-                let tunnel_ips = self
-                    .clients
-                    .iter()
-                    .filter(|(id, _)| **id != src)
-                    .map(|(_, c)| c.inner().sut.tunnel_ip_config().unwrap().v4)
-                    .collect::<Vec<_>>();
+                let client = self.clients.get_mut(&src).unwrap();
 
-                if let Some(ipv4) = tunnel_ips.first().copied() {
-                    let client = self.clients.get_mut(&src).unwrap();
-                    client.exec_mut(|c| {
-                        c.sut.handle_device_pool_domain_resolved(
-                            crate::messages::client::DevicePoolDomainResolved {
-                                resource_id,
-                                domain,
-                                ipv4,
-                            },
-                            now,
-                        );
-                    });
+                let domain_str = domain.to_string();
+                match portal.resolve_device_pool_domain(&domain_str) {
+                    Some(ipv4) => {
+                        client.exec_mut(|c| {
+                            c.sut.handle_device_pool_domain_resolved(
+                                crate::messages::client::DevicePoolDomainResolved {
+                                    resource_id,
+                                    domain: domain_str,
+                                    ipv4,
+                                },
+                            );
+                        });
+                    }
+                    None => {
+                        client.exec_mut(|c| {
+                            c.sut.handle_device_pool_domain_resolution_failed(
+                                crate::messages::client::DevicePoolDomainResolutionFailed {
+                                    resource_id,
+                                    domain: domain_str,
+                                    reason:
+                                        crate::messages::client::FailReason::NotFound,
+                                },
+                            );
+                        });
+                    }
                 }
 
                 Ok(())

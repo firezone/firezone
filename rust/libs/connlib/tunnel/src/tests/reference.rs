@@ -463,42 +463,55 @@ impl ReferenceState {
             .with_if_not_empty(
                 2,
                 (
-                    state.device_pool_resources_on_client(),
-                    state.reachable_dns_servers(),
+                    state.device_pool_query_targets(),
+                    state.portal.device_labels(),
                 ),
-                |(device_pools, dns_servers)| {
-                    (
-                        sample::select(device_pools),
-                        sample::select(dns_servers),
-                    )
-                        .prop_flat_map(
-                            |((client_id, resource), (dns_client_id, dns_server))| {
-                                if client_id != dns_client_id {
-                                    return Just(Transition::SendDnsQueries(Vec::new())).boxed();
-                                }
+                |(targets, labels)| {
+                    (sample::select(targets), sample::select(labels)).prop_flat_map(
+                        |((client_id, resource, dns_server), label)| {
+                            let base = resource.address.trim_start_matches("*.").to_owned();
 
-                                let base = resource
-                                    .address
-                                    .trim_start_matches("*.")
-                                    .to_owned();
-
-                                dns_queries(
-                                    (
-                                        domain_label().prop_map(move |label| {
-                                            format!("{label}.{base}").parse().unwrap()
-                                        }),
-                                        Just(vec![RecordType::A]),
-                                    ),
-                                    Just(dns_server),
+                            dns_queries(
+                                (
+                                    Just(format!("{label}.{base}").parse().unwrap()),
+                                    Just(vec![RecordType::A]),
+                                ),
+                                Just(dns_server),
+                            )
+                            .prop_map(move |queries| {
+                                Transition::SendDnsQueries(
+                                    queries.into_iter().map(|q| (client_id, q)).collect(),
                                 )
-                                .prop_map(move |queries| {
-                                    Transition::SendDnsQueries(
-                                        queries.into_iter().map(|q| (client_id, q)).collect(),
-                                    )
-                                })
-                                .boxed()
-                            },
+                            })
+                            .boxed()
+                        },
+                    )
+                },
+            )
+            .with_if_not_empty(
+                1,
+                state.device_pool_query_targets(),
+                |targets| {
+                    sample::select(targets).prop_flat_map(|(client_id, resource, dns_server)| {
+                        let base = resource.address.trim_start_matches("*.").to_owned();
+
+                        // Randomly-generated label exercises the not-found path
+                        // — the stub portal returns `FailReason::NotFound`.
+                        dns_queries(
+                            (
+                                domain_label().prop_map(move |label| {
+                                    format!("{label}.{base}").parse().unwrap()
+                                }),
+                                Just(vec![RecordType::A]),
+                            ),
+                            Just(dns_server),
                         )
+                        .prop_map(move |queries| {
+                            Transition::SendDnsQueries(
+                                queries.into_iter().map(|q| (client_id, q)).collect(),
+                            )
+                        })
+                    })
                 },
             )
             .with_if_not_empty(
@@ -1556,6 +1569,29 @@ impl ReferenceState {
                     .iter()
                     .filter(|r| client.inner().has_resource(r.id))
                     .map(move |r| (*client_id, r.clone()))
+            })
+            .collect()
+    }
+
+    /// Eligible `(client, device-pool resource, reachable DNS server)` triples
+    /// for generating a device-pool DNS query transition.
+    ///
+    /// Pre-filters to the client × pool × reachable-dns cross-product so we
+    /// never emit a no-op transition because the sampled client can't reach
+    /// the sampled DNS server.
+    fn device_pool_query_targets(
+        &self,
+    ) -> Vec<(ClientId, client::DynamicDevicePoolResource, dns::Upstream)> {
+        let resources_on_client = self.device_pool_resources_on_client();
+        let dns_servers = self.reachable_dns_servers();
+
+        resources_on_client
+            .into_iter()
+            .flat_map(|(client_id, resource)| {
+                dns_servers
+                    .iter()
+                    .filter(move |(dns_client_id, _)| *dns_client_id == client_id)
+                    .map(move |(_, server)| (client_id, resource.clone(), server.clone()))
             })
             .collect()
     }

@@ -237,7 +237,7 @@ impl ResourceStubResolver {
     }
 
     /// Processes the incoming DNS query.
-    pub(crate) fn handle(&mut self, query: &Query) -> ResolveStrategy {
+    pub(crate) fn handle_query(&mut self, query: &Query) -> ResolveStrategy {
         let domain = query.domain();
         let qtype = query.qtype();
 
@@ -504,7 +504,7 @@ mod tests {
             RecordType::A,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -527,7 +527,7 @@ mod tests {
             RecordType::A,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -550,7 +550,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -573,7 +573,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        resolver.handle(&query);
+        resolver.handle_query(&query);
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -581,7 +581,7 @@ mod tests {
             IpStack::Ipv4Only,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -617,7 +617,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -635,7 +635,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -673,7 +673,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -682,7 +682,7 @@ mod tests {
 
         assert!(resolver.poll_event().is_some());
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {

@@ -582,9 +582,9 @@ pub enum ClientEvent {
     DeviceConnectionIntent {
         ipv4: Ipv4Addr,
     },
-    DevicePoolDomainResolveIntent {
+    DevicePoolDomainQueried {
         resource_id: ResourceId,
-        domain: String,
+        domain: DomainName,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {

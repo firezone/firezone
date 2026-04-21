@@ -161,21 +161,20 @@ impl RefClient {
             self.connected_internet_resource = false;
         }
 
-        let Some(site) = self.site_for_resource(*resource) else {
-            // Device pool resources have no site, so this is expected for them.
-            if !self.resources.iter().any(|r| {
-                matches!(r, Resource::DynamicDevicePool(dp) if dp.id == *resource)
-            }) {
+        let site = match self.site_for_resource(*resource) {
+            Ok(site) => site,
+            Err(SiteLookupError::ResourceHasNoSite) => return,
+            Err(SiteLookupError::ResourceNotFound) => {
                 tracing::error!(%resource, "No site for resource");
+                return;
             }
-            return;
         };
 
         // If this was the last resource we were connected to for this site,
         // the connection will be GC'd.
         if self
             .connected_resources()
-            .all(|r| self.site_for_resource(r).is_some_and(|s| s != site))
+            .all(|r| self.site_for_resource(r).is_ok_and(|s| s != site))
         {
             tracing::debug!(
                 last_resource = %resource,
@@ -348,10 +347,10 @@ impl RefClient {
                 Resource::Dns(d) => self.add_dns_resource(d),
                 Resource::Cidr(c) => self.add_cidr_resource(c),
                 Resource::Internet(i) => self.add_internet_resource(i),
-                Resource::StaticDevicePool(_) => {}
                 Resource::DynamicDevicePool(d) => {
                     self.add_dynamic_device_pool_resource(d);
                 }
+                Resource::StaticDevicePool(_) => {}
             }
         }
     }
@@ -383,7 +382,7 @@ impl RefClient {
 
         let maybe_online_sites = resources_with_tcp_connections
             .into_iter()
-            .flat_map(|r| self.site_for_resource(r))
+            .filter_map(|r| self.site_for_resource(r).ok())
             .collect::<BTreeSet<_>>();
 
         self.resources
@@ -530,9 +529,13 @@ impl RefClient {
     }
 
     fn set_resource_online(&mut self, rid: ResourceId) {
-        let Some(site) = self.site_for_resource(rid) else {
-            tracing::error!(%rid, "Unknown resource or multi-site resource");
-            return;
+        let site = match self.site_for_resource(rid) {
+            Ok(site) => site,
+            Err(SiteLookupError::ResourceHasNoSite) => return,
+            Err(SiteLookupError::ResourceNotFound) => {
+                tracing::error!(%rid, "Unknown resource or multi-site resource");
+                return;
+            }
         };
 
         let previous = self.site_status.insert(site.id, ResourceStatus::Online);
@@ -570,6 +573,13 @@ impl RefClient {
             .or_default()
             .insert(query.r_type);
 
+        // Device pool queries are intercepted locally and never reach an
+        // upstream DNS server, so we do not record an expected handshake
+        // nor trigger any resource connections.
+        if self.is_dynamic_device_pool_dns_query(&query.domain) {
+            return;
+        }
+
         match query.transport {
             DnsTransport::Udp { local_port } => {
                 self.expected_udp_dns_handshakes.push_back((
@@ -584,12 +594,6 @@ impl RefClient {
             }
         }
 
-        // Device pool queries are answered locally by the client and never
-        // forwarded to a gateway, so they must not trigger resource connections.
-        if self.matches_device_pool(&query.domain) {
-            return;
-        }
-
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
@@ -602,7 +606,7 @@ impl RefClient {
         }
     }
 
-    fn matches_device_pool(&self, domain: &DomainName) -> bool {
+    fn is_dynamic_device_pool_dns_query(&self, domain: &DomainName) -> bool {
         self.resources.iter().any(|r| {
             matches!(r, Resource::DynamicDevicePool(dp) if dns::is_subdomain(domain, &dp.address))
         })
@@ -630,15 +634,19 @@ impl RefClient {
         self.connected_cidr_resources.contains(&id)
     }
 
-    fn site_for_resource(&self, resource: ResourceId) -> Option<Site> {
-        let site = self
+    fn site_for_resource(&self, resource: ResourceId) -> Result<Site, SiteLookupError> {
+        let r = self
             .resources
             .iter()
-            .find_map(|r| (r.id() == resource).then_some(r.site()))?
-            .ok()?
-            .clone();
+            .find(|r| r.id() == resource)
+            .ok_or(SiteLookupError::ResourceNotFound)?;
 
-        Some(site)
+        let sites = r.sites();
+        if sites.is_empty() {
+            return Err(SiteLookupError::ResourceHasNoSite);
+        }
+
+        Ok(r.site().expect("resources should only have 1 site").clone())
     }
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
@@ -1043,6 +1051,14 @@ fn default_routes_v4() -> Vec<IpNetwork> {
         IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap()),
         IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap()),
     ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SiteLookupError {
+    /// Resource does not exist for this client.
+    ResourceNotFound,
+    /// Resource exists but has no site by design (e.g. device pool resources).
+    ResourceHasNoSite,
 }
 
 fn default_routes_v6() -> Vec<IpNetwork> {

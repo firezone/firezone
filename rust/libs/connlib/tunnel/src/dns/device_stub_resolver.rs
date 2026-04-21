@@ -1,71 +1,67 @@
-use std::{
-    collections::BTreeMap,
-    iter,
-    net::{Ipv4Addr, SocketAddr},
-    time::{Duration, Instant},
-};
-
-use connlib_model::ResourceId;
-use logging::err_with_src;
-
 use crate::{
     dns::{
         self,
         pattern::{Candidate, Pattern},
     },
-    expiring_map::ExpiringMap,
+    expiring_map::{self, ExpiringMap},
+    messages::client::FailReason,
+};
+use connlib_model::ResourceId;
+use dns_types::DomainName;
+use logging::err_with_src;
+use std::{
+    collections::{BTreeMap, VecDeque},
+    iter,
+    net::{Ipv4Addr, SocketAddr},
+    time::{Duration, Instant},
 };
 
-/// How long a resolved device pool domain stays cached before we re-query the portal.
-const CACHE_TTL: Duration = Duration::from_secs(5);
-
-/// How long to wait for the portal to resolve a device pool domain before giving up.
+/// How long to wait for the portal to resolve a device pool domain before
+/// giving up and returning SERVFAIL to the caller.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// TTL used in synthesised DNS responses for device pool resolutions.
 ///
-/// Keeps downstream resolver caches short-lived so mapping changes propagate quickly;
-/// internal caching is handled by [`DeviceStubResolver`] on its own schedule.
+/// Keeps downstream resolver caches short-lived so mapping changes propagate quickly.
 const DNS_TTL: u32 = 1;
 
 #[derive(Default)]
 pub struct DeviceStubResolver {
-    device_pools: BTreeMap<Pattern, ResourceId>,
-    /// Avoids a round-trip to the portal for every repeat DNS lookup of the
-    /// same device pool domain within the [`CACHE_TTL`] window.
-    resolved: ExpiringMap<String, CachedResolution>,
-    /// Buffers DNS queries waiting for device pool domain resolution from the portal.
-    ///
-    /// Keyed by `(ResourceId, domain)` — the same pair the portal includes in its response.
-    /// If multiple queries arrive for the same domain while waiting, we keep only the latest.
-    /// Entries expire after [`QUERY_TIMEOUT`] if the portal never responds.
-    pending: BTreeMap<(ResourceId, String), PendingQuery>,
+    device_pools: BTreeMap<ResourceId, Pattern>,
+    resolved: BTreeMap<DomainName, CachedResolution>,
+    pending: ExpiringMap<(ResourceId, DomainName), PendingQuery>,
+
+    events: VecDeque<Event>,
 }
 
-pub struct PendingQuery {
-    created_at: Instant,
-    pub local: SocketAddr,
-    pub remote: SocketAddr,
-    pub transport: dns::Transport,
-    pub query: dns_types::Query,
+pub(crate) enum ResolveStrategy {
+    /// The query didn't match any of our device pools.
+    Passthrough,
+    /// The query matched a device pool and a response has been formed.
+    LocalResponse(dns_types::Response),
+    /// The query matched a device pool but we cannot answer it yet.
+    Pending,
 }
 
-impl PendingQuery {
-    pub fn new(
+pub(crate) enum Event {
+    QueryDomain {
+        resource_id: ResourceId,
+        domain: DomainName,
+    },
+    SendResponse {
         local: SocketAddr,
         remote: SocketAddr,
         transport: dns::Transport,
-        query: dns_types::Query,
-        now: Instant,
-    ) -> Self {
-        Self {
-            created_at: now,
-            local,
-            remote,
-            transport,
-            query,
-        }
-    }
+        response: dns_types::Response,
+    },
+}
+
+#[derive(Debug)]
+struct PendingQuery {
+    local: SocketAddr,
+    remote: SocketAddr,
+    transport: dns::Transport,
+    query: dns_types::Query,
 }
 
 #[derive(Debug)]
@@ -84,37 +80,169 @@ impl DeviceStubResolver {
             }
         };
 
-        if let Some(existing_id) = self.device_pools.get(&parsed) {
-            if *existing_id != id {
-                tracing::warn!(
-                    %pattern,
-                    %existing_id,
-                    new_id = %id,
-                    "Device pool pattern is already registered to a different resource; ignoring duplicate"
-                );
-            }
-            return false;
+        if let Some(previous) = self.device_pools.insert(id, parsed) {
+            tracing::debug!(
+                %id,
+                %previous,
+                new = %pattern,
+                "Replacing device pool pattern"
+            );
+
+            // Existing cache entries refer to the previous pattern, so purge them.
+            self.resolved.retain(|_, entry| entry.resource_id != id);
         }
 
-        self.device_pools.insert(parsed, id);
         true
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.device_pools.retain(|_, r| *r != id);
-        self.resolved.retain(|_, entry| entry.resource_id != id);
+        self.device_pools.remove(&id);
+        for _ in self
+            .resolved
+            .extract_if(.., |_, entry| entry.resource_id == id)
+        {}
     }
 
-    /// Attempts to match the given domain against device pool patterns.
+    /// Processes a DNS query against the device pool patterns.
     ///
-    /// Returns the [`ResourceId`] of the first matching device pool, if any.
-    pub(crate) fn match_device_pool_linear(
-        &self,
-        domain: &dns_types::DomainName,
-    ) -> Option<ResourceId> {
+    /// - If no pattern matches, returns [`ResolveStrategy::Passthrough`].
+    /// - If the query is for a non-A record against a pool, returns
+    ///   [`ResolveStrategy::LocalResponse`] with a NOERROR empty response
+    ///   (device pools are IPv4-only).
+    /// - If a cached resolution exists, returns [`ResolveStrategy::LocalResponse`]
+    ///   with a synthesised A record.
+    /// - Otherwise buffers the query, emits an [`Event::QueryDomain`] (unless
+    ///   an identical request is already in-flight) and returns
+    ///   [`ResolveStrategy::Pending`].
+    pub(crate) fn handle_query(
+        &mut self,
+        query: &dns_types::Query,
+        local: SocketAddr,
+        remote: SocketAddr,
+        transport: dns::Transport,
+        now: Instant,
+    ) -> ResolveStrategy {
+        let domain = query.domain();
+        let Some(resource_id) = self.match_device_pool_linear(&domain) else {
+            return ResolveStrategy::Passthrough;
+        };
+
+        // Device pools are IPv4-only; answer AAAA and other non-A queries
+        // immediately with NOERROR + no records (the name exists, we just
+        // don't have records of the requested type).
+        if query.qtype() != dns_types::RecordType::A {
+            return ResolveStrategy::LocalResponse(
+                dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR)
+                    .build(),
+            );
+        }
+
+        if let Some(entry) = self.resolved.get(&domain) {
+            return ResolveStrategy::LocalResponse(build_response(query, domain, entry.ipv4));
+        }
+
+        let is_new = self
+            .pending
+            .insert(
+                (resource_id, domain.clone()),
+                PendingQuery {
+                    local,
+                    remote,
+                    transport,
+                    query: query.clone(),
+                },
+                now,
+                QUERY_TIMEOUT,
+            )
+            .is_none();
+
+        if is_new {
+            self.events.push_back(Event::QueryDomain {
+                resource_id,
+                domain,
+            });
+        }
+
+        ResolveStrategy::Pending
+    }
+
+    /// Reacts to a portal resolution result for `(resource_id, domain)`.
+    ///
+    /// On success the mapping is cached and a DNS response is emitted for the
+    /// pending query. On failure an NXDOMAIN (for `NotFound`) or SERVFAIL
+    /// response is emitted.
+    ///
+    /// Does nothing if we have no pending query for this domain.
+    pub(crate) fn handle_device_domain_resolved(
+        &mut self,
+        resource_id: ResourceId,
+        domain: DomainName,
+        result: Result<Ipv4Addr, FailReason>,
+    ) {
+        let Some(entry) = self.pending.remove(&(resource_id, domain.clone())) else {
+            tracing::debug!(%resource_id, %domain, ?result, "Received device pool resolution for unknown query");
+            return;
+        };
+        let pending = entry.value;
+
+        let response = match result {
+            Ok(ipv4) => {
+                tracing::debug!(%resource_id, %domain, %ipv4, "Device pool domain resolved");
+                self.resolved
+                    .insert(domain, CachedResolution { resource_id, ipv4 });
+                build_response(&pending.query, pending.query.domain(), ipv4)
+            }
+            Err(reason) => {
+                tracing::debug!(%resource_id, %domain, ?reason, "Device pool domain resolution failed");
+                match reason {
+                    FailReason::NotFound => dns_types::Response::nxdomain(&pending.query),
+                    FailReason::Offline
+                    | FailReason::VersionMismatch
+                    | FailReason::Forbidden
+                    | FailReason::Unknown => dns_types::Response::servfail(&pending.query),
+                }
+            }
+        };
+
+        self.events.push_back(Event::SendResponse {
+            local: pending.local,
+            remote: pending.remote,
+            transport: pending.transport,
+            response,
+        });
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<Event> {
+        self.events.pop_front()
+    }
+
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        self.pending.handle_timeout(now);
+        while let Some(expiring_map::Event::EntryExpired {
+            key: (_rid, domain),
+            value: pending,
+        }) = self.pending.poll_event()
+        {
+            tracing::debug!(%domain, "Pending device pool DNS query timed out; returning SERVFAIL");
+
+            let response = dns_types::Response::servfail(&pending.query);
+            self.events.push_back(Event::SendResponse {
+                local: pending.local,
+                remote: pending.remote,
+                transport: pending.transport,
+                response,
+            });
+        }
+    }
+
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        self.pending.poll_timeout()
+    }
+
+    fn match_device_pool_linear(&self, domain: &dns_types::DomainName) -> Option<ResourceId> {
         let name = Candidate::from_domain(domain);
 
-        for (pattern, id) in &self.device_pools {
+        for (id, pattern) in &self.device_pools {
             if pattern.matches(&name) {
                 tracing::trace!(resource_id = %id, %pattern, %domain, "Matched device pool");
                 return Some(*id);
@@ -123,451 +251,394 @@ impl DeviceStubResolver {
 
         None
     }
+}
 
-    /// Returns the cached IPv4 for `domain` if a fresh entry exists.
-    pub(crate) fn cached_resolution(&self, domain: &str, now: Instant) -> Option<Ipv4Addr> {
-        let entry = self.resolved.get(&domain.to_owned())?;
-        (entry.expires_at > now).then_some(entry.value.ipv4)
-    }
-
-    /// Records a portal-provided resolution in the cache.
-    pub(crate) fn cache_resolution(
-        &mut self,
-        resource_id: ResourceId,
-        domain: String,
-        ipv4: Ipv4Addr,
-        now: Instant,
-    ) {
-        self.resolved.insert(
-            domain,
-            CachedResolution { resource_id, ipv4 },
-            now,
-            CACHE_TTL,
-        );
-    }
-
-    /// Builds a DNS response for a resolved device pool domain.
-    pub(crate) fn build_response(
-        query: &dns_types::Query,
-        domain: dns_types::DomainName,
-        ipv4: Ipv4Addr,
-    ) -> dns_types::Response {
-        let record = dns_types::records::a(ipv4);
-        dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR)
-            .with_records(iter::once((domain, DNS_TTL, record)))
-            .build()
-    }
-
-    /// Buffer a DNS query while we wait for the portal to resolve the domain.
-    ///
-    /// Returns `true` if this is the first pending query for `(resource_id, domain)`,
-    /// signalling that the caller should ask the portal to resolve it.
-    /// Returns `false` if a query was already pending — the latest query replaces
-    /// the previous one, but no new portal request is needed.
-    ///
-    /// When replacing an existing entry, the original `created_at` is preserved so
-    /// the [`QUERY_TIMEOUT`] deadline stays anchored to the in-flight portal request.
-    /// Otherwise a stream of repeated queries could indefinitely postpone the timeout
-    /// while still attached to a single portal request that may already be lost.
-    pub(crate) fn insert_pending(
-        &mut self,
-        resource_id: ResourceId,
-        domain: String,
-        mut query: PendingQuery,
-    ) -> bool {
-        if let Some(existing) = self.pending.get(&(resource_id, domain.clone())) {
-            query.created_at = existing.created_at;
-        }
-        self.pending.insert((resource_id, domain), query).is_none()
-    }
-
-    /// Returns `None` if no query is pending or if the query has expired.
-    pub(crate) fn remove_pending(
-        &mut self,
-        resource_id: ResourceId,
-        domain: &str,
-        now: Instant,
-    ) -> Option<PendingQuery> {
-        let query = self.pending.remove(&(resource_id, domain.to_owned()))?;
-
-        if now.duration_since(query.created_at) > QUERY_TIMEOUT {
-            tracing::debug!(%resource_id, %domain, "Pending device pool DNS query expired");
-            return None;
-        }
-
-        Some(query)
-    }
-
-    pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        self.resolved.handle_timeout(now);
-        // Drop any expiration events `ExpiringMap` just emitted: eviction from the
-        // cache is the only observable effect we care about here, and leaving them
-        // queued would otherwise leak memory unboundedly.
-        while self.resolved.poll_event().is_some() {}
-
-        self.pending.retain(|(_rid, domain), query| {
-            let expired = now.duration_since(query.created_at) > QUERY_TIMEOUT;
-
-            if expired {
-                tracing::debug!(%domain, "Pending device pool DNS query timed out");
-            }
-
-            !expired
-        });
-    }
-
-    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
-        let cache_timeout = self.resolved.poll_timeout();
-
-        let pending_timeout = self
-            .pending
-            .values()
-            .map(|q| q.created_at + QUERY_TIMEOUT)
-            .min();
-
-        match (cache_timeout, pending_timeout) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
-    }
+fn build_response(
+    query: &dns_types::Query,
+    domain: dns_types::DomainName,
+    ipv4: Ipv4Addr,
+) -> dns_types::Response {
+    let record = dns_types::records::a(ipv4);
+    dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR)
+        .with_records(iter::once((domain, DNS_TTL, record)))
+        .build()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::IpAddr;
+
+    const LOCAL: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 53);
+    const REMOTE: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 12345);
+    const POOL_PATTERN: &str = "*.pool.example.com";
+    const POOL_DOMAIN: &str = "foo.pool.example.com";
 
     #[test]
-    fn dynamic_device_pool_wildcard_match() {
+    fn handle_returns_passthrough_for_unmatched_domain() {
+        let mut resolver = DeviceStubResolver::default();
+        resolver.add_resource(ResourceId::from_u128(1), POOL_PATTERN.to_owned());
+
+        let s = resolver.handle_query(
+            &query("other.example.com", dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            Instant::now(),
+        );
+
+        assert!(matches!(s, ResolveStrategy::Passthrough));
+        assert!(resolver.poll_event().is_none());
+    }
+
+    #[test]
+    fn handle_answers_aaaa_with_empty_noerror() {
+        let mut resolver = DeviceStubResolver::default();
+        resolver.add_resource(ResourceId::from_u128(1), POOL_PATTERN.to_owned());
+
+        let s = resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::AAAA),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            Instant::now(),
+        );
+
+        match s {
+            ResolveStrategy::LocalResponse(resp) => {
+                assert_eq!(resp.response_code(), dns_types::ResponseCode::NOERROR);
+                assert_eq!(resp.records().count(), 0);
+            }
+            _ => panic!("expected LocalResponse"),
+        }
+        assert!(resolver.poll_event().is_none());
+    }
+
+    #[test]
+    fn handle_emits_query_domain_event_on_first_query() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
-        resolver.add_resource(rid, "*.devices.example.com".to_owned());
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
 
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
+        let s = resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            Instant::now(),
+        );
 
-        assert_eq!(matched, Some(rid));
+        assert!(matches!(s, ResolveStrategy::Pending));
+        match resolver.poll_event() {
+            Some(Event::QueryDomain {
+                resource_id,
+                domain,
+            }) => {
+                assert_eq!(resource_id, rid);
+                assert_eq!(domain.to_string(), POOL_DOMAIN);
+            }
+            _ => panic!("expected QueryDomain event"),
+        }
+        assert!(resolver.poll_event().is_none());
     }
 
     #[test]
-    fn dynamic_device_pool_no_match_for_unrelated_domain() {
+    fn handle_reports_pending_on_duplicate_in_flight_query() {
         let mut resolver = DeviceStubResolver::default();
-        resolver.add_resource(ResourceId::from_u128(1), "*.devices.example.com".to_owned());
+        resolver.add_resource(ResourceId::from_u128(1), POOL_PATTERN.to_owned());
 
-        let matched = resolver.match_device_pool_linear(&"foo.other.example.com".parse().unwrap());
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            Instant::now(),
+        );
+        resolver.poll_event(); // drain the first QueryDomain
 
-        assert_eq!(matched, None);
-    }
+        let s = resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            Instant::now(),
+        );
 
-    #[test]
-    fn dynamic_device_pool_remove_resource() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        resolver.add_resource(rid, "*.devices.example.com".to_owned());
-
-        resolver.remove_resource(rid);
-
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
-
-        assert_eq!(matched, None);
-    }
-
-    #[test]
-    fn dynamic_device_pool_prioritises_specific_over_wildcard() {
-        let mut resolver = DeviceStubResolver::default();
-        let wildcard = ResourceId::from_u128(1);
-        let specific = ResourceId::from_u128(2);
-
-        resolver.add_resource(wildcard, "**.devices.example.com".to_owned());
-        resolver.add_resource(specific, "foo.devices.example.com".to_owned());
-
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
-
-        assert_eq!(matched, Some(specific));
-    }
-
-    #[test]
-    fn dynamic_device_pool_invalid_pattern_returns_false() {
-        let mut resolver = DeviceStubResolver::default();
-        let added = resolver.add_resource(ResourceId::from_u128(1), "[invalid".to_owned());
-
-        assert!(!added);
-    }
-
-    #[test]
-    fn dynamic_device_pool_duplicate_pattern_is_ignored() {
-        let mut resolver = DeviceStubResolver::default();
-        let first = ResourceId::from_u128(1);
-        let second = ResourceId::from_u128(2);
-
-        assert!(resolver.add_resource(first, "*.devices.example.com".to_owned()));
+        assert!(matches!(s, ResolveStrategy::Pending));
         assert!(
-            !resolver.add_resource(second, "*.devices.example.com".to_owned()),
-            "duplicate pattern registration should be rejected"
-        );
-
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
-        assert_eq!(
-            matched,
-            Some(first),
-            "original resource must remain matchable"
+            resolver.poll_event().is_none(),
+            "duplicate in-flight query must not emit another QueryDomain event"
         );
     }
 
     #[test]
-    fn cache_returns_stored_resolution_before_expiry() {
+    fn resolved_emits_send_response() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
         let now = Instant::now();
 
-        resolver.cache_resolution(
-            rid,
-            "device-1.pool.example.com".to_owned(),
-            Ipv4Addr::new(100, 64, 0, 42),
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
             now,
         );
+        resolver.poll_event();
 
-        assert_eq!(
-            resolver.cached_resolution("device-1.pool.example.com", now),
-            Some(Ipv4Addr::new(100, 64, 0, 42))
+        resolver.handle_device_domain_resolved(
+            rid,
+            POOL_DOMAIN.parse().unwrap(),
+            Ok(Ipv4Addr::new(100, 64, 0, 42)),
         );
+
+        match resolver.poll_event() {
+            Some(Event::SendResponse { response, .. }) => {
+                assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
+            }
+            _ => panic!("expected SendResponse event"),
+        }
     }
 
     #[test]
-    fn cache_ignores_expired_resolution() {
+    fn not_found_emits_nxdomain() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
         let now = Instant::now();
 
-        resolver.cache_resolution(
-            rid,
-            "device-1.pool.example.com".to_owned(),
-            Ipv4Addr::new(100, 64, 0, 42),
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
             now,
         );
+        resolver.poll_event();
 
-        let later = now + CACHE_TTL + Duration::from_millis(1);
-        assert_eq!(
-            resolver.cached_resolution("device-1.pool.example.com", later),
-            None
+        resolver.handle_device_domain_resolved(
+            rid,
+            POOL_DOMAIN.parse().unwrap(),
+            Err(FailReason::NotFound),
         );
+
+        match resolver.poll_event() {
+            Some(Event::SendResponse { response, .. }) => {
+                assert_eq!(response.response_code(), dns_types::ResponseCode::NXDOMAIN);
+            }
+            _ => panic!("expected SendResponse event"),
+        }
     }
 
     #[test]
-    fn handle_timeout_evicts_expired_entries() {
+    fn non_not_found_failures_emit_servfail() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
         let now = Instant::now();
 
-        resolver.cache_resolution(
-            rid,
-            "device-1.pool.example.com".to_owned(),
-            Ipv4Addr::new(100, 64, 0, 42),
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
             now,
         );
+        resolver.poll_event();
 
-        let later = now + CACHE_TTL + Duration::from_millis(1);
-        resolver.handle_timeout(later);
-
-        assert_eq!(
-            resolver.cached_resolution("device-1.pool.example.com", later),
-            None
+        resolver.handle_device_domain_resolved(
+            rid,
+            POOL_DOMAIN.parse().unwrap(),
+            Err(FailReason::Forbidden),
         );
+
+        match resolver.poll_event() {
+            Some(Event::SendResponse { response, .. }) => {
+                assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
+            }
+            _ => panic!("expected SendResponse event"),
+        }
+    }
+
+    #[test]
+    fn handle_serves_from_cache_on_repeat_query() {
+        let mut resolver = DeviceStubResolver::default();
+        let rid = ResourceId::from_u128(1);
+        let now = Instant::now();
+
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
+        );
+        resolver.poll_event();
+
+        resolver.handle_device_domain_resolved(
+            rid,
+            POOL_DOMAIN.parse().unwrap(),
+            Ok(Ipv4Addr::new(100, 64, 0, 42)),
+        );
+        resolver.poll_event();
+
+        let s = resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
+        );
+        assert!(matches!(s, ResolveStrategy::LocalResponse(_)));
+        assert!(resolver.poll_event().is_none());
     }
 
     #[test]
     fn removing_resource_invalidates_its_cached_resolutions() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
-        let other = ResourceId::from_u128(2);
         let now = Instant::now();
 
-        resolver.cache_resolution(
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
+        );
+        resolver.poll_event();
+        resolver.handle_device_domain_resolved(
             rid,
-            "device-1.pool.example.com".to_owned(),
-            Ipv4Addr::new(100, 64, 0, 42),
-            now,
+            POOL_DOMAIN.parse().unwrap(),
+            Ok(Ipv4Addr::new(100, 64, 0, 42)),
         );
-        resolver.cache_resolution(
-            other,
-            "device-2.other.example.com".to_owned(),
-            Ipv4Addr::new(100, 64, 0, 43),
-            now,
-        );
+        resolver.poll_event();
 
         resolver.remove_resource(rid);
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
 
-        assert_eq!(
-            resolver.cached_resolution("device-1.pool.example.com", now),
-            None,
-            "cache entries for removed resource must be evicted"
+        // After removing the resource the cache should be empty, so the next
+        // query goes through the portal again.
+        let s = resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
         );
-        assert_eq!(
-            resolver.cached_resolution("device-2.other.example.com", now),
-            Some(Ipv4Addr::new(100, 64, 0, 43)),
-            "unrelated cache entries must be preserved"
+        assert!(matches!(s, ResolveStrategy::Pending));
+    }
+
+    #[test]
+    fn pending_query_timeout_emits_servfail() {
+        let mut resolver = DeviceStubResolver::default();
+        resolver.add_resource(ResourceId::from_u128(1), POOL_PATTERN.to_owned());
+
+        let now = Instant::now();
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
         );
-    }
-
-    // --- Pending query tests ---
-
-    #[test]
-    fn insert_and_remove_returns_pending_query() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        resolver.insert_pending(rid, domain.to_owned(), make_query(now));
-
-        let result = resolver.remove_pending(rid, domain, now);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn remove_unknown_returns_none() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-
-        assert!(
-            resolver
-                .remove_pending(rid, "unknown.example.com", Instant::now())
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn remove_is_one_shot() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        resolver.insert_pending(rid, domain.to_owned(), make_query(now));
-
-        assert!(resolver.remove_pending(rid, domain, now).is_some());
-        assert!(resolver.remove_pending(rid, domain, now).is_none());
-    }
-
-    #[test]
-    fn different_resources_are_independent() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid_a = ResourceId::from_u128(1);
-        let rid_b = ResourceId::from_u128(2);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        resolver.insert_pending(rid_a, domain.to_owned(), make_query(now));
-        resolver.insert_pending(rid_b, domain.to_owned(), make_query(now));
-
-        assert!(resolver.remove_pending(rid_a, domain, now).is_some());
-        assert!(resolver.remove_pending(rid_b, domain, now).is_some());
-    }
-
-    #[test]
-    fn duplicate_insert_replaces_previous() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        assert!(
-            resolver.insert_pending(rid, domain.to_owned(), make_query(now)),
-            "first insert should report a new entry"
-        );
-        assert!(
-            !resolver.insert_pending(rid, domain.to_owned(), make_query(now)),
-            "duplicate insert should report an existing entry"
-        );
-
-        assert!(resolver.remove_pending(rid, domain, now).is_some());
-        assert!(resolver.remove_pending(rid, domain, now).is_none());
-    }
-
-    #[test]
-    fn expired_query_returns_none_on_remove() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        resolver.insert_pending(rid, domain.to_owned(), make_query(now));
-
-        let later = now + QUERY_TIMEOUT + Duration::from_millis(1);
-        assert!(resolver.remove_pending(rid, domain, later).is_none());
-    }
-
-    #[test]
-    fn handle_timeout_removes_expired_pending_queries() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        resolver.insert_pending(rid, domain.to_owned(), make_query(now));
+        resolver.poll_event();
 
         let later = now + QUERY_TIMEOUT + Duration::from_millis(1);
         resolver.handle_timeout(later);
 
-        // Entry was cleaned up — remove returns None even though we never consumed it
-        assert!(resolver.remove_pending(rid, domain, later).is_none());
+        match resolver.poll_event() {
+            Some(Event::SendResponse { response, .. }) => {
+                assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
+            }
+            _ => panic!("expected SendResponse event"),
+        }
+    }
+
+    #[test]
+    fn portal_resolution_after_timeout_emits_no_event() {
+        let mut resolver = DeviceStubResolver::default();
+        let rid = ResourceId::from_u128(1);
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+
+        let now = Instant::now();
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
+        );
+        resolver.poll_event();
+
+        // A regular `handle_timeout` pass clears the expired pending entry
+        // (and emits a SERVFAIL response in its place — drain it).
+        let later = now + QUERY_TIMEOUT + Duration::from_millis(1);
+        resolver.handle_timeout(later);
+        resolver.poll_event();
+
+        // A late portal reply has nothing to match against and is a no-op.
+        resolver.handle_device_domain_resolved(
+            rid,
+            POOL_DOMAIN.parse().unwrap(),
+            Ok(Ipv4Addr::new(100, 64, 0, 42)),
+        );
+
+        assert!(resolver.poll_event().is_none());
     }
 
     #[test]
     fn duplicate_insert_preserves_original_deadline() {
         let mut resolver = DeviceStubResolver::default();
         let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
 
-        resolver.insert_pending(rid, domain.to_owned(), make_query(now));
+        let now = Instant::now();
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            now,
+        );
+        resolver.poll_event();
 
         // A refreshing query arrives just before the original deadline fires.
         let refreshed_at = now + QUERY_TIMEOUT - Duration::from_millis(1);
-        resolver.insert_pending(rid, domain.to_owned(), make_query(refreshed_at));
-
-        // The deadline should still be anchored to the original `created_at`, not
-        // the refreshed one — otherwise a stream of repeats could postpone it forever.
-        let past_original_deadline = now + QUERY_TIMEOUT + Duration::from_millis(1);
-        assert!(
-            resolver
-                .remove_pending(rid, domain, past_original_deadline)
-                .is_none(),
-            "refreshed insert must not extend the original query's deadline"
-        );
-    }
-
-    #[test]
-    fn handle_timeout_keeps_fresh_pending_queries() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        let domain = "device-1.pool.example.com";
-        let now = Instant::now();
-
-        resolver.insert_pending(rid, domain.to_owned(), make_query(now));
-
-        let slightly_later = now + Duration::from_secs(1);
-        resolver.handle_timeout(slightly_later);
-
-        assert!(
-            resolver
-                .remove_pending(rid, domain, slightly_later)
-                .is_some()
-        );
-    }
-
-    fn make_query(now: Instant) -> PendingQuery {
-        PendingQuery::new(
-            "127.0.0.1:53".parse().unwrap(),
-            "127.0.0.1:12345".parse().unwrap(),
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
             dns::Transport::Udp,
-            dns_types::Query::new(
-                "device-1.pool.example.com".parse().unwrap(),
-                dns_types::RecordType::A,
-            ),
-            now,
-        )
+            refreshed_at,
+        );
+        assert!(resolver.poll_event().is_none());
+
+        // The deadline must still be anchored to the original `created_at`, not
+        // the refreshed one — otherwise a stream of repeats could postpone it forever.
+        // `handle_timeout` at that point sweeps the expired pending (emitting SERVFAIL).
+        let past_original_deadline = now + QUERY_TIMEOUT + Duration::from_millis(1);
+        resolver.handle_timeout(past_original_deadline);
+        resolver.poll_event();
+
+        // A late portal reply then finds no pending entry and emits nothing.
+        resolver.handle_device_domain_resolved(
+            rid,
+            POOL_DOMAIN.parse().unwrap(),
+            Ok(Ipv4Addr::new(100, 64, 0, 42)),
+        );
+
+        assert!(
+            resolver.poll_event().is_none(),
+            "refreshed handle must not extend the original query's deadline"
+        );
+    }
+
+    fn query(domain: &str, record_type: dns_types::RecordType) -> dns_types::Query {
+        dns_types::Query::new(domain.parse().unwrap(), record_type)
     }
 }

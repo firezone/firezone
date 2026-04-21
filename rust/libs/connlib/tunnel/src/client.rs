@@ -37,7 +37,7 @@ use telemetry::{analytics, feature_flags};
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{
-    DeviceStubResolver, DnsResourceRecord, PendingQuery, ResourceStubResolver,
+    DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, device_stub_resolver,
     resource_stub_resolver,
 };
 use crate::messages::{IceCredentials, SecretKey};
@@ -301,65 +301,35 @@ impl ClientState {
             .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
     }
 
-    pub fn handle_device_pool_domain_resolved(
-        &mut self,
-        resolved: DevicePoolDomainResolved,
-        now: Instant,
-    ) {
+    pub fn handle_device_pool_domain_resolved(&mut self, resolved: DevicePoolDomainResolved) {
         let DevicePoolDomainResolved {
             resource_id,
             domain,
             ipv4,
         } = resolved;
-
-        let Some(pending) = self
-            .device_stub_resolver
-            .remove_pending(resource_id, &domain, now)
-        else {
-            tracing::debug!(%resource_id, %domain, "Received device pool resolution for unknown query");
+        let Some(domain) = parse_portal_domain(&domain) else {
             return;
         };
-
-        tracing::debug!(%resource_id, %domain, %ipv4, "Device pool domain resolved");
-
         self.device_stub_resolver
-            .cache_resolution(resource_id, domain, ipv4, now);
-
-        let response =
-            DeviceStubResolver::build_response(&pending.query, pending.query.domain(), ipv4);
-
-        self.send_dns_response(pending.local, pending.remote, pending.transport, response);
+            .handle_device_domain_resolved(resource_id, domain, Ok(ipv4));
+        self.drain_device_stub_resolver_events();
     }
 
     pub fn handle_device_pool_domain_resolution_failed(
         &mut self,
         failed: DevicePoolDomainResolutionFailed,
-        now: Instant,
     ) {
         let DevicePoolDomainResolutionFailed {
             resource_id,
             domain,
             reason,
         } = failed;
-
-        let Some(pending) = self
-            .device_stub_resolver
-            .remove_pending(resource_id, &domain, now)
-        else {
-            tracing::debug!(%resource_id, %domain, ?reason, "Received device pool resolution failure for unknown query");
+        let Some(domain) = parse_portal_domain(&domain) else {
             return;
         };
-
-        tracing::debug!(%resource_id, %domain, ?reason, "Device pool domain resolution failed");
-
-        let response = match reason {
-            FailReason::NotFound => dns_types::Response::nxdomain(&pending.query),
-            FailReason::Offline
-            | FailReason::VersionMismatch
-            | FailReason::Forbidden
-            | FailReason::Unknown => dns_types::Response::servfail(&pending.query),
-        };
-        self.send_dns_response(pending.local, pending.remote, pending.transport, response);
+        self.device_stub_resolver
+            .handle_device_domain_resolved(resource_id, domain, Err(reason));
+        self.drain_device_stub_resolver_events();
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -1275,6 +1245,7 @@ impl ClientState {
 
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
+        self.drain_device_stub_resolver_events();
     }
 
     /// Advance the DNS server and client state machines.
@@ -1487,7 +1458,7 @@ impl ClientState {
             }
         };
 
-        match self.resource_stub_resolver.handle(&message) {
+        match self.resource_stub_resolver.handle_query(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 if response.response_code() == ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
@@ -1539,56 +1510,21 @@ impl ClientState {
 
         // Check device pool patterns before consulting the resource stub resolver;
         // device pools and DNS resources are independent resolution strategies.
-        let domain_name = message.domain();
-        if let Some(resource_id) = self
+        match self
             .device_stub_resolver
-            .match_device_pool_linear(&domain_name)
+            .handle_query(&message, local, remote, transport, now)
         {
-            // Device pools are IPv4-only; answer AAAA and other non-A queries
-            // immediately with NOERROR + no records (the name exists, we just
-            // don't have records of the requested type).
-            if message.qtype() != dns_types::RecordType::A {
-                return Some(
-                    dns_types::ResponseBuilder::for_query(
-                        &message,
-                        dns_types::ResponseCode::NOERROR,
-                    )
-                    .build(),
-                );
+            device_stub_resolver::ResolveStrategy::Passthrough => {}
+            device_stub_resolver::ResolveStrategy::LocalResponse(response) => {
+                return Some(response);
             }
-
-            let domain = domain_name.to_string();
-
-            if let Some(ipv4) = self.device_stub_resolver.cached_resolution(&domain, now) {
-                tracing::debug!(%resource_id, %domain, %ipv4, "Device pool DNS cache hit");
-
-                return Some(DeviceStubResolver::build_response(
-                    &message,
-                    domain_name,
-                    ipv4,
-                ));
+            device_stub_resolver::ResolveStrategy::Pending => {
+                self.drain_device_stub_resolver_events();
+                return None;
             }
-
-            tracing::debug!(%resource_id, %domain, "DNS query matched dynamic device pool");
-
-            let is_new = self.device_stub_resolver.insert_pending(
-                resource_id,
-                domain.clone(),
-                PendingQuery::new(local, remote, transport, message, now),
-            );
-
-            if is_new {
-                self.buffered_events
-                    .push_back(ClientEvent::DevicePoolDomainResolveIntent {
-                        resource_id,
-                        domain,
-                    });
-            }
-
-            return None;
         }
 
-        match self.resource_stub_resolver.handle(&message) {
+        match self.resource_stub_resolver.handle_query(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
@@ -1805,6 +1741,31 @@ impl ClientState {
 
             self.buffered_events
                 .push_back(ClientEvent::DnsRecordsChanged { records });
+        }
+    }
+
+    fn drain_device_stub_resolver_events(&mut self) {
+        while let Some(event) = self.device_stub_resolver.poll_event() {
+            match event {
+                device_stub_resolver::Event::QueryDomain {
+                    resource_id,
+                    domain,
+                } => {
+                    self.buffered_events
+                        .push_back(ClientEvent::DevicePoolDomainQueried {
+                            resource_id,
+                            domain,
+                        });
+                }
+                device_stub_resolver::Event::SendResponse {
+                    local,
+                    remote,
+                    transport,
+                    response,
+                } => {
+                    self.send_dns_response(local, remote, transport, response);
+                }
+            }
         }
     }
 
@@ -2079,6 +2040,15 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
+}
+
+fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
+    domain
+        .parse()
+        .inspect_err(|e| {
+            tracing::warn!(%domain, "Portal sent malformed device pool domain: {}", logging::err_with_src(e));
+        })
+        .ok()
 }
 
 fn encapsulate_and_buffer(
@@ -2359,149 +2329,6 @@ mod tests {
         while state.poll_event().is_some() {}
     }
 
-    #[test]
-    fn dns_query_matching_device_pool_emits_resolve_intent() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-
-        // Set up DNS config so sentinel IPs exist.
-        let _ = state
-            .dns_config
-            .update_system_resolvers(vec!["1.1.1.1".parse().unwrap()]);
-        state.update_interface_config(interface(
-            Ipv4Addr::new(100, 82, 80, 16),
-            Ipv6Addr::LOCALHOST,
-        ));
-        drain_events(&mut state);
-
-        let IpAddr::V4(sentinel_ip) = state.dns_config.mapping().sentinel_ips()[0] else {
-            panic!("expected IPv4 sentinel");
-        };
-
-        // Add a dynamic device pool resource.
-        let pool = Resource::DynamicDevicePool(resource::DynamicDevicePoolResource {
-            id: ResourceId::from_u128(42),
-            name: "Test Pool".to_owned(),
-            address: "*.pool.example.com".to_owned(),
-        });
-        state.add_resource(pool, now);
-        drain_events(&mut state);
-
-        // Craft a DNS A query for a matching domain, targeting the sentinel.
-        let query = dns_types::Query::new(
-            "device-1.pool.example.com".parse().unwrap(),
-            dns_types::RecordType::A,
-        );
-        let query_bytes = query.into_bytes();
-        let dns_packet = ip_packet::make::udp_packet(
-            Ipv4Addr::new(100, 82, 80, 16),
-            sentinel_ip,
-            12345,
-            53,
-            &query_bytes,
-        )
-        .unwrap();
-
-        // Feed through TUN input — DNS query should be intercepted.
-        assert!(state.handle_tun_input(dns_packet, now).is_none());
-
-        // Assert the resolve intent event is emitted.
-        let mut found_intent = false;
-        while let Some(event) = state.poll_event() {
-            if matches!(event, ClientEvent::DevicePoolDomainResolveIntent { .. }) {
-                found_intent = true;
-            }
-        }
-        assert!(found_intent, "expected DevicePoolDomainResolveIntent event");
-
-        // Simulate portal response.
-        let resolved_ip = Ipv4Addr::new(100, 64, 0, 42);
-        state.handle_device_pool_domain_resolved(
-            DevicePoolDomainResolved {
-                resource_id: ResourceId::from_u128(42),
-                domain: "device-1.pool.example.com".to_owned(),
-                ipv4: resolved_ip,
-            },
-            now,
-        );
-
-        // Assert DNS response packet is buffered and carries the resolved IP.
-        let response = parse_dns_response(
-            &state
-                .poll_packets()
-                .expect("expected a DNS response packet"),
-        );
-        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
-        assert_eq!(response.domain().to_string(), "device-1.pool.example.com");
-        assert_eq!(a_record_ips(&response), vec![resolved_ip]);
-    }
-
-    #[test]
-    fn aaaa_query_for_device_pool_returns_noerror_with_no_records() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-
-        let _ = state
-            .dns_config
-            .update_system_resolvers(vec!["1.1.1.1".parse().unwrap()]);
-        state.update_interface_config(interface(
-            Ipv4Addr::new(100, 82, 80, 16),
-            Ipv6Addr::LOCALHOST,
-        ));
-        drain_events(&mut state);
-
-        let IpAddr::V4(sentinel_ip) = state.dns_config.mapping().sentinel_ips()[0] else {
-            panic!("expected IPv4 sentinel");
-        };
-
-        let pool = Resource::DynamicDevicePool(resource::DynamicDevicePoolResource {
-            id: ResourceId::from_u128(42),
-            name: "Test Pool".to_owned(),
-            address: "*.pool.example.com".to_owned(),
-        });
-        state.add_resource(pool, now);
-        drain_events(&mut state);
-
-        // Send an AAAA query for a device pool domain.
-        let query = dns_types::Query::new(
-            "device-1.pool.example.com".parse().unwrap(),
-            dns_types::RecordType::AAAA,
-        );
-        let query_bytes = query.into_bytes();
-        let dns_packet = ip_packet::make::udp_packet(
-            Ipv4Addr::new(100, 82, 80, 16),
-            sentinel_ip,
-            12345,
-            53,
-            &query_bytes,
-        )
-        .unwrap();
-
-        assert!(state.handle_tun_input(dns_packet, now).is_none());
-
-        // Should get an immediate NOERROR response with no records —
-        // no portal round-trip needed for non-A queries.
-        let response = parse_dns_response(
-            &state
-                .poll_packets()
-                .expect("expected a DNS response packet"),
-        );
-        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
-        assert_eq!(
-            response.records().count(),
-            0,
-            "AAAA response for IPv4-only device pool must have no records"
-        );
-
-        // No resolve intent should have been emitted.
-        while let Some(event) = state.poll_event() {
-            assert!(
-                !matches!(event, ClientEvent::DevicePoolDomainResolveIntent { .. }),
-                "AAAA query must not trigger a portal round-trip"
-            );
-        }
-    }
-
     fn assert_no_device_connection_intent(state: &mut ClientState) {
         while let Some(event) = state.poll_event() {
             assert!(
@@ -2509,231 +2336,6 @@ mod tests {
                 "unexpected device connection intent"
             );
         }
-    }
-
-    #[test]
-    fn device_pool_resolution_produces_dns_response_packet() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        let rid = ResourceId::from_u128(42);
-        let domain = "device-1.pool.example.com";
-        let resolved_ip = Ipv4Addr::new(100, 64, 0, 42);
-
-        // Manually insert a pending query as if handle_dns_query matched a device pool.
-        state.device_stub_resolver.insert_pending(
-            rid,
-            domain.to_owned(),
-            PendingQuery::new(
-                "100.100.111.1:53".parse().unwrap(),
-                "100.82.80.16:12345".parse().unwrap(),
-                dns::Transport::Udp,
-                dns_types::Query::new(domain.parse().unwrap(), dns_types::RecordType::A),
-                now,
-            ),
-        );
-
-        state.handle_device_pool_domain_resolved(
-            DevicePoolDomainResolved {
-                resource_id: rid,
-                domain: domain.to_owned(),
-                ipv4: resolved_ip,
-            },
-            now,
-        );
-
-        let response = parse_dns_response(
-            &state
-                .poll_packets()
-                .expect("expected a DNS response packet to be buffered"),
-        );
-        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
-        assert_eq!(response.domain().to_string(), domain);
-        assert_eq!(a_record_ips(&response), vec![resolved_ip]);
-    }
-
-    #[test]
-    fn device_pool_resolution_after_timeout_is_ignored() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        let rid = ResourceId::from_u128(42);
-        let domain = "device-1.pool.example.com";
-
-        state.device_stub_resolver.insert_pending(
-            rid,
-            domain.to_owned(),
-            PendingQuery::new(
-                "100.100.111.1:53".parse().unwrap(),
-                "100.82.80.16:12345".parse().unwrap(),
-                dns::Transport::Udp,
-                dns_types::Query::new(domain.parse().unwrap(), dns_types::RecordType::A),
-                now,
-            ),
-        );
-
-        // Advance past the timeout and let handle_timeout clean up.
-        let later = now + Duration::from_secs(10);
-        state.handle_timeout(later);
-
-        // Late response arrives — should be ignored.
-        state.handle_device_pool_domain_resolved(
-            DevicePoolDomainResolved {
-                resource_id: rid,
-                domain: domain.to_owned(),
-                ipv4: Ipv4Addr::new(100, 64, 0, 42),
-            },
-            later,
-        );
-
-        assert!(
-            state.poll_packets().is_none(),
-            "expected no DNS response after timeout"
-        );
-    }
-
-    #[test]
-    fn device_pool_resolution_failure_produces_nxdomain() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        let rid = ResourceId::from_u128(42);
-        let domain = "device-1.pool.example.com";
-
-        state.device_stub_resolver.insert_pending(
-            rid,
-            domain.to_owned(),
-            PendingQuery::new(
-                "100.100.111.1:53".parse().unwrap(),
-                "100.82.80.16:12345".parse().unwrap(),
-                dns::Transport::Udp,
-                dns_types::Query::new(domain.parse().unwrap(), dns_types::RecordType::A),
-                now,
-            ),
-        );
-
-        state.handle_device_pool_domain_resolution_failed(
-            DevicePoolDomainResolutionFailed {
-                resource_id: rid,
-                domain: domain.to_owned(),
-                reason: FailReason::NotFound,
-            },
-            now,
-        );
-
-        let response = parse_dns_response(
-            &state
-                .poll_packets()
-                .expect("expected an NXDOMAIN response packet to be buffered"),
-        );
-        assert_eq!(response.response_code(), dns_types::ResponseCode::NXDOMAIN);
-        assert_eq!(response.records().count(), 0);
-        assert_eq!(response.domain().to_string(), domain);
-    }
-
-    #[test]
-    fn repeated_device_pool_query_is_served_from_cache() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-
-        // Set up DNS config so sentinel IPs exist.
-        let _ = state
-            .dns_config
-            .update_system_resolvers(vec!["1.1.1.1".parse().unwrap()]);
-        state.update_interface_config(interface(
-            Ipv4Addr::new(100, 82, 80, 16),
-            Ipv6Addr::LOCALHOST,
-        ));
-        drain_events(&mut state);
-
-        let IpAddr::V4(sentinel_ip) = state.dns_config.mapping().sentinel_ips()[0] else {
-            panic!("expected IPv4 sentinel");
-        };
-
-        let rid = ResourceId::from_u128(42);
-        let pool_domain = "device-1.pool.example.com";
-        let resolved_ip = Ipv4Addr::new(100, 64, 0, 42);
-        let pool = Resource::DynamicDevicePool(resource::DynamicDevicePoolResource {
-            id: rid,
-            name: "Test Pool".to_owned(),
-            address: "*.pool.example.com".to_owned(),
-        });
-        state.add_resource(pool, now);
-        drain_events(&mut state);
-
-        // Seed the cache via a portal response, as if a previous query already resolved.
-        state.device_stub_resolver.insert_pending(
-            rid,
-            pool_domain.to_owned(),
-            PendingQuery::new(
-                "100.100.111.1:53".parse().unwrap(),
-                "100.82.80.16:12345".parse().unwrap(),
-                dns::Transport::Udp,
-                dns_types::Query::new(pool_domain.parse().unwrap(), dns_types::RecordType::A),
-                now,
-            ),
-        );
-        state.handle_device_pool_domain_resolved(
-            DevicePoolDomainResolved {
-                resource_id: rid,
-                domain: pool_domain.to_owned(),
-                ipv4: resolved_ip,
-            },
-            now,
-        );
-        // Drain the DNS response packet from the first query.
-        while state.poll_packets().is_some() {}
-        drain_events(&mut state);
-
-        // A second DNS query arrives for the same domain.
-        let query = dns_types::Query::new(pool_domain.parse().unwrap(), dns_types::RecordType::A);
-        let query_bytes = query.into_bytes();
-        let dns_packet = ip_packet::make::udp_packet(
-            Ipv4Addr::new(100, 82, 80, 16),
-            sentinel_ip,
-            12346,
-            53,
-            &query_bytes,
-        )
-        .unwrap();
-
-        assert!(state.handle_tun_input(dns_packet, now).is_none());
-
-        // No new portal intent should be emitted — the cache should cover it.
-        while let Some(event) = state.poll_event() {
-            assert!(
-                !matches!(event, ClientEvent::DevicePoolDomainResolveIntent { .. }),
-                "cache hit must not trigger another portal round-trip"
-            );
-        }
-
-        let response = parse_dns_response(
-            &state
-                .poll_packets()
-                .expect("expected a cached DNS response packet"),
-        );
-        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
-        assert_eq!(response.domain().to_string(), pool_domain);
-        assert_eq!(
-            a_record_ips(&response),
-            vec![resolved_ip],
-            "cached response must carry the IP we originally resolved"
-        );
-    }
-
-    fn parse_dns_response(packet: &IpPacket) -> dns_types::Response {
-        let udp = packet.as_udp().expect("DNS response must be a UDP packet");
-        dns_types::Response::parse(udp.payload()).expect("payload must be a valid DNS response")
-    }
-
-    fn a_record_ips(response: &dns_types::Response) -> Vec<Ipv4Addr> {
-        response
-            .records()
-            .filter_map(|r| {
-                if let dns_types::RecordData::A(a) = r.data() {
-                    Some(a.addr())
-                } else {
-                    None
-                }
-            })
-            .collect()
     }
 }
 

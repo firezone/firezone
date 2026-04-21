@@ -220,7 +220,7 @@ mod tests {
 
         let query = Query::new("example.com".parse().unwrap(), RecordType::A);
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
         cache.insert("example.com".parse().unwrap(), &response, Instant::now());

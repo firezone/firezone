@@ -7,12 +7,11 @@ use super::{
 };
 use crate::{
     client,
-    messages::{UpstreamDo53, UpstreamDoH},
+    client::{DnsResource, DynamicDevicePoolResource},
+    messages::{UpstreamDo53, UpstreamDoH, gateway},
     proptest::*,
 };
-use crate::{client::DnsResource, messages::gateway};
-use connlib_model::{ClientId, GatewayId, Site};
-use connlib_model::{ResourceId, SiteId};
+use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use itertools::Itertools;
@@ -28,12 +27,15 @@ use std::{
     time::Instant,
 };
 
-use crate::client::DynamicDevicePoolResource;
-
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
     clients: BTreeMap<ClientId, (Ipv4Addr, Ipv6Addr)>,
+    /// Label under which each client is registered as a device in dynamic device pools.
+    ///
+    /// In production the portal maps each device to a tunnel IP; in the test harness
+    /// we assign one stable label per client (e.g. `device-0`) and use it for all pools.
+    device_labels: BTreeMap<ClientId, String>,
     gateways_by_site: BTreeMap<SiteId, BTreeSet<(GatewayId, Ipv4Addr, Ipv6Addr)>>,
 
     #[debug(skip)]
@@ -112,15 +114,17 @@ impl StubPortal {
         let mut tunnel_ip4s = tunnel_ip4s();
         let mut tunnel_ip6s = tunnel_ip6s();
 
-        let clients = clients
+        let (clients, device_labels): (BTreeMap<_, _>, BTreeMap<_, _>) = clients
             .into_iter()
-            .map(|id| {
+            .enumerate()
+            .map(|(idx, id)| {
                 let client_tunnel_ipv4 = tunnel_ip4s.next().unwrap();
                 let client_tunnel_ipv6 = tunnel_ip6s.next().unwrap();
+                let label = format!("device{idx}");
 
-                (id, (client_tunnel_ipv4, client_tunnel_ipv6))
+                ((id, (client_tunnel_ipv4, client_tunnel_ipv6)), (id, label))
             })
-            .collect();
+            .unzip();
 
         let gateways_by_site = gateways_by_site
             .into_iter()
@@ -141,6 +145,7 @@ impl StubPortal {
 
         Self {
             clients,
+            device_labels,
             gateways_by_site,
             gateway_selector,
             sites_by_resource: BTreeMap::from_iter(
@@ -154,6 +159,26 @@ impl StubPortal {
             upstream_do53,
             upstream_doh,
         }
+    }
+
+    /// All device labels the portal knows about, in client order.
+    pub(crate) fn device_labels(&self) -> Vec<String> {
+        self.device_labels.values().cloned().collect()
+    }
+
+    /// Resolves a device-pool domain (e.g. `device0.pool.example.com`) to the
+    /// tunnel IPv4 of the matching client, if the label corresponds to a known device.
+    pub(crate) fn resolve_device_pool_domain(&self, domain: &str) -> Option<Ipv4Addr> {
+        let label = domain.split_once('.')?.0;
+
+        let (client_id, _) = self
+            .device_labels
+            .iter()
+            .find(|(_, candidate)| candidate.as_str() == label)?;
+
+        let (ipv4, _) = self.clients.get(client_id)?;
+
+        Some(*ipv4)
     }
 
     pub(crate) fn all_resources(&self) -> Vec<client::Resource> {

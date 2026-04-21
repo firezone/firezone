@@ -60,7 +60,6 @@ where
         self.inner.get(key)
     }
 
-    #[cfg(test)]
     pub fn remove(&mut self, key: &K) -> Option<Entry<V>> {
         let entry = self.inner.remove(key)?;
         remove_from_expiration_bucket(&mut self.expiration, key, entry.expires_at);

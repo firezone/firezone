@@ -336,7 +336,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::DevicePoolDomainResolveIntent {
+            ClientEvent::DevicePoolDomainQueried {
                 resource_id,
                 domain,
             } => {
@@ -344,7 +344,7 @@ impl Eventloop {
                     .send(PortalCommand::Send(
                         EgressMessages::ResolveDevicePoolDomain {
                             resource_id,
-                            domain,
+                            domain: domain.to_string(),
                         },
                     ))
                     .await
@@ -602,12 +602,12 @@ impl Eventloop {
             IngressMessages::DevicePoolDomainResolved(resolved) => {
                 tunnel
                     .state_mut()
-                    .handle_device_pool_domain_resolved(resolved, Instant::now());
+                    .handle_device_pool_domain_resolved(resolved);
             }
             IngressMessages::DevicePoolDomainResolutionFailed(failed) => {
                 tunnel
                     .state_mut()
-                    .handle_device_pool_domain_resolution_failed(failed, Instant::now());
+                    .handle_device_pool_domain_resolution_failed(failed);
             }
         }
 
