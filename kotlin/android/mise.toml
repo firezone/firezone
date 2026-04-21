@@ -3,6 +3,9 @@
 # Tasks are auto-discovered from mise-tasks/ directory.
 # Task names match filenames (e.g., mise-tasks/format.sh -> //kotlin/android:format)
 
+[settings]
+auto_install = false
+
 [task_config]
 includes = ["mise-tasks"]
 

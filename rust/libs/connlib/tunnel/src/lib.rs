@@ -7,6 +7,7 @@
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
+use crate::unroutable_packet::RoutingError;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{
     ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
@@ -32,8 +33,11 @@ use tun::Tun;
 mod client;
 mod dns;
 mod expiring_map;
+mod filter_engine;
 mod gateway;
 mod io;
+#[cfg(test)]
+mod malicious_behaviour;
 pub mod messages;
 mod otel;
 mod p2p_control;
@@ -41,11 +45,13 @@ mod packet_kind;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
 mod proptest;
+mod routing_table;
 mod sockets;
 #[cfg(all(test, feature = "proptest"))]
 #[allow(clippy::unwrap_in_result)]
 mod tests;
 mod unique_packet_buffer;
+mod unroutable_packet;
 mod utils;
 
 const REALM: &str = "firezone";
@@ -74,9 +80,10 @@ pub type ClientTunnel = Tunnel<ClientState>;
 pub use client::ClientState;
 pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, UnroutablePacket};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use io::TunChannelClosed;
 pub use sockets::UdpSocketThreadStopped;
+pub use unroutable_packet::UnroutablePacket;
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -248,8 +255,12 @@ impl ClientTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        match self.role_state.handle_tun_input(packet, now) {
-                            Some(transmit) => {
+                        match self
+                            .role_state
+                            .handle_tun_input(packet, now)
+                            .context("Failed to handle packet from TUN device")
+                        {
+                            Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
@@ -257,7 +268,8 @@ impl ClientTunnel {
                                     transmit.ecn,
                                 );
                             }
-                            None => self.io.schedule_timeout(now),
+                            Ok(None) => self.io.schedule_timeout(now),
+                            Err(e) => error.push(e),
                         }
                     }
 
@@ -280,16 +292,23 @@ impl ClientTunnel {
                             ],
                         );
 
-                        match self.role_state.handle_network_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        ) {
-                            Some(packet) => self
+                        match self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            None => self.io.schedule_timeout(now),
+                            Ok(None) => self.io.schedule_timeout(now),
+                            Err(e) => error.push(e),
                         };
                     }
 
@@ -435,7 +454,11 @@ impl GatewayTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        match self.role_state.handle_tun_input(packet, now) {
+                        match self
+                            .role_state
+                            .handle_tun_input(packet, now)
+                            .context("Failed to handle packet from TUN device")
+                        {
                             Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
@@ -447,9 +470,9 @@ impl GatewayTunnel {
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => {
                                 let routing_error = e
-                                    .any_downcast_ref::<gateway::UnroutablePacket>()
+                                    .any_downcast_ref::<UnroutablePacket>()
                                     .map(|e| e.reason())
-                                    .unwrap_or(gateway::RoutingError::Other);
+                                    .unwrap_or(RoutingError::Other);
 
                                 // TODO: Include more attributes here like IPv4/IPv6?
                                 self.io.inc_dropped_packet(&[
@@ -481,12 +504,18 @@ impl GatewayTunnel {
                             ],
                         );
 
-                        match self.role_state.handle_network_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        ) {
+                        match self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
@@ -695,6 +724,13 @@ pub(crate) struct NotAllowedResource(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to decapsulate '{0}' packet")]
 pub struct FailedToDecapsulate(packet_kind::Kind);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to handle packet from network (src {from} dst {local})")]
+pub struct FailedToHandleNetworkPacket {
+    local: SocketAddr,
+    from: SocketAddr,
+}
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {

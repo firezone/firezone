@@ -7,6 +7,7 @@ use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
+use is::Candidate;
 use logging::err_with_src;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
@@ -17,7 +18,6 @@ use std::{
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
-use str0m::{Candidate, net::Protocol};
 use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
     rfc5389::{
@@ -96,6 +96,10 @@ pub struct Allocation {
     credentials: Option<Credentials>,
 
     explicit_failure: Option<FreeReason>,
+
+    /// Smoothed round-trip time to the relay, computed via an exponential moving
+    /// average over response times. `None` until we receive the first response.
+    rtt: Option<Duration>,
 
     buffer_pool: BufferPool<Vec<u8>>,
 }
@@ -248,6 +252,7 @@ impl Allocation {
             software: Software::new(format!("snownet; session={session_id}"))
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
+            rtt: None,
             buffer_pool,
         };
 
@@ -364,6 +369,8 @@ impl Allocation {
 
         let rtt = now.duration_since(backoff.start_time());
         Span::current().record("rtt", field::debug(rtt));
+
+        self.update_rtt(rtt);
 
         if tracing::enabled!(target: "wire::turn", tracing::Level::DEBUG) {
             let request = original_request
@@ -536,7 +543,7 @@ impl Allocation {
                     SocketAddr::V6(_) => &mut self.ip6_host_candidate,
                 };
 
-                let maybe_candidate = Candidate::host(local, Protocol::Udp).ok();
+                let maybe_candidate = Candidate::host(local, "udp").ok();
                 if update_candidate(maybe_candidate, current_host_candidate, &mut self.events) {
                     self.log_update(now);
                 }
@@ -951,6 +958,26 @@ impl Allocation {
         &self.server == socket
     }
 
+    /// The smoothed round-trip time to the relay.
+    ///
+    /// Returns `None` if we haven't received a response yet.
+    pub fn rtt(&self) -> Option<Duration> {
+        self.rtt
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_rtt(&mut self, rtt: Duration) {
+        self.rtt = Some(rtt);
+    }
+
+    fn update_rtt(&mut self, sample: Duration) {
+        // RFC 6298 SRTT-style EMA: srtt = 7/8 * srtt + 1/8 * sample.
+        self.rtt = Some(match self.rtt {
+            None => sample,
+            Some(srtt) => srtt * 7 / 8 + sample / 8,
+        });
+    }
+
     fn log_update(&self, now: Instant) {
         tracing::debug!(
             host_ip4 = ?self.ip4_host_candidate.as_ref().map(|c| c.addr()),
@@ -1347,7 +1374,7 @@ fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
         return None;
     };
 
-    let new_candidate = match Candidate::server_reflexive(a.address(), local, Protocol::Udp) {
+    let new_candidate = match Candidate::server_reflexive(a.address(), local, "udp") {
         Ok(c) => c,
         Err(e) => {
             tracing::debug!(
@@ -1375,7 +1402,7 @@ fn relay_candidate(
             return None;
         };
 
-        let new_candidate = match Candidate::relayed(addr, local, Protocol::Udp) {
+        let new_candidate = match Candidate::relayed(addr, local, "udp") {
             Ok(c) => c,
             Err(e) => {
                 tracing::debug!(
@@ -2047,11 +2074,7 @@ mod tests {
 
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
-        loop {
-            let Some((timeout, _)) = allocation.poll_timeout() else {
-                break;
-            };
-
+        while let Some((timeout, _)) = allocation.poll_timeout() {
             assert_eq!(expected_backoffs.pop_front().unwrap(), timeout);
 
             assert!(allocation.poll_transmit().is_some());
@@ -2201,20 +2224,20 @@ mod tests {
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
-            Some(Event::New(Candidate::host(PEER1, Protocol::Udp).unwrap()))
+            Some(Event::New(Candidate::host(PEER1, "udp").unwrap()))
         );
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
             Some(Event::New(
-                Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
+                Candidate::server_reflexive(PEER1, PEER1, "udp").unwrap()
             ))
         );
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
             Some(Event::New(
-                Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()
             ))
         );
         let next_event = allocation.poll_event();
@@ -2261,13 +2284,13 @@ mod tests {
         assert_eq!(
             allocation.poll_event(),
             Some(Event::Invalid(
-                Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()
             ))
         );
         assert_eq!(
             allocation.poll_event(),
             Some(Event::Invalid(
-                Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()
             ))
         );
         assert!(allocation.poll_event().is_none());
@@ -2575,8 +2598,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
             ]
         )
     }
@@ -2595,8 +2618,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
             ]
         )
     }
@@ -2627,8 +2650,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, "udp").unwrap()),
             ]
         );
         assert_eq!(
@@ -2669,6 +2692,40 @@ mod tests {
 
         assert!(socket.matches(SocketAddr::V4(RELAY_V4)));
         assert!(socket.matches(SocketAddr::V6(RELAY_V6)));
+    }
+
+    #[test]
+    fn rtt_is_tracked_after_response() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(start);
+
+        assert_eq!(allocation.rtt(), None);
+
+        let binding = allocation.next_message().unwrap();
+        let recv_at = start + Duration::from_millis(40);
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), recv_at);
+
+        assert_eq!(allocation.rtt(), Some(Duration::from_millis(40)));
+    }
+
+    #[test]
+    fn rtt_is_smoothed_over_multiple_responses() {
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(start);
+
+        // First response: BINDING (40ms)
+        let binding = allocation.next_message().unwrap();
+        let mut now = start + Duration::from_millis(40);
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), now);
+        assert_eq!(allocation.rtt(), Some(Duration::from_millis(40)));
+
+        // Second response: ALLOCATE (200ms after the request was sent)
+        let allocate = allocation.next_message().unwrap();
+        now += Duration::from_millis(200);
+        allocation.handle_test_input_ip4(allocate_response(&allocate, &[RELAY_ADDR_IP4]), now);
+
+        // EMA: 7/8 * 40ms + 1/8 * 200ms = 35ms + 25ms = 60ms
+        assert_eq!(allocation.rtt(), Some(Duration::from_millis(60)));
     }
 
     #[test]
@@ -2716,14 +2773,10 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                Event::New(Candidate::host(PEER2_IP4, Protocol::Udp).unwrap()),
-                Event::New(
-                    Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, Protocol::Udp).unwrap()
-                ),
-                Event::New(Candidate::host(PEER2_IP6, Protocol::Udp).unwrap()),
-                Event::New(
-                    Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, Protocol::Udp).unwrap()
-                )
+                Event::New(Candidate::host(PEER2_IP4, "udp").unwrap()),
+                Event::New(Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, "udp").unwrap()),
+                Event::New(Candidate::host(PEER2_IP6, "udp").unwrap()),
+                Event::New(Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, "udp").unwrap())
             ]
         )
     }
@@ -2744,11 +2797,7 @@ mod tests {
             start,
         );
 
-        loop {
-            let Some((timeout, _)) = allocation.poll_timeout() else {
-                break;
-            };
-
+        while let Some((timeout, _)) = allocation.poll_timeout() {
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.
@@ -2764,10 +2813,7 @@ mod tests {
     fn allocation_can_be_freed_after_all_requests_time_out() {
         let mut allocation = Allocation::for_test_dual(Instant::now());
 
-        loop {
-            let Some((timeout, _)) = allocation.poll_timeout() else {
-                break;
-            };
+        while let Some((timeout, _)) = allocation.poll_timeout() {
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.

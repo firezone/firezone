@@ -25,10 +25,18 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull={12849}>
+          Fixes an issue on macOS where the app could be silently terminated by
+          the system under memory pressure, leaving the tunnel running without a
+          menu bar icon or session expiry notifications.
+        </ChangeItem>
         <ChangeItem pull={12657}>
           Falls back to public DNS resolvers when the system provides only
           non-routable addresses (loopback, link-local), preventing tunnel
           bootstrap failures.
+        </ChangeItem>
+        <ChangeItem pull={12684}>
+          Takes into account traffic filters when routing packets to resources.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.14" date={new Date("2026-03-17")}>

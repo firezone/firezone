@@ -345,6 +345,24 @@ Directory sync runs automatically every 2 hours. To trigger a sync immediately,
 click the **Sync Now** button on the directory card in
 `Settings -> Directory Sync`.
 
+## Deleted users and Okta user states
+
+Firezone removes deleted Okta users on the next sync. It also filters users by
+their Okta `status`.
+
+- **Synced states:** `ACTIVE`, `STAGED`, `PROVISIONED`, `RECOVERY`, and
+  `PASSWORD_EXPIRED`, and `LOCKED_OUT`
+- **Filtered-out states:** Firezone excludes all other Okta states, including
+  `SUSPENDED` and `DEPROVISIONED`.
+- **Defense in depth:** Firezone re-checks `status` after receiving both app
+  user and group member payloads.
+- **Defensive handling:** If Okta omits `status` unexpectedly, Firezone logs
+  the event and skips that user instead of treating them as active.
+
+Once a synced Okta user is deleted or transitions to a filtered-out state,
+their Firezone identity is removed on the next sync. This signs them out of
+Firezone and prevents new sign-ins through the synced Okta identity.
+
 ## Troubleshooting
 
 ### "Unauthorized" or "Forbidden" error

@@ -20,6 +20,7 @@ use tracing_subscriber::{
 
 mod assertions;
 mod buffered_transmits;
+mod coin;
 mod composite_strategy;
 mod dns_records;
 mod dns_server_resource;
@@ -98,6 +99,13 @@ fn tunnel_test() {
             TunnelTest::check_invariants(&sut, &ref_state);
 
             for (ix, transition) in transitions.iter().enumerate() {
+                if transition.should_clear_packets() {
+                    tracing::debug!("Clearing previously sent packets");
+
+                    ReferenceState::clear_packets(&mut ref_state);
+                    TunnelTest::clear_packets(&mut sut);
+                }
+
                 // The counter is `Some` only before shrinking. When it's `Some` it
                 // must be incremented before every transition that's being applied
                 // to inform the strategy that the transition has been applied for

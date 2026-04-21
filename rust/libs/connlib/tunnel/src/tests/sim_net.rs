@@ -61,7 +61,12 @@ impl<T> Host<T> {
     }
 
     /// Mutable access to `T` must go via this function to ensure the corresponding span is active and tracks all state modifications.
-    pub(crate) fn exec_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
+    pub(crate) fn exec_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R
+    where
+        T: ExecMutScope,
+    {
+        let _guard = <T as ExecMutScope>::enter(&self.inner);
+
         self.span.in_scope(|| f(&mut self.inner))
     }
 
@@ -143,6 +148,12 @@ impl PollTimeout for SimRelay {
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         self.sut.poll_timeout().map(|instant| (instant, ""))
     }
+}
+
+pub(crate) trait ExecMutScope {
+    type Guard;
+
+    fn enter(&self) -> Self::Guard;
 }
 
 impl<T> Host<T>

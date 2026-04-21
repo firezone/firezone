@@ -8,8 +8,8 @@ use std::{
 
 use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
+use is::stun::{StunMessage, TransId};
 use rand::Rng;
-use str0m::ice::{StunMessage, TransId};
 
 use crate::{
     ConnectionStats, Event,
@@ -416,10 +416,9 @@ impl fmt::Display for UnknownConnection {
     }
 }
 
-fn into_u256(key: [u8; 32]) -> bnum::BUint<4> {
-    // Note: `parse_str_radix` panics when the number is too big.
-    // We are passing 32 u8's though which fits exactly into a u256.
-    bnum::types::U256::parse_str_radix(&hex::encode(key), 16)
+fn into_u256(key: [u8; 32]) -> bnum::Uint<32> {
+    bnum::types::U256::from_str_radix(&hex::encode(key), 16)
+        .expect("array of 32 u8's fits into u256")
 }
 
 #[cfg(test)]
@@ -429,9 +428,9 @@ mod tests {
         x25519::{PublicKey, StaticSecret},
     };
     use bufferpool::BufferPool;
+    use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
-    use str0m::ice::IceAgent;
 
     use std::net::{Ipv4Addr, SocketAddrV4};
 
@@ -531,6 +530,11 @@ mod tests {
             now,
             SessionId::new(PublicKey::from([0u8; 32])),
         );
+        // Simulate a successful response so the relay is eligible for sampling.
+        allocations
+            .get_mut_by_id(&2)
+            .unwrap()
+            .set_rtt(Duration::from_millis(20));
 
         connections.migrate_relays(
             std::iter::empty(),
@@ -596,7 +600,7 @@ mod tests {
         let new_local = Index::new_local(idx);
 
         Connection {
-            agent: IceAgent::new(str0m::IceCreds::new(), &crate::CRYPTO_PROVIDER),
+            agent: IceAgent::new(is::IceCreds::new()),
             index: new_local,
             tunnel: Tunn::new_at(
                 private,

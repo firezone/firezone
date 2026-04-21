@@ -12,6 +12,20 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "A New Look for Firezone",
+      date: "April 14, 2026",
+      href: "/blog/new-ui-launch",
+      authorName: "Brian Manifold",
+      authorAvatarSrc: "/images/avatars/brian.png",
+      type: "Announcement",
+      description: (
+        <p className="mb-2">
+          Announcing the new user interface for the Firezone portal, designed to
+          be more intuitive, faster, and more accessible.
+        </p>
+      ),
+    },
+    {
       title: "January 2026 Devlog",
       date: "February 1, 2026",
       href: "/blog/devlog/2026-01",

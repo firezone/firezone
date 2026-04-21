@@ -123,9 +123,6 @@ struct FirezoneApp: App {
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
-
-      // Prevent sudden termination for menu bar apps to allow cleanup
-      ProcessInfo.processInfo.disableSuddenTermination()
     }
 
     func applicationDidFinishLaunching(_: Notification) {

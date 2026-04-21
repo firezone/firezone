@@ -1,5 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
+    iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -19,9 +20,6 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 ///
 /// One of the design goals of this client is to always provide a result for a query.
 /// If the TCP connection fails, we report all currently pending queries to that resolver as failed.
-///
-/// There are however currently no timeouts.
-/// If the upstream resolver refuses to answer, we don't fail the query.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     device: InMemoryDevice,
     interface: Interface,
@@ -31,18 +29,25 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
     local_ports_by_socket: BTreeMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
-    pending_queries_by_remote_and_local:
-        HashMap<(SocketAddr, SocketAddr), VecDeque<dns_types::Query>>,
+    pending_queries_by_remote_and_local: BTreeMap<(SocketAddr, SocketAddr), VecDeque<PendingQuery>>,
     /// Queries we have sent to a DNS resolver and are waiting for a reply.
     sent_queries_by_remote_and_local:
-        HashMap<(SocketAddr, SocketAddr), HashMap<u16, dns_types::Query>>,
+        BTreeMap<(SocketAddr, SocketAddr), BTreeMap<u16, PendingQuery>>,
 
     query_results: VecDeque<QueryResult>,
 
     rng: StdRng,
 
+    query_timeout: Duration,
+
     created_at: Instant,
     last_now: Instant,
+}
+
+#[derive(Debug)]
+struct PendingQuery {
+    query: dns_types::Query,
+    deadline: Instant,
 }
 
 #[derive(Debug)]
@@ -54,7 +59,7 @@ pub struct QueryResult {
 }
 
 impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
-    pub fn new(now: Instant, seed: [u8; 32]) -> Self {
+    pub fn new(now: Instant, query_timeout: Duration, seed: [u8; 32]) -> Self {
         // Sadly, these can't be compile-time assertions :(
         assert!(MIN_PORT >= 49152, "Must use ephemeral port range");
         assert!(MIN_PORT < MAX_PORT, "Port range must not have length 0");
@@ -73,6 +78,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             sockets_by_remote: Default::default(),
             local_ports_by_socket: Default::default(),
             pending_queries_by_remote_and_local: Default::default(),
+            query_timeout,
             created_at: now,
             last_now: now,
         }
@@ -95,6 +101,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .source_ips
             .ok_or_else(|| anyhow!("No source interface set"))?;
 
+        let deadline = self.last_now + self.query_timeout;
+
         if let Some(s) = self.sockets_by_remote.get(&server)
             && let Some(local_port) = self.local_ports_by_socket.get(s).copied()
         {
@@ -107,11 +115,14 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
             let id = message.id();
 
-            if pending_queries.iter().any(|q| q.id() == id) {
+            if pending_queries.iter().any(|qq| qq.query.id() == id) {
                 bail!("A query with ID {id} is already pending")
             }
 
-            pending_queries.push_back(message);
+            pending_queries.push_back(PendingQuery {
+                query: message,
+                deadline,
+            });
 
             return Ok(local_endpoint);
         };
@@ -122,9 +133,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         self.pending_queries_by_remote_and_local
             .entry((server, local_endpoint))
             .or_default()
-            .push_back(message);
+            .push_back(PendingQuery {
+                query: message,
+                deadline,
+            });
 
-        let handle = self.sockets.add(create_tcp_socket());
+        let mut socket = create_tcp_socket();
+        socket.set_timeout(Some(self.query_timeout.into()));
+
+        let handle = self.sockets.add(socket);
 
         self.sockets_by_remote.insert(server, handle);
         self.local_ports_by_socket.insert(handle, local_port);
@@ -241,6 +258,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
+        self.fail_expired_queries(now);
+
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             return;
         };
@@ -319,25 +338,74 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let now = l3_tcp::now(self.created_at, self.last_now);
 
-        let poll_in = self.interface.poll_delay(now, &self.sockets)?;
+        let interface_timeout = self
+            .interface
+            .poll_delay(now, &self.sockets)
+            .map(|poll_in| self.last_now + Duration::from(poll_in));
+        let pending_deadlines = self
+            .pending_queries_by_remote_and_local
+            .values()
+            .flat_map(|q| q.iter().map(|qq| qq.deadline));
+        let sent_deadlines = self
+            .sent_queries_by_remote_and_local
+            .values()
+            .flat_map(|q| q.values().map(|qq| qq.deadline));
 
-        Some(self.last_now + Duration::from(poll_in))
+        iter::empty()
+            .chain(interface_timeout)
+            .chain(pending_deadlines)
+            .chain(sent_deadlines)
+            .min()
+    }
+
+    fn fail_expired_queries(&mut self, now: Instant) {
+        for ((server, local), queries) in self.pending_queries_by_remote_and_local.iter_mut() {
+            while let Some(queued) = queries.pop_front_if(|pq| pq.deadline <= now) {
+                let res = QueryResult {
+                    query: queued.query,
+                    server: *server,
+                    local: *local,
+                    result: Err(anyhow!(
+                        "DNS query timed out after {:?}",
+                        self.query_timeout
+                    )),
+                };
+
+                self.query_results.push_back(logging::dbg!(res));
+            }
+        }
+
+        for ((server, local), queries) in self.sent_queries_by_remote_and_local.iter_mut() {
+            self.query_results
+                .extend(
+                    queries
+                        .extract_if(.., |_, pq| pq.deadline <= now)
+                        .map(|(_, queued)| QueryResult {
+                            query: queued.query,
+                            server: *server,
+                            local: *local,
+                            result: Err(anyhow!(
+                                "DNS query timed out after {:?}",
+                                self.query_timeout
+                            )),
+                        }),
+                );
+        }
     }
 
     pub fn reset(&mut self) {
         tracing::debug!("Resetting state");
 
-        let aborted_pending_queries = self.pending_queries_by_remote_and_local.drain().flat_map(
-            |((server, local), queries)| {
+        let aborted_pending_queries = std::mem::take(&mut self.pending_queries_by_remote_and_local)
+            .into_iter()
+            .flat_map(|((server, local), queries)| {
                 into_failed_results(server, local, queries, || anyhow!("Aborted"))
-            },
-        );
-        let aborted_sent_queries =
-            self.sent_queries_by_remote_and_local
-                .drain()
-                .flat_map(|((server, local), queries)| {
-                    into_failed_results(server, local, queries.into_values(), || anyhow!("Aborted"))
-                });
+            });
+        let aborted_sent_queries = std::mem::take(&mut self.sent_queries_by_remote_and_local)
+            .into_iter()
+            .flat_map(|((server, local), queries)| {
+                into_failed_results(server, local, queries.into_values(), || anyhow!("Aborted"))
+            });
 
         self.query_results
             .extend(aborted_pending_queries.chain(aborted_sent_queries));
@@ -386,8 +454,8 @@ fn send_pending_queries(
     socket: &mut l3_tcp::Socket,
     server: SocketAddr,
     local: SocketAddr,
-    pending_queries: &mut VecDeque<dns_types::Query>,
-    sent_queries: &mut HashMap<u16, dns_types::Query>,
+    pending_queries: &mut VecDeque<PendingQuery>,
+    sent_queries: &mut BTreeMap<u16, PendingQuery>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
     loop {
@@ -395,13 +463,15 @@ fn send_pending_queries(
             break;
         }
 
-        let Some(query) = pending_queries.pop_front() else {
+        let Some(pending) = pending_queries.pop_front() else {
             break;
         };
 
-        match codec::try_send(socket, query.as_bytes()).context("Failed to send DNS query") {
+        match codec::try_send(socket, pending.query.as_bytes()).context("Failed to send DNS query")
+        {
             Ok(()) => {
-                let replaced = sent_queries.insert(query.id(), query).is_some();
+                let id = pending.query.id();
+                let replaced = sent_queries.insert(id, pending).is_some();
                 debug_assert!(!replaced, "Query ID is not unique");
             }
             Err(e) => {
@@ -416,7 +486,7 @@ fn send_pending_queries(
                     sent_queries,
                 ));
                 query_results.push_back(QueryResult {
-                    query,
+                    query: pending.query,
                     server,
                     local,
                     result: Err(e),
@@ -430,8 +500,8 @@ fn recv_responses(
     socket: &mut l3_tcp::Socket,
     server: SocketAddr,
     local: SocketAddr,
-    pending_queries: &mut VecDeque<dns_types::Query>,
-    sent_queries: &mut HashMap<u16, dns_types::Query>,
+    pending_queries: &mut VecDeque<PendingQuery>,
+    sent_queries: &mut BTreeMap<u16, PendingQuery>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
     let Some(result) = try_recv_response(socket)
@@ -443,12 +513,12 @@ fn recv_responses(
 
     let new_results = result
         .and_then(|response| {
-            let query = sent_queries
+            let queued = sent_queries
                 .remove(&response.id())
                 .context("DNS resolver sent response for unknown query")?;
 
             Ok(vec![QueryResult {
-                query,
+                query: queued.query,
                 server,
                 local,
                 result: Ok(response),
@@ -467,11 +537,11 @@ fn fail_all_queries<'a>(
     error: &'a anyhow::Error,
     server: SocketAddr,
     local: SocketAddr,
-    pending_queries: &'a mut VecDeque<dns_types::Query>,
-    sent_queries: &'a mut HashMap<u16, dns_types::Query>,
+    pending_queries: &'a mut VecDeque<PendingQuery>,
+    sent_queries: &'a mut BTreeMap<u16, PendingQuery>,
 ) -> impl Iterator<Item = QueryResult> + 'a {
     let pending_queries = pending_queries.drain(..);
-    let sent_queries = sent_queries.drain().map(|(_, query)| query);
+    let sent_queries = std::mem::take(sent_queries).into_values();
     let queries = pending_queries.chain(sent_queries);
 
     into_failed_results(server, local, queries, move || anyhow!("{error:#}"))
@@ -480,11 +550,11 @@ fn fail_all_queries<'a>(
 fn into_failed_results(
     server: SocketAddr,
     local: SocketAddr,
-    iter: impl IntoIterator<Item = dns_types::Query>,
+    iter: impl IntoIterator<Item = PendingQuery>,
     make_error: impl Fn() -> anyhow::Error,
 ) -> impl Iterator<Item = QueryResult> {
-    iter.into_iter().map(move |query| QueryResult {
-        query,
+    iter.into_iter().map(move |queued| QueryResult {
+        query: queued.query,
         server,
         local,
         result: Err(make_error()),
@@ -537,9 +607,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn fails_pending_query_with_timeout() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+        let mut client = create_test_client(now);
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone()).unwrap();
+
+        // Advance time past the query deadline without ever delivering a TCP reply.
+        client.handle_timeout(now + Duration::from_secs(10) + Duration::from_millis(1));
+
+        let query_result = client.poll_query_result().unwrap();
+
+        assert_eq!(query_result.query.id(), query.id());
+        assert_eq!(query_result.local, local);
+        assert_eq!(query_result.server, server);
+        assert_eq!(
+            query_result.result.unwrap_err().to_string(),
+            format!("DNS query timed out after 10s"),
+        );
+    }
+
     fn create_test_client(now: Instant) -> Client {
         let seed = [0u8; 32];
-        let mut client = Client::new(now, seed);
+        let mut client = Client::new(now, Duration::from_secs(10), seed);
         client.set_source_interface(Ipv4Addr::new(10, 0, 0, 1), Ipv6Addr::LOCALHOST);
         client
     }

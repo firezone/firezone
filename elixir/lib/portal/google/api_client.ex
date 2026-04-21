@@ -126,20 +126,25 @@ defmodule Portal.Google.APIClient do
   end
 
   @doc """
-  Streams users from the Google Workspace directory.
+  Streams active users from the Google Workspace directory.
   Returns a stream that yields pages of users.
   """
+  @active_user_query "isSuspended=false isArchived=false"
+
   def stream_users(access_token, domain) do
     query =
       URI.encode_query(%{
         "customer" => "my_customer",
         "domain" => domain,
         "maxResults" => "500",
-        "projection" => "full"
+        "projection" => "full",
+        "query" => @active_user_query
       })
 
     path = "/admin/directory/v1/users"
+
     stream_pages(path, query, access_token, "users")
+    |> Stream.map(&filter_active_google_users_result/1)
   end
 
   @doc """
@@ -224,8 +229,11 @@ defmodule Portal.Google.APIClient do
       end)
 
     case result do
-      {:ok, chunks} -> {:ok, chunks |> Enum.reverse() |> List.flatten()}
-      {:error, _} = error -> error
+      {:ok, chunks} ->
+        {:ok, chunks |> Enum.reverse() |> List.flatten() |> Enum.filter(&active_google_user?/1)}
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -394,14 +402,14 @@ defmodule Portal.Google.APIClient do
   end
 
   @doc """
-  Streams users from a specific organization unit.
+  Streams active users from a specific organization unit.
   Returns a stream that yields pages of users in the given org unit.
   """
   def stream_organization_unit_members(access_token, org_unit_path) do
     query =
       URI.encode_query(%{
         "customer" => "my_customer",
-        "query" => "orgUnitPath='#{org_unit_path}'",
+        "query" => "orgUnitPath='#{org_unit_path}' #{@active_user_query}",
         "maxResults" => "500",
         "projection" => "full"
       })
@@ -409,14 +417,31 @@ defmodule Portal.Google.APIClient do
     path = "/admin/directory/v1/users"
 
     stream_pages(path, query, access_token, "users")
-    |> Stream.map(fn
-      # Org Unit with no members
-      {:error, {:missing_key, _msg, _body}} ->
-        []
+    |> Stream.map(&filter_org_unit_members_result/1)
+  end
 
-      other ->
-        other
-    end)
+  defp filter_org_unit_members_result({:error, {:missing_key, _msg, _body}}), do: []
+  defp filter_org_unit_members_result(result), do: filter_active_google_users_result(result)
+
+  defp filter_active_google_users_result(users) when is_list(users) do
+    Enum.filter(users, &active_google_user?/1)
+  end
+
+  defp filter_active_google_users_result(other), do: other
+
+  defp active_google_user?(user) do
+    case {Map.fetch(user, "suspended"), Map.fetch(user, "archived")} do
+      {{:ok, suspended}, {:ok, archived}} ->
+        suspended != true and archived != true
+
+      _ ->
+        Logger.error("Skipping Google user with missing suspended/archived flags",
+          google_user_id: Map.get(user, "id", "unknown"),
+          google_user_email: Map.get(user, "primaryEmail", Map.get(user, "email", "unknown"))
+        )
+
+        false
+    end
   end
 
   defp get(path, access_token) do

@@ -353,8 +353,8 @@ mod tests {
 
     #[test]
     fn filter_parses_from_nested_json() {
-        let filter = LogFilter::parse("\"debug,str0m::ice_::pair=trace\"".to_owned());
+        let filter = LogFilter::parse("\"debug,is::ice_::pair=trace\"".to_owned());
 
-        assert_eq!(filter.directives, "debug,str0m::ice_::pair=trace");
+        assert_eq!(filter.directives, "debug,is::ice_::pair=trace");
     }
 }

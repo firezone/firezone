@@ -17,6 +17,11 @@ impl InMemoryDevice {
     pub fn next_send(&mut self) -> Option<IpPacket> {
         self.outbound_packets.pop_front()
     }
+
+    pub fn clear(&mut self) {
+        self.inbound_packets.clear();
+        self.outbound_packets.clear();
+    }
 }
 
 impl smoltcp::phy::Device for InMemoryDevice {

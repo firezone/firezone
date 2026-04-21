@@ -4,7 +4,7 @@
 use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use dns_over_tcp::QueryResult;
@@ -21,7 +21,8 @@ fn smoke() {
 
     let resolver_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
 
-    let mut dns_client = dns_over_tcp::Client::new(Instant::now(), [0u8; 32]);
+    let mut dns_client =
+        dns_over_tcp::Client::new(Instant::now(), Duration::from_secs(10), [0u8; 32]);
     dns_client.set_source_interface(ipv4, ipv6);
 
     let mut dns_server = dns_over_tcp::Server::new(Instant::now());
@@ -60,7 +61,8 @@ fn no_panic_after_set_listen_address() {
     let resolver_addr2 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 2), 53));
     let resolver_addr3 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 3), 53));
 
-    let mut dns_client = dns_over_tcp::Client::new(Instant::now(), [0u8; 32]);
+    let mut dns_client =
+        dns_over_tcp::Client::new(Instant::now(), Duration::from_secs(10), [0u8; 32]);
     dns_client.set_source_interface(ipv4, ipv6);
 
     let mut dns_server = dns_over_tcp::Server::new(Instant::now());

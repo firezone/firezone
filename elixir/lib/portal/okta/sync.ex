@@ -17,6 +17,15 @@ defmodule Portal.Okta.Sync do
   require Logger
   require OpenTelemetry.Tracer
 
+  @syncable_okta_user_statuses ~w[
+    ACTIVE
+    STAGED
+    PROVISIONED
+    RECOVERY
+    PASSWORD_EXPIRED
+    LOCKED_OUT
+  ]
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"directory_id" => directory_id}}) do
     Logger.info("Starting Okta directory sync",
@@ -203,13 +212,8 @@ defmodule Portal.Okta.Sync do
   defp process_identity_batch!(batch, directory, synced_at) do
     # Extract successful users and check for errors
     {users, errors} =
-      Enum.reduce(batch, {[], []}, fn
-        {:ok, user_data}, {users, errors} ->
-          user = get_in(user_data, ["_embedded", "user"])
-          {[user | users], errors}
-
-        {:error, reason}, {users, errors} ->
-          {users, [reason | errors]}
+      Enum.reduce(batch, {[], []}, fn entry, acc ->
+        reduce_identity_batch_entry(entry, acc, directory.id)
       end)
 
     # If there are any errors in the batch, raise the first one
@@ -265,6 +269,24 @@ defmodule Portal.Okta.Sync do
     end
   end
 
+  defp reduce_identity_batch_entry({:ok, user_data}, {users, errors}, directory_id) do
+    case fetch_embedded_map(user_data, ["_embedded", "user"], "user") do
+      {:ok, user} ->
+        if syncable_app_user?(user, directory_id) do
+          {[user | users], errors}
+        else
+          {users, errors}
+        end
+
+      {:error, reason} ->
+        {users, [reason | errors]}
+    end
+  end
+
+  defp reduce_identity_batch_entry({:error, reason}, {users, errors}, _directory_id) do
+    {users, [reason | errors]}
+  end
+
   # Stream and batch-insert groups for a specific app
   defp sync_app_groups_streaming!(app_id, client, token, directory, synced_at) do
     Logger.debug("Streaming app groups",
@@ -285,8 +307,10 @@ defmodule Portal.Okta.Sync do
     {groups, errors} =
       Enum.reduce(batch, {[], []}, fn
         {:ok, group_data}, {groups, errors} ->
-          group = get_in(group_data, ["_embedded", "group"])
-          {[group | groups], errors}
+          case fetch_embedded_map(group_data, ["_embedded", "group"], "group") do
+            {:ok, group} -> {[group | groups], errors}
+            {:error, reason} -> {groups, [reason | errors]}
+          end
 
         {:error, reason}, {groups, errors} ->
           {groups, [reason | errors]}
@@ -402,10 +426,9 @@ defmodule Portal.Okta.Sync do
     Okta.APIClient.stream_group_members(group_idp_id, client, token)
     |> Enum.reduce([], fn
       {:ok, member}, acc ->
-        if member["status"] == "ACTIVE" do
-          [member["id"] | acc]
-        else
-          acc
+        case syncable_group_member_id(member, group_idp_id, directory_id) do
+          nil -> acc
+          member_id -> [member_id | acc]
         end
 
       {:error, reason}, _acc ->
@@ -415,6 +438,59 @@ defmodule Portal.Okta.Sync do
           step: :stream_group_members
     end)
     |> Enum.reverse()
+  end
+
+  defp syncable_group_member_id(member, group_idp_id, directory_id) do
+    case Map.fetch(member, "status") do
+      {:ok, status} ->
+        if syncable_okta_user_status?(status), do: member["id"]
+
+      :error ->
+        Logger.error("Skipping Okta group member with missing status",
+          okta_directory_id: directory_id,
+          okta_group_idp_id: group_idp_id,
+          okta_user_id: Map.get(member, "id", "unknown")
+        )
+
+        nil
+    end
+  end
+
+  defp syncable_app_user?(user, directory_id) do
+    case Map.fetch(user, "status") do
+      {:ok, status} ->
+        syncable_okta_user_status?(status)
+
+      :error ->
+        Logger.error("Skipping Okta app user with missing status",
+          okta_directory_id: directory_id,
+          okta_user_id: Map.get(user, "id", "unknown")
+        )
+
+        false
+    end
+  end
+
+  defp syncable_okta_user_status?(status) do
+    status in @syncable_okta_user_statuses
+  end
+
+  defp fetch_embedded_map(data, path, entity_name) do
+    assignment_id = Map.get(data, "id", "unknown")
+
+    case get_in(data, path) do
+      value when is_map(value) ->
+        {:ok, value}
+
+      nil ->
+        {:error,
+         {:validation, "assignment '#{assignment_id}' missing '_embedded.#{entity_name}' payload"}}
+
+      other ->
+        {:error,
+         {:validation,
+          "assignment '#{assignment_id}' has invalid '_embedded.#{entity_name}' payload: #{inspect(other)}"}}
+    end
   end
 
   # Helper to build issuer URL

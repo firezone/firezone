@@ -55,6 +55,27 @@ impl UnroutablePacket {
         }
     }
 
+    pub fn not_tunnel_source_ip(packet: &IpPacket) -> Self {
+        Self {
+            five_tuple: FiveTuple::for_packet(packet),
+            error: RoutingError::NotTunnelSourceIp,
+        }
+    }
+
+    pub fn packet_to_self(packet: &IpPacket) -> Self {
+        Self {
+            five_tuple: FiveTuple::for_packet(packet),
+            error: RoutingError::PacketToSelf,
+        }
+    }
+
+    pub fn unknown_resource(packet: &IpPacket) -> Self {
+        Self {
+            five_tuple: FiveTuple::for_packet(packet),
+            error: RoutingError::UnknownResource,
+        }
+    }
+
     pub fn reason(&self) -> RoutingError {
         self.error
     }
@@ -133,6 +154,12 @@ pub enum RoutingError {
     NotConnected,
     #[display("OutboundIcmpError")]
     OutboundIcmpError,
+    #[display("Packet source IP does not match TUN device")]
+    NotTunnelSourceIp,
+    #[display("Packet destination IP is TUN device")]
+    PacketToSelf,
+    #[display("Unknown resource")]
+    UnknownResource,
     #[display("Other")]
     Other,
 }
@@ -146,6 +173,9 @@ impl From<RoutingError> for opentelemetry::Value {
             RoutingError::NoPeerState => opentelemetry::Value::from("NoPeerState"),
             RoutingError::NotConnected => opentelemetry::Value::from("NotConnected"),
             RoutingError::OutboundIcmpError => opentelemetry::Value::from("OutboundIcmpError"),
+            RoutingError::NotTunnelSourceIp => opentelemetry::Value::from("NotTunnelSourceIp"),
+            RoutingError::PacketToSelf => opentelemetry::Value::from("PacketToSelf"),
+            RoutingError::UnknownResource => opentelemetry::Value::from("UnknownResource"),
             RoutingError::Other => opentelemetry::Value::from("Other"),
         }
     }

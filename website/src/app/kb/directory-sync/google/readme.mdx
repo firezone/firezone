@@ -137,6 +137,23 @@ Directory sync runs automatically every 2 hours. To trigger a sync immediately,
 click the **Sync Now** button on the directory card in
 `Settings -> Directory Sync`.
 
+## Deleted, suspended, and archived users
+
+Firezone removes deleted Google Workspace users on the next sync. It also
+filters out users marked as **suspended** or **archived**.
+
+- **API-side filtering:** Firezone requests active users with
+  `isSuspended=false isArchived=false`.
+- **Defense in depth:** Firezone also re-checks the `suspended` and `archived`
+  flags after receiving user payloads, including batch lookups used when
+  syncing group memberships.
+- **Defensive handling:** If Google omits either flag unexpectedly, Firezone
+  logs the event and skips that user instead of treating them as active.
+
+Once a synced Google user is deleted, suspended, or archived, their Firezone
+identity is removed on the next sync. This signs them out of Firezone and
+prevents new sign-ins through the synced Google identity.
+
 ## Troubleshooting
 
 ### "Not Authorized" or "Access Denied" error

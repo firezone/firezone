@@ -5,6 +5,9 @@ defmodule Portal.Entra.APIClient do
 
   require Logger
 
+  @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
+  @advanced_query_headers [{"ConsistencyLevel", "eventual"}]
+
   @doc """
   Gets an access token using the OAuth2 client credentials flow.
   """
@@ -95,17 +98,20 @@ defmodule Portal.Entra.APIClient do
   Fetches user profile fields that map to our identity schema.
   """
   def stream_group_transitive_members(access_token, group_id) do
-    # Select only fields that we have in our identity schema:
-    # id -> idp_id, displayName -> name, mail/userPrincipalName -> email,
-    # givenName -> given_name, surname -> family_name, userPrincipalName -> preferred_username
+    # Use the user cast plus an accountEnabled filter so Graph excludes disabled
+    # users server-side before we build identities or memberships.
     query =
       URI.encode_query(%{
         "$top" => "999",
-        "$select" => "id,displayName,mail,userPrincipalName,givenName,surname"
+        "$count" => "true",
+        "$filter" => "accountEnabled eq true",
+        "$select" => @entra_user_select_fields
       })
 
-    path = "/v1.0/groups/#{group_id}/transitiveMembers"
-    stream_pages(path, query, access_token)
+    path = "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
+
+    stream_pages(path, query, access_token, @advanced_query_headers)
+    |> Stream.map(&filter_active_entra_users_result/1)
   end
 
   @doc """
@@ -122,7 +128,7 @@ defmodule Portal.Entra.APIClient do
         %{
           id: Integer.to_string(index),
           method: "GET",
-          url: "/users/#{user_id}?$select=id,displayName,mail,userPrincipalName,givenName,surname"
+          url: "/users/#{user_id}?$select=#{@entra_user_select_fields}"
         }
       end)
 
@@ -191,10 +197,35 @@ defmodule Portal.Entra.APIClient do
       )
     end
 
-    users = Enum.map(successful, fn response -> response["body"] end)
+    users =
+      successful
+      |> Enum.map(fn response -> response["body"] end)
+      |> Enum.filter(&active_entra_user?/1)
+
     Logger.debug("Filtered users", count: length(users))
 
     {:ok, users}
+  end
+
+  defp filter_active_entra_users_result(users) when is_list(users) do
+    Enum.filter(users, &active_entra_user?/1)
+  end
+
+  defp filter_active_entra_users_result(other), do: other
+
+  defp active_entra_user?(user) do
+    case Map.fetch(user, "accountEnabled") do
+      {:ok, enabled} ->
+        enabled != false
+
+      :error ->
+        Logger.error("Skipping Entra user with missing accountEnabled field",
+          entra_user_id: Map.get(user, "id", "unknown"),
+          entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))
+        )
+
+        false
+    end
   end
 
   @doc """
@@ -252,18 +283,22 @@ defmodule Portal.Entra.APIClient do
     get("/v1.0/subscribedSkus", "", access_token)
   end
 
-  defp get(path, query, access_token) do
+  defp get(path, query, access_token, headers \\ []) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     endpoint = config[:endpoint] || "https://graph.microsoft.com"
     req_opts = fetch_config(:req_opts) || []
 
     url = "#{endpoint}#{path}?#{query}"
-    Req.get(url, [headers: [{"Authorization", "Bearer #{access_token}"}]] ++ req_opts)
+
+    Req.get(
+      url,
+      [headers: [{"Authorization", "Bearer #{access_token}"} | headers]] ++ req_opts
+    )
   end
 
-  defp stream_pages(path, query, access_token) do
+  defp stream_pages(path, query, access_token, headers \\ []) do
     Stream.resource(
-      fn -> {path, query} end,
+      fn -> {path, query, headers} end,
       fn
         nil ->
           {:halt, nil}
@@ -272,17 +307,17 @@ defmodule Portal.Entra.APIClient do
           # Halt stream on error
           {[error], nil}
 
-        {current_path, current_query} ->
-          fetch_page(current_path, current_query, access_token)
+        {current_path, current_query, current_headers} ->
+          fetch_page(current_path, current_query, access_token, current_headers)
       end,
       fn _ -> :ok end
     )
   end
 
-  defp fetch_page(current_path, current_query, access_token) do
-    case get(current_path, current_query, access_token) do
+  defp fetch_page(current_path, current_query, access_token, headers) do
+    case get(current_path, current_query, access_token, headers) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        parse_page_response(body)
+        parse_page_response(body, headers)
 
       {:ok, %Req.Response{} = response} ->
         # Non-200 response
@@ -294,7 +329,7 @@ defmodule Portal.Entra.APIClient do
     end
   end
 
-  defp parse_page_response(body) do
+  defp parse_page_response(body, headers) do
     case Map.fetch(body, "value") do
       {:ok, list} when is_list(list) ->
         # Empty list is valid - it means no results for this page
@@ -308,7 +343,7 @@ defmodule Portal.Entra.APIClient do
               uri = URI.parse(next_link)
               next_path = String.replace(uri.path, "/v1.0", "")
               next_query = uri.query || ""
-              {next_path, next_query}
+              {next_path, next_query, headers}
           end
 
         {[list], next_state}

@@ -124,6 +124,29 @@ updates:
         patterns:
           - sentry
           - sentry-*
+      rust-crypto:
+        patterns:
+          - aead
+          - aes
+          - blake2
+          - block-buffer
+          - block-padding
+          - cbc
+          - chacha20
+          - chacha20poly1305
+          - cipher
+          - cpufeatures
+          - crypto-common
+          - digest
+          - hkdf
+          - hmac
+          - inout
+          - poly1305
+          - sha1
+          - sha2
+          - universal-hash
+          - zeroize
+          - zeroize_derive
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:

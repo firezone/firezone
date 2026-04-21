@@ -1,11 +1,14 @@
+use super::composite_strategy::CompositeStrategy;
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
-    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES,
-    IPV6_RESOURCES, InternetResource,
+    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
+    InternetResource,
 };
-use crate::messages::{UpstreamDo53, UpstreamDoH};
+use crate::malicious_behaviour::MaliciousBehaviour;
+use crate::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
+use crate::tests::coin;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
 use dns_types::{DoHUrl, DomainName, OwnedRecordData};
@@ -74,6 +77,12 @@ pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
     (10..max).prop_map(Duration::from_millis)
 }
 
+pub(crate) fn malicious_behaviour() -> impl Strategy<Value = MaliciousBehaviour> {
+    any::<bool>().prop_map(|ignore_resource_filters| MaliciousBehaviour {
+        ignore_resource_filters,
+    })
+}
+
 /// A [`Strategy`] for sampling a [`StubPortal`] that is configured with various [`Site`]s and gateways within those sites.
 ///
 /// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
@@ -137,18 +146,24 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 gateway_selector,
                 upstream_do53_servers,
                 upstream_doh_servers,
-            )|{
+            )| {
+                let extra_cidr = extra_cidr_resources(cidr_resources.clone());
+                let extra_dns = extra_dns_resources(dns_resources.clone());
+
                 (
                     Just(clients),
                     Just(gateways_by_site),
                     Just(cidr_resources),
+                    extra_cidr,
                     search_domain(dns_resources.clone()),
                     Just(dns_resources),
                     Just(device_pool_resources),
+                    extra_dns,
                     Just(internet_resource),
                     Just(gateway_selector),
                     Just(upstream_do53_servers),
                     Just(upstream_doh_servers),
+                    coin::head_biased(80),
                 )
             },
         )
@@ -156,15 +171,54 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
             |(
                 clients,
                 gateways_by_site,
-                cidr_resources,
+                mut cidr_resources,
+                extra_cidr,
                 search_domain,
                 dns_resources,
                 device_pool_resources,
+                mut dns_resources,
+                extra_dns,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
                 upstream_doh_servers,
+                coin_80,
             )| {
+                // Merge in the overlapping resources before applying any mutations,
+                // so the Do53 filter augmentation below also applies to them.
+                cidr_resources.extend(extra_cidr);
+                dns_resources.extend(extra_dns);
+
+                // Mutate our CIDR resources to ensure that IF we sampled a DNS server that is covered by a CIDR resource,
+                // in 80% of cases, we have a traffic filter that allows udp/53 and tcp/53.
+                let cidr_resources = cidr_resources
+                    .into_iter()
+                    .map(|mut r| {
+                        let covers_do53 = upstream_do53_servers
+                            .iter()
+                            .any(|s| r.address.contains(s.ip));
+
+                        if !covers_do53 {
+                            return r;
+                        }
+
+                        if coin_80.flip() == coin::Side::Tails {
+                            return r;
+                        }
+
+                        r.filters.push(Filter::Udp(PortRange {
+                            port_range_start: 53,
+                            port_range_end: 53,
+                        }));
+                        r.filters.push(Filter::Tcp(PortRange {
+                            port_range_start: 53,
+                            port_range_end: 53,
+                        }));
+
+                        r
+                    })
+                    .collect();
+
                 StubPortal::new(
                     clients,
                     gateways_by_site,
@@ -179,6 +233,109 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 )
             },
         )
+}
+
+/// Generates additional CIDR resources that overlap with the given existing ones.
+///
+/// For each existing resource we may produce one of:
+/// - A resource with the **same address** but a fresh ID, name, and filters.
+/// - A resource with a **more specific subnet** within the same address space and fresh ID, name, and filters.
+///
+/// Each existing resource independently has a 50% chance of yielding an extra resource,
+/// giving us a natural mix of non-overlapping and overlapping portal configurations.
+fn extra_cidr_resources(
+    existing: BTreeSet<CidrResource>,
+) -> impl Strategy<Value = BTreeSet<CidrResource>> {
+    existing
+        .into_iter()
+        .map(|resource| {
+            let sites = resource.sites;
+            let address = resource.address;
+
+            let extra_bits = match address {
+                IpNetwork::V4(n) => (32 - n.netmask()) as usize,
+                IpNetwork::V6(n) => (128 - n.netmask()) as usize,
+            };
+
+            // Each case is equally likely. The more-specific subnet case is only added
+            // when the prefix isn't already maximally specific (/32 or /128).
+            let new_address = CompositeStrategy::default()
+                .with(1, Just(address))
+                .with_if_some(1, (extra_bits > 0).then_some(extra_bits), |bits| {
+                    host(address).prop_flat_map(move |host_ip| ip_network(host_ip, bits))
+                });
+
+            let overlapping = (new_address, resource_id(), resource_name(), filters()).prop_map(
+                move |(address, id, name, filters)| CidrResource {
+                    id,
+                    address,
+                    name,
+                    address_description: None,
+                    sites: sites.clone(),
+                    filters,
+                },
+            );
+
+            // 50% chance of producing an extra resource for this existing resource.
+            prop_oneof![1 => Just(None), 1 => overlapping.prop_map(Some)].boxed()
+        })
+        .collect::<Vec<_>>()
+        .prop_map(|extras| extras.into_iter().flatten().collect())
+}
+
+/// Generates additional DNS resources that overlap with the given existing ones.
+///
+/// For each existing resource we may produce one of:
+/// - A resource with the **same address pattern** but a fresh ID, name, and filters.
+/// - A resource with a **more specific address pattern**:
+///   - `**.example.com` → `*.example.com` or `label.example.com`
+///   - `*.example.com`  → `label.example.com`
+///   - `label.example.com` → (same address only, no more-specific variant)
+///
+/// Each existing resource independently has a 50% chance of yielding an extra resource,
+/// giving us a natural mix of non-overlapping and overlapping portal configurations.
+fn extra_dns_resources(
+    existing: BTreeSet<DnsResource>,
+) -> impl Strategy<Value = BTreeSet<DnsResource>> {
+    existing
+        .into_iter()
+        .map(|resource| {
+            let sites = resource.sites;
+            let ip_stack = resource.ip_stack;
+            let address = resource.address;
+
+            let double_star_base = address.strip_prefix("**.").map(str::to_owned);
+            let single_star_base = address.strip_prefix("*.").map(str::to_owned);
+
+            let new_address = CompositeStrategy::default()
+                .with(1, Just(address))
+                .with_if_some(1, double_star_base.clone(), |base| {
+                    Just(format!("*.{base}"))
+                })
+                .with_if_some(1, double_star_base, |base| {
+                    domain_label().prop_map(move |label| format!("{label}.{base}"))
+                })
+                .with_if_some(1, single_star_base, |base| {
+                    domain_label().prop_map(move |label| format!("{label}.{base}"))
+                });
+
+            let overlapping = (new_address, resource_id(), resource_name(), filters()).prop_map(
+                move |(address, id, name, filters)| DnsResource {
+                    id,
+                    address,
+                    name,
+                    address_description: None,
+                    sites: sites.clone(),
+                    ip_stack,
+                    filters,
+                },
+            );
+
+            // 50% chance of producing an extra resource for this existing resource.
+            prop_oneof![1 => Just(None), 1 => overlapping.prop_map(Some)].boxed()
+        })
+        .collect::<Vec<_>>()
+        .prop_map(|extras| extras.into_iter().flatten().collect())
 }
 
 /// Samples a list of TCP resource addresses from the given DNS records.

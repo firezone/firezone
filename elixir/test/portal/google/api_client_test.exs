@@ -1,5 +1,6 @@
 defmodule Portal.Google.APIClientTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
 
   alias Portal.Google.APIClient
 
@@ -266,8 +267,8 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{
           "kind" => "admin#directory#users",
           "users" => [
-            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
-            %{"id" => "user2", "primaryEmail" => "user2@example.com"}
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
           ]
         })
       end)
@@ -284,6 +285,7 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["domain"] == @test_domain
       assert conn.query_params["maxResults"] == "500"
       assert conn.query_params["projection"] == "full"
+      assert conn.query_params["query"] == "isSuspended=false isArchived=false"
     end
 
     test "streams multiple pages using nextPageToken" do
@@ -300,18 +302,18 @@ defmodule Portal.Google.APIClientTest do
           case current_page do
             0 ->
               %{
-                "users" => [%{"id" => "user1"}],
+                "users" => [active_google_user(%{"id" => "user1"})],
                 "nextPageToken" => "page2_token"
               }
 
             1 ->
               %{
-                "users" => [%{"id" => "user2"}],
+                "users" => [active_google_user(%{"id" => "user2"})],
                 "nextPageToken" => "page3_token"
               }
 
             2 ->
-              %{"users" => [%{"id" => "user3"}]}
+              %{"users" => [active_google_user(%{"id" => "user3"})]}
           end
 
         Req.Test.json(conn, response)
@@ -328,12 +330,15 @@ defmodule Portal.Google.APIClientTest do
              ] = result
 
       assert_receive {:users_page, 0, page1_params}
+      assert page1_params["query"] == "isSuspended=false isArchived=false"
       refute Map.has_key?(page1_params, "pageToken")
 
       assert_receive {:users_page, 1, page2_params}
+      assert page2_params["query"] == "isSuspended=false isArchived=false"
       assert page2_params["pageToken"] == "page2_token"
 
       assert_receive {:users_page, 2, page3_params}
+      assert page3_params["query"] == "isSuspended=false isArchived=false"
       assert page3_params["pageToken"] == "page3_token"
     end
 
@@ -387,6 +392,51 @@ defmodule Portal.Google.APIClientTest do
         |> Enum.to_list()
 
       assert [{:error, %Req.TransportError{reason: :econnrefused}}] = result
+    end
+
+    test "filters suspended and archived users from returned pages" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true},
+            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true}
+          ]
+        })
+      end)
+
+      result =
+        APIClient.stream_users(@test_access_token, @test_domain)
+        |> Enum.to_list()
+
+      assert [[%{"id" => "user1"}]] = result
+    end
+
+    test "logs and skips users missing suspended or archived flags" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "kind" => "admin#directory#users",
+          "users" => [
+            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
+            active_google_user(%{
+              "id" => "user2",
+              "primaryEmail" => "user2@example.com"
+            })
+          ]
+        })
+      end)
+
+      log =
+        capture_log(fn ->
+          result =
+            APIClient.stream_users(@test_access_token, @test_domain)
+            |> Enum.to_list()
+
+          assert [[%{"id" => "user2"}]] = result
+        end)
+
+      assert log =~ "Skipping Google user with missing suspended/archived flags"
+      assert log =~ "user1"
     end
   end
 
@@ -654,8 +704,8 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{
           "kind" => "admin#directory#users",
           "users" => [
-            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
-            %{"id" => "user2", "primaryEmail" => "user2@example.com"}
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
           ]
         })
       end)
@@ -669,7 +719,10 @@ defmodule Portal.Google.APIClientTest do
       assert_receive {:org_unit_users_request, conn}
       assert_authorization_header(conn, @test_access_token)
       assert conn.query_params["customer"] == "my_customer"
-      assert conn.query_params["query"] == "orgUnitPath='/Engineering'"
+
+      assert conn.query_params["query"] ==
+               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+
       assert conn.query_params["maxResults"] == "500"
       assert conn.query_params["projection"] == "full"
     end
@@ -686,12 +739,12 @@ defmodule Portal.Google.APIClientTest do
           case current_page do
             0 ->
               %{
-                "users" => [%{"id" => "user1"}],
+                "users" => [active_google_user(%{"id" => "user1"})],
                 "nextPageToken" => "next_page"
               }
 
             1 ->
-              %{"users" => [%{"id" => "user2"}]}
+              %{"users" => [active_google_user(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -734,6 +787,24 @@ defmodule Portal.Google.APIClientTest do
 
       assert [{:error, %Req.Response{status: 403}}] = result
     end
+
+    test "filters suspended and archived org unit users from returned pages" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true},
+            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true}
+          ]
+        })
+      end)
+
+      result =
+        APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
+        |> Enum.to_list()
+
+      assert [[%{"id" => "user1"}]] = result
+    end
   end
 
   describe "batch_get_users/2" do
@@ -757,7 +828,9 @@ defmodule Portal.Google.APIClientTest do
         body =
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
-             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+             JSON.encode!(
+               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+             )}
           ])
 
         conn
@@ -779,7 +852,9 @@ defmodule Portal.Google.APIClientTest do
         body =
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
-             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+             JSON.encode!(
+               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+             )}
           ])
 
         conn
@@ -833,7 +908,9 @@ defmodule Portal.Google.APIClientTest do
         body =
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
-             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+             JSON.encode!(
+               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+             )}
           ])
 
         conn
@@ -883,6 +960,70 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
+    test "filters suspended and archived users from batch results" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "filtered_users_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(
+               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+             )},
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(%{
+               "id" => "user2",
+               "primaryEmail" => "user2@example.com",
+               "suspended" => true
+             })},
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(%{
+               "id" => "user3",
+               "primaryEmail" => "user3@example.com",
+               "archived" => true
+             })}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, users} =
+               APIClient.batch_get_users(@test_access_token, ["user1", "user2", "user3"])
+
+      assert Enum.map(users, & &1["id"]) == ["user1"]
+    end
+
+    test "logs and skips batch users missing suspended or archived flags" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "missing_flags_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})},
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(
+               active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
+             )}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+          assert Enum.map(users, & &1["id"]) == ["user2"]
+        end)
+
+      assert log =~ "Skipping Google user with missing suspended/archived flags"
+      assert log =~ "user1"
+    end
+
     test "halts on chunk error after first successful chunk" do
       counter = :atomics.new(1, [])
 
@@ -897,7 +1038,9 @@ defmodule Portal.Google.APIClientTest do
             body =
               build_batch_body(boundary, [
                 {"HTTP/1.1 200 OK",
-                 JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})}
+                 JSON.encode!(
+                   active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+                 )}
               ])
 
             conn
@@ -988,7 +1131,7 @@ defmodule Portal.Google.APIClientTest do
         case current_page do
           0 ->
             Req.Test.json(conn, %{
-              "users" => [%{"id" => "user1"}],
+              "users" => [active_google_user(%{"id" => "user1"})],
               "nextPageToken" => "page2"
             })
 
@@ -1018,8 +1161,14 @@ defmodule Portal.Google.APIClientTest do
 
         response =
           case current_page do
-            0 -> %{"users" => [%{"id" => "user1"}], "nextPageToken" => "token123"}
-            1 -> %{"users" => [%{"id" => "user2"}]}
+            0 ->
+              %{
+                "users" => [active_google_user(%{"id" => "user1"})],
+                "nextPageToken" => "token123"
+              }
+
+            1 ->
+              %{"users" => [active_google_user(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -1033,6 +1182,7 @@ defmodule Portal.Google.APIClientTest do
       assert page1_params["domain"] == @test_domain
       assert page1_params["maxResults"] == "500"
       assert page1_params["projection"] == "full"
+      assert page1_params["query"] == "isSuspended=false isArchived=false"
       refute Map.has_key?(page1_params, "pageToken")
 
       assert_receive {:page_params, 1, page2_params}
@@ -1040,6 +1190,7 @@ defmodule Portal.Google.APIClientTest do
       assert page2_params["domain"] == @test_domain
       assert page2_params["maxResults"] == "500"
       assert page2_params["projection"] == "full"
+      assert page2_params["query"] == "isSuspended=false isArchived=false"
       assert page2_params["pageToken"] == "token123"
     end
   end
@@ -1053,6 +1204,12 @@ defmodule Portal.Google.APIClientTest do
       end)
 
     Enum.join(encoded_parts, "") <> "--#{boundary}--"
+  end
+
+  defp active_google_user(attrs) do
+    attrs
+    |> Map.put_new("suspended", false)
+    |> Map.put_new("archived", false)
   end
 
   defp assert_authorization_header(conn, expected_token) do

@@ -1,6 +1,7 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
 import SupportOptions from "@/components/SupportOptions";
+import { TabsGroup, TabsItem } from "@/components/Tabs";
 
 <PlanBadge plans={["enterprise"]}>
 
@@ -47,6 +48,52 @@ immediately **signed out of all Client and admin portal sessions**.
 
 This ensures terminated employees will have all Firezone access revoked upon the
 next sync after deleting or suspending them in your identity provider.
+
+<TabsGroup>
+<TabsItem title="Google Workspace" active>
+
+Firezone treats **suspended**, **archived**, and **deleted** Google Workspace
+users as inactive for directory sync.
+
+- **API-side filtering:** User list queries include
+  `isSuspended=false isArchived=false`.
+- **Defense in depth:** Firezone also re-checks the `suspended` and `archived`
+  flags after receiving user payloads, including batch lookups used for group
+  membership sync.
+- **Defensive handling:** If Google omits either flag unexpectedly, Firezone
+  logs the event and skips that user.
+
+</TabsItem>
+<TabsItem title="Microsoft Entra ID">
+
+Firezone treats **disabled** and **deleted** Entra users as inactive for
+directory sync.
+
+- **API-side filtering:** When Firezone streams group members from Microsoft
+  Graph, it requests only users where `accountEnabled eq true`.
+- **Defense in depth:** Firezone also re-checks `accountEnabled` after
+  receiving user payloads, including batched user lookups for direct
+  assignments.
+- **Defensive handling:** If Microsoft Graph omits `accountEnabled`
+  unexpectedly, Firezone logs the event and skips that user.
+
+</TabsItem>
+<TabsItem title="Okta">
+
+Firezone treats **deleted** users and users in non-syncable Okta states as
+inactive for directory sync.
+
+- **Synced states:** `ACTIVE`, `STAGED`, `PROVISIONED`, `RECOVERY`, and
+  `PASSWORD_EXPIRED`, and `LOCKED_OUT`
+- **Filtered-out states:** Firezone excludes all other Okta states, including
+  `SUSPENDED` and `DEPROVISIONED`.
+- **Defense in depth:** Firezone re-checks `status` for both app users and
+  group members after receiving each response.
+- **Defensive handling:** If Okta omits `status` unexpectedly, Firezone logs
+  the event and skips that user.
+
+</TabsItem>
+</TabsGroup>
 
 ### Deleting a group or organizational unit
 

@@ -259,7 +259,7 @@ impl StubPortal {
                     id: r.id,
                     address: r.address,
                     name: r.name.clone(),
-                    filters: Vec::new(),
+                    filters: r.filters.clone(),
                 },
             ))
         });
@@ -267,7 +267,7 @@ impl StubPortal {
             gateway::ResourceDescription::Dns(gateway::ResourceDescriptionDns {
                 id: r.id,
                 name: r.name.clone(),
-                filters: Vec::new(),
+                filters: r.filters.clone(),
                 address: r.address.clone(),
             })
         });
@@ -320,6 +320,24 @@ impl StubPortal {
     ) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             resource.address = new_address;
+            return;
+        }
+
+        tracing::error!(%rid, "Unknown resource");
+    }
+
+    pub(crate) fn change_filters_of_resource(
+        &mut self,
+        rid: ResourceId,
+        new_filters: Vec<crate::messages::Filter>,
+    ) {
+        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
+            resource.filters = new_filters;
+            return;
+        }
+
+        if let Some(resource) = self.dns_resources.get_mut(&rid) {
+            resource.filters = new_filters;
             return;
         }
 

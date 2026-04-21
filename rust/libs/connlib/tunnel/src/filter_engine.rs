@@ -1,15 +1,15 @@
 use ip_packet::{Protocol, UnsupportedProtocol};
 use rangemap::RangeInclusiveSet;
 
-use crate::messages::gateway::{Filter, Filters};
+use crate::messages::Filter;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
 pub(crate) enum FilterEngine {
     PermitAll,
     PermitSome(AllowRules),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
 pub(crate) struct AllowRules {
     udp: RangeInclusiveSet<u16>,
     tcp: RangeInclusiveSet<u16>,
@@ -29,6 +29,20 @@ pub(crate) enum Filtered {
 }
 
 impl FilterEngine {
+    pub(crate) fn new(filters: &[Filter]) -> FilterEngine {
+        if filters.is_empty() {
+            return Self::PermitAll;
+        }
+
+        let mut allow_rules = AllowRules::new();
+
+        for filter in filters {
+            allow_rules.add_filter(filter);
+        }
+
+        Self::PermitSome(allow_rules)
+    }
+
     pub(crate) fn apply(
         &self,
         protocol: Result<Protocol, UnsupportedProtocol>,
@@ -37,20 +51,6 @@ impl FilterEngine {
             FilterEngine::PermitAll => Ok(()),
             FilterEngine::PermitSome(filter_engine) => filter_engine.apply(protocol),
         }
-    }
-
-    pub(crate) fn with_filters<'a>(
-        filters: impl Iterator<Item = &'a Filters> + Clone,
-    ) -> FilterEngine {
-        // Empty filters means permit all
-        if filters.clone().any(|f| f.is_empty()) {
-            return Self::PermitAll;
-        }
-
-        let mut allow_rules = AllowRules::new();
-        allow_rules.add_filters(filters.flatten());
-
-        Self::PermitSome(allow_rules)
     }
 }
 
@@ -84,20 +84,18 @@ impl AllowRules {
         }
     }
 
-    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
-        for filter in filters {
-            match filter {
-                Filter::Udp(range) => {
-                    self.udp
-                        .insert(range.port_range_start..=range.port_range_end);
-                }
-                Filter::Tcp(range) => {
-                    self.tcp
-                        .insert(range.port_range_start..=range.port_range_end);
-                }
-                Filter::Icmp => {
-                    self.icmp = true;
-                }
+    fn add_filter(&mut self, filter: &Filter) {
+        match filter {
+            Filter::Udp(range) => {
+                self.udp
+                    .insert(range.port_range_start..=range.port_range_end);
+            }
+            Filter::Tcp(range) => {
+                self.tcp
+                    .insert(range.port_range_start..=range.port_range_end);
+            }
+            Filter::Icmp => {
+                self.icmp = true;
             }
         }
     }

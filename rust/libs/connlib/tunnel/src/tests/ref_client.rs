@@ -3,24 +3,28 @@ use super::{
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
     sim_client::SimClient,
-    sim_net::{Host, any_ip_stack, host},
-    strategies::latency,
+    sim_net::{ExecMutScope, Host, any_ip_stack, host},
+    strategies::{latency, malicious_behaviour},
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
 use crate::{
     ClientState,
     client::{CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource},
     dns,
-    messages::{Interface, UpstreamDo53, UpstreamDoH},
+    filter_engine::FilterEngine,
+    malicious_behaviour::MaliciousBehaviour,
+    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
+
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_network_table::IpNetworkTable;
+use ip_packet::Protocol;
 use itertools::Itertools as _;
 use proptest::prelude::*;
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -46,6 +50,9 @@ pub struct RefClient {
 
     routes: Vec<(ResourceId, IpNetwork)>,
 
+    /// Sampled malicious behaviours for this client.
+    pub(crate) malicious_behaviour: MaliciousBehaviour,
+
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
@@ -53,10 +60,6 @@ pub struct RefClient {
     resources: Vec<Resource>,
 
     pub(crate) internet_resource_active: bool,
-
-    /// The CIDR resources the client is aware of.
-    #[debug(skip)]
-    cidr_resources: IpNetworkTable<ResourceId>,
 
     /// The client's DNS records.
     ///
@@ -148,7 +151,7 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(self.id, client_state, now)
+        SimClient::new(self.id, client_state, self.malicious_behaviour, now)
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -216,8 +219,6 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
-
-        self.cidr_resources = self.recalculate_cidr_routes();
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
@@ -229,29 +230,6 @@ impl RefClient {
                     .then(|| self.internet_resource())
                     .flatten(),
             )
-    }
-
-    fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
-        let mut table = IpNetworkTable::<ResourceId>::new();
-        for resource in self.resources.iter().sorted_by_key(|r| r.id()) {
-            let Resource::Cidr(resource) = resource else {
-                continue;
-            };
-
-            if let Some(overlapping_resource) = table.exact_match(resource.address)
-                && self.is_connected_to_internet_or_cidr(*overlapping_resource)
-            {
-                tracing::debug!(%overlapping_resource, rid = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
-
-                continue;
-            }
-
-            tracing::debug!(rid = %resource.id, address = %resource.address, "Adding CIDR route");
-
-            table.insert(resource.address, resource.id);
-        }
-
-        table
     }
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
@@ -292,13 +270,14 @@ impl RefClient {
         let rid = r.id();
 
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r) || existing.has_different_site(&r))
+            && (existing.has_different_address(&r)
+                || existing.has_different_site(&r)
+                || existing.has_different_filters(&r))
         {
             self.remove_resource(&existing.id());
         }
 
         self.resources.push(r);
-        self.cidr_resources = self.recalculate_cidr_routes();
         self.routes.push((rid, address));
 
         if self.expected_tcp_connections.values().contains(&rid) {
@@ -313,7 +292,8 @@ impl RefClient {
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
             && (existing.has_different_address(&r)
                 || existing.has_different_ip_stack(&r)
-                || existing.has_different_site(&r))
+                || existing.has_different_site(&r)
+                || existing.has_different_filters(&r))
         {
             self.remove_resource(&existing.id());
         }
@@ -340,8 +320,6 @@ impl RefClient {
 
     /// Re-adds all resources in the order they have been initially added.
     pub(crate) fn readd_all_resources(&mut self) {
-        self.cidr_resources = IpNetworkTable::new();
-
         for resource in mem::take(&mut self.resources) {
             match resource {
                 Resource::Dns(d) => self.add_dns_resource(d),
@@ -426,6 +404,7 @@ impl RefClient {
     ) {
         self.on_packet(
             dst.clone(),
+            Protocol::IcmpEcho(identifier.0),
             (dst, seq, identifier),
             |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
             payload,
@@ -445,6 +424,7 @@ impl RefClient {
     ) {
         self.on_packet(
             dst.clone(),
+            Protocol::Udp(dport.0),
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
             payload,
@@ -457,6 +437,7 @@ impl RefClient {
     fn on_packet<E>(
         &mut self,
         dst: Destination,
+        proto: Protocol,
         packet_id: E,
         map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
         payload: u64,
@@ -472,12 +453,19 @@ impl RefClient {
 
             gateway
         } else {
-            let Some(resource) = self.resource_by_dst(&dst) else {
+            let Some(resource) = self.resource_by_dst(&dst, proto) else {
                 tracing::warn!("Unknown resource");
                 return;
             };
 
             tracing::Span::current().record("resource", tracing::field::display(resource));
+
+            if !self.connected_resources().contains(&resource)
+                && !self.resource_filter_allows(resource, proto)
+            {
+                tracing::debug!("Resource filter does not allow protocol, dropping");
+                return;
+            }
 
             let Some(gateway) = gateway_by_resource(resource) else {
                 tracing::error!("No gateway for resource");
@@ -507,10 +495,16 @@ impl RefClient {
         sport: SPort,
         dport: DPort,
     ) {
-        let Some(resource) = self.resource_by_dst(&dst) else {
+        let proto = Protocol::Tcp(dport.0);
+        let Some(resource) = self.resource_by_dst(&dst, proto) else {
             tracing::warn!("Unknown resource");
             return;
         };
+
+        if !self.resource_filter_allows(resource, proto) {
+            tracing::debug!("Resource filter does not allow protocol, dropping");
+            return;
+        }
 
         self.connect_to_resource(resource, dst.clone());
         self.set_resource_online(resource);
@@ -545,10 +539,6 @@ impl RefClient {
         }
     }
 
-    fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
-        self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
-    }
-
     fn connect_to_internet_or_cidr_resource(&mut self, rid: ResourceId) {
         if self.internet_resource_active
             && let Some(internet) = self.internet_resource()
@@ -558,7 +548,7 @@ impl RefClient {
             return;
         }
 
-        if self.cidr_resources.iter().any(|(_, r)| *r == rid) {
+        if self.resources.iter().any(|r| r.id() == rid) {
             let is_new = self.connected_cidr_resources.insert(rid);
 
             if is_new {
@@ -568,6 +558,39 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery, upstream_do53: &[UpstreamDo53]) {
+        if let Some(resource) = self.is_site_specific_dns_query(query) {
+            self.set_resource_online(resource);
+            self.connected_dns_resources.insert(resource);
+            self.expect_dns_response(query);
+
+            return;
+        }
+
+        if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
+            self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
+
+            let proto = match query.transport {
+                DnsTransport::Udp { .. } => Protocol::Udp(53),
+                DnsTransport::Tcp => Protocol::Tcp(53),
+            };
+
+            if !self.connected_resources().contains(&resource)
+                && !self.resource_filter_allows(resource, proto)
+            {
+                tracing::debug!("Resource filter does not allow protocol, dropping");
+                return;
+            }
+
+            self.connect_to_internet_or_cidr_resource(resource);
+            self.set_resource_online(resource);
+
+            return;
+        }
+
+        self.expect_dns_response(query);
+    }
+
+    fn expect_dns_response(&mut self, query: &DnsQuery) {
         self.dns_records
             .entry(query.domain.clone())
             .or_default()
@@ -593,17 +616,6 @@ impl RefClient {
                     .push_back((query.dns_server.clone(), query.query_id));
             }
         }
-
-        if let Some(resource) = self.is_site_specific_dns_query(query) {
-            self.set_resource_online(resource);
-            self.connected_dns_resources.insert(resource);
-            return;
-        }
-
-        if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
-            self.connect_to_internet_or_cidr_resource(resource);
-            self.set_resource_online(resource);
-        }
     }
 
     fn is_dynamic_device_pool_dns_query(&self, domain: &DomainName) -> bool {
@@ -619,19 +631,28 @@ impl RefClient {
             .collect_vec()
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Network> {
-        self.cidr_resources
-            .iter_ipv6()
-            .map(|(n, _)| n)
-            .collect_vec()
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
+        self.resources
+            .iter()
+            .cloned()
+            .filter_map(|r| r.into_cidr())
+            .filter_map(|c| match c.address {
+                IpNetwork::V4(ipv4_network) => Some((ipv4_network, c.filters)),
+                IpNetwork::V6(_) => None,
+            })
+            .collect()
     }
 
-    fn is_connected_to_internet(&self, id: ResourceId) -> bool {
-        self.active_internet_resource() == Some(id) && self.connected_internet_resource
-    }
-
-    fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
-        self.connected_cidr_resources.contains(&id)
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(Ipv6Network, Vec<Filter>)> {
+        self.resources
+            .iter()
+            .cloned()
+            .filter_map(|r| r.into_cidr())
+            .filter_map(|c| match c.address {
+                IpNetwork::V6(ipv6_network) => Some((ipv6_network, c.filters)),
+                IpNetwork::V4(_) => None,
+            })
+            .collect()
     }
 
     fn site_for_resource(&self, resource: ResourceId) -> Result<Site, SiteLookupError> {
@@ -655,15 +676,15 @@ impl RefClient {
             .flatten()
     }
 
-    fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
+    fn resource_by_dst(&self, destination: &Destination, proto: Protocol) -> Option<ResourceId> {
         match destination {
             Destination::DomainName { name, .. } => {
-                if let Some(r) = self.dns_resource_by_domain(name) {
+                if let Some(r) = self.dns_resource_by_domain_and_proto(name, proto) {
                     return Some(r.id);
                 }
             }
             Destination::IpAddr(addr) => {
-                if let Some(id) = self.cidr_resource_by_ip(*addr) {
+                if let Some(id) = self.cidr_resource_by_ip_and_proto(*addr, proto) {
                     return Some(id);
                 }
             }
@@ -672,20 +693,57 @@ impl RefClient {
         self.active_internet_resource()
     }
 
-    pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<DnsResource> {
+    fn resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
+        if self.malicious_behaviour.ignore_resource_filters {
+            return true;
+        }
+
+        self.resources
+            .iter()
+            .find(|r| r.id() == rid)
+            .is_some_and(|r| FilterEngine::new(r.filters()).apply(Ok(proto)).is_ok())
+    }
+
+    pub(crate) fn dns_resource_by_domain_and_proto(
+        &self,
+        domain: &DomainName,
+        proto: Protocol,
+    ) -> Option<DnsResource> {
+        self.dns_resource_by_domain(domain, |r| {
+            FilterEngine::new(&r.filters).apply(Ok(proto)).is_ok()
+        })
+    }
+
+    pub(crate) fn dns_resource_by_domain(
+        &self,
+        domain: &DomainName,
+        predicate: impl Fn(&DnsResource) -> bool,
+    ) -> Option<DnsResource> {
         self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_dns())
             .filter(|r| is_subdomain(&domain.to_string(), &r.address))
-            .sorted_by_key(|r| r.address.len())
-            .next_back()
+            .max_by(|r1, r2| {
+                let by_predicate = match (predicate(r1), predicate(r2)) {
+                    (true, true) | (false, false) => Ordering::Equal,
+                    (true, false) => Ordering::Greater,
+                    (false, true) => Ordering::Less,
+                };
+                let by_pattern = dns::Pattern::new(&r1.address)
+                    .unwrap()
+                    .cmp(&dns::Pattern::new(&r2.address).unwrap())
+                    .reverse();
+                let by_id = r1.id.cmp(&r2.id);
+
+                by_predicate.then(by_pattern).then(by_id)
+            })
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
         self.dns_records
             .iter()
-            .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
+            .filter(|(domain, _)| self.dns_resource_by_domain(domain, |_| true).is_some())
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
@@ -728,32 +786,32 @@ impl RefClient {
         )
     }
 
-    pub(crate) fn resolved_v4_domains(&self) -> Vec<DomainName> {
+    pub(crate) fn resolved_v4_domains(&self) -> Vec<(DomainName, Vec<Filter>)> {
         self.resolved_domains()
             .filter_map(|(domain, records)| {
-                records
-                    .iter()
-                    .any(|r| matches!(r, &RecordType::A))
-                    .then_some(domain)
-            })
-            .filter(|d| {
-                self.dns_resource_by_domain(d)
-                    .is_some_and(|r| r.ip_stack.supports_ipv4())
+                if !records.iter().any(|r| matches!(r, &RecordType::A)) {
+                    return None;
+                }
+                let resource = self.dns_resource_by_domain(&domain, |_| true)?;
+                resource
+                    .ip_stack
+                    .supports_ipv4()
+                    .then(|| (domain, resource.filters.clone()))
             })
             .collect()
     }
 
-    pub(crate) fn resolved_v6_domains(&self) -> Vec<DomainName> {
+    pub(crate) fn resolved_v6_domains(&self) -> Vec<(DomainName, Vec<Filter>)> {
         self.resolved_domains()
             .filter_map(|(domain, records)| {
-                records
-                    .iter()
-                    .any(|r| matches!(r, &RecordType::AAAA))
-                    .then_some(domain)
-            })
-            .filter(|d| {
-                self.dns_resource_by_domain(d)
-                    .is_some_and(|r| r.ip_stack.supports_ipv6())
+                if !records.iter().any(|r| matches!(r, &RecordType::AAAA)) {
+                    return None;
+                }
+                let resource = self.dns_resource_by_domain(&domain, |_| true)?;
+                resource
+                    .ip_stack
+                    .supports_ipv6()
+                    .then(|| (domain, resource.filters.clone()))
             })
             .collect()
     }
@@ -804,15 +862,41 @@ impl RefClient {
             .collect()
     }
 
-    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
-        // Manually implement `longest_match` because we need to filter disabled resources _before_ we match.
-        let (_, r) = self
-            .cidr_resources
-            .matches(ip)
-            .sorted_by(|(n1, _), (n2, _)| n1.netmask().cmp(&n2.netmask()).reverse()) // Highest netmask is most specific.
-            .next()?;
+    pub(crate) fn cidr_resource_by_ip_and_proto(
+        &self,
+        ip: IpAddr,
+        proto: Protocol,
+    ) -> Option<ResourceId> {
+        self.cidr_resource_by_ip(ip, |r| {
+            FilterEngine::new(&r.filters).apply(Ok(proto)).is_ok()
+        })
+    }
 
-        Some(*r)
+    pub(crate) fn cidr_resource_by_ip(
+        &self,
+        ip: IpAddr,
+        predicate: impl Fn(&CidrResource) -> bool,
+    ) -> Option<ResourceId> {
+        let r = self
+            .resources
+            .iter()
+            .cloned()
+            .filter_map(|r| r.into_cidr())
+            .filter(|c| c.address.contains(ip))
+            .sorted_by(|r1, r2| {
+                let by_predicate = match (predicate(r1), predicate(r2)) {
+                    (true, true) | (false, false) => Ordering::Equal,
+                    (true, false) => Ordering::Greater,
+                    (false, true) => Ordering::Less,
+                };
+                let by_netmask = r1.address.netmask().cmp(&r2.address.netmask());
+                let by_id = r1.id.cmp(&r2.id);
+
+                by_predicate.then(by_netmask).then(by_id)
+            })
+            .next_back()?;
+
+        Some(r.id)
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -847,9 +931,9 @@ impl RefClient {
         at: Instant,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
-            .iter()
-            .filter_map(move |(domain, _)| {
-                self.dns_resource_by_domain(domain)
+            .keys()
+            .filter_map(move |domain| {
+                self.dns_resource_by_domain(domain, |_| true)
                     .is_none()
                     .then_some(global_dns_records.domain_ips_iter(domain, at))
             })
@@ -870,7 +954,9 @@ impl RefClient {
         }
 
         // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
-        if self.dns_resource_by_domain(&query.domain).is_some()
+        if self
+            .dns_resource_by_domain(&query.domain, |_| true)
+            .is_some()
             && matches!(
                 query.r_type,
                 RecordType::A | RecordType::AAAA | RecordType::PTR
@@ -879,12 +965,18 @@ impl RefClient {
             return None;
         }
 
+        // TODO: Verify if we ever generate something that is not port 53 here.
         let server = match query.dns_server {
             dns::Upstream::Do53 { server } => server,
             dns::Upstream::DoH { .. } => return None,
         };
 
-        let maybe_active_cidr_resource = self.cidr_resource_by_ip(server.ip());
+        let maybe_active_cidr_resource = self.cidr_resource_by_ip(server.ip(), |r| {
+            let filter_engine = FilterEngine::new(&r.filters);
+
+            filter_engine.apply(Ok(Protocol::Udp(53))).is_ok()
+                && filter_engine.apply(Ok(Protocol::Tcp(53))).is_ok()
+        });
         let maybe_active_internet_resource = self.active_internet_resource();
 
         maybe_active_cidr_resource.or(maybe_active_internet_resource)
@@ -895,7 +987,7 @@ impl RefClient {
             return None;
         }
 
-        Some(self.dns_resource_by_domain(&query.domain)?.id)
+        Some(self.dns_resource_by_domain(&query.domain, |_| true)?.id)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -957,6 +1049,107 @@ impl RefClient {
             .copied()
             .any(|t| (t..t + ice_timeout).contains(&at))
     }
+
+    pub(crate) fn clear_packets(&mut self) {
+        self.expected_gateway_icmp_handshakes.clear();
+        self.expected_client_icmp_handshakes.clear();
+        self.expected_gateway_udp_handshakes.clear();
+        self.expected_client_udp_handshakes.clear();
+        self.expected_udp_dns_handshakes.clear();
+        self.expected_tcp_dns_handshakes.clear();
+        self.expected_tcp_connections.clear();
+    }
+
+    pub(crate) fn any_resource_allows_tcp_on_port(
+        &self,
+        destination: &Destination,
+        dport: u16,
+    ) -> bool {
+        self.any_resource_allows(destination, |filters| tcp_filter_allows(filters, dport))
+    }
+
+    pub(crate) fn any_resource_allows_icmp(&self, destination: &Destination) -> bool {
+        self.any_resource_allows(destination, icmp_filter_allows)
+    }
+
+    pub(crate) fn any_resource_allows_udp_on_port(
+        &self,
+        destination: &Destination,
+        dport: u16,
+    ) -> bool {
+        self.any_resource_allows(destination, |filters| udp_filter_allows(filters, dport))
+    }
+
+    fn any_resource_allows(
+        &self,
+        destination: &Destination,
+        filter_allows: impl Fn(&[Filter]) -> bool,
+    ) -> bool {
+        let matching_resources = self.resources_matching_destination(destination);
+
+        match matching_resources.as_slice() {
+            [] => self.internet_resource().is_some(),
+            resources => resources.iter().any(|r| match r {
+                Resource::Cidr(cidr) => filter_allows(&cidr.filters),
+                Resource::Dns(dns) => filter_allows(&dns.filters),
+                Resource::Internet(_)
+                | Resource::StaticDevicePool(_)
+                | Resource::DynamicDevicePool(_) => unreachable!(),
+            }),
+        }
+    }
+
+    fn resources_matching_destination(&self, destination: &Destination) -> Vec<&Resource> {
+        match destination {
+            Destination::IpAddr(ip) => self
+                .resources
+                .iter()
+                .filter(|r| matches!(r, Resource::Cidr(cidr) if cidr.address.contains(*ip)))
+                .collect(),
+            Destination::DomainName { name, .. } => self
+                .resources
+                .iter()
+                .filter(|r| {
+                    matches!(r, Resource::Dns(dns) if is_subdomain(&name.to_string(), &dns.address))
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Checks if a set of [`Filter`]s allows the given TCP port.
+///
+/// This purposely doesn't use [`FilterEngine`] because we are in the reference implementation here.
+fn tcp_filter_allows(filters: &[Filter], dport: u16) -> bool {
+    filters.is_empty()
+        || filters.iter().any(|f| {
+            matches!(
+                f,
+                Filter::Tcp(range)
+                    if range.port_range_start <= dport && dport <= range.port_range_end
+            )
+        })
+}
+
+/// Checks if a set of [`Filter`]s allows ICMP traffic.
+///
+/// This purposely doesn't use [`FilterEngine`] because we are in the reference implementation here.
+fn icmp_filter_allows(filters: &[Filter]) -> bool {
+    filters.is_empty() || filters.iter().any(|f| matches!(f, Filter::Icmp))
+}
+
+/// Checks if a set of [`Filter`]s allows the given UDP port.
+///
+/// This purposely doesn't use [`FilterEngine`] because we are in the reference implementation here.
+fn udp_filter_allows(filters: &[Filter], dport: u16) -> bool {
+    filters.is_empty()
+        || filters.iter().any(|f| {
+            matches!(
+                f,
+                Filter::Udp(range)
+                    if range.port_range_start <= dport && dport <= range.port_range_end
+            )
+        })
 }
 
 // This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
@@ -978,6 +1171,12 @@ fn is_subdomain(name: &str, record: &str) -> bool {
         }
         _ => false,
     }
+}
+
+impl ExecMutScope for RefClient {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
 }
 
 pub(crate) fn ref_client_host(
@@ -1006,9 +1205,17 @@ fn ref_client(
         system_dns,
         any::<bool>(),
         private_key(),
+        malicious_behaviour(),
     )
         .prop_map(
-            move |(tunnel_ip4, tunnel_ip6, system_dns_resolvers, internet_resource_active, key)| {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                system_dns_resolvers,
+                internet_resource_active,
+                key,
+                malicious_behaviour,
+            )| {
                 RefClient {
                     id,
                     key,
@@ -1016,7 +1223,7 @@ fn ref_client(
                     tunnel_ip6,
                     system_dns_resolvers,
                     internet_resource_active,
-                    cidr_resources: IpNetworkTable::new(),
+                    malicious_behaviour,
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),

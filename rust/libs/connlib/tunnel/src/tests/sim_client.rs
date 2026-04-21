@@ -1,21 +1,24 @@
 use super::{
     QueryId,
     reference::PrivateKey,
-    sim_net::Host,
+    sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     transition::{DPort, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, DnsMapping, DnsResourceRecord, dns};
+use crate::{
+    ClientState, DnsMapping, DnsResourceRecord, dns,
+    malicious_behaviour::{Guard, MaliciousBehaviour},
+};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::IpNetwork;
-use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::{IpAddr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Simulation state for a particular client.
@@ -23,6 +26,9 @@ pub(crate) struct SimClient {
     id: ClientId,
 
     pub(crate) sut: ClientState,
+
+    /// The malicious behaviours sampled for this client.
+    malicious_behaviour: MaliciousBehaviour,
 
     /// The DNS records created on the client as a result of received DNS responses.
     ///
@@ -67,14 +73,20 @@ pub(crate) struct SimClient {
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tests::tcp::Client,
-    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IpPacket>,
+    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
 }
 
 impl SimClient {
-    pub(crate) fn new(id: ClientId, sut: ClientState, now: Instant) -> Self {
+    pub(crate) fn new(
+        id: ClientId,
+        sut: ClientState,
+        malicious_behaviour: MaliciousBehaviour,
+        now: Instant,
+    ) -> Self {
         Self {
             id,
             sut,
+            malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
             sent_udp_dns_queries: Default::default(),
@@ -90,7 +102,7 @@ impl SimClient {
             routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
-            tcp_dns_client: dns_over_tcp::Client::new(now, [0u8; 32]),
+            tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
@@ -206,12 +218,19 @@ impl SimClient {
     ) -> Option<snownet::Transmit> {
         self.update_sent_requests(&packet, now);
 
-        let Some(transmit) = self.sut.handle_tun_input(packet, now) else {
-            self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
-            return None;
-        };
+        match self.sut.handle_tun_input(packet, now) {
+            Ok(Some(transmit)) => Some(transmit),
+            Ok(None) => {
+                self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
 
-        Some(transmit)
+                None
+            }
+            Err(e) => {
+                tracing::warn!("{e:#}");
+
+                None
+            }
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -255,12 +274,13 @@ impl SimClient {
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
-        let Some(packet) = self.sut.handle_network_input(
-            transmit.dst,
-            transmit.src.unwrap(),
-            &transmit.payload,
-            now,
-        ) else {
+        let Some(packet) = self
+            .sut
+            .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+            .inspect_err(|e| tracing::warn!("{e:#}"))
+            .ok()
+            .flatten()
+        else {
             self.sut.handle_timeout(now);
             return None;
         };
@@ -277,7 +297,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
-            Ok(Some((failed_packet, _))) => {
+            Ok(Some((failed_packet, icmp_error))) => {
                 match failed_packet.layer4_protocol() {
                     Layer4Protocol::Udp { src, dst } => {
                         self.received_udp_replies
@@ -285,7 +305,7 @@ impl SimClient {
                     }
                     Layer4Protocol::Tcp { src, dst } => {
                         self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), packet.clone());
+                            .insert((SPort(src), DPort(dst)), icmp_error);
 
                         // Allow the client to process the ICMP error.
                         self.tcp_client.handle_inbound(packet);
@@ -451,8 +471,30 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        let transmit = self.sut.handle_tun_input(reply, now)?;
+        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
 
         Some(transmit)
+    }
+
+    pub(crate) fn clear_packets(&mut self) {
+        self.sent_icmp_requests.clear();
+        self.received_icmp_replies.clear();
+        self.received_icmp_requests.clear();
+        self.sent_udp_requests.clear();
+        self.received_udp_replies.clear();
+        self.received_udp_requests.clear();
+        self.sent_udp_dns_queries.clear();
+        self.received_udp_dns_responses.clear();
+        self.sent_tcp_dns_queries.clear();
+        self.received_tcp_dns_responses.clear();
+        self.tcp_client.reset();
+    }
+}
+
+impl ExecMutScope for SimClient {
+    type Guard = Guard;
+
+    fn enter(&self) -> Self::Guard {
+        self.malicious_behaviour.guard()
     }
 }

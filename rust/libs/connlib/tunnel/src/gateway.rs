@@ -1,19 +1,15 @@
 mod client_on_gateway;
-mod filter_engine;
 mod flow_tracker;
 mod nat_table;
-mod unroutable_packet;
-
-pub use crate::gateway::unroutable_packet::UnroutablePacket;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
-pub(crate) use crate::gateway::unroutable_packet::RoutingError;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
 use crate::messages::gateway::{Client, ResourceDescription, Subject};
 use crate::messages::{IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
+use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519::{self, PublicKey};
@@ -161,7 +157,7 @@ impl GatewayState {
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
-            .context(FailedToDecapsulate(packet_kind::classify(packet)))?
+            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
         else {
             return Ok(None);
         };

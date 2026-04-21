@@ -12,7 +12,8 @@ use std::{
 };
 
 use crate::client::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
+    client::{CidrResource, DnsResource, InternetResource, Resource},
+    messages::{Filter, PortRange},
 };
 
 pub fn resource(
@@ -36,16 +37,18 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
         domain_name(2..4),
         address_description(),
         ip_stack(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, ip_stack, sites)| DnsResource {
+            move |(id, name, address, address_description, ip_stack, filters, sites)| DnsResource {
                 id,
                 address: address.to_string(),
                 name,
                 sites,
                 address_description,
                 ip_stack,
+                filters,
             },
         )
 }
@@ -59,15 +62,17 @@ pub fn cidr_resource(
         resource_name(),
         ip_network,
         address_description(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| CidrResource {
+            move |(id, name, address, address_description, filters, sites)| CidrResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
+                filters,
             },
         )
 }
@@ -89,6 +94,27 @@ pub fn dynamic_device_pool_resource() -> impl Strategy<Value = DynamicDevicePool
             name,
             address: format!("*.{base_domain}"),
         }
+    })
+}
+
+pub fn filters() -> impl Strategy<Value = Vec<Filter>> {
+    collection::vec(filter(), 0..3)
+}
+
+fn filter() -> impl Strategy<Value = Filter> {
+    prop_oneof![
+        Just(Filter::Icmp),
+        port_range().prop_map(Filter::Udp),
+        port_range().prop_map(Filter::Tcp)
+    ]
+}
+
+fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
     })
 }
 
@@ -187,7 +213,7 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
 // Note: for these tests we don't really care that it's a valid host
 // we only need a host.
 // If we filter valid hosts it generates too many rejects
-pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
+pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> + Clone {
     (0u32..=number_of_hosts_ipv4(ip.netmask()))
         .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
 }
@@ -195,7 +221,7 @@ pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
 // Note: for these tests we don't really care that it's a valid host
 // we only need a host.
 // If we filter valid hosts it generates too many rejects
-pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> {
+pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> + Clone {
     (0u128..=number_of_hosts_ipv6(ip.netmask()))
         .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
 }

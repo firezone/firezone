@@ -6,7 +6,6 @@
 mod allocation;
 mod backoff;
 mod channel_data;
-mod crypto;
 mod index;
 mod node;
 mod stats;
@@ -17,8 +16,6 @@ pub use node::{
     Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, Transmit, UnknownConnection,
 };
 pub use stats::{ConnectionStats, NodeStats};
-
-pub(crate) use crypto::CRYPTO_PROVIDER;
 
 pub fn is_wireguard(payload: &[u8]) -> bool {
     boringtun::noise::Tunn::parse_incoming_packet(payload).is_ok()

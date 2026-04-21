@@ -1,6 +1,6 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
+use crate::messages::{Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
 use chrono::{
     DateTime, Utc,
     serde::{ts_seconds, ts_seconds_option},
@@ -12,8 +12,6 @@ use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr},
 };
-
-pub type Filters = Vec<Filter>;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone)]
@@ -27,7 +25,7 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    pub filters: Filters,
+    pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -42,7 +40,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
-    pub filters: Filters,
+    pub filters: Vec<Filter>,
 }
 
 /// Description of an Internet resource.
@@ -57,34 +55,6 @@ pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
     Internet(ResourceDescriptionInternet),
-}
-
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(tag = "protocol", rename_all = "snake_case")]
-pub enum Filter {
-    Udp(PortRange),
-    Tcp(PortRange),
-    Icmp,
-}
-
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PortRange {
-    // TODO: we can use a custom deserializer
-    // or maybe change the control plane to use start and end would suffice
-    #[serde(default = "max_port")]
-    pub port_range_end: u16,
-    #[serde(default = "min_port")]
-    pub port_range_start: u16,
-}
-
-// Note: these 2 functions are needed since serde doesn't yet support default_value
-// see serde-rs/serde#368
-fn min_port() -> u16 {
-    0
-}
-
-fn max_port() -> u16 {
-    u16::MAX
 }
 
 impl ResourceDescription {
@@ -253,6 +223,8 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
+    use crate::messages::PortRange;
+
     use super::*;
 
     #[test]

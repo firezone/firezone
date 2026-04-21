@@ -10,10 +10,13 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
 use serde::Deserialize;
 
-use crate::messages::client::{
-    ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
-    ResourceDescriptionDynamicDevicePool, ResourceDescriptionInternet,
-    ResourceDescriptionStaticDevicePool,
+use crate::messages::{
+    Filter,
+    client::{
+        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
+        ResourceDescriptionDynamicDevicePool, ResourceDescriptionInternet,
+        ResourceDescriptionStaticDevicePool,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,6 +43,8 @@ pub struct DnsResource {
     pub sites: Vec<Site>,
 
     pub ip_stack: IpStack,
+
+    pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -56,6 +61,8 @@ pub struct CidrResource {
 
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
+
+    pub filters: Vec<Filter>,
 }
 
 /// Description of an internet resource.
@@ -158,6 +165,17 @@ impl Resource {
         }
     }
 
+    #[cfg(all(feature = "proptest", test))]
+    pub fn into_cidr(self) -> Option<CidrResource> {
+        match self {
+            Resource::Cidr(c) => Some(c),
+            Resource::Dns(_)
+            | Resource::Internet(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => None,
+        }
+    }
+
     pub fn address_string(&self) -> Option<String> {
         match self {
             Resource::Dns(d) => Some(d.address.clone()),
@@ -187,6 +205,16 @@ impl Resource {
             Resource::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
             Resource::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
             Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => BTreeSet::new(),
+        }
+    }
+
+    pub fn filters(&self) -> &[Filter] {
+        match self {
+            Resource::Dns(r) => &r.filters,
+            Resource::Cidr(r) => &r.filters,
+            Resource::Internet(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => &[],
         }
     }
 
@@ -242,6 +270,10 @@ impl Resource {
         self.sites() != other.sites()
     }
 
+    pub fn has_different_filters(&self, other: &Resource) -> bool {
+        self.filters() != other.filters()
+    }
+
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
             Resource::Dns(_) | Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {
@@ -286,6 +318,17 @@ impl Resource {
             Resource::DynamicDevicePool(r) => Self::DynamicDevicePool(r),
         }
     }
+
+    #[cfg(all(test, feature = "proptest"))]
+    pub fn with_new_filters(self, filters: Vec<Filter>) -> Self {
+        match self {
+            Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
+            Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
+            Resource::Internet(_)
+            | Resource::StaticDevicePool(_)
+            | Resource::DynamicDevicePool(_) => self,
+        }
+    }
 }
 
 impl TryFrom<ResourceDescription> for Resource {
@@ -308,6 +351,7 @@ impl CidrResource {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            filters: resource.filters,
         }
     }
 
@@ -370,6 +414,7 @@ impl DnsResource {
             address_description: resource.address_description,
             sites: resource.sites,
             ip_stack: resource.ip_stack.unwrap_or(IpStack::Dual),
+            filters: resource.filters,
         }
     }
 

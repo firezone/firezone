@@ -45,7 +45,7 @@ public final class Store: ObservableObject {
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
-  private var stateTimer: Timer?
+  private static let statePollingInterval: Duration = .seconds(1)
   private var stateUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSavedConfiguration: TunnelConfiguration?
@@ -470,58 +470,55 @@ public final class Store: ObservableObject {
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
   private func beginUpdatingState() {
-    if self.stateTimer != nil {
-      // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
+    if self.stateUpdateTask != nil {
+      // Prevent duplicate poller scheduling. This will happen if the system sends us two .connected status updates
       // in a row, which can happen occasionally.
       return
     }
 
-    // Define the Timer's closure
-    let updateState: @Sendable (Timer) -> Void = { _ in
-      Task {
-        await MainActor.run {
-          self.stateUpdateTask?.cancel()
-          self.stateUpdateTask = Task {
-            if !Task.isCancelled {
-              do {
-                guard let session = try self.manager().session() else { return }
-                try await self.fetchState(session: session)
-              } catch let error as NSError {
-                // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
-                if error.domain == "NEVPNErrorDomain" && error.code == 1 {
-                  // not initialized yet
-                } else {
-                  Log.error(error)
-                }
-              } catch {
-                Log.error(error)
-              }
-            }
+    self.stateUpdateTask = Task {
+      defer { self.stateUpdateTask = nil }
+
+      while !Task.isCancelled {
+        do {
+          try await self.pollStateOnce()
+        } catch is CancellationError {
+          break
+        } catch let error as NSError {
+          // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
+          if error.domain == "NEVPNErrorDomain" && error.code == 1 {
+            // not initialized yet
+          } else {
+            Log.error(error)
           }
+        } catch {
+          Log.error(error)
+        }
+
+        do {
+          try await Task.sleep(for: Self.statePollingInterval)
+        } catch is CancellationError {
+          break
+        } catch {
+          Log.error(error)
+          break
         }
       }
     }
-
-    // Configure the timer
-    let intervalInSeconds: TimeInterval = 1
-    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateState)
-
-    // Schedule the timer on the main runloop
-    RunLoop.main.add(timer, forMode: .common)
-    stateTimer = timer
-
-    // We're impatient, make one call now
-    updateState(timer)
   }
 
   private func endUpdatingState() {
     stateUpdateTask?.cancel()
-    stateTimer?.invalidate()
-    stateTimer = nil
+    stateUpdateTask = nil
     resourceList = ResourceList.loading
     connlibStateHash = Data()
     unreachableResources.removeAll()
     Log.setStreamingActive(false)
+  }
+
+  private func pollStateOnce() async throws {
+    guard let session = try self.manager().session() else { return }
+    try await self.fetchState(session: session)
   }
 
   /// Fetches state from the tunnel provider, using hash-based optimisation.
@@ -540,6 +537,10 @@ public final class Store: ObservableObject {
     else {
       return
     }
+
+    try Task.checkCancellation()
+
+    guard vpnStatus == .connected else { return }
 
     // Decode state and compute hash
     let (state, hash) = try ConnlibState.decode(from: data)
@@ -570,6 +571,8 @@ public final class Store: ObservableObject {
     resources: [FirezoneKit.Resource]
   ) async {
     for unreachableResource in unreachableResources {
+      guard !Task.isCancelled, vpnStatus == .connected else { return }
+
       // Find the resource and site to get names for the notification
       guard let resource = resources.first(where: { $0.id == unreachableResource.resourceId }),
         let site = resource.sites.first

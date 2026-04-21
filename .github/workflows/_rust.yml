@@ -215,6 +215,7 @@ jobs:
             "Initiating graceful shutdown"
             "Connection closed proactively \(sent goodbye\)"
             "New device access authorized"
+            "Malicious client: ignoring resource filter"
           )
 
           missing_patterns=$(

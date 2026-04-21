@@ -215,6 +215,16 @@ impl TunnelTest {
                     client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
                 }
             }
+            Transition::ChangeFiltersOfResource {
+                resource,
+                new_filters,
+            } => {
+                let new_resource = resource.with_new_filters(new_filters);
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                }
+            }
             Transition::RemoveResource(rid) => {
                 for (client_id, client) in &mut state.clients {
                     client.exec_mut(|c| c.sut.remove_resource(rid, now));
@@ -572,16 +582,23 @@ impl TunnelTest {
             .iter()
             .map(|(id, g)| (*id, g.inner()))
             .collect();
+        let ref_gateways = ref_state
+            .gateways
+            .iter()
+            .map(|(id, g)| (*id, g.inner()))
+            .collect();
 
         // System-wide packet assertions
         assert_icmp_packets_properties(
             &all_ref_clients,
+            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,
         );
         assert_udp_packets_properties(
             &all_ref_clients,
+            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,
@@ -599,6 +616,15 @@ impl TunnelTest {
             assert_search_domain_is_valid(&ref_state.portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);
             assert_resource_status(ref_client, sut_client);
+        }
+    }
+
+    pub(crate) fn clear_packets(state: &mut TunnelTest) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|c| c.clear_packets());
+        }
+        for gateway in state.gateways.values_mut() {
+            gateway.exec_mut(|g| g.clear_packets());
         }
     }
 }

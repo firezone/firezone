@@ -372,21 +372,6 @@ impl Eventloop {
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
             if e.any_downcast_ref::<io::Error>()
-                .is_some_and(is_unreachable)
-            {
-                tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
-                continue;
-            }
-
-            // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-            if e.any_downcast_ref::<io::Error>()
-                .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
-            {
-                tracing::debug!("{e:#}");
-                continue;
-            }
-
-            if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {
                 if !mem::replace(&mut self.logged_permission_denied, true) {
@@ -398,15 +383,18 @@ impl Eventloop {
                 continue;
             }
 
-            if e.any_is::<tunnel::UdpSocketThreadStopped>() {
+            if e.any_is::<tunnel::UdpSocketThreadStopped>()
+                || e.any_is::<tunnel::TunChannelClosed>()
+            {
                 return Err(e);
             }
 
-            if e.any_is::<tunnel::TunChannelClosed>() {
-                return Err(e);
+            if let Some(e) = e.any_downcast_ref::<tunnel::UnroutablePacket>() {
+                tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
+                continue;
             }
 
-            tracing::warn!("Tunnel error: {e:#}");
+            tracing::debug!("Tunnel error: {e:#}");
         }
 
         Ok(())
@@ -749,15 +737,4 @@ async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) ->
         .unwrap_or_default();
 
     iter::empty().chain(udp_ips).chain(etc_hosts_ips).collect()
-}
-
-fn is_unreachable(e: &io::Error) -> bool {
-    #[cfg(unix)]
-    if e.raw_os_error().is_some_and(|e| e == libc::EHOSTDOWN) {
-        return true;
-    }
-
-    e.kind() == io::ErrorKind::NetworkUnreachable
-        || e.kind() == io::ErrorKind::HostUnreachable
-        || e.kind() == io::ErrorKind::AddrNotAvailable
 }

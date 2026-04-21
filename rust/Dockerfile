@@ -62,7 +62,7 @@ COPY ${PACKAGE} .
 FROM runtime AS dev
 
 ARG PACKAGE
-ARG RUST_VERSION="1.94.0" # Keep in sync with `rust-toolchain.toml`
+ARG RUST_VERSION="1.95.0" # Keep in sync with `rust-toolchain.toml`
 
 WORKDIR /app
 

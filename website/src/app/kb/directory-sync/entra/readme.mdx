@@ -101,6 +101,24 @@ Directory sync runs automatically every 2 hours. To trigger a sync immediately,
 click the **Sync Now** button on the directory card in
 `Settings -> Directory Sync`.
 
+## Disabled and deleted users
+
+Firezone removes deleted Entra users on the next sync. It also filters out
+users where Microsoft Entra marks `accountEnabled` as `false`.
+
+- **API-side filtering:** When Firezone streams group members from Microsoft
+  Graph, it requests only users where `accountEnabled eq true`.
+- **Defense in depth:** Firezone also re-checks `accountEnabled` after
+  receiving user payloads, including batched lookups for directly assigned
+  users.
+- **Defensive handling:** If Microsoft Graph omits `accountEnabled`
+  unexpectedly, Firezone logs the event and skips that user instead of treating
+  them as active.
+
+Once a synced Entra user is deleted or disabled, their Firezone identity is
+removed on the next sync. This signs them out of Firezone and prevents new
+sign-ins through the synced Entra identity.
+
 ## Troubleshooting
 
 ### "Unauthorized" or "Access Denied" error

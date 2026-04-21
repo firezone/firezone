@@ -354,12 +354,14 @@ defmodule Portal.Entra.Sync do
 
     case Entra.APIClient.batch_get_users(access_token, chunk) do
       {:ok, users} when is_list(users) ->
+        active_users = Enum.filter(users, &syncable_user?(&1, directory.id))
+
         Logger.debug("Fetched batch of users successfully",
           entra_directory_id: directory.id,
-          fetched_count: length(users)
+          fetched_count: length(active_users)
         )
 
-        Enum.map(users, fn user ->
+        Enum.map(active_users, fn user ->
           map_user_to_identity(user, directory.id, directory.email_field)
         end)
 
@@ -427,10 +429,11 @@ defmodule Portal.Entra.Sync do
       count: length(members)
     )
 
-    # Filter only users
+    # The API client already uses the microsoft.graph.user cast with
+    # accountEnabled=true filtering; keep a local guard as a safety net.
     user_members =
       Enum.filter(members, fn member ->
-        member["@odata.type"] == "#microsoft.graph.user"
+        graph_user_member?(member) and syncable_user?(member, directory.id)
       end)
 
     # Validate required fields for user members before processing
@@ -562,10 +565,11 @@ defmodule Portal.Entra.Sync do
       count: length(members)
     )
 
-    # Filter only users
+    # The API client already uses the microsoft.graph.user cast with
+    # accountEnabled=true filtering; keep a local guard as a safety net.
     user_members =
       Enum.filter(members, fn member ->
-        member["@odata.type"] == "#microsoft.graph.user"
+        graph_user_member?(member) and syncable_user?(member, directory.id)
       end)
 
     # Validate required fields for user members before processing
@@ -619,7 +623,10 @@ defmodule Portal.Entra.Sync do
           entra_directory_id: directory.id
         )
 
-        :error
+        raise Entra.SyncError,
+          error: {:database, "failed to upsert identities: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_identities
     end
   end
 
@@ -657,7 +664,10 @@ defmodule Portal.Entra.Sync do
           entra_directory_id: directory.id
         )
 
-        :error
+        raise Entra.SyncError,
+          error: {:database, "failed to upsert memberships: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_memberships
     end
   end
 
@@ -700,6 +710,30 @@ defmodule Portal.Entra.Sync do
       entra_directory_id: directory.id,
       count: deleted_actors_count
     )
+  end
+
+  defp syncable_user?(user, directory_id) do
+    case Map.fetch(user, "accountEnabled") do
+      {:ok, enabled} ->
+        enabled != false
+
+      :error ->
+        Logger.error("Skipping Entra user with missing accountEnabled field",
+          entra_directory_id: directory_id,
+          entra_user_id: Map.get(user, "id", "unknown"),
+          entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))
+        )
+
+        false
+    end
+  end
+
+  defp graph_user_member?(member) do
+    case Map.get(member, "@odata.type") do
+      nil -> true
+      "#microsoft.graph.user" -> true
+      _ -> false
+    end
   end
 
   defp map_user_to_identity(user, directory_id, email_field) do
