@@ -30,10 +30,9 @@ impl<RId> Allocations<RId>
 where
     RId: Ord + fmt::Display + Copy,
 {
-    pub(crate) fn clear(&mut self) {
-        for (_, allocation) in std::mem::take(&mut self.inner) {
-            self.previous_relays_by_ip
-                .extend(server_addresses(&allocation));
+    pub(crate) fn reset(&mut self, now: Instant) {
+        for allocation in self.inner.values_mut() {
+            allocation.reset(now);
         }
     }
 
@@ -348,27 +347,6 @@ mod tests {
         );
 
         allocations.remove_by_id(&1);
-
-        assert!(matches!(
-            allocations.get_mut_by_server(SERVER_V4),
-            MutAllocationRef::Disconnected
-        ));
-    }
-
-    #[test]
-    fn clear_remembers_address() {
-        let mut allocations = Allocations::default();
-        allocations.upsert(
-            1,
-            RelaySocket::from(SERVER_V4),
-            Username::new("test".to_owned()).unwrap(),
-            "password".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
-            Instant::now(),
-            SessionId::new(PublicKey::from([0u8; 32])),
-        );
-
-        allocations.clear();
 
         assert!(matches!(
             allocations.get_mut_by_server(SERVER_V4),
