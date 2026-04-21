@@ -297,6 +297,7 @@ impl ClientState {
     ) {
         self.device_stub_resolver
             .handle_device_domain_resolved(resource_id, domain, result);
+        self.drain_device_stub_resolver_events();
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
