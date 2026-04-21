@@ -1030,17 +1030,14 @@ defmodule PortalWeb.Sites do
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
 
-      account_ids = gateways |> Enum.map(& &1.account_id) |> Enum.uniq()
-
       sessions_by_gateway_id =
         if gateway_ids != [] do
           from(s in Portal.GatewaySession,
-            where: s.account_id in ^account_ids,
             where: s.gateway_id in ^gateway_ids,
             distinct: s.gateway_id,
             order_by: [asc: s.gateway_id, desc: s.inserted_at]
           )
-          |> Safe.unscoped(:replica)
+          |> Safe.scoped(subject, :replica)
           |> Safe.all()
           |> Map.new(&{&1.gateway_id, &1})
         else

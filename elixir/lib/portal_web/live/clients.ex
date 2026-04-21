@@ -469,12 +469,11 @@ defmodule PortalWeb.Clients do
         %Client{} ->
           session =
             from(s in ClientSession,
-              where: s.account_id == ^client.account_id,
               where: s.client_id == ^client.id,
               order_by: [desc: s.inserted_at],
               limit: 1
             )
-            |> Safe.unscoped(:replica)
+            |> Safe.scoped(subject, :replica)
             |> Safe.one(fallback_to_primary: true)
 
           client = Clients.preload_clients_presence([client]) |> List.first()

@@ -774,7 +774,7 @@ defmodule PortalWeb.Actors do
       # Prevent promoting to admin when admin limit is reached
       actor.type != :account_admin_user and new_type == :account_admin_user and
           not Portal.Billing.can_create_admin_users?(
-            Database.fetch_account(socket.assigns.account.id)
+            Database.fetch_account(socket.assigns.subject)
           ) ->
         changeset =
           changeset
@@ -1346,9 +1346,9 @@ defmodule PortalWeb.Actors do
       |> Safe.list(__MODULE__, opts)
     end
 
-    def fetch_account(account_id) do
-      from(a in Portal.Account, where: a.id == ^account_id)
-      |> Safe.unscoped(:replica)
+    def fetch_account(subject) do
+      from(a in Portal.Account)
+      |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end
 
@@ -1420,22 +1420,20 @@ defmodule PortalWeb.Actors do
         |> Safe.all()
 
       tokens
-      |> preload_latest_sessions_for_tokens()
+      |> preload_latest_sessions_for_tokens(subject)
       |> Presence.Clients.preload_client_tokens_presence()
     end
 
-    defp preload_latest_sessions_for_tokens(tokens) do
-      account_ids = tokens |> Enum.map(& &1.account_id) |> Enum.uniq()
+    defp preload_latest_sessions_for_tokens(tokens, subject) do
       token_ids = Enum.map(tokens, & &1.id)
 
       sessions_by_token_id =
         from(s in ClientSession,
-          where: s.account_id in ^account_ids,
           where: s.client_token_id in ^token_ids,
           distinct: s.client_token_id,
           order_by: [asc: s.client_token_id, desc: s.inserted_at]
         )
-        |> Safe.unscoped(:replica)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new(&{&1.client_token_id, &1})
 

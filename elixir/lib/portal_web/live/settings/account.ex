@@ -8,6 +8,7 @@ defmodule PortalWeb.Settings.Account do
 
   def mount(_params, _session, socket) do
     account = socket.assigns.account
+    subject = socket.assigns.subject
 
     socket =
       assign(socket,
@@ -16,11 +17,11 @@ defmodule PortalWeb.Settings.Account do
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
-        admins_count: Database.count_account_admin_users_for_account(account),
-        service_accounts_count: Database.count_service_accounts_for_account(account),
-        users_count: Database.count_users_for_account(account),
-        active_users_count: Database.count_1m_active_users_for_account(account),
-        sites_count: Database.count_groups_for_account(account)
+        admins_count: Database.count_account_admin_users_for_account(subject),
+        service_accounts_count: Database.count_service_accounts_for_account(subject),
+        users_count: Database.count_users_for_account(subject),
+        active_users_count: Database.count_1m_active_users_for_account(subject),
+        sites_count: Database.count_groups_for_account(subject)
       )
 
     {:ok, socket}
@@ -407,7 +408,7 @@ defmodule PortalWeb.Settings.Account do
     if Account.locked?(account) do
       {:noreply, assign(socket, error: "This account is locked and cannot be modified.")}
     else
-      case Database.cancel_account_deletion(account) do
+      case Database.cancel_account_deletion(account, socket.assigns.subject) do
         {:ok, updated_account} ->
           {:noreply, assign(socket, account: updated_account, error: nil)}
 
@@ -442,7 +443,7 @@ defmodule PortalWeb.Settings.Account do
           scheduled_deletion_at: DateTime.add(DateTime.utc_now(), 7, :day)
         }
 
-        case Database.schedule_account_deletion(account, attrs) do
+        case Database.schedule_account_deletion(account, attrs, socket.assigns.subject) do
           {:ok, updated_account} ->
             {:noreply,
              assign(socket,
@@ -471,60 +472,60 @@ defmodule PortalWeb.Settings.Account do
     alias Portal.Actor
     alias Portal.Client
 
-    @spec cancel_account_deletion(Account.t()) ::
+    @spec cancel_account_deletion(Account.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
-    def cancel_account_deletion(%Account{} = account) do
+    def cancel_account_deletion(%Account{} = account, subject) do
       account
       |> cast(%{disabled_at: nil, scheduled_deletion_at: nil}, [
         :disabled_at,
         :scheduled_deletion_at
       ])
-      |> Safe.unscoped()
+      |> Safe.scoped(subject)
       |> Safe.update()
     end
 
-    @spec schedule_account_deletion(Account.t(), map()) ::
+    @spec schedule_account_deletion(Account.t(), map(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
-    def schedule_account_deletion(%Account{} = account, attrs) do
+    def schedule_account_deletion(%Account{} = account, attrs, subject) do
       account
       |> cast(attrs, [:disabled_at, :scheduled_deletion_at])
-      |> Safe.unscoped()
+      |> Safe.scoped(subject)
       |> Safe.update()
     end
 
-    def count_account_admin_users_for_account(%Account{} = account) do
+    @spec count_account_admin_users_for_account(Portal.Authentication.Subject.t()) :: integer()
+    def count_account_admin_users_for_account(subject) do
       from(a in Actor,
-        where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.scoped(subject, :replica)
       |> Safe.aggregate(:count)
     end
 
-    def count_service_accounts_for_account(%Account{} = account) do
+    @spec count_service_accounts_for_account(Portal.Authentication.Subject.t()) :: integer()
+    def count_service_accounts_for_account(subject) do
       from(a in Actor,
-        where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type == :service_account
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.scoped(subject, :replica)
       |> Safe.aggregate(:count)
     end
 
-    def count_users_for_account(%Account{} = account) do
+    @spec count_users_for_account(Portal.Authentication.Subject.t()) :: integer()
+    def count_users_for_account(subject) do
       from(a in Actor,
-        where: a.account_id == ^account.id,
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.scoped(subject, :replica)
       |> Safe.aggregate(:count)
     end
 
-    def count_1m_active_users_for_account(%Account{} = account) do
+    @spec count_1m_active_users_for_account(Portal.Authentication.Subject.t()) :: integer()
+    def count_1m_active_users_for_account(subject) do
       from(c in Client, as: :clients)
-      |> where([clients: c], c.account_id == ^account.id)
       |> join(:inner, [clients: c], s in Portal.ClientSession,
         on: s.client_id == c.id and s.account_id == c.account_id,
         as: :session
@@ -538,16 +539,16 @@ defmodule PortalWeb.Settings.Account do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped(:replica)
+      |> Safe.scoped(subject, :replica)
       |> Safe.aggregate(:count)
     end
 
-    def count_groups_for_account(account) do
+    @spec count_groups_for_account(Portal.Authentication.Subject.t()) :: integer()
+    def count_groups_for_account(subject) do
       from(g in Portal.Site,
-        where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.scoped(subject, :replica)
       |> Safe.aggregate(:count)
     end
   end
