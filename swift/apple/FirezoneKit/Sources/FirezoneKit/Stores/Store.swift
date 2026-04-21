@@ -175,6 +175,12 @@ public final class Store: ObservableObject {
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
+      do {
+        try await LoginItemManager.sync(startOnLogin: configuration.startOnLogin)
+      } catch {
+        Log.error(error)
+      }
+
       await startupSequence()
       await initNotifications()
     }

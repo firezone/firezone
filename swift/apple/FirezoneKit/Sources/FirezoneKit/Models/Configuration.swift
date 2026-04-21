@@ -7,11 +7,6 @@
 
 import Combine
 import Foundation
-import Sentry
-
-#if os(macOS)
-  import ServiceManagement
-#endif
 
 @MainActor
 public class Configuration: ObservableObject {
@@ -144,30 +139,8 @@ public class Configuration: ObservableObject {
     )
   }
 
-  #if os(macOS)
-    // Register / unregister our launch service based on configuration.
-    func updateAppService() async throws {
-      // Getting the status initially appears to be blocking sometimes
-      SentrySDK.pauseAppHangTracking()
-      defer { SentrySDK.resumeAppHangTracking() }
-      let status = SMAppService.mainApp.status
-
-      if !startOnLogin, status == .enabled {
-        try await SMAppService.mainApp.unregister()
-        return
-      }
-
-      if startOnLogin, status != .enabled {
-        try SMAppService.mainApp.register()
-      }
-    }
-  #endif
-
   private func handleUserDefaultsChanged() {
-    #if os(macOS)
-      // This is idempotent
-      Task { do { try await updateAppService() } }
-    #endif
+    Task { do { try await LoginItemManager.sync(startOnLogin: startOnLogin) } }
 
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
