@@ -558,6 +558,11 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery, upstream_do53: &[UpstreamDo53]) {
+        if self.is_dynamic_device_pool_dns_query(query) {
+            self.expect_dns_response(query);
+            return;
+        }
+
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
@@ -609,6 +614,12 @@ impl RefClient {
                     .push_back((query.dns_server.clone(), query.query_id));
             }
         }
+    }
+
+    fn is_dynamic_device_pool_dns_query(&mut self, query: &DnsQuery) -> bool {
+        self.resources.iter().any(|r| {
+            matches!(r, Resource::DynamicDevicePool(dp) if dns::is_subdomain(&query.domain, &dp.address))
+        })
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
