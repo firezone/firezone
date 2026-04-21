@@ -436,7 +436,7 @@ mod tests {
 
     use crate::{
         IceConfig, RelaySocket,
-        node::{ConnectionState, SelectedRelay, SessionId, allocations::Allocations},
+        node::{ConnectionState, SelectedRelay, allocations::Allocations},
     };
     use stun_codec::rfc5389::attributes::{Realm, Username};
 
@@ -528,7 +528,6 @@ mod tests {
             "pass".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
         // Simulate a successful response so the relay is eligible for sampling.
         allocations

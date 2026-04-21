@@ -24,7 +24,6 @@ use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
-use hex_display::HexDisplayExt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
@@ -33,7 +32,6 @@ use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
-use sha2::Digest;
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -87,7 +85,6 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 pub struct Node<TId, RId> {
     private_key: StaticSecret,
     public_key: PublicKey,
-    session_id: SessionId,
 
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -184,7 +181,6 @@ where
 
         Self {
             rng,
-            session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
             index,
@@ -240,7 +236,6 @@ where
             HANDSHAKE_RATE_LIMIT,
             now,
         ));
-        self.session_id = SessionId::new(self.public_key);
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
@@ -697,15 +692,10 @@ where
                 continue;
             };
 
-            match self.allocations.upsert(
-                *rid,
-                *server,
-                username,
-                password.clone(),
-                realm,
-                now,
-                self.session_id.clone(),
-            ) {
+            match self
+                .allocations
+                .upsert(*rid, *server, username, password.clone(), realm, now)
+            {
                 allocations::UpsertResult::Added => {
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
@@ -2006,28 +1996,6 @@ fn new_agent(role: IceRole) -> IceAgent {
     agent.set_timing_advance(Duration::ZERO);
 
     agent
-}
-
-/// A session ID is constant for as long as a [`Node`] is operational.
-#[derive(Debug, Default, Clone)]
-pub(crate) struct SessionId([u8; 32]);
-
-impl SessionId {
-    /// Construct a new session ID by hashing the node's public key with a domain-separator.
-    fn new(key: PublicKey) -> Self {
-        Self(
-            sha2::Sha256::new_with_prefix(b"SESSION-ID")
-                .chain_update(key.as_bytes())
-                .finalize()
-                .into(),
-        )
-    }
-}
-
-impl fmt::Display for SessionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:X}", &self.0.hex())
-    }
 }
 
 #[cfg(test)]
