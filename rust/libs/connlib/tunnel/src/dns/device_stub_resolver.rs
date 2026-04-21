@@ -101,6 +101,19 @@ impl DeviceStubResolver {
             .resolved
             .extract_if(.., |_, entry| entry.resource_id == id)
         {}
+
+        // Cancel any in-flight portal queries for this resource with SERVFAIL,
+        // so clients waiting on them don't hang until the query timeout.
+        for ((_, domain), pending) in self.pending.extract_if(|(rid, _), _| *rid == id) {
+            tracing::debug!(%domain, "Pending device pool DNS query cancelled; returning SERVFAIL");
+
+            self.events.push_back(Event::SendResponse {
+                local: pending.local,
+                remote: pending.remote,
+                transport: pending.transport,
+                response: dns_types::Response::servfail(&pending.query),
+            });
+        }
     }
 
     /// Processes a DNS query against the device pool patterns.
@@ -502,6 +515,30 @@ mod tests {
             now,
         );
         assert!(matches!(s, ResolveStrategy::Pending));
+    }
+
+    #[test]
+    fn removing_resource_cancels_pending_queries_with_servfail() {
+        let mut resolver = DeviceStubResolver::default();
+        let rid = ResourceId::from_u128(1);
+
+        resolver.add_resource(rid, POOL_PATTERN.to_owned());
+        resolver.handle_query(
+            &query(POOL_DOMAIN, dns_types::RecordType::A),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Udp,
+            Instant::now(),
+        );
+        resolver.poll_event();
+
+        resolver.remove_resource(rid);
+
+        let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
+            panic!("expected SendResponse event")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
+        assert!(resolver.poll_event().is_none());
     }
 
     #[test]
