@@ -518,32 +518,27 @@ impl ReferenceState {
                     )
                 },
             )
-            .with_if_not_empty(
-                1,
-                state.device_pool_query_targets(),
-                |targets| {
-                    sample::select(targets).prop_flat_map(|(client_id, resource, dns_server)| {
-                        let base = resource.address.trim_start_matches("*.").to_owned();
+            .with_if_not_empty(1, state.device_pool_query_targets(), |targets| {
+                sample::select(targets).prop_flat_map(|(client_id, resource, dns_server)| {
+                    let base = resource.address.trim_start_matches("*.").to_owned();
 
-                        // Randomly-generated label exercises the not-found path
-                        // — the stub portal returns `FailReason::NotFound`.
-                        dns_queries(
-                            (
-                                domain_label().prop_map(move |label| {
-                                    format!("{label}.{base}").parse().unwrap()
-                                }),
-                                Just(vec![RecordType::A]),
-                            ),
-                            Just(dns_server),
+                    // Randomly-generated label exercises the not-found path
+                    // — the stub portal returns `FailReason::NotFound`.
+                    dns_queries(
+                        (
+                            domain_label()
+                                .prop_map(move |label| format!("{label}.{base}").parse().unwrap()),
+                            Just(vec![RecordType::A]),
+                        ),
+                        Just(dns_server),
+                    )
+                    .prop_map(move |queries| {
+                        Transition::SendDnsQueries(
+                            queries.into_iter().map(|q| (client_id, q)).collect(),
                         )
-                        .prop_map(move |queries| {
-                            Transition::SendDnsQueries(
-                                queries.into_iter().map(|q| (client_id, q)).collect(),
-                            )
-                        })
                     })
-                },
-            )
+                })
+            })
             .with_if_not_empty(
                 1,
                 state.resolved_ip4_for_non_resources(&state.global_dns_records, now),
