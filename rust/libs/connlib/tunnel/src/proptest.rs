@@ -11,7 +11,9 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+use crate::client::{
+    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
+};
 
 pub fn resource(
     sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
@@ -77,6 +79,16 @@ pub fn internet_resource(
         name: "Internet Resource".to_string(),
         id,
         sites,
+    })
+}
+
+pub fn dynamic_device_pool_resource() -> impl Strategy<Value = DynamicDevicePoolResource> {
+    (resource_id(), resource_name(), domain_name(2..4)).prop_map(|(id, name, base_domain)| {
+        DynamicDevicePoolResource {
+            id,
+            name,
+            address: format!("*.{base_domain}"),
+        }
     })
 }
 
