@@ -637,14 +637,16 @@ mod tests {
             domain: "device-42.laptops.example.com".to_owned(),
         };
 
-        let json = serde_json::to_value(&msg).unwrap();
+        let actual = serde_json::to_value(&msg).unwrap();
+        let expected = serde_json::json!({
+            "event": "resolve_device_pool_domain",
+            "payload": {
+                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "domain": "device-42.laptops.example.com",
+            }
+        });
 
-        assert_eq!(json["event"], "resolve_device_pool_domain");
-        assert_eq!(
-            json["payload"]["resource_id"],
-            "b2c3d4e5-f6a7-8901-bcde-f12345678901"
-        );
-        assert_eq!(json["payload"]["domain"], "device-42.laptops.example.com");
+        assert_eq!(actual, expected);
     }
 
     #[test]
