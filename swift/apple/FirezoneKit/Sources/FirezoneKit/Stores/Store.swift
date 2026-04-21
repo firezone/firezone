@@ -199,6 +199,7 @@ public final class Store: ObservableObject {
     }
 
     public func quitApp() {
+      SharedAccess.clearAppRunning()
       Task {
         do { try await stop() } catch { Log.error(error) }
         NSApp.terminate(nil)
@@ -375,6 +376,7 @@ public final class Store: ObservableObject {
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.maybeMigrateConfiguration()
       self.vpnConfigurationManager = manager
+      SharedAccess.markAppRunning()
     } else {
       self.vpnStatus = .invalid
     }
@@ -396,6 +398,7 @@ public final class Store: ObservableObject {
     )
 
     try await setupTunnelObservers()
+    SharedAccess.markAppRunning()
   }
 
   func manager() throws -> VPNConfigurationManager {
