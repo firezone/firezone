@@ -30,12 +30,7 @@ use std::{
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
-    clients: BTreeMap<ClientId, (Ipv4Addr, Ipv6Addr)>,
-    /// Label under which each client is registered as a device in dynamic device pools.
-    ///
-    /// In production the portal maps each device to a tunnel IP; in the test harness
-    /// we assign one stable label per client (e.g. `device-0`) and use it for all pools.
-    device_labels: BTreeMap<ClientId, String>,
+    clients: BTreeMap<ClientId, StubClient>,
     gateways_by_site: BTreeMap<SiteId, BTreeSet<(GatewayId, Ipv4Addr, Ipv6Addr)>>,
 
     #[debug(skip)]
@@ -53,6 +48,17 @@ pub(crate) struct StubPortal {
 
     #[debug(skip)]
     gateway_selector: Selector,
+}
+
+#[derive(Clone, Debug)]
+struct StubClient {
+    ipv4: Ipv4Addr,
+    ipv6: Ipv6Addr,
+    /// Label under which this client is registered as a device in dynamic device pools.
+    ///
+    /// In production the portal maps each device to a tunnel IP; in the test harness
+    /// we assign one stable label per client (e.g. `device0`) and use it for all pools.
+    device_label: String,
 }
 
 impl StubPortal {
@@ -114,17 +120,19 @@ impl StubPortal {
         let mut tunnel_ip4s = tunnel_ip4s();
         let mut tunnel_ip6s = tunnel_ip6s();
 
-        let (clients, device_labels): (BTreeMap<_, _>, BTreeMap<_, _>) = clients
+        let clients = clients
             .into_iter()
             .enumerate()
             .map(|(idx, id)| {
-                let client_tunnel_ipv4 = tunnel_ip4s.next().unwrap();
-                let client_tunnel_ipv6 = tunnel_ip6s.next().unwrap();
-                let label = format!("device{idx}");
+                let client = StubClient {
+                    ipv4: tunnel_ip4s.next().unwrap(),
+                    ipv6: tunnel_ip6s.next().unwrap(),
+                    device_label: format!("device{idx}"),
+                };
 
-                ((id, (client_tunnel_ipv4, client_tunnel_ipv6)), (id, label))
+                (id, client)
             })
-            .unzip();
+            .collect();
 
         let gateways_by_site = gateways_by_site
             .into_iter()
@@ -145,7 +153,6 @@ impl StubPortal {
 
         Self {
             clients,
-            device_labels,
             gateways_by_site,
             gateway_selector,
             sites_by_resource: BTreeMap::from_iter(
@@ -163,7 +170,10 @@ impl StubPortal {
 
     /// All device labels the portal knows about, in client order.
     pub(crate) fn device_labels(&self) -> Vec<String> {
-        self.device_labels.values().cloned().collect()
+        self.clients
+            .values()
+            .map(|c| c.device_label.clone())
+            .collect()
     }
 
     /// Resolves a device-pool domain (e.g. `device0.pool.example.com`) to the
@@ -171,14 +181,12 @@ impl StubPortal {
     pub(crate) fn resolve_device_pool_domain(&self, domain: &str) -> Option<Ipv4Addr> {
         let label = domain.split_once('.')?.0;
 
-        let (client_id, _) = self
-            .device_labels
-            .iter()
-            .find(|(_, candidate)| candidate.as_str() == label)?;
+        let client = self
+            .clients
+            .values()
+            .find(|c| c.device_label.as_str() == label)?;
 
-        let (ipv4, _) = self.clients.get(client_id)?;
-
-        Some(*ipv4)
+        Some(client.ipv4)
     }
 
     pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
@@ -395,10 +403,15 @@ impl StubPortal {
     {
         self.clients
             .iter()
-            .map(|(id, (ipv4, ipv6))| {
+            .map(|(id, client)| {
                 (
                     Just(*id),
-                    ref_client_host(*id, Just(*ipv4), Just(*ipv6), system_dns.clone()),
+                    ref_client_host(
+                        *id,
+                        Just(client.ipv4),
+                        Just(client.ipv6),
+                        system_dns.clone(),
+                    ),
                 )
             })
             .collect::<Vec<_>>()

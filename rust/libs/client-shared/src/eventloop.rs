@@ -20,8 +20,9 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates, EgressMessages,
-    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
+    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
+    FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -587,15 +588,35 @@ impl Eventloop {
                     Instant::now(),
                 );
             }
-            IngressMessages::DevicePoolDomainResolved(resolved) => {
-                tunnel
-                    .state_mut()
-                    .handle_device_pool_domain_resolved(resolved);
+            IngressMessages::DevicePoolDomainResolved(DevicePoolDomainResolved {
+                resource_id,
+                domain,
+                ipv4,
+            }) => {
+                let Some(domain) = parse_portal_domain(&domain) else {
+                    return Ok(());
+                };
+                tunnel.state_mut().handle_device_pool_domain_resolved(
+                    resource_id,
+                    domain,
+                    Ok(ipv4),
+                );
             }
-            IngressMessages::DevicePoolDomainResolutionFailed(failed) => {
-                tunnel
-                    .state_mut()
-                    .handle_device_pool_domain_resolution_failed(failed);
+            IngressMessages::DevicePoolDomainResolutionFailed(
+                DevicePoolDomainResolutionFailed {
+                    resource_id,
+                    domain,
+                    reason,
+                },
+            ) => {
+                let Some(domain) = parse_portal_domain(&domain) else {
+                    return Ok(());
+                };
+                tunnel.state_mut().handle_device_pool_domain_resolved(
+                    resource_id,
+                    domain,
+                    Err(reason),
+                );
             }
         }
 
@@ -737,4 +758,13 @@ async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) ->
         .unwrap_or_default();
 
     iter::empty().chain(udp_ips).chain(etc_hosts_ips).collect()
+}
+
+fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
+    domain
+        .parse()
+        .inspect_err(|e| {
+            tracing::warn!(%domain, "Portal sent malformed device pool domain: {}", logging::err_with_src(e));
+        })
+        .ok()
 }

@@ -1246,32 +1246,13 @@ impl TunnelTest {
             } => {
                 let client = self.clients.get_mut(&src).unwrap();
 
-                let domain_str = domain.to_string();
-                match portal.resolve_device_pool_domain(&domain_str) {
-                    Some(ipv4) => {
-                        client.exec_mut(|c| {
-                            c.sut.handle_device_pool_domain_resolved(
-                                crate::messages::client::DevicePoolDomainResolved {
-                                    resource_id,
-                                    domain: domain_str,
-                                    ipv4,
-                                },
-                            );
-                        });
-                    }
-                    None => {
-                        client.exec_mut(|c| {
-                            c.sut.handle_device_pool_domain_resolution_failed(
-                                crate::messages::client::DevicePoolDomainResolutionFailed {
-                                    resource_id,
-                                    domain: domain_str,
-                                    reason:
-                                        crate::messages::client::FailReason::NotFound,
-                                },
-                            );
-                        });
-                    }
-                }
+                let result = portal
+                    .resolve_device_pool_domain(&domain.to_string())
+                    .ok_or(crate::messages::client::FailReason::NotFound);
+                client.exec_mut(|c| {
+                    c.sut
+                        .handle_device_pool_domain_resolved(resource_id, domain, result);
+                });
 
                 Ok(())
             }

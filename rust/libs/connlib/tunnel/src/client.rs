@@ -25,7 +25,6 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
-use crate::messages::client::{DevicePoolDomainResolutionFailed, DevicePoolDomainResolved};
 use crate::messages::{
     IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
@@ -290,35 +289,14 @@ impl ClientState {
             .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
     }
 
-    pub fn handle_device_pool_domain_resolved(&mut self, resolved: DevicePoolDomainResolved) {
-        let DevicePoolDomainResolved {
-            resource_id,
-            domain,
-            ipv4,
-        } = resolved;
-        let Some(domain) = parse_portal_domain(&domain) else {
-            return;
-        };
-        self.device_stub_resolver
-            .handle_device_domain_resolved(resource_id, domain, Ok(ipv4));
-        self.drain_device_stub_resolver_events();
-    }
-
-    pub fn handle_device_pool_domain_resolution_failed(
+    pub fn handle_device_pool_domain_resolved(
         &mut self,
-        failed: DevicePoolDomainResolutionFailed,
+        resource_id: ResourceId,
+        domain: DomainName,
+        result: Result<Ipv4Addr, FailReason>,
     ) {
-        let DevicePoolDomainResolutionFailed {
-            resource_id,
-            domain,
-            reason,
-        } = failed;
-        let Some(domain) = parse_portal_domain(&domain) else {
-            return;
-        };
         self.device_stub_resolver
-            .handle_device_domain_resolved(resource_id, domain, Err(reason));
-        self.drain_device_stub_resolver_events();
+            .handle_device_domain_resolved(resource_id, domain, result);
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -2111,15 +2089,6 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
-}
-
-fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
-    domain
-        .parse()
-        .inspect_err(|e| {
-            tracing::warn!(%domain, "Portal sent malformed device pool domain: {}", logging::err_with_src(e));
-        })
-        .ok()
 }
 
 fn encapsulate_and_buffer(
