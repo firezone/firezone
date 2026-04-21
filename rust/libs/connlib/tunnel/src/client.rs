@@ -1239,7 +1239,8 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events(now);
-        self.drain_stub_resolver_events();
+        self.drain_resource_stub_resolver_events();
+        self.drain_device_stub_resolver_events();
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
@@ -1247,7 +1248,6 @@ impl ClientState {
 
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
-        self.drain_device_stub_resolver_events();
     }
 
     /// Advance the DNS server and client state machines.
@@ -1535,7 +1535,7 @@ impl ClientState {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
-                self.drain_stub_resolver_events();
+                self.drain_resource_stub_resolver_events();
                 self.dns_cache.insert(message.domain(), &response, now);
 
                 return Some(response);
@@ -1735,7 +1735,7 @@ impl ClientState {
         }
     }
 
-    fn drain_stub_resolver_events(&mut self) {
+    fn drain_resource_stub_resolver_events(&mut self) {
         while let Some(resource_stub_resolver::Event::RecordsChanged(records)) =
             self.resource_stub_resolver.poll_event()
         {
@@ -1956,7 +1956,7 @@ impl ClientState {
             self.log_activating_resource(&new_resource);
         }
 
-        self.drain_stub_resolver_events();
+        self.drain_resource_stub_resolver_events();
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
