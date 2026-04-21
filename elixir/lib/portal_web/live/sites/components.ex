@@ -218,17 +218,17 @@ defmodule PortalWeb.Sites.Components do
           <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
             Gateways
           </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-            {@online_count}<span class="text-[var(--text-muted)] font-normal">/{@site.health_threshold}</span>
+          <span class="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">
+            {@online_count}<span class="text-[var(--text-tertiary)] font-normal"> online / </span>
+            {@site.health_threshold} <span class="text-[var(--text-tertiary)] font-normal"> required</span>
           </span>
-          <span class="text-[10px] text-[var(--text-muted)]">online</span>
         </div>
         <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
         <div class="flex items-center gap-1.5">
           <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
             Resources
           </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
+          <span class="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">
             {@resource_count}
           </span>
         </div>
