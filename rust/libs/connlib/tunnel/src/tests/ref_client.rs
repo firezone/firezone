@@ -596,13 +596,6 @@ impl RefClient {
             .or_default()
             .insert(query.r_type);
 
-        // Device pool queries are intercepted locally and never reach an
-        // upstream DNS server, so we do not record an expected handshake
-        // nor trigger any resource connections.
-        if self.is_dynamic_device_pool_dns_query(&query.domain) {
-            return;
-        }
-
         match query.transport {
             DnsTransport::Udp { local_port } => {
                 self.expected_udp_dns_handshakes.push_back((
@@ -616,12 +609,6 @@ impl RefClient {
                     .push_back((query.dns_server.clone(), query.query_id));
             }
         }
-    }
-
-    fn is_dynamic_device_pool_dns_query(&self, domain: &DomainName) -> bool {
-        self.resources.iter().any(|r| {
-            matches!(r, Resource::DynamicDevicePool(dp) if dns::is_subdomain(domain, &dp.address))
-        })
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
