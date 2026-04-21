@@ -202,17 +202,6 @@ where
         }
     }
 
-    /// Resets this [`Node`].
-    ///
-    /// # Implementation note
-    ///
-    /// This also clears all [`Allocation`]s.
-    /// An [`Allocation`] on a TURN server is identified by the client's 3-tuple (IP, port, protocol).
-    /// Thus, clearing the [`Allocation`]'s state here without closing it means we won't be able to make a new one until:
-    /// - it times out
-    /// - we change our IP or port
-    ///
-    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
     pub fn reset(&mut self, now: Instant) {
         self.allocations.reset(now);
         self.buffered_transmits.clear();
