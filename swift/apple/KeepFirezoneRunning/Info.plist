@@ -20,6 +20,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>FirezoneAppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
+	<key>FirezoneMainAppBundleIdentifier</key>
+	<string>$(MAIN_APP_BUNDLE_ID)</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSPrincipalClass</key>

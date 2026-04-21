@@ -3,6 +3,7 @@ import Foundation
 
 private enum Constants {
   static let appGroupIdentifierInfoKey = "FirezoneAppGroupIdentifier"
+  static let mainAppBundleIdentifierInfoKey = "FirezoneMainAppBundleIdentifier"
   static let applicationSupportFolderName = "Application Support"
   static let keepAppRunningSentinelFileName = ".running"
   static let mainAppPathEnvironmentVariable = "KEEP_FIREZONE_RUNNING_MAIN_APP_PATH"
@@ -152,11 +153,7 @@ final class KeepFirezoneRunningAppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private var mainAppBundleIdentifier: String? {
-    guard let mainAppURL else {
-      return nil
-    }
-
-    return Bundle(url: mainAppURL)?.bundleIdentifier
+    Bundle.main.object(forInfoDictionaryKey: Constants.mainAppBundleIdentifierInfoKey) as? String
   }
 
   private var runningSentinelURL: URL? {
