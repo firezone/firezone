@@ -1217,6 +1217,9 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.dns_cache.handle_timeout(now);
+        self.device_stub_resolver.handle_timeout(now);
+
         self.drain_node_events(now);
         self.drain_resource_stub_resolver_events();
         self.drain_device_stub_resolver_events();
@@ -1224,9 +1227,6 @@ impl ClientState {
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
         self.reset_offline_site_status(now);
-
-        self.dns_cache.handle_timeout(now);
-        self.device_stub_resolver.handle_timeout(now);
     }
 
     /// Advance the DNS server and client state machines.
