@@ -293,23 +293,124 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Grant access"
       assert html =~ group.name
 
-      html = render_click(lv, "select_grant_group", %{"group_id" => group.id})
+      html = render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
       assert html =~ group.name
 
       html =
         lv
-        |> form("#grant-form", policy: %{group_id: group.id})
+        |> form("#grant-form")
         |> render_submit()
 
       assert html =~ "Groups with access"
       assert html =~ group.name
       assert html =~ ">1<"
+      assert Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
 
       html = render_click(lv, "open_grant_form")
       assert html =~ "Grant access"
 
       html = render_click(lv, "close_grant_form")
       assert html =~ "Groups with access"
+    end
+
+    test "grants access to multiple groups at once", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group1 = group_fixture(account: account, name: "Team Alpha")
+      group2 = group_fixture(account: account, name: "Team Beta")
+      group3 = group_fixture(account: account, name: "Team Gamma")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "open_grant_form")
+      render_click(lv, "toggle_grant_group", %{"group_id" => group1.id})
+      render_click(lv, "toggle_grant_group", %{"group_id" => group2.id})
+      render_click(lv, "toggle_grant_group", %{"group_id" => group3.id})
+
+      lv |> form("#grant-form") |> render_submit()
+
+      assert Repo.get_by!(Policy, resource_id: resource.id, group_id: group1.id)
+      assert Repo.get_by!(Policy, resource_id: resource.id, group_id: group2.id)
+      assert Repo.get_by!(Policy, resource_id: resource.id, group_id: group3.id)
+    end
+
+    test "cannot select more than 5 groups", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      groups =
+        for i <- 1..6 do
+          group_fixture(account: account, name: "Select Group #{i}")
+        end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "open_grant_form")
+
+      for group <- Enum.take(groups, 5) do
+        render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+      end
+
+      html = render(lv)
+      assert html =~ "5 / 5"
+
+      sixth = Enum.at(groups, 5)
+      html = render_click(lv, "toggle_grant_group", %{"group_id" => sixth.id})
+
+      assert html =~ "5 / 5"
+    end
+
+    test "toggling a selected group deselects it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Toggled Group")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "open_grant_form")
+
+      html = render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+      assert html =~ "1 / 5"
+
+      html = render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+      assert html =~ "0 / 5"
+    end
+
+    test "already-granted groups are not shown in available list", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Already Granted Group")
+      _policy = policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+
+      refute html =~ "Already Granted Group"
     end
 
     test "disables, enables, and removes group access", %{

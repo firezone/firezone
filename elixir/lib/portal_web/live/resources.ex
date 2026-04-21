@@ -180,7 +180,7 @@ defmodule PortalWeb.Resources do
         available_groups: [],
         providers: [],
         timezone: base_resource_panel(socket).timezone,
-        grant_group_id: nil,
+        grant_selected_group_ids: [],
         grant_form: nil,
         grant_search: "",
         location_search: "",
@@ -824,21 +824,49 @@ defmodule PortalWeb.Resources do
     {:noreply, merge_state(socket, :resource_grant, location_values: updated)}
   end
 
-  def handle_event("select_grant_group", %{"group_id" => group_id}, socket) do
-    {:noreply, merge_state(socket, :resource_grant, grant_group_id: group_id)}
+  def handle_event("toggle_grant_group", %{"group_id" => group_id}, socket) do
+    selected = socket.assigns.resource_grant.grant_selected_group_ids
+
+    updated =
+      if group_id in selected do
+        List.delete(selected, group_id)
+      else
+        if length(selected) < 5 do
+          selected ++ [group_id]
+        else
+          selected
+        end
+      end
+
+    {:noreply, merge_state(socket, :resource_grant, grant_selected_group_ids: updated)}
   end
 
-  def handle_event("submit_grant", %{"policy" => params}, socket) do
+  def handle_event("submit_grant", params, socket) do
     resource = socket.assigns.selected_resource
+    selected_group_ids = socket.assigns.resource_grant.grant_selected_group_ids
+    policy_params = Map.get(params, "policy", %{})
 
-    attrs =
-      params
-      |> Map.put("resource_id", resource.id)
+    condition_attrs =
+      policy_params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
 
-    case Database.insert_policy(attrs, socket.assigns.subject) do
-      {:ok, _policy} ->
+    result =
+      Enum.reduce_while(selected_group_ids, :ok, fn group_id, :ok ->
+        attrs =
+          Map.merge(condition_attrs, %{
+            "resource_id" => resource.id,
+            "group_id" => group_id
+          })
+
+        case Database.insert_policy(attrs, socket.assigns.subject) do
+          {:ok, _policy} -> {:cont, :ok}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+      end)
+
+    case result do
+      :ok ->
         groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
 
         {:noreply,

@@ -1232,9 +1232,6 @@ defmodule PortalWeb.Resources.Components do
         </button>
         <span class="text-xs font-semibold text-[var(--text-primary)]">Grant access</span>
       </div>
-      <span class="text-xs text-[var(--text-tertiary)]">
-        {length(@available_groups)} available
-      </span>
     </div>
     <.form
       for={@grant_form}
@@ -1242,104 +1239,134 @@ defmodule PortalWeb.Resources.Components do
       id="grant-form"
       class="flex-1 flex flex-col overflow-hidden"
     >
-      <input type="hidden" name="policy[group_id]" value={@grant_group_id} />
       <div class="flex-1 overflow-y-auto">
         <div class="px-5 py-4 space-y-5">
           <div>
             <label class="block text-xs font-medium text-[var(--text-secondary)] mb-2">
-              Group <span class="text-[var(--status-error)]">*</span>
+              Groups <span class="text-[var(--status-error)]">*</span>
             </label>
-            <div class="relative mb-2">
-              <.icon
-                name="remix-search-line"
-                class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
-              />
-              <input
-                type="text"
-                placeholder="Filter groups…"
-                value={@grant_search}
-                phx-keyup="search_grant_groups"
-                phx-debounce="200"
-                class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
-              />
-            </div>
-            <% filtered_groups =
-              if @grant_search == "" do
-                Enum.take(@available_groups, 5)
-              else
-                @available_groups
-                |> Enum.filter(fn g ->
-                  String.contains?(
-                    String.downcase(g.name),
-                    String.downcase(@grant_search)
-                  )
-                end)
-                |> Enum.take(5)
-              end
-              selected_group =
-                @grant_group_id &&
-                  Enum.find(@available_groups, &(&1.id == @grant_group_id))
-              filtered_groups =
-                if selected_group && not Enum.any?(filtered_groups, &(&1.id == selected_group.id)) do
-                  [selected_group | filtered_groups]
+            <% filtered_available =
+              @available_groups
+              |> Enum.reject(&(&1.id in @grant_selected_group_ids))
+              |> then(fn groups ->
+                if @grant_search == "" do
+                  groups
                 else
-                  filtered_groups
-                end %>
-            <ul class="space-y-1">
-              <li :for={group <- filtered_groups}>
-                <button
-                  type="button"
-                  phx-click="select_grant_group"
-                  phx-value-group_id={group.id}
-                  class={[
-                    "flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border cursor-pointer transition-colors",
-                    if @grant_group_id == group.id do
-                      "border-[var(--brand)] bg-[var(--brand-muted)]"
-                    else
-                      "border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)]"
-                    end
-                  ]}
-                >
-                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                    <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4" />
+                  Enum.filter(groups, fn g ->
+                    String.contains?(
+                      String.downcase(g.name),
+                      String.downcase(@grant_search)
+                    )
+                  end)
+                end
+              end)
+              selected_groups =
+                Enum.filter(@available_groups, &(&1.id in @grant_selected_group_ids))
+              at_max = length(@grant_selected_group_ids) >= 5 %>
+            <div class="flex gap-2 h-52">
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Available
+                  </span>
+                  <span class="text-[10px] text-[var(--text-muted)]">
+                    {length(filtered_available)}
+                  </span>
+                </div>
+                <div class="px-2 pt-1.5 shrink-0">
+                  <div class="relative">
+                    <.icon
+                      name="remix-search-line"
+                      class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search…"
+                      value={@grant_search}
+                      phx-keyup="search_grant_groups"
+                      phx-debounce="200"
+                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                    />
                   </div>
-                  <div class="flex-1 min-w-0">
-                    <p class={[
-                      "text-sm font-medium truncate transition-colors",
-                      if(@grant_group_id == group.id,
-                        do: "text-[var(--brand)]",
-                        else: "text-[var(--text-primary)]"
-                      )
-                    ]}>
-                      {group.name}
-                    </p>
-                  </div>
-                  <.icon
-                    :if={@grant_group_id == group.id}
-                    name="remix-check-line"
-                    class="w-4 h-4 text-[var(--brand)] shrink-0"
-                  />
-                </button>
-              </li>
-            </ul>
-            <div
-              :if={@available_groups == []}
-              class="flex items-center justify-center h-24 text-sm text-[var(--text-tertiary)]"
-            >
-              All groups already have access.
+                </div>
+                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+                  <li :for={group <- filtered_available}>
+                    <button
+                      type="button"
+                      phx-click="toggle_grant_group"
+                      phx-value-group_id={group.id}
+                      disabled={at_max}
+                      class={[
+                        "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
+                        if at_max do
+                          "opacity-40 cursor-not-allowed"
+                        else
+                          "hover:bg-[var(--surface)] cursor-pointer"
+                        end
+                      ]}
+                    >
+                      <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                        <.provider_icon type={provider_type_from_group(group)} class="w-3 h-3" />
+                      </div>
+                      <span class="text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+                    </button>
+                  </li>
+                  <li
+                    :if={@available_groups == []}
+                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                  >
+                    All groups already have access.
+                  </li>
+                  <li
+                    :if={@available_groups != [] && filtered_available == []}
+                    class="flex items-center justify-center h-12 text-xs text-[var(--text-tertiary)]"
+                  >
+                    No groups match.
+                  </li>
+                </ul>
+              </div>
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Selected
+                  </span>
+                  <span class={[
+                    "text-[10px] font-medium",
+                    if(length(@grant_selected_group_ids) >= 5,
+                      do: "text-[var(--status-warning)]",
+                      else: "text-[var(--text-muted)]"
+                    )
+                  ]}>
+                    {length(@grant_selected_group_ids)} / 5
+                  </span>
+                </div>
+                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+                  <li :for={group <- selected_groups}>
+                    <button
+                      type="button"
+                      phx-click="toggle_grant_group"
+                      phx-value-group_id={group.id}
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors cursor-pointer group"
+                    >
+                      <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                        <.provider_icon type={provider_type_from_group(group)} class="w-3 h-3" />
+                      </div>
+                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+                      <.icon
+                        name="remix-close-line"
+                        class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                      />
+                    </button>
+                  </li>
+                  <li
+                    :if={selected_groups == []}
+                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                  >
+                    No groups selected.
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div
-              :if={@available_groups != [] && filtered_groups == []}
-              class="flex items-center justify-center h-16 text-sm text-[var(--text-tertiary)]"
-            >
-              No groups match your search.
-            </div>
-            <p
-              :if={length(@available_groups) > 5 && filtered_groups != []}
-              class="mt-2 text-center text-[10px] text-[var(--text-muted)]"
-            >
-              Showing {length(filtered_groups)} of {length(@available_groups)} — type to narrow results
-            </p>
           </div>
           <div class="border-t border-[var(--border)] pt-4">
             <div class="flex items-center justify-between mb-3">
@@ -1417,7 +1444,7 @@ defmodule PortalWeb.Resources.Components do
         </button>
         <button
           type="submit"
-          disabled={is_nil(@grant_group_id)}
+          disabled={@grant_selected_group_ids == []}
           class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Grant access
