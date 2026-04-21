@@ -143,7 +143,7 @@ mod tests {
     use connlib_model::{IpStack, ResourceId};
     use dns_types::{RecordType, ResponseCode, records};
 
-    use crate::dns::{ResolveStrategy, ResourceStubResolver};
+    use crate::dns::{ResourceStubResolver, resource_stub_resolver::ResolveStrategy};
 
     use super::*;
 

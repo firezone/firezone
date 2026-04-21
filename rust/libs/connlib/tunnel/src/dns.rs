@@ -4,7 +4,7 @@ pub(crate) mod device_stub_resolver;
 pub(crate) mod resource_stub_resolver;
 
 pub(crate) use device_stub_resolver::DeviceStubResolver;
-pub(crate) use resource_stub_resolver::{ResolveStrategy, ResourceStubResolver};
+pub(crate) use resource_stub_resolver::ResourceStubResolver;
 
 pub use pattern::Pattern;
 pub use resource_stub_resolver::DnsResourceRecord;

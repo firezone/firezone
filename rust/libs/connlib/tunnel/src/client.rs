@@ -1445,7 +1445,7 @@ impl ClientState {
         };
 
         match self.resource_stub_resolver.handle_query(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
+            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
                 if response.response_code() == ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
                 {
@@ -1470,10 +1470,10 @@ impl ClientState {
 
                 self.buffered_packets.extend(maybe_packet);
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            resource_stub_resolver::ResolveStrategy::RecurseLocal => {
                 tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
             }
-            dns::ResolveStrategy::RecurseSite(_) => {
+            resource_stub_resolver::ResolveStrategy::RecurseSite(_) => {
                 tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
             }
         }
@@ -1511,7 +1511,7 @@ impl ClientState {
         }
 
         match self.resource_stub_resolver.handle_query(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
+            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
                 self.drain_resource_stub_resolver_events();
@@ -1519,7 +1519,7 @@ impl ClientState {
 
                 return Some(response);
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            resource_stub_resolver::ResolveStrategy::RecurseLocal => {
                 if let Some(upstream) = self.should_forward_dns_query_to_gateway(&upstream) {
                     self.forward_dns_query_to_new_upstream_via_tunnel(
                         local, remote, upstream, message, transport, now,
@@ -1538,7 +1538,7 @@ impl ClientState {
                     transport,
                 });
             }
-            dns::ResolveStrategy::RecurseSite(resource) => {
+            resource_stub_resolver::ResolveStrategy::RecurseSite(resource) => {
                 let Some((_, gateway)) =
                     peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
                 else {
