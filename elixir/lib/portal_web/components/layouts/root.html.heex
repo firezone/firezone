@@ -28,8 +28,14 @@
     <script nonce={@csp_nonce}>
       if (localStorage.theme === "dark") {
         document.documentElement.classList.add("dark");
-      } else if (!localStorage.theme && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        document.documentElement.classList.add("dark");
+        document.documentElement.dataset.theme = "dark";
+      } else if (localStorage.theme === "light") {
+        document.documentElement.dataset.theme = "light";
+      } else {
+        document.documentElement.dataset.theme = "system";
+        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          document.documentElement.classList.add("dark");
+        }
       }
     </script>
     <script

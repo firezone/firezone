@@ -27,17 +27,64 @@ defmodule PortalWeb.NavigationComponents do
         >
           Status
         </a>
-        <button
-          id="theme-toggle"
-          phx-hook="ThemeToggle"
-          type="button"
-          class="p-2 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-          title="Toggle dark mode"
-          aria-label="Toggle dark mode"
-        >
-          <.icon name="remix-moon-line" class="w-4 h-4 dark:hidden" />
-          <.icon name="remix-sun-line" class="w-4 h-4 hidden dark:block" />
-        </button>
+        <div id="theme-toggle" phx-hook="ThemeToggle" class="relative">
+          <button
+            type="button"
+            id="theme-toggle-button"
+            data-dropdown-toggle="theme-dropdown"
+            data-dropdown-placement="bottom-end"
+            class="p-2 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            aria-label="Change theme"
+            aria-haspopup="true"
+          >
+            <.icon name="remix-sun-line" class="theme-icon-light w-4 h-4" />
+            <.icon name="remix-moon-line" class="theme-icon-dark w-4 h-4" />
+            <.icon name="remix-computer-line" class="theme-icon-system w-4 h-4" />
+          </button>
+          <div
+            id="theme-dropdown"
+            class="hidden z-50 w-36 text-sm bg-[var(--surface-overlay)] rounded shadow-sm border border-[var(--border)]"
+          >
+            <ul class="py-1" role="listbox" aria-label="Theme">
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  data-theme-option="system"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                >
+                  <.icon name="remix-computer-line" class="w-4 h-4 shrink-0" />
+                  <span>System</span>
+                  <.icon name="hero-check" class="theme-check-system w-3 h-3 ml-auto shrink-0" />
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  data-theme-option="light"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                >
+                  <.icon name="remix-sun-line" class="w-4 h-4 shrink-0" />
+                  <span>Light</span>
+                  <.icon name="hero-check" class="theme-check-light w-3 h-3 ml-auto shrink-0" />
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  data-theme-option="dark"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                >
+                  <.icon name="remix-moon-line" class="w-4 h-4 shrink-0" />
+                  <span>Dark</span>
+                  <.icon name="hero-check" class="theme-check-dark w-3 h-3 ml-auto shrink-0" />
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
         <.dropdown id="user-menu">
           <:button>
             <span class="sr-only">Open user menu</span>

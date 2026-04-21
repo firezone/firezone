@@ -88,6 +88,27 @@ html {
   --badge-device-pool-text: #0F766E;
 }
 
+/* Theme toggle: show only the icon/checkmark matching the active theme */
+.theme-icon-light,
+.theme-icon-dark,
+.theme-icon-system {
+  display: none;
+}
+
+html[data-theme="light"] .theme-icon-light { display: inline-block; }
+html[data-theme="dark"] .theme-icon-dark { display: inline-block; }
+html[data-theme="system"] .theme-icon-system { display: inline-block; }
+
+.theme-check-light,
+.theme-check-dark,
+.theme-check-system {
+  display: none;
+}
+
+html[data-theme="light"] .theme-check-light { display: inline-block; }
+html[data-theme="dark"] .theme-check-dark { display: inline-block; }
+html[data-theme="system"] .theme-check-system { display: inline-block; }
+
 .dark {
   --canvas: #080C14;
   --surface: #0F1623;
