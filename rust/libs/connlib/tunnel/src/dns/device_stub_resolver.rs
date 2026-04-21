@@ -170,7 +170,7 @@ impl DeviceStubResolver {
         };
         let pending = entry.value;
 
-        tracing::debug!(%resource_id, %domain, ?result, "Device pool domain resolved");
+        tracing::debug!(%resource_id, %domain, ?result, "Device FQDN resolved");
 
         let response = match result {
             Ok(ipv4) => {
