@@ -11,7 +11,6 @@ import UserNotifications
 
 #if os(macOS)
   import AppKit
-  import ServiceManagement
 #endif
 
 @MainActor
@@ -180,6 +179,14 @@ public final class Store: ObservableObject {
       } catch {
         Log.error(error)
       }
+
+      #if os(macOS)
+        do {
+          try await LaunchServicesManager.sync(forceReregistration: true)
+        } catch {
+          Log.error(error)
+        }
+      #endif
 
       await startupSequence()
       await initNotifications()
