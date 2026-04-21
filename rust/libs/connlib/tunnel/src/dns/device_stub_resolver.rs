@@ -147,6 +147,8 @@ impl DeviceStubResolver {
             .is_none();
 
         if is_new {
+            tracing::debug!(%domain, "Querying portal for device FQDN");
+
             self.events.push_back(Event::QueryDomain {
                 resource_id,
                 domain,
