@@ -216,6 +216,7 @@ jobs:
             "Connection closed proactively \(sent goodbye\)"
             "New device access authorized"
             "Malicious client: ignoring resource filter"
+            "Device pool domain resolved"
           )
 
           missing_patterns=$(
