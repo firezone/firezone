@@ -50,46 +50,6 @@ env = { CARGO_PROFILE_TEST_OPT_LEVEL = "1", PROPTEST_CASES = "10000", PROPTEST_M
 raw = true
 run = "cargo test tunnel_test --features proptest -- --nocapture"
 
-# This task is particularly useful to purposely find a regression seed for a certain failure scenario that
-# we want to hit. The corresponding CI job performs a log-based coverage check to ensure that.
-[tasks.tunnel-proptest-x16]
-description = "Run tunnel-proptest 16 times in parallel, aborting all on first failure"
-dir = "libs/connlib/tunnel"
-env = { CARGO_PROFILE_TEST_OPT_LEVEL = "1", PROPTEST_CASES = "10000", PROPTEST_MAX_SHRINK_ITERS = "100" }
-raw = true
-run = """
-#!/usr/bin/env bash
-# `set -m` puts each `&`-backgrounded cargo in its own process group so we can
-# signal the whole subtree (cargo + test binary) via `kill -TERM -$pgid`.
-set -muo pipefail
-
-mv proptest-regressions/tests.txt proptest-regressions/tests.txt.bak
-
-# Build once up-front so the 16 parallel `cargo test` invocations don't
-# serialize on the target-dir lock.
-cargo test tunnel_test --features proptest --no-run
-
-pids=()
-
-cleanup() {
-    for pid in "${pids[@]}"; do
-        kill -TERM -"$pid" 2>/dev/null || true
-    done
-    wait 2>/dev/null || true
-}
-trap cleanup EXIT
-trap 'exit 130' INT TERM
-
-for _ in $(seq 16); do
-    cargo test tunnel_test --features proptest -- --nocapture &
-    pids+=($!)
-done
-
-for _ in "${pids[@]}"; do
-    wait -n || exit 1
-done
-"""
-
 # =============================================================================
 # Composite tasks
 # =============================================================================

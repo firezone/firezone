@@ -176,63 +176,54 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: ripgrep,cargo-llvm-cov
+          tool: cargo-llvm-cov
       - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: bpf-linker
       - name: Tunnel proptest
+        id: proptest
         shell: bash
-        run: cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic
+        run: cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic 2>&1 | tee proptest.log
         env:
           PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
           PROPTEST_CASES: 256
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
-      - name: Check coverage
+          TUNNEL_TEST_ENFORCE_COVERAGE: 1 # Fail the test if we don't hit all intended codepaths.
+
+      - name: Extract missing coverage patterns
+        id: missing
+        if: failure()
         shell: bash
         run: |
-          # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
-          patterns=(
-            "SendIcmpPacket"
-            "SendUdpPacket"
-            "ConnectTcp"
-            "SendDnsQueries"
-            "Packet for DNS resource"
-            "Packet for CIDR resource"
-            "Packet for Internet resource"
-            "Truncating DNS response"
-            "ICMP Error error=V4Unreachable"
-            "ICMP Error error=V6Unreachable"
-            "ICMP Error error=V4TimeExceeded"
-            "ICMP Error error=V6TimeExceeded"
-            "Forwarding query for DNS resource to corresponding site"
-            "Revoking resource authorization"
-            "Re-seeding records for DNS resources"
-            "Resource is known but its addressability changed"
-            "No A / AAAA records for domain"
-            "State change \(got new possible\): Disconnected -> Checking"
-            "Initiating graceful shutdown"
-            "Connection closed proactively \(sent goodbye\)"
-            "New device access authorized"
-            "Malicious client: ignoring resource filter"
-          )
-
-          missing_patterns=$(
-            for pattern in "${patterns[@]}"; do
-              if ! rg --quiet --no-ignore "$pattern" "$TESTCASES_DIR"; then
-                echo "$pattern"
-              fi
-            done
-          )
-
-          if [ -n "$missing_patterns" ]; then
-            echo "Error: Some required patterns were not found in test logs:"
-            echo "$missing_patterns"
-            exit 1
+          missing=$(sed -n '/^TUNNEL_TEST_MISSING_PATTERNS_BEGIN$/,/^TUNNEL_TEST_MISSING_PATTERNS_END$/p' proptest.log | sed '1d;$d')
+          if [ -n "$missing" ]; then
+            {
+              echo "patterns<<EOF"
+              echo "$missing"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "Missing coverage patterns:" >&2
+            echo "$missing" >&2
           fi
+
+      - name: Harvest regression seeds for missing coverage
+        if: failure() && steps.missing.outputs.patterns != ''
+        timeout-minutes: 25
+        shell: bash
         env:
-          TESTCASES_DIR: "libs/connlib/tunnel/testcases"
+          PROPTEST_VERBOSE: 0
+        run: |
+          mapfile -t patterns <<< "${{ steps.missing.outputs.patterns }}"
+          cargo run -p tunnel-proptest-harvester -- "${patterns[@]}"
+      - name: Upload harvested seeds
+        if: failure() && steps.missing.outputs.patterns != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proptest-harvest-seeds
+          path: rust/libs/connlib/tunnel/harvest-output/
+          if-no-files-found: warn
 
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
