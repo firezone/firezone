@@ -255,6 +255,55 @@ defmodule PortalWeb.PoliciesTest do
   end
 
   describe ":conditions" do
+    test "saves time-of-day condition to DB", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "current_utc_datetime"})
+      render_click(lv, "start_add_tod_range")
+
+      lv
+      |> element("input[name='_tod_on']")
+      |> render_change(%{"_tod_on" => "09:00"})
+
+      lv
+      |> element("input[name='_tod_off']")
+      |> render_change(%{"_tod_off" => "17:00"})
+
+      render_click(lv, "toggle_tod_pending_day", %{"day" => "M"})
+      render_click(lv, "toggle_tod_pending_day", %{"day" => "T"})
+      render_click(lv, "confirm_tod_range")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            description: "With TOD condition"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+
+      assert Enum.any?(
+               policy.conditions,
+               &(&1.property == :current_utc_datetime and
+                   "M/09:00-17:00/UTC" in &1.values and
+                   "T/09:00-17:00/UTC" in &1.values)
+             )
+    end
+
     test "removes a condition from edit form", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -293,6 +342,66 @@ defmodule PortalWeb.PoliciesTest do
 
       html = render_click(lv, "change_auth_provider_operator", %{"operator" => "is_not_in"})
       assert html =~ "is not in"
+    end
+
+    test "manages time-of-day conditions via add range form", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      html = render_click(lv, "add_condition", %{"type" => "current_utc_datetime"})
+
+      assert html =~ "Add range"
+      refute html =~ ~s(type="time")
+
+      html = render_click(lv, "start_add_tod_range")
+      assert html =~ ~s(type="time")
+      assert html =~ ~s(name="_tod_on")
+      assert html =~ ~s(name="_tod_off")
+
+      for code <- ["M", "T", "W", "R", "F", "S", "U"] do
+        assert html =~ ~s(phx-value-day="#{code}")
+      end
+    end
+
+    test "renders time-of-day condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :current_utc_datetime,
+              operator: :is_in_day_of_week_time_ranges,
+              values: ["M/09:30-17:45/America/New_York"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ ~s(value="09:30")
+      assert html =~ ~s(value="17:45")
     end
 
     test "manages location conditions", %{conn: conn, account: account, actor: actor} do

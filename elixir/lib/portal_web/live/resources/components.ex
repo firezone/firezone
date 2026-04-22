@@ -1423,6 +1423,10 @@ defmodule PortalWeb.Resources.Components do
                 ip_range_input={@ip_range_input}
                 auth_provider_operator={@auth_provider_operator}
                 auth_provider_values={@auth_provider_values}
+                tod_values={@tod_values}
+                tod_adding={@tod_adding?}
+                tod_pending={@tod_pending}
+                tod_pending_error={@tod_pending_error}
               />
             </div>
           </div>

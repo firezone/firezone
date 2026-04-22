@@ -13,6 +13,8 @@ defmodule PortalWeb.Policies do
 
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
   alias __MODULE__.Database
+
+  @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
   import Ecto.Changeset
   import Portal.Changeset
 
@@ -355,7 +357,10 @@ defmodule PortalWeb.Policies do
       panel_ip_range_input: assigns.policy_conditions.ip_range_input,
       panel_auth_provider_operator: assigns.policy_conditions.auth_provider_operator,
       panel_auth_provider_values: assigns.policy_conditions.auth_provider_values,
-      panel_tod_values: assigns.policy_conditions.tod_values
+      panel_tod_values: assigns.policy_conditions.tod_values,
+      panel_tod_adding: assigns.policy_conditions.tod_adding?,
+      panel_tod_pending: assigns.policy_conditions.tod_pending,
+      panel_tod_pending_error: assigns.policy_conditions.tod_pending_error
     }
   end
 
@@ -385,7 +390,10 @@ defmodule PortalWeb.Policies do
         ip_range_input: "",
         auth_provider_operator: "is_in",
         auth_provider_values: [],
-        tod_values: %{}
+        tod_values: [],
+        tod_adding?: false,
+        tod_pending: @tod_pending_empty,
+        tod_pending_error: nil
       },
       policy_confirm: %{
         disable?: false,
@@ -654,6 +662,73 @@ defmodule PortalWeb.Policies do
      )}
   end
 
+  def handle_event("start_add_tod_range", _params, socket) do
+    {:noreply, merge_state(socket, :policy_conditions, tod_adding?: true, tod_pending: @tod_pending_empty)}
+  end
+
+  def handle_event("cancel_tod_range", _params, socket) do
+    {:noreply, merge_state(socket, :policy_conditions, tod_adding?: false, tod_pending: @tod_pending_empty, tod_pending_error: nil)}
+  end
+
+  def handle_event("toggle_tod_pending_day", %{"day" => day}, socket) do
+    {:noreply,
+     update(socket, :policy_conditions, fn conditions ->
+       days = conditions.tod_pending["days"]
+       updated = if day in days, do: List.delete(days, day), else: days ++ [day]
+       Map.put(conditions, :tod_pending, Map.put(conditions.tod_pending, "days", updated))
+     end)}
+  end
+
+  def handle_event("confirm_tod_range", _params, socket) do
+    pending = socket.assigns.policy_conditions.tod_pending
+    on = pending["on"] || ""
+    off = pending["off"] || ""
+    days = pending["days"] || []
+
+    cond do
+      days == [] or on == "" or off == "" ->
+        {:noreply, merge_state(socket, :policy_conditions, tod_pending_error: "Must choose day, on-time, and off-time")}
+
+      not valid_tod_range?(on, off) ->
+        {:noreply, merge_state(socket, :policy_conditions, tod_pending_error: "End time must be after start time")}
+
+      true ->
+        {:noreply,
+         update(socket, :policy_conditions, fn conditions ->
+           conditions
+           |> Map.put(:tod_values, conditions.tod_values ++ [pending])
+           |> Map.put(:tod_adding?, false)
+           |> Map.put(:tod_pending, @tod_pending_empty)
+           |> Map.put(:tod_pending_error, nil)
+         end)}
+    end
+  end
+
+  def handle_event("remove_tod_range", %{"index" => index}, socket) do
+    index = String.to_integer(index)
+
+    {:noreply,
+     update(socket, :policy_conditions, fn conditions ->
+       Map.put(conditions, :tod_values, List.delete_at(conditions.tod_values, index))
+     end)}
+  end
+
+  def handle_event("change_tod_pending", params, socket) do
+    {:noreply,
+     update(socket, :policy_conditions, fn conditions ->
+       updates =
+         Map.take(params, ["_tod_on", "_tod_off"])
+         |> Map.new(fn
+           {"_tod_on", v} -> {"on", v}
+           {"_tod_off", v} -> {"off", v}
+         end)
+
+       conditions
+       |> Map.put(:tod_pending, Map.merge(conditions.tod_pending, updates))
+       |> Map.put(:tod_pending_error, nil)
+     end)}
+  end
+
   def handle_event("change_auth_provider_operator", %{"operator" => op}, socket) do
     {:noreply, merge_state(socket, :policy_conditions, auth_provider_operator: op)}
   end
@@ -759,7 +834,10 @@ defmodule PortalWeb.Policies do
         ip_range_input: "",
         auth_provider_operator: cond_op(auth, "is_in"),
         auth_provider_values: cond_values(auth),
-        tod_values: tod_values
+        tod_values: tod_values,
+        tod_adding?: false,
+        tod_pending: @tod_pending_empty,
+        tod_pending_error: nil
       }
     ]
 
@@ -768,15 +846,21 @@ defmodule PortalWeb.Policies do
       else: base
   end
 
-  @spec parse_tod_condition(map() | nil) :: {String.t() | nil, map()}
-  defp parse_tod_condition(nil), do: {nil, %{}}
+  @spec parse_tod_condition(map() | nil) ::
+          {String.t() | nil, [%{String.t() => term()}]}
+  defp parse_tod_condition(nil), do: {nil, []}
 
   defp parse_tod_condition(%{values: values}) do
     parsed =
       Enum.flat_map(values, fn v ->
         case String.split(v, "/", parts: 3) do
-          [day, ranges, tz] -> [{day, ranges, tz}]
-          _ -> []
+          [day, ranges_str, tz] ->
+            ranges_str
+            |> String.split(",")
+            |> Enum.map(&{day, String.trim(&1), tz})
+
+          _ ->
+            []
         end
       end)
 
@@ -786,8 +870,39 @@ defmodule PortalWeb.Policies do
         _ -> nil
       end
 
-    values_map = Map.new(parsed, fn {day, ranges, _tz} -> {day, ranges} end)
-    {timezone, values_map}
+    # Group entries by their time range so "M/09:00-17:00" + "T/09:00-17:00" → one range with days ["M","T"]
+    ranges =
+      parsed
+      |> Enum.reduce(%{}, fn
+        {day, "true", _tz}, acc ->
+          Map.update(acc, "00:00-23:59", [day], &(&1 ++ [day]))
+
+        {day, range_str, _tz}, acc ->
+          Map.update(acc, range_str, [day], &(&1 ++ [day]))
+      end)
+      |> Enum.map(fn {range_str, days} ->
+        case String.split(range_str, "-", parts: 2) do
+          [on_time, off_time] -> %{"on" => on_time, "off" => off_time, "days" => days}
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    {timezone, ranges}
+  end
+
+  @spec valid_tod_range?(String.t(), String.t()) :: boolean()
+  defp valid_tod_range?(on, off) do
+    with [on_h, on_m | _] <- String.split(on, ":"),
+         [off_h, off_m | _] <- String.split(off, ":"),
+         {on_h, ""} <- Integer.parse(on_h),
+         {on_m, ""} <- Integer.parse(on_m),
+         {off_h, ""} <- Integer.parse(off_h),
+         {off_m, ""} <- Integer.parse(off_m) do
+      on_h * 60 + on_m < off_h * 60 + off_m
+    else
+      _ -> false
+    end
   end
 
   defp cond_op(nil, default), do: default

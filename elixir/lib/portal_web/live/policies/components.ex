@@ -91,12 +91,25 @@ defmodule PortalWeb.Policies.Components do
          } = condition_attrs
        ) do
     Map.update(condition_attrs, "values", [], fn values ->
-      values
-      |> Enum.filter(fn {dow, _} -> dow in ["M", "T", "W", "R", "F", "S", "U"] end)
-      |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
-      |> Enum.map(fn {dow, time_ranges} ->
-        "#{dow}/#{time_ranges}/#{timezone}"
-      end)
+      day_ranges =
+        values
+        |> Enum.sort_by(fn {idx, _} -> String.to_integer(idx) end)
+        |> Enum.flat_map(fn
+          {_idx, %{"on" => on, "off" => off, "days" => days}}
+          when is_binary(on) and on != "" and is_binary(off) and off != "" ->
+            days
+            |> List.wrap()
+            |> Enum.filter(&(&1 in ["M", "T", "W", "R", "F", "S", "U"]))
+            |> Enum.map(&{&1, "#{on}-#{off}"})
+
+          _ ->
+            []
+        end)
+
+      day_ranges
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Enum.sort_by(fn {day, _} -> day_of_week_index(day) end)
+      |> Enum.map(fn {day, ranges} -> "#{day}/#{Enum.join(ranges, ",")}/#{timezone}" end)
     end)
   end
 
@@ -187,6 +200,9 @@ defmodule PortalWeb.Policies.Components do
         panel_auth_provider_operator={@panel_auth_provider_operator}
         panel_auth_provider_values={@panel_auth_provider_values}
         panel_tod_values={@panel_tod_values}
+        panel_tod_adding={@panel_tod_adding}
+        panel_tod_pending={@panel_tod_pending}
+        panel_tod_pending_error={@panel_tod_pending_error}
         mode={:new}
       />
 
@@ -209,6 +225,9 @@ defmodule PortalWeb.Policies.Components do
         panel_auth_provider_operator={@panel_auth_provider_operator}
         panel_auth_provider_values={@panel_auth_provider_values}
         panel_tod_values={@panel_tod_values}
+        panel_tod_adding={@panel_tod_adding}
+        panel_tod_pending={@panel_tod_pending}
+        panel_tod_pending_error={@panel_tod_pending_error}
         mode={:edit}
       />
 
@@ -240,7 +259,10 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_ip_range_input, :string, default: ""
   attr :panel_auth_provider_operator, :string, default: "is_in"
   attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :map, default: %{}
+  attr :panel_tod_values, :list, default: []
+  attr :panel_tod_adding, :boolean, default: false
+  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
+  attr :panel_tod_pending_error, :string, default: nil
   attr :mode, :atom, required: true
 
   def policy_form_view(assigns) do
@@ -271,6 +293,9 @@ defmodule PortalWeb.Policies.Components do
           panel_auth_provider_operator={@panel_auth_provider_operator}
           panel_auth_provider_values={@panel_auth_provider_values}
           panel_tod_values={@panel_tod_values}
+          panel_tod_adding={@panel_tod_adding}
+          panel_tod_pending={@panel_tod_pending}
+          panel_tod_pending_error={@panel_tod_pending_error}
         />
         <.policy_form_actions mode={@mode} />
       </.form>
@@ -315,7 +340,10 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_ip_range_input, :string, default: ""
   attr :panel_auth_provider_operator, :string, default: "is_in"
   attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :map, default: %{}
+  attr :panel_tod_values, :list, default: []
+  attr :panel_tod_adding, :boolean, default: false
+  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
+  attr :panel_tod_pending_error, :string, default: nil
 
   def policy_form_body(assigns) do
     ~H"""
@@ -338,6 +366,9 @@ defmodule PortalWeb.Policies.Components do
         panel_auth_provider_operator={@panel_auth_provider_operator}
         panel_auth_provider_values={@panel_auth_provider_values}
         panel_tod_values={@panel_tod_values}
+        panel_tod_adding={@panel_tod_adding}
+        panel_tod_pending={@panel_tod_pending}
+        panel_tod_pending_error={@panel_tod_pending_error}
       />
     </div>
     """
@@ -470,7 +501,10 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_ip_range_input, :string, default: ""
   attr :panel_auth_provider_operator, :string, default: "is_in"
   attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :map, default: %{}
+  attr :panel_tod_values, :list, default: []
+  attr :panel_tod_adding, :boolean, default: false
+  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
+  attr :panel_tod_pending_error, :string, default: nil
 
   def policy_conditions_section(assigns) do
     ~H"""
@@ -499,6 +533,9 @@ defmodule PortalWeb.Policies.Components do
           panel_auth_provider_operator={@panel_auth_provider_operator}
           panel_auth_provider_values={@panel_auth_provider_values}
           panel_tod_values={@panel_tod_values}
+          panel_tod_adding={@panel_tod_adding}
+          panel_tod_pending={@panel_tod_pending}
+          panel_tod_pending_error={@panel_tod_pending_error}
         />
       <% end %>
     </div>
@@ -550,7 +587,10 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_ip_range_input, :string, default: ""
   attr :panel_auth_provider_operator, :string, default: "is_in"
   attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :map, default: %{}
+  attr :panel_tod_values, :list, default: []
+  attr :panel_tod_adding, :boolean, default: false
+  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
+  attr :panel_tod_pending_error, :string, default: nil
 
   def policy_conditions_cards(assigns) do
     ~H"""
@@ -575,6 +615,9 @@ defmodule PortalWeb.Policies.Components do
         auth_provider_operator={@panel_auth_provider_operator}
         auth_provider_values={@panel_auth_provider_values}
         tod_values={@panel_tod_values}
+        tod_adding={@panel_tod_adding}
+        tod_pending={@panel_tod_pending}
+        tod_pending_error={@panel_tod_pending_error}
       />
     </div>
     """
@@ -1965,7 +2008,10 @@ defmodule PortalWeb.Policies.Components do
   attr :ip_range_input, :string, default: ""
   attr :auth_provider_operator, :string, default: "is_in"
   attr :auth_provider_values, :list, default: []
-  attr :tod_values, :map, default: %{}
+  attr :tod_values, :list, default: []
+  attr :tod_adding, :boolean, default: false
+  attr :tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
+  attr :tod_pending_error, :string, default: nil
 
   def grant_condition_card(assigns) do
     assigns = assign(assigns, :input_class, @condition_input_class)
@@ -2301,41 +2347,197 @@ defmodule PortalWeb.Policies.Components do
               {tz}
             </option>
           </select>
+          <%!-- Confirmed ranges: hidden inputs for submission + compact display row --%>
           <div class="space-y-1">
             <div
-              :for={
-                {code, name} <- [
-                  {"M", "Mon"},
-                  {"T", "Tue"},
-                  {"W", "Wed"},
-                  {"R", "Thu"},
-                  {"F", "Fri"},
-                  {"S", "Sat"},
-                  {"U", "Sun"}
-                ]
-              }
+              :for={{range, idx} <- Enum.with_index(@tod_values)}
               class="flex items-center gap-2"
             >
-              <span class="text-[10px] text-[var(--text-tertiary)] w-6 shrink-0">{name}</span>
               <input
-                type="text"
-                name={"policy[conditions][current_utc_datetime][values][#{code}]"}
-                id={"grant_cond_datetime_#{code}"}
-                value={Map.get(@tod_values, code, "")}
-                placeholder="off"
-                class={[
-                  "flex-1 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)]",
-                  "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                  "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
-                ]}
+                :for={day <- range["days"]}
+                type="hidden"
+                name={"policy[conditions][current_utc_datetime][values][#{idx}][days][]"}
+                value={day}
               />
+              <input
+                type="hidden"
+                name={"policy[conditions][current_utc_datetime][values][#{idx}][on]"}
+                value={range["on"]}
+              />
+              <input
+                type="hidden"
+                name={"policy[conditions][current_utc_datetime][values][#{idx}][off]"}
+                value={range["off"]}
+              />
+              <div class="flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-[var(--surface-raised)] border border-[var(--border)]">
+                <span class="text-[10px] font-medium text-[var(--text-primary)]">
+                  {format_tod_days(range["days"])}
+                </span>
+                <span class="text-[10px] font-medium text-[var(--text-primary)] tabular-nums shrink-0">
+                  {range["on"]} – {range["off"]}
+                </span>
+              </div>
+              <button
+                type="button"
+                phx-click="remove_tod_range"
+                phx-value-index={idx}
+                class="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-red-500 transition-colors"
+                title="Remove"
+              >
+                <.icon name="hero-x-mark" class="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
-          <p class="text-[10px] text-[var(--text-muted)]">24h format, e.g. 09:00-17:00</p>
+          <%!-- Add range form --%>
+          <div
+            :if={@tod_adding}
+            id="tod_add_row"
+            phx-hook="TimePicker"
+            class="space-y-1.5 p-2 rounded border border-[var(--border)] bg-[var(--surface)]"
+          >
+            <div class="flex flex-wrap gap-1">
+              <button
+                :for={
+                  {code, label} <- [
+                    {"M", "Mon"},
+                    {"T", "Tue"},
+                    {"W", "Wed"},
+                    {"R", "Thu"},
+                    {"F", "Fri"},
+                    {"S", "Sat"},
+                    {"U", "Sun"}
+                  ]
+                }
+                type="button"
+                phx-click="toggle_tod_pending_day"
+                phx-value-day={code}
+                class={[
+                  "px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors",
+                  if code in @tod_pending["days"] do
+                    "bg-[var(--brand)] border-[var(--brand)] text-white"
+                  else
+                    "bg-[var(--surface-raised)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  end
+                ]}
+              >
+                {label}
+              </button>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <div class="flex flex-col items-center gap-0.5">
+                <div class="flex">
+                  <input
+                    type="time"
+                    name="_tod_on"
+                    id="tod_pending_on"
+                    value={@tod_pending["on"]}
+                    phx-change="change_tod_pending"
+                    class={[
+                      "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
+                      "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                      "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
+                      "[&::-webkit-calendar-picker-indicator]:hidden"
+                    ]}
+                  />
+                  <button
+                    type="button"
+                    data-target="pending_on"
+                    class={[
+                      "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
+                      "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                      "hover:bg-[var(--surface)] transition-colors"
+                    ]}
+                    title="Pick start time"
+                  >
+                    <.icon name="hero-clock" class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <span class="text-[9px] text-[var(--text-muted)]">on</span>
+              </div>
+              <span class="text-[var(--text-muted)] text-xs pt-1">–</span>
+              <div class="flex flex-col items-center gap-0.5">
+                <div class="flex">
+                  <input
+                    type="time"
+                    name="_tod_off"
+                    id="tod_pending_off"
+                    value={@tod_pending["off"]}
+                    phx-change="change_tod_pending"
+                    class={[
+                      "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
+                      "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                      "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
+                      "[&::-webkit-calendar-picker-indicator]:hidden"
+                    ]}
+                  />
+                  <button
+                    type="button"
+                    data-target="pending_off"
+                    class={[
+                      "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
+                      "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                      "hover:bg-[var(--surface)] transition-colors"
+                    ]}
+                    title="Pick end time"
+                  >
+                    <.icon name="hero-clock" class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <span class="text-[9px] text-[var(--text-muted)]">off</span>
+              </div>
+            </div>
+            <p
+              :if={@tod_pending_error}
+              class="flex items-center gap-1 text-[10px] text-[var(--status-error)]"
+            >
+              <.icon name="remix-alert-line" class="w-3 h-3 shrink-0" />
+              {@tod_pending_error}
+            </p>
+            <div class="flex justify-end gap-1.5">
+              <button
+                type="button"
+                phx-click="cancel_tod_range"
+                class="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                phx-click="confirm_tod_range"
+                class="px-2 py-1 text-xs rounded bg-[var(--brand)] text-white hover:opacity-90 transition-opacity"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+          <button
+            :if={!@tod_adding}
+            type="button"
+            phx-click="start_add_tod_range"
+            class={[
+              "flex items-center justify-center gap-1 w-full px-2 py-1.5 rounded text-xs font-medium",
+              "border border-[var(--border-strong)] text-[var(--text-secondary)]",
+              "hover:border-[var(--brand)] hover:text-[var(--brand)] hover:bg-[var(--brand)]/5",
+              "transition-colors"
+            ]}
+          >
+            <.icon name="hero-plus" class="w-3.5 h-3.5" /> Add range
+          </button>
         </div>
       </div>
     </div>
     """
+  end
+
+  @tod_day_order ["M", "T", "W", "R", "F", "S", "U"]
+  @tod_day_names %{"M" => "Mon", "T" => "Tue", "W" => "Wed", "R" => "Thu", "F" => "Fri", "S" => "Sat", "U" => "Sun"}
+
+  @spec format_tod_days([String.t()]) :: String.t()
+  defp format_tod_days(days) do
+    days
+    |> Enum.sort_by(&Enum.find_index(@tod_day_order, fn d -> d == &1 end))
+    |> Enum.map(&Map.get(@tod_day_names, &1, &1))
+    |> Enum.join(", ")
   end
 
   defmodule Database do

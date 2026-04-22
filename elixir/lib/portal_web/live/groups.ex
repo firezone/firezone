@@ -445,6 +445,82 @@ defmodule PortalWeb.Groups do
     {:noreply, merge_state(socket, :grant_conditions, auth_provider_values: updated)}
   end
 
+  def handle_event("start_add_tod_range", _params, socket) do
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       tod_adding?: true,
+       tod_pending: %{"on" => "", "off" => "", "days" => []}
+     )}
+  end
+
+  def handle_event("cancel_tod_range", _params, socket) do
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       tod_adding?: false,
+       tod_pending: %{"on" => "", "off" => "", "days" => []},
+       tod_pending_error: nil
+     )}
+  end
+
+  def handle_event("toggle_tod_pending_day", %{"day" => day}, socket) do
+    {:noreply,
+     update(socket, :grant_conditions, fn cond ->
+       days = cond.tod_pending["days"]
+       updated = if day in days, do: List.delete(days, day), else: days ++ [day]
+       Map.put(cond, :tod_pending, Map.put(cond.tod_pending, "days", updated))
+     end)}
+  end
+
+  def handle_event("confirm_tod_range", _params, socket) do
+    pending = socket.assigns.grant_conditions.tod_pending
+    on = pending["on"] || ""
+    off = pending["off"] || ""
+    days = pending["days"] || []
+
+    cond do
+      days == [] or on == "" or off == "" ->
+        {:noreply, merge_state(socket, :grant_conditions, tod_pending_error: "Must choose day, on-time, and off-time")}
+
+      not valid_tod_range?(on, off) ->
+        {:noreply, merge_state(socket, :grant_conditions, tod_pending_error: "End time must be after start time")}
+
+      true ->
+        {:noreply,
+         update(socket, :grant_conditions, fn cond ->
+           cond
+           |> Map.put(:tod_values, cond.tod_values ++ [pending])
+           |> Map.put(:tod_adding?, false)
+           |> Map.put(:tod_pending, %{"on" => "", "off" => "", "days" => []})
+           |> Map.put(:tod_pending_error, nil)
+         end)}
+    end
+  end
+
+  def handle_event("remove_tod_range", %{"index" => index}, socket) do
+    index = String.to_integer(index)
+
+    {:noreply,
+     update(socket, :grant_conditions, fn cond ->
+       Map.put(cond, :tod_values, List.delete_at(cond.tod_values, index))
+     end)}
+  end
+
+  def handle_event("change_tod_pending", params, socket) do
+    {:noreply,
+     update(socket, :grant_conditions, fn cond ->
+       updates =
+         Map.take(params, ["_tod_on", "_tod_off"])
+         |> Map.new(fn
+           {"_tod_on", v} -> {"on", v}
+           {"_tod_off", v} -> {"off", v}
+         end)
+
+       cond
+       |> Map.put(:tod_pending, Map.merge(cond.tod_pending, updates))
+       |> Map.put(:tod_pending_error, nil)
+     end)}
+  end
+
   def handle_event("toggle_resource_access_actions", %{"resource_id" => id}, socket) do
     current = socket.assigns.group_resources.resource_access_actions_open_id
 
@@ -845,7 +921,11 @@ defmodule PortalWeb.Groups do
         ip_range_values: [],
         ip_range_input: "",
         auth_provider_operator: "is_in",
-        auth_provider_values: []
+        auth_provider_values: [],
+        tod_values: [],
+        tod_adding?: false,
+        tod_pending: %{"on" => "", "off" => "", "days" => []},
+        tod_pending_error: nil
       },
       Map.new(overrides)
     )
@@ -853,6 +933,20 @@ defmodule PortalWeb.Groups do
 
   defp merge_state(socket, key, updates) do
     update(socket, key, &Map.merge(&1, Map.new(updates)))
+  end
+
+  @spec valid_tod_range?(String.t(), String.t()) :: boolean()
+  defp valid_tod_range?(on, off) do
+    with [on_h, on_m | _] <- String.split(on, ":"),
+         [off_h, off_m | _] <- String.split(off, ":"),
+         {on_h, ""} <- Integer.parse(on_h),
+         {on_m, ""} <- Integer.parse(on_m),
+         {off_h, ""} <- Integer.parse(off_h),
+         {off_m, ""} <- Integer.parse(off_m) do
+      on_h * 60 + on_m < off_h * 60 + off_m
+    else
+      _ -> false
+    end
   end
 
   defp editable_group?(%{type: :managed, name: "Everyone"}), do: false
