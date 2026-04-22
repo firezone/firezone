@@ -109,7 +109,7 @@ impl Coverage {
             return;
         }
 
-        // Machine-readable block consumed by `scripts/harvest-seeds.sh`.
+        // Machine-readable block consumed by `tunnel-proptest-harvester`.
         // Emit before the panic message so it always reaches stderr.
         eprintln!("{MISSING_BEGIN}");
         for pattern in &missing {
@@ -126,7 +126,7 @@ impl Coverage {
         panic!(
             "Coverage check failed: the following log patterns were not observed \
              during the proptest run:\n{list}\n\n\
-             Run the `tunnel-proptest-harvest` task to generate regression seeds \
+             Run the `tunnel-proptest-harvester` binary to generate regression seeds \
              for the missing patterns and append them to \
              `proptest-regressions/tests.txt`.",
         );
