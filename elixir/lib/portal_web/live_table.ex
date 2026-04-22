@@ -8,6 +8,8 @@ defmodule PortalWeb.LiveTable do
   import PortalWeb.CoreComponents
   import PortalWeb.FormComponents
 
+  @page_size_values ["10", "25", "50"]
+
   @doc """
   A drop-in replacement of `PortalWeb.TableComponents.table/1` component that adds sorting, filtering and pagination.
   """
@@ -97,17 +99,7 @@ defmodule PortalWeb.LiveTable do
         >
           <div class="flex flex-col items-center gap-3 py-16">
             <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-              <svg
-                class="w-4 h-4 text-[var(--text-tertiary)]"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              >
-                <circle cx="7" cy="7" r="4.5" />
-                <path d="M10.5 10.5l3 3" />
-              </svg>
+              <.icon name="remix-search-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
             </div>
             <div class="text-center">
               <p class="text-sm font-medium text-[var(--text-primary)]">No results found</p>
@@ -121,17 +113,7 @@ defmodule PortalWeb.LiveTable do
               phx-value-filter={nil}
               class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
             >
-              <svg
-                class="w-3 h-3"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M1 2.5h10M3 6h6M5 9.5h2" />
-              </svg>
+              <.icon name="remix-filter-3-line" class="w-4 h-4" />
               Clear filters
             </button>
           </div>
@@ -273,16 +255,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <svg
-        class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-      >
-        <circle cx="7" cy="7" r="4.5" />
-        <path d="M10.5 10.5l3 3" stroke-linecap="round" />
-      </svg>
+      <.icon name="remix-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -311,16 +284,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <svg
-        class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-      >
-        <circle cx="7" cy="7" r="4.5" />
-        <path d="M10.5 10.5l3 3" stroke-linecap="round" />
-      </svg>
+      <.icon name="remix-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -442,68 +406,93 @@ defmodule PortalWeb.LiveTable do
   end
 
   def paginator(assigns) do
+    first_row = assigns.metadata.offset + 1
+    last_row = min(assigns.metadata.offset + assigns.rows_count, assigns.metadata.count)
+
+    assigns =
+      assign(assigns,
+        first_row: first_row,
+        last_row: last_row,
+        previous_page: page_from_offset(assigns.metadata.previous_offset, assigns.metadata.limit),
+        next_page: page_from_offset(assigns.metadata.next_offset, assigns.metadata.limit),
+        page_size_options: [{"10", 10}, {"25", 25}, {"50", 50}]
+      )
+
     ~H"""
     <div
       :if={@rows_count > 0}
       class="shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-[var(--border)] bg-[var(--surface-raised)] text-xs text-[var(--text-tertiary)]"
     >
-      <span>
-        Showing <span class="font-medium tabular-nums text-[var(--text-primary)]">{@rows_count}</span>
-        of <span class="font-medium tabular-nums text-[var(--text-primary)]">{@metadata.count}</span>
-      </span>
       <div class="flex items-center gap-4">
+        <.form
+          id={"#{@id}-pagination"}
+          for={%{}}
+          phx-change="change_limit"
+          phx-hook="PageSizePreference"
+          data-table-id={@id}
+          class="contents"
+        >
+          <input type="hidden" name="table_id" value={@id} />
+          <label class="flex items-center gap-2">
+            <span>Page Size</span>
+            <div class="relative">
+              <select
+                name="page_size"
+                class="appearance-none bg-none bg-[var(--surface)] border border-[var(--border)] rounded pl-2 pr-7 py-1 text-xs text-[var(--text-primary)] leading-5"
+              >
+                <option
+                  :for={{label, value} <- @page_size_options}
+                  value={value}
+                  selected={value == @metadata.limit}
+                >
+                  {label}
+                </option>
+              </select>
+              <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--text-tertiary)]">
+                <.icon name="remix-arrow-drop-down-line" class="w-4 h-4" />
+              </span>
+            </div>
+          </label>
+        </.form>
         <div class="flex items-center gap-0.5">
           <button
-            disabled={is_nil(@metadata.previous_page_cursor)}
+            disabled={is_nil(@metadata.previous_offset)}
             class={[
               "flex items-center justify-center w-7 h-7 rounded transition-colors",
               "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]",
               "disabled:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
             ]}
             phx-click="paginate"
-            phx-value-cursor={@metadata.previous_page_cursor}
+            phx-value-page={@previous_page}
             phx-value-table_id={@id}
           >
-            <svg
-              class="w-3.5 h-3.5"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M9 11L5 7l4-4" />
-            </svg>
+            <.icon name="remix-arrow-left-s-line" class="w-5 h-5" />
           </button>
           <button
-            disabled={is_nil(@metadata.next_page_cursor)}
+            disabled={is_nil(@metadata.next_offset)}
             class={[
               "flex items-center justify-center w-7 h-7 rounded transition-colors",
               "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]",
               "disabled:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
             ]}
             phx-click="paginate"
-            phx-value-cursor={@metadata.next_page_cursor}
+            phx-value-page={@next_page}
             phx-value-table_id={@id}
           >
-            <svg
-              class="w-3.5 h-3.5"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M5 3l4 4-4 4" />
-            </svg>
+            <.icon name="remix-arrow-right-s-line" class="w-5 h-5" />
           </button>
         </div>
       </div>
+      <span>
+        Showing <span class="font-medium tabular-nums text-[var(--text-primary)]">{@first_row}</span>-<span class="font-medium tabular-nums text-[var(--text-primary)]">{@last_row}</span>
+        of <span class="font-medium tabular-nums text-[var(--text-primary)]">{@metadata.count}</span>
+      </span>
     </div>
     """
   end
+
+  defp page_from_offset(nil, _limit), do: nil
+  defp page_from_offset(offset, limit), do: div(offset, limit) + 1
 
   @doc """
   Loads the initial state for a live table and persists it to the socket assigns.
@@ -514,7 +503,7 @@ defmodule PortalWeb.LiveTable do
     callback = Keyword.fetch!(opts, :callback)
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
-    limit = Keyword.get(opts, :limit, 10)
+    limit = default_page_size(socket, Keyword.get(opts, :limit, 10))
 
     # Note: we don't support nesting, :and or :where on the UI yet
     hidden_filters = Enum.map(enforce_filters, &elem(&1, 0)) ++ hide_filters
@@ -667,8 +656,8 @@ defmodule PortalWeb.LiveTable do
               )
           )
 
-        {:error, :invalid_cursor} ->
-          message = "The page was reset due to invalid pagination cursor."
+        {:error, :invalid_page} ->
+          message = "The page was reset due to invalid pagination page."
           reset_live_table_params(socket, id, message)
 
         {:error, {:unknown_filter, _metadata}} ->
@@ -687,6 +676,10 @@ defmodule PortalWeb.LiveTable do
           raise PortalWeb.LiveErrors.NotFoundError
       end
     else
+      {:error, :invalid_page} ->
+        message = "The page was reset due to invalid pagination page."
+        reset_live_table_params(socket, id, message)
+
       {:error, :invalid_filter} ->
         message = "The page was reset due to invalid pagination filter."
         reset_live_table_params(socket, id, message)
@@ -741,17 +734,49 @@ defmodule PortalWeb.LiveTable do
   defp preload_values(filter, _query_module, _subject),
     do: filter
 
+  defp default_page_size(socket, default) do
+    connect_params = Map.get(socket.private, :connect_params, %{})
+
+    case Map.get(connect_params, "page_size") do
+      val when val in @page_size_values -> String.to_integer(val)
+      _ -> default
+    end
+  end
+
   defp params_to_page(id, limit, params) do
     effective_limit =
-      case Map.get(params, "#{id}_limit") do
-        val when val in ["10", "25", "50"] -> String.to_integer(val)
+      case Map.get(params, "#{id}_page_size") || Map.get(params, "#{id}_limit") do
+        val when val in @page_size_values -> String.to_integer(val)
         _ -> limit
       end
 
-    if cursor = Map.get(params, "#{id}_cursor") do
-      {:ok, [cursor: cursor, limit: effective_limit]}
-    else
-      {:ok, [limit: effective_limit]}
+    case Map.get(params, "#{id}_page") do
+      nil -> legacy_params_to_page(id, effective_limit, params)
+      page -> page_to_offset(page, effective_limit)
+    end
+  end
+
+  defp legacy_params_to_page(id, effective_limit, params) do
+    case Map.get(params, "#{id}_offset") do
+      nil -> {:ok, [offset: 0, limit: effective_limit]}
+      offset -> offset_to_page(offset, effective_limit)
+    end
+  end
+
+  defp page_to_offset(page, effective_limit) do
+    case Integer.parse(page) do
+      {page, ""} when page >= 1 ->
+        {:ok, [offset: (page - 1) * effective_limit, limit: effective_limit]}
+
+      _other ->
+        {:error, :invalid_page}
+    end
+  end
+
+  defp offset_to_page(offset, effective_limit) do
+    case Integer.parse(offset) do
+      {offset, ""} when offset >= 0 -> {:ok, [offset: offset, limit: effective_limit]}
+      _other -> {:error, :invalid_page}
     end
   end
 
@@ -838,11 +863,12 @@ defmodule PortalWeb.LiveTable do
     {:noreply, push_patch(socket, to: path)}
   end
 
-  def handle_live_table_event("change_limit", %{"table_id" => id, "limit" => limit}, socket) do
+  def handle_live_table_event("change_limit", %{"table_id" => id, "page_size" => page_size}, socket) do
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
-      |> Map.put("#{id}_limit", limit)
+      |> delete_page_from_params(id)
+      |> delete_page_size_from_params(id)
+      |> Map.put("#{id}_page_size", page_size)
     end)
   end
 
@@ -850,9 +876,9 @@ defmodule PortalWeb.LiveTable do
     {:noreply, reload_live_table!(socket, id)}
   end
 
-  def handle_live_table_event("paginate", %{"table_id" => id, "cursor" => cursor}, socket) do
+  def handle_live_table_event("paginate", %{"table_id" => id, "page" => page}, socket) do
     update_query_params(socket, fn query_params ->
-      put_cursor_to_params(query_params, id, cursor)
+      put_page_to_params(query_params, id, page)
     end)
   end
 
@@ -866,7 +892,7 @@ defmodule PortalWeb.LiveTable do
 
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
+      |> delete_page_from_params(id)
       |> put_order_by_to_params(id, order_by)
     end)
   end
@@ -878,7 +904,7 @@ defmodule PortalWeb.LiveTable do
       ) do
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
+      |> delete_page_from_params(id)
       |> Map.reject(fn {key, _} -> String.starts_with?(key, "#{id}_filter[#{field}]") end)
     end)
   end
@@ -888,7 +914,7 @@ defmodule PortalWeb.LiveTable do
 
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
+      |> delete_page_from_params(id)
       |> put_filter_to_params(id, filter)
     end)
   end
@@ -912,12 +938,23 @@ defmodule PortalWeb.LiveTable do
     {:noreply, push_patch(socket, to: String.trim_trailing("#{path}?#{query}", "?"))}
   end
 
-  defp put_cursor_to_params(params, id, cursor) do
-    Map.put(params, "#{id}_cursor", cursor)
+  defp put_page_to_params(params, id, page) do
+    params
+    |> delete_page_from_params(id)
+    |> Map.put("#{id}_page", page)
   end
 
-  defp delete_cursor_from_params(params, id) do
-    Map.delete(params, "#{id}_cursor")
+  defp delete_page_from_params(params, id) do
+    params
+    |> Map.delete("#{id}_page")
+    |> Map.delete("#{id}_offset")
+    |> Map.delete("#{id}_cursor")
+  end
+
+  defp delete_page_size_from_params(params, id) do
+    params
+    |> Map.delete("#{id}_page_size")
+    |> Map.delete("#{id}_limit")
   end
 
   defp put_order_by_to_params(params, id, {assoc, direction, field}) do

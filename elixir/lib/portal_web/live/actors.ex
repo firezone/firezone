@@ -1182,6 +1182,7 @@ defmodule PortalWeb.Actors do
     alias Portal.Safe
     alias Portal.Directory
     alias Portal.Repo.Filter
+    alias Portal.Repo.OffsetPaginator
 
     def all do
       from(actors in Actor, as: :actors)
@@ -1199,6 +1200,11 @@ defmodule PortalWeb.Actors do
             actors.id
           )
       })
+    end
+
+    defp index_query do
+      from(actors in Actor, as: :actors)
+      |> where([actors: actors], actors.type != :api_client)
     end
 
     def cursor_fields do
@@ -1341,9 +1347,46 @@ defmodule PortalWeb.Actors do
     end
 
     def list_actors(subject, opts \\ []) do
-      all()
+      {filter, opts} = Keyword.pop(opts, :filter, [])
+      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+      {page_opts, _opts} = Keyword.pop(opts, :page, [])
+
+      with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, order_by, page_opts),
+           {:ok, filtered_query} <- Filter.filter(index_query(), __MODULE__, filter),
+           count when is_integer(count) <-
+             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+           actor_ids <- list_actor_ids(filtered_query, paginator_opts, subject),
+           {actor_ids, metadata} <- OffsetPaginator.metadata(actor_ids, paginator_opts) do
+        actors = fetch_actors_page(actor_ids, subject)
+        {:ok, actors, %{metadata | count: count}}
+      else
+        {:error, :unauthorized} = error -> error
+        {:error, _reason} = error -> error
+      end
+    end
+
+    defp list_actor_ids(filtered_query, paginator_opts, subject) do
+      filtered_query
+      |> select([actors: actors], actors.id)
+      |> OffsetPaginator.query(paginator_opts)
       |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, opts)
+      |> Safe.all()
+    end
+
+    defp fetch_actors_page([], _subject), do: []
+
+    defp fetch_actors_page(actor_ids, subject) do
+      actors =
+        all()
+        |> where([actors: actors], actors.id in ^actor_ids)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+
+      actors_by_id = Map.new(actors, &{&1.id, &1})
+
+      Enum.map(actor_ids, fn actor_id ->
+        Map.fetch!(actors_by_id, actor_id)
+      end)
     end
 
     def fetch_account(subject) do

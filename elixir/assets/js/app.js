@@ -16,21 +16,28 @@ import Hooks from "./hooks";
 import { ThemeToggle } from "./hooks/theme";
 import { SidebarCollapse } from "./hooks/sidebar_collapse";
 import { TimePicker } from "./hooks/time_picker";
+import {
+  PageSizePreference,
+  getPageSizePreference,
+} from "./hooks/page_size_preference";
 import "./event_listeners";
 
 Hooks.ThemeToggle = ThemeToggle;
 Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.TimePicker = TimePicker;
+Hooks.PageSizePreference = PageSizePreference;
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
+let pageSizePreference = getPageSizePreference();
 
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,
   params: {
     _csrf_token: csrfToken,
+    ...(pageSizePreference ? { page_size: pageSizePreference } : {}),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     locale: Intl.NumberFormat().resolvedOptions().locale,
   },

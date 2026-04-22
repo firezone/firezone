@@ -1340,7 +1340,7 @@ defmodule PortalWeb.Resources do
       from(resources in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
       |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, opts)
+      |> Safe.list_offset(__MODULE__, opts)
     end
 
     def count_policies_for_resources(resources, subject) do

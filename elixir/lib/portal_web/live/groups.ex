@@ -1126,16 +1126,18 @@ defmodule PortalWeb.Groups do
     alias Portal.Safe
     alias Portal.Directory
     alias Portal.Repo.Filter
+    alias Portal.Repo.OffsetPaginator
 
     def all do
+      index_query()
+      |> hydrate_group_query()
+    end
+
+    defp base_group_query do
       from(groups in Portal.Group, as: :groups)
     end
 
-    # Inlined from Portal.Actors.list_groups
-    def list_groups(subject, opts \\ []) do
-      # Extract order_by to handle member_count sorting specially
-      {order_by, opts} = Keyword.pop(opts, :order_by, [])
-
+    defp joined_group_query(query) do
       member_counts_query =
         from(m in Portal.Membership,
           group_by: m.group_id,
@@ -1155,48 +1157,64 @@ defmodule PortalWeb.Groups do
           }
         )
 
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:left, [groups: g], mc in subquery(member_counts_query),
-          on: mc.group_id == g.id,
-          as: :member_counts
-        )
-        |> join(:left, [groups: g], pc in subquery(policy_counts_query),
-          on: pc.group_id == g.id,
-          as: :policy_counts
-        )
-        |> join(:left, [groups: g], d in Directory,
-          on: d.id == g.directory_id and d.account_id == g.account_id,
-          as: :directory
-        )
-        |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
-          as: :google_directory
-        )
-        |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
-          as: :entra_directory
-        )
-        |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
-          as: :okta_directory
-        )
-        |> where(
-          [groups: g],
-          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-        )
-        |> select_merge([groups: g, member_counts: mc, policy_counts: pc, directory: d], %{
-          count: coalesce(mc.count, 0),
-          member_count: coalesce(mc.count, 0),
-          policy_count: coalesce(pc.count, 0),
-          directory_type: d.type
-        })
-        |> select_merge(
-          [google_directory: gd, entra_directory: ed, okta_directory: od],
-          %{
-            directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
-          }
-        )
+      query
+      |> join(:left, [groups: g], mc in subquery(member_counts_query),
+        on: mc.group_id == g.id,
+        as: :member_counts
+      )
+      |> join(:left, [groups: g], pc in subquery(policy_counts_query),
+        on: pc.group_id == g.id,
+        as: :policy_counts
+      )
+      |> join(:left, [groups: g], d in Directory,
+        on: d.id == g.directory_id and d.account_id == g.account_id,
+        as: :directory
+      )
+      |> join(:left, [directory: d], gd in Portal.Google.Directory,
+        on: gd.id == d.id and d.type == :google,
+        as: :google_directory
+      )
+      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+        on: ed.id == d.id and d.type == :entra,
+        as: :entra_directory
+      )
+      |> join(:left, [directory: d], od in Portal.Okta.Directory,
+        on: od.id == d.id and d.type == :okta,
+        as: :okta_directory
+      )
+    end
+
+    defp hydrate_group_query(query) do
+      query
+      |> select_merge([groups: g, member_counts: mc, policy_counts: pc, directory: d], %{
+        count: coalesce(mc.count, 0),
+        member_count: coalesce(mc.count, 0),
+        policy_count: coalesce(pc.count, 0),
+        directory_type: d.type
+      })
+      |> select_merge(
+        [google_directory: gd, entra_directory: ed, okta_directory: od],
+        %{
+          directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
+        }
+      )
+    end
+
+    defp index_query do
+      base_group_query()
+      |> joined_group_query()
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
+    end
+
+    # Inlined from Portal.Actors.list_groups
+    def list_groups(subject, opts \\ []) do
+      {filter, opts} = Keyword.pop(opts, :filter, [])
+      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+      {page_opts, _opts} = Keyword.pop(opts, :page, [])
+      base_query = index_query()
 
       # Apply manual ordering with NULLS LAST for count field
       {query, final_order_by} =
@@ -1204,7 +1222,7 @@ defmodule PortalWeb.Groups do
           [{:member_counts, :desc, :count}] ->
             # Apply ordering manually with NULLS LAST, don't pass to Safe.list
             updated_query =
-              query
+              base_query
               |> order_by([member_counts: mc], fragment("? DESC NULLS LAST", mc.count))
 
             {updated_query, []}
@@ -1212,19 +1230,53 @@ defmodule PortalWeb.Groups do
           [{:member_counts, :asc, :count}] ->
             # Apply ordering manually with NULLS FIRST, don't pass to Safe.list
             updated_query =
-              query
+              base_query
               |> order_by([member_counts: mc], fragment("? ASC NULLS FIRST", mc.count))
 
             {updated_query, []}
 
           _ ->
             # Let Safe.list handle the ordering normally
-            {query, order_by}
+            {base_query, order_by}
         end
 
-      query
+      with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, final_order_by, page_opts),
+           {:ok, filtered_query} <- Filter.filter(query, __MODULE__, filter),
+           count when is_integer(count) <-
+             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+           group_ids <- list_group_ids(filtered_query, paginator_opts, subject),
+           {group_ids, metadata} <- OffsetPaginator.metadata(group_ids, paginator_opts) do
+        groups = fetch_groups_page(group_ids, subject)
+        {:ok, groups, %{metadata | count: count}}
+      else
+        {:error, :unauthorized} = error -> error
+        {:error, _reason} = error -> error
+      end
+    end
+
+    defp list_group_ids(filtered_query, paginator_opts, subject) do
+      filtered_query
+      |> select([groups: g], g.id)
+      |> OffsetPaginator.query(paginator_opts)
       |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, Keyword.put(opts, :order_by, final_order_by))
+      |> Safe.all()
+    end
+
+    defp fetch_groups_page([], _subject), do: []
+
+    defp fetch_groups_page(group_ids, subject) do
+      groups =
+        index_query()
+        |> hydrate_group_query()
+        |> where([groups: g], g.id in ^group_ids)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+
+      groups_by_id = Map.new(groups, &{&1.id, &1})
+
+      Enum.map(group_ids, fn group_id ->
+        Map.fetch!(groups_by_id, group_id)
+      end)
     end
 
     def count_groups_with_policies(subject, filter \\ []) do

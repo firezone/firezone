@@ -46,6 +46,82 @@ defmodule Portal.RepoTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
 
+  describe "list_offset/2" do
+    setup do
+      account = account_fixture()
+      query_module = Portal.RepoTest.ActorQuery
+      queryable = query_module.all()
+
+      %{account: account, query_module: query_module, queryable: queryable}
+    end
+
+    test "returns empty list when there are no results", %{
+      query_module: query_module,
+      queryable: queryable
+    } do
+      empty_metadata = %Portal.Repo.OffsetPaginator.Metadata{
+        limit: 50,
+        offset: 0,
+        count: 0,
+        previous_offset: nil,
+        next_offset: nil,
+        has_previous_page: false,
+        has_next_page: false
+      }
+
+      assert list_offset(queryable, query_module) == {:ok, [], empty_metadata}
+
+      assert list_offset(queryable, query_module, page: [limit: 1000]) ==
+               {:ok, [], %{empty_metadata | limit: 100}}
+
+      assert list_offset(queryable, query_module, page: [limit: -1]) ==
+               {:ok, [], %{empty_metadata | limit: 1}}
+    end
+
+    test "returns paged results with offset metadata", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      actors = for _ <- 1..5, do: actor_fixture(account: account)
+
+      assert {:ok, first_page, metadata1} = list_offset(queryable, query_module, page: [limit: 2])
+      assert length(first_page) == 2
+      assert metadata1.limit == 2
+      assert metadata1.offset == 0
+      assert metadata1.previous_offset == nil
+      assert metadata1.next_offset == 2
+      assert metadata1.has_previous_page == false
+      assert metadata1.has_next_page == true
+      assert metadata1.count == 5
+
+      assert {:ok, second_page, metadata2} =
+               list_offset(queryable, query_module, page: [limit: 2, offset: 2])
+
+      assert length(second_page) == 2
+      assert metadata2.offset == 2
+      assert metadata2.previous_offset == 0
+      assert metadata2.next_offset == 4
+      assert metadata2.has_previous_page == true
+      assert metadata2.has_next_page == true
+      assert metadata2.count == 5
+
+      assert {:ok, last_page, metadata3} =
+               list_offset(queryable, query_module, page: [limit: 2, offset: 4])
+
+      assert Enum.map(first_page ++ second_page ++ last_page, & &1.id) |> Enum.sort() ==
+               Enum.map(actors, & &1.id) |> Enum.sort()
+
+      assert length(last_page) == 1
+      assert metadata3.offset == 4
+      assert metadata3.previous_offset == 2
+      assert metadata3.next_offset == nil
+      assert metadata3.has_previous_page == true
+      assert metadata3.has_next_page == false
+      assert metadata3.count == 5
+    end
+  end
+
   describe "list/2" do
     setup do
       account = account_fixture()

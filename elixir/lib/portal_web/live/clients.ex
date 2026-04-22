@@ -377,48 +377,116 @@ defmodule PortalWeb.Clients do
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, ClientSession, Safe}
     alias Portal.Client
+    alias Portal.Repo.{Filter, OffsetPaginator}
 
     def list_clients(subject, opts \\ []) do
-      base_query =
-        from(c in Client, as: :clients)
-        |> join(
-          :left_lateral,
-          [clients: c],
-          s in subquery(
-            from(s in ClientSession,
-              where: s.client_id == parent_as(:clients).id,
-              where: s.account_id == parent_as(:clients).account_id,
-              order_by: [desc: s.inserted_at],
-              limit: 1
-            )
-          ),
-          on: true,
-          as: :latest_session
-        )
-        |> select_merge([latest_session: s], %{
-          latest_session_inserted_at: s.inserted_at,
-          latest_session_version: s.version,
-          latest_session_user_agent: s.user_agent
-        })
+      {preload, opts} = Keyword.pop(opts, :preload, [])
+      {filter, opts} = Keyword.pop(opts, :filter, [])
+      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+      {page_opts, _opts} = Keyword.pop(opts, :page, [])
 
       # Check if we need to prefilter by presence
       base_query =
-        case get_in(opts, [:filter, :presence]) do
-          "online" ->
-            ids = Clients.online_client_ids(subject.account.id)
-            where(base_query, [clients: c], c.id in ^ids)
+        subject
+        |> page_query()
+        |> maybe_filter_by_presence(Keyword.get(filter, :presence), subject)
 
-          "offline" ->
-            ids = Clients.online_client_ids(subject.account.id)
-            where(base_query, [clients: c], c.id not in ^ids)
+      with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, order_by, page_opts),
+           {:ok, filtered_query} <- Filter.filter(base_query, __MODULE__, filter),
+           count when is_integer(count) <-
+             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+           client_ids <- list_client_ids(filtered_query, paginator_opts, subject),
+           {client_ids, metadata} <- OffsetPaginator.metadata(client_ids, paginator_opts) do
+        clients = fetch_clients_page(client_ids, preload, subject)
+        {:ok, clients, %{metadata | count: count}}
+      else
+        {:error, :unauthorized} = error -> error
+        {:error, _reason} = error -> error
+      end
+    end
 
-          _ ->
-            base_query
-        end
+    defp page_query(_subject) do
+      from(c in Client, as: :clients)
+      |> join(
+        :left_lateral,
+        [clients: c],
+        s in subquery(
+          from(s in ClientSession,
+            where: s.client_id == parent_as(:clients).id,
+            where: s.account_id == parent_as(:clients).account_id,
+            order_by: [desc: s.inserted_at],
+            limit: 1
+          )
+        ),
+        on: true,
+        as: :latest_session
+      )
+    end
 
-      base_query
+    defp hydrated_query(subject) do
+      subject
+      |> page_query()
+      |> select_merge([latest_session: s], %{
+        latest_session_inserted_at: s.inserted_at,
+        latest_session_version: s.version,
+        latest_session_user_agent: s.user_agent
+      })
+    end
+
+    defp maybe_filter_by_presence(base_query, presence, subject) do
+      case presence do
+        "online" ->
+          ids = Clients.online_client_ids(subject.account.id)
+          where(base_query, [clients: c], c.id in ^ids)
+
+        "offline" ->
+          ids = Clients.online_client_ids(subject.account.id)
+          where(base_query, [clients: c], c.id not in ^ids)
+
+        _ ->
+          base_query
+      end
+    end
+
+    defp list_client_ids(filtered_query, paginator_opts, subject) do
+      filtered_query
+      |> select([clients: c], c.id)
+      |> OffsetPaginator.query(paginator_opts)
       |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, opts)
+      |> Safe.all()
+    end
+
+    defp fetch_clients_page([], _preload, _subject), do: []
+
+    defp fetch_clients_page(client_ids, preload, subject) do
+      clients =
+        hydrated_query(subject)
+        |> where([clients: c], c.id in ^client_ids)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+        |> maybe_preload_clients(preload, subject)
+
+      clients_by_id = Map.new(clients, &{&1.id, &1})
+
+      Enum.map(client_ids, fn client_id ->
+        Map.fetch!(clients_by_id, client_id)
+      end)
+    end
+
+    defp maybe_preload_clients(clients, preload, _subject) do
+      Enum.reduce(preload, clients, fn
+        :actor, clients ->
+          Safe.preload(clients, :actor, :replica)
+
+        :online?, clients ->
+          Clients.preload_clients_presence(clients)
+
+        :last_seen, clients ->
+          preload_latest_sessions(clients)
+
+        _other, clients ->
+          clients
+      end)
     end
 
     @spec change_client(Portal.Client.t(), map()) :: Ecto.Changeset.t()

@@ -266,6 +266,28 @@ defmodule Portal.Safe do
     end
   end
 
+  @spec list_offset(Scoped.t(), module(), Keyword.t()) ::
+          {:ok, [Ecto.Schema.t()], map()} | {:error, :unauthorized}
+  def list_offset(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
+        query_module,
+        opts \\ []
+      ) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      safe_repo(fn ->
+        queryable
+        |> apply_account_filter(schema, account_id)
+        |> repo.list_offset(query_module, opts)
+      end) || {:ok, [], %{}}
+    end
+  end
+
   @spec stream(Unscoped.t(), Keyword.t()) :: Enum.t()
   def stream(%Unscoped{queryable: queryable, repo: repo}, opts \\ []),
     do: repo.stream(queryable, opts)

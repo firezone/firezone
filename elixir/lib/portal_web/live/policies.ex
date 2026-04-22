@@ -1094,7 +1094,7 @@ defmodule PortalWeb.Policies do
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
       |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, opts)
+      |> Safe.list_offset(__MODULE__, opts)
     end
 
     # Pagination support

@@ -5,6 +5,7 @@ defmodule Portal.Repo do
 
   alias Portal.Repo
   alias Portal.Repo.Paginator
+  alias Portal.Repo.OffsetPaginator
   require Ecto.Query
 
   defoverridable get_dynamic_repo: 0
@@ -88,5 +89,31 @@ defmodule Portal.Repo do
           | {:error, term()}
   def list(queryable, query_module, opts \\ []) do
     Repo.List.call(__MODULE__, queryable, query_module, opts)
+  end
+
+  @spec list_offset(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [
+              {:limit, non_neg_integer()},
+              {:order_by, Portal.Repo.Query.cursor_fields()},
+              {:filter, Portal.Repo.Filter.filters()},
+              {:preload, term()},
+              {:page,
+               [
+                 {:offset, non_neg_integer()},
+                 {:limit, non_neg_integer()}
+               ]}
+            ]
+            | Keyword.t()
+        ) ::
+          {:ok, [Ecto.Schema.t()], OffsetPaginator.Metadata.t()}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
+          | {:error, term()}
+  def list_offset(queryable, query_module, opts \\ []) do
+    Repo.OffsetList.call(__MODULE__, queryable, query_module, opts)
   end
 end
