@@ -8601,7 +8601,6 @@ dependencies = [
  "num_cpus",
  "tokio",
  "tokio-stream",
- "tokio-util",
 ]
 
 [[package]]
