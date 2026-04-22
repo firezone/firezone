@@ -128,7 +128,7 @@ async fn dry_pass() -> Result<Vec<Pattern>> {
     // Regression seeds only; novel case generation is the worker's job.
     .env("PROPTEST_CASES", "0")
     .env("CARGO_PROFILE_TEST_OPT_LEVEL", "1")
-    .stdout(Stdio::piped())
+    .stdout(Stdio::null())
     .stderr(Stdio::piped());
 
     let mut child = ProcessGroup::spawn(cmd).context("spawn cargo (dry pass)")?;
