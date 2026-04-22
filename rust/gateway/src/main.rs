@@ -68,13 +68,13 @@ fn main() -> ExitCode {
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
-            runtime.block_on(telemetry.stop_on_crash());
+            runtime.block_on(telemetry.stop());
 
             ExitCode::FAILURE
         }
         Err(e) => {
             tracing::info!("{e:#}");
-            runtime.block_on(telemetry.stop_on_crash());
+            runtime.block_on(telemetry.stop());
 
             ExitCode::FAILURE
         }

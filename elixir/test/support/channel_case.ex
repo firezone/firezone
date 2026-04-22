@@ -11,6 +11,7 @@ defmodule PortalAPI.ChannelCase do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
       import PortalAPI.ChannelCase
+      import Portal.Test.Assertions
       alias Portal.Repo
       alias Portal.Fixtures
       require OpenTelemetry.Tracer
