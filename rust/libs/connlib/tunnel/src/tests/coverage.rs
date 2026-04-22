@@ -47,6 +47,13 @@ const HARVEST_TARGET_ENV_VAR: &str = "TUNNEL_TEST_HARVEST_TARGET";
 const MISSING_BEGIN: &str = "TUNNEL_TEST_MISSING_PATTERNS_BEGIN";
 const MISSING_END: &str = "TUNNEL_TEST_MISSING_PATTERNS_END";
 
+/// `Some(Coverage)` iff `TUNNEL_TEST_ENFORCE_COVERAGE=1`.
+pub(crate) fn run_coverage() -> Option<Coverage> {
+    std::env::var_os(ENFORCE_ENV_VAR)
+        .is_some_and(|v| v == "1")
+        .then(Coverage::new)
+}
+
 /// Stderr marker prefixing each harvested seed. The driver script
 /// extracts seeds from worker logs by grepping for this prefix and
 /// assembles the final `tests.txt` block using the harvest target
@@ -93,12 +100,8 @@ impl Coverage {
     }
 
     /// Panic listing every [`REQUIRED_PATTERNS`] entry that was not
-    /// observed through this `Coverage`, if `TUNNEL_TEST_ENFORCE_COVERAGE=1`.
+    /// observed through this `Coverage`.
     pub(crate) fn assert_all_patterns_seen(&self) {
-        if std::env::var_os(ENFORCE_ENV_VAR).is_none_or(|v| v != "1") {
-            return;
-        }
-
         let missing = REQUIRED_PATTERNS
             .iter()
             .copied()

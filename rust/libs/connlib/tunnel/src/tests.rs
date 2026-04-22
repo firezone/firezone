@@ -44,7 +44,7 @@ type QueryId = u16;
 
 #[test]
 fn tunnel_test() {
-    let run_coverage = Coverage::new();
+    let run_coverage = coverage::run_coverage();
     let harvest_target = coverage::harvest_target();
 
     let mut config = Config {
@@ -86,7 +86,7 @@ fn tunnel_test() {
     let result = test_runner.run(
         &strategy,
         |(mut ref_state, transitions, mut seen_counter)| {
-            let case_coverage = Coverage::new();
+            let case_coverage = harvest_target.map(|_| Coverage::new());
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             flux_capacitor.reset();
 
@@ -150,7 +150,8 @@ fn tunnel_test() {
                 // pattern has fired so proptest shrinks and persists the
                 // seed via `HarvestPersistence`.
                 if let Some(target) = harvest_target
-                    && case_coverage.seen(target)
+                    && let Some(cov) = case_coverage.as_ref()
+                    && cov.seen(target)
                 {
                     return Err(TestCaseError::fail(format!(
                         "harvest: pattern `{target}` fired"
@@ -165,7 +166,11 @@ fn tunnel_test() {
     println!("TestRunner stats: \n\n{test_runner}");
 
     match result {
-        Ok(()) => run_coverage.assert_all_patterns_seen(),
+        Ok(()) => {
+            if let Some(cov) = &run_coverage {
+                cov.assert_all_patterns_seen();
+            }
+        }
         Err(e) => match e {
             TestError::Abort(msg) => panic!("Test aborted: {msg}"),
             TestError::Fail(msg, (ref_state, transitions, _)) => {
@@ -240,8 +245,8 @@ where
 fn init_logging(
     flux_capacitor: FluxCapacitor,
     test_index: u32,
-    run_coverage: Coverage,
-    case_coverage: Coverage,
+    run_coverage: Option<Coverage>,
+    case_coverage: Option<Coverage>,
 ) -> tracing::subscriber::DefaultGuard {
     tracing_subscriber::registry()
         .with(
@@ -257,22 +262,18 @@ fn init_logging(
                 .with_ansi(false)
                 .with_filter(log_file_filter()),
         )
-        // Feed two more fmt layers into `Coverage` handles. The stock
-        // formatter renders each event once per layer; we just scan the
-        // bytes. `with_ansi(false)` avoids escape sequences corrupting
-        // the substring search.
-        .with(
+        .with(run_coverage.map(|cov| {
             tracing_subscriber::fmt::layer()
-                .with_writer(run_coverage)
+                .with_writer(cov)
                 .with_ansi(false)
-                .with_filter(log_file_filter()),
-        )
-        .with(
+                .with_filter(log_file_filter())
+        }))
+        .with(case_coverage.map(|cov| {
             tracing_subscriber::fmt::layer()
-                .with_writer(case_coverage)
+                .with_writer(cov)
                 .with_ansi(false)
-                .with_filter(log_file_filter()),
-        )
+                .with_filter(log_file_filter())
+        }))
         .with(PanicOnErrorEvents::new(test_index))
         .set_default()
 }
