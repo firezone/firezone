@@ -1,5 +1,5 @@
 //! Fixed-size pool of stable worker-slot IDs. `Slot`'s `Drop` returns
-//! the ID even on panic or abort, so slots never leak.
+//! the ID even on panic or task cancellation, so slots never leak.
 
 use tokio::sync::mpsc;
 
