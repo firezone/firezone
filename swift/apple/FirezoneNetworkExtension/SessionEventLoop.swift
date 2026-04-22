@@ -7,6 +7,7 @@ enum SessionCommand {
   case setInternetResourceState(Bool)
   case setDns([String])
   case reset(String)
+  case deviceTrustResponse([DeviceTrustSignedChallenge])
 }
 
 /// Runs the session event loop, owning the Session lifecycle.
@@ -69,6 +70,9 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
 
     case .reset(let reason):
       session.reset(reason: reason)
+
+    case .deviceTrustResponse(let responses):
+      session.sendDeviceTrustResponse(responses: responses)
     }
   }
 

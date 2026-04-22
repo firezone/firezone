@@ -416,6 +416,9 @@
 			);
 			mainGroup = 8DCC021028D512AC007E12D2;
 			productRefGroup = 8DCC021A28D512AC007E12D2 /* Products */;
+			packageReferences = (
+				8DF2A0042EAC100000000001 /* XCLocalSwiftPackageReference "FirezoneKit" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -1422,17 +1425,27 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		8DF2A0042EAC100000000001 /* XCLocalSwiftPackageReference "FirezoneKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = FirezoneKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		794C38142970A2660029F38F /* FirezoneKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 8DF2A0042EAC100000000001 /* XCLocalSwiftPackageReference "FirezoneKit" */;
 			productName = FirezoneKit;
 		};
 		79756C6529704A7A0018E2D5 /* FirezoneKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 8DF2A0042EAC100000000001 /* XCLocalSwiftPackageReference "FirezoneKit" */;
 			productName = FirezoneKit;
 		};
 		8D5047F72CE6AA22009802E9 /* FirezoneKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 8DF2A0042EAC100000000001 /* XCLocalSwiftPackageReference "FirezoneKit" */;
 			productName = FirezoneKit;
 		};
 /* End XCSwiftPackageProductDependency section */

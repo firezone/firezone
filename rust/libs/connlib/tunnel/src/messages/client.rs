@@ -115,6 +115,18 @@ pub struct ConfigUpdate {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct DeviceTrustRequest {
+    pub nonce: Key,
+    pub subject_cn: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct DeviceTrustSignedChallenge {
+    pub signed_challenge: String,
+    pub cert: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct FlowCreated {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
@@ -200,6 +212,8 @@ pub enum IngressMessages {
 
     ConfigChanged(ConfigUpdate),
 
+    DeviceTrustRequest(DeviceTrustRequest),
+
     RelaysPresence(RelaysPresence),
 
     FlowCreated(FlowCreated),
@@ -247,6 +261,7 @@ pub enum EgressMessages {
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
+    DeviceTrustResponse(Vec<DeviceTrustSignedChallenge>),
 }
 
 #[cfg(test)]
@@ -379,6 +394,27 @@ mod tests {
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
         assert!(matches!(message, IngressMessages::ConfigChanged(_)))
+    }
+
+    #[test]
+    fn can_deserialize_device_trust_request() {
+        let json = r#"
+        {
+            "event": "device_trust_request",
+            "payload": {
+                "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+                "subject_cn": "dev.firezone.scep"
+            }
+        }
+        "#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::DeviceTrustRequest(request) = message else {
+            panic!("Expected device trust request")
+        };
+        assert_eq!(request.nonce.0, core::array::from_fn(|i| i as u8));
+        assert_eq!(request.subject_cn, "dev.firezone.scep");
     }
 
     #[test]
@@ -555,6 +591,18 @@ mod tests {
     fn serialize_no_relays_message() {
         let message = EgressMessages::NoRelays {};
         let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_device_trust_response() {
+        let message = EgressMessages::DeviceTrustResponse(vec![DeviceTrustSignedChallenge {
+            signed_challenge: "c2lnbmF0dXJl".to_string(),
+            cert: "Y2VydA==".to_string(),
+        }]);
+        let expected_json = r#"{"event":"device_trust_response","payload":[{"signed_challenge":"c2lnbmF0dXJl","cert":"Y2VydA=="}]}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

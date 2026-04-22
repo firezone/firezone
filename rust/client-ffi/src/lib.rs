@@ -61,6 +61,12 @@ pub struct DeviceInfo {
     pub identifier_for_vendor: Option<String>,
 }
 
+#[derive(uniffi::Record)]
+pub struct DeviceTrustSignedChallenge {
+    pub signed_challenge: String,
+    pub cert: String,
+}
+
 /// Resource status enum
 #[derive(uniffi::Enum)]
 pub enum ResourceStatus {
@@ -136,6 +142,10 @@ pub enum Event {
     },
     Disconnected {
         error: Arc<DisconnectError>,
+    },
+    DeviceTrustRequest {
+        nonce: String,
+        subject_cn: String,
     },
 }
 
@@ -356,6 +366,11 @@ impl Session {
         self.inner.reset(reason)
     }
 
+    pub fn send_device_trust_response(&self, responses: Vec<DeviceTrustSignedChallenge>) {
+        self.inner
+            .send_device_trust_response(responses.into_iter().map(Into::into).collect());
+    }
+
     pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
         let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
 
@@ -430,6 +445,9 @@ impl Session {
             client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),
             }),
+            client_shared::Event::DeviceTrustRequest { nonce, subject_cn } => {
+                Some(Event::DeviceTrustRequest { nonce, subject_cn })
+            }
         }
     }
 }
@@ -713,6 +731,15 @@ impl From<connlib_model::ResourceStatus> for ResourceStatus {
             connlib_model::ResourceStatus::Unknown => ResourceStatus::Unknown,
             connlib_model::ResourceStatus::Online => ResourceStatus::Online,
             connlib_model::ResourceStatus::Offline => ResourceStatus::Offline,
+        }
+    }
+}
+
+impl From<DeviceTrustSignedChallenge> for client_shared::DeviceTrustSignedChallenge {
+    fn from(value: DeviceTrustSignedChallenge) -> Self {
+        Self {
+            signed_challenge: value.signed_challenge,
+            cert: value.cert,
         }
     }
 }

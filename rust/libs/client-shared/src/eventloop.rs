@@ -20,8 +20,9 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates, EgressMessages,
-    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
+    DeviceTrustRequest, DeviceTrustSignedChallenge, EgressMessages, FailReason, FlowCreated,
+    FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -52,6 +53,7 @@ pub struct Eventloop {
     resource_list_sender: watch::Sender<Vec<ResourceView>>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
+    device_trust_request_sender: mpsc::Sender<DeviceTrustRequest>,
 
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
@@ -66,6 +68,7 @@ pub enum Command {
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
+    SendDeviceTrustResponse(Vec<DeviceTrustSignedChallenge>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -112,6 +115,7 @@ impl Eventloop {
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
+        device_trust_request_sender: mpsc::Sender<DeviceTrustRequest>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -142,6 +146,7 @@ impl Eventloop {
             resource_list_sender,
             tun_config_sender,
             user_notification_sender,
+            device_trust_request_sender,
         }
     }
 }
@@ -231,6 +236,14 @@ impl Eventloop {
                 };
 
                 tunnel.set_tun(tun);
+            }
+            Command::SendDeviceTrustResponse(responses) => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::DeviceTrustResponse(
+                        responses,
+                    )))
+                    .await
+                    .context("Failed to send message to portal")?;
             }
             Command::Reset(reason) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -387,11 +400,24 @@ impl Eventloop {
     }
 
     async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
+        let msg = match msg {
+            IngressMessages::DeviceTrustRequest(request) => {
+                self.device_trust_request_sender
+                    .send(request)
+                    .await
+                    .context("Failed to emit device trust request")?;
+
+                return Ok(());
+            }
+            msg => msg,
+        };
+
         let Some(tunnel) = self.tunnel.as_mut() else {
             return Ok(());
         };
 
         match msg {
+            IngressMessages::DeviceTrustRequest(_) => unreachable!("handled before tunnel access"),
             IngressMessages::ConfigChanged(config) => {
                 tunnel.state_mut().update_interface_config(config.interface)
             }
