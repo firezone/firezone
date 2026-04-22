@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
-    protocol::{Event, Log, LogAttribute, SessionStatus},
+    protocol::{Event, Log, LogAttribute},
     transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
@@ -160,17 +160,6 @@ impl Default for Telemetry {
     }
 }
 
-impl Drop for Telemetry {
-    fn drop(&mut self) {
-        if self.inner.is_none() {
-            return;
-        }
-
-        // Conclude telemetry session as "abnormal" if we get dropped without closing it properly first.
-        sentry::end_session_with_status(SessionStatus::Abnormal);
-    }
-}
-
 impl Telemetry {
     pub fn new() -> Self {
         Self {
@@ -210,7 +199,6 @@ impl Telemetry {
         if let Some(inner) = self.inner.take() {
             tracing::debug!("Stopping previous telemetry session");
 
-            sentry::end_session();
             drop(inner);
 
             set_current_user(None);
@@ -262,23 +250,16 @@ impl Telemetry {
             scope.set_user(Some(compute_user(firezone_id)));
         });
         self.inner.replace(inner);
-        sentry::start_session();
     }
 
     /// Flushes events to sentry.io and drops the guard
     pub async fn stop(&mut self) {
-        if let Err(e) = self.end_session(SessionStatus::Exited).await {
+        if let Err(e) = self.end_session().await {
             tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
         }
     }
 
-    pub async fn stop_on_crash(&mut self) {
-        if let Err(e) = self.end_session(SessionStatus::Crashed).await {
-            tracing::error!("Failed to stop Sentry session on crash: {e:#}")
-        }
-    }
-
-    async fn end_session(&mut self, status: SessionStatus) -> Result<()> {
+    async fn end_session(&mut self) -> Result<()> {
         let Some(inner) = self.inner.take() else {
             return Ok(());
         };
@@ -291,8 +272,6 @@ impl Telemetry {
             };
 
             tracing::debug!("Flushed telemetry");
-
-            sentry::end_session_with_status(status);
 
             Ok(())
         });
