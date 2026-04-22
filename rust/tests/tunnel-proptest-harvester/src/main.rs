@@ -62,12 +62,11 @@ async fn main() -> Result<()> {
     let harvest = std::pin::pin!(harvest(args.patterns));
     let ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
     match select(harvest, ctrl_c).await {
-        Either::Left((result, _)) => result,
-        Either::Right((_, _)) => {
-            eprintln!("\nreceived Ctrl-C, shutting down...");
-            std::process::exit(1)
-        }
+        Either::Left((result, _)) => result?,
+        Either::Right((_, _)) => eprintln!("\nreceived Ctrl-C, shutting down..."),
     }
+
+    Ok(())
 }
 
 async fn harvest(patterns: Vec<Pattern>) -> Result<()> {
