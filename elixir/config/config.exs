@@ -123,8 +123,6 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     portal_sessions
     outbound_emails
     outbound_email_deliveries
-    ipv4_addresses
-    ipv6_addresses
     api_tokens
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
