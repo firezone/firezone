@@ -73,26 +73,7 @@ defmodule PortalAPI.Client.Channel do
 
     {:noreply, socket} = register(socket)
 
-    push(socket, "init", %{
-      # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
-      resources:
-        resources
-        |> Enum.reject(&(&1.type == :static_device_pool))
-        |> Views.Resource.render_many(),
-      # TODO: Re-enable after verifying compatibility with older clients
-      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
-      relays:
-        Views.Relay.render_many(
-          relays,
-          socket.assigns.session.public_key,
-          socket.assigns.subject.expires_at
-        ),
-      interface:
-        Views.Interface.render(%{
-          socket.assigns.client
-          | account: socket.assigns.subject.account
-        })
-    })
+    init(socket, resources, relays)
 
     {:noreply, socket}
   end
@@ -1022,6 +1003,37 @@ defmodule PortalAPI.Client.Channel do
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
+  defp init(socket, resources, relays) do
+    push(socket, "init", %{
+      # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+      resources:
+        resources
+        |> Enum.reject(&(&1.type == :static_device_pool))
+        |> Views.Resource.render_many(),
+      # TODO: Re-enable after verifying compatibility with older clients
+      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
+      relays:
+        Views.Relay.render_many(
+          relays,
+          socket.assigns.session.public_key,
+          socket.assigns.subject.expires_at
+        ),
+      interface:
+        Views.Interface.render(%{
+          socket.assigns.client
+          | account: socket.assigns.subject.account
+        })
+    })
+  end
+
+  defp reinitialize_client(socket) do
+    {:ok, relays} = select_relays(socket)
+    socket = cache_relays(socket, relays)
+
+    init(socket, socket.assigns.cache.connectable_resources, relays)
+    track_presence(socket)
+  end
+
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
   end
@@ -1139,16 +1151,21 @@ defmodule PortalAPI.Client.Channel do
          %{assigns: %{client: %{id: id} = current_client}} = socket
        )
        when id == client_id do
-    # Update socket with the new client state, preserving IPs and associations
+    # Update socket with the new client state, preserving associations from the current socket.
     updated_client = %{
       client
       | account: current_client.account,
-        actor: current_client.actor,
-        ipv4: current_client.ipv4,
-        ipv6: current_client.ipv6
+        actor: current_client.actor
     }
 
     socket = assign(socket, :client, updated_client)
+
+    socket =
+      if old_client.ipv4 != client.ipv4 or old_client.ipv6 != client.ipv6 do
+        reinitialize_client(socket)
+      else
+        socket
+      end
 
     # Changes in client verification can affect the list of allowed resources
     if old_client.verified_at != client.verified_at do

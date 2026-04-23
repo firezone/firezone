@@ -5,6 +5,7 @@ defmodule PortalWeb.Live.Resources.ShowTest do
   import Portal.ActorFixtures
   import Portal.ClientFixtures
   import Portal.FeaturesFixtures
+  import Portal.PolicyAuthorizationFixtures
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
@@ -165,6 +166,48 @@ defmodule PortalWeb.Live.Resources.ShowTest do
              assert row["id"]
              assert row["status"] == "Active"
            end)
+  end
+
+  test "renders recent connection initiator and receiver device links", %{
+    account: account,
+    actor: actor,
+    resource: resource,
+    conn: conn
+  } do
+    initiator = client_fixture(account: account, actor: actor)
+    receiver_actor = actor_fixture(account: account)
+    receiver = client_fixture(account: account, actor: receiver_actor)
+    policy = policy_fixture(account: account, resource: resource)
+
+    policy_authorization =
+      policy_authorization_fixture(
+        account: account,
+        actor: actor,
+        client: initiator,
+        gateway: receiver,
+        resource: resource,
+        policy: policy
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    html =
+      lv
+      |> element("#policy_authorizations")
+      |> render()
+
+    [row] = table_to_map(html)
+
+    assert row["initiator"] =~ initiator.name
+    assert row["initiator"] =~ "owned by #{actor.name}"
+    assert row["initiator"] =~ to_string(policy_authorization.client_remote_ip)
+    assert row["receiver"] =~ receiver.name
+    assert row["receiver"] =~ to_string(policy_authorization.gateway_remote_ip)
+    assert html =~ ~s(href="/#{account.slug}/clients/#{initiator.id}")
+    assert html =~ ~s(href="/#{account.slug}/clients/#{receiver.id}")
   end
 
   test "allows deleting resource", %{

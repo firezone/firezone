@@ -214,10 +214,13 @@ defmodule PortalWeb.Live.Clients.ShowTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/clients/#{client}")
 
-    [row] =
+    html =
       lv
       |> element("#policy_authorizations")
       |> render()
+
+    [row] =
+      html
       |> table_to_map()
 
     assert row["authorized"]
@@ -225,8 +228,10 @@ defmodule PortalWeb.Live.Clients.ShowTest do
     assert row["policy"] =~ policy_authorization.policy.group.name
     assert row["policy"] =~ policy_authorization.policy.resource.name
 
-    assert row["gateway"] ==
+    assert row["receiver"] ==
              "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name} #{policy_authorization.gateway_remote_ip}"
+
+    assert html =~ ~s(href="/#{account.slug}/gateways/#{policy_authorization.gateway.id}")
   end
 
   test "does not render policy_authorizations for deleted policies", %{

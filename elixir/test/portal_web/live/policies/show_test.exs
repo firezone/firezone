@@ -170,21 +170,26 @@ defmodule PortalWeb.Live.Policies.ShowTest do
 
     {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy}")
 
-    [row] =
+    html =
       lv
       |> element("#policy_authorizations")
       |> render()
+
+    [row] =
+      html
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["client, actor"] =~ policy_authorization.client.name
-    assert row["client, actor"] =~ "owned by #{policy_authorization.client.actor.name}"
-    assert row["client, actor"] =~ to_string(policy_authorization.client_remote_ip)
+    assert row["initiator"] =~ policy_authorization.client.name
+    assert row["initiator"] =~ "owned by #{policy_authorization.client.actor.name}"
+    assert row["initiator"] =~ to_string(policy_authorization.client_remote_ip)
 
-    assert row["gateway"] =~
+    assert row["receiver"] =~
              "#{policy_authorization.gateway.site.name}-#{policy_authorization.gateway.name}"
 
-    assert row["gateway"] =~ to_string(policy_authorization.gateway_remote_ip)
+    assert row["receiver"] =~ to_string(policy_authorization.gateway_remote_ip)
+    assert html =~ ~s(href="/#{account.slug}/clients/#{policy_authorization.client.id}")
+    assert html =~ ~s(href="/#{account.slug}/gateways/#{policy_authorization.gateway.id}")
   end
 
   test "renders empty state when no policy authorizations exist", %{

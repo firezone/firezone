@@ -37,6 +37,33 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
+  attr :account, :any, required: true
+  attr :device, :any, required: true
+  attr :class, :any, default: nil
+
+  def device_link(assigns) do
+    assigns = assign(assigns, :path, device_path(assigns.account, assigns.device))
+
+    ~H"""
+    <.link navigate={@path} class={@class}>
+      {device_name(@device)}
+    </.link>
+    """
+  end
+
+  def device_name(%Portal.Device{type: :gateway, site: %Portal.Site{name: site_name}, name: name})
+      when not is_nil(site_name) do
+    "#{site_name}-#{name}"
+  end
+
+  def device_name(%Portal.Device{name: name}) when not is_nil(name), do: name
+
+  defp device_path(account, %Portal.Device{type: :client, id: id}),
+    do: ~p"/#{account}/clients/#{id}"
+
+  defp device_path(account, %Portal.Device{type: :gateway, id: id}),
+    do: ~p"/#{account}/gateways/#{id}"
+
   @doc """
   Renders a generic <p> tag using our color scheme.
 

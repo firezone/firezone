@@ -672,6 +672,36 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert payload.account_slug == "new-slug"
     end
 
+    test "resends init when gateway tunnel IPs change", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      new_ipv4 = valid_ipv4_address_attrs().address
+      new_ipv6 = valid_ipv6_address_attrs().address
+      updated_gateway = %{gateway | ipv4: new_ipv4, ipv6: new_ipv6}
+
+      lsn = System.unique_integer([:positive, :monotonic])
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: gateway,
+        struct: updated_gateway
+      })
+
+      assert_push "init", %{interface: %{ipv4: ^new_ipv4, ipv6: ^new_ipv6}}
+
+      assert %{
+               assigns: %{
+                 gateway: %{ipv4: ^new_ipv4, ipv6: ^new_ipv6}
+               }
+             } = :sys.get_state(socket.channel_pid)
+    end
+
     test "pushes disconnect event and closes when the token is deleted", %{
       account: account,
       gateway: gateway,

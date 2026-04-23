@@ -36,8 +36,8 @@ defmodule PortalWeb.Policies.Show do
   def handle_policy_authorizations_update!(socket, list_opts) do
     list_opts =
       Keyword.put(list_opts, :preload,
-        client: [:actor],
-        gateway: [:site]
+        client: [:actor, :site],
+        gateway: [:actor, :site]
       )
 
     with {:ok, policy_authorizations, metadata} <-
@@ -201,31 +201,31 @@ defmodule PortalWeb.Policies.Show do
           <:col :let={policy_authorization} label="authorized">
             <.relative_datetime datetime={policy_authorization.inserted_at} />
           </:col>
-          <:col :let={policy_authorization} label="client, actor" class="w-3/12">
-            <.link
-              navigate={~p"/#{@account}/clients/#{policy_authorization.initiating_device_id}"}
+          <:col :let={policy_authorization} label="initiator" class="w-3/12">
+            <.device_link
+              account={@account}
+              device={policy_authorization.client}
               class={link_style()}
-            >
-              {policy_authorization.client.name}
-            </.link>
-            owned by
-            <.link
-              navigate={
-                ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @return_to]}"
-              }
-              class={link_style()}
-            >
-              {policy_authorization.client.actor.name}
-            </.link>
+            />
+            <span :if={policy_authorization.client.type == :client}>
+              owned by
+              <.link
+                navigate={
+                  ~p"/#{@account}/actors/#{policy_authorization.client.actor_id}?#{[return_to: @return_to]}"
+                }
+                class={link_style()}
+              >
+                {policy_authorization.client.actor.name}
+              </.link>
+            </span>
             {policy_authorization.client_remote_ip}
           </:col>
-          <:col :let={policy_authorization} label="gateway" class="w-3/12">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{policy_authorization.receiving_device_id}"}
+          <:col :let={policy_authorization} label="receiver" class="w-3/12">
+            <.device_link
+              account={@account}
+              device={policy_authorization.gateway}
               class={link_style()}
-            >
-              {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}
-            </.link>
+            />
             <br />
             <code class="text-xs">{policy_authorization.gateway_remote_ip}</code>
           </:col>

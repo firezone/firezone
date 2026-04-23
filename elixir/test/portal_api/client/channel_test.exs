@@ -1921,23 +1921,17 @@ defmodule PortalAPI.Client.ChannelTest do
       assert payload == resource.id
     end
 
-    test "for client updates preserves ipv4 and ipv6 in socket assigns", %{
+    test "for client address updates resends init with the new tunnel IPs", %{
       client: client,
-      subject: subject
+      subject: subject,
+      account: account
     } do
       socket = join_channel(client, subject)
       assert_push "init", _
 
-      # Verify the client starts with addresses loaded
-      state = :sys.get_state(socket.channel_pid)
-      assert state.assigns.client.ipv4 != nil
-      assert state.assigns.client.ipv6 != nil
-      original_ipv4 = state.assigns.client.ipv4
-      original_ipv6 = state.assigns.client.ipv6
-
-      # Simulate a client update event (e.g. name change) - the struct from
-      # the CDC event won't have associations preloaded
-      updated_client = %{client | name: "Updated Name", ipv4: nil, ipv6: nil}
+      new_ipv4 = valid_ipv4_address_attrs().address
+      new_ipv6 = valid_ipv6_address_attrs().address
+      updated_client = %{client | name: "Updated Name", ipv4: new_ipv4, ipv6: new_ipv6}
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -1946,11 +1940,18 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: updated_client
       })
 
-      # Verify the socket still has the original addresses preserved
+      assert_push "init", %{interface: %{ipv4: ^new_ipv4, ipv6: ^new_ipv6}}
+
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.client.name == "Updated Name"
-      assert state.assigns.client.ipv4 == original_ipv4
-      assert state.assigns.client.ipv6 == original_ipv6
+      assert state.assigns.client.ipv4 == new_ipv4
+      assert state.assigns.client.ipv6 == new_ipv6
+
+      assert {client_id, %{ipv4: ipv4}} =
+               Presence.Clients.Account.find_by_ipv4(account.id, new_ipv4.address)
+
+      assert client_id == client.id
+      assert ipv4 == new_ipv4.address
     end
 
     test "for client deletions disconnects socket", %{

@@ -39,8 +39,8 @@ defmodule PortalWeb.Clients.Show do
   def handle_policy_authorizations_update!(socket, list_opts) do
     list_opts =
       Keyword.put(list_opts, :preload,
-        client: [:actor],
-        gateway: [:site],
+        client: [:actor, :site],
+        gateway: [:actor, :site],
         policy: [:group, :resource]
       )
 
@@ -300,13 +300,12 @@ defmodule PortalWeb.Clients.Show do
               <.policy_name policy={policy_authorization.policy} />
             </.link>
           </:col>
-          <:col :let={policy_authorization} label="gateway" class="w-3/12">
-            <.link
-              navigate={~p"/#{@account}/gateways/#{policy_authorization.receiving_device_id}"}
+          <:col :let={policy_authorization} label="receiver" class="w-3/12">
+            <.device_link
+              account={@account}
+              device={policy_authorization.gateway}
               class={[link_style()]}
-            >
-              {policy_authorization.gateway.site.name}-{policy_authorization.gateway.name}
-            </.link>
+            />
             <br />
             <code class="text-xs">{policy_authorization.gateway_remote_ip}</code>
           </:col>
