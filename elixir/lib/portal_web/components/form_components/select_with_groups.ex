@@ -381,7 +381,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             end
           }
         >
-          <.icon name="remix-arrow-up-down-line" class="w-5 h-5" />
+          <.icon name="remix-arrow-down-s-line" class="w-5 h-5" />
         </div>
 
         <div
