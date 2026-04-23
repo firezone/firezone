@@ -175,18 +175,11 @@ public final class Store: ObservableObject {
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
       do {
-        try await LoginItemManager.sync(startOnLogin: configuration.startOnLogin)
+        try await LoginItemManager.syncStartOnLogin(startOnLogin: configuration.startOnLogin)
+        try await LaunchAgentManager.syncKeepAppRunning()
       } catch {
         Log.error(error)
       }
-
-      #if os(macOS)
-        do {
-          try await LaunchServicesManager.sync(forceReregistration: true)
-        } catch {
-          Log.error(error)
-        }
-      #endif
 
       await startupSequence()
       await initNotifications()

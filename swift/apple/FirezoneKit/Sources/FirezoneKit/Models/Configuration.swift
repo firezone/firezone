@@ -140,7 +140,7 @@ public class Configuration: ObservableObject {
   }
 
   private func handleUserDefaultsChanged() {
-    Task { do { try await LoginItemManager.sync(startOnLogin: startOnLogin) } }
+    Task { do { try await LoginItemManager.syncStartOnLogin(startOnLogin: startOnLogin) } }
 
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
