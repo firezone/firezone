@@ -69,6 +69,6 @@
     "eslint-config-next": "16.2.4",
     "flowbite-typography": "^1.0.5",
     "hastscript": "^9.0.1",
-    "typescript": "6.0.2"
+    "typescript": "6.0.3"
   }
 }
