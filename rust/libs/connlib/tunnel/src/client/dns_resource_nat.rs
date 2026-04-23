@@ -20,7 +20,7 @@ use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
 pub struct DnsResourceNat {
     inner: BTreeMap<(GatewayId, DomainName, ResourceId), (State, IpPacket)>,
 
-    assigned_ips_packets: VecDeque<(GatewayId, DomainName, IpPacket)>,
+    assigned_ips_packets: VecDeque<(GatewayId, DomainName, ResourceId, IpPacket)>,
 }
 
 impl DnsResourceNat {
@@ -58,7 +58,7 @@ impl DnsResourceNat {
                 ));
 
                 self.assigned_ips_packets
-                    .push_back((gid, domain, assigned_ips));
+                    .push_back((gid, domain, rid, assigned_ips));
             }
             Entry::Occupied(mut o) => {
                 let (state, assigned_ips) = o.get_mut();
@@ -85,8 +85,12 @@ impl DnsResourceNat {
                             should_buffer: *should_buffer,
                         };
 
-                        self.assigned_ips_packets
-                            .push_back((gid, domain, assigned_ips.clone()));
+                        self.assigned_ips_packets.push_back((
+                            gid,
+                            domain,
+                            rid,
+                            assigned_ips.clone(),
+                        ));
                     }
                     State::Pending {
                         sent_at,
@@ -102,6 +106,7 @@ impl DnsResourceNat {
                             self.assigned_ips_packets.push_back((
                                 gid,
                                 domain,
+                                rid,
                                 assigned_ips.clone(),
                             ));
                         }
@@ -173,6 +178,7 @@ impl DnsResourceNat {
                     self.assigned_ips_packets.push_back((
                         gid,
                         domain.clone(),
+                        rid,
                         assigned_ips.clone(),
                     ));
                 }
@@ -189,6 +195,7 @@ impl DnsResourceNat {
                     self.assigned_ips_packets.push_back((
                         gid,
                         domain.clone(),
+                        rid,
                         assigned_ips.clone(),
                     ));
                 }
@@ -241,7 +248,7 @@ impl DnsResourceNat {
         into_iter(Some(nat_state.confirm()))
     }
 
-    pub fn poll_packet(&mut self) -> Option<(GatewayId, DomainName, IpPacket)> {
+    pub fn poll_packet(&mut self) -> Option<(GatewayId, DomainName, ResourceId, IpPacket)> {
         self.assigned_ips_packets.pop_front()
     }
 }

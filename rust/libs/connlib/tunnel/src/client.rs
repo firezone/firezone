@@ -1325,8 +1325,8 @@ impl ClientState {
     }
 
     fn send_dns_resource_nat_packets(&mut self, now: Instant) {
-        while let Some((gid, domain, packet)) = self.dns_resource_nat.poll_packet() {
-            tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
+        while let Some((gid, domain, rid, packet)) = self.dns_resource_nat.poll_packet() {
+            tracing::debug!(%gid, %domain, %rid, "Setting up DNS resource NAT");
 
             encapsulate_and_buffer(
                 packet,
