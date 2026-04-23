@@ -1926,15 +1926,7 @@ impl ClientState {
         peer.remove_resource(id);
 
         self.authorized_resources.remove(&id);
-
-        // Clear DNS resource NAT state for all domains resolved for this DNS resource.
-        for domain in self
-            .resource_stub_resolver
-            .resolved_resources()
-            .filter_map(|(domain, candidate, _)| (candidate == &id).then_some(domain))
-        {
-            self.dns_resource_nat.clear_by_domain(domain);
-        }
+        self.dns_resource_nat.clear_by_resource(&id);
 
         let unused_gateways = self.gateways.extract_if(|_, p| p.no_allowed_resources());
 

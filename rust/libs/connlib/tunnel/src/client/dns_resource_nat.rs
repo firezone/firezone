@@ -211,12 +211,17 @@ impl DnsResourceNat {
     }
 
     pub fn clear_by_gateway(&mut self, gid: &GatewayId) {
-        self.inner.retain(|(gateway, _, _), _| gateway != gid);
+        for _ in self
+            .inner
+            .extract_if(.., |(candidate, _, _), _| candidate == gid)
+        {}
     }
 
-    pub fn clear_by_domain(&mut self, domain: &DomainName) {
-        self.inner
-            .retain(|(_, candidate, _), _| candidate != domain);
+    pub fn clear_by_resource(&mut self, rid: &ResourceId) {
+        for _ in self
+            .inner
+            .extract_if(.., |(_, _, candidate), _| candidate == rid)
+        {}
     }
 
     pub fn clear(&mut self) {
