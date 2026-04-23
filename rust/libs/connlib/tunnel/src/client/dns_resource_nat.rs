@@ -35,6 +35,8 @@ impl DnsResourceNat {
     ) -> Result<()> {
         match self.inner.entry((gid, domain.clone())) {
             Entry::Vacant(v) => {
+                tracing::trace!(%domain, %gid, %rid, "No DNS resource NAT state, creating `Pending` entry");
+
                 let mut buffered_packets =
                     UniquePacketBuffer::with_capacity_power_of_2(5, "dns-resource-nat-initial"); // 2^5 = 32
                 buffered_packets.extend(packets_for_domain);
@@ -62,8 +64,15 @@ impl DnsResourceNat {
                 let (state, assigned_ips) = o.get_mut();
 
                 match state {
-                    State::Failed | State::Confirmed => {}
+                    State::Confirmed => {
+                        tracing::trace!(%domain, %gid, %rid, "DNS resource NAT already confirmed");
+                    }
+                    State::Failed => {
+                        tracing::trace!(%domain, %gid, %rid, "DNS resource NAT failed");
+                    }
                     State::Recreating { should_buffer } => {
+                        tracing::trace!(%domain, %gid, %rid, "Recreating DNS resource NAT");
+
                         let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
                             5, // 2^5 = 32
                             "dns-resource-nat-recreating",
@@ -84,6 +93,8 @@ impl DnsResourceNat {
                         buffered_packets,
                         ..
                     } => {
+                        tracing::trace!(%domain, %gid, %rid, "Pending DNS resource NAT setup");
+
                         buffered_packets.extend(packets_for_domain);
 
                         if should_send_assigned_ips_packet(now, *sent_at) {
