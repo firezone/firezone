@@ -114,6 +114,15 @@ jobs:
         run: |
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > "$FIREBASE_CREDENTIALS_PATH"
           ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
+      - name: Upload AAB to Google Play Console as draft
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_UPLOAD_AAB_CREDENTIALS }}
+          packageName: dev.firezone.android
+          releaseFiles: kotlin/android/${{ matrix.output-path }}
+          track: production
+          status: draft
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
