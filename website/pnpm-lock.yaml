@@ -22,8 +22,8 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1(@types/react@19.2.14)(react@19.2.5)
       '@next/mdx':
-        specifier: ~16.2.3
-        version: 16.2.3(@mdx-js/loader@3.1.1)(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.5))
+        specifier: ~16.2.4
+        version: 16.2.4(@mdx-js/loader@3.1.1)(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.5))
       '@next/third-parties':
         specifier: ^16.2.4
         version: 16.2.4(next@16.2.4(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react@19.2.5)
@@ -605,8 +605,8 @@ packages:
   '@next/eslint-plugin-next@16.2.4':
     resolution: {integrity: sha512-tOX826JJ96gYK/go18sPUgMq9FK1tqxBFfUCEufJb5XIkWFFmpgU7mahJANKGkHs7F41ir3tReJ3Lv5La0RvhA==}
 
-  '@next/mdx@16.2.3':
-    resolution: {integrity: sha512-mm7XNfPagSIcN8jFtozB9toeh5ESES0KCLRoo0gu6xydijvnIrV7dRIK3akNL3Tecc8AHX1FNzYZOZTeFU6RCw==}
+  '@next/mdx@16.2.4':
+    resolution: {integrity: sha512-e/3bgla+/oF3vDlndI0eFPa0bnP47HPVA0InsAJi7Jr3DwV8WpEGuOcm/3PdI5/93FfNiBhMVeVHZpm1sFlmJw==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
@@ -3669,7 +3669,7 @@ snapshots:
     dependencies:
       fast-glob: 3.3.1
 
-  '@next/mdx@16.2.3(@mdx-js/loader@3.1.1)(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.5))':
+  '@next/mdx@16.2.4(@mdx-js/loader@3.1.1)(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.5))':
     dependencies:
       source-map: 0.7.6
     optionalDependencies:
