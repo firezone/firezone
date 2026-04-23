@@ -176,6 +176,11 @@ public final class Store: ObservableObject {
     Task {
       do {
         try await LoginItemManager.syncStartOnLogin(startOnLogin: configuration.startOnLogin)
+      } catch {
+        Log.error(error)
+      }
+
+      do {
         try await LaunchAgentManager.syncKeepAppRunning()
       } catch {
         Log.error(error)
