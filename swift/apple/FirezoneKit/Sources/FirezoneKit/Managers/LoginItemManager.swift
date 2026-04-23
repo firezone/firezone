@@ -6,7 +6,7 @@ import Foundation
 #endif
 
 enum LoginItemManager {
-  static func sync(startOnLogin: Bool) async throws {
+  static func syncStartOnLogin(startOnLogin: Bool) async throws {
     #if os(macOS)
       SentrySDK.pauseAppHangTracking()
       defer { SentrySDK.resumeAppHangTracking() }

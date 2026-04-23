@@ -448,10 +448,12 @@ jobs:
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
       - name: Create manifest list and push
+        id: manifest
         working-directory: /tmp/digests/${{ matrix.image.name }}
         run: |
+          image="${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}@sha256:%s ' *)
+          sources=$(printf "$image@sha256:%s " *)
 
           echo "Tags: $tags"
           echo "Sources: $sources"
@@ -460,13 +462,21 @@ jobs:
           docker buildx imagetools create \
             --annotation "index:org.opencontainers.image.revision=${{ inputs.sha }}" \
             $tags $sources
-          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
+
+          first_tag=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools inspect "$first_tag" | tee inspect.log
+
+          if ! [[ "$(cat inspect.log)" =~ Digest:[[:space:]]+(sha256:[a-f0-9]{64}) ]]; then
+            echo "Failed to parse index digest from imagetools inspect output" >&2
+            exit 1
+          fi
+          echo "ref=${image}@${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
       - name: Run Trivy vulnerability scanner
         if: ${{ matrix.image.name != 'http-test-server' }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}:${{ inputs.sha }}
+          image-ref: ${{ steps.manifest.outputs.ref }}
           format: sarif
           output: trivy-results.sarif
           ignore-unfixed: true

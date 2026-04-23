@@ -85,7 +85,7 @@ class SettingsViewModel: ObservableObject {
     configuration.connectOnStart = connectOnStart
     configuration.startOnLogin = startOnLogin
 
-    try await LoginItemManager.sync(startOnLogin: startOnLogin)
+    try await LoginItemManager.syncStartOnLogin(startOnLogin: startOnLogin)
 
     updateDerivedState()
   }
