@@ -316,8 +316,9 @@ impl ClientState {
         now: Instant,
         buffered_packets: impl Iterator<Item = IpPacket>,
     ) {
-        // Organise all buffered packets by gateway + domain.
-        let mut buffered_packets_by_gateway_and_domain = buffered_packets
+        // Organise all buffered packets by gateway + domain + resource.
+        // A single domain can map to multiple resources, hence we need to key by the resource ID as well.
+        let mut buffered_packets_by_gateway_domain_and_resource = buffered_packets
             .map(|packet| {
                 let proto = packet.destination_protocol();
                 let (resource, domain) = self
@@ -330,7 +331,7 @@ impl ClientState {
                     .get(&resource)
                     .context("No gateway for resource")?;
 
-                anyhow::Ok((*gateway_id, domain.clone(), packet))
+                anyhow::Ok((*gateway_id, resource, domain.clone(), packet))
             })
             .filter_map(|res| {
                 res.inspect_err(|e| tracing::debug!("Dropping buffered packet: {e}"))
@@ -338,8 +339,10 @@ impl ClientState {
             })
             .fold(
                 BTreeMap::<_, VecDeque<IpPacket>>::new(),
-                |mut map, (gid, domain, packet)| {
-                    map.entry((gid, domain)).or_default().push_back(packet);
+                |mut map, (gid, resource, domain, packet)| {
+                    map.entry((gid, domain, resource))
+                        .or_default()
+                        .push_back(packet);
 
                     map
                 },
@@ -362,8 +365,8 @@ impl ClientState {
                 continue;
             };
 
-            let packets_for_domain = buffered_packets_by_gateway_and_domain
-                .remove(&(*gid, domain.clone()))
+            let packets_for_domain = buffered_packets_by_gateway_domain_and_resource
+                .remove(&(*gid, domain.clone(), *rid))
                 .unwrap_or_default();
 
             match self.dns_resource_nat.update(
@@ -606,7 +609,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        if let Some((_, domain)) = self
+        if let Some((rid, domain)) = self
             .dns_routing_table
             .matches(dst, Ok(dst_proto))
             .map(|e| (e.resource_id, &e.domain))
@@ -614,7 +617,7 @@ impl ClientState {
         {
             match self
                 .dns_resource_nat
-                .handle_outgoing(gid, domain, packet, now)
+                .handle_outgoing(gid, domain, rid, packet, now)
             {
                 Some(p) => packet = p,
                 None => return Ok(None),
