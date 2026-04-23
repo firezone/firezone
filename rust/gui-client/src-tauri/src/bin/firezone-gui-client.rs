@@ -39,7 +39,7 @@ fn main() -> ExitCode {
         Err(e) => {
             tracing::error!("GUI failed: {e:#}");
 
-            rt.block_on(telemetry.stop_on_crash());
+            rt.block_on(telemetry.stop());
 
             ExitCode::FAILURE
         }

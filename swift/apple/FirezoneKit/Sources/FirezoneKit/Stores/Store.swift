@@ -11,7 +11,6 @@ import UserNotifications
 
 #if os(macOS)
   import AppKit
-  import ServiceManagement
 #endif
 
 @MainActor
@@ -37,6 +36,15 @@ public final class Store: ObservableObject {
     // Set to true to request the menu bar be opened programmatically.
     // The UI layer observes this and resets it after handling.
     @Published public var menuBarOpenRequested = false
+
+    public var quitMenuTitle: String {
+      switch vpnStatus {
+      case .connected, .connecting:
+        return "Disconnect and Quit"
+      default:
+        return "Quit"
+      }
+    }
   #endif
 
   private(set) var sessionNotification: SessionNotificationProtocol
@@ -166,6 +174,20 @@ public final class Store: ObservableObject {
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
+      do {
+        try await LoginItemManager.sync(startOnLogin: configuration.startOnLogin)
+      } catch {
+        Log.error(error)
+      }
+
+      #if os(macOS)
+        do {
+          try await LaunchServicesManager.sync(forceReregistration: true)
+        } catch {
+          Log.error(error)
+        }
+      #endif
+
       await startupSequence()
       await initNotifications()
     }
@@ -181,6 +203,14 @@ public final class Store: ObservableObject {
     /// The UI layer observes `menuBarOpenRequested` and handles the actual opening.
     public func requestOpenMenuBar() {
       menuBarOpenRequested = true
+    }
+
+    public func quitApp() {
+      SharedAccess.clearAppRunning()
+      Task {
+        do { try await stop() } catch { Log.error(error) }
+        NSApp.terminate(nil)
+      }
     }
 
     /// Returns the appropriate icon name from asset catalog for the given state
@@ -353,6 +383,7 @@ public final class Store: ObservableObject {
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.maybeMigrateConfiguration()
       self.vpnConfigurationManager = manager
+      SharedAccess.markAppRunning()
     } else {
       self.vpnStatus = .invalid
     }
@@ -374,6 +405,7 @@ public final class Store: ObservableObject {
     )
 
     try await setupTunnelObservers()
+    SharedAccess.markAppRunning()
   }
 
   func manager() throws -> VPNConfigurationManager {

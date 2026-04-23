@@ -16,7 +16,6 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 use crate::{
     RelaySocket, Transmit,
     allocation::{self, Allocation},
-    node::SessionId,
 };
 
 pub(crate) struct Allocations<RId> {
@@ -109,7 +108,6 @@ where
         password: String,
         realm: Realm,
         now: Instant,
-        session_id: SessionId,
     ) -> UpsertResult {
         match self.inner.entry(rid) {
             Entry::Vacant(v) => {
@@ -119,7 +117,6 @@ where
                     password,
                     realm,
                     now,
-                    session_id,
                     self.buffer_pool.clone(),
                 ));
 
@@ -140,7 +137,6 @@ where
                     password,
                     realm,
                     now,
-                    session_id,
                     self.buffer_pool.clone(),
                 ));
 
@@ -329,7 +325,6 @@ impl<RId> Default for Allocations<RId> {
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
 
-    use boringtun::x25519::PublicKey;
     use rand::SeedableRng as _;
 
     use super::*;
@@ -344,7 +339,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
 
         allocations.remove_by_id(&1);
@@ -365,7 +359,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
 
         allocations.clear();
@@ -386,7 +379,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
 
         allocations.upsert(
@@ -396,7 +388,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
 
         assert!(matches!(
@@ -474,7 +465,6 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
-                SessionId::new(PublicKey::from([0u8; 32])),
             );
             allocations
                 .get_mut_by_id(&rid)
@@ -504,7 +494,6 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
-                SessionId::new(PublicKey::from([0u8; 32])),
             );
             allocations
                 .get_mut_by_id(&rid)
@@ -541,7 +530,6 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
-                SessionId::new(PublicKey::from([0u8; 32])),
             );
             allocations
                 .get_mut_by_id(&rid)
@@ -569,7 +557,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
         allocations
             .get_mut_by_id(&1)
@@ -594,7 +581,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
-            SessionId::new(PublicKey::from([0u8; 32])),
         );
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);

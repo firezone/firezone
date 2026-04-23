@@ -38,6 +38,7 @@ members = [
     "tests/gui-smoke-test",
     "tests/http-test-server",
     "tests/loadtest",
+    "tests/tunnel-proptest-harvester",
     "tools/uniffi-bindgen",
 ]
 

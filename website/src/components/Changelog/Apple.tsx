@@ -30,6 +30,10 @@ export default function Apple() {
           the system under memory pressure, leaving the tunnel running without a
           menu bar icon or session expiry notifications.
         </ChangeItem>
+        <ChangeItem pull={12853}>
+          Adds a macOS LaunchAgent helper that relaunches Firezone after
+          unexpected exits.
+        </ChangeItem>
         <ChangeItem pull={12657}>
           Falls back to public DNS resolvers when the system provides only
           non-routable addresses (loopback, link-local), preventing tunnel

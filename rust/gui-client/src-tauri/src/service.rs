@@ -498,7 +498,7 @@ impl<'a> Handler<'a> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                self.telemetry.stop_on_crash().await;
+                self.telemetry.stop().await;
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),

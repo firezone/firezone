@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>__PRODUCT_BUNDLE_IDENTIFIER__.keep-app-running</string>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>__PRODUCT_BUNDLE_IDENTIFIER__</string>
+	</array>
+	<key>BundleProgram</key>
+	<string>Contents/Library/LoginItems/KeepFirezoneRunning.app/Contents/MacOS/KeepFirezoneRunning</string>
+	<key>KeepAlive</key>
+	<true/>
+	<key>LimitLoadToSessionType</key>
+	<array>
+		<string>Aqua</string>
+	</array>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

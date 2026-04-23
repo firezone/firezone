@@ -1,4 +1,4 @@
-use crate::tests::{flux_capacitor::FluxCapacitor, sut::TunnelTest};
+use crate::tests::{coverage::Coverage, flux_capacitor::FluxCapacitor, sut::TunnelTest};
 use assertions::PanicOnErrorEvents;
 use chrono::Utc;
 use core::fmt;
@@ -22,6 +22,7 @@ mod assertions;
 mod buffered_transmits;
 mod coin;
 mod composite_strategy;
+mod coverage;
 mod dns_records;
 mod dns_server_resource;
 mod flux_capacitor;
@@ -43,10 +44,22 @@ type QueryId = u16;
 
 #[test]
 fn tunnel_test() {
-    let config = Config {
+    let run_coverage = coverage::run_coverage();
+    let harvest_target = coverage::harvest_target();
+
+    let mut config = Config {
         source_file: Some(file!()),
         ..Default::default()
     };
+
+    // In harvest mode, swap out the file-based regression persistence
+    // for one that (1) does not replay existing seeds and (2) echoes
+    // any newly-discovered seed to stderr tagged with the pattern being
+    // hunted, where the driver script can pick it up.
+    if let Some(target) = harvest_target {
+        config.failure_persistence =
+            Some(Box::new(coverage::HarvestPersistence::for_target(target)));
+    }
 
     let test_index = AtomicU32::new(0);
 
@@ -73,10 +86,16 @@ fn tunnel_test() {
     let result = test_runner.run(
         &strategy,
         |(mut ref_state, transitions, mut seen_counter)| {
+            let case_coverage = harvest_target.map(|_| Coverage::new());
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
             flux_capacitor.reset();
-            let _guard = init_logging(flux_capacitor.clone(), test_index);
+
+            let _guard = init_logging(
+                flux_capacitor.clone(),
+                test_index,
+                run_coverage.clone(),
+                case_coverage.clone(),
+            );
 
             std::fs::write(
                 format!("testcases/{test_index}.state"),
@@ -126,6 +145,18 @@ fn tunnel_test() {
 
                 // Check the invariants after the transition is applied
                 TunnelTest::check_invariants(&sut, &ref_state);
+
+                // In harvest mode, fail the case as soon as the hunted
+                // pattern has fired so proptest shrinks and persists the
+                // seed via `HarvestPersistence`.
+                if let Some(target) = harvest_target
+                    && let Some(cov) = case_coverage.as_ref()
+                    && cov.seen(target)
+                {
+                    return Err(TestCaseError::fail(format!(
+                        "harvest: pattern `{target}` fired"
+                    )));
+                }
             }
 
             Ok(())
@@ -134,18 +165,21 @@ fn tunnel_test() {
 
     println!("TestRunner stats: \n\n{test_runner}");
 
-    let Err(e) = result else {
-        return;
-    };
-
-    match e {
-        TestError::Abort(msg) => panic!("Test aborted: {msg}"),
-        TestError::Fail(msg, (ref_state, transitions, _)) => {
-            eprintln!("{ref_state:#?}");
-            eprintln!("{transitions:#?}");
-
-            panic!("{msg}")
+    match result {
+        Ok(()) => {
+            if let Some(cov) = &run_coverage {
+                cov.assert_all_patterns_seen();
+            }
         }
+        Err(e) => match e {
+            TestError::Abort(msg) => panic!("Test aborted: {msg}"),
+            TestError::Fail(msg, (ref_state, transitions, _)) => {
+                eprintln!("{ref_state:#?}");
+                eprintln!("{transitions:#?}");
+
+                panic!("{msg}")
+            }
+        },
     }
 }
 
@@ -211,6 +245,8 @@ where
 fn init_logging(
     flux_capacitor: FluxCapacitor,
     test_index: u32,
+    run_coverage: Option<Coverage>,
+    case_coverage: Option<Coverage>,
 ) -> tracing::subscriber::DefaultGuard {
     tracing_subscriber::registry()
         .with(
@@ -226,6 +262,18 @@ fn init_logging(
                 .with_ansi(false)
                 .with_filter(log_file_filter()),
         )
+        .with(run_coverage.map(|cov| {
+            tracing_subscriber::fmt::layer()
+                .with_writer(cov)
+                .with_ansi(false)
+                .with_filter(log_file_filter())
+        }))
+        .with(case_coverage.map(|cov| {
+            tracing_subscriber::fmt::layer()
+                .with_writer(cov)
+                .with_ansi(false)
+                .with_filter(log_file_filter())
+        }))
         .with(PanicOnErrorEvents::new(test_index))
         .set_default()
 }

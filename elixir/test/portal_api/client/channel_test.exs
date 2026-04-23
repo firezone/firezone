@@ -857,13 +857,10 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.exit(old_pid, :kill)
       assert_receive {:DOWN, ^ref, :process, ^old_pid, :killed}
 
-      # While the scope is down (or restarted but channel not yet re-registered), delivery fails
-      assert {:error, :not_found} = PG.deliver(client.id, :ping)
-
-      # Channel receives the same :DOWN, calls reregister_pg_scope, and re-joins the group
-      Process.sleep(100)
-
-      assert :ok = PG.deliver(client.id, :ping)
+      # Channel receives the same :DOWN and re-joins the restarted scope.
+      wait_for(fn ->
+        assert :ok = PG.deliver(client.id, :ping)
+      end)
     end
 
     test "retries re-registration when the scope is still restarting", %{

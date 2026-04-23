@@ -1,7 +1,7 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     channel_data,
-    node::{SessionId, Transmit},
+    node::Transmit,
 };
 use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -225,7 +225,6 @@ impl Allocation {
         password: String,
         realm: Realm,
         now: Instant,
-        session_id: SessionId,
         buffer_pool: BufferPool<Vec<u8>>,
     ) -> Self {
         let mut allocation = Self {
@@ -249,7 +248,7 @@ impl Allocation {
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             buffered_channel_bindings: AllocRingBuffer::new(100),
-            software: Software::new(format!("snownet; session={session_id}"))
+            software: Software::new("snownet".to_owned())
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
             rtt: None,
@@ -2997,7 +2996,6 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
-                SessionId::default(),
                 BufferPool::new(500, "test"),
             )
         }
@@ -3012,7 +3010,6 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
-                SessionId::default(),
                 BufferPool::new(500, "test"),
             )
         }

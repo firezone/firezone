@@ -443,7 +443,7 @@ impl Drop for Session {
         self.inner.stop(); // Instruct the event-loop to shut down.
 
         runtime.block_on(async {
-            self.telemetry.lock().await.stop_on_crash().await;
+            self.telemetry.lock().await.stop().await;
 
             // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
             let drain = async { self.events.lock().await.drain().await };

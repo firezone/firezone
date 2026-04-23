@@ -19,6 +19,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
+use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
@@ -126,7 +127,7 @@ enum LogFormat {
     Json,
 }
 
-fn main() {
+fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
@@ -154,15 +155,17 @@ fn main() {
         Telemetry::disabled()
     };
 
-    match runtime.block_on(try_main(args)) {
-        Ok(()) => runtime.block_on(telemetry.stop()),
+    let code = match runtime.block_on(try_main(args)) {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("{e:#}");
-            runtime.block_on(telemetry.stop_on_crash());
-
-            std::process::exit(1);
+            ExitCode::FAILURE
         }
-    }
+    };
+
+    runtime.block_on(telemetry.stop());
+
+    code
 }
 
 async fn try_main(args: Args) -> Result<()> {

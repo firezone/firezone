@@ -209,17 +209,8 @@
     @EnvironmentObject var store: Store
 
     var body: some View {
-      Button(quitTitle) {
-        NSApp.terminate(nil)
-      }
-    }
-
-    var quitTitle: String {
-      switch store.vpnStatus {
-      case .connected, .connecting:
-        return "Disconnect and Quit"
-      default:
-        return "Quit"
+      Button(store.quitMenuTitle) {
+        store.quitApp()
       }
     }
   }

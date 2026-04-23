@@ -85,9 +85,7 @@ class SettingsViewModel: ObservableObject {
     configuration.connectOnStart = connectOnStart
     configuration.startOnLogin = startOnLogin
 
-    #if os(macOS)
-      try await configuration.updateAppService()
-    #endif
+    try await LoginItemManager.sync(startOnLogin: startOnLogin)
 
     updateDerivedState()
   }

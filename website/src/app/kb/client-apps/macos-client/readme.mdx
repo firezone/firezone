@@ -235,6 +235,12 @@ Normal system DNS:
 ;; MSG SIZE  rcvd: 57
 ```
 
+### Firezone keeps reappearing if stopped via the Actitity Monitor
+
+Firezone installs a Launch Agent called `KeepFirezoneRunning`.
+This Launch Agent restarts the application whenever it terminates non-gracefully.
+To quit Firezone without it being restarted, use the "Quit" entry from the menu bar.
+
 ## Known issues
 
 - [**Authentication will not use Firefox even if it is the default browser**](https://github.com/firezone/firezone/issues/7072):
