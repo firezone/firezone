@@ -44,8 +44,8 @@ html {
   /* Text */
   --text-primary: #0F172A;
   --text-secondary: #475569;
-  --text-tertiary: #94A3B8;
-  --text-muted: #CBD5E1;
+  --text-tertiary: #6E8197;
+  --text-muted: #A5B0BA;
   --text-inverse: #F8FAFC;
 
   /* Brand — orange (heat-wave-500 / heat-wave-600) */
@@ -74,7 +74,7 @@ html {
 
   /* Controls */
   --control-bg: #FFFFFF;
-  --control-border: rgba(15, 23, 42, 0.16);
+  --control-border: rgba(15, 23, 42, 0.40);
   --control-focus: #FF7605;
 
   /* Badge variants */
