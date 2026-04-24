@@ -85,7 +85,7 @@ defmodule PortalWeb.Clients do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="remix-computer-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-computer-line" class="w-16 h-16 text-[var(--brand)]" />
         </:icon>
         <:title>Clients</:title>
         <:description>
@@ -161,7 +161,7 @@ defmodule PortalWeb.Clients do
               class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--status-active)] bg-[var(--status-active-bg)]"
               title="Device attributes of this client are manually verified"
             >
-              <.icon name="remix-shield-check-line" class="w-2.5 h-2.5" /> Verified
+              <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
             </span>
             <span
               :if={is_nil(client.verified_at)}
@@ -198,7 +198,7 @@ defmodule PortalWeb.Clients do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="remix-computer-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+                <.icon name="ri-computer-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-[var(--text-primary)]">No clients yet</p>

@@ -298,7 +298,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                       {render_slot(@option, slot_assigns)}
                     </div>
                     <div :if={value == @value} class="ml-auto">
-                      <.icon name="remix-check-line" class="w-4 h-4" />
+                      <.icon name="ri-check-line" class="w-4 h-4" />
                     </div>
                   </div>
                 </label>
@@ -381,7 +381,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             end
           }
         >
-          <.icon name="remix-arrow-down-s-line" class="w-5 h-5" />
+          <.icon name="ri-arrow-down-s-line" class="w-5 h-5" />
         </div>
 
         <div
@@ -481,7 +481,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                         {render_slot(@option, slot_assigns)}
                       </div>
                       <div :if={value == @value} class="ml-auto">
-                        <.icon name="remix-check-line" class="w-4 h-4" />
+                        <.icon name="ri-check-line" class="w-4 h-4" />
                       </div>
                     </div>
                   </label>

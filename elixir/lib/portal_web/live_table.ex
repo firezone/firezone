@@ -99,7 +99,7 @@ defmodule PortalWeb.LiveTable do
         >
           <div class="flex flex-col items-center gap-3 py-16">
             <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-              <.icon name="remix-search-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
+              <.icon name="ri-search-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
             </div>
             <div class="text-center">
               <p class="text-sm font-medium text-[var(--text-primary)]">No results found</p>
@@ -113,7 +113,7 @@ defmodule PortalWeb.LiveTable do
               phx-value-filter={nil}
               class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
             >
-              <.icon name="remix-filter-3-line" class="w-4 h-4" />
+              <.icon name="ri-filter-3-line" class="w-4 h-4" />
               Clear filters
             </button>
           </div>
@@ -220,7 +220,7 @@ defmodule PortalWeb.LiveTable do
         phx-value-table_id={@live_table_id}
         class="shrink-0"
       >
-        <.icon name="remix-loop-left-line" class="mr-1 w-3.5 h-3.5" /> Reload
+        <.icon name="ri-loop-left-line" class="mr-1 w-3.5 h-3.5" /> Reload
       </.button>
       <span
         :for={notice <- @notice}
@@ -255,7 +255,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <.icon name="remix-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -284,7 +284,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <.icon name="remix-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -449,7 +449,7 @@ defmodule PortalWeb.LiveTable do
                 </option>
               </select>
               <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--text-tertiary)]">
-                <.icon name="remix-arrow-drop-down-line" class="w-4 h-4" />
+                <.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
               </span>
             </div>
           </label>
@@ -466,7 +466,7 @@ defmodule PortalWeb.LiveTable do
             phx-value-page={@previous_page}
             phx-value-table_id={@id}
           >
-            <.icon name="remix-arrow-left-s-line" class="w-5 h-5" />
+            <.icon name="ri-arrow-left-s-line" class="w-5 h-5" />
           </button>
           <button
             disabled={is_nil(@metadata.next_offset)}
@@ -479,7 +479,7 @@ defmodule PortalWeb.LiveTable do
             phx-value-page={@next_page}
             phx-value-table_id={@id}
           >
-            <.icon name="remix-arrow-right-s-line" class="w-5 h-5" />
+            <.icon name="ri-arrow-right-s-line" class="w-5 h-5" />
           </button>
         </div>
       </div>

@@ -285,7 +285,7 @@ defmodule PortalWeb.Resources do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="remix-server-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-server-line" class="w-16 h-16 text-[var(--brand)]" />
         </:icon>
         <:title>Resources</:title>
         <:description>
@@ -293,7 +293,7 @@ defmodule PortalWeb.Resources do
         </:description>
         <:action>
           <.docs_action path="/deploy/resources" />
-          <.button style="primary" icon="remix-add-line" phx-click="open_new_form">
+          <.button style="primary" icon="ri-add-line" phx-click="open_new_form">
             New Resource
           </.button>
         </:action>
@@ -351,7 +351,7 @@ defmodule PortalWeb.Resources do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="remix-global-line" class="w-5 h-5 text-violet-500" />
+                  <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
                   <div class="font-semibold transition-colors text-[var(--text-primary)] group-hover:text-[var(--brand)]">
                     Internet Resource
                   </div>
@@ -483,7 +483,7 @@ defmodule PortalWeb.Resources do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="remix-server-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+                <.icon name="ri-server-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-[var(--text-primary)]">No resources yet</p>
@@ -495,7 +495,7 @@ defmodule PortalWeb.Resources do
                 patch={~p"/#{@account}/resources/new"}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
               >
-                <.icon name="remix-add-line" class="w-3 h-3" /> Add a Resource
+                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
               </.link>
             </div>
           </:empty>

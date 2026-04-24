@@ -162,7 +162,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="remix-building-line" class="w-6 h-6 text-[var(--brand)]" />
+        <.icon name="ri-building-line" class="w-6 h-6 text-[var(--brand)]" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -254,7 +254,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="remix-mail-line" class="w-5 h-5 text-[var(--brand)]" />
+        <.icon name="ri-mail-line" class="w-5 h-5 text-[var(--brand)]" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">Check your email</h1>
@@ -318,7 +318,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="remix-checkbox-circle-line" class="w-5 h-5 text-[var(--brand)]" />
+        <.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-[var(--brand)]" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -399,7 +399,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-center justify-center shrink-0">
-        <.icon name="remix-prohibited-line" class="w-5 h-5 text-rose-500" />
+        <.icon name="ri-prohibited-line" class="w-5 h-5 text-rose-500" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -427,7 +427,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="remix-loader-4-line" class="w-5 h-5 text-[var(--brand)] animate-spin" />
+        <.icon name="ri-loader-4-line" class="w-5 h-5 text-[var(--brand)] animate-spin" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -465,7 +465,7 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-center justify-center shrink-0">
-        <.icon name="remix-error-warning-line" class="w-5 h-5 text-rose-500" />
+        <.icon name="ri-error-warning-line" class="w-5 h-5 text-rose-500" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -488,7 +488,7 @@ defmodule PortalWeb.SignUp do
       <ul class="space-y-2">
         <li class="flex items-start gap-2.5">
           <.icon
-            name="remix-arrow-right-s-line"
+            name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--text-tertiary)]"
           />
           <span class="text-sm text-[var(--text-secondary)]">
@@ -497,7 +497,7 @@ defmodule PortalWeb.SignUp do
         </li>
         <li class="flex items-start gap-2.5">
           <.icon
-            name="remix-arrow-right-s-line"
+            name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--text-tertiary)]"
           />
           <span class="text-sm text-[var(--text-secondary)]">
@@ -507,7 +507,7 @@ defmodule PortalWeb.SignUp do
         </li>
         <li class="flex items-start gap-2.5">
           <.icon
-            name="remix-arrow-right-s-line"
+            name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--text-tertiary)]"
           />
           <span class="text-sm text-[var(--text-secondary)]">

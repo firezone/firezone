@@ -154,6 +154,13 @@ defmodule Portal.MixProject do
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
+      {:remixicons,
+       github: "Remix-Design/RemixIcon",
+       sparse: "icons",
+       tag: "v4.6.0",
+       app: false,
+       compile: false,
+       depth: 1},
 
       # Test deps
       {:bypass, "~> 2.1", only: :test},

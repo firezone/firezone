@@ -78,7 +78,7 @@ defmodule PortalWeb.FindAccount do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
-        <.icon name="remix-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
+        <.icon name="ri-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
@@ -130,7 +130,7 @@ defmodule PortalWeb.FindAccount do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
-        <.icon name="remix-mail-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
+        <.icon name="ri-mail-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">Check your inbox</h1>

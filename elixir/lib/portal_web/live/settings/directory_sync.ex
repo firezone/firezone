@@ -395,7 +395,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 patch={~p"/#{@account}/settings/directory_sync/new"}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
               >
-                <.icon name="remix-add-line" class="w-3 h-3" /> Add
+                <.icon name="ri-add-line" class="w-3 h-3" /> Add
               </.link>
             </div>
           </div>
@@ -408,7 +408,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   patch={~p"/#{@account}/settings/directory_sync/new"}
                   class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
                 >
-                  <.icon name="remix-add-line" class="w-3 h-3" /> Add a directory
+                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a directory
                 </.link>
               </div>
             <% else %>
@@ -473,7 +473,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -539,7 +539,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                   title="Back"
                 >
-                  <.icon name="remix-arrow-left-line" class="w-4 h-4" />
+                  <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
                 <div class="flex items-center gap-2">
                   <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
@@ -554,7 +554,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -616,7 +616,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -758,7 +758,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
             <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
               <div class="flex flex-col items-center gap-3 bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg shadow-lg px-8 py-6 text-[var(--text-tertiary)]">
-                <.icon name="remix-loop-left-line" class="w-8 h-8" />
+                <.icon name="ri-loop-left-line" class="w-8 h-8" />
                 <div class="flex flex-col items-center gap-1 text-center">
                   <p class="text-sm font-medium text-[var(--text-primary)]">
                     Automate User & Group Management
@@ -769,7 +769,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 </div>
                 <.button
                   style="primary"
-                  icon="remix-sparkling-fill"
+                  icon="ri-sparkling-fill"
                   navigate={~p"/#{@account}/settings/account"}
                 >
                   Upgrade to Unlock
@@ -841,12 +841,12 @@ defmodule PortalWeb.Settings.DirectorySync do
         <%= case @most_recent_job do %>
           <% %{state: "executing"} = job -> %>
             <span class="flex items-center gap-1.5 text-xs text-[var(--brand)]">
-              <.icon name="remix-loop-left-line" class="w-3.5 h-3.5 animate-spin" />
+              <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 animate-spin" />
               syncing ({format_duration(job.elapsed_seconds)})
             </span>
           <% %{state: state} when state in ["available", "scheduled"] -> %>
             <span class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
-              <.icon name="remix-time-line" class="w-3.5 h-3.5" /> queued
+              <.icon name="ri-time-line" class="w-3.5 h-3.5" /> queued
             </span>
           <% %{state: "completed"} = job -> %>
             <span class="text-xs text-[var(--text-secondary)]">
@@ -870,7 +870,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 type="button"
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
               >
-                <.icon name="remix-more-2-line" class="w-4 h-4" />
+                <.icon name="ri-more-2-line" class="w-4 h-4" />
               </button>
             </:target>
             <:content>
@@ -879,7 +879,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
                 >
-                  <.icon name="remix-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                  <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
                 </.link>
                 <button
                   type="button"
@@ -889,7 +889,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   disabled={@directory.is_disabled or @directory.has_active_job}
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <.icon name="remix-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+                  <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
                 </button>
                 <div class="my-1 border-t border-[var(--border)]"></div>
                 <.button_with_confirmation
@@ -901,8 +901,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                   <.icon
                     name={
                       if @directory.is_disabled,
-                        do: "remix-checkbox-circle-line",
-                        else: "remix-close-circle-line"
+                        do: "ri-checkbox-circle-line",
+                        else: "ri-close-circle-line"
                     }
                     class="w-3.5 h-3.5 shrink-0"
                   />
@@ -932,7 +932,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   on_confirm_id={@directory.id}
                   class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)] border-0 bg-transparent"
                 >
-                  <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                   <:dialog_title>Delete Directory</:dialog_title>
                   <:dialog_content>
                     <.deletion_stats directory={@directory} subject={@subject} />
@@ -1314,7 +1314,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               <.button
                 type="button"
                 phx-click="generate_keypair"
-                icon="remix-key-line"
+                icon="ri-key-line"
                 style="primary"
                 size="sm"
               >
@@ -1397,7 +1397,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     # Google/Okta are server-side only, no icon or hook needed
     button_attrs =
       if assigns.type == "entra" do
-        [icon: "remix-external-link-line", "phx-hook": "OpenURL"]
+        [icon: "ri-external-link-line", "phx-hook": "OpenURL"]
       else
         []
       end
@@ -1409,7 +1409,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       :if={verified?(@form)}
       class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
     >
-      <.icon name="remix-checkbox-circle-line" class="h-5 w-5 mr-2" />
+      <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
       <span class="font-medium">Verified</span>
     </div>
     <.button

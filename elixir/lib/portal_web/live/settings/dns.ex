@@ -45,7 +45,7 @@ defmodule PortalWeb.Settings.DNS do
               patch={~p"/#{@account}/settings/dns/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
             >
-              <.icon name="remix-pencil-line" class="w-3 h-3" /> Edit
+              <.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
             </.link>
           </div>
         </div>
@@ -97,7 +97,7 @@ defmodule PortalWeb.Settings.DNS do
               class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
               title="Close (Esc)"
             >
-              <.icon name="remix-close-line" class="w-4 h-4" />
+              <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </div>
           <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -132,17 +132,17 @@ defmodule PortalWeb.Settings.DNS do
     {icon, label, description} =
       case dns && dns.type do
         :system ->
-          {"remix-computer-line", "System DNS", "Use the device's default DNS resolvers."}
+          {"ri-computer-line", "System DNS", "Use the device's default DNS resolvers."}
 
         :secure ->
           provider = doh_provider_label(dns && dns.doh_provider)
-          {"remix-lock-line", "Secure DNS", "DNS-over-HTTPS via #{provider}."}
+          {"ri-lock-line", "Secure DNS", "DNS-over-HTTPS via #{provider}."}
 
         :custom ->
-          {"remix-settings-3-line", "Custom DNS", nil}
+          {"ri-settings-3-line", "Custom DNS", nil}
 
         _ ->
-          {"remix-computer-line", "System DNS", "Use the device's default DNS resolvers."}
+          {"ri-computer-line", "System DNS", "Use the device's default DNS resolvers."}
       end
 
     assigns = assign(assigns, icon: icon, label: label, description: description, dns: dns)
@@ -243,7 +243,7 @@ defmodule PortalWeb.Settings.DNS do
                     ]}
                   >
                     <span class="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-1.5">
-                      <.icon name="remix-computer-line" class="w-4 h-4 shrink-0" /> System
+                      <.icon name="ri-computer-line" class="w-4 h-4 shrink-0" /> System
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
                       Use the device's default DNS resolvers.
@@ -269,7 +269,7 @@ defmodule PortalWeb.Settings.DNS do
                     ]}
                   >
                     <span class="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-1.5">
-                      <.icon name="remix-lock-line" class="w-4 h-4 shrink-0" /> Secure
+                      <.icon name="ri-lock-line" class="w-4 h-4 shrink-0" /> Secure
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
                       Use DNS-over-HTTPS from trusted providers.
@@ -295,7 +295,7 @@ defmodule PortalWeb.Settings.DNS do
                     ]}
                   >
                     <span class="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-1.5">
-                      <.icon name="remix-settings-3-line" class="w-4 h-4 shrink-0" /> Custom
+                      <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Custom
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
                       Configure your own DNS server addresses.
@@ -372,7 +372,7 @@ defmodule PortalWeb.Settings.DNS do
                         phx-click={JS.dispatch("change")}
                         class="flex items-center justify-center w-9 h-9 rounded text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
                       >
-                        <.icon name="remix-delete-bin-line" class="w-4 h-4" />
+                        <.icon name="ri-delete-bin-line" class="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -394,7 +394,7 @@ defmodule PortalWeb.Settings.DNS do
                   phx-click={JS.dispatch("change")}
                   class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
                 >
-                  <.icon name="remix-add-line" class="w-3.5 h-3.5" /> Add Resolver
+                  <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add Resolver
                 </button>
 
                 <p class="text-xs text-[var(--text-tertiary)]">

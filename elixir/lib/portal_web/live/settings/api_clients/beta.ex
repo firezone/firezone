@@ -48,7 +48,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
 
         <div class="flex-1 overflow-auto flex flex-col items-center justify-center">
           <div class="flex flex-col items-center gap-3 text-[var(--text-tertiary)]">
-            <.icon name="remix-lock-line" class="w-8 h-8" />
+            <.icon name="ri-lock-line" class="w-8 h-8" />
             <div class="flex flex-col items-center gap-1 text-center">
               <p class="text-sm font-medium text-[var(--text-primary)]">REST API is in closed beta</p>
               <p class="text-xs">

@@ -97,7 +97,7 @@ defmodule PortalWeb.Groups.Components do
               class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
               title="Back to group"
             >
-              <.icon name="remix-arrow-left-line" class="w-4 h-4" />
+              <.icon name="ri-arrow-left-line" class="w-4 h-4" />
             </.link>
             <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
               {if @panel_view == :new_form, do: "New Group", else: "Edit #{@group && @group.name}"}
@@ -108,7 +108,7 @@ defmodule PortalWeb.Groups.Components do
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -166,7 +166,7 @@ defmodule PortalWeb.Groups.Components do
                       phx-value-actor_id={actor.id}
                       class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
                     >
-                      <.icon name="remix-arrow-go-back-line" class="w-5 h-5" />
+                      <.icon name="ri-arrow-go-back-line" class="w-5 h-5" />
                     </button>
                     <button
                       :if={not is_to_remove}
@@ -175,7 +175,7 @@ defmodule PortalWeb.Groups.Components do
                       phx-value-actor_id={actor.id}
                       class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
                     >
-                      <.icon name="remix-user-minus-line" class="w-5 h-5" />
+                      <.icon name="ri-user-minus-line" class="w-5 h-5" />
                     </button>
                   </div>
                 </:actions>
@@ -304,14 +304,14 @@ defmodule PortalWeb.Groups.Components do
             patch={~p"/#{@account}/groups/#{@group.id}/edit"}
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.icon name="remix-pencil-line" class="w-3.5 h-3.5" /> Edit
+            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.link>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -380,14 +380,14 @@ defmodule PortalWeb.Groups.Components do
           phx-click="open_grant_resource_form"
           class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          <.icon name="remix-add-line" class="w-3 h-3" /> Grant access
+          <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
         </button>
       </div>
       <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
         <form phx-change="filter_show_members">
           <div class="relative">
             <.icon
-              name="remix-search-line"
+              name="ri-search-line"
               class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)]"
             />
             <input
@@ -469,7 +469,7 @@ defmodule PortalWeb.Groups.Components do
             disabled={@member_page <= 1}
             class="flex items-center justify-center w-7 h-7 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            <.icon name="remix-arrow-left-s-line" class="w-3.5 h-3.5" />
+            <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
@@ -477,7 +477,7 @@ defmodule PortalWeb.Groups.Components do
             disabled={@member_page >= @member_pages}
             class="flex items-center justify-center w-7 h-7 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            <.icon name="remix-arrow-right-s-line" class="w-3.5 h-3.5" />
+            <.icon name="ri-arrow-right-s-line" class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -532,7 +532,7 @@ defmodule PortalWeb.Groups.Components do
           class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
           title="Back to resource list"
         >
-          <.icon name="remix-arrow-left-s-line" class="w-3.5 h-3.5" />
+          <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
         </button>
         <span class="text-xs font-semibold text-[var(--text-primary)]">Grant access</span>
       </div>
@@ -584,7 +584,7 @@ defmodule PortalWeb.Groups.Components do
                 <div class="px-2 pt-1.5 shrink-0">
                   <div class="relative">
                     <.icon
-                      name="remix-search-line"
+                      name="ri-search-line"
                       class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
                     />
                     <input
@@ -667,7 +667,7 @@ defmodule PortalWeb.Groups.Components do
                         </p>
                       </div>
                       <.icon
-                        name="remix-close-line"
+                        name="ri-close-line"
                         class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
                     </button>
@@ -711,7 +711,7 @@ defmodule PortalWeb.Groups.Components do
                   phx-click="toggle_conditions_dropdown"
                   class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
                 >
-                  <.icon name="remix-add-line" class="w-2.5 h-2.5" /> Add condition
+                  <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
                 </button>
                 <div :if={@conditions_dropdown_open?}>
                   <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
@@ -882,7 +882,7 @@ defmodule PortalWeb.Groups.Components do
                 class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
                 title="More actions"
               >
-                <.icon name="remix-more-2-line" class="w-3.5 h-3.5" />
+                <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
               </button>
               <div
                 :if={@resource_access_actions_open_id == resource.id}
@@ -896,7 +896,7 @@ defmodule PortalWeb.Groups.Components do
                   phx-value-resource_id={resource.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
+                  <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
                 </button>
                 <button
                   :if={not is_nil(resource.policy_disabled_at)}
@@ -905,7 +905,7 @@ defmodule PortalWeb.Groups.Components do
                   phx-value-resource_id={resource.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
+                  <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
                 </button>
                 <button
                   type="button"
@@ -913,7 +913,7 @@ defmodule PortalWeb.Groups.Components do
                   phx-value-resource_id={resource.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
                 </button>
               </div>
             </div>
@@ -1045,16 +1045,16 @@ defmodule PortalWeb.Groups.Components do
       <%= case @actor.type do %>
         <% :service_account -> %>
           <.icon
-            name="remix-server-line"
+            name="ri-server-line"
             class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
           />
         <% :account_admin_user -> %>
           <.icon
-            name="remix-shield-check-line"
+            name="ri-shield-check-line"
             class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
           />
         <% _ -> %>
-          <.icon name="remix-user-line" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
+          <.icon name="ri-user-line" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
       <% end %>
     </div>
     """
@@ -1072,7 +1072,7 @@ defmodule PortalWeb.Groups.Components do
     >
       <div class="relative">
         <.icon
-          name="remix-search-line"
+          name="ri-search-line"
           class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
         />
         <input

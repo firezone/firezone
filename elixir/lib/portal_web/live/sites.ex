@@ -167,7 +167,7 @@ defmodule PortalWeb.Sites do
     >
       <.page_header>
         <:icon>
-          <.icon name="remix-map-pin-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-map-pin-line" class="w-16 h-16 text-[var(--brand)]" />
         </:icon>
         <:title>Sites</:title>
         <:description>
@@ -175,7 +175,7 @@ defmodule PortalWeb.Sites do
         </:description>
         <:action>
           <.docs_action path="/deploy/sites" />
-          <.button style="primary" icon="remix-add-line" phx-click="open_new_site_panel">
+          <.button style="primary" icon="ri-add-line" phx-click="open_new_site_panel">
             New Site
           </.button>
         </:action>
@@ -341,7 +341,7 @@ defmodule PortalWeb.Sites do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="remix-global-line" class="w-5 h-5 text-violet-500" />
+                  <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
                   <div class={[
                     "font-medium transition-colors",
                     if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,

@@ -458,7 +458,7 @@ defmodule PortalWeb.FormComponents do
               type="button"
               phx-click={@on_close}
             >
-              <.icon name="remix-close-line" class="h-4 w-4" />
+              <.icon name="ri-close-line" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
             </button>
           </div>
@@ -545,7 +545,7 @@ defmodule PortalWeb.FormComponents do
               type="submit"
               value="cancel"
             >
-              <.icon name="remix-close-line" class="h-4 w-4" />
+              <.icon name="ri-close-line" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
             </button>
           </div>
@@ -601,7 +601,7 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.button style="primary" navigate={~p"/actors/new"} icon="remix-add-line">
+      <.button style="primary" navigate={~p"/actors/new"} icon="ri-add-line">
         Add user
       </.button>
 
@@ -725,7 +725,7 @@ defmodule PortalWeb.FormComponents do
 
   def delete_button(assigns) do
     ~H"""
-    <.button style="danger" size={@size} icon="remix-delete-bin-fill" {@rest}>
+    <.button style="danger" size={@size} icon="ri-delete-bin-fill" {@rest}>
       {render_slot(@inner_block)}
     </.button>
     """
@@ -751,7 +751,7 @@ defmodule PortalWeb.FormComponents do
 
   def add_button(%{navigate: navigate} = assigns) when not is_nil(navigate) do
     ~H"""
-    <.button style="primary" class={@class} navigate={@navigate} icon="remix-add-line">
+    <.button style="primary" class={@class} navigate={@navigate} icon="ri-add-line">
       {render_slot(@inner_block)}
     </.button>
     """
@@ -759,7 +759,7 @@ defmodule PortalWeb.FormComponents do
 
   def add_button(%{patch: patch} = assigns) when not is_nil(patch) do
     ~H"""
-    <.button style="primary" class={@class} patch={@patch} icon="remix-add-line">
+    <.button style="primary" class={@class} patch={@patch} icon="ri-add-line">
       {render_slot(@inner_block)}
     </.button>
     """
@@ -779,7 +779,7 @@ defmodule PortalWeb.FormComponents do
 
   def edit_button(assigns) do
     ~H"""
-    <.button style="primary" navigate={@navigate} icon="remix-pencil-fill">
+    <.button style="primary" navigate={@navigate} icon="ri-pencil-fill">
       {render_slot(@inner_block)}
     </.button>
     """

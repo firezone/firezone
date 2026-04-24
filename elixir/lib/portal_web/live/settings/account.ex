@@ -264,12 +264,12 @@ defmodule PortalWeb.Settings.Account do
     <div class="flex items-center gap-2">
       <.icon
         :if={@enabled}
-        name="remix-check-line"
+        name="ri-check-line"
         class="w-3.5 h-3.5 shrink-0 text-[var(--status-active)]"
       />
       <.icon
         :if={not @enabled}
-        name="remix-subtract-line"
+        name="ri-subtract-line"
         class="w-3.5 h-3.5 shrink-0 text-[var(--text-tertiary)]"
       />
       <span class={[

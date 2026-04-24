@@ -37,9 +37,9 @@ defmodule PortalWeb.NavigationComponents do
             aria-label="Change theme"
             aria-haspopup="true"
           >
-            <.icon name="remix-sun-line" class="theme-icon-light w-4 h-4" />
-            <.icon name="remix-moon-line" class="theme-icon-dark w-4 h-4" />
-            <.icon name="remix-computer-line" class="theme-icon-system w-4 h-4" />
+            <.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
+            <.icon name="ri-moon-line" class="theme-icon-dark w-4 h-4" />
+            <.icon name="ri-computer-line" class="theme-icon-system w-4 h-4" />
           </button>
           <div
             id="theme-dropdown"
@@ -53,9 +53,9 @@ defmodule PortalWeb.NavigationComponents do
                   data-theme-option="system"
                   class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-computer-line" class="w-4 h-4 shrink-0" />
+                  <.icon name="ri-computer-line" class="w-4 h-4 shrink-0" />
                   <span>System</span>
-                  <.icon name="hero-check" class="theme-check-system w-3 h-3 ml-auto shrink-0" />
+                  <.icon name="ri-check-line" class="theme-check-system w-3 h-3 ml-auto shrink-0" />
                 </button>
               </li>
               <li>
@@ -65,9 +65,9 @@ defmodule PortalWeb.NavigationComponents do
                   data-theme-option="light"
                   class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-sun-line" class="w-4 h-4 shrink-0" />
+                  <.icon name="ri-sun-line" class="w-4 h-4 shrink-0" />
                   <span>Light</span>
-                  <.icon name="hero-check" class="theme-check-light w-3 h-3 ml-auto shrink-0" />
+                  <.icon name="ri-check-line" class="theme-check-light w-3 h-3 ml-auto shrink-0" />
                 </button>
               </li>
               <li>
@@ -77,9 +77,9 @@ defmodule PortalWeb.NavigationComponents do
                   data-theme-option="dark"
                   class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-moon-line" class="w-4 h-4 shrink-0" />
+                  <.icon name="ri-moon-line" class="w-4 h-4 shrink-0" />
                   <span>Dark</span>
-                  <.icon name="hero-check" class="theme-check-dark w-3 h-3 ml-auto shrink-0" />
+                  <.icon name="ri-check-line" class="theme-check-dark w-3 h-3 ml-auto shrink-0" />
                 </button>
               </li>
             </ul>
@@ -193,21 +193,21 @@ defmodule PortalWeb.NavigationComponents do
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/resources"}
-              icon="remix-server-line"
+              icon="ri-server-line"
             >
               Resources
             </.sidebar_item>
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/groups"}
-              icon="remix-team-line"
+              icon="ri-team-line"
             >
               Groups
             </.sidebar_item>
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/policies"}
-              icon="remix-shield-line"
+              icon="ri-shield-line"
             >
               Policies
             </.sidebar_item>
@@ -226,14 +226,14 @@ defmodule PortalWeb.NavigationComponents do
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/sites"}
-              icon="remix-map-pin-line"
+              icon="ri-map-pin-line"
             >
               Sites
             </.sidebar_item>
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/clients"}
-              icon="remix-computer-line"
+              icon="ri-computer-line"
             >
               Clients
             </.sidebar_item>
@@ -252,7 +252,7 @@ defmodule PortalWeb.NavigationComponents do
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/actors"}
-              icon="remix-user-line"
+              icon="ri-user-line"
             >
               Actors
             </.sidebar_item>
@@ -273,7 +273,7 @@ defmodule PortalWeb.NavigationComponents do
               "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)]"
           ]}
         >
-          <.icon name="remix-settings-3-line" class="w-4 h-4 shrink-0" />
+          <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
           <span
             data-sidebar-label
             class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
@@ -294,7 +294,7 @@ defmodule PortalWeb.NavigationComponents do
           title="Toggle sidebar"
         >
           <.icon
-            name="remix-arrow-left-s-fill"
+            name="ri-arrow-left-s-fill"
             data-sidebar-chevron
             class="w-4 h-4 shrink-0 transition-transform duration-200"
           />
@@ -360,7 +360,7 @@ defmodule PortalWeb.NavigationComponents do
       <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-[var(--border)]">
         <div class="absolute inset-x-0 top-0 h-[2px] bg-[var(--brand)] opacity-50"></div>
         <div class="flex items-center gap-5">
-          <.icon name="remix-settings-3-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
           <div class="flex-1 min-w-0">
             <h1 class="text-base font-semibold text-[var(--text-primary)]">{@account.name}</h1>
             <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{@account.legal_name}</p>
@@ -401,7 +401,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/account"}
           tab_path="settings/account"
-          icon="remix-building-fill"
+          icon="ri-building-fill"
         >
           Account
         </.settings_tab>
@@ -409,7 +409,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/notifications"}
           tab_path="settings/notifications"
-          icon="remix-notification-fill"
+          icon="ri-notification-fill"
         >
           Notifications
         </.settings_tab>
@@ -417,7 +417,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/authentication"}
           tab_path="settings/authentication"
-          icon="remix-key-fill"
+          icon="ri-key-fill"
         >
           Authentication
         </.settings_tab>
@@ -425,7 +425,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/directory_sync"}
           tab_path="settings/directory_sync"
-          icon="remix-loop-left-fill"
+          icon="ri-loop-left-fill"
         >
           Directory Sync
         </.settings_tab>
@@ -433,7 +433,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/dns"}
           tab_path="settings/dns"
-          icon="remix-global-fill"
+          icon="ri-global-fill"
         >
           DNS
         </.settings_tab>
@@ -441,7 +441,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/api_clients"}
           tab_path="settings/api_clients"
-          icon="remix-code-s-slash-fill"
+          icon="ri-code-s-slash-fill"
         >
           REST API
         </.settings_tab>
@@ -538,7 +538,7 @@ defmodule PortalWeb.NavigationComponents do
             navigate={if @account, do: ~p"/#{@account}/sites", else: @home_path}
             class="inline-flex items-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           >
-            <.icon name="remix-home-2-fill" class="w-3.5 h-3.5 mr-2" /> Home
+            <.icon name="ri-home-2-fill" class="w-3.5 h-3.5 mr-2" /> Home
           </.link>
 
           {render_slot(@inner_block)}
@@ -558,7 +558,7 @@ defmodule PortalWeb.NavigationComponents do
     ~H"""
     <li class="inline-flex items-center">
       <div class="flex items-center text-[var(--text-tertiary)]">
-        <.icon name="remix-arrow-right-s-fill" class="w-3.5 h-3.5" />
+        <.icon name="ri-arrow-right-s-fill" class="w-3.5 h-3.5" />
         <.link
           :if={not is_nil(@path)}
           navigate={@path}
@@ -592,7 +592,7 @@ defmodule PortalWeb.NavigationComponents do
         navigate={@navigate}
         class="text-sm font-semibold leading-6 text-[var(--text-primary)] hover:text-[var(--text-secondary)]"
       >
-        <.icon name="remix-arrow-left-fill" class="h-3 w-3" />
+        <.icon name="ri-arrow-left-fill" class="h-3 w-3" />
         {render_slot(@inner_block)}
       </.link>
     </div>
@@ -645,7 +645,7 @@ defmodule PortalWeb.NavigationComponents do
       target="_blank"
       {@rest}
     >
-      <.icon name="remix-question-line" class="mr-2 w-5 h-5" />
+      <.icon name="ri-question-line" class="mr-2 w-5 h-5" />
     </.link>
     """
   end

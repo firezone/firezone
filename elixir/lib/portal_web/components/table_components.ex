@@ -59,13 +59,13 @@ defmodule PortalWeb.TableComponents do
         name={
           cond do
             current_order == :asc ->
-              "remix-arrow-up-s-fill"
+              "ri-arrow-up-s-fill"
 
             current_order == :desc ->
-              "remix-arrow-down-s-fill"
+              "ri-arrow-down-s-fill"
 
             true ->
-              "remix-arrow-up-down-fill"
+              "ri-arrow-up-down-fill"
           end
         }
         class="w-4 h-4 ml-1"

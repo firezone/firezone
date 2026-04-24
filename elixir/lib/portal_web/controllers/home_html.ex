@@ -36,7 +36,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-[var(--brand)]/10">
-          <.icon name="remix-building-line" class="w-6 h-6 text-[var(--brand)]" />
+          <.icon name="ri-building-line" class="w-6 h-6 text-[var(--brand)]" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
@@ -47,7 +47,7 @@ defmodule PortalWeb.HomeHTML do
           </p>
         </div>
         <.icon
-          name="remix-arrow-right-s-line"
+          name="ri-arrow-right-s-line"
           class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
         />
       </a>
@@ -57,7 +57,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-violet-500/10 dark:bg-violet-400/10">
-          <.icon name="remix-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
+          <.icon name="ri-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
@@ -68,7 +68,7 @@ defmodule PortalWeb.HomeHTML do
           </p>
         </div>
         <.icon
-          name="remix-arrow-right-s-line"
+          name="ri-arrow-right-s-line"
           class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
         />
       </a>
@@ -78,7 +78,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800">
-          <.icon name="remix-terminal-line" class="w-5 h-5 text-slate-500 dark:text-slate-400" />
+          <.icon name="ri-terminal-line" class="w-5 h-5 text-slate-500 dark:text-slate-400" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
@@ -89,7 +89,7 @@ defmodule PortalWeb.HomeHTML do
           </p>
         </div>
         <.icon
-          name="remix-arrow-right-s-line"
+          name="ri-arrow-right-s-line"
           class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
         />
       </a>
@@ -184,7 +184,7 @@ defmodule PortalWeb.HomeHTML do
         <p class="text-xs text-[var(--text-tertiary)] truncate">{@account.slug}</p>
       </div>
       <.icon
-        name="remix-arrow-right-s-line"
+        name="ri-arrow-right-s-line"
         class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </a>

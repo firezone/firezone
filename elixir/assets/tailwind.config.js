@@ -100,66 +100,12 @@ module.exports = {
       ])
     ),
 
-    // Embeds Hero Icons (https://heroicons.com) into your app.css bundle
-    // See your `CoreComponents.icon/1` for more information.
-    //
-    plugin(function ({ matchComponents, theme }) {
-      let iconsDir = path.join(__dirname, "./vendor/heroicons/optimized");
-      let values = {};
-      let icons = [
-        ["", "/24/outline"],
-        ["-solid", "/24/solid"],
-        ["-mini", "/20/solid"],
-      ];
-      icons.forEach(([suffix, dir]) => {
-        fs.readdirSync(path.join(iconsDir, dir)).map((file) => {
-          let name = path.basename(file, ".svg") + suffix;
-          values[name] = { name, fullPath: path.join(iconsDir, dir, file) };
-        });
-      });
-      matchComponents(
-        {
-          hero: ({ name, fullPath }) => {
-            let content = fs
-              .readFileSync(fullPath)
-              .toString()
-              .replace(/\r?\n|\r/g, "");
-            return {
-              [`--hero-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
-              "-webkit-mask": `var(--hero-${name})`,
-              mask: `var(--hero-${name})`,
-              "background-color": "currentColor",
-              "vertical-align": "middle",
-              display: "inline-block",
-              width: theme("spacing.5"),
-              height: theme("spacing.5"),
-            };
-          },
-        },
-        { values }
-      );
-    }),
-
     // Embeds Remix Icons (https://remixicon.com) into your app.css bundle.
-    // To add a new icon: copy its SVG from ./remix_icons/priv/icons/<Category>/
-    // into ./vendor/remix_icons/<Category>/ and rebuild assets with `mix assets.build`.
-    //
-    // Included icons (fill + line variants for each):
-    //   Buildings: hotel
-    //   Business:  cloud, global
-    //   Development: code-s-slash
-    //   Device:    mac, server
-    //   Map:       map-pin
-    //   Media:     notification-2
-    //   Others:    key-2
-    //   System:    loop-left, settings-3, shield
-    //   User & Faces: team, user
+    // Icons are sourced from the remixicons dep (deps/remixicons/icons/).
+    // Use any icon with the `ri-` prefix, e.g. `ri-settings-3-line`.
     plugin(function ({ matchComponents, theme }) {
-      let iconsDir = path.join(__dirname, "./vendor/remix_icons");
+      let iconsDir = path.join(__dirname, "../deps/remixicons/icons");
       let values = {};
-      // Recursively scan all category subdirectories for SVG files.
-      // CSS class name is derived from filename only (category is ignored),
-      // so `System/settings-3-line.svg` → class `remix-settings-3-line`.
       function scanDir(dir) {
         fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
           if (entry.isDirectory()) {
@@ -173,15 +119,15 @@ module.exports = {
       scanDir(iconsDir);
       matchComponents(
         {
-          remix: ({ name, fullPath }) => {
+          ri: ({ name, fullPath }) => {
             let content = fs
               .readFileSync(fullPath)
               .toString()
               .replace(/\r?\n|\r/g, "");
             return {
-              [`--remix-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
-              "-webkit-mask": `var(--remix-${name})`,
-              mask: `var(--remix-${name})`,
+              [`--ri-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
+              "-webkit-mask": `var(--ri-${name})`,
+              mask: `var(--ri-${name})`,
               "background-color": "currentColor",
               "vertical-align": "middle",
               display: "inline-block",

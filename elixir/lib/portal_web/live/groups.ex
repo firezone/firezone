@@ -726,7 +726,7 @@ defmodule PortalWeb.Groups do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="remix-team-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-team-line" class="w-16 h-16 text-[var(--brand)]" />
         </:icon>
         <:title>Groups</:title>
         <:description>
@@ -736,7 +736,7 @@ defmodule PortalWeb.Groups do
           <.docs_action path="/deploy/groups" />
           <.button
             style="primary"
-            icon="remix-add-line"
+            icon="ri-add-line"
             patch={~p"/#{@account}/groups/new"}
           >
             New Group
@@ -811,7 +811,7 @@ defmodule PortalWeb.Groups do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="remix-team-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+                <.icon name="ri-team-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-[var(--text-primary)]">No groups yet</p>
@@ -823,7 +823,7 @@ defmodule PortalWeb.Groups do
                 patch={~p"/#{@account}/groups/new"}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
               >
-                <.icon name="remix-add-line" class="w-3 h-3" /> Add a Group
+                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
               </.link>
             </div>
           </:empty>

@@ -93,7 +93,7 @@ defmodule PortalWeb.Clients.Components do
           {@client.name}
           <.icon
             :if={not is_nil(@client.verified_at)}
-            name="remix-shield-check-line"
+            name="ri-shield-check-line"
             class="h-2.5 w-2.5 text-neutral-500"
             title="Device attributes of this client are manually verified"
           />
@@ -116,7 +116,7 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
-  def client_os_icon_name(nil), do: "remix-computer-line"
+  def client_os_icon_name(nil), do: "ri-computer-line"
   def client_os_icon_name("Windows/" <> _), do: "os-windows"
   def client_os_icon_name("Mac OS/" <> _), do: "os-macos"
   def client_os_icon_name("iOS/" <> _), do: "os-ios"
@@ -163,12 +163,12 @@ defmodule PortalWeb.Clients.Components do
         ]}>
           <.icon
             :if={@outdated?}
-            name="remix-arrow-up-line"
+            name="ri-arrow-up-line"
             class="h-2.5 w-2.5 shrink-0"
           />
           <.icon
             :if={not @outdated?}
-            name="remix-check-line"
+            name="ri-check-line"
             class="h-2.5 w-2.5 shrink-0"
           />
           {@current}
@@ -258,7 +258,7 @@ defmodule PortalWeb.Clients.Components do
           class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
           title="Close (Esc)"
         >
-          <.icon name="remix-close-line" class="w-4 h-4" />
+          <.icon name="ri-close-line" class="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -347,14 +347,14 @@ defmodule PortalWeb.Clients.Components do
             phx-click="open_client_edit_form"
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.icon name="remix-pencil-line" class="w-3.5 h-3.5" /> Edit
+            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -579,7 +579,7 @@ defmodule PortalWeb.Clients.Components do
       :if={not is_nil(@client.verified_at)}
       class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--status-active)] bg-[var(--status-active-bg)]"
     >
-      <.icon name="remix-shield-check-line" class="w-2.5 h-2.5" /> Verified
+      <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
     </span>
     """
   end
@@ -592,7 +592,7 @@ defmodule PortalWeb.Clients.Components do
       :if={not is_nil(@client.verified_at)}
       class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--status-active)] bg-[var(--status-active-bg)]"
     >
-      <.icon name="remix-shield-check-line" class="w-2.5 h-2.5" /> Verified
+      <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
     </span>
     <span
       :if={is_nil(@client.verified_at)}

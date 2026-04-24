@@ -5,12 +5,12 @@ defmodule PortalWeb.Settings.Profile do
   alias __MODULE__.Database
 
   @start_page_options [
-    %{value: "sites", label: "Sites", icon: "remix-global-line"},
-    %{value: "resources", label: "Resources", icon: "remix-server-line"},
-    %{value: "groups", label: "Groups", icon: "remix-team-line"},
-    %{value: "policies", label: "Policies", icon: "remix-shield-check-line"},
-    %{value: "clients", label: "Clients", icon: "remix-computer-line"},
-    %{value: "actors", label: "Actors", icon: "remix-user-line"}
+    %{value: "sites", label: "Sites", icon: "ri-global-line"},
+    %{value: "resources", label: "Resources", icon: "ri-server-line"},
+    %{value: "groups", label: "Groups", icon: "ri-team-line"},
+    %{value: "policies", label: "Policies", icon: "ri-shield-check-line"},
+    %{value: "clients", label: "Clients", icon: "ri-computer-line"},
+    %{value: "actors", label: "Actors", icon: "ri-user-line"}
   ]
 
   def mount(_params, _session, socket) do
@@ -35,7 +35,7 @@ defmodule PortalWeb.Settings.Profile do
       <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-[var(--border)]">
         <div class="absolute inset-x-0 top-0 h-[2px] bg-[var(--brand)] opacity-50"></div>
         <div class="flex items-center gap-5">
-          <.icon name="remix-user-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-user-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
           <div class="flex-1 min-w-0">
             <h1 class="text-base font-semibold text-[var(--text-primary)]">{@subject.actor.name}</h1>
             <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{@subject.actor.email}</p>

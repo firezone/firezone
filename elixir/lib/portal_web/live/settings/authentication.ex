@@ -488,7 +488,7 @@ defmodule PortalWeb.Settings.Authentication do
             patch={~p"/#{@account}/settings/authentication/new"}
             class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.icon name="remix-add-line" class="w-3 h-3" /> Add
+            <.icon name="ri-add-line" class="w-3 h-3" /> Add
           </.link>
         </div>
 
@@ -551,7 +551,7 @@ defmodule PortalWeb.Settings.Authentication do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -631,7 +631,7 @@ defmodule PortalWeb.Settings.Authentication do
                   class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                   title="Back"
                 >
-                  <.icon name="remix-arrow-left-line" class="w-4 h-4" />
+                  <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
                 <div class="flex items-center gap-2">
                   <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
@@ -646,7 +646,7 @@ defmodule PortalWeb.Settings.Authentication do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -708,7 +708,7 @@ defmodule PortalWeb.Settings.Authentication do
               class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
               title="Close (Esc)"
             >
-              <.icon name="remix-close-line" class="w-4 h-4" />
+              <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </div>
           <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -922,7 +922,7 @@ defmodule PortalWeb.Settings.Authentication do
                       type="button"
                       class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                     >
-                      <.icon name="remix-more-2-line" class="w-4 h-4" />
+                      <.icon name="ri-more-2-line" class="w-4 h-4" />
                     </button>
                   </:target>
                   <:content>
@@ -933,28 +933,28 @@ defmodule PortalWeb.Settings.Authentication do
                         phx-value-id={@provider.id}
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
                       >
-                        <.icon name="remix-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                        <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                       </button>
                       <button
                         :if={@can_be_default and @is_default}
                         phx-click="clear_default_provider"
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
                       >
-                        <.icon name="remix-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
+                        <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
                       </button>
                       <button
                         :if={not @can_be_default}
                         disabled
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
                       >
-                        <.icon name="remix-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                        <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                       </button>
                       <div class="my-1 border-t border-[var(--border)]"></div>
                       <.link
                         patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
                       >
-                        <.icon name="remix-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                        <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
                       </.link>
                       <div class="my-1 border-t border-[var(--border)]"></div>
                       <button
@@ -964,7 +964,7 @@ defmodule PortalWeb.Settings.Authentication do
                         phx-value-action="revoke"
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
                       >
-                        <.icon name="remix-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                        <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
                         Revoke sessions
                       </button>
                       <button
@@ -972,7 +972,7 @@ defmodule PortalWeb.Settings.Authentication do
                         disabled
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
                       >
-                        <.icon name="remix-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                        <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
                         Revoke sessions
                       </button>
                       <div class="my-1 border-t border-[var(--border)]"></div>
@@ -985,8 +985,8 @@ defmodule PortalWeb.Settings.Authentication do
                         <.icon
                           name={
                             if @provider.is_disabled,
-                              do: "remix-checkbox-circle-line",
-                              else: "remix-close-circle-line"
+                              do: "ri-checkbox-circle-line",
+                              else: "ri-close-circle-line"
                           }
                           class="w-3.5 h-3.5 shrink-0"
                         />
@@ -999,7 +999,7 @@ defmodule PortalWeb.Settings.Authentication do
                         phx-value-action="delete"
                         class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
                       >
-                        <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                        <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                       </button>
                     </div>
                   </:content>
@@ -1290,10 +1290,10 @@ defmodule PortalWeb.Settings.Authentication do
                 class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <span id="redirect-uri-default-message">
-                  <.icon name="remix-clipboard-line" class="w-4 h-4" />
+                  <.icon name="ri-clipboard-line" class="w-4 h-4" />
                 </span>
                 <span id="redirect-uri-success-message" class="hidden">
-                  <.icon name="remix-check-line" class="w-4 h-4 text-green-600" />
+                  <.icon name="ri-check-line" class="w-4 h-4 text-green-600" />
                 </span>
               </button>
             </div>
@@ -1362,14 +1362,14 @@ defmodule PortalWeb.Settings.Authentication do
       :if={verified?(@form)}
       class="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-100 px-2.5 py-1 rounded"
     >
-      <.icon name="remix-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
+      <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
     </div>
     <.button
       :if={not verified?(@form) and ready_to_verify?(@form)}
       type="button"
       id="verify-button"
       style="primary"
-      icon="remix-external-link-line"
+      icon="ri-external-link-line"
       phx-click="start_verification"
       phx-hook="OpenURL"
     >
@@ -1379,7 +1379,7 @@ defmodule PortalWeb.Settings.Authentication do
       :if={not verified?(@form) and not ready_to_verify?(@form)}
       type="button"
       style="primary"
-      icon="remix-external-link-line"
+      icon="ri-external-link-line"
       disabled
     >
       Verify Now

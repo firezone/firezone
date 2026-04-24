@@ -184,7 +184,7 @@ defmodule PortalWeb.SignIn do
       {render_slot(@icon)}
       <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
       <.icon
-        name="remix-arrow-right-s-line"
+        name="ri-arrow-right-s-line"
         class="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </.link>

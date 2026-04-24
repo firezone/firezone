@@ -149,7 +149,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               patch={~p"/#{@account}/settings/api_clients/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
             >
-              <.icon name="remix-add-line" class="w-3 h-3" /> Add
+              <.icon name="ri-add-line" class="w-3 h-3" /> Add
             </.link>
           </div>
         </div>
@@ -159,7 +159,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             <div class="flex items-center justify-center h-full">
               <div class="flex flex-col items-center gap-3 py-16">
                 <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                  <.icon name="remix-key-line" class="w-3 h-3" />
+                  <.icon name="ri-key-line" class="w-3 h-3" />
                 </div>
                 <div class="text-center">
                   <p class="text-sm font-medium text-[var(--text-primary)]">No API tokens yet</p>
@@ -171,7 +171,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   patch={~p"/#{@account}/settings/api_clients/new"}
                   class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
                 >
-                  <.icon name="remix-add-line" class="w-3 h-3" /> Add an API token
+                  <.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
                 </.link>
               </div>
             </div>
@@ -235,7 +235,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -310,7 +310,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 title="Close (Esc)"
               >
-                <.icon name="remix-close-line" class="w-4 h-4" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -484,7 +484,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                     type="button"
                     class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                   >
-                    <.icon name="remix-more-2-line" class="w-4 h-4" />
+                    <.icon name="ri-more-2-line" class="w-4 h-4" />
                   </button>
                 </:target>
                 <:content>
@@ -493,7 +493,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                       patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
                       class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
                     >
-                      <.icon name="remix-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                      <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
                     </.link>
                     <div class="my-1 border-t border-[var(--border)]"></div>
                     <button
@@ -505,8 +505,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                       <.icon
                         name={
                           if is_nil(@actor.disabled_at),
-                            do: "remix-pause-line",
-                            else: "remix-play-line"
+                            do: "ri-pause-line",
+                            else: "ri-play-line"
                         }
                         class="w-3.5 h-3.5 shrink-0"
                       />
@@ -519,7 +519,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                       phx-value-action="delete"
                       class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
                     >
-                      <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                      <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                     </button>
                   </div>
                 </:content>

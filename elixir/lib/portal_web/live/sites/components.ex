@@ -25,7 +25,7 @@ defmodule PortalWeb.Sites.Components do
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
         <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -202,14 +202,14 @@ defmodule PortalWeb.Sites.Components do
             phx-click="open_site_edit_form"
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.icon name="remix-pencil-line" class="w-3.5 h-3.5" /> Edit
+            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -341,21 +341,21 @@ defmodule PortalWeb.Sites.Components do
           phx-click="deploy_gateway"
           class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          <.icon name="remix-add-line" class="w-3 h-3" /> Deploy gateway
+          <.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
         </button>
         <button
           :if={@tab == :resources and @site.managed_by == :account}
           phx-click="add_resource"
           class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          <.icon name="remix-add-line" class="w-3 h-3" /> Add resource
+          <.icon name="ri-add-line" class="w-3 h-3" /> Add resource
         </button>
         <button
           :if={@tab == :gateways and not @show_all_gateways}
           phx-click="show_all_gateways"
           class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          View all <.icon name="remix-arrow-right-line" class="w-3 h-3" />
+          View all <.icon name="ri-arrow-right-line" class="w-3 h-3" />
         </button>
         <button
           :if={@tab == :gateways and @show_all_gateways}
@@ -423,7 +423,7 @@ defmodule PortalWeb.Sites.Components do
               </span>
             </span>
             <.icon
-              name="remix-arrow-right-s-line"
+              name="ri-arrow-right-s-line"
               class={"w-4 h-4 text-[var(--text-tertiary)] transition-transform shrink-0#{if @expanded_gateway_id == gateway.id, do: " rotate-90", else: ""}"}
             />
           </div>
@@ -470,7 +470,7 @@ defmodule PortalWeb.Sites.Components do
           phx-click="deploy_gateway"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          <.icon name="remix-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
+          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
         </button>
       </div>
       <div
@@ -519,7 +519,7 @@ defmodule PortalWeb.Sites.Components do
           phx-click="add_resource"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          <.icon name="remix-add-line" class="w-3.5 h-3.5" /> Add a resource
+          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a resource
         </button>
       </div>
     </div>
@@ -660,7 +660,7 @@ defmodule PortalWeb.Sites.Components do
           class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
           title="Close (Esc)"
         >
-          <.icon name="remix-close-line" class="w-4 h-4" />
+          <.icon name="ri-close-line" class="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -686,7 +686,7 @@ defmodule PortalWeb.Sites.Components do
           deploy_tab={@deploy_tab}
           value="systemd-instructions"
           label="systemd"
-          icon="remix-terminal-line"
+          icon="ri-terminal-line"
         />
         <.deploy_tab_button
           deploy_tab={@deploy_tab}
@@ -704,7 +704,7 @@ defmodule PortalWeb.Sites.Components do
           deploy_tab={@deploy_tab}
           value="custom-instructions"
           label="Custom"
-          icon="remix-tools-line"
+          icon="ri-tools-line"
         />
       </div>
     </div>
@@ -908,7 +908,7 @@ defmodule PortalWeb.Sites.Components do
           class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
           title="Close (Esc)"
         >
-          <.icon name="remix-close-line" class="w-4 h-4" />
+          <.icon name="ri-close-line" class="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -939,7 +939,7 @@ defmodule PortalWeb.Sites.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-global-line" class="w-4 h-4 mr-1" /> DNS
+                <.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
               </div>
               <div class="w-full text-[10px]">By DNS address</div>
             </div>
@@ -960,7 +960,7 @@ defmodule PortalWeb.Sites.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-server-line" class="w-4 h-4 mr-1" /> IP
+                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
               </div>
               <div class="w-full text-[10px]">By IP address</div>
             </div>
@@ -981,7 +981,7 @@ defmodule PortalWeb.Sites.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-server-line" class="w-4 h-4 mr-1" /> CIDR
+                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
               </div>
               <div class="w-full text-[10px]">By CIDR range</div>
             </div>
@@ -1187,8 +1187,8 @@ defmodule PortalWeb.Sites.Components do
         phx-click="toggle_resource_filters_dropdown"
         class="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] rounded px-2 py-1 bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors"
       >
-        <.icon name="remix-add-line" class="w-3 h-3" /> Add protocol
-        <.icon name="remix-arrow-down-s-line" class="w-3 h-3" />
+        <.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
+        <.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
       </button>
       <div
         :if={@filters_dropdown_open}
@@ -1262,7 +1262,7 @@ defmodule PortalWeb.Sites.Components do
         class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
         aria-label={"Remove #{@protocol} filter"}
       >
-        <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+        <.icon name="ri-close-line" class="w-3.5 h-3.5" />
       </button>
     </div>
     """
@@ -1302,7 +1302,7 @@ defmodule PortalWeb.Sites.Components do
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>

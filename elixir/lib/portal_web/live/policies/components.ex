@@ -317,7 +317,7 @@ defmodule PortalWeb.Policies.Components do
           class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
           title="Close (Esc)"
         >
-          <.icon name="remix-close-line" class="w-4 h-4" />
+          <.icon name="ri-close-line" class="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -382,7 +382,7 @@ defmodule PortalWeb.Policies.Components do
       :if={@panel_form.errors[:base]}
       class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
     >
-      <.icon name="remix-alert-line" class="w-4 h-4 shrink-0 text-[var(--status-error)]" />
+      <.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-[var(--status-error)]" />
       <p class="text-xs text-[var(--status-error)]">
         {translate_error(@panel_form.errors[:base])}
       </p>
@@ -635,7 +635,7 @@ defmodule PortalWeb.Policies.Components do
         phx-click="toggle_conditions_dropdown"
         class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
       >
-        <.icon name="remix-add-line" class="w-2.5 h-2.5" /> Add condition
+        <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
       </button>
       <div :if={@panel_conditions_dropdown_open}>
         <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
@@ -741,14 +741,14 @@ defmodule PortalWeb.Policies.Components do
             phx-click="open_edit_form"
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.icon name="remix-pencil-line" class="w-3.5 h-3.5" /> Edit
+            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -828,7 +828,7 @@ defmodule PortalWeb.Policies.Components do
       </.link>
     <% else %>
       <div class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20">
-        <.icon name="remix-error-warning-line" class="w-5 h-5 text-amber-600 shrink-0" />
+        <.icon name="ri-error-warning-line" class="w-5 h-5 text-amber-600 shrink-0" />
         <div class="min-w-0">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
             Group
@@ -843,7 +843,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_mapping_arrow(assigns) do
     ~H"""
     <div class="flex items-center shrink-0 text-[var(--text-muted)]">
-      <.icon name="remix-arrow-right-long-line" class="w-5 h-5" />
+      <.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
     </div>
     """
   end
@@ -1025,7 +1025,7 @@ defmodule PortalWeb.Policies.Components do
           phx-click="confirm_disable_policy"
           class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-warning)] hover:bg-[var(--surface-raised)] transition-colors"
         >
-          <.icon name="remix-pause-line" class="w-3.5 h-3.5" /> Disable policy
+          <.icon name="ri-pause-line" class="w-3.5 h-3.5" /> Disable policy
         </button>
         <div
           :if={is_nil(@policy.disabled_at) and @confirm_disable_policy}
@@ -1060,7 +1060,7 @@ defmodule PortalWeb.Policies.Components do
           phx-click="enable_policy"
           class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-active)] hover:bg-[var(--surface-raised)] transition-colors"
         >
-          <.icon name="remix-play-line" class="w-3.5 h-3.5" /> Enable policy
+          <.icon name="ri-play-line" class="w-3.5 h-3.5" /> Enable policy
         </button>
       </div>
     </section>
@@ -1452,7 +1452,7 @@ defmodule PortalWeb.Policies.Components do
         <%= if @policy_conditions_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="remix-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+              <.icon name="ri-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
             </.badge>
           </.link>
         <% end %>
@@ -1511,22 +1511,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_remote_ip_location_region_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("remix-arrow-down-s-line",
+          |> JS.toggle_class("ri-arrow-down-s-line",
             to: "#policy_conditions_remote_ip_location_region_chevron"
           )
-          |> JS.toggle_class("remix-arrow-up-s-line",
+          |> JS.toggle_class("ri-arrow-up-s-line",
             to: "#policy_conditions_remote_ip_location_region_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="remix-map-pin-line" class="w-5 h-5 mr-2" /> Client location
+            <.icon name="ri-map-pin-line" class="w-5 h-5 mr-2" /> Client location
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_remote_ip_location_region_chevron"
-              name="remix-arrow-down-s-line"
+              name="ri-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -1598,22 +1598,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_remote_ip_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("remix-arrow-down-s-line",
+          |> JS.toggle_class("ri-arrow-down-s-line",
             to: "#policy_conditions_remote_ip_chevron"
           )
-          |> JS.toggle_class("remix-arrow-up-s-line",
+          |> JS.toggle_class("ri-arrow-up-s-line",
             to: "#policy_conditions_remote_ip_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="remix-global-line" class="w-5 h-5 mr-2" /> IP address
+            <.icon name="ri-global-line" class="w-5 h-5 mr-2" /> IP address
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_remote_ip_chevron"
-              name="remix-arrow-down-s-line"
+              name="ri-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -1685,22 +1685,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_auth_provider_id_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("remix-arrow-down-s-line",
+          |> JS.toggle_class("ri-arrow-down-s-line",
             to: "#policy_conditions_auth_provider_id_chevron"
           )
-          |> JS.toggle_class("remix-arrow-up-s-line",
+          |> JS.toggle_class("ri-arrow-up-s-line",
             to: "#policy_conditions_auth_provider_id_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="remix-id-card-line" class="w-5 h-5 mr-2" /> Authentication provider
+            <.icon name="ri-id-card-line" class="w-5 h-5 mr-2" /> Authentication provider
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_auth_provider_id_chevron"
-              name="remix-arrow-down-s-line"
+              name="ri-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -1780,22 +1780,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_client_verified_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("remix-arrow-down-s-line",
+          |> JS.toggle_class("ri-arrow-down-s-line",
             to: "#policy_conditions_client_verified_chevron"
           )
-          |> JS.toggle_class("remix-arrow-up-s-line",
+          |> JS.toggle_class("ri-arrow-up-s-line",
             to: "#policy_conditions_client_verified_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="remix-shield-check-line" class="w-5 h-5 mr-2" /> Client verification
+            <.icon name="ri-shield-check-line" class="w-5 h-5 mr-2" /> Client verification
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_client_verified_chevron"
-              name="remix-arrow-down-s-line"
+              name="ri-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -1858,22 +1858,22 @@ defmodule PortalWeb.Policies.Components do
             to: "#policy_conditions_current_utc_datetime_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("remix-arrow-down-s-line",
+          |> JS.toggle_class("ri-arrow-down-s-line",
             to: "#policy_conditions_current_utc_datetime_chevron"
           )
-          |> JS.toggle_class("remix-arrow-up-s-line",
+          |> JS.toggle_class("ri-arrow-up-s-line",
             to: "#policy_conditions_current_utc_datetime_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="remix-time-line" class="w-5 h-5 mr-2" /> Current time
+            <.icon name="ri-time-line" class="w-5 h-5 mr-2" /> Current time
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_current_utc_datetime_chevron"
-              name="remix-arrow-down-s-line"
+              name="ri-arrow-down-s-line"
               class="w-5 h-5"
             />
           </span>
@@ -2029,7 +2029,7 @@ defmodule PortalWeb.Policies.Components do
           class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
           title="Remove condition"
         >
-          <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+          <.icon name="ri-close-line" class="w-3.5 h-3.5" />
         </button>
       </div>
       <div :if={@type == :client_verified}>
@@ -2111,7 +2111,7 @@ defmodule PortalWeb.Policies.Components do
                 phx-value-id={p.id}
                 class="hover:text-[var(--status-error)] transition-colors"
               >
-                <.icon name="remix-close-line" class="w-2.5 h-2.5" />
+                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
               </button>
             </span>
           </div>
@@ -2193,7 +2193,7 @@ defmodule PortalWeb.Policies.Components do
                 phx-value-code={code}
                 class="hover:text-[var(--status-error)] transition-colors"
               >
-                <.icon name="remix-close-line" class="w-2.5 h-2.5" />
+                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
               </button>
             </span>
           </div>
@@ -2300,7 +2300,7 @@ defmodule PortalWeb.Policies.Components do
                 phx-value-range={v}
                 class="hover:text-[var(--status-error)] transition-colors"
               >
-                <.icon name="remix-close-line" class="w-2.5 h-2.5" />
+                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
               </button>
             </span>
           </div>
@@ -2490,7 +2490,7 @@ defmodule PortalWeb.Policies.Components do
               :if={@tod_pending_error}
               class="flex items-center gap-1 text-[10px] text-[var(--status-error)]"
             >
-              <.icon name="remix-alert-line" class="w-3 h-3 shrink-0" />
+              <.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
               {@tod_pending_error}
             </p>
             <div class="flex justify-end gap-1.5">

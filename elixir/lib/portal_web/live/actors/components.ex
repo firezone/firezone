@@ -127,14 +127,14 @@ defmodule PortalWeb.Actors.Components do
             phx-click="open_actor_edit_form"
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.icon name="remix-pencil-line" class="w-3.5 h-3.5" /> Edit
+            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -190,7 +190,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="remix-id-card-line" class="w-3.5 h-3.5" /> External Identities
+            <.icon name="ri-id-card-line" class="w-3.5 h-3.5" /> External Identities
           </span>
         </button>
         <button
@@ -207,7 +207,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="remix-smartphone-line" class="w-3.5 h-3.5" /> Client Sessions
+            <.icon name="ri-smartphone-line" class="w-3.5 h-3.5" /> Client Sessions
           </span>
         </button>
         <button
@@ -224,7 +224,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="remix-computer-line" class="w-3.5 h-3.5" /> Portal Sessions
+            <.icon name="ri-computer-line" class="w-3.5 h-3.5" /> Portal Sessions
           </span>
         </button>
         <button
@@ -241,7 +241,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="remix-key-line" class="w-3.5 h-3.5" /> Tokens
+            <.icon name="ri-key-line" class="w-3.5 h-3.5" /> Tokens
           </span>
         </button>
         <button
@@ -257,7 +257,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="remix-team-line" class="w-3.5 h-3.5" /> Groups
+            <.icon name="ri-team-line" class="w-3.5 h-3.5" /> Groups
           </span>
         </button>
       </div>
@@ -268,7 +268,7 @@ defmodule PortalWeb.Actors.Components do
           phx-click="open_add_token_form"
           class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
         >
-          <.icon name="remix-add-line" class="w-3 h-3" /> Add Token
+          <.icon name="ri-add-line" class="w-3 h-3" /> Add Token
         </button>
       </div>
     </div>
@@ -355,10 +355,10 @@ defmodule PortalWeb.Actors.Components do
                     class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
                     title="Delete identity"
                   >
-                    <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5" />
+                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="remix-arrow-right-s-line"
+                    name="ri-arrow-right-s-line"
                     class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
                   />
                 </div>
@@ -538,7 +538,7 @@ defmodule PortalWeb.Actors.Components do
                 class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
                 title="Revoke session"
               >
-                <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5" />
+                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
               </button>
             </div>
           </li>
@@ -614,7 +614,7 @@ defmodule PortalWeb.Actors.Components do
                 class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
                 title="Revoke session"
               >
-                <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5" />
+                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
               </button>
             </div>
           </li>
@@ -636,7 +636,7 @@ defmodule PortalWeb.Actors.Components do
               class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
               title="Dismiss"
             >
-              <.icon name="remix-close-line" class="w-4 h-4" />
+              <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </div>
           <div id="tab-token-copy" class="relative" phx-hook="CopyClipboard">
@@ -654,7 +654,7 @@ defmodule PortalWeb.Actors.Components do
               class="absolute top-2 right-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               title="Copy token"
             >
-              <.icon name="remix-clipboard-line" class="w-4 h-4" />
+              <.icon name="ri-clipboard-line" class="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -737,7 +737,7 @@ defmodule PortalWeb.Actors.Components do
                     title={if token.online?, do: "Active", else: "Inactive"}
                   />
                   <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                    <.icon name="remix-key-line" class="w-4 h-4 text-[var(--text-secondary)]" />
+                    <.icon name="ri-key-line" class="w-4 h-4 text-[var(--text-secondary)]" />
                   </div>
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-[var(--text-primary)]">
@@ -770,7 +770,7 @@ defmodule PortalWeb.Actors.Components do
                   class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
                   title="Delete token"
                 >
-                  <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5" />
+                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                 </button>
               </div>
             </li>
@@ -798,7 +798,7 @@ defmodule PortalWeb.Actors.Components do
                 {group.name}
               </span>
               <.icon
-                name="remix-arrow-right-s-line"
+                name="ri-arrow-right-s-line"
                 class="w-4 h-4 text-[var(--text-muted)] shrink-0"
               />
             </.link>
@@ -856,8 +856,8 @@ defmodule PortalWeb.Actors.Components do
                 <.icon
                   name={
                     if @actor.allow_email_otp_sign_in,
-                      do: "remix-checkbox-circle-line",
-                      else: "remix-prohibited-line"
+                      do: "ri-checkbox-circle-line",
+                      else: "ri-prohibited-line"
                   }
                   class="w-3 h-3"
                 />
@@ -888,7 +888,7 @@ defmodule PortalWeb.Actors.Components do
             phx-value-id={@actor.id}
             class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
           >
-            <.icon name="remix-mail-line" class="w-3.5 h-3.5" /> Send Welcome Email
+            <.icon name="ri-mail-line" class="w-3.5 h-3.5" /> Send Welcome Email
           </button>
           <div
             :if={
@@ -897,7 +897,7 @@ defmodule PortalWeb.Actors.Components do
             }
             class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20"
           >
-            <.icon name="remix-checkbox-circle-line" class="w-3.5 h-3.5" />
+            <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" />
             Email sent to {@actor.email}
           </div>
           <button
@@ -909,7 +909,7 @@ defmodule PortalWeb.Actors.Components do
             phx-click="confirm_disable_actor"
             class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-warning)] hover:bg-[var(--surface-raised)] transition-colors"
           >
-            <.icon name="remix-pause-line" class="w-3.5 h-3.5" /> Disable
+            <.icon name="ri-pause-line" class="w-3.5 h-3.5" /> Disable
           </button>
           <div
             :if={
@@ -946,7 +946,7 @@ defmodule PortalWeb.Actors.Components do
             phx-value-id={@actor.id}
             class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-active)] hover:bg-[var(--surface-raised)] transition-colors"
           >
-            <.icon name="remix-play-line" class="w-3.5 h-3.5" /> Enable
+            <.icon name="ri-play-line" class="w-3.5 h-3.5" /> Enable
           </button>
         </div>
       </section>
@@ -1061,7 +1061,7 @@ defmodule PortalWeb.Actors.Components do
                 ]}
               >
                 <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                  <.icon name="remix-user-line" class="w-3.5 h-3.5" /> User
+                  <.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
                 </span>
                 <span class="text-[11px] text-[var(--text-tertiary)]">
                   Sign in to Firezone Client apps
@@ -1082,7 +1082,7 @@ defmodule PortalWeb.Actors.Components do
                 class="flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] cursor-pointer peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)] transition-colors"
               >
                 <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                  <.icon name="remix-shield-check-line" class="w-3.5 h-3.5" /> Admin
+                  <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
                 </span>
                 <span class="text-[11px] text-[var(--text-tertiary)]">
                   Full access to manage this account
@@ -1168,7 +1168,7 @@ defmodule PortalWeb.Actors.Components do
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <div class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800">
-              <.icon name="remix-add-line" class="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+              <.icon name="ri-add-line" class="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
             </div>
             <div>
               <h2 class="text-sm font-semibold text-[var(--text-primary)]">New Actor</h2>
@@ -1184,7 +1184,7 @@ defmodule PortalWeb.Actors.Components do
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1197,7 +1197,7 @@ defmodule PortalWeb.Actors.Components do
             phx-value-type="user"
             class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-[var(--border)] hover:border-[var(--brand)] hover:bg-[var(--surface-raised)] transition-all text-center"
           >
-            <.icon name="remix-user-line" class="w-8 h-8 text-[var(--text-secondary)]" />
+            <.icon name="ri-user-line" class="w-8 h-8 text-[var(--text-secondary)]" />
             <span class="text-sm font-semibold text-[var(--text-primary)]">User</span>
             <span class="text-xs text-[var(--text-tertiary)]">
               Can sign in to Firezone Client apps or the admin portal
@@ -1209,7 +1209,7 @@ defmodule PortalWeb.Actors.Components do
             phx-value-type="service_account"
             class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-[var(--border)] hover:border-[var(--brand)] hover:bg-[var(--surface-raised)] transition-all text-center"
           >
-            <.icon name="remix-server-line" class="w-8 h-8 text-[var(--text-secondary)]" />
+            <.icon name="ri-server-line" class="w-8 h-8 text-[var(--text-secondary)]" />
             <span class="text-sm font-semibold text-[var(--text-primary)]">Service Account</span>
             <span class="text-xs text-[var(--text-tertiary)]">
               Used to authenticate headless Clients
@@ -1262,7 +1262,7 @@ defmodule PortalWeb.Actors.Components do
                   class="flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] cursor-pointer peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                    <.icon name="remix-user-line" class="w-3.5 h-3.5" /> User
+                    <.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
                   </span>
                   <span class="text-[11px] text-[var(--text-tertiary)]">
                     Sign in to Client apps and portal
@@ -1283,7 +1283,7 @@ defmodule PortalWeb.Actors.Components do
                   class="flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] cursor-pointer peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                    <.icon name="remix-shield-check-line" class="w-3.5 h-3.5" /> Admin
+                    <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
                   </span>
                   <span class="text-[11px] text-[var(--text-tertiary)]">
                     Full access to manage this account
@@ -1413,7 +1413,7 @@ defmodule PortalWeb.Actors.Components do
         >
           <div class="relative">
             <.icon
-              name="remix-search-line"
+              name="ri-search-line"
               class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
             />
             <input
@@ -1474,7 +1474,7 @@ defmodule PortalWeb.Actors.Components do
                 phx-value-group_id={group.id}
                 class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
               >
-                <.icon name="remix-user-minus-line" class="w-4 h-4" />
+                <.icon name="ri-user-minus-line" class="w-4 h-4" />
               </button>
               <button
                 :if={group.id in @pending_removals}
@@ -1483,7 +1483,7 @@ defmodule PortalWeb.Actors.Components do
                 phx-value-group_id={group.id}
                 class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               >
-                <.icon name="remix-arrow-go-back-line" class="w-4 h-4" />
+                <.icon name="ri-arrow-go-back-line" class="w-4 h-4" />
               </button>
             </div>
           </li>
@@ -1502,7 +1502,7 @@ defmodule PortalWeb.Actors.Components do
                 phx-value-group_id={group.id}
                 class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
               >
-                <.icon name="remix-user-minus-line" class="w-4 h-4" />
+                <.icon name="ri-user-minus-line" class="w-4 h-4" />
               </button>
             </div>
           </li>
@@ -1525,11 +1525,11 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <%= case @actor.type do %>
       <% :service_account -> %>
-        <.icon name="remix-server-line" class={@class} />
+        <.icon name="ri-server-line" class={@class} />
       <% :account_admin_user -> %>
-        <.icon name="remix-shield-check-line" class={@class} />
+        <.icon name="ri-shield-check-line" class={@class} />
       <% _ -> %>
-        <.icon name="remix-user-line" class={@class} />
+        <.icon name="ri-user-line" class={@class} />
     <% end %>
     """
   end
@@ -1641,10 +1641,10 @@ defmodule PortalWeb.Actors.Components do
   ]
 
   defp session_user_agent_icon(user_agent) when is_binary(user_agent) do
-    detect_os_icon(user_agent) || "remix-computer-line"
+    detect_os_icon(user_agent) || "ri-computer-line"
   end
 
-  defp session_user_agent_icon(_), do: "remix-computer-line"
+  defp session_user_agent_icon(_), do: "ri-computer-line"
 
   defp session_location(session) do
     cond do

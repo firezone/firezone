@@ -955,7 +955,7 @@ defmodule PortalWeb.Actors do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="remix-user-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-user-line" class="w-16 h-16 text-[var(--brand)]" />
         </:icon>
         <:title>Actors</:title>
         <:description>
@@ -965,7 +965,7 @@ defmodule PortalWeb.Actors do
           <.docs_action path="/deploy/users" />
         </:action>
         <:action>
-          <.button style="primary" icon="remix-add-line" phx-click="open_new_actor_panel">
+          <.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
             New Actor
           </.button>
         </:action>

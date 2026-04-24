@@ -119,7 +119,7 @@ defmodule PortalWeb.SignIn.Email do
         navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
         class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
       >
-        <.icon name="remix-arrow-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        <.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
         Different method
       </.link>
       <.resend
@@ -145,7 +145,7 @@ defmodule PortalWeb.SignIn.Email do
         target="_blank"
         class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
       >
-        <.icon name="remix-mail-open-line" class="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+        <.icon name="ri-mail-open-line" class="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
         Open local mailbox
       </a>
       """
@@ -169,7 +169,7 @@ defmodule PortalWeb.SignIn.Email do
         type="submit"
         class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
       >
-        <.icon name="remix-loop-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        <.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
         Resend email
       </button>
     </.form>

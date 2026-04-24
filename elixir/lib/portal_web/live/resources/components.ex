@@ -130,7 +130,7 @@ defmodule PortalWeb.Resources.Components do
         <%= if @traffic_filters_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="remix-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+              <.icon name="ri-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
             </.badge>
           </.link>
         <% end %>
@@ -364,7 +364,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-global-line" class="w-4 h-4 mr-1" /> DNS
+                <.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
               </div>
               <div class="w-full text-[10px]">
                 By DNS address
@@ -387,7 +387,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-server-line" class="w-4 h-4 mr-1" /> IP
+                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
               </div>
               <div class="w-full text-[10px]">
                 By IP address
@@ -410,7 +410,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-server-line" class="w-4 h-4 mr-1" /> CIDR
+                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
               </div>
               <div class="w-full text-[10px]">
                 By CIDR range
@@ -433,7 +433,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="remix-computer-line" class="w-4 h-4 mr-1" /> Device Pool
+                <.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
               </div>
               <div class="w-full text-[10px]">
                 Direct client access
@@ -652,8 +652,8 @@ defmodule PortalWeb.Resources.Components do
             phx-click="toggle_resource_filters_dropdown"
             class="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] rounded px-2 py-1 bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors"
           >
-            <.icon name="remix-add-line" class="w-3 h-3" /> Add protocol
-            <.icon name="remix-arrow-down-s-line" class="w-3 h-3" />
+            <.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
+            <.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
           </button>
           <div
             :if={@filters_dropdown_open}
@@ -742,7 +742,7 @@ defmodule PortalWeb.Resources.Components do
             class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
             aria-label={"Remove #{protocol} filter"}
           >
-            <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+            <.icon name="ri-close-line" class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -782,7 +782,7 @@ defmodule PortalWeb.Resources.Components do
     <div class="space-y-1">
       <div class="relative mb-2" phx-click-away="blur_client_search">
         <.icon
-          name="remix-search-line"
+          name="ri-search-line"
           class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
         />
         <input
@@ -803,7 +803,7 @@ defmodule PortalWeb.Resources.Components do
         <li :for={client <- @selected_clients}>
           <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--brand)] bg-[var(--brand-muted)]">
             <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-              <.icon name="remix-computer-line" class="w-4 h-4 text-[var(--brand)]" />
+              <.icon name="ri-computer-line" class="w-4 h-4 text-[var(--brand)]" />
             </div>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-[var(--brand)] truncate">{client.name}</p>
@@ -816,7 +816,7 @@ defmodule PortalWeb.Resources.Components do
               class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-[var(--brand)]/50 hover:text-[var(--brand)] transition-colors"
               aria-label="Remove client"
             >
-              <.icon name="remix-close-line" class="w-3.5 h-3.5" />
+              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
             </button>
           </div>
         </li>
@@ -831,7 +831,7 @@ defmodule PortalWeb.Resources.Components do
             class="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] cursor-pointer transition-colors"
           >
             <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-              <.icon name="remix-computer-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
+              <.icon name="ri-computer-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
             </div>
             <div class="flex-1 min-w-0 text-left">
               <p class="text-sm font-medium text-[var(--text-primary)] truncate">{client.name}</p>
@@ -928,7 +928,7 @@ defmodule PortalWeb.Resources.Components do
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             title="Close (Esc)"
           >
-            <.icon name="remix-close-line" class="w-4 h-4" />
+            <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1033,14 +1033,14 @@ defmodule PortalWeb.Resources.Components do
               phx-click="open_edit_form"
               class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
             >
-              <.icon name="remix-pencil-line" class="w-3.5 h-3.5" /> Edit
+              <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
             </button>
             <button
               phx-click="close_panel"
               class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
               title="Close (Esc)"
             >
-              <.icon name="remix-close-line" class="w-4 h-4" />
+              <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1088,7 +1088,7 @@ defmodule PortalWeb.Resources.Components do
         phx-click="open_grant_form"
         class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
       >
-        <.icon name="remix-add-line" class="w-3 h-3" /> Grant access
+        <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
       </button>
     </div>
     <div class="flex-1 overflow-y-auto">
@@ -1165,7 +1165,7 @@ defmodule PortalWeb.Resources.Components do
                 class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
                 title="More actions"
               >
-                <.icon name="remix-more-2-line" class="w-3.5 h-3.5" />
+                <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
               </button>
               <div
                 :if={@group_actions_open_id == group.id}
@@ -1179,7 +1179,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
+                  <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
                 </button>
                 <button
                   :if={not is_nil(group.policy_disabled_at)}
@@ -1188,7 +1188,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
+                  <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
                 </button>
                 <button
                   type="button"
@@ -1196,7 +1196,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
-                  <.icon name="remix-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
                 </button>
               </div>
             </div>
@@ -1228,7 +1228,7 @@ defmodule PortalWeb.Resources.Components do
           class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
           title="Back to group list"
         >
-          <.icon name="remix-arrow-left-s-line" class="w-3.5 h-3.5" />
+          <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
         </button>
         <span class="text-xs font-semibold text-[var(--text-primary)]">Grant access</span>
       </div>
@@ -1276,7 +1276,7 @@ defmodule PortalWeb.Resources.Components do
                 <div class="px-2 pt-1.5 shrink-0">
                   <div class="relative">
                     <.icon
-                      name="remix-search-line"
+                      name="ri-search-line"
                       class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
                     />
                     <input
@@ -1353,7 +1353,7 @@ defmodule PortalWeb.Resources.Components do
                       </div>
                       <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
                       <.icon
-                        name="remix-close-line"
+                        name="ri-close-line"
                         class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
                     </button>
@@ -1385,7 +1385,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-click="toggle_conditions_dropdown"
                   class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
                 >
-                  <.icon name="remix-add-line" class="w-2.5 h-2.5" /> Add condition
+                  <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
                 </button>
                 <div :if={@conditions_dropdown_open}>
                   <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>

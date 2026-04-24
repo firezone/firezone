@@ -75,7 +75,7 @@ defmodule PortalWeb.PageComponents do
   ## Examples
 
       <.page_header>
-        <:icon><.icon name="remix-server-line" class="w-8 h-8 text-[var(--brand)]" /></:icon>
+        <:icon><.icon name="ri-server-line" class="w-8 h-8 text-[var(--brand)]" /></:icon>
         <:title>Resources</:title>
         <:description>Network endpoints accessible through Firezone.</:description>
         <:action>
