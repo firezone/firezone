@@ -494,11 +494,26 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, packet, now) {
-            ControlFlow::Continue(c) => c,
-            ControlFlow::Break(Ok(())) => return Ok(None),
-            ControlFlow::Break(Err(e)) => return Err(e),
+        // Reconstruct the `PeerSocket` that matches how we would send back
+        // to the peer given what we just observed: the same path kind (direct
+        // or via this relay) and the peer's currently-observed source as the
+        // destination. Used by `connections_try_handle` to set a temporary
+        // `peer_socket_override` if this turns out to be an authenticated
+        // handshake from a non-nominated path.
+        let observed_peer_socket = match relayed {
+            None => PeerSocket::PeerToPeer {
+                source: local,
+                dest: from,
+            },
+            Some(_) => PeerSocket::RelayToPeer { dest: from },
         };
+
+        let (id, packet) =
+            match self.connections_try_handle(from, observed_peer_socket, packet, now) {
+                ControlFlow::Continue(c) => c,
+                ControlFlow::Break(Ok(())) => return Ok(None),
+                ControlFlow::Break(Err(e)) => return Err(e),
+            };
 
         Ok(Some((id, packet)))
     }
@@ -525,6 +540,7 @@ where
             return Ok(None);
         }
 
+        let override_socket = conn.peer_socket_override;
         let socket = match &mut conn.state {
             ConnectionState::Connecting { ip_buffer, .. } => {
                 ip_buffer.enqueue(packet.clone());
@@ -534,8 +550,10 @@ where
 
                 return Ok(None);
             }
-            ConnectionState::Connected { peer_socket, .. } => *peer_socket,
-            ConnectionState::Idle { peer_socket } => *peer_socket,
+            ConnectionState::Connected { peer_socket, .. } => {
+                override_socket.unwrap_or(*peer_socket)
+            }
+            ConnectionState::Idle { peer_socket } => override_socket.unwrap_or(*peer_socket),
             ConnectionState::Failed => {
                 return Err(anyhow!("Connection {cid} failed"));
             }
@@ -788,6 +806,7 @@ where
                 wg_buffer: AllocRingBuffer::new(128),
                 ip_buffer: AllocRingBuffer::new(128),
             },
+            peer_socket_override: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
@@ -947,6 +966,7 @@ where
     fn connections_try_handle(
         &mut self,
         from: SocketAddr,
+        observed_peer_socket: PeerSocket,
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
@@ -1000,19 +1020,24 @@ where
             now,
         );
 
-        if let ControlFlow::Break(Ok(())) = &control_flow
-            && conn.first_handshake_completed_at.is_none()
-            && matches!(
-                parsed_packet,
-                Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
-            )
-        {
+        let is_handshake = matches!(
+            parsed_packet,
+            Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
+        );
+        let handshake_decapsulated_ok = is_handshake
+            && matches!(&control_flow, ControlFlow::Break(Ok(())));
+
+        if handshake_decapsulated_ok && conn.first_handshake_completed_at.is_none() {
             conn.first_handshake_completed_at = Some(now);
 
             tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
             self.pending_events
                 .push_back(Event::ConnectionEstablished(cid))
+        }
+
+        if handshake_decapsulated_ok {
+            conn.maybe_override_peer_socket(cid, observed_peer_socket);
         }
 
         control_flow
@@ -1247,6 +1272,16 @@ struct Connection<RId> {
 
     state: ConnectionState,
 
+    /// Temporary override for the outbound `PeerSocket`, set when we observe
+    /// an authenticated WireGuard handshake from a source that doesn't match
+    /// our current ICE nomination. Cleared by the next `NominatedSend` event
+    /// from ICE.
+    ///
+    /// This lets outgoing WG traffic follow the peer across cross-kind
+    /// path shifts (direct↔relay) that the controlled side of ICE can't
+    /// re-nominate without `USE-CANDIDATE` from the controlling side.
+    peer_socket_override: Option<PeerSocket>,
+
     stats: ConnectionStats,
     intent_sent_at: Instant,
     candidate_timeout: Option<Instant>,
@@ -1380,6 +1415,17 @@ where
                         (Some(_), false) => PeerSocket::RelayToPeer { dest: destination },
                         (Some(_), true) => PeerSocket::RelayToRelay { dest: destination },
                     };
+
+                    // ICE has made a deliberate nomination decision; hand
+                    // control back to it by dropping any WG-handshake-driven
+                    // peer_socket override. The override was only there to
+                    // bridge the window until this event arrived.
+                    if self.peer_socket_override.take().is_some() {
+                        tracing::debug!(
+                            %cid,
+                            "Clearing peer_socket override; ICE has re-nominated"
+                        );
+                    }
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
@@ -1698,6 +1744,7 @@ where
             // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
             // Overall, this results in a much nicer API for our caller and should not affect performance.
             TunnResult::WriteToNetwork(bytes) => {
+                let override_socket = self.peer_socket_override;
                 match &mut self.state {
                     ConnectionState::Connecting { wg_buffer, .. } => {
                         tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
@@ -1713,9 +1760,10 @@ where
                     }
                     ConnectionState::Connected { peer_socket, .. }
                     | ConnectionState::Idle { peer_socket } => {
+                        let peer_socket = override_socket.unwrap_or(*peer_socket);
                         transmits.extend(make_owned_transmit(
                             self.relay.id,
-                            *peer_socket,
+                            peer_socket,
                             bytes,
                             &self.buffer_pool,
                             allocations,
@@ -1728,7 +1776,7 @@ where
                         {
                             transmits.extend(make_owned_transmit(
                                 self.relay.id,
-                                *peer_socket,
+                                peer_socket,
                                 packet,
                                 &self.buffer_pool,
                                 allocations,
@@ -1874,7 +1922,17 @@ where
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
+    /// The socket outgoing WireGuard traffic should use.
+    ///
+    /// If [`Connection::peer_socket_override`] is set, it takes precedence
+    /// over the ICE-nominated `peer_socket`: we've observed an authenticated
+    /// handshake from a source different from what ICE nominated, and until
+    /// ICE catches up we trust the crypto signal.
     fn socket(&self) -> Option<PeerSocket> {
+        if let Some(s) = self.peer_socket_override {
+            return Some(s);
+        }
+
         match self.state {
             ConnectionState::Connected { peer_socket, .. }
             | ConnectionState::Idle { peer_socket } => Some(peer_socket),
@@ -1907,6 +1965,39 @@ where
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
+    }
+
+    /// Set or update [`Connection::peer_socket_override`] based on the source
+    /// of an authenticated WG handshake.
+    ///
+    /// The override applies only once we have an ICE-nominated socket to
+    /// deviate from; during `Connecting` ICE hasn't picked anything yet and
+    /// during `Failed` the connection is going away. If the observed socket
+    /// already matches the path we're effectively using, the override is a
+    /// no-op.
+    fn maybe_override_peer_socket<TId>(&mut self, cid: TId, observed: PeerSocket)
+    where
+        TId: fmt::Display,
+    {
+        let current = match self.state {
+            ConnectionState::Connected { peer_socket, .. }
+            | ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Connecting { .. } | ConnectionState::Failed => return,
+        };
+
+        let effective = self.peer_socket_override.unwrap_or(current);
+        if effective == observed {
+            return;
+        }
+
+        tracing::info!(
+            %cid,
+            current = %effective.fmt(self.relay.id),
+            new = %observed.fmt(self.relay.id),
+            "Overriding peer_socket from authenticated WG handshake"
+        );
+
+        self.peer_socket_override = Some(observed);
     }
 
     /// Re-form all ICE candidate pairs in place without tearing anything down.
