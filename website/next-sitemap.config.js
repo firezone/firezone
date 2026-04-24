@@ -5,10 +5,13 @@ module.exports = {
   robotsTxtOptions: {
     transformRobotsTxt: async (_, robotsTxt) => {
       // Append Content-Signal directive (https://contentsignals.org/)
-      return (
-        robotsTxt +
-        "\n# Content-Signal directive (https://contentsignals.org/)\nContent-Signal: ai-train=no, search=yes, ai-input=no\n"
-      );
+      const contentSignal = [
+        "",
+        "# Content-Signal directive (https://contentsignals.org/)",
+        "Content-Signal: ai-train=no, search=yes, ai-input=no",
+        "",
+      ].join("\n");
+      return robotsTxt + contentSignal;
     },
   },
 };
