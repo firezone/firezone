@@ -117,8 +117,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const pageKey = slug ?? "home";
-  const markdown = PAGE_MARKDOWN[pageKey];
+  const markdown = PAGE_MARKDOWN[slug];
 
   if (!markdown) {
     return new NextResponse("Not Found", { status: 404 });

@@ -7,8 +7,6 @@ export async function GET() {
     resource: "https://api.firezone.dev",
     bearer_methods_supported: ["header"],
     resource_documentation: "https://api.firezone.dev/swaggerui",
-    resource_signing_alg_values_supported: [],
-    scopes_supported: [],
   };
 
   return new NextResponse(JSON.stringify(metadata), {

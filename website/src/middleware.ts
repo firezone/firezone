@@ -13,9 +13,9 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Handle /dl/ redirect proxying (from proxy.ts)
-  // proxy() returns NextResponse.redirect() when a match is found, else NextResponse.next()
+  // proxy() returns NextResponse.redirect() (3xx) when a match is found, else NextResponse.next()
   const proxyResult = proxy(request);
-  if (proxyResult.headers.has("location")) {
+  if (proxyResult.status >= 300 && proxyResult.status < 400) {
     return proxyResult;
   }
 
