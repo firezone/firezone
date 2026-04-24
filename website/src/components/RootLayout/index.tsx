@@ -36,6 +36,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${source_sans_3.variable} ${manrope.variable}`}>
+      <link
+        rel="service-desc"
+        href="https://api.firezone.dev/openapi"
+        type="application/json"
+      />
+      <link
+        rel="service-doc"
+        href="https://api.firezone.dev/swaggerui"
+        type="text/html"
+      />
       <Script
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
