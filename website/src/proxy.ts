@@ -103,9 +103,13 @@ export const config = {
   ],
 };
 
+// Next.js 16 calls the `proxy` export from proxy.ts (not `middleware`).
+// See: next/dist/build/templates/middleware.js line:
+//   const handlerUserland = (isProxy ? mod.proxy : mod.middleware) || mod.default;
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Handle /dl/ download redirects
   for (const redirect of versionedRedirects) {
     const match = pathname.match(redirect.source);
 
@@ -114,18 +118,6 @@ export function proxy(request: NextRequest) {
       const destination = redirect.destination.replace(/:version/g, version);
       return NextResponse.redirect(destination);
     }
-  }
-
-  return NextResponse.next();
-}
-
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  // Handle /dl/ redirect proxying
-  const proxyResult = proxy(request);
-  if (proxyResult.status >= 300 && proxyResult.status < 400) {
-    return proxyResult;
   }
 
   // Markdown content negotiation — RFC 8288 / Cloudflare Markdown for Agents
