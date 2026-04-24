@@ -1,8 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
 import { proxy, config as proxyConfig } from "@/proxy";
 
-// Paths that support markdown content negotiation (Accept: text/markdown)
-const MARKDOWN_PATHS = new Set(["/", "/pricing", "/product", "/about", "/kb"]);
+// Top-level marketing pages that support markdown content negotiation
+const STATIC_MARKDOWN_PATHS = new Set(["/", "/pricing", "/product", "/about"]);
 
 function wantsMarkdown(request: NextRequest): boolean {
   const accept = request.headers.get("accept") ?? "";
@@ -20,7 +20,13 @@ export function middleware(request: NextRequest) {
   }
 
   // Markdown content negotiation — RFC 8288 / Cloudflare Markdown for Agents
-  if (wantsMarkdown(request) && MARKDOWN_PATHS.has(pathname)) {
+  // Match top-level marketing pages and all /kb/** documentation pages
+  const isMarkdownPath =
+    STATIC_MARKDOWN_PATHS.has(pathname) ||
+    pathname === "/kb" ||
+    pathname.startsWith("/kb/");
+
+  if (wantsMarkdown(request) && isMarkdownPath) {
     const slug = pathname === "/" ? "home" : pathname.replace(/^\//, "");
     const mdUrl = request.nextUrl.clone();
     mdUrl.pathname = `/api/md/${slug}`;
@@ -33,11 +39,12 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     ...proxyConfig.matcher,
-    // Match all pages that support markdown negotiation
+    // Match top-level pages and all /kb/** documentation pages
     "/",
     "/pricing",
     "/product",
     "/about",
     "/kb",
+    "/kb/:path*",
   ],
 };

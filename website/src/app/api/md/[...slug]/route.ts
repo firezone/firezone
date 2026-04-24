@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { readFileSync } from "fs";
+import { join } from "path";
 
-// Markdown content for key marketing pages
+// Static markdown content for top-level marketing pages
 // Served when clients send Accept: text/markdown (Markdown for Agents)
 const PAGE_MARKDOWN: Record<string, string> = {
   home: `# Firezone: Zero Trust Access That Scales
@@ -93,31 +95,58 @@ developer-friendly tooling.
 - GitHub: <https://github.com/firezone/firezone>
 - Contact: <https://www.firezone.dev/contact>
 `,
-  kb: `# Firezone Documentation
-
-Welcome to the Firezone knowledge base. Here you'll find guides for deploying,
-managing, and scaling Firezone for your organization.
-
-## Topics
-
-- Getting Started
-- Deploying Gateways
-- Configuring Identity Providers
-- Managing Users and Groups
-- Access Policies
-- REST API Reference
-
-Visit <https://www.firezone.dev/kb> for the full documentation.
-API Reference: <https://api.firezone.dev/swaggerui>
-`,
 };
+
+// Allowed path segment characters (prevent directory traversal)
+const SAFE_SEGMENT_RE = /^[a-zA-Z0-9_-]+$/;
+
+/**
+ * Read and clean a KB MDX file for markdown delivery.
+ * Strips MDX import lines and JSX-style comments; the remaining content is
+ * standard CommonMark that agents can consume directly.
+ */
+function readKbMdx(segments: string[]): string | null {
+  // Validate every segment before building the path
+  if (!segments.every((s) => SAFE_SEGMENT_RE.test(s))) {
+    return null;
+  }
+
+  const filePath = join(
+    process.cwd(),
+    "src",
+    "app",
+    "kb",
+    ...segments,
+    "readme.mdx"
+  );
+
+  try {
+    const raw = readFileSync(filePath, "utf-8");
+    return raw
+      .replace(/^import .+$/gm, "")   // strip import lines
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // strip JSX comments
+      .trim();
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ slug: string }> }
+  { params }: { params: Promise<{ slug: string[] }> }
 ) {
   const { slug } = await params;
-  const markdown = PAGE_MARKDOWN[slug];
+
+  let markdown: string | null = null;
+
+  if (slug[0] === "kb") {
+    // /kb and /kb/** — serve the real MDX source as markdown
+    const kbSegments = slug.slice(1); // strip the "kb" prefix
+    markdown = readKbMdx(kbSegments);
+  } else {
+    // Top-level marketing pages — use hardcoded summaries
+    markdown = PAGE_MARKDOWN[slug[0]] ?? null;
+  }
 
   if (!markdown) {
     return new NextResponse("Not Found", { status: 404 });
@@ -131,3 +160,4 @@ export async function GET(
     },
   });
 }
+
