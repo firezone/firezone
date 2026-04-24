@@ -1,7 +1,7 @@
 {
   "dependencies": {
-  "@fontsource-variable/inter": "^5.2.8",
-  "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/roboto": "^5.2.8",
+    "@fontsource-variable/roboto-mono": "^5.2.8",
     "flowbite": "^4.0.1"
   }
 }

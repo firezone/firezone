@@ -1,6 +1,6 @@
 // Self-hosted variable fonts (avoids CSP issues with Google Fonts CDN)
-import "@fontsource-variable/inter";
-import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/roboto";
+import "@fontsource-variable/roboto-mono";
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html";
