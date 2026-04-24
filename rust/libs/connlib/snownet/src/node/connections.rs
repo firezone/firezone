@@ -622,6 +622,7 @@ mod tests {
                 ip_buffer: AllocRingBuffer::new(1),
             },
             disconnected_at: None,
+            peer_socket_override: None,
             stats: Default::default(),
             intent_sent_at: Instant::now(),
             candidate_timeout: None,
