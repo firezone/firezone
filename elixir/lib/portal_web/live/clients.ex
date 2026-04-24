@@ -17,10 +17,10 @@ defmodule PortalWeb.Clients do
       |> assign_live_table("clients",
         query_module: Database,
         sortable_fields: [
-          {:clients, :name},
+          {:devices, :name},
           {:latest_session, :version},
           {:latest_session, :inserted_at},
-          {:clients, :inserted_at},
+          {:devices, :inserted_at},
           {:latest_session, :user_agent}
         ],
         callback: &handle_clients_update!/2
@@ -126,7 +126,7 @@ defmodule PortalWeb.Clients do
           metadata={@clients_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={client} field={{:clients, :name}} label="Client" class="w-80">
+          <:col :let={client} field={{:devices, :name}} label="Client" class="w-80">
             <div class="flex items-center gap-2">
               <span class="mr-2">
                 <.client_os_icon client={client} />
@@ -187,7 +187,7 @@ defmodule PortalWeb.Clients do
           </:col>
           <:col
             :let={client}
-            field={{:clients, :inserted_at}}
+            field={{:devices, :inserted_at}}
             label="Created"
             class="hidden lg:table-cell"
           >
@@ -288,7 +288,7 @@ defmodule PortalWeb.Clients do
      )}
   end
 
-  def handle_event("change_client_edit_form", %{"client" => attrs}, socket) do
+  def handle_event("change_client_edit_form", %{"device" => attrs}, socket) do
     changeset =
       Database.change_client(socket.assigns.selected_client, attrs)
       |> Map.put(:action, :validate)
@@ -296,7 +296,7 @@ defmodule PortalWeb.Clients do
     {:noreply, merge_state(socket, :client_panel, edit_form: to_form(changeset))}
   end
 
-  def handle_event("submit_client_edit_form", %{"client" => attrs}, socket) do
+  def handle_event("submit_client_edit_form", %{"device" => attrs}, socket) do
     changeset = Database.change_client(socket.assigns.selected_client, attrs)
 
     case Database.update_client(changeset, socket.assigns.subject) do
@@ -376,7 +376,7 @@ defmodule PortalWeb.Clients do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, ClientSession, Safe}
-    alias Portal.Client
+    alias Portal.Device
     alias Portal.Repo.{Filter, OffsetPaginator}
 
     def list_clients(subject, opts \\ []) do
@@ -406,14 +406,14 @@ defmodule PortalWeb.Clients do
     end
 
     defp page_query(_subject) do
-      from(c in Client, as: :clients)
+      from(d in Device, as: :devices)
       |> join(
         :left_lateral,
-        [clients: c],
+        [devices: d],
         s in subquery(
           from(s in ClientSession,
-            where: s.client_id == parent_as(:clients).id,
-            where: s.account_id == parent_as(:clients).account_id,
+            where: s.device_id == parent_as(:devices).id,
+            where: s.account_id == parent_as(:devices).account_id,
             order_by: [desc: s.inserted_at],
             limit: 1
           )
@@ -421,6 +421,7 @@ defmodule PortalWeb.Clients do
         on: true,
         as: :latest_session
       )
+      |> where([devices: d], d.type == :client)
     end
 
     defp hydrated_query(subject) do
@@ -437,11 +438,11 @@ defmodule PortalWeb.Clients do
       case presence do
         "online" ->
           ids = Clients.online_client_ids(subject.account.id)
-          where(base_query, [clients: c], c.id in ^ids)
+          where(base_query, [devices: d], d.id in ^ids)
 
         "offline" ->
           ids = Clients.online_client_ids(subject.account.id)
-          where(base_query, [clients: c], c.id not in ^ids)
+          where(base_query, [devices: d], d.id not in ^ids)
 
         _ ->
           base_query
@@ -450,7 +451,7 @@ defmodule PortalWeb.Clients do
 
     defp list_client_ids(filtered_query, paginator_opts, subject) do
       filtered_query
-      |> select([clients: c], c.id)
+      |> select([devices: d], d.id)
       |> OffsetPaginator.query(paginator_opts)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
@@ -461,7 +462,7 @@ defmodule PortalWeb.Clients do
     defp fetch_clients_page(client_ids, preload, subject) do
       clients =
         hydrated_query(subject)
-        |> where([clients: c], c.id in ^client_ids)
+        |> where([devices: d], d.id in ^client_ids)
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> maybe_preload_clients(preload, subject)
@@ -489,18 +490,18 @@ defmodule PortalWeb.Clients do
       end)
     end
 
-    @spec change_client(Portal.Client.t(), map()) :: Ecto.Changeset.t()
+    @spec change_client(Portal.Device.t(), map()) :: Ecto.Changeset.t()
     def change_client(client, attrs \\ %{}) do
       import Ecto.Changeset
 
       client
       |> cast(attrs, [:name])
-      |> validate_required([:external_id, :name])
-      |> Portal.Client.changeset()
+      |> validate_required([:name])
+      |> Portal.Device.changeset()
     end
 
     @spec update_client(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Portal.Client.t()} | {:error, Ecto.Changeset.t()}
+            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
     def update_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
@@ -511,8 +512,8 @@ defmodule PortalWeb.Clients do
       end
     end
 
-    @spec delete_client(Portal.Client.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Portal.Client.t()} | {:error, term()}
+    @spec delete_client(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Device.t()} | {:error, term()}
     def delete_client(client, subject) do
       case Safe.scoped(client, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
@@ -524,20 +525,21 @@ defmodule PortalWeb.Clients do
     end
 
     @spec get_client_for_panel(binary(), Portal.Authentication.Subject.t()) ::
-            Portal.Client.t() | nil
+            Portal.Device.t() | nil
     def get_client_for_panel(id, subject) do
       client =
-        from(c in Client, as: :clients)
-        |> where([clients: c], c.id == ^id)
-        |> preload([:actor, :ipv4_address, :ipv6_address])
+        from(c in Device, as: :devices)
+        |> where([devices: d], d.type == :client)
+        |> where([devices: d], d.id == ^id)
+        |> preload([:actor])
         |> Safe.scoped(subject, :replica)
         |> Safe.one(fallback_to_primary: true)
 
       case client do
-        %Client{} ->
+        %Device{type: :client} ->
           session =
             from(s in ClientSession,
-              where: s.client_id == ^client.id,
+              where: s.device_id == ^client.id,
               order_by: [desc: s.inserted_at],
               limit: 1
             )
@@ -555,7 +557,7 @@ defmodule PortalWeb.Clients do
     def cursor_fields do
       [
         {:latest_session, :desc, :inserted_at},
-        {:clients, :asc, :id}
+        {:devices, :asc, :id}
       ]
     end
 
@@ -622,24 +624,24 @@ defmodule PortalWeb.Clients do
         if has_named_binding?(queryable, :actors) do
           queryable
         else
-          join(queryable, :inner, [clients: c], a in assoc(c, :actor), as: :actors)
+          join(queryable, :inner, [devices: d], a in assoc(d, :actor), as: :actors)
         end
 
       {queryable,
        dynamic(
-         [clients: clients, actors: actors],
-         fulltext_search(clients.name, ^name_or_email) or
-           fulltext_search(actors.name, ^name_or_email) or
-           fulltext_search(actors.email, ^name_or_email)
+         [devices: devices, actors: actors],
+         fulltext_search(devices.name, ^name_or_email) or
+           fulltext_search(devices.name, ^name_or_email) or
+           fulltext_search(devices.email, ^name_or_email)
        )}
     end
 
     def filter_by_verification(queryable, "verified") do
-      {queryable, dynamic([clients: clients], not is_nil(clients.verified_at))}
+      {queryable, dynamic([devices: devices], not is_nil(devices.verified_at))}
     end
 
     def filter_by_verification(queryable, "not_verified") do
-      {queryable, dynamic([clients: clients], is_nil(clients.verified_at))}
+      {queryable, dynamic([devices: devices], is_nil(devices.verified_at))}
     end
 
     def filter_by_presence(queryable, _presence) do

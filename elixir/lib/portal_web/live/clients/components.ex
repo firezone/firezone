@@ -457,17 +457,17 @@ defmodule PortalWeb.Clients.Components do
 
   def client_network_section(assigns) do
     ~H"""
-    <div :if={@client.ipv4_address || @client.ipv6_address} class="px-5 pt-4 pb-3">
+    <div :if={@client.ipv4 || @client.ipv6} class="px-5 pt-4 pb-3">
       <.section_heading title="Network" />
       <dl class="space-y-3">
-        <.client_detail_row :if={@client.ipv4_address} label="Tunnel IPv4">
+        <.client_detail_row :if={@client.ipv4} label="Tunnel IPv4">
           <span class="font-mono text-sm text-[var(--text-primary)]">
-            {@client.ipv4_address.address}
+            {@client.ipv4}
           </span>
         </.client_detail_row>
-        <.client_detail_row :if={@client.ipv6_address} label="Tunnel IPv6">
+        <.client_detail_row :if={@client.ipv6} label="Tunnel IPv6">
           <span class="font-mono text-xs text-[var(--text-secondary)] break-all">
-            {@client.ipv6_address.address}
+            {@client.ipv6}
           </span>
         </.client_detail_row>
       </dl>
@@ -500,9 +500,9 @@ defmodule PortalWeb.Clients.Components do
             {@client.id}
           </span>
         </.client_detail_row>
-        <.client_detail_row :if={@client.external_id} label="External ID">
+        <.client_detail_row :if={@client.firezone_id} label="Firezone ID">
           <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
-            {@client.external_id}
+            {@client.firezone_id}
           </span>
         </.client_detail_row>
         <.client_detail_row label="Verified">

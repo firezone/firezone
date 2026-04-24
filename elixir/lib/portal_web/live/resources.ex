@@ -1300,8 +1300,9 @@ defmodule PortalWeb.Resources do
           ids -> ids
         end
 
-      from(c in Portal.Client, as: :clients)
-      |> where([clients: c], c.id in ^client_ids)
+      from(c in Portal.Device, as: :devices)
+      |> where([devices: d], d.type == "client")
+      |> where([devices: d], d.id in ^client_ids)
       |> preload([:ipv4_address, :ipv6_address])
       |> Safe.scoped(subject, :replica)
       |> Safe.all()

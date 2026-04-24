@@ -452,11 +452,11 @@ defmodule PortalWeb.Sites.Components do
             </span>
             <span class="text-xs text-[var(--text-tertiary)]">Tunnel IPv4</span>
             <span class="font-mono text-xs text-[var(--text-primary)]">
-              {gateway.ipv4_address && gateway.ipv4_address.address}
+              {gateway.ipv4}
             </span>
             <span class="text-xs text-[var(--text-tertiary)]">Tunnel IPv6</span>
             <span class="font-mono text-xs text-[var(--text-primary)]">
-              {gateway.ipv6_address && gateway.ipv6_address.address}
+              {gateway.ipv6}
             </span>
           </div>
         </li>

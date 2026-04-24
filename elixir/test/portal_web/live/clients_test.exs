@@ -1,7 +1,7 @@
 defmodule PortalWeb.ClientsTest do
   use PortalWeb.ConnCase, async: true
 
-  alias Portal.{Client, Repo}
+  alias Portal.{Device, Repo}
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -97,7 +97,7 @@ defmodule PortalWeb.ClientsTest do
       html =
         element(
           lv,
-          "button[phx-click='order_by'][phx-value-table_id='clients'][phx-value-order_by='clients:asc:name']"
+          "button[phx-click='order_by'][phx-value-table_id='clients'][phx-value-order_by='devices:asc:name']"
         )
         |> render_click()
 
@@ -109,7 +109,7 @@ defmodule PortalWeb.ClientsTest do
 
       assert_patch(
         lv,
-        ~p"/#{account}/clients/#{omega.id}?#{%{clients_order_by: "clients:desc:name"}}"
+        ~p"/#{account}/clients/#{omega.id}?#{%{clients_order_by: "devices:desc:name"}}"
       )
 
       assert render(lv) =~ omega.name
@@ -184,7 +184,7 @@ defmodule PortalWeb.ClientsTest do
       render_click(lv, "delete_client")
 
       assert_patch(lv, ~p"/#{account}/clients")
-      assert is_nil(Repo.get_by(Client, account_id: account.id, id: client.id))
+      assert is_nil(Repo.get_by(Device, account_id: account.id, id: client.id))
     end
   end
 
@@ -223,7 +223,7 @@ defmodule PortalWeb.ClientsTest do
 
       html =
         lv
-        |> form("[phx-submit='submit_client_edit_form']", client: %{name: ""})
+        |> form("[phx-submit='submit_client_edit_form']", device: %{name: ""})
         |> render_change()
 
       assert html =~ "can&#39;t be blank"
@@ -235,10 +235,10 @@ defmodule PortalWeb.ClientsTest do
 
       html =
         lv
-        |> form("[phx-submit='submit_client_edit_form']", client: %{name: "Updated Client Name"})
+        |> form("[phx-submit='submit_client_edit_form']", device: %{name: "Updated Client Name"})
         |> render_submit()
 
-      updated_client = Repo.get_by!(Client, account_id: account.id, id: client.id)
+      updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
 
       assert html =~ "Client updated successfully."
       assert html =~ "Updated Client Name"

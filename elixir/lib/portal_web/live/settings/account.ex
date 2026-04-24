@@ -470,7 +470,7 @@ defmodule PortalWeb.Settings.Account do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
-    alias Portal.Client
+    alias Portal.Device
 
     @spec cancel_account_deletion(Account.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
@@ -525,19 +525,20 @@ defmodule PortalWeb.Settings.Account do
 
     @spec count_1m_active_users_for_account(Portal.Authentication.Subject.t()) :: integer()
     def count_1m_active_users_for_account(subject) do
-      from(c in Client, as: :clients)
-      |> join(:inner, [clients: c], s in Portal.ClientSession,
-        on: s.client_id == c.id and s.account_id == c.account_id,
+      from(d in Device, as: :devices)
+      |> join(:inner, [devices: d], s in Portal.ClientSession,
+        on: s.device_id == d.id and s.account_id == d.account_id,
         as: :session
       )
+      |> where([devices: d], d.type == :client)
       |> where([session: s], s.inserted_at > ago(1, "month"))
-      |> join(:inner, [clients: c], a in Actor,
-        on: c.actor_id == a.id and c.account_id == a.account_id,
+      |> join(:inner, [devices: d], a in Actor,
+        on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], is_nil(a.disabled_at))
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([clients: c], c.actor_id)
+      |> select([devices: d], d.actor_id)
       |> distinct(true)
       |> Safe.scoped(subject, :replica)
       |> Safe.aggregate(:count)

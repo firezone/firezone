@@ -61,8 +61,8 @@ defmodule PortalWeb.CoreComponents do
   defp device_path(account, %Portal.Device{type: :client, id: id}),
     do: ~p"/#{account}/clients/#{id}"
 
-  defp device_path(account, %Portal.Device{type: :gateway, id: id}),
-    do: ~p"/#{account}/gateways/#{id}"
+  defp device_path(account, %Portal.Device{type: :gateway}),
+    do: ~p"/#{account}"
 
   @doc """
   Renders a generic <p> tag using our color scheme.

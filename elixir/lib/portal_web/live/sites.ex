@@ -987,7 +987,7 @@ defmodule PortalWeb.Sites do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Safe, Site, Resource, Gateway}
+    alias Portal.{Safe, Site, Resource, Device}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
     def list_all_sites(subject) do
@@ -1014,38 +1014,38 @@ defmodule PortalWeb.Sites do
     end
 
     @spec list_gateways_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
-            Gateway.t()
+            Device.t()
           ]
     def list_gateways_for_site(site_id, subject) do
       gateway_ids =
-        from(g in Gateway, where: g.site_id == ^site_id, select: g.id)
+        from(d in Device, where: d.site_id == ^site_id, where: d.type == :gateway, select: d.id)
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
 
       gateways =
-        from(g in Gateway, as: :gateways)
-        |> where([gateways: g], g.site_id == ^site_id)
-        |> order_by([gateways: g], asc: g.name)
-        |> preload([:ipv4_address, :ipv6_address])
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.type == :gateway)
+        |> where([devices: d], d.site_id == ^site_id)
+        |> order_by([devices: d], asc: d.name)
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
 
-      sessions_by_gateway_id =
+      sessions_by_device_id =
         if gateway_ids != [] do
           from(s in Portal.GatewaySession,
-            where: s.gateway_id in ^gateway_ids,
-            distinct: s.gateway_id,
-            order_by: [asc: s.gateway_id, desc: s.inserted_at]
+            where: s.device_id in ^gateway_ids,
+            distinct: s.device_id,
+            order_by: [asc: s.device_id, desc: s.inserted_at]
           )
           |> Safe.scoped(subject, :replica)
           |> Safe.all()
-          |> Map.new(&{&1.gateway_id, &1})
+          |> Map.new(&{&1.device_id, &1})
         else
           %{}
         end
 
       Enum.map(gateways, fn gateway ->
-        %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}
+        %{gateway | latest_session: Map.get(sessions_by_device_id, gateway.id)}
       end)
     end
 
@@ -1085,10 +1085,11 @@ defmodule PortalWeb.Sites do
     end
 
     def count_gateways_by_site(site_ids, subject) do
-      from(g in Gateway, as: :gateways)
-      |> where([gateways: g], g.site_id in ^site_ids)
-      |> group_by([gateways: g], g.site_id)
-      |> select([gateways: g], {g.site_id, count(g.id)})
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :gateway)
+      |> where([devices: d], d.site_id in ^site_ids)
+      |> group_by([devices: d], d.site_id)
+      |> select([devices: d], {d.site_id, count(d.id)})
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Map.new()
