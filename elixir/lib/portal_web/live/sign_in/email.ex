@@ -115,25 +115,21 @@ defmodule PortalWeb.SignIn.Email do
     </form>
 
     <div class="mt-4 grid grid-cols-2 gap-2">
+      <.link
+        navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
+        class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+      >
+        <.icon name="remix-arrow-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        Different method
+      </.link>
       <.resend
         resend_action={@resend_action}
         email={@email}
         redirect_params={@redirect_params}
       />
-      <.link
-        navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-        class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
-      >
-        <.icon name="remix-arrow-left-line" class="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-        Different method
-      </.link>
     </div>
 
-    <div class="mt-2 grid grid-cols-2 gap-2">
-      <.dev_email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
-      <.email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
-      <.email_provider_link url="https://outlook.live.com/mail/" name="Outlook" />
-    </div>
+    <.dev_mailbox_link />
     """
   end
 
@@ -142,13 +138,20 @@ defmodule PortalWeb.SignIn.Email do
   end
 
   if Mix.env() in [:dev, :test] do
-    defp dev_email_provider_link(assigns) do
+    defp dev_mailbox_link(assigns) do
       ~H"""
-      <.email_provider_link url={~p"/dev/mailbox"} name="Local" />
+      <a
+        href={~p"/dev/mailbox"}
+        target="_blank"
+        class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+      >
+        <.icon name="remix-mail-open-line" class="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+        Open local mailbox
+      </a>
       """
     end
   else
-    defp dev_email_provider_link(assigns), do: ~H""
+    defp dev_mailbox_link(assigns), do: ~H""
   end
 
   defp resend(assigns) do
@@ -166,23 +169,10 @@ defmodule PortalWeb.SignIn.Email do
         type="submit"
         class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
       >
-        <.icon
-          name="remix-loop-left-line"
-          class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]"
-        /> Resend email
+        <.icon name="remix-loop-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        Resend email
       </button>
     </.form>
-    """
-  end
-
-  defp email_provider_link(assigns) do
-    ~H"""
-    <a
-      href={@url}
-      class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
-    >
-      Open {@name}
-    </a>
     """
   end
 
