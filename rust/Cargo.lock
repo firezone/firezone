@@ -3703,8 +3703,7 @@ dependencies = [
 [[package]]
 name = "is"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40cf23944e1280f3b2959321a1ef776c14503af8e1e5efca32147a9136a5f8dc"
+source = "git+https://github.com/algesten/str0m?branch=feat%2Frole-conflict#ddbd8caaa5d9c0595cffef0571e322a9ef4650ca"
 dependencies = [
  "crc",
  "hmac",
@@ -7008,8 +7007,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m-proto"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "222a6a5a946631a167c1b0282846bfa33b0f8098b8dd565237809735656ed63f"
+source = "git+https://github.com/algesten/str0m?branch=feat%2Frole-conflict#ddbd8caaa5d9c0595cffef0571e322a9ef4650ca"
 dependencies = [
  "base64ct",
  "fastrand",
