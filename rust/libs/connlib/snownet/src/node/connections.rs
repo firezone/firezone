@@ -273,9 +273,17 @@ where
         self.established.len()
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+    /// Restart ICE on every established connection without tearing anything down.
+    ///
+    /// Each connection's candidate epoch is bumped before its ICE pair list
+    /// is re-formed. Candidates, ICE credentials, and the underlying
+    /// [`boringtun::noise::Tunn`] are left alone so WireGuard sessions
+    /// survive.
+    pub(crate) fn ice_restart(&mut self) {
+        for c in self.established.values_mut() {
+            c.candidate_epoch.inc();
+            c.ice_restart();
+        }
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {

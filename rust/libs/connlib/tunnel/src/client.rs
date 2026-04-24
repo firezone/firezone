@@ -1821,7 +1821,7 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(now); // Clear all network connections.
+        self.node.reset();
         self.gateways.clear(); // Clear all state associated with Gateways.
         self.clients.clear(); // Clear all state associated with Clients.
 
