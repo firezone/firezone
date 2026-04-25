@@ -800,7 +800,7 @@ defmodule PortalWeb.Groups do
             <span class={[
               "inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums",
               if((group.policy_count || 0) > 0,
-                do: "bg-[var(--brand-muted)] text-[var(--brand)]",
+                do: "bg-[var(--brand-tertiary)] text-[var(--brand)]",
                 else: "bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
               )
             ]}>

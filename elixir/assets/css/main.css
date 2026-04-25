@@ -50,6 +50,8 @@ html {
 
   /* Brand — orange (heat-wave-500 / heat-wave-600) */
   --brand: #FF7605;
+  --brand-secondary: #FF9A47;
+  --brand-tertiary: #FFF1E5;
   --brand-muted: #FFF9F5;
   --brand-hover: #C25700;
 
@@ -74,7 +76,7 @@ html {
 
   /* Controls */
   --control-bg: #FFFFFF;
-  --control-border: rgba(15, 23, 42, 0.40);
+  --control-border: rgba(15, 23, 42, 0.16);
   --control-focus: #FF7605;
 
   /* Badge variants */
@@ -86,6 +88,9 @@ html {
   --badge-cidr-text: #C25700;
   --badge-device-pool-bg: #F0FDFA;
   --badge-device-pool-text: #0F766E;
+
+  /* Icons */
+  --icon-bg: #F8FAFC;
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -123,6 +128,8 @@ html[data-theme="system"] .theme-check-system { display: inline-block; }
   --text-muted: #2D3F52;
   --text-inverse: #0F172A;
   --brand: #FF9A47;
+  --brand-secondary: rgba(255, 118, 5, 0.60);
+  --brand-tertiary: rgba(255, 118, 5, 0.30);
   --brand-muted: rgba(255, 118, 5, 0.12);
   --brand-hover: #FFB46A;
   --status-active-bg: rgba(74, 222, 128, 0.10);
@@ -139,4 +146,5 @@ html[data-theme="system"] .theme-check-system { display: inline-block; }
   --control-bg: #172032;
   --control-border: rgba(241, 245, 249, 0.12);
   --control-focus: #FF9A47;
+  --icon-bg: #E2E8F0;
 }

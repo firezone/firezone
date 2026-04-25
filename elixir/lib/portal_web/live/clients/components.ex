@@ -461,7 +461,7 @@ defmodule PortalWeb.Clients.Components do
       <.section_heading title="Network" />
       <dl class="space-y-3">
         <.client_detail_row :if={@client.ipv4} label="Tunnel IPv4">
-          <span class="font-mono text-sm text-[var(--text-primary)]">
+          <span class="font-mono text-xs text-[var(--text-secondary)]">
             {@client.ipv4}
           </span>
         </.client_detail_row>

@@ -814,7 +814,7 @@ defmodule PortalWeb.Policies.Components do
         navigate={~p"/#{@account}/groups/#{@policy.group}"}
         class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] transition-colors text-left group"
       >
-        <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+        <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--icon-bg)] border border-[var(--border)] shrink-0">
           <.provider_icon type={provider_type_from_group(@policy.group)} class="w-4 h-4" />
         </div>
         <div class="min-w-0">
@@ -2384,7 +2384,7 @@ defmodule PortalWeb.Policies.Components do
                 class="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-red-500 transition-colors"
                 title="Remove"
               >
-                <.icon name="hero-x-mark" class="w-3.5 h-3.5" />
+                <.icon name="ri-close-line" class="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -2449,7 +2449,7 @@ defmodule PortalWeb.Policies.Components do
                     ]}
                     title="Pick start time"
                   >
-                    <.icon name="hero-clock" class="w-3.5 h-3.5" />
+                    <.icon name="ri-time-line" class="w-3.5 h-3.5" />
                   </button>
                 </div>
                 <span class="text-[9px] text-[var(--text-muted)]">on</span>
@@ -2480,7 +2480,7 @@ defmodule PortalWeb.Policies.Components do
                     ]}
                     title="Pick end time"
                   >
-                    <.icon name="hero-clock" class="w-3.5 h-3.5" />
+                    <.icon name="ri-time-line" class="w-3.5 h-3.5" />
                   </button>
                 </div>
                 <span class="text-[9px] text-[var(--text-muted)]">off</span>
@@ -2521,7 +2521,7 @@ defmodule PortalWeb.Policies.Components do
               "transition-colors"
             ]}
           >
-            <.icon name="hero-plus" class="w-3.5 h-3.5" /> Add range
+            <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
           </button>
         </div>
       </div>

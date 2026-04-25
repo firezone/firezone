@@ -258,7 +258,7 @@ defmodule PortalWeb.Policies do
           <:col :let={policy} label="Group" class="w-36 lg:w-72">
             <%= if policy.group do %>
               <div class="flex items-center gap-2">
-                <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--icon-bg)] border border-[var(--border)] shrink-0">
                   <.provider_icon type={provider_type_from_group(policy.group)} class="w-3 h-3" />
                 </div>
                 <.link

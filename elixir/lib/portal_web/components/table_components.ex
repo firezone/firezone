@@ -65,7 +65,7 @@ defmodule PortalWeb.TableComponents do
               "ri-arrow-down-s-fill"
 
             true ->
-              "ri-arrow-up-down-fill"
+              "ri-expand-up-down-fill"
           end
         }
         class="w-4 h-4 ml-1"

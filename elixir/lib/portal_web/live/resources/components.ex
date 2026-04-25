@@ -701,9 +701,9 @@ defmodule PortalWeb.Resources.Components do
 
       <div
         :if={@active_protocols == []}
-        class="flex items-center justify-center rounded border border-dashed border-[var(--border)] px-4 py-5 text-xs text-[var(--text-tertiary)]"
+        class="flex items-center justify-center rounded border border-dashed border-[var(--border-strong)] px-4 py-5 text-xs text-[var(--text-tertiary)]"
       >
-        No restrictions — all traffic is permitted
+        No restrictions — All protocols/ports permitted
       </div>
 
       <div :if={@active_protocols != []} class="flex flex-col gap-2">

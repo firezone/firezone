@@ -335,7 +335,7 @@ defmodule PortalWeb.FormComponents do
           "border border-[var(--control-border)]",
           "outline-none transition-colors",
           "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
+          "disabled:opacity-40 disabled:cursor-not-allowed",
           @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
           @class
         ]}

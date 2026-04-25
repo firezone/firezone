@@ -379,7 +379,7 @@ defmodule PortalWeb.Resources do
                     ~p"/#{@account}/policies?policies_filter[resource_id]=#{@internet_resource.id}"
                   }
                 >
-                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-muted)] text-[var(--brand)]">
+                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-tertiary)] text-[var(--brand)]">
                     {count}
                   </span>
                 </.link>
@@ -454,7 +454,7 @@ defmodule PortalWeb.Resources do
               :if={count > 0}
               navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
             >
-              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-muted)] text-[var(--brand)]">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-tertiary)] text-[var(--brand)]">
                 {count}
               </span>
             </.link>
