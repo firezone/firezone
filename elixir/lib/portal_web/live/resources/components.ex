@@ -1016,15 +1016,6 @@ defmodule PortalWeb.Resources.Components do
                 {@resource.address}
               </span>
             </div>
-            <p :if={false == true} class={[
-              "text-xs mt-1",
-              if(@resource.address_description,
-                do: "text-[var(--text-tertiary)]",
-                else: "text-[var(--text-muted)] italic"
-              )
-            ]}>
-              {@resource.address_description || "No Address Description"}
-            </p>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <button
