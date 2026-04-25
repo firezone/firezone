@@ -68,10 +68,14 @@ defmodule Portal.Ops do
     :ok
   end
 
-  def set_banner(message) do
+  @doc"""
+  Set a banner for all accounts. Banners can render HTML tags.
+  The available colors are: :warning, :info, :error, :success, :announcement
+  """
+  def set_banner(message, color \\ :announcement) do
     clear_banner()
 
-    %Banner{message: message}
+    %Banner{message: message, color: color}
     |> Database.insert()
   end
 

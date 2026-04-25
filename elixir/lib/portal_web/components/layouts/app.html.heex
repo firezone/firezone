@@ -23,13 +23,17 @@
       </.flash>
 
       <% banner = Portal.Safe.unscoped(Portal.Banner, :replica) |> Portal.Safe.one() %>
-      <div
-        :if={banner}
-        id="banner"
-        class="bg-yellow-100 text-neutral-900 px-4 py-3 text-center"
-      >
-        {Phoenix.HTML.raw(banner.message)}
-      </div>
+      <%= if banner do %>
+        <% {wrapper_classes, text_class, icon_class, icon_name} = banner_classes(banner.color) %>
+        <div id="banner" class={["border-b px-4 py-2.5", wrapper_classes]}>
+          <div class="flex items-center justify-center gap-2.5">
+            <.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
+            <p class={["text-sm font-medium", text_class]}>
+              {Phoenix.HTML.raw(banner.message)}
+            </p>
+          </div>
+        </div>
+      <% end %>
       <.flash :if={Portal.Billing.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
         {Portal.Billing.build_limits_exceeded_message(@account)}.
         <span :if={Portal.Billing.account_provisioned?(@account)}>
