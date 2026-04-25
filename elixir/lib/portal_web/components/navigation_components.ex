@@ -240,13 +240,13 @@ defmodule PortalWeb.NavigationComponents do
           </ul>
         </div>
 
-        <%!-- People --%>
+        <%!-- Actors --%>
         <div>
           <p
             data-sidebar-group-label
             class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
           >
-            People
+            Actors
           </p>
           <ul class="space-y-0.5">
             <.sidebar_item
@@ -254,7 +254,14 @@ defmodule PortalWeb.NavigationComponents do
               navigate={~p"/#{@account}/actors"}
               icon="ri-user-line"
             >
-              Actors
+              People
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/service_accounts"}
+              icon="ri-robot-3-line"
+            >
+              Service Accounts
             </.sidebar_item>
           </ul>
         </div>

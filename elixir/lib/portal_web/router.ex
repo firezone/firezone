@@ -192,11 +192,17 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.EnsureAdmin,
         PortalWeb.LiveHooks.SetCurrentUri
       ] do
-      # Actors
+      # People (non-service-account actors)
       live "/actors", Actors
       live "/actors/new", Actors, :new
       live "/actors/:id/edit", Actors, :edit
       live "/actors/:id", Actors, :show
+
+      # Service Accounts
+      live "/service_accounts", ServiceAccounts
+      live "/service_accounts/new", ServiceAccounts, :new
+      live "/service_accounts/:id/edit", ServiceAccounts, :edit
+      live "/service_accounts/:id", ServiceAccounts, :show
 
       # Groups
       live "/groups", Groups

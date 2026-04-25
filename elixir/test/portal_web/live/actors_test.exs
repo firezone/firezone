@@ -48,11 +48,10 @@ defmodule PortalWeb.ActorsTest do
         |> live(~p"/#{account}/actors")
 
       html = render_click(lv, "open_new_actor_panel")
-      assert html =~ "New Actor"
-      assert html =~ "Select a type to continue"
+      assert html =~ "Create User"
 
       html = render_click(lv, "close_panel")
-      refute html =~ "Select a type to continue"
+      refute html =~ "Create User"
     end
   end
 
@@ -67,7 +66,7 @@ defmodule PortalWeb.ActorsTest do
       assert_patch(lv, ~p"/#{account}/actors/new")
     end
 
-    test "renders type selection when navigating directly to /actors/new", %{
+    test "renders user creation form when navigating directly to /actors/new", %{
       conn: conn,
       account: account,
       actor: actor
@@ -77,7 +76,7 @@ defmodule PortalWeb.ActorsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors/new")
 
-      assert html =~ "Select a type to continue"
+      assert html =~ "Create User"
     end
 
     test "close panel patches back to /actors/new", %{

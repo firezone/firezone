@@ -18,7 +18,7 @@ defmodule PortalWeb.Actors do
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Actors")
+      |> assign(page_title: "People")
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -38,15 +38,17 @@ defmodule PortalWeb.Actors do
     {:ok, socket}
   end
 
-  # New Actor Panel
+  # New Person Panel — skip type selection, go straight to user form
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
+    changeset = changeset(%Actor{}, %{type: :account_user})
 
     {:noreply,
      socket
      |> assign(selected_actor: nil)
      |> assign(base_actor_assigns())
-     |> merge_state(:actor_panel, creating_actor: true, new_actor_type: nil)}
+     |> merge_state(:actor_panel, creating_actor: true, new_actor_type: :user)
+     |> assign(actor_form: actor_form_state(to_form(changeset)))}
   end
 
   # Show Actor Panel
@@ -957,16 +959,16 @@ defmodule PortalWeb.Actors do
         <:icon>
           <.icon name="ri-user-line" class="w-16 h-16 text-[var(--brand)]" />
         </:icon>
-        <:title>Actors</:title>
+        <:title>People</:title>
         <:description>
-          All users in this account.
+          Admin users and regular users in this account.
         </:description>
         <:action>
           <.docs_action path="/deploy/users" />
         </:action>
         <:action>
           <.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
-            New Actor
+            New Person
           </.button>
         </:action>
       </.page_header>
@@ -1008,7 +1010,7 @@ defmodule PortalWeb.Actors do
             <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
           </:col>
           <:empty>
-            <span class="text-sm text-[var(--text-tertiary)]">No actors to display.</span>
+            <span class="text-sm text-[var(--text-tertiary)]">No people to display.</span>
           </:empty>
         </.live_table>
       </div>
@@ -1204,7 +1206,7 @@ defmodule PortalWeb.Actors do
 
     defp index_query do
       from(actors in Actor, as: :actors)
-      |> where([actors: actors], actors.type != :api_client)
+      |> where([actors: actors], actors.type in [:account_user, :account_admin_user])
     end
 
     def cursor_fields do
@@ -1238,8 +1240,7 @@ defmodule PortalWeb.Actors do
           type: {:string, :select},
           values: [
             {"Admins", "admin"},
-            {"Users", "user"},
-            {"Service Accounts", "service_account"}
+            {"Users", "user"}
           ],
           fun: &filter_by_type/2
         },
