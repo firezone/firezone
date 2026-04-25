@@ -159,11 +159,24 @@ defmodule PortalWeb.Policies.Components do
   attr :confirm_state, :map, required: true
 
   def policy_panel(assigns) do
+    cs = assigns.conditions_state
+
     assigns =
-      assigns
-      |> assign(assigns.panel)
-      |> assign(assigns.conditions_state)
-      |> assign(assigns.confirm_state)
+      assign(assigns, :form_conditions_state, %{
+        timezone: cs.panel_timezone,
+        location_search: cs.panel_location_search,
+        location_operator: cs.panel_location_operator,
+        location_values: cs.panel_location_values,
+        ip_range_operator: cs.panel_ip_range_operator,
+        ip_range_values: cs.panel_ip_range_values,
+        ip_range_input: cs.panel_ip_range_input,
+        auth_provider_operator: cs.panel_auth_provider_operator,
+        auth_provider_values: cs.panel_auth_provider_values,
+        tod_values: cs.panel_tod_values,
+        tod_adding: cs.panel_tod_adding,
+        tod_pending: cs.panel_tod_pending,
+        tod_pending_error: cs.panel_tod_pending_error
+      })
 
     ~H"""
     <div
@@ -173,7 +186,7 @@ defmodule PortalWeb.Policies.Components do
         "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
         "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
         "transition-transform duration-200 ease-in-out",
-        if(@policy || @panel_view in [:edit_form, :new_form],
+        if(@policy || @panel.panel_view in [:edit_form, :new_form],
           do: "translate-x-0",
           else: "translate-x-full"
         )
@@ -182,62 +195,38 @@ defmodule PortalWeb.Policies.Components do
       phx-key="Escape"
     >
       <.policy_form_view
-        :if={@panel_view == :new_form}
+        :if={@panel.panel_view == :new_form}
         account={@account}
         subject={@subject}
         providers={@providers}
-        panel_form={@panel_form}
-        panel_selected_resource={@panel_selected_resource}
-        panel_active_conditions={@panel_active_conditions}
-        panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
-        panel_timezone={@panel_timezone}
-        panel_location_search={@panel_location_search}
-        panel_location_operator={@panel_location_operator}
-        panel_location_values={@panel_location_values}
-        panel_ip_range_operator={@panel_ip_range_operator}
-        panel_ip_range_values={@panel_ip_range_values}
-        panel_ip_range_input={@panel_ip_range_input}
-        panel_auth_provider_operator={@panel_auth_provider_operator}
-        panel_auth_provider_values={@panel_auth_provider_values}
-        panel_tod_values={@panel_tod_values}
-        panel_tod_adding={@panel_tod_adding}
-        panel_tod_pending={@panel_tod_pending}
-        panel_tod_pending_error={@panel_tod_pending_error}
+        panel_form={@panel.panel_form}
+        panel_selected_resource={@panel.panel_selected_resource}
+        panel_active_conditions={@conditions_state.panel_active_conditions}
+        panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
+        conditions_state={@form_conditions_state}
         mode={:new}
       />
 
       <.policy_form_view
-        :if={@panel_view == :edit_form}
+        :if={@panel.panel_view == :edit_form}
         account={@account}
         subject={@subject}
         providers={@providers}
-        panel_form={@panel_form}
-        panel_selected_resource={@panel_selected_resource}
-        panel_active_conditions={@panel_active_conditions}
-        panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
-        panel_timezone={@panel_timezone}
-        panel_location_search={@panel_location_search}
-        panel_location_operator={@panel_location_operator}
-        panel_location_values={@panel_location_values}
-        panel_ip_range_operator={@panel_ip_range_operator}
-        panel_ip_range_values={@panel_ip_range_values}
-        panel_ip_range_input={@panel_ip_range_input}
-        panel_auth_provider_operator={@panel_auth_provider_operator}
-        panel_auth_provider_values={@panel_auth_provider_values}
-        panel_tod_values={@panel_tod_values}
-        panel_tod_adding={@panel_tod_adding}
-        panel_tod_pending={@panel_tod_pending}
-        panel_tod_pending_error={@panel_tod_pending_error}
+        panel_form={@panel.panel_form}
+        panel_selected_resource={@panel.panel_selected_resource}
+        panel_active_conditions={@conditions_state.panel_active_conditions}
+        panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
+        conditions_state={@form_conditions_state}
         mode={:edit}
       />
 
       <.policy_details_view
-        :if={@policy && @panel_view == :list}
+        :if={@policy && @panel.panel_view == :list}
         account={@account}
         policy={@policy}
         providers={@providers}
-        confirm_disable_policy={@confirm_disable_policy}
-        confirm_delete_policy={@confirm_delete_policy}
+        confirm_disable_policy={@confirm_state.confirm_disable_policy}
+        confirm_delete_policy={@confirm_state.confirm_delete_policy}
       />
     </div>
     """
@@ -250,19 +239,7 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
-  attr :panel_timezone, :string, default: "UTC"
-  attr :panel_location_search, :string, default: ""
-  attr :panel_location_operator, :string, default: "is_in"
-  attr :panel_location_values, :list, default: []
-  attr :panel_ip_range_operator, :string, default: "is_in_cidr"
-  attr :panel_ip_range_values, :list, default: []
-  attr :panel_ip_range_input, :string, default: ""
-  attr :panel_auth_provider_operator, :string, default: "is_in"
-  attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :list, default: []
-  attr :panel_tod_adding, :boolean, default: false
-  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
-  attr :panel_tod_pending_error, :string, default: nil
+  attr :conditions_state, :map, required: true
   attr :mode, :atom, required: true
 
   def policy_form_view(assigns) do
@@ -283,19 +260,7 @@ defmodule PortalWeb.Policies.Components do
           panel_selected_resource={@panel_selected_resource}
           panel_active_conditions={@panel_active_conditions}
           panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
-          panel_timezone={@panel_timezone}
-          panel_location_search={@panel_location_search}
-          panel_location_operator={@panel_location_operator}
-          panel_location_values={@panel_location_values}
-          panel_ip_range_operator={@panel_ip_range_operator}
-          panel_ip_range_values={@panel_ip_range_values}
-          panel_ip_range_input={@panel_ip_range_input}
-          panel_auth_provider_operator={@panel_auth_provider_operator}
-          panel_auth_provider_values={@panel_auth_provider_values}
-          panel_tod_values={@panel_tod_values}
-          panel_tod_adding={@panel_tod_adding}
-          panel_tod_pending={@panel_tod_pending}
-          panel_tod_pending_error={@panel_tod_pending_error}
+          conditions_state={@conditions_state}
         />
         <.policy_form_actions mode={@mode} />
       </.form>
@@ -331,19 +296,7 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
-  attr :panel_timezone, :string, default: "UTC"
-  attr :panel_location_search, :string, default: ""
-  attr :panel_location_operator, :string, default: "is_in"
-  attr :panel_location_values, :list, default: []
-  attr :panel_ip_range_operator, :string, default: "is_in_cidr"
-  attr :panel_ip_range_values, :list, default: []
-  attr :panel_ip_range_input, :string, default: ""
-  attr :panel_auth_provider_operator, :string, default: "is_in"
-  attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :list, default: []
-  attr :panel_tod_adding, :boolean, default: false
-  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
-  attr :panel_tod_pending_error, :string, default: nil
+  attr :conditions_state, :map, required: true
 
   def policy_form_body(assigns) do
     ~H"""
@@ -356,19 +309,7 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@panel_active_conditions}
         panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
         providers={@providers}
-        panel_timezone={@panel_timezone}
-        panel_location_search={@panel_location_search}
-        panel_location_operator={@panel_location_operator}
-        panel_location_values={@panel_location_values}
-        panel_ip_range_operator={@panel_ip_range_operator}
-        panel_ip_range_values={@panel_ip_range_values}
-        panel_ip_range_input={@panel_ip_range_input}
-        panel_auth_provider_operator={@panel_auth_provider_operator}
-        panel_auth_provider_values={@panel_auth_provider_values}
-        panel_tod_values={@panel_tod_values}
-        panel_tod_adding={@panel_tod_adding}
-        panel_tod_pending={@panel_tod_pending}
-        panel_tod_pending_error={@panel_tod_pending_error}
+        conditions_state={@conditions_state}
       />
     </div>
     """
@@ -492,19 +433,7 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :providers, :list, default: []
-  attr :panel_timezone, :string, default: "UTC"
-  attr :panel_location_search, :string, default: ""
-  attr :panel_location_operator, :string, default: "is_in"
-  attr :panel_location_values, :list, default: []
-  attr :panel_ip_range_operator, :string, default: "is_in_cidr"
-  attr :panel_ip_range_values, :list, default: []
-  attr :panel_ip_range_input, :string, default: ""
-  attr :panel_auth_provider_operator, :string, default: "is_in"
-  attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :list, default: []
-  attr :panel_tod_adding, :boolean, default: false
-  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
-  attr :panel_tod_pending_error, :string, default: nil
+  attr :conditions_state, :map, required: true
 
   def policy_conditions_section(assigns) do
     ~H"""
@@ -523,19 +452,7 @@ defmodule PortalWeb.Policies.Components do
         <.policy_conditions_cards
           panel_active_conditions={@panel_active_conditions}
           providers={@providers}
-          panel_timezone={@panel_timezone}
-          panel_location_search={@panel_location_search}
-          panel_location_operator={@panel_location_operator}
-          panel_location_values={@panel_location_values}
-          panel_ip_range_operator={@panel_ip_range_operator}
-          panel_ip_range_values={@panel_ip_range_values}
-          panel_ip_range_input={@panel_ip_range_input}
-          panel_auth_provider_operator={@panel_auth_provider_operator}
-          panel_auth_provider_values={@panel_auth_provider_values}
-          panel_tod_values={@panel_tod_values}
-          panel_tod_adding={@panel_tod_adding}
-          panel_tod_pending={@panel_tod_pending}
-          panel_tod_pending_error={@panel_tod_pending_error}
+          conditions_state={@conditions_state}
         />
       <% end %>
     </div>
@@ -578,19 +495,7 @@ defmodule PortalWeb.Policies.Components do
 
   attr :panel_active_conditions, :list, default: []
   attr :providers, :list, default: []
-  attr :panel_timezone, :string, default: "UTC"
-  attr :panel_location_search, :string, default: ""
-  attr :panel_location_operator, :string, default: "is_in"
-  attr :panel_location_values, :list, default: []
-  attr :panel_ip_range_operator, :string, default: "is_in_cidr"
-  attr :panel_ip_range_values, :list, default: []
-  attr :panel_ip_range_input, :string, default: ""
-  attr :panel_auth_provider_operator, :string, default: "is_in"
-  attr :panel_auth_provider_values, :list, default: []
-  attr :panel_tod_values, :list, default: []
-  attr :panel_tod_adding, :boolean, default: false
-  attr :panel_tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
-  attr :panel_tod_pending_error, :string, default: nil
+  attr :conditions_state, :map, required: true
 
   def policy_conditions_cards(assigns) do
     ~H"""
@@ -605,19 +510,7 @@ defmodule PortalWeb.Policies.Components do
         :for={type <- @panel_active_conditions}
         type={type}
         providers={@providers}
-        timezone={@panel_timezone}
-        location_search={@panel_location_search}
-        location_operator={@panel_location_operator}
-        location_values={@panel_location_values}
-        ip_range_operator={@panel_ip_range_operator}
-        ip_range_values={@panel_ip_range_values}
-        ip_range_input={@panel_ip_range_input}
-        auth_provider_operator={@panel_auth_provider_operator}
-        auth_provider_values={@panel_auth_provider_values}
-        tod_values={@panel_tod_values}
-        tod_adding={@panel_tod_adding}
-        tod_pending={@panel_tod_pending}
-        tod_pending_error={@panel_tod_pending_error}
+        conditions_state={@conditions_state}
       />
     </div>
     """
@@ -1999,531 +1892,607 @@ defmodule PortalWeb.Policies.Components do
 
   attr :type, :atom, required: true
   attr :providers, :list, default: []
-  attr :timezone, :string, default: "UTC"
-  attr :location_search, :string, default: ""
-  attr :location_operator, :string, default: "is_in"
-  attr :location_values, :list, default: []
+  attr :conditions_state, :map, required: true
+
+  def grant_condition_card(assigns) do
+    ~H"""
+    <.grant_client_verified_condition_card :if={@type == :client_verified} type={@type} />
+    <.grant_ip_range_condition_card
+      :if={@type == :remote_ip}
+      type={@type}
+      ip_range_operator={@conditions_state.ip_range_operator}
+      ip_range_values={@conditions_state.ip_range_values}
+      ip_range_input={@conditions_state.ip_range_input}
+    />
+    <.grant_location_condition_card
+      :if={@type == :remote_ip_location_region}
+      type={@type}
+      location_operator={@conditions_state.location_operator}
+      location_search={@conditions_state.location_search}
+      location_values={@conditions_state.location_values}
+    />
+    <.grant_auth_provider_condition_card
+      :if={@type == :auth_provider_id}
+      type={@type}
+      providers={@providers}
+      auth_provider_operator={@conditions_state.auth_provider_operator}
+      auth_provider_values={@conditions_state.auth_provider_values}
+    />
+    <.grant_tod_condition_card
+      :if={@type == :current_utc_datetime}
+      type={@type}
+      timezone={@conditions_state.timezone}
+      tod_values={@conditions_state.tod_values}
+      tod_adding={@conditions_state.tod_adding}
+      tod_pending={@conditions_state.tod_pending}
+      tod_pending_error={@conditions_state.tod_pending_error}
+    />
+    """
+  end
+
+  attr :type, :atom, required: true
+
+  defp grant_condition_card_header(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between px-3 py-2 bg-[var(--surface-raised)] border-b border-[var(--border)]">
+      <span class="text-xs font-medium text-[var(--text-primary)]">
+        {condition_type_label(@type)}
+      </span>
+      <button
+        type="button"
+        phx-click="remove_condition"
+        phx-value-type={@type}
+        class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+        title="Remove condition"
+      >
+        <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+      </button>
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+
+  defp grant_client_verified_condition_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <input
+        type="hidden"
+        name="policy[conditions][client_verified][property]"
+        value="client_verified"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][client_verified][operator]"
+        value="is"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][client_verified][values][]"
+        value="true"
+      />
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
   attr :ip_range_operator, :string, default: "is_in_cidr"
   attr :ip_range_values, :list, default: []
   attr :ip_range_input, :string, default: ""
+
+  defp grant_ip_range_condition_card(assigns) do
+    assigns = assign(assigns, :input_class, @condition_input_class)
+
+    ~H"""
+    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <div class="px-3 py-2.5 space-y-2">
+        <input
+          type="hidden"
+          name="policy[conditions][remote_ip][property]"
+          value="remote_ip"
+        />
+        <input
+          type="hidden"
+          name="policy[conditions][remote_ip][operator]"
+          value={@ip_range_operator}
+        />
+        <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+          <button
+            type="button"
+            phx-click="change_ip_range_operator"
+            phx-value-operator="is_in_cidr"
+            class={[
+              "px-2 py-0.5 text-[10px] transition-colors",
+              if(@ip_range_operator == "is_in_cidr",
+                do: "bg-[var(--brand)] text-white",
+                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            is in CIDR
+          </button>
+          <button
+            type="button"
+            phx-click="change_ip_range_operator"
+            phx-value-operator="is_not_in_cidr"
+            class={[
+              "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+              if(@ip_range_operator == "is_not_in_cidr",
+                do: "bg-[var(--brand)] text-white",
+                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            is not in CIDR
+          </button>
+        </div>
+        <input
+          :for={v <- @ip_range_values}
+          type="hidden"
+          name="policy[conditions][remote_ip][values][]"
+          value={v}
+        />
+        <div :if={@ip_range_values != []} class="flex flex-wrap gap-1 mb-2">
+          <span
+            :for={v <- @ip_range_values}
+            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-mono bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+          >
+            {v}
+            <button
+              type="button"
+              phx-click="remove_ip_range_value"
+              phx-value-range={v}
+              class="hover:text-[var(--status-error)] transition-colors"
+            >
+              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+            </button>
+          </span>
+        </div>
+        <div class="flex gap-1.5">
+          <input
+            type="text"
+            name="_ip_range_input"
+            value={@ip_range_input}
+            placeholder="e.g. 10.0.0.0/8"
+            phx-change="update_ip_range_input"
+            phx-key="Enter"
+            phx-keyup="add_ip_range_value"
+            class={[@input_class, "flex-1 font-mono placeholder:text-[var(--text-muted)]"]}
+          />
+          <button
+            type="button"
+            phx-click="add_ip_range_value"
+            class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors shrink-0"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+  attr :location_operator, :string, default: "is_in"
+  attr :location_search, :string, default: ""
+  attr :location_values, :list, default: []
+
+  defp grant_location_condition_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <div class="px-3 py-2.5">
+        <input
+          type="hidden"
+          name="policy[conditions][remote_ip_location_region][property]"
+          value="remote_ip_location_region"
+        />
+        <input
+          type="hidden"
+          name="policy[conditions][remote_ip_location_region][operator]"
+          value={@location_operator}
+        />
+        <input
+          :for={code <- @location_values}
+          type="hidden"
+          name="policy[conditions][remote_ip_location_region][values][]"
+          value={code}
+        />
+        <div class="inline-flex rounded border border-[var(--border)] overflow-hidden mb-3">
+          <button
+            type="button"
+            phx-click="change_location_operator"
+            phx-value-operator="is_in"
+            class={[
+              "px-2 py-0.5 text-[10px] transition-colors",
+              if(@location_operator == "is_in",
+                do: "bg-[var(--brand)] text-white",
+                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            is in
+          </button>
+          <button
+            type="button"
+            phx-click="change_location_operator"
+            phx-value-operator="is_not_in"
+            class={[
+              "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+              if(@location_operator == "is_not_in",
+                do: "bg-[var(--brand)] text-white",
+                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            is not in
+          </button>
+        </div>
+        <div :if={@location_values != []} class="flex flex-wrap gap-1 mb-2">
+          <span
+            :for={code <- @location_values}
+            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+          >
+            {country_name(code)}
+            <button
+              type="button"
+              phx-click="toggle_location_value"
+              phx-value-code={code}
+              class="hover:text-[var(--status-error)] transition-colors"
+            >
+              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+            </button>
+          </span>
+        </div>
+        <input
+          type="text"
+          placeholder="Search countries…"
+          value={@location_search}
+          phx-change="update_location_search"
+          phx-debounce="150"
+          name="_location_search"
+          class="w-full px-2.5 py-1.5 text-xs rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] transition-colors mb-1"
+        />
+        <div class="max-h-36 overflow-y-auto rounded border border-[var(--border)] bg-[var(--surface)]">
+          <p
+            :if={@location_search == ""}
+            class="px-2.5 py-3 text-xs text-[var(--text-muted)] text-center"
+          >
+            Type to search countries
+          </p>
+          <label
+            :for={
+              {label, code} <-
+                if @location_search == "" do
+                  []
+                else
+                  Portal.Geo.all_country_options!()
+                  |> Enum.filter(fn {l, _} ->
+                    String.contains?(String.downcase(l), String.downcase(@location_search))
+                  end)
+                end
+            }
+            class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+            phx-click="toggle_location_value"
+            phx-value-code={code}
+          >
+            <input
+              type="checkbox"
+              class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
+              readonly
+              checked={code in @location_values}
+            />
+            <span class="text-xs text-[var(--text-secondary)]">{label}</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+  attr :providers, :list, default: []
   attr :auth_provider_operator, :string, default: "is_in"
   attr :auth_provider_values, :list, default: []
+
+  defp grant_auth_provider_condition_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <div class="px-3 py-2.5 space-y-2">
+        <input
+          type="hidden"
+          name="policy[conditions][auth_provider_id][property]"
+          value="auth_provider_id"
+        />
+        <input
+          type="hidden"
+          name="policy[conditions][auth_provider_id][operator]"
+          value={@auth_provider_operator}
+        />
+        <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+          <button
+            type="button"
+            phx-click="change_auth_provider_operator"
+            phx-value-operator="is_in"
+            class={[
+              "px-2 py-0.5 text-[10px] transition-colors",
+              if(@auth_provider_operator == "is_in",
+                do: "bg-[var(--brand)] text-white",
+                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            is in
+          </button>
+          <button
+            type="button"
+            phx-click="change_auth_provider_operator"
+            phx-value-operator="is_not_in"
+            class={[
+              "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+              if(@auth_provider_operator == "is_not_in",
+                do: "bg-[var(--brand)] text-white",
+                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            is not in
+          </button>
+        </div>
+        <input
+          :for={id <- @auth_provider_values}
+          type="hidden"
+          name="policy[conditions][auth_provider_id][values][]"
+          value={id}
+        />
+        <div :if={@auth_provider_values != []} class="flex flex-wrap gap-1 mb-2">
+          <span
+            :for={p <- Enum.filter(@providers, &(&1.id in @auth_provider_values))}
+            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+          >
+            {p.name}
+            <button
+              type="button"
+              phx-click="toggle_auth_provider_value"
+              phx-value-id={p.id}
+              class="hover:text-[var(--status-error)] transition-colors"
+            >
+              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+            </button>
+          </span>
+        </div>
+        <div class="rounded border border-[var(--border)] bg-[var(--surface)]">
+          <label
+            :for={p <- @providers}
+            class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+            phx-click="toggle_auth_provider_value"
+            phx-value-id={p.id}
+          >
+            <input
+              type="checkbox"
+              class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
+              readonly
+              checked={p.id in @auth_provider_values}
+            />
+            <span class="text-xs text-[var(--text-secondary)]">{p.name}</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+  attr :timezone, :string, default: "UTC"
   attr :tod_values, :list, default: []
   attr :tod_adding, :boolean, default: false
   attr :tod_pending, :map, default: %{"on" => "", "off" => "", "days" => []}
   attr :tod_pending_error, :string, default: nil
 
-  def grant_condition_card(assigns) do
+  defp grant_tod_condition_card(assigns) do
     assigns = assign(assigns, :input_class, @condition_input_class)
 
     ~H"""
     <div class="rounded-lg border border-[var(--border)] overflow-hidden">
-      <div class="flex items-center justify-between px-3 py-2 bg-[var(--surface-raised)] border-b border-[var(--border)]">
-        <span class="text-xs font-medium text-[var(--text-primary)]">
-          {condition_type_label(@type)}
-        </span>
-        <button
-          type="button"
-          phx-click="remove_condition"
-          phx-value-type={@type}
-          class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
-          title="Remove condition"
+      <.grant_condition_card_header type={@type} />
+      <div class="px-3 py-2.5 space-y-2">
+        <input
+          type="hidden"
+          name="policy[conditions][current_utc_datetime][property]"
+          value="current_utc_datetime"
+        />
+        <input
+          type="hidden"
+          name="policy[conditions][current_utc_datetime][operator]"
+          value="is_in_day_of_week_time_ranges"
+        />
+        <select
+          name="policy[conditions][current_utc_datetime][timezone]"
+          class={@input_class}
         >
-          <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <div :if={@type == :client_verified}>
-        <input
-          type="hidden"
-          name="policy[conditions][client_verified][property]"
-          value="client_verified"
-        />
-        <input
-          type="hidden"
-          name="policy[conditions][client_verified][operator]"
-          value="is"
-        />
-        <input
-          type="hidden"
-          name="policy[conditions][client_verified][values][]"
-          value="true"
-        />
-      </div>
-      <div :if={@type != :client_verified} class="px-3 py-2.5">
-        <div :if={@type == :auth_provider_id} class="space-y-2">
-          <input
-            type="hidden"
-            name="policy[conditions][auth_provider_id][property]"
-            value="auth_provider_id"
-          />
-          <input
-            type="hidden"
-            name="policy[conditions][auth_provider_id][operator]"
-            value={@auth_provider_operator}
-          />
-          <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
-            <button
-              type="button"
-              phx-click="change_auth_provider_operator"
-              phx-value-operator="is_in"
-              class={[
-                "px-2 py-0.5 text-[10px] transition-colors",
-                if(@auth_provider_operator == "is_in",
-                  do: "bg-[var(--brand)] text-white",
-                  else:
-                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                )
-              ]}
-            >
-              is in
-            </button>
-            <button
-              type="button"
-              phx-click="change_auth_provider_operator"
-              phx-value-operator="is_not_in"
-              class={[
-                "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
-                if(@auth_provider_operator == "is_not_in",
-                  do: "bg-[var(--brand)] text-white",
-                  else:
-                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                )
-              ]}
-            >
-              is not in
-            </button>
-          </div>
-          <input
-            :for={id <- @auth_provider_values}
-            type="hidden"
-            name="policy[conditions][auth_provider_id][values][]"
-            value={id}
-          />
-          <div :if={@auth_provider_values != []} class="flex flex-wrap gap-1 mb-2">
-            <span
-              :for={p <- Enum.filter(@providers, &(&1.id in @auth_provider_values))}
-              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
-            >
-              {p.name}
-              <button
-                type="button"
-                phx-click="toggle_auth_provider_value"
-                phx-value-id={p.id}
-                class="hover:text-[var(--status-error)] transition-colors"
-              >
-                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
-              </button>
-            </span>
-          </div>
-          <div class="rounded border border-[var(--border)] bg-[var(--surface)]">
-            <label
-              :for={p <- @providers}
-              class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
-              phx-click="toggle_auth_provider_value"
-              phx-value-id={p.id}
-            >
-              <input
-                type="checkbox"
-                class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
-                readonly
-                checked={p.id in @auth_provider_values}
-              />
-              <span class="text-xs text-[var(--text-secondary)]">{p.name}</span>
-            </label>
-          </div>
-        </div>
-        <div :if={@type == :remote_ip_location_region}>
-          <input
-            type="hidden"
-            name="policy[conditions][remote_ip_location_region][property]"
-            value="remote_ip_location_region"
-          />
-          <input
-            type="hidden"
-            name="policy[conditions][remote_ip_location_region][operator]"
-            value={@location_operator}
-          />
-          <input
-            :for={code <- @location_values}
-            type="hidden"
-            name="policy[conditions][remote_ip_location_region][values][]"
-            value={code}
-          />
-          <div class="inline-flex rounded border border-[var(--border)] overflow-hidden mb-3">
-            <button
-              type="button"
-              phx-click="change_location_operator"
-              phx-value-operator="is_in"
-              class={[
-                "px-2 py-0.5 text-[10px] transition-colors",
-                if(@location_operator == "is_in",
-                  do: "bg-[var(--brand)] text-white",
-                  else:
-                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                )
-              ]}
-            >
-              is in
-            </button>
-            <button
-              type="button"
-              phx-click="change_location_operator"
-              phx-value-operator="is_not_in"
-              class={[
-                "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
-                if(@location_operator == "is_not_in",
-                  do: "bg-[var(--brand)] text-white",
-                  else:
-                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                )
-              ]}
-            >
-              is not in
-            </button>
-          </div>
-          <div :if={@location_values != []} class="flex flex-wrap gap-1 mb-2">
-            <span
-              :for={code <- @location_values}
-              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
-            >
-              {country_name(code)}
-              <button
-                type="button"
-                phx-click="toggle_location_value"
-                phx-value-code={code}
-                class="hover:text-[var(--status-error)] transition-colors"
-              >
-                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
-              </button>
-            </span>
-          </div>
-          <input
-            type="text"
-            placeholder="Search countries…"
-            value={@location_search}
-            phx-change="update_location_search"
-            phx-debounce="150"
-            name="_location_search"
-            class="w-full px-2.5 py-1.5 text-xs rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] transition-colors mb-1"
-          />
-          <div class="max-h-36 overflow-y-auto rounded border border-[var(--border)] bg-[var(--surface)]">
-            <p
-              :if={@location_search == ""}
-              class="px-2.5 py-3 text-xs text-[var(--text-muted)] text-center"
-            >
-              Type to search countries
-            </p>
-            <label
-              :for={
-                {label, code} <-
-                  if @location_search == "" do
-                    []
-                  else
-                    Portal.Geo.all_country_options!()
-                    |> Enum.filter(fn {l, _} ->
-                      String.contains?(String.downcase(l), String.downcase(@location_search))
-                    end)
-                  end
-              }
-              class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
-              phx-click="toggle_location_value"
-              phx-value-code={code}
-            >
-              <input
-                type="checkbox"
-                class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
-                readonly
-                checked={code in @location_values}
-              />
-              <span class="text-xs text-[var(--text-secondary)]">{label}</span>
-            </label>
-          </div>
-        </div>
-        <div :if={@type == :remote_ip} class="space-y-2">
-          <input
-            type="hidden"
-            name="policy[conditions][remote_ip][property]"
-            value="remote_ip"
-          />
-          <input
-            type="hidden"
-            name="policy[conditions][remote_ip][operator]"
-            value={@ip_range_operator}
-          />
-          <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
-            <button
-              type="button"
-              phx-click="change_ip_range_operator"
-              phx-value-operator="is_in_cidr"
-              class={[
-                "px-2 py-0.5 text-[10px] transition-colors",
-                if(@ip_range_operator == "is_in_cidr",
-                  do: "bg-[var(--brand)] text-white",
-                  else:
-                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                )
-              ]}
-            >
-              is in CIDR
-            </button>
-            <button
-              type="button"
-              phx-click="change_ip_range_operator"
-              phx-value-operator="is_not_in_cidr"
-              class={[
-                "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
-                if(@ip_range_operator == "is_not_in_cidr",
-                  do: "bg-[var(--brand)] text-white",
-                  else:
-                    "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                )
-              ]}
-            >
-              is not in CIDR
-            </button>
-          </div>
-          <input
-            :for={v <- @ip_range_values}
-            type="hidden"
-            name="policy[conditions][remote_ip][values][]"
-            value={v}
-          />
-          <div :if={@ip_range_values != []} class="flex flex-wrap gap-1 mb-2">
-            <span
-              :for={v <- @ip_range_values}
-              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-mono bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
-            >
-              {v}
-              <button
-                type="button"
-                phx-click="remove_ip_range_value"
-                phx-value-range={v}
-                class="hover:text-[var(--status-error)] transition-colors"
-              >
-                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
-              </button>
-            </span>
-          </div>
-          <div class="flex gap-1.5">
+          <option :for={tz <- Tzdata.zone_list()} value={tz} selected={tz == @timezone}>
+            {tz}
+          </option>
+        </select>
+        <%!-- Confirmed ranges: hidden inputs for submission + compact display row --%>
+        <div class="space-y-1">
+          <div
+            :for={{range, idx} <- Enum.with_index(@tod_values)}
+            class="flex items-center gap-2"
+          >
             <input
-              type="text"
-              name="_ip_range_input"
-              value={@ip_range_input}
-              placeholder="e.g. 10.0.0.0/8"
-              phx-change="update_ip_range_input"
-              phx-key="Enter"
-              phx-keyup="add_ip_range_value"
-              class={[@input_class, "flex-1 font-mono placeholder:text-[var(--text-muted)]"]}
+              :for={day <- range["days"]}
+              type="hidden"
+              name={"policy[conditions][current_utc_datetime][values][#{idx}][days][]"}
+              value={day}
             />
+            <input
+              type="hidden"
+              name={"policy[conditions][current_utc_datetime][values][#{idx}][on]"}
+              value={range["on"]}
+            />
+            <input
+              type="hidden"
+              name={"policy[conditions][current_utc_datetime][values][#{idx}][off]"}
+              value={range["off"]}
+            />
+            <div class="flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-[var(--surface-raised)] border border-[var(--border)]">
+              <span class="text-[10px] font-medium text-[var(--text-primary)]">
+                {format_tod_days(range["days"])}
+              </span>
+              <span class="text-[10px] font-medium text-[var(--text-primary)] tabular-nums shrink-0">
+                {range["on"]} – {range["off"]}
+              </span>
+            </div>
             <button
               type="button"
-              phx-click="add_ip_range_value"
-              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors shrink-0"
+              phx-click="remove_tod_range"
+              phx-value-index={idx}
+              class="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-red-500 transition-colors"
+              title="Remove"
+            >
+              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        <%!-- Add range form --%>
+        <div
+          :if={@tod_adding}
+          id="tod_add_row"
+          phx-hook="TimePicker"
+          class="space-y-1.5 p-2 rounded border border-[var(--border)] bg-[var(--surface)]"
+        >
+          <div class="flex flex-wrap gap-1">
+            <button
+              :for={
+                {code, label} <- [
+                  {"M", "Mon"},
+                  {"T", "Tue"},
+                  {"W", "Wed"},
+                  {"R", "Thu"},
+                  {"F", "Fri"},
+                  {"S", "Sat"},
+                  {"U", "Sun"}
+                ]
+              }
+              type="button"
+              phx-click="toggle_tod_pending_day"
+              phx-value-day={code}
+              class={[
+                "px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors",
+                if code in @tod_pending["days"] do
+                  "bg-[var(--brand)] border-[var(--brand)] text-white"
+                else
+                  "bg-[var(--surface-raised)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                end
+              ]}
+            >
+              {label}
+            </button>
+          </div>
+          <div class="flex items-start gap-1.5">
+            <div class="flex flex-col items-center gap-0.5">
+              <div class="flex">
+                <input
+                  type="time"
+                  name="_tod_on"
+                  id="tod_pending_on"
+                  value={@tod_pending["on"]}
+                  phx-change="change_tod_pending"
+                  class={[
+                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
+                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
+                    "[&::-webkit-calendar-picker-indicator]:hidden"
+                  ]}
+                />
+                <button
+                  type="button"
+                  data-target="pending_on"
+                  class={[
+                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
+                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                    "hover:bg-[var(--surface)] transition-colors"
+                  ]}
+                  title="Pick start time"
+                >
+                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <span class="text-[9px] text-[var(--text-muted)]">on</span>
+            </div>
+            <span class="text-[var(--text-muted)] text-xs pt-1">–</span>
+            <div class="flex flex-col items-center gap-0.5">
+              <div class="flex">
+                <input
+                  type="time"
+                  name="_tod_off"
+                  id="tod_pending_off"
+                  value={@tod_pending["off"]}
+                  phx-change="change_tod_pending"
+                  class={[
+                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
+                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
+                    "[&::-webkit-calendar-picker-indicator]:hidden"
+                  ]}
+                />
+                <button
+                  type="button"
+                  data-target="pending_off"
+                  class={[
+                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
+                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                    "hover:bg-[var(--surface)] transition-colors"
+                  ]}
+                  title="Pick end time"
+                >
+                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <span class="text-[9px] text-[var(--text-muted)]">off</span>
+            </div>
+          </div>
+          <p
+            :if={@tod_pending_error}
+            class="flex items-center gap-1 text-[10px] text-[var(--status-error)]"
+          >
+            <.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
+            {@tod_pending_error}
+          </p>
+          <div class="flex justify-end gap-1.5">
+            <button
+              type="button"
+              phx-click="cancel_tod_range"
+              class="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              phx-click="confirm_tod_range"
+              class="px-2 py-1 text-xs rounded bg-[var(--brand)] text-white hover:opacity-90 transition-opacity"
             >
               Add
             </button>
           </div>
         </div>
-        <div :if={@type == :current_utc_datetime} class="space-y-2">
-          <input
-            type="hidden"
-            name="policy[conditions][current_utc_datetime][property]"
-            value="current_utc_datetime"
-          />
-          <input
-            type="hidden"
-            name="policy[conditions][current_utc_datetime][operator]"
-            value="is_in_day_of_week_time_ranges"
-          />
-          <select
-            name="policy[conditions][current_utc_datetime][timezone]"
-            class={@input_class}
-          >
-            <option
-              :for={tz <- Tzdata.zone_list()}
-              value={tz}
-              selected={tz == @timezone}
-            >
-              {tz}
-            </option>
-          </select>
-          <%!-- Confirmed ranges: hidden inputs for submission + compact display row --%>
-          <div class="space-y-1">
-            <div
-              :for={{range, idx} <- Enum.with_index(@tod_values)}
-              class="flex items-center gap-2"
-            >
-              <input
-                :for={day <- range["days"]}
-                type="hidden"
-                name={"policy[conditions][current_utc_datetime][values][#{idx}][days][]"}
-                value={day}
-              />
-              <input
-                type="hidden"
-                name={"policy[conditions][current_utc_datetime][values][#{idx}][on]"}
-                value={range["on"]}
-              />
-              <input
-                type="hidden"
-                name={"policy[conditions][current_utc_datetime][values][#{idx}][off]"}
-                value={range["off"]}
-              />
-              <div class="flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-[var(--surface-raised)] border border-[var(--border)]">
-                <span class="text-[10px] font-medium text-[var(--text-primary)]">
-                  {format_tod_days(range["days"])}
-                </span>
-                <span class="text-[10px] font-medium text-[var(--text-primary)] tabular-nums shrink-0">
-                  {range["on"]} – {range["off"]}
-                </span>
-              </div>
-              <button
-                type="button"
-                phx-click="remove_tod_range"
-                phx-value-index={idx}
-                class="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-red-500 transition-colors"
-                title="Remove"
-              >
-                <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-          <%!-- Add range form --%>
-          <div
-            :if={@tod_adding}
-            id="tod_add_row"
-            phx-hook="TimePicker"
-            class="space-y-1.5 p-2 rounded border border-[var(--border)] bg-[var(--surface)]"
-          >
-            <div class="flex flex-wrap gap-1">
-              <button
-                :for={
-                  {code, label} <- [
-                    {"M", "Mon"},
-                    {"T", "Tue"},
-                    {"W", "Wed"},
-                    {"R", "Thu"},
-                    {"F", "Fri"},
-                    {"S", "Sat"},
-                    {"U", "Sun"}
-                  ]
-                }
-                type="button"
-                phx-click="toggle_tod_pending_day"
-                phx-value-day={code}
-                class={[
-                  "px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors",
-                  if code in @tod_pending["days"] do
-                    "bg-[var(--brand)] border-[var(--brand)] text-white"
-                  else
-                    "bg-[var(--surface-raised)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  end
-                ]}
-              >
-                {label}
-              </button>
-            </div>
-            <div class="flex items-start gap-1.5">
-              <div class="flex flex-col items-center gap-0.5">
-                <div class="flex">
-                  <input
-                    type="time"
-                    name="_tod_on"
-                    id="tod_pending_on"
-                    value={@tod_pending["on"]}
-                    phx-change="change_tod_pending"
-                    class={[
-                      "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                      "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                      "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                      "[&::-webkit-calendar-picker-indicator]:hidden"
-                    ]}
-                  />
-                  <button
-                    type="button"
-                    data-target="pending_on"
-                    class={[
-                      "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                      "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                      "hover:bg-[var(--surface)] transition-colors"
-                    ]}
-                    title="Pick start time"
-                  >
-                    <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <span class="text-[9px] text-[var(--text-muted)]">on</span>
-              </div>
-              <span class="text-[var(--text-muted)] text-xs pt-1">–</span>
-              <div class="flex flex-col items-center gap-0.5">
-                <div class="flex">
-                  <input
-                    type="time"
-                    name="_tod_off"
-                    id="tod_pending_off"
-                    value={@tod_pending["off"]}
-                    phx-change="change_tod_pending"
-                    class={[
-                      "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                      "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                      "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                      "[&::-webkit-calendar-picker-indicator]:hidden"
-                    ]}
-                  />
-                  <button
-                    type="button"
-                    data-target="pending_off"
-                    class={[
-                      "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                      "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                      "hover:bg-[var(--surface)] transition-colors"
-                    ]}
-                    title="Pick end time"
-                  >
-                    <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <span class="text-[9px] text-[var(--text-muted)]">off</span>
-              </div>
-            </div>
-            <p
-              :if={@tod_pending_error}
-              class="flex items-center gap-1 text-[10px] text-[var(--status-error)]"
-            >
-              <.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
-              {@tod_pending_error}
-            </p>
-            <div class="flex justify-end gap-1.5">
-              <button
-                type="button"
-                phx-click="cancel_tod_range"
-                class="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                phx-click="confirm_tod_range"
-                class="px-2 py-1 text-xs rounded bg-[var(--brand)] text-white hover:opacity-90 transition-opacity"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-          <button
-            :if={!@tod_adding}
-            type="button"
-            phx-click="start_add_tod_range"
-            class={[
-              "flex items-center justify-center gap-1 w-full px-2 py-1.5 rounded text-xs font-medium",
-              "border border-[var(--border-strong)] text-[var(--text-secondary)]",
-              "hover:border-[var(--brand)] hover:text-[var(--brand)] hover:bg-[var(--brand)]/5",
-              "transition-colors"
-            ]}
-          >
-            <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
-          </button>
-        </div>
+        <button
+          :if={!@tod_adding}
+          type="button"
+          phx-click="start_add_tod_range"
+          class={[
+            "flex items-center justify-center gap-1 w-full px-2 py-1.5 rounded text-xs font-medium",
+            "border border-[var(--border-strong)] text-[var(--text-secondary)]",
+            "hover:border-[var(--brand)] hover:text-[var(--brand)] hover:bg-[var(--brand)]/5",
+            "transition-colors"
+          ]}
+        >
+          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
+        </button>
       </div>
     </div>
     """

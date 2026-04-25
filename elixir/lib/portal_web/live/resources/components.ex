@@ -1219,6 +1219,23 @@ defmodule PortalWeb.Resources.Components do
   def resource_grant_form(assigns) do
     assigns = assign(assigns, assigns.grant_state)
 
+    assigns =
+      assign(assigns, :conditions_state, %{
+        timezone: assigns.timezone,
+        location_search: assigns.location_search,
+        location_operator: assigns.location_operator,
+        location_values: assigns.location_values,
+        ip_range_operator: assigns.ip_range_operator,
+        ip_range_values: assigns.ip_range_values,
+        ip_range_input: assigns.ip_range_input,
+        auth_provider_operator: assigns.auth_provider_operator,
+        auth_provider_values: assigns.auth_provider_values,
+        tod_values: assigns.tod_values,
+        tod_adding: assigns.tod_adding?,
+        tod_pending: assigns.tod_pending,
+        tod_pending_error: assigns.tod_pending_error
+      })
+
     ~H"""
     <div class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
       <div class="flex items-center gap-2">
@@ -1414,19 +1431,7 @@ defmodule PortalWeb.Resources.Components do
                 :for={type <- @active_conditions}
                 type={type}
                 providers={@providers}
-                timezone={@timezone}
-                location_search={@location_search}
-                location_operator={@location_operator}
-                location_values={@location_values}
-                ip_range_operator={@ip_range_operator}
-                ip_range_values={@ip_range_values}
-                ip_range_input={@ip_range_input}
-                auth_provider_operator={@auth_provider_operator}
-                auth_provider_values={@auth_provider_values}
-                tod_values={@tod_values}
-                tod_adding={@tod_adding?}
-                tod_pending={@tod_pending}
-                tod_pending_error={@tod_pending_error}
+                conditions_state={@conditions_state}
               />
             </div>
           </div>

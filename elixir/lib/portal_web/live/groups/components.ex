@@ -523,6 +523,23 @@ defmodule PortalWeb.Groups.Components do
       |> assign(assigns.resources_state)
       |> assign(assigns.conditions_state)
 
+    assigns =
+      assign(assigns, :conditions_state, %{
+        timezone: assigns.conditions_state.timezone,
+        location_search: assigns.conditions_state.location_search,
+        location_operator: assigns.conditions_state.location_operator,
+        location_values: assigns.conditions_state.location_values,
+        ip_range_operator: assigns.conditions_state.ip_range_operator,
+        ip_range_values: assigns.conditions_state.ip_range_values,
+        ip_range_input: assigns.conditions_state.ip_range_input,
+        auth_provider_operator: assigns.conditions_state.auth_provider_operator,
+        auth_provider_values: assigns.conditions_state.auth_provider_values,
+        tod_values: assigns.conditions_state.tod_values,
+        tod_adding: assigns.conditions_state.tod_adding?,
+        tod_pending: assigns.conditions_state.tod_pending,
+        tod_pending_error: assigns.conditions_state.tod_pending_error
+      })
+
     ~H"""
     <div class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
       <div class="flex items-center gap-2">
@@ -740,19 +757,7 @@ defmodule PortalWeb.Groups.Components do
                 :for={type <- @active_conditions}
                 type={type}
                 providers={@providers}
-                timezone={@timezone}
-                location_search={@location_search}
-                location_operator={@location_operator}
-                location_values={@location_values}
-                ip_range_operator={@ip_range_operator}
-                ip_range_values={@ip_range_values}
-                ip_range_input={@ip_range_input}
-                auth_provider_operator={@auth_provider_operator}
-                auth_provider_values={@auth_provider_values}
-                tod_values={@tod_values}
-                tod_adding={@tod_adding?}
-                tod_pending={@tod_pending}
-                tod_pending_error={@tod_pending_error}
+                conditions_state={@conditions_state}
               />
             </div>
           </div>
