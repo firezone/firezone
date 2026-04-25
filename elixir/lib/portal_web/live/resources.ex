@@ -1291,7 +1291,7 @@ defmodule PortalWeb.Resources do
       client_ids =
         from(m in StaticDevicePoolMember,
           where: m.resource_id == ^resource.id,
-          select: m.client_id
+          select: m.device_id
         )
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
@@ -1301,9 +1301,8 @@ defmodule PortalWeb.Resources do
         end
 
       from(c in Portal.Device, as: :devices)
-      |> where([devices: d], d.type == "client")
+      |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^client_ids)
-      |> preload([:ipv4_address, :ipv6_address])
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do

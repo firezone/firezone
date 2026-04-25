@@ -377,7 +377,8 @@ defmodule PortalWeb.Clients do
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, ClientSession, Safe}
     alias Portal.Device
-    alias Portal.Repo.{Filter, OffsetPaginator}
+    alias Portal.Repo.Filter
+    alias Portal.Repo.OffsetPaginator
 
     def list_clients(subject, opts \\ []) do
       {preload, opts} = Keyword.pop(opts, :preload, [])
@@ -630,7 +631,7 @@ defmodule PortalWeb.Clients do
       {queryable,
        dynamic(
          [devices: devices, actors: actors],
-         fulltext_search(devices.name, ^name_or_email) or
+         fulltext_search(actors.name, ^name_or_email) or
            fulltext_search(devices.name, ^name_or_email) or
            fulltext_search(devices.email, ^name_or_email)
        )}

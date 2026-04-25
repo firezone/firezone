@@ -667,7 +667,14 @@ defmodule PortalWeb.Policies do
   end
 
   def handle_event("cancel_tod_range", _params, socket) do
-    {:noreply, merge_state(socket, :policy_conditions, tod_adding?: false, tod_pending: @tod_pending_empty, tod_pending_error: nil)}
+    {
+      :noreply,
+      merge_state(socket, :policy_conditions,
+        tod_adding?: false,
+        tod_pending: @tod_pending_empty,
+        tod_pending_error: nil
+      )
+    }
   end
 
   def handle_event("toggle_tod_pending_day", %{"day" => day}, socket) do

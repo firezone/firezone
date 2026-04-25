@@ -190,7 +190,6 @@ defmodule PortalWeb.Sites.Components do
         <div class="min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <h2 class="text-sm font-semibold text-[var(--text-primary)]">{@site.name}</h2>
-            <.status_badge status={@status} />
           </div>
           <p :if={@site.managed_by == :system} class="text-xs text-[var(--text-tertiary)] mt-0.5">
             system managed
@@ -216,20 +215,18 @@ defmodule PortalWeb.Sites.Components do
       <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
         <div class="flex items-center gap-1.5">
           <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+            Status
+          </span>
+          <.status_badge status={@status} />
+        </div>
+        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
             Gateways
           </span>
           <span class="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">
             {@online_count}<span class="text-[var(--text-tertiary)] font-normal"> online / </span>
             {@site.health_threshold} <span class="text-[var(--text-tertiary)] font-normal"> required</span>
-          </span>
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Resources
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">
-            {@resource_count}
           </span>
         </div>
       </div>

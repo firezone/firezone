@@ -1010,14 +1010,13 @@ defmodule PortalWeb.Resources.Components do
               <span class={type_badge_class(@resource.type)}>
                 {resource_type_label(@resource.type)}
               </span>
-              <.status_badge status={if resource_online?(@resource), do: :online, else: :offline} />
             </div>
             <div :if={@resource.type != :internet} class="flex items-center gap-1.5 mt-1">
               <span class="font-mono text-xs text-[var(--text-secondary)]">
                 {@resource.address}
               </span>
             </div>
-            <p class={[
+            <p :if={false == true} class={[
               "text-xs mt-1",
               if(@resource.address_description,
                 do: "text-[var(--text-tertiary)]",
@@ -1042,6 +1041,32 @@ defmodule PortalWeb.Resources.Components do
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              Status
+            </span>
+            <.status_badge status={if resource_online?(@resource), do: :online, else: :offline} />
+          </div>
+          <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              Site
+            </span>
+            <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
+              <%= if @resource.site do %>
+                <.link
+                  navigate={~p"/#{@account}/sites/#{@resource.site}"}
+                  class="text-xs underline font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  {@resource.site.name}
+                </.link>
+              <% else %>
+                <span class="text-xs italic text-[var(--text-muted)]">No Site Needed</span>
+              <% end %>
+            </span>
           </div>
         </div>
       </div>

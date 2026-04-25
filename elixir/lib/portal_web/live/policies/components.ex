@@ -648,20 +648,9 @@ defmodule PortalWeb.Policies.Components do
       <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
         <div class="flex items-center gap-1.5">
           <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Group
+            Status
           </span>
-          <span class="text-xs text-[var(--text-secondary)]">
-            {if @policy.group, do: @policy.group.name, else: "—"}
-          </span>
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Resource
-          </span>
-          <span class="text-xs text-[var(--text-secondary)] truncate max-w-32">
-            {@policy.resource.name}
-          </span>
+          <.status_badge status={if is_nil(@policy.disabled_at), do: :active, else: :disabled} />
         </div>
         <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
         <div class="flex items-center gap-1.5">
@@ -879,12 +868,6 @@ defmodule PortalWeb.Policies.Components do
           <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Policy ID</dt>
           <dd class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
             {@policy.id}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Status</dt>
-          <dd>
-            <.status_badge status={if is_nil(@policy.disabled_at), do: :active, else: :disabled} />
           </dd>
         </div>
         <div>
@@ -2505,8 +2488,7 @@ defmodule PortalWeb.Policies.Components do
   defp format_tod_days(days) do
     days
     |> Enum.sort_by(&Enum.find_index(@tod_day_order, fn d -> d == &1 end))
-    |> Enum.map(&Map.get(@tod_day_names, &1, &1))
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", &Map.get(@tod_day_names, &1, &1))
   end
 
   defmodule Database do

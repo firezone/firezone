@@ -370,9 +370,9 @@ defmodule PortalWeb.Clients.Components do
     <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
       <div class="flex items-center gap-1.5">
         <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-          Owner
+          Status
         </span>
-        <span class="text-xs text-[var(--text-secondary)]">{@client.actor.name}</span>
+        <.status_badge status={if @client.online?, do: :online, else: :offline} />
       </div>
       <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
       <div class="flex items-center gap-1.5">
@@ -382,10 +382,6 @@ defmodule PortalWeb.Clients.Components do
         <span class="text-xs text-[var(--text-secondary)]">
           <.relative_datetime datetime={@client.latest_session && @client.latest_session.inserted_at} />
         </span>
-      </div>
-      <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-      <div class="flex items-center gap-1.5">
-        <.status_badge status={if @client.online?, do: :online, else: :offline} />
       </div>
     </div>
     """
