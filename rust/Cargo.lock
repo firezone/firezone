@@ -4456,9 +4456,9 @@ dependencies = [
 
 [[package]]
 name = "notify-rust"
-version = "4.14.0"
+version = "4.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b2c9bc1689653cfbc04400b8719f2562638ff9c545bbd48cc58c657a14526df"
+checksum = "5e551a9f0db223eaf3eb156906f99f46897fd951ee66dd1cb0be14db4d36d2fa"
 dependencies = [
  "futures-lite",
  "log",
@@ -8568,7 +8568,7 @@ dependencies = [
  "serde",
  "tempfile",
  "textwrap",
- "toml 0.8.22",
+ "toml 0.9.12+spec-1.1.0",
  "uniffi_internal_macros",
  "uniffi_meta",
  "uniffi_pipeline",
@@ -8613,7 +8613,7 @@ dependencies = [
  "quote",
  "serde",
  "syn 2.0.117",
- "toml 0.8.22",
+ "toml 0.9.12+spec-1.1.0",
  "uniffi_meta",
 ]
 
