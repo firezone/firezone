@@ -507,7 +507,9 @@ Hooks.ProgressBar = {
   },
   update() {
     const parsed = parseFloat(this.el.dataset.pct);
-    const pct = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
+    const pct = Number.isFinite(parsed)
+      ? Math.min(100, Math.max(0, parsed))
+      : 0;
     this.el.style.width = `${pct}%`;
   },
 };
