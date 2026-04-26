@@ -48,6 +48,23 @@ defmodule Portal.Changes.Hooks.TokensTest do
       assert_receive :disconnect
     end
 
+    test "does not broadcast raw disconnect to socket_id topic (must go via PG for graceful push)" do
+      account = account_fixture()
+      token = client_token_fixture(account: account)
+
+      topic = Portal.Sockets.socket_id(token.id)
+      :ok = Portal.PubSub.subscribe(topic)
+
+      old_data = %{
+        "id" => token.id,
+        "account_id" => account.id,
+        "type" => "client"
+      }
+
+      assert :ok == ClientTokens.on_delete(0, old_data)
+      refute_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect"}
+    end
+
     test "returns :ok when no process is registered for token" do
       account = account_fixture()
       token = client_token_fixture(account: account)
