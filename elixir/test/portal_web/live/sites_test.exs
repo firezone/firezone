@@ -1,7 +1,7 @@
 defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
-  alias Portal.{Repo, Resource, Site}
+  alias Portal.{Device, Repo, Resource, Site}
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -291,6 +291,28 @@ defmodule PortalWeb.SitesTest do
 
       assert_patch(lv, ~p"/#{account}/sites")
       assert is_nil(Repo.get_by(Site, account_id: account.id, id: site.id))
+    end
+
+    test "deletes a site with gateway devices without crashing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "confirm_delete_site")
+      html = render_click(lv, "delete_site")
+
+      assert html =~ "Site #{site.name} deleted successfully."
+      assert_patch(lv, ~p"/#{account}/sites")
+      assert is_nil(Repo.get_by(Site, account_id: account.id, id: site.id))
+      assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
     end
 
     test "hides account-only actions for system-managed sites", %{
