@@ -4,6 +4,7 @@ defmodule PortalWeb.ActorsTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.ClientFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
@@ -770,6 +771,25 @@ defmodule PortalWeb.ActorsTest do
 
       html = render(lv)
       refute html =~ other_actor.name
+    end
+
+    test "deletes actor with client devices without crashing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      render_click(lv, "delete", %{"id" => other_actor.id})
+
+      assert is_nil(Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id))
+      assert is_nil(Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id))
     end
   end
 end
