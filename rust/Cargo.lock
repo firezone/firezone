@@ -6143,9 +6143,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.37"
+version = "0.23.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
+checksum = "7c2c118cb077cca2822033836dfb1b975355dfb784b5e8da48f7b6c5db74e60e"
 dependencies = [
  "log",
  "once_cell",
@@ -8568,7 +8568,7 @@ dependencies = [
  "serde",
  "tempfile",
  "textwrap",
- "toml 0.8.22",
+ "toml 0.9.12+spec-1.1.0",
  "uniffi_internal_macros",
  "uniffi_meta",
  "uniffi_pipeline",
@@ -8613,7 +8613,7 @@ dependencies = [
  "quote",
  "serde",
  "syn 2.0.117",
- "toml 0.8.22",
+ "toml 0.9.12+spec-1.1.0",
  "uniffi_meta",
 ]
 
