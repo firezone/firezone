@@ -403,7 +403,7 @@ mod tests {
             "event": "device_trust_request",
             "payload": {
                 "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
-                "subject_cn": "dev.firezone.scep"
+                "subject_cn": "dev.firezone.device-trust"
             }
         }
         "#;
@@ -414,7 +414,7 @@ mod tests {
             panic!("Expected device trust request")
         };
         assert_eq!(request.nonce.0, core::array::from_fn(|i| i as u8));
-        assert_eq!(request.subject_cn, "dev.firezone.scep");
+        assert_eq!(request.subject_cn, "dev.firezone.device-trust");
     }
 
     #[test]

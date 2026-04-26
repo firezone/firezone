@@ -60,4 +60,10 @@
         android:key="connectOnStart"
         android:restrictionType="bool"
         android:title="@string/config_connect_on_start_title" />
+
+    <restriction
+        android:description="@string/config_device_trust_certificate_alias_description"
+        android:key="deviceTrustCertificateAlias"
+        android:restrictionType="string"
+        android:title="@string/config_device_trust_certificate_alias_title" />
 </restrictions>

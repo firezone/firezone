@@ -363,7 +363,7 @@ mod tests {
                         nonce: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
                             .parse()
                             .unwrap(),
-                        subject_cn: "dev.firezone.scep".to_string(),
+                        subject_cn: "dev.firezone.device-trust".to_string(),
                     })
                     .await
                     .unwrap();
@@ -378,6 +378,6 @@ mod tests {
         };
 
         assert_eq!(nonce, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=");
-        assert_eq!(subject_cn, "dev.firezone.scep");
+        assert_eq!(subject_cn, "dev.firezone.device-trust");
     }
 }

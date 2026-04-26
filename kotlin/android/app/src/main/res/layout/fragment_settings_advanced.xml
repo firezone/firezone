@@ -110,6 +110,55 @@
             app:layout_constraintTop_toTopOf="@+id/ilLogFilterInput"
             app:layout_constraintBottom_toBottomOf="@+id/ilLogFilterInput" />
 
+        <TextView
+            android:id="@+id/tvDeviceTrustCertificateTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_1x"
+            android:text="@string/device_trust_certificate_title"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ilLogFilterInput" />
+
+        <TextView
+            android:id="@+id/tvDeviceTrustCertificateStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvDeviceTrustCertificateTitle"
+            tools:text="Managed certificate selected." />
+
+        <LinearLayout
+            android:id="@+id/llDeviceTrustPrimaryActions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/spacing_small"
+            android:orientation="horizontal"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvDeviceTrustCertificateStatus">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btSelectDeviceTrustCertificate"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/select_device_trust_certificate"
+                tools:text="Select Different" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btShowDeviceTrustCertificateDetails"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_small"
+                android:text="@string/device_trust_show_details"
+                android:visibility="gone"
+                tools:visibility="visible" />
+        </LinearLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btResetDefaults"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
@@ -118,7 +167,7 @@
             android:text="@string/button_reset_to_defaults"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/ilLogFilterInput" />
+            app:layout_constraintTop_toBottomOf="@+id/llDeviceTrustPrimaryActions" />
 
         <TextView
             android:id="@+id/tvGitSha"

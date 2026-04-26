@@ -1,20 +1,20 @@
 import Foundation
 import Testing
+
 @testable import FirezoneKit
 
 @Suite("X.509 Client Auth Challenge Signer Tests")
 struct X509ClientAuthChallengeSignerTests {
-  private let subjectCommonName = "dev.firezone.scep"
+  private let subjectCommonName = "dev.firezone.device-trust"
 
   private func metadata(
-    subjectCommonName: String = "dev.firezone.scep",
+    subjectCommonName: String = "dev.firezone.device-trust",
     extendedKeyUsageValues: [String] = ["TLS Web Client Authentication"],
     notBefore: Date? = nil,
     notAfter: Date? = nil
   ) -> X509CertificateMetadata {
     X509CertificateMetadata(
       subjectCommonName: subjectCommonName,
-      sanValues: [],
       extendedKeyUsageValues: extendedKeyUsageValues,
       notBefore: notBefore,
       notAfter: notAfter
@@ -85,11 +85,18 @@ struct X509ClientAuthChallengeSignerTests {
         Data([0x01]).base64EncodedString(),
       ]
     )
-    #expect(oldKey.signCalls == [SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)])
-    #expect(newKey.signCalls == [SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)])
+    #expect(
+      oldKey.signCalls == [
+        SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)
+      ])
+    #expect(
+      newKey.signCalls == [
+        SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)
+      ])
   }
 
-  @Test("signChallenges filters by subject CN, client auth EKU, validity, signing key, and algorithm")
+  @Test(
+    "signChallenges filters by subject CN, client auth EKU, validity, signing key, and algorithm")
   func signChallengesFiltersInvalidIdentities() throws {
     let nonce = nonceData()
     let usableKey = MockSigningKey(
@@ -112,7 +119,7 @@ struct X509ClientAuthChallengeSignerTests {
           ),
           record(
             certificateDER: Data([0x20]),
-            metadata: metadata(subjectCommonName: "other.firezone.scep"),
+            metadata: metadata(subjectCommonName: "other.firezone.device-trust"),
             signingKey: skippedKey
           ),
           record(
@@ -144,9 +151,55 @@ struct X509ClientAuthChallengeSignerTests {
     #expect(result.count == 1)
     #expect(result[0].signedChallengeBase64 == Data("ecdsa-signature".utf8).base64EncodedString())
     #expect(result[0].leafCertificateDERBase64 == Data([0x10]).base64EncodedString())
-    #expect(usableKey.signCalls == [SignCall(challenge: nonce, algorithm: .ecdsaSignatureMessageX962SHA256)])
+    #expect(
+      usableKey.signCalls == [
+        SignCall(challenge: nonce, algorithm: .ecdsaSignatureMessageX962SHA256)
+      ])
     #expect(skippedKey.signCalls.isEmpty)
     #expect(unsupportedKey.signCalls.isEmpty)
+  }
+
+  @Test("signChallenges skips identities that fail during signing")
+  func signChallengesSkipsSigningFailures() throws {
+    let nonce = nonceData()
+    let failingKey = MockSigningKey(
+      supportedAlgorithms: [.rsaSignatureMessagePKCS1v15SHA256],
+      signatures: [:]
+    )
+    let usableKey = MockSigningKey(
+      supportedAlgorithms: [.rsaSignatureMessagePKCS1v15SHA256],
+      signatures: [.rsaSignatureMessagePKCS1v15SHA256: Data("signature".utf8)]
+    )
+    let signer = X509ClientAuthChallengeSigner(
+      loadIdentities: {
+        [
+          record(
+            certificateDER: Data([0x01]),
+            metadata: metadata(),
+            signingKey: failingKey
+          ),
+          record(
+            certificateDER: Data([0x02]),
+            metadata: metadata(),
+            signingKey: usableKey
+          ),
+        ]
+      }
+    )
+
+    let result = try signer.signChallenges(nonce: nonce, subjectCommonName: subjectCommonName)
+
+    #expect(result.count == 1)
+    #expect(result[0].signedChallengeBase64 == Data("signature".utf8).base64EncodedString())
+    #expect(result[0].leafCertificateDERBase64 == Data([0x02]).base64EncodedString())
+    #expect(
+      failingKey.signCalls == [
+        SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)
+      ])
+    #expect(
+      usableKey.signCalls == [
+        SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)
+      ])
   }
 
   @Test("signChallenges chooses the first supported algorithm in priority order")
@@ -170,8 +223,10 @@ struct X509ClientAuthChallengeSignerTests {
 
     let result = try signer.signChallenges(nonce: nonce, subjectCommonName: subjectCommonName)
 
-    #expect(result.map(\.signedChallengeBase64) == [Data("pkcs1-signature".utf8).base64EncodedString()])
-    #expect(key.signCalls == [SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)])
+    #expect(
+      result.map(\.signedChallengeBase64) == [Data("pkcs1-signature".utf8).base64EncodedString()])
+    #expect(
+      key.signCalls == [SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)])
   }
 
   @Test("signChallenges returns an empty payload when no identity matches")
@@ -185,7 +240,7 @@ struct X509ClientAuthChallengeSignerTests {
         [
           record(
             certificateDER: Data([0x40]),
-            metadata: metadata(subjectCommonName: "other.firezone.scep"),
+            metadata: metadata(subjectCommonName: "other.firezone.device-trust"),
             signingKey: key
           )
         ]
@@ -216,7 +271,7 @@ struct X509ClientAuthChallengeSignerTests {
         [
           X509IdentityRecord(
             certificateDER: Data([0x01]),
-            metadata: metadata(subjectCommonName: "other.firezone.scep"),
+            metadata: metadata(subjectCommonName: "other.firezone.device-trust"),
             copySigningKey: {
               wrongSubjectCopies += 1
               return wrongSubjectKey
@@ -240,7 +295,10 @@ struct X509ClientAuthChallengeSignerTests {
     #expect(wrongSubjectCopies == 0)
     #expect(validSubjectCopies == 1)
     #expect(wrongSubjectKey.signCalls.isEmpty)
-    #expect(validSubjectKey.signCalls == [SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)])
+    #expect(
+      validSubjectKey.signCalls == [
+        SignCall(challenge: nonce, algorithm: .rsaSignatureMessagePKCS1v15SHA256)
+      ])
   }
 
   @Test("signChallenges rejects invalid nonce base64 and nonce sizes")
@@ -248,7 +306,8 @@ struct X509ClientAuthChallengeSignerTests {
     let signer = X509ClientAuthChallengeSigner(loadIdentities: { [] })
 
     do {
-      _ = try signer.signChallenges(nonceBase64: "%%% not base64 %%%", subjectCommonName: subjectCommonName)
+      _ = try signer.signChallenges(
+        nonceBase64: "%%% not base64 %%%", subjectCommonName: subjectCommonName)
       Issue.record("Expected signChallenges to reject invalid base64")
     } catch let error as X509ClientAuthChallengeSigner.Error {
       #expect(error == .invalidNonceBase64)
@@ -268,7 +327,8 @@ struct X509ClientAuthChallengeSignerTests {
   )
   func systemKeychainCanSignDeviceTrustNonce() throws {
     let subjectCommonName =
-      ProcessInfo.processInfo.environment["FIREZONE_TEST_DEVICE_TRUST_CN"] ?? "dev.firezone.scep"
+      ProcessInfo.processInfo.environment["FIREZONE_TEST_DEVICE_TRUST_CN"]
+      ?? "dev.firezone.device-trust"
 
     let result = try X509ClientAuthChallengeSigner().signChallenges(
       nonce: nonceData(),
@@ -297,7 +357,8 @@ private final class MockSigningKey: X509ChallengeSigningKey {
   let signatures: [X509SignatureAlgorithm: Data]
   private(set) var signCalls: [SignCall] = []
 
-  init(supportedAlgorithms: Set<X509SignatureAlgorithm>, signatures: [X509SignatureAlgorithm: Data]) {
+  init(supportedAlgorithms: Set<X509SignatureAlgorithm>, signatures: [X509SignatureAlgorithm: Data])
+  {
     self.supportedAlgorithms = supportedAlgorithms
     self.signatures = signatures
   }
@@ -310,7 +371,8 @@ private final class MockSigningKey: X509ChallengeSigningKey {
     signCalls.append(SignCall(challenge: challenge, algorithm: algorithm))
 
     guard let signature = signatures[algorithm] else {
-      throw X509ClientAuthChallengeSigner.Error.signatureCreationFailed("Missing signature for \(algorithm)")
+      throw X509ClientAuthChallengeSigner.Error.signatureCreationFailed(
+        "Missing signature for \(algorithm)")
     }
 
     return signature

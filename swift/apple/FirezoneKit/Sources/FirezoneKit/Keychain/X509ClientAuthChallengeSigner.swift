@@ -4,12 +4,23 @@
 //  LICENSE: Apache-2.0
 //
 
+import CryptoKit
 import Foundation
 import Security
 
+/// Produces device-trust proofs using client-authentication X.509 identities in the Apple Keychain.
+///
+/// The private key never leaves the Keychain/Secure Enclave. This type only:
+/// 1. Finds candidate identities by certificate metadata.
+/// 2. Asks Security.framework to sign the server nonce with the matching private key.
+/// 3. Returns the signature and public leaf certificate DER so the server can verify the proof.
 public struct X509ClientAuthChallengeSigner {
   public struct SignedChallenge: Codable, Equatable, Sendable {
+    /// Signature over the server-provided nonce. This proves possession of the private key that
+    /// corresponds to `leafCertificateDERBase64`.
     public let signedChallengeBase64: String
+
+    /// Public leaf certificate only. DER certificates do not contain private key material.
     public let leafCertificateDERBase64: String
 
     public init(signedChallengeBase64: String, leafCertificateDERBase64: String) {
@@ -71,6 +82,8 @@ public struct X509ClientAuthChallengeSigner {
     nonce: Data,
     subjectCommonName: String
   ) throws -> [SignedChallenge] {
+    // The server sends 32 bytes of randomness. Signing a fixed-length nonce prevents replaying
+    // stale proofs and keeps the signed payload deliberately small and unambiguous.
     guard nonce.count == Self.nonceByteCount else {
       throw Error.invalidNonceLength(expected: Self.nonceByteCount, actual: nonce.count)
     }
@@ -86,7 +99,15 @@ public struct X509ClientAuthChallengeSigner {
     }
 
     let now = Date()
+    Log.debug(
+      "Device trust signer: loaded \(identities.count) Keychain identity candidate(s) for subject CN \(subjectCommonName)"
+    )
+
     let matches = identities.compactMap { identity -> SignableX509Identity? in
+      let certSHA256 = identity.certificateDER.sha256HexString()
+
+      // Filter on public certificate metadata before asking Keychain for the private key. This
+      // avoids touching unrelated keys and reduces the chance of triggering authorization UI.
       guard
         X509CertificatePolicy.matchesClientAuthIdentity(
           identity.metadata,
@@ -94,14 +115,30 @@ public struct X509ClientAuthChallengeSigner {
           now: now
         )
       else {
+        Log.debug(
+          "Device trust signer: skipping cert_sha256=\(certSHA256) subject_cn=\(identity.metadata.subjectCommonName) eku=\(identity.metadata.extendedKeyUsageValues) not_before=\(String(describing: identity.metadata.notBefore)) not_after=\(String(describing: identity.metadata.notAfter))"
+        )
         return nil
       }
       guard let signingKey = identity.copySigningKey() else {
+        Log.debug(
+          "Device trust signer: skipping cert_sha256=\(certSHA256) subject_cn=\(identity.metadata.subjectCommonName) reason=private_key_unavailable"
+        )
         return nil
       }
+
+      // The concrete key type determines which signature algorithms are supported. We choose the
+      // first supported algorithm from a stable preference list below.
       guard let algorithm = chooseSignatureAlgorithm(for: signingKey) else {
+        Log.debug(
+          "Device trust signer: skipping cert_sha256=\(certSHA256) subject_cn=\(identity.metadata.subjectCommonName) reason=no_supported_signature_algorithm"
+        )
         return nil
       }
+
+      Log.debug(
+        "Device trust signer: selected cert_sha256=\(certSHA256) subject_cn=\(identity.metadata.subjectCommonName) algorithm=\(algorithm)"
+      )
 
       return SignableX509Identity(
         record: identity,
@@ -111,19 +148,44 @@ public struct X509ClientAuthChallengeSigner {
     }
     .sorted(by: isPreferredSignableIdentity(_:over:))
 
-    return try matches.map { match in
-      let signature = try match.signingKey.sign(challenge: nonce, algorithm: match.algorithm)
+    Log.debug("Device trust signer: signing \(matches.count) challenge(s)")
+
+    let signedChallenges: [SignedChallenge] = matches.compactMap { match -> SignedChallenge? in
+      let certSHA256 = match.record.certificateDER.sha256HexString()
+      let signature: Data
+
+      do {
+        signature = try match.signingKey.sign(challenge: nonce, algorithm: match.algorithm)
+      } catch {
+        // A key can look usable during identity lookup but still reject the actual signing
+        // operation, commonly because its Keychain ACL requires UI. The Network Extension must not
+        // prompt, so skip this identity and keep trying any other matching certs.
+        Log.debug(
+          "Device trust signer: skipping cert_sha256=\(certSHA256) subject_cn=\(match.record.metadata.subjectCommonName) reason=signature_failed error=\(error)"
+        )
+        return nil
+      }
+
+      Log.debug(
+        "Device trust signer: signed cert_sha256=\(certSHA256) subject_cn=\(match.record.metadata.subjectCommonName) algorithm=\(match.algorithm) signature_byte_count=\(signature.count)"
+      )
 
       return SignedChallenge(
         signedChallengeBase64: signature.base64EncodedString(),
         leafCertificateDERBase64: match.record.certificateDER.base64EncodedString()
       )
     }
+
+    Log.debug("Device trust signer: produced \(signedChallenges.count) signed challenge(s)")
+    return signedChallenges
   }
 
   private func chooseSignatureAlgorithm(for signingKey: any X509ChallengeSigningKey)
     -> X509SignatureAlgorithm?
   {
+    // These are message-level Security.framework algorithms: Security hashes the nonce with
+    // SHA-256 and then signs. PKCS#1 v1.5 is tried first because it is the most widely supported
+    // by MDM-issued RSA client-auth certs; ECDSA handles EC keys; PSS is accepted when available.
     let candidates: [X509SignatureAlgorithm] = [
       .rsaSignatureMessagePKCS1v15SHA256,
       .ecdsaSignatureMessageX962SHA256,
@@ -151,6 +213,9 @@ public struct X509ClientAuthChallengeSigner {
 struct X509IdentityRecord {
   let certificateDER: Data
   let metadata: X509CertificateMetadata
+
+  /// Deferred private-key lookup. Keep this lazy so filtering can happen on public certificate
+  /// bytes and metadata before Security.framework is asked to access key material.
   let copySigningKey: () -> (any X509ChallengeSigningKey)?
 }
 
@@ -177,6 +242,19 @@ enum X509SignatureAlgorithm: Hashable {
   }
 }
 
+extension X509SignatureAlgorithm: CustomStringConvertible {
+  var description: String {
+    switch self {
+    case .rsaSignatureMessagePKCS1v15SHA256:
+      return "rsa_pkcs1_sha256"
+    case .rsaSignatureMessagePSSSHA256:
+      return "rsa_pss_sha256"
+    case .ecdsaSignatureMessageX962SHA256:
+      return "ecdsa_x962_sha256"
+    }
+  }
+}
+
 protocol X509ChallengeSigningKey {
   func isAlgorithmSupported(_ algorithm: X509SignatureAlgorithm) -> Bool
   func sign(challenge: Data, algorithm: X509SignatureAlgorithm) throws -> Data
@@ -191,6 +269,10 @@ private struct AppleX509ChallengeSigningKey: X509ChallengeSigningKey {
 
   func sign(challenge: Data, algorithm: X509SignatureAlgorithm) throws -> Data {
     var error: Unmanaged<CFError>?
+
+    // SecKeyCreateSignature performs the operation inside the keychain-backed key object. For
+    // Secure Enclave or non-exportable keys this is the point where the key is used, but it is not
+    // copied into process memory.
     guard
       let signature = SecKeyCreateSignature(
         key,
@@ -199,7 +281,8 @@ private struct AppleX509ChallengeSigningKey: X509ChallengeSigningKey {
         &error
       ) as Data?
     else {
-      let message = error.map { CFErrorCopyDescription($0.takeRetainedValue()) as String }
+      let message =
+        error.map { CFErrorCopyDescription($0.takeRetainedValue()) as String }
         ?? "unknown error"
       throw X509ClientAuthChallengeSigner.Error.signatureCreationFailed(message)
     }
@@ -209,12 +292,45 @@ private struct AppleX509ChallengeSigningKey: X509ChallengeSigningKey {
 }
 
 private func loadX509ClientAuthIdentityRecords() throws -> [X509IdentityRecord] {
-  let query: [CFString: Any] = [
+  #if os(macOS)
+    var records = try loadX509ClientAuthIdentityRecords(
+      queryOverrides: [:],
+      querySource: "default"
+    )
+
+    if let systemKeychain = systemKeychain() {
+      records.append(
+        contentsOf: try loadX509ClientAuthIdentityRecords(
+          queryOverrides: [kSecMatchSearchList: [systemKeychain]],
+          querySource: "system"
+        )
+      )
+    } else {
+      Log.debug("Device trust signer: unable to open System keychain for explicit identity query")
+    }
+
+    return records.deduplicatedByCertificateDER()
+  #else
+    return try loadX509ClientAuthIdentityRecords(queryOverrides: [:], querySource: "default")
+  #endif
+}
+
+private func loadX509ClientAuthIdentityRecords(
+  queryOverrides: [CFString: Any],
+  querySource: String
+) throws -> [X509IdentityRecord] {
+  // Query identities, not certificates. A certificate alone can be public-only; an identity means
+  // the system believes there is corresponding private-key material available.
+  //
+  // kSecUseAuthenticationUISkip is important for the Network Extension path: if a key cannot be
+  // used without UI, we skip it rather than causing a surprise auth prompt from the tunnel process.
+  var query: [CFString: Any] = [
     kSecClass: kSecClassIdentity,
     kSecReturnRef: true,
     kSecMatchLimit: kSecMatchLimitAll,
     kSecUseAuthenticationUI: kSecUseAuthenticationUISkip,
   ]
+  query.merge(queryOverrides) { _, new in new }
 
   var result: CFTypeRef?
   let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -223,12 +339,21 @@ private func loadX509ClientAuthIdentityRecords() throws -> [X509IdentityRecord] 
   case errSecSuccess:
     break
   case errSecItemNotFound:
+    Log.debug("Device trust signer: identity query source=\(querySource) found no identities")
     return []
   default:
+    Log.debug(
+      "Device trust signer: identity query source=\(querySource) failed status=\(statusMessage(status))"
+    )
     throw X509ClientAuthChallengeSigner.Error.identityQueryFailed(status)
   }
 
-  return try unwrapIdentities(result).map { identity in
+  let identities = unwrapIdentities(result)
+  Log.debug(
+    "Device trust signer: identity query source=\(querySource) returned \(identities.count) identity reference(s)"
+  )
+
+  return try identities.map { identity in
     var certificate: SecCertificate?
     let certificateStatus = SecIdentityCopyCertificate(identity, &certificate)
     guard certificateStatus == errSecSuccess, let certificate else {
@@ -239,6 +364,8 @@ private func loadX509ClientAuthIdentityRecords() throws -> [X509IdentityRecord] 
       certificateDER: SecCertificateCopyData(certificate) as Data,
       metadata: x509CertificateMetadata(for: certificate),
       copySigningKey: {
+        // Copying the SecKey reference does not export private key bytes. It only gives us a handle
+        // that Security.framework can use for signing if policy allows this process to access it.
         var privateKey: SecKey?
         let privateKeyStatus = SecIdentityCopyPrivateKey(identity, &privateKey)
 
@@ -246,232 +373,71 @@ private func loadX509ClientAuthIdentityRecords() throws -> [X509IdentityRecord] 
           return AppleX509ChallengeSigningKey(key: privateKey)
         }
 
+        Log.debug(
+          "Device trust signer: private key copy failed status=\(statusMessage(privateKeyStatus))"
+        )
         return nil
       }
     )
   }
 }
 
-func x509CertificateMetadata(for certificate: SecCertificate) -> X509CertificateMetadata {
-  var commonName: CFString?
-  SecCertificateCopyCommonName(certificate, &commonName)
-  let subjectCommonName =
-    commonName as String? ?? (SecCertificateCopySubjectSummary(certificate) as String? ?? "<unknown>")
+#if os(macOS)
+  private func systemKeychain() -> SecKeychain? {
+    var keychain: SecKeychain?
+    let status = SecKeychainOpen("/Library/Keychains/System.keychain", &keychain)
 
-  let keys = [
-    kSecOIDSubjectAltName,
-    kSecOIDExtendedKeyUsage,
-    kSecOIDX509V1ValidityNotBefore,
-    kSecOIDX509V1ValidityNotAfter,
-  ] as CFArray
-
-  let values = SecCertificateCopyValues(certificate, keys, nil) as NSDictionary? ?? [:]
-
-  let sanValues = propertyEntries(values: values, oid: kSecOIDSubjectAltName)
-    .compactMap { entry -> String? in
-      let label = propertyLabel(entry)
-      guard label == "URI" || label == "DNS" || label == "Email Address" || label == "UPN" else {
-        return nil
-      }
-
-      return propertyStringValue(entry)
+    if status != errSecSuccess {
+      Log.debug("Device trust signer: System keychain open failed status=\(statusMessage(status))")
     }
 
-  let extendedKeyUsageValues = propertyStrings(values: values, oid: kSecOIDExtendedKeyUsage)
-
-  return X509CertificateMetadata(
-    subjectCommonName: subjectCommonName,
-    sanValues: sanValues,
-    extendedKeyUsageValues: extendedKeyUsageValues,
-    notBefore: propertyDateValue(values: values, oid: kSecOIDX509V1ValidityNotBefore),
-    notAfter: propertyDateValue(values: values, oid: kSecOIDX509V1ValidityNotAfter)
-  )
-}
+    return keychain
+  }
+#endif
 
 private func unwrapIdentities(_ result: CFTypeRef?) -> [SecIdentity] {
-  if let identities = result as? [SecIdentity] {
-    return identities
+  guard let result else { return [] }
+
+  // SecItemCopyMatching returns either one object or an array depending on kSecMatchLimit. Validate
+  // Core Foundation type IDs before downcasting so a malformed or unexpected result cannot crash us.
+  if CFGetTypeID(result) == SecIdentityGetTypeID() {
+    return [unsafeDowncast(result, to: SecIdentity.self)]
   }
 
-  if let array = result as? [Any] {
-    return array.map { $0 as! SecIdentity }
-  }
-
-  if let result {
-    return [result as! SecIdentity]
-  }
-
-  return []
-}
-
-private func propertyDictionary(values: NSDictionary, oid: CFString) -> NSDictionary? {
-  (values[oid] as? NSDictionary) ?? (values[oid as String] as? NSDictionary)
-}
-
-private func propertyEntries(values: NSDictionary, oid: CFString) -> [NSDictionary] {
-  guard let outer = propertyDictionary(values: values, oid: oid) else {
-    return []
-  }
-
-  return propertyEntries(from: propertyValue(outer))
-}
-
-private func propertyEntries(from rawValue: Any?) -> [NSDictionary] {
-  if let entries = rawValue as? [NSDictionary] {
-    return entries
-  }
-  if let entries = rawValue as? [Any] {
-    return entries.compactMap { $0 as? NSDictionary }
-  }
-  if let entry = rawValue as? NSDictionary {
-    return [entry]
+  if CFGetTypeID(result) == CFArrayGetTypeID(), let array = result as? [Any] {
+    return array.compactMap(secIdentity(from:))
   }
 
   return []
 }
 
-private func propertyStrings(values: NSDictionary, oid: CFString) -> [String] {
-  guard let outer = propertyDictionary(values: values, oid: oid) else {
-    return []
-  }
-
-  return propertyStrings(from: outer).reduce(into: []) { uniqueStrings, string in
-    guard !uniqueStrings.contains(string) else { return }
-    uniqueStrings.append(string)
-  }
-}
-
-private func propertyStrings(from rawValue: Any?) -> [String] {
-  switch rawValue {
-  case let entry as NSDictionary:
-    let values = [propertyLabel(entry), propertyStringValue(entry)].compactMap(\.self)
-    return values + propertyStrings(from: propertyValue(entry))
-
-  case let values as [Any]:
-    return values.flatMap(propertyStrings(from:))
-
-  case let value as String:
-    return [value]
-
-  case let value as URL:
-    return [value.absoluteString]
-
-  case let value as NSURL:
-    return value.absoluteString.map { [$0] } ?? []
-
-  case let value as Data:
-    return objectIdentifierString(from: value).map { [$0] } ?? []
-
-  case let value as NSData:
-    return objectIdentifierString(from: value as Data).map { [$0] } ?? []
-
-  default:
-    return []
-  }
-}
-
-private func objectIdentifierString(from data: Data) -> String? {
-  guard let firstByte = data.first else {
+private func secIdentity(from value: Any) -> SecIdentity? {
+  let cfValue = value as CFTypeRef
+  guard CFGetTypeID(cfValue) == SecIdentityGetTypeID() else {
     return nil
   }
 
-  let firstValue = Int(firstByte)
-  let firstComponent = min(firstValue / 40, 2)
-  let secondComponent = firstValue - (firstComponent * 40)
-  var components = [firstComponent, secondComponent]
-  var currentComponent = 0
-
-  for byte in data.dropFirst() {
-    currentComponent = (currentComponent << 7) | Int(byte & 0x7f)
-    if byte & 0x80 == 0 {
-      components.append(currentComponent)
-      currentComponent = 0
-    }
-  }
-
-  guard currentComponent == 0 else {
-    return nil
-  }
-
-  return components.map(String.init).joined(separator: ".")
-}
-
-private func propertyLabel(_ entry: NSDictionary) -> String? {
-  (entry[kSecPropertyKeyLabel] as? String) ?? (entry[kSecPropertyKeyLabel as String] as? String)
-}
-
-private func propertyStringValue(_ entry: NSDictionary) -> String? {
-  if let value = entry[kSecPropertyKeyValue] as? String {
-    return value
-  }
-  if let value = entry[kSecPropertyKeyValue as String] as? String {
-    return value
-  }
-  if let value = entry[kSecPropertyKeyValue] as? URL {
-    return value.absoluteString
-  }
-  if let value = entry[kSecPropertyKeyValue as String] as? URL {
-    return value.absoluteString
-  }
-  if let value = entry[kSecPropertyKeyValue] as? NSURL {
-    return value.absoluteString
-  }
-  if let value = entry[kSecPropertyKeyValue as String] as? NSURL {
-    return value.absoluteString
-  }
-  return nil
-}
-
-private func propertyValue(_ entry: NSDictionary) -> Any? {
-  entry[kSecPropertyKeyValue] ?? entry[kSecPropertyKeyValue as String]
-}
-
-private func propertyDateValue(values: NSDictionary, oid: CFString) -> Date? {
-  guard let outer = propertyDictionary(values: values, oid: oid) else {
-    return nil
-  }
-
-  let rawValue = propertyValue(outer)
-
-  if let date = rawValue as? Date {
-    return date
-  }
-  if let string = rawValue as? String {
-    return parseCertificateDate(string)
-  }
-
-  return nil
-}
-
-private func parseCertificateDate(_ string: String) -> Date? {
-  let iso8601Formatter = ISO8601DateFormatter()
-  if let date = iso8601Formatter.date(from: string) {
-    return date
-  }
-
-  let formatters: [DateFormatter] = [
-    makeDateFormatter("yyyy-MM-dd HH:mm:ss Z"),
-    makeDateFormatter("yyyy-MM-dd HH:mm:ss"),
-    makeDateFormatter("MMM d HH:mm:ss yyyy zzz"),
-  ]
-
-  for formatter in formatters {
-    if let date = formatter.date(from: string) {
-      return date
-    }
-  }
-
-  return nil
-}
-
-private func makeDateFormatter(_ dateFormat: String) -> DateFormatter {
-  let formatter = DateFormatter()
-  formatter.locale = Locale(identifier: "en_US_POSIX")
-  formatter.timeZone = TimeZone(secondsFromGMT: 0)
-  formatter.dateFormat = dateFormat
-  return formatter
+  return unsafeDowncast(cfValue, to: SecIdentity.self)
 }
 
 private func statusMessage(_ status: OSStatus) -> String {
   SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+}
+
+extension Array where Element == X509IdentityRecord {
+  fileprivate func deduplicatedByCertificateDER() -> [X509IdentityRecord] {
+    var seen = Set<Data>()
+
+    return filter { record in
+      seen.insert(record.certificateDER).inserted
+    }
+  }
+}
+
+extension Data {
+  fileprivate func sha256HexString() -> String {
+    SHA256.hash(data: self)
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
 }

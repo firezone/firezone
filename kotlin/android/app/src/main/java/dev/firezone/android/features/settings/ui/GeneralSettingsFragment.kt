@@ -33,6 +33,12 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
 
         setupViews()
         setupActionObservers()
+        viewModel.refreshManagedConfigurationState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshManagedConfigurationState()
     }
 
     private fun setupViews() {

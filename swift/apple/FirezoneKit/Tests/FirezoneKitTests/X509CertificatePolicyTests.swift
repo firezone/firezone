@@ -1,22 +1,22 @@
 import Foundation
 import Security
 import Testing
+
 @testable import FirezoneKit
 
 @Suite("X.509 Certificate Policy Tests")
 struct X509CertificatePolicyTests {
-  private let subjectCommonName = "dev.firezone.scep"
+  private let subjectCommonName = "dev.firezone.device-trust"
   private let now = Date(timeIntervalSince1970: 1_775_000_000)
 
   private func metadata(
-    subjectCommonName: String = "dev.firezone.scep",
+    subjectCommonName: String = "dev.firezone.device-trust",
     extendedKeyUsageValues: [String] = ["TLS Web Client Authentication"],
     notBefore: Date? = nil,
     notAfter: Date? = nil
   ) -> X509CertificateMetadata {
     X509CertificateMetadata(
       subjectCommonName: subjectCommonName,
-      sanValues: [],
       extendedKeyUsageValues: extendedKeyUsageValues,
       notBefore: notBefore,
       notAfter: notAfter
@@ -41,7 +41,7 @@ struct X509CertificatePolicyTests {
 
   @Test("matching client auth identity rejects mismatched subject CN")
   func rejectsMismatchedSubjectCommonName() {
-    let certificate = metadata(subjectCommonName: "other.firezone.scep")
+    let certificate = metadata(subjectCommonName: "other.firezone.device-trust")
 
     #expect(
       !X509CertificatePolicy.matchesClientAuthIdentity(
@@ -130,16 +130,15 @@ struct X509CertificatePolicyTests {
     #expect(!X509CertificatePolicy.isOlder(newer, than: older))
   }
 
-  @Test("Security framework metadata parsing reads subject CN, SAN values, and client auth EKU")
+  @Test("Security framework metadata parsing reads subject CN, validity, and client auth EKU")
   func parsesCertificateFixtureMetadata() throws {
     // Generated with:
     // mkdir -p /tmp/firezone-x509-fixture
     // printf '%s\n' '[v3_req]' 'basicConstraints=critical,CA:FALSE' \
     //   'keyUsage=critical,digitalSignature' 'extendedKeyUsage=clientAuth' \
-    //   'subjectAltName=URI:deviceid:29540407-7527-4e2a-8614-e8f6ba1c6745,URI:serial:MJLFG7WJ39' \
     //   > /tmp/firezone-x509-fixture/client-auth.ext
     // openssl req -newkey rsa:2048 -nodes -keyout /tmp/firezone-x509-fixture/client-auth.key \
-    //   -out /tmp/firezone-x509-fixture/client-auth.csr -subj "/CN=dev.firezone.scep"
+    //   -out /tmp/firezone-x509-fixture/client-auth.csr -subj "/CN=dev.firezone.device-trust"
     // openssl x509 -req -in /tmp/firezone-x509-fixture/client-auth.csr \
     //   -signkey /tmp/firezone-x509-fixture/client-auth.key \
     //   -out /tmp/firezone-x509-fixture/client-auth.pem -days 365 \
@@ -147,7 +146,7 @@ struct X509CertificatePolicyTests {
     // openssl x509 -in /tmp/firezone-x509-fixture/client-auth.pem -outform DER \
     //   -out /tmp/firezone-x509-fixture/client-auth.der
     let derBase64 = """
-      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
+      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
       """
     let normalizedDERBase64 = String(derBase64.filter { !$0.isWhitespace })
     let der = try #require(Data(base64Encoded: normalizedDERBase64))
@@ -156,8 +155,8 @@ struct X509CertificatePolicyTests {
     let metadata = x509CertificateMetadata(for: certificate)
 
     #expect(metadata.subjectCommonName == subjectCommonName)
-    #expect(metadata.sanValues.contains(where: { $0.contains("deviceid:29540407-7527-4e2a-8614-e8f6ba1c6745") }))
-    #expect(metadata.sanValues.contains(where: { $0.contains("serial:MJLFG7WJ39") }))
+    #expect(metadata.notBefore != nil)
+    #expect(metadata.notAfter != nil)
     #expect(X509CertificatePolicy.hasClientAuthenticationExtendedKeyUsage(metadata))
   }
 }

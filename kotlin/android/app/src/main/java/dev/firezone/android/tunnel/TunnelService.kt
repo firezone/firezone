@@ -26,6 +26,7 @@ import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.features.device_trust.ui.DeviceTrustCertificatePromptCoordinator
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
@@ -47,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
+import uniffi.connlib.DeviceTrustSignedChallenge
 import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
@@ -58,6 +60,7 @@ import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.util.Base64
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -515,13 +518,16 @@ class TunnelService : VpnService() {
     }
 
     private fun getDeviceName(): String {
-        val deviceName = appRestrictions.getString("deviceName")
-        return if (deviceName.isNullOrBlank() || deviceName == "null") {
+        val deviceName = appRestrictionString("deviceName")
+        return if (deviceName.isNullOrBlank()) {
             Build.MODEL
         } else {
             deviceName
         }
     }
+
+    private fun appRestrictionString(key: String): String? =
+        appRestrictions.getString(key)?.takeIf { it.isNotBlank() && it != "null" }
 
     sealed class TunnelCommand {
         data object Disconnect : TunnelCommand()
@@ -673,6 +679,14 @@ class TunnelService : VpnService() {
                                     )
                                 }
 
+                                is Event.DeviceTrustRequest -> {
+                                    handleDeviceTrustRequest(
+                                        session = session,
+                                        nonceBase64 = event.nonce,
+                                        subjectCommonName = event.subjectCn,
+                                    )
+                                }
+
                                 null -> {
                                     Log.i(TAG, "Event channel closed")
                                     stopReason = StopReason.EventChannelClosed
@@ -697,6 +711,84 @@ class TunnelService : VpnService() {
         } else {
             stopReason
         }
+    }
+
+    private suspend fun handleDeviceTrustRequest(
+        session: SessionInterface,
+        nonceBase64: String,
+        subjectCommonName: String,
+    ) {
+        val nonceByteCount =
+            runCatching { Base64.getDecoder().decode(nonceBase64).size }.getOrDefault(0)
+
+        Log.i(
+            TAG,
+            "Received device trust request subject_cn=$subjectCommonName " +
+                "nonce_base64_length=${nonceBase64.length} nonce_byte_count=$nonceByteCount",
+        )
+
+        val managedAlias = repo.getManagedDeviceTrustCertificateAliasSync()
+        val cachedAlias = repo.getDeviceTrustCertificateAliasSync()
+        val signer = DeviceTrustChallengeSigner(AndroidDeviceTrustKeyStore(this))
+
+        var responses =
+            signer.signBase64Nonce(
+                nonceBase64 = nonceBase64,
+                subjectCommonName = subjectCommonName,
+                candidateAliases =
+                    deviceTrustCandidateAliases(
+                        managedAlias = managedAlias,
+                        cachedAlias = cachedAlias,
+                    ),
+            )
+
+        if (responses.isEmpty()) {
+            Log.i(
+                TAG,
+                "Device trust request produced no matching client-auth certificates " +
+                    "for subject_cn=$subjectCommonName",
+            )
+
+            val selectedAlias =
+                DeviceTrustCertificatePromptCoordinator.promptForAlias(
+                    context = this,
+                    subjectCommonName = subjectCommonName,
+                    preferredAlias =
+                        preferredDeviceTrustCertificateAlias(
+                            managedAlias = managedAlias,
+                            cachedAlias = cachedAlias,
+                        ),
+                )
+
+            if (!selectedAlias.isNullOrBlank()) {
+                if (selectedAlias == managedAlias?.trim()?.takeIf { it.isNotEmpty() }) {
+                    repo.clearDeviceTrustCertificateAliasSync()
+                } else {
+                    repo.saveDeviceTrustCertificateAliasSync(selectedAlias)
+                }
+
+                responses =
+                    signer.signBase64Nonce(
+                        nonceBase64 = nonceBase64,
+                        subjectCommonName = subjectCommonName,
+                        candidateAliases = listOf(selectedAlias),
+                    )
+            }
+        }
+
+        Log.i(
+            TAG,
+            "Sending ${responses.size} device trust response(s) for CN $subjectCommonName",
+        )
+
+        session.sendDeviceTrustResponse(
+            responses.map { response ->
+                DeviceTrustSignedChallenge(
+                    signedChallenge = response.signedChallenge,
+                    cert = response.cert,
+                )
+            },
+        )
     }
 
     private fun convertResource(resource: uniffi.connlib.Resource): Resource =
@@ -757,7 +849,13 @@ class TunnelService : VpnService() {
         private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
 
         private val MANAGED_CONFIGURATIONS =
-            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+            arrayOf(
+                "token",
+                "allowedApplications",
+                "disallowedApplications",
+                "deviceName",
+                "deviceTrustCertificateAlias",
+            )
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
