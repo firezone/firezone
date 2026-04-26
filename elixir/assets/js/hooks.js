@@ -420,7 +420,8 @@ Hooks.Toast = {
 
 Hooks.CloseWindow = {
   mounted() {
-    const seconds = parseInt(this.el.dataset.seconds) || 5;
+    const parsed = parseInt(this.el.dataset.seconds, 10);
+    const seconds = Number.isNaN(parsed) ? 5 : parsed;
 
     this.timer = setTimeout(() => {
       window.close();
@@ -433,13 +434,16 @@ Hooks.CloseWindow = {
 
 Hooks.PINInput = {
   mounted() {
-    const inputs = this.el.querySelectorAll("input[data-pin-index]");
+    const inputs = Array.from(
+      this.el.querySelectorAll("input[data-pin-index]")
+    ).sort(
+      (a, b) =>
+        parseInt(a.dataset.pinIndex, 10) - parseInt(b.dataset.pinIndex, 10)
+    );
     const hidden = document.getElementById("secret");
 
     const update = () => {
-      hidden.value = Array.from(inputs)
-        .map((i) => i.value)
-        .join("");
+      hidden.value = inputs.map((i) => i.value).join("");
     };
 
     inputs.forEach((input, idx) => {
@@ -460,7 +464,7 @@ Hooks.PINInput = {
             update();
           }
         } else if (e.key === "Enter") {
-          const allFilled = Array.from(inputs).every((i) => i.value);
+          const allFilled = inputs.every((i) => i.value);
           if (allFilled) {
             update();
             const form = this.el.closest("form");
@@ -484,7 +488,7 @@ Hooks.PINInput = {
           }
         });
         update();
-        const nextEmpty = Array.from(inputs).findIndex((i) => !i.value);
+        const nextEmpty = inputs.findIndex((i) => !i.value);
         (nextEmpty === -1
           ? inputs[inputs.length - 1]
           : inputs[nextEmpty]
@@ -502,7 +506,8 @@ Hooks.ProgressBar = {
     this.update();
   },
   update() {
-    const pct = this.el.dataset.pct || 0;
+    const parsed = parseFloat(this.el.dataset.pct);
+    const pct = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
     this.el.style.width = `${pct}%`;
   },
 };
