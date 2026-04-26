@@ -7,6 +7,8 @@ const path = require("path");
 const defaultTheme = require("tailwindcss/defaultTheme");
 const colors = require("tailwindcss/colors");
 
+const depsDir = process.env.MIX_DEPS_PATH || path.join(__dirname, "../deps");
+
 const firezoneColors = {
   // See our brand palette in Figma.
   // These have been reversed to match Tailwind's default order.
@@ -66,8 +68,12 @@ module.exports = {
   ],
   theme: {
     fontFamily: {
-      sans: ["Inter Variable", ...defaultTheme.fontFamily.sans],
-      mono: ["JetBrains Mono Variable", ...defaultTheme.fontFamily.mono],
+      sans: ["Roboto Variable", "Roboto", ...defaultTheme.fontFamily.sans],
+      mono: [
+        "Roboto Mono Variable",
+        "Roboto Mono",
+        ...defaultTheme.fontFamily.mono,
+      ],
     },
     extend: {
       colors: {
@@ -104,7 +110,7 @@ module.exports = {
     // Icons are sourced from the remixicons dep (deps/remixicons/icons/).
     // Use any icon with the `ri-` prefix, e.g. `ri-settings-3-line`.
     plugin(function ({ matchComponents, theme }) {
-      let iconsDir = path.join(__dirname, "../deps/remixicons/icons");
+      let iconsDir = path.join(depsDir, "remixicons/icons");
       let values = {};
       function scanDir(dir) {
         fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {

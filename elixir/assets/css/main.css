@@ -6,6 +6,17 @@
 
 /* Start: This may not be needed after UI refactor */
 @layer base {
+  body {
+    @apply font-sans;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    @apply font-mono;
+  }
+
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]):not([disabled]) {
     cursor: pointer;
