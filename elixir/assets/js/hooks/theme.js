@@ -11,8 +11,7 @@ function setTheme(theme) {
 }
 
 function applyTheme(theme, mediaQuery) {
-  const isDark =
-    theme === "dark" || (theme === "system" && mediaQuery.matches);
+  const isDark = theme === "dark" || (theme === "system" && mediaQuery.matches);
   document.documentElement.classList.toggle("dark", isDark);
   document.documentElement.dataset.theme = theme;
 }

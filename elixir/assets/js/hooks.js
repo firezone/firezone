@@ -437,7 +437,9 @@ Hooks.PINInput = {
     const hidden = document.getElementById("secret");
 
     const update = () => {
-      hidden.value = Array.from(inputs).map((i) => i.value).join("");
+      hidden.value = Array.from(inputs)
+        .map((i) => i.value)
+        .join("");
     };
 
     inputs.forEach((input, idx) => {
@@ -462,7 +464,10 @@ Hooks.PINInput = {
           if (allFilled) {
             update();
             const form = this.el.closest("form");
-            if (form) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+            if (form)
+              form.dispatchEvent(
+                new Event("submit", { bubbles: true, cancelable: true })
+              );
           }
         }
       });
@@ -480,7 +485,10 @@ Hooks.PINInput = {
         });
         update();
         const nextEmpty = Array.from(inputs).findIndex((i) => !i.value);
-        (nextEmpty === -1 ? inputs[inputs.length - 1] : inputs[nextEmpty]).focus();
+        (nextEmpty === -1
+          ? inputs[inputs.length - 1]
+          : inputs[nextEmpty]
+        ).focus();
       });
     });
   },
