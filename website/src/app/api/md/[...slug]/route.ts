@@ -123,7 +123,7 @@ function readKbMdx(segments: string[]): string | null {
   try {
     const raw = readFileSync(filePath, "utf-8");
     return raw
-      .replace(/^import .+$/gm, "")   // strip import lines
+      .replace(/^import .+$/gm, "") // strip import lines
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, "") // strip JSX comments
       .trim();
   } catch {
@@ -160,4 +160,3 @@ export async function GET(
     },
   });
 }
-
