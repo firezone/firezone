@@ -169,8 +169,8 @@ sadness-generator = "0.7.0"
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
 semver = "1.0.28"
-sentry = { version = "0.46.2", default-features = false }
-sentry-tracing = "0.46.2"
+sentry = { version = "0.47.0", default-features = false }
+sentry-tracing = "0.47.0"
 serde = "1.0.228"
 serde_json = "1.0.149"
 serde_variant = "0.1.3"
