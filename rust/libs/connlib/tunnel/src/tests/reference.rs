@@ -836,10 +836,7 @@ impl ReferenceState {
                 debug_assert!(state.network.add_host(*client_id, client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                client.exec_mut(|client| {
-                    client.reset_connections(now);
-                    client.readd_all_resources()
-                });
+                client.exec_mut(|client| client.readd_all_resources());
             }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -855,13 +852,7 @@ impl ReferenceState {
                 state.deploy_new_relays(new_relays)
             }
             Transition::Idle => {}
-            Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic {
-                    for client in state.clients.values_mut() {
-                        client.exec_mut(|c| c.reset_connections(now));
-                    }
-                }
-            }
+            Transition::PartitionRelaysFromPortal => {}
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource))
@@ -869,7 +860,7 @@ impl ReferenceState {
             }
             Transition::RestartClient { client_id, key } => {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.restart(*key, now);
+                    c.restart(*key);
                 })
             }
             Transition::UpdateDnsRecords { domain, records } => {

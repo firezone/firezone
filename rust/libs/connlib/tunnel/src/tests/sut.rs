@@ -473,13 +473,9 @@ impl TunnelTest {
                         g.update_relays(state.relays.keys().copied(), iter::empty(), now)
                     });
                 }
-
-                // 2. Advance state to ensure this is reflected.
-                state.advance(ref_state, &mut buffered_transmits);
-
                 let now = state.flux_capacitor.now();
 
-                // 3. Reconnect all relays.
+                // 2. Reconnect all relays.
                 for client in state.clients.values_mut() {
                     client.exec_mut(|c| c.update_relays(iter::empty(), state.relays.iter(), now));
                 }
