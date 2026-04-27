@@ -535,6 +535,16 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
+            client_shared::Event::DeviceTrustRequest { nonce, subject_cn } => {
+                if let Some(session) = self.session.as_connlib() {
+                    let session = session.clone();
+                    handle_device_trust_request(session, nonce, subject_cn).await;
+                } else {
+                    tracing::warn!(
+                        "Received device trust request with no active connlib session; ignoring"
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -835,6 +845,63 @@ async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
 
         Ok(Some(((), worker)))
     }))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+async fn handle_device_trust_request(
+    session: client_shared::Session,
+    nonce_base64: String,
+    subject_cn: String,
+) {
+    use base64::Engine as _;
+
+    let nonce = match base64::engine::general_purpose::STANDARD.decode(&nonce_base64) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %err_with_src(&e), "Device trust: invalid base64 nonce");
+            session.send_device_trust_response(Vec::new());
+            return;
+        }
+    };
+
+    let config = device_trust::Config {
+        // Linux loads its PKCS#11 URI from this env var; ignored on Windows. Admins point this
+        // at the module + token + object that holds the device-trust identity (RFC 7512 URI).
+        pkcs11_uri: std::env::var("FIREZONE_DEVICE_TRUST_PKCS11_URI").ok(),
+    };
+
+    let signed = tokio::task::spawn_blocking(move || {
+        device_trust::sign_device_trust_challenge(&nonce, &subject_cn, &config)
+    })
+    .await;
+
+    let signed = match signed {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            tracing::warn!(error = ?e, "Device trust: signing failed");
+            Vec::new()
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "Device trust: signing task panicked");
+            Vec::new()
+        }
+    };
+
+    session.send_device_trust_response(signed);
+}
+
+// Same async signature as the active path so the call site doesn't need a cfg.
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[allow(clippy::unused_async)]
+async fn handle_device_trust_request(
+    session: client_shared::Session,
+    _nonce_base64: String,
+    _subject_cn: String,
+) {
+    // The macOS Tauri client is not the primary macOS distribution path; the Swift app handles
+    // device trust via Security.framework. Reply with an empty response so the portal records
+    // the absence of a signature rather than waiting on us.
+    session.send_device_trust_response(Vec::new());
 }
 
 #[cfg(test)]

@@ -8,6 +8,10 @@ import CryptoKit
 import Foundation
 import Security
 
+#if canImport(ManagedApp)
+  import ManagedApp
+#endif
+
 /// Produces device-trust proofs using client-authentication X.509 identities in the Apple Keychain.
 ///
 /// The private key never leaves the Keychain/Secure Enclave. This type only:
@@ -311,9 +315,94 @@ private func loadX509ClientAuthIdentityRecords() throws -> [X509IdentityRecord] 
 
     return records.deduplicatedByCertificateDER()
   #else
-    return try loadX509ClientAuthIdentityRecords(queryOverrides: [:], querySource: "default")
+    // On iOS, identities deployed by traditional MDM Configuration Profile SCEP/PKCS12 payloads
+    // land in an Apple-managed keychain access group that is not visible to third-party apps —
+    // a `kSecClassIdentity` query from the Network Extension returns nothing. The supported way
+    // to receive an MDM-deployed identity is the ManagedApp framework introduced in iOS 18.4
+    // (also iPadOS 18.4 / visionOS 2.4): the admin pushes the identity tagged with an agreed-upon
+    // identifier and the app retrieves it via `ManagedAppIdentitiesProvider`.
+    #if canImport(ManagedApp)
+      if #available(iOS 18.4, *) {
+        return loadManagedAppIdentityRecordsSync(identifier: managedAppDeviceTrustIdentifier)
+      }
+    #endif
+
+    Log.debug(
+      "Device trust signer: ManagedApp framework is unavailable on this OS version; no identity source"
+    )
+    return []
   #endif
 }
+
+/// Identifier the MDM admin must use when provisioning the device-trust identity via the
+/// ManagedApp framework. Chosen to match the portal-expected leaf-cert subject CN so admin
+/// configuration is one string, not two.
+private let managedAppDeviceTrustIdentifier = "dev.firezone.device-trust"
+
+#if !os(macOS) && canImport(ManagedApp)
+  @available(iOS 18.4, *)
+  private func loadManagedAppIdentityRecordsSync(identifier: String) -> [X509IdentityRecord] {
+    // The ManagedApp API is async; the device-trust signer call site in the Network Extension
+    // is sync. Run the lookup on a detached task and block this thread on a semaphore. The
+    // packet-tunnel callback runs on a private queue, not on the cooperative pool, so this
+    // does not deadlock the Swift concurrency runtime.
+    let semaphore = DispatchSemaphore(value: 0)
+    var collected: [X509IdentityRecord] = []
+
+    Task.detached {
+      defer { semaphore.signal() }
+
+      let provider = ManagedAppIdentitiesProvider()
+      let identity: SecIdentity?
+      do {
+        identity = try await provider.identity(withIdentifier: identifier)
+      } catch {
+        Log.debug(
+          "Device trust signer: ManagedAppIdentitiesProvider.identity(withIdentifier:) threw error=\(error)"
+        )
+        return
+      }
+
+      guard let identity else {
+        Log.debug(
+          "Device trust signer: ManagedApp framework has no identity for identifier=\(identifier); ensure the MDM is pushing an identity asset declaration with this identifier scoped to this app"
+        )
+        return
+      }
+
+      var certificate: SecCertificate?
+      let copyStatus = SecIdentityCopyCertificate(identity, &certificate)
+      guard copyStatus == errSecSuccess, let certificate else {
+        Log.debug(
+          "Device trust signer: SecIdentityCopyCertificate failed status=\(copyStatus) for ManagedApp identity"
+        )
+        return
+      }
+
+      collected = [
+        X509IdentityRecord(
+          certificateDER: SecCertificateCopyData(certificate) as Data,
+          metadata: x509CertificateMetadata(for: certificate),
+          copySigningKey: {
+            var privateKey: SecKey?
+            let status = SecIdentityCopyPrivateKey(identity, &privateKey)
+            if status == errSecSuccess, let privateKey {
+              return AppleX509ChallengeSigningKey(key: privateKey)
+            }
+
+            Log.debug(
+              "Device trust signer: ManagedApp SecIdentityCopyPrivateKey failed status=\(status)"
+            )
+            return nil
+          }
+        )
+      ]
+    }
+
+    semaphore.wait()
+    return collected
+  }
+#endif
 
 private func loadX509ClientAuthIdentityRecords(
   queryOverrides: [CFString: Any],

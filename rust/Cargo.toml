@@ -26,6 +26,7 @@ members = [
     "libs/connlib/socket-factory",
     "libs/connlib/tun",
     "libs/connlib/tunnel",
+    "libs/device-trust",
     "libs/eventloop-budget",
     "libs/http-client",
     "libs/known-dirs",
@@ -76,8 +77,10 @@ clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
+cryptoki = "0.10.0"
 dashmap = "6.1.0"
 dbus-secret-service-keyring-store = { version = "0.3.0", features = ["crypto-rust"] }
+device-trust = { path = "libs/device-trust" }
 derive_more = { version = "2.1.1", default-features = false }
 difference = "2.0.0"
 dirs = "6.0.0"
@@ -236,6 +239,7 @@ windows-implement = "0.60.0"
 windows-native-keyring-store = "0.4.0"
 windows-service = "0.8.0"
 winreg = "0.56.0"
+x509-parser = "0.18.0"
 zbus = "5.14.0"
 zip = { version = "8.5.1", default-features = false }
 

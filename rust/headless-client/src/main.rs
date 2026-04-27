@@ -501,6 +501,9 @@ fn try_main() -> Result<()> {
                     }
                 }
                 client_shared::Event::GatewayVersionMismatch { .. } | client_shared::Event::AllGatewaysOffline { .. } => {},
+                client_shared::Event::DeviceTrustRequest { nonce, subject_cn } => {
+                    handle_device_trust_request(&session, nonce, subject_cn).await;
+                }
             }
         };
 
@@ -670,6 +673,60 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
 
     tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+async fn handle_device_trust_request(
+    session: &client_shared::Session,
+    nonce_base64: String,
+    subject_cn: String,
+) {
+    use base64::Engine as _;
+
+    let nonce = match base64::engine::general_purpose::STANDARD.decode(&nonce_base64) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = ?e, "Device trust: invalid base64 nonce");
+            session.send_device_trust_response(Vec::new());
+            return;
+        }
+    };
+
+    let config = device_trust::Config {
+        // Linux loads the PKCS#11 URI from this env var; ignored on Windows. Admins point this
+        // at the module + token + object that holds the device-trust identity (RFC 7512 URI).
+        pkcs11_uri: std::env::var("FIREZONE_DEVICE_TRUST_PKCS11_URI").ok(),
+    };
+
+    let signed = tokio::task::spawn_blocking(move || {
+        device_trust::sign_device_trust_challenge(&nonce, &subject_cn, &config)
+    })
+    .await;
+
+    let signed = match signed {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            tracing::warn!(error = ?e, "Device trust: signing failed");
+            Vec::new()
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "Device trust: signing task panicked");
+            Vec::new()
+        }
+    };
+
+    session.send_device_trust_response(signed);
+}
+
+// Same async signature as the active path so the call site doesn't need a cfg.
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[allow(clippy::unused_async)]
+async fn handle_device_trust_request(
+    session: &client_shared::Session,
+    _nonce_base64: String,
+    _subject_cn: String,
+) {
+    session.send_device_trust_response(Vec::new());
 }
 
 fn tonic_otlp_exporter(

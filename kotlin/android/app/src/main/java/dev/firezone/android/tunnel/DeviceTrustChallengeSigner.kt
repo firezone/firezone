@@ -85,20 +85,20 @@ internal class AndroidDeviceTrustKeyStore(
             KeyChain.getCertificateChain(applicationContext, alias)
                 ?.filterIsInstance<X509Certificate>()
                 .orEmpty()
-        } catch (e: InterruptedException) {
+        } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             emptyList()
-        } catch (e: KeyChainException) {
+        } catch (_: KeyChainException) {
             emptyList()
         }
 
     override fun privateKey(alias: String): PrivateKey? =
         try {
             KeyChain.getPrivateKey(applicationContext, alias)
-        } catch (e: InterruptedException) {
+        } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             null
-        } catch (e: KeyChainException) {
+        } catch (_: KeyChainException) {
             null
         }
 }
@@ -318,7 +318,7 @@ internal data class X509ClientAuthCertificateSummary(
 private fun X509Certificate.safeExtendedKeyUsage(): List<String> =
     try {
         extendedKeyUsage.orEmpty()
-    } catch (e: CertificateParsingException) {
+    } catch (_: CertificateParsingException) {
         emptyList()
     }
 
