@@ -83,6 +83,11 @@
             android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
             android:exported="false"/>
 
+        <activity
+            android:name="dev.firezone.android.features.device_trust.ui.DeviceTrustCertificatePromptActivity"
+            android:excludeFromRecents="true"
+            android:exported="false" />
+
         <service
             android:foregroundServiceType="systemExempted"
             android:name="dev.firezone.android.tunnel.TunnelService"

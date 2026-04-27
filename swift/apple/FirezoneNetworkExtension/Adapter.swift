@@ -459,6 +459,42 @@ actor Adapter {
     case .gatewayVersionMismatch(let resourceId):
       self.unreachableResources.append(
         UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
+
+    case .deviceTrustRequest(let nonce, let subjectCn):
+      handleDeviceTrustRequest(nonceBase64: nonce, subjectCommonName: subjectCn)
+    }
+  }
+
+  private func handleDeviceTrustRequest(nonceBase64: String, subjectCommonName: String) {
+    let nonceByteCount =
+      Data(base64Encoded: nonceBase64).map { String($0.count) } ?? "invalid_base64"
+    Log.debug(
+      "Received device trust request subject_cn=\(subjectCommonName) nonce_base64_length=\(nonceBase64.count) nonce_byte_count=\(nonceByteCount)"
+    )
+
+    do {
+      let signedChallenges = try X509ClientAuthChallengeSigner().signChallenges(
+        nonceBase64: nonceBase64,
+        subjectCommonName: subjectCommonName
+      )
+      let responses = signedChallenges.map {
+        DeviceTrustSignedChallenge(
+          signedChallenge: $0.signedChallengeBase64,
+          cert: $0.leafCertificateDERBase64
+        )
+      }
+
+      if responses.isEmpty {
+        Log.debug(
+          "Device trust request produced no matching client-auth certificates for subject_cn=\(subjectCommonName)"
+        )
+      }
+
+      Log.info("Sending \(responses.count) device trust response(s) for CN \(subjectCommonName)")
+      sendCommand(.deviceTrustResponse(responses))
+    } catch {
+      Log.error("Device trust request failed for subject_cn=\(subjectCommonName): \(error)")
+      sendCommand(.deviceTrustResponse([]))
     }
   }
 

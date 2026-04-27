@@ -134,6 +134,7 @@ config :portal, PortalWeb.Endpoint,
     # Android emulator
     "//10.0.2.2",
     "//10.0.0.107",
+    "//192.168.1.211",
     "//127.0.0.1",
     "//localhost"
   ],
@@ -187,7 +188,13 @@ config :portal, PortalAPI.Endpoint,
   http: [port: api_port],
   debug_errors: true,
   code_reloader: true,
-  check_origin: ["//10.0.0.107", "//10.0.2.2", "//127.0.0.1", "//localhost"],
+  check_origin: [
+    "//10.0.0.107",
+    "//192.168.1.211",
+    "//10.0.2.2",
+    "//127.0.0.1",
+    "//localhost"
+  ],
   watchers: [],
   server: true
 

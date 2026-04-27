@@ -1,0 +1,26 @@
+[package]
+name = "device-trust"
+version = "0.1.0"
+edition = { workspace = true }
+authors = ["Firezone, Inc."]
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+tunnel = { workspace = true }
+x509-parser = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cryptoki = { workspace = true }
+
+[lints]
+workspace = true

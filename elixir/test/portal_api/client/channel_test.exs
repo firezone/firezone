@@ -10,6 +10,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.ActorFixtures
   import Portal.ClientFixtures
   import Portal.DeviceFixtures
+  import Portal.DeviceTrustAnchorFixtures
   import Portal.GatewayFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -21,6 +22,51 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
   import Portal.FeaturesFixtures
+
+  @device_trust_challenge_fixtures_dir Path.expand(
+                                         "../../support/fixtures/device_trust_challenges",
+                                         __DIR__
+                                       )
+
+  # These synthetic cert fixtures were generated with OpenSSL:
+  # openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 3650 -subj /CN=Firezone\ Device\ Trust\ Test\ CA -sha256 -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,digitalSignature,keyCertSign,cRLSign -addext subjectKeyIdentifier=hash -addext authorityKeyIdentifier=keyid:always,issuer
+  # openssl req -newkey rsa:2048 -nodes -keyout leaf.key -out leaf.csr -subj /CN=dev.firezone.device-trust -addext keyUsage=critical,digitalSignature -addext extendedKeyUsage=clientAuth -addext subjectAltName=URI:deviceid:test-device-id,DNS:dev.firezone.device-trust
+  # openssl x509 -req -in leaf.csr -CA ca.pem -CAkey ca.key -CAcreateserial -out leaf.pem -days 3650 -sha256 -copy_extensions copy
+  # openssl x509 -in ca.pem -outform DER -out ca.der
+  # openssl x509 -in leaf.pem -outform DER -out leaf.der
+  defp device_trust_challenge_fixture(filename) do
+    @device_trust_challenge_fixtures_dir
+    |> Path.join(filename)
+    |> File.read!()
+  end
+
+  defp device_trust_challenge_private_key do
+    "leaf.key"
+    |> device_trust_challenge_fixture()
+    |> :public_key.pem_decode()
+    |> List.first()
+    |> :public_key.pem_entry_decode()
+  end
+
+  defp apple_device_trust_subject(subject) do
+    %{
+      subject
+      | context: %{
+          subject.context
+          | user_agent: "Mac OS/15.0 apple-client/1.5.15 (arm64; 24.1.0)"
+        }
+    }
+  end
+
+  defp android_device_trust_subject(subject) do
+    %{
+      subject
+      | context: %{
+          subject.context
+          | user_agent: "Android/15 android-client/1.5.10 (aarch64)"
+        }
+    }
+  end
 
   defp join_channel(client, subject, opts \\ []) do
     client_version =
@@ -259,6 +305,116 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "join/3" do
+    test "pushes device trust request before init", %{client: client, subject: subject} do
+      socket = join_channel(client, apple_device_trust_subject(subject), client_version: "1.5.15")
+
+      assert_push "device_trust_request", %{
+        nonce: nonce,
+        subject_cn: "dev.firezone.device-trust"
+      }
+
+      assert {:ok, decoded_nonce} = Base.decode64(nonce)
+      assert byte_size(decoded_nonce) == 32
+
+      refute_push "init", _init_payload, 20
+
+      push(socket, "device_trust_response", [])
+      assert_push "init", _init_payload
+    end
+
+    test "skips device trust request for older Apple clients", %{client: client, subject: subject} do
+      join_channel(client, apple_device_trust_subject(subject), client_version: "1.5.14")
+
+      assert_push "init", _init_payload
+      refute_push "device_trust_request", _payload, 20
+    end
+
+    test "pushes device trust request for supported Android clients", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, android_device_trust_subject(subject), client_version: "1.5.10")
+
+      assert_push "device_trust_request", %{
+        nonce: nonce,
+        subject_cn: "dev.firezone.device-trust"
+      }
+
+      assert {:ok, decoded_nonce} = Base.decode64(nonce)
+      assert byte_size(decoded_nonce) == 32
+
+      refute_push "init", _init_payload, 20
+
+      push(socket, "device_trust_response", [])
+      assert_push "init", _init_payload
+    end
+
+    test "skips device trust request for older Android clients", %{
+      client: client,
+      subject: subject
+    } do
+      join_channel(client, android_device_trust_subject(subject), client_version: "1.5.9")
+
+      assert_push "init", _init_payload
+      refute_push "device_trust_request", _payload, 20
+    end
+
+    test "accepts and logs device trust response details", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      device_trust_anchor_fixture(
+        account: account,
+        certs: [device_trust_challenge_fixture("ca.der")]
+      )
+
+      socket = join_channel(client, apple_device_trust_subject(subject), client_version: "1.5.15")
+
+      assert_push "device_trust_request", %{nonce: nonce_base64}
+      assert {:ok, nonce} = Base.decode64(nonce_base64)
+
+      signature =
+        :public_key.sign(nonce, :sha256, device_trust_challenge_private_key())
+        |> Base.encode64()
+
+      cert =
+        "leaf.der"
+        |> device_trust_challenge_fixture()
+        |> Base.encode64()
+
+      original_log_level = Logger.level()
+
+      log =
+        try do
+          Logger.configure(level: :debug)
+
+          capture_log([level: :debug], fn ->
+            push(socket, "device_trust_response", [
+              %{"signed_challenge" => signature, "cert" => cert}
+            ])
+
+            Process.sleep(50)
+          end)
+        after
+          Logger.configure(level: original_log_level)
+        end
+
+      assert log =~ "Device trust response"
+      assert log =~ "subject_cn=dev.firezone.device-trust"
+      assert log =~ "subject_cn_matches=true"
+      assert log =~ "client_auth_eku=true"
+      assert log =~ "signature_valid=true"
+      assert log =~ "chain_valid=true"
+      assert log =~ "valid_anchor_ids="
+      assert log =~ "Device trust anchor validation"
+      assert log =~ "anchor_cert_sha256="
+      assert log =~ "valid=true"
+      assert log =~ "deviceid:test-device-id"
+
+      assert_push "init", _init_payload
+    end
+
     test "tracks presence after join", %{account: account, client: client, subject: subject} do
       join_channel(client, subject)
       assert_push "init", _init_payload

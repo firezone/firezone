@@ -11,6 +11,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.tunnel.DEFAULT_DEVICE_TRUST_CERTIFICATE_ALIAS
+import dev.firezone.android.tunnel.preferredDeviceTrustCertificateAlias as preferredDeviceTrustAlias
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,10 @@ internal class SettingsViewModel
     constructor(
         private val repo: Repository,
     ) : ViewModel() {
+        private var managedDeviceTrustCertificateAlias: String? = null
+        private var savedDeviceTrustCertificateAlias: String? = null
+        private var pendingDeviceTrustCertificateAlias: String? = null
+
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
 
@@ -57,12 +63,17 @@ internal class SettingsViewModel
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
 
+        private val _deviceTrustCertificateStateFlow = MutableStateFlow(DeviceTrustCertificateUiState())
+        val deviceTrustCertificateStateFlow: StateFlow<DeviceTrustCertificateUiState> = _deviceTrustCertificateStateFlow
+
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
                     _configStateFlow.value = it
-                    _managedStatusStateFlow.value = repo.getManagedStatus()
+                    refreshManagedConfigurationState()
+                    savedDeviceTrustCertificateAlias = repo.getDeviceTrustCertificateAliasSync()?.trim()?.takeIf { alias -> alias.isNotEmpty() }
+                    pendingDeviceTrustCertificateAlias = savedDeviceTrustCertificateAlias
                     onFieldUpdated()
                 }
             }
@@ -86,6 +97,16 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 repo.saveSettings(config).collect {
+                    val alias = pendingDeviceTrustCertificateAlias?.trim().orEmpty()
+                    if (alias.isNotEmpty()) {
+                        repo.saveDeviceTrustCertificateAliasSync(alias)
+                        savedDeviceTrustCertificateAlias = alias
+                    } else if (savedDeviceTrustCertificateAlias != null) {
+                        repo.clearDeviceTrustCertificateAliasSync()
+                        savedDeviceTrustCertificateAlias = null
+                    }
+
+                    pendingDeviceTrustCertificateAlias = savedDeviceTrustCertificateAlias
                     actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
             }
@@ -179,8 +200,12 @@ internal class SettingsViewModel
         fun resetSettingsToDefaults() {
             config = repo.getDefaultConfigSync()
             repo.resetFavorites()
+            repo.clearDeviceTrustCertificateAliasSync()
+            savedDeviceTrustCertificateAlias = null
+            pendingDeviceTrustCertificateAlias = null
             _configStateFlow.value = config
             _managedStatusStateFlow.value = repo.getManagedStatus()
+            _deviceTrustCertificateStateFlow.value = DeviceTrustCertificateUiState()
             onFieldUpdated()
         }
 
@@ -188,11 +213,48 @@ internal class SettingsViewModel
             actionMutableStateFlow.value = null
         }
 
+        fun refreshManagedConfigurationState() {
+            _managedStatusStateFlow.value = repo.getManagedStatus()
+            managedDeviceTrustCertificateAlias =
+                repo.getManagedDeviceTrustCertificateAliasSync()
+                    ?.trim()
+                    ?.takeIf { alias -> alias.isNotEmpty() }
+        }
+
         fun deleteLogZip(context: Context) {
             val zipFile = File(getLogZipPath(context))
             if (zipFile.exists()) {
                 zipFile.delete()
             }
+        }
+
+        fun conventionalDeviceTrustCertificateAlias(): String = DEFAULT_DEVICE_TRUST_CERTIFICATE_ALIAS
+
+        fun managedDeviceTrustCertificateAlias(): String? = managedDeviceTrustCertificateAlias
+
+        fun selectedDeviceTrustCertificateAlias(): String? = pendingDeviceTrustCertificateAlias
+
+        fun preferredDeviceTrustCertificateAlias(): String? =
+            preferredDeviceTrustAlias(
+                managedAlias = managedDeviceTrustCertificateAlias,
+                cachedAlias = pendingDeviceTrustCertificateAlias,
+            )
+
+        fun hasUnsavedDeviceTrustCertificateAlias(): Boolean =
+            pendingDeviceTrustCertificateAlias?.trim().orEmpty() != savedDeviceTrustCertificateAlias?.trim().orEmpty()
+
+        fun onDeviceTrustCertificateAliasSelected(alias: String) {
+            pendingDeviceTrustCertificateAlias = alias
+            onFieldUpdated()
+        }
+
+        fun clearDeviceTrustCertificateAliasSelection() {
+            pendingDeviceTrustCertificateAlias = null
+            onFieldUpdated()
+        }
+
+        fun onDeviceTrustCertificateInspectionUpdated(state: DeviceTrustCertificateUiState) {
+            _deviceTrustCertificateStateFlow.value = state
         }
 
         private suspend fun zipFolder(
@@ -244,6 +306,21 @@ internal class SettingsViewModel
         internal data class UiState(
             val isSaveButtonEnabled: Boolean = false,
             val logSizeBytes: Long = 0,
+        )
+
+        internal data class DeviceTrustCertificateUiState(
+            val alias: String? = null,
+            val managedAlias: String? = null,
+            val subjectCommonName: String? = null,
+            val issuerCommonName: String? = null,
+            val sha256: String? = null,
+            val isClientAuthCertificate: Boolean = false,
+            val isPrivateKeyAccessible: Boolean = false,
+            val isCurrentlyValid: Boolean = false,
+            val statusMessage: String = "",
+            val isSelectCertificateVisible: Boolean = false,
+            val isClearSelectionVisible: Boolean = false,
+            val hasExplicitAliasSelection: Boolean = false,
         )
 
         internal sealed class ViewAction {

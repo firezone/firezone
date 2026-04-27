@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 arboard = { workspace = true }
 atomicwrites = { workspace = true }
 backoff = { workspace = true }
+base64 = { workspace = true }
 bin-shared = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
@@ -76,6 +77,7 @@ zip = { workspace = true, features = ["deflate", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }
+device-trust = { workspace = true }
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 notify-rust = { workspace = true }
@@ -86,6 +88,7 @@ tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
+device-trust = { workspace = true }
 tauri-winrt-notification = "0.7.2"
 windows-native-keyring-store = { workspace = true }
 windows-service = { workspace = true }

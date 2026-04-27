@@ -46,6 +46,7 @@ pub struct EventStream {
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
+    device_trust_request_receiver: mpsc::Receiver<DeviceTrustRequest>,
 
     seen_notifications: HashSet<UserNotification>,
 }
@@ -63,7 +64,11 @@ pub enum Event {
     GatewayVersionMismatch { resource_id: ResourceId },
     /// Connlib has been permanently disconnected from the portal and the tunnel has been shut down.
     Disconnected(DisconnectError),
+    /// The portal requested a proof that this device holds a private key for a client-auth certificate.
+    DeviceTrustRequest { nonce: String, subject_cn: String },
 }
+
+pub use tunnel::messages::client::{DeviceTrustRequest, DeviceTrustSignedChallenge};
 
 impl Session {
     pub fn connect(
@@ -76,7 +81,10 @@ impl Session {
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
-            |resource_list_sender, tun_config_sender, user_notification_sender| {
+            |resource_list_sender,
+             tun_config_sender,
+             user_notification_sender,
+             device_trust_request_sender| {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
@@ -87,6 +95,7 @@ impl Session {
                     resource_list_sender,
                     tun_config_sender,
                     user_notification_sender,
+                    device_trust_request_sender,
                 )
                 .run()
             },
@@ -119,6 +128,12 @@ impl Session {
 
     pub fn set_internet_resource_state(&self, active: bool) {
         let _ = self.channel.send(Command::SetInternetResourceState(active));
+    }
+
+    pub fn send_device_trust_response(&self, responses: Vec<DeviceTrustSignedChallenge>) {
+        let _ = self
+            .channel
+            .send(Command::SendDeviceTrustResponse(responses));
     }
 
     /// Sets a new [`Tun`] device handle.
@@ -162,6 +177,16 @@ impl EventStream {
                 Poll::Ready(None) | Poll::Pending => {}
             }
 
+            match self.device_trust_request_receiver.poll_recv(cx) {
+                Poll::Ready(Some(DeviceTrustRequest { nonce, subject_cn })) => {
+                    return Poll::Ready(Some(Event::DeviceTrustRequest {
+                        nonce: nonce.to_string(),
+                        subject_cn,
+                    }));
+                }
+                Poll::Ready(None) | Poll::Pending => {}
+            }
+
             match self.eventloop.poll_unpin(cx) {
                 Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
                 Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
@@ -200,6 +225,7 @@ impl EventStream {
             watch::Sender<Vec<ResourceView>>,
             watch::Sender<Option<TunConfig>>,
             mpsc::Sender<UserNotification>,
+            mpsc::Sender<DeviceTrustRequest>,
         ) -> E,
         handle: tokio::runtime::Handle,
     ) -> Self
@@ -209,11 +235,13 @@ impl EventStream {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
+        let (device_trust_request_sender, device_trust_request_receiver) = mpsc::channel(128);
 
         let event_loop = make_event_loop(
             resource_list_sender,
             tun_config_sender,
             user_notification_sender,
+            device_trust_request_sender,
         );
 
         let eventloop = handle.spawn(event_loop);
@@ -223,6 +251,7 @@ impl EventStream {
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
             user_notification_receiver,
+            device_trust_request_receiver,
             seen_notifications: Default::default(),
         }
     }
@@ -235,7 +264,7 @@ mod tests {
     #[tokio::test]
     async fn event_stream_turn_panic_into_disconnected() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { panic!("Boom!") },
+            |_, _, _, _| async move { panic!("Boom!") },
             tokio::runtime::Handle::current(),
         );
 
@@ -249,7 +278,7 @@ mod tests {
     #[tokio::test]
     async fn repeated_polls_dont_panic() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { panic!("Boom!") },
+            |_, _, _, _| async move { panic!("Boom!") },
             tokio::runtime::Handle::current(),
         );
 
@@ -262,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn deduplicates_offline_notifications() {
         let mut stream = EventStream::new(
-            |_, _, sender| async move {
+            |_, _, sender, _| async move {
                 sender
                     .send(UserNotification::AllGatewaysOffline {
                         resource_id: ResourceId::from_u128(1),
@@ -295,7 +324,7 @@ mod tests {
     #[tokio::test]
     async fn deduplicates_version_mismatch_notifications() {
         let mut stream = EventStream::new(
-            |_, _, sender| async move {
+            |_, _, sender, _| async move {
                 sender
                     .send(UserNotification::GatewayVersionMismatch {
                         resource_id: ResourceId::from_u128(1),
@@ -323,5 +352,32 @@ mod tests {
             stream.next().await.is_none(),
             "stream should be closed if event-loop returns"
         );
+    }
+
+    #[tokio::test]
+    async fn emits_device_trust_requests() {
+        let mut stream = EventStream::new(
+            |_, _, _, sender| async move {
+                sender
+                    .send(DeviceTrustRequest {
+                        nonce: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+                            .parse()
+                            .unwrap(),
+                        subject_cn: "dev.firezone.device-trust".to_string(),
+                    })
+                    .await
+                    .unwrap();
+
+                Ok(())
+            },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::DeviceTrustRequest { nonce, subject_cn } = stream.next().await.unwrap() else {
+            panic!("Unexpected event")
+        };
+
+        assert_eq!(nonce, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=");
+        assert_eq!(subject_cn, "dev.firezone.device-trust");
     }
 }

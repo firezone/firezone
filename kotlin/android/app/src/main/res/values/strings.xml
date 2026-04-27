@@ -18,6 +18,36 @@
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
 	<string name="log_filter">Log Filter</string>
+	<string name="device_trust_certificate_title">Device Trust Certificate</string>
+	<string name="device_trust_certificate_details_title">Device Trust Certificate Details</string>
+	<string name="device_trust_prompt_title">Select a valid device trust certificate</string>
+	<string name="select_device_trust_certificate">Select Certificate</string>
+	<string name="select_different_device_trust_certificate">Select Different</string>
+	<string name="device_trust_show_details">Details</string>
+	<string name="device_trust_clear_selection">Clear</string>
+	<string name="device_trust_retry_selection">Try Again</string>
+	<string name="device_trust_status_selected">Certificate selected.</string>
+	<string name="device_trust_status_selected_pending_save">Certificate selected. Tap Save to cache this certificate.</string>
+	<string name="device_trust_status_selected_but_unusable">Certificate selected, but Firezone can’t use it.</string>
+	<string name="device_trust_status_managed_selected">Managed certificate selected.</string>
+	<string name="device_trust_status_managed_selected_but_unusable">Managed certificate selected, but Firezone can’t use it.</string>
+	<string name="device_trust_status_not_selected">No certificate selected.</string>
+	<string name="device_trust_status_cleared_pending_save">Certificate cleared. Tap Save to clear the cached certificate.</string>
+	<string name="device_trust_no_certificate_found">No usable device trust certificate was found at alias %1$s.</string>
+	<string name="device_trust_selected_certificate_unavailable">Saved certificate alias %1$s is unavailable. Select another certificate.</string>
+	<string name="device_trust_managed_certificate_unavailable">Managed certificate alias %1$s is unavailable. Select a valid device trust certificate.</string>
+	<string name="device_trust_no_selectable_certificate">No selectable certificates were available. If this device uses a work profile, make sure Firezone and the certificate are in the same profile.</string>
+	<string name="device_trust_invalid_selection">Select a valid device trust certificate with client-auth and private-key access.</string>
+	<string name="device_trust_label_alias">Alias: %1$s</string>
+	<string name="device_trust_label_subject_cn">Subject CN: %1$s</string>
+	<string name="device_trust_label_issuer_cn">Issuer CN: %1$s</string>
+	<string name="device_trust_label_sha256">SHA-256: %1$s</string>
+	<string name="device_trust_label_client_auth">Client auth EKU: %1$s</string>
+	<string name="device_trust_label_private_key">Private key access: %1$s</string>
+	<string name="device_trust_label_valid_now">Currently valid: %1$s</string>
+	<string name="device_trust_yes">Yes</string>
+	<string name="device_trust_no">No</string>
+	<string name="device_trust_unknown_value">Unknown</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
 	<string name="log_settings_title">Logs</string>
@@ -110,6 +140,10 @@
 	<string name="config_connect_on_start_title">Connect on Start</string>
 	<string name="config_connect_on_start_description">
 		Whether Firezone should automatically try to connect when the app is launched.
+	</string>
+	<string name="config_device_trust_certificate_alias_title">Device Trust Certificate Alias</string>
+	<string name="config_device_trust_certificate_alias_description">
+		The Android KeyChain alias of the device trust certificate Firezone should use. Intune can populate this from a certificate app configuration so users do not need to pick a certificate manually.
 	</string>
 
 	<string name="managed_setting_info_description">

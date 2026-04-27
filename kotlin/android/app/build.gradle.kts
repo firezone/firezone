@@ -40,6 +40,8 @@ spotless {
 apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
 
 android {
+    val appId = System.getenv("APPLICATION_ID") ?: "dev.firezone.android"
+
     buildFeatures {
         buildConfig = true
     }
@@ -49,7 +51,7 @@ android {
     ndkVersion = "28.1.13356709" // Must match `.github/actions/setup-android/action.yml`
 
     defaultConfig {
-        applicationId = "dev.firezone.android"
+        applicationId = appId
         // Android 8
         minSdk = 26
         targetSdk = 36

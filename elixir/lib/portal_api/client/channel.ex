@@ -1,14 +1,22 @@
 defmodule PortalAPI.Client.Channel do
   use PortalAPI, :channel
+
+  import Ecto.Query, only: [from: 2]
+
   alias PortalAPI.Client.Views
+  alias Portal.Crypto.X509
 
   alias Portal.{
     Cache,
     Device,
     PG,
     Changes.Change,
+    ComponentVersions,
+    DeviceTrustAnchor,
     Features,
     PubSub,
+    Repo,
+    Gateway,
     Presence,
     Authentication
   }
@@ -21,6 +29,18 @@ defmodule PortalAPI.Client.Channel do
   # If not, we need to send resource_deleted so that if it's added back later, the client's
   # connlib state will be cleaned up so it can request a new connection.
   @recompute_authorized_resources_every :timer.minutes(1)
+  @device_trust_nonce_bytes 32
+  @device_trust_subject_cn "dev.firezone.device-trust"
+  @device_trust_min_apple_client_version "1.5.15"
+  @device_trust_min_android_client_version "1.5.10"
+
+  # X.509 object identifiers used while logging the device certificate. OTP
+  # returns decoded certificate fields as ASN.1 tuples, so comparing extensions
+  # means comparing raw OID tuples rather than friendly OpenSSL names.
+  @common_name_oid {2, 5, 4, 3}
+  @subject_alt_name_oid {2, 5, 29, 17}
+  @extended_key_usage_oid {2, 5, 29, 37}
+  @client_auth_eku_oid {1, 3, 6, 1, 5, 5, 7, 3, 2}
 
   ####################################
   ##### Channel lifecycle events #####
@@ -48,34 +68,17 @@ defmodule PortalAPI.Client.Channel do
 
     schedule_session_expiry(socket.assigns.subject.expires_at)
 
-    # Get initial list of authorized resources, hydrating the cache
-    {:ok, resources, [], cache} =
-      Cache.Client.recompute_connectable_resources(
-        nil,
-        socket.assigns.client,
-        socket.assigns.session,
-        socket.assigns.subject
-      )
-
-    # Initialize relays and subscribe to global relay presence
-    {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.Global.subscribe()
-
-    socket =
-      socket
-      # Cache relay IDs and stamp secrets for tracking
-      |> cache_relays(relays)
-      |> assign(cache: cache, pending_flows: %{})
-      # Track client's presence and monitor tracker shard processes for crash recovery
-      |> track_presence()
-
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
+
+    socket = assign(socket, pending_flows: %{})
 
     {:noreply, socket} = register(socket)
 
-    init(socket, resources, relays)
-
-    {:noreply, socket}
+    if device_trust_supported?(socket) do
+      {:noreply, push_device_trust_request(socket)}
+    else
+      {:noreply, initialize_client(socket)}
+    end
   end
 
   ####################################
@@ -112,24 +115,11 @@ defmodule PortalAPI.Client.Channel do
       @recompute_authorized_resources_every
     )
 
-    {:ok, added_resources, removed_ids, cache} =
-      Cache.Client.recompute_connectable_resources(
-        socket.assigns.cache,
-        socket.assigns.client,
-        socket.assigns.session,
-        socket.assigns.subject
-      )
-
-    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
-    for resource_id <- removed_ids do
-      push(socket, "resource_deleted", resource_id)
+    if is_nil(socket.assigns[:cache]) do
+      {:noreply, socket}
+    else
+      recompute_authorized_resources(socket)
     end
-
-    for resource <- added_resources, resource.type != :static_device_pool do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-    end
-
-    {:noreply, assign(socket, cache: cache)}
   end
 
   ####################################
@@ -378,6 +368,47 @@ defmodule PortalAPI.Client.Channel do
   ####################################
   ##### Client-initiated actions #####
   ####################################
+
+  def handle_in("device_trust_response", responses, socket) when is_list(responses) do
+    nonce = socket.assigns[:device_trust_nonce]
+    anchor_cert_bundles = device_trust_anchor_cert_bundles(socket.assigns.client.account_id)
+
+    if responses == [] do
+      Logger.debug("Device trust response contained no certificates",
+        client_id: socket.assigns.client.id,
+        account_id: socket.assigns.client.account_id,
+        anchor_bundle_count: length(anchor_cert_bundles)
+      )
+    end
+
+    responses
+    |> Enum.with_index()
+    |> Enum.each(fn {response, index} ->
+      log_device_trust_response(response, index, nonce, anchor_cert_bundles, socket)
+    end)
+
+    socket =
+      socket
+      |> assign(:device_trust_nonce, nil)
+      |> initialize_client()
+
+    {:noreply, socket}
+  end
+
+  def handle_in("device_trust_response", payload, socket) do
+    Logger.debug("Invalid device trust response payload",
+      client_id: socket.assigns.client.id,
+      account_id: socket.assigns.client.account_id,
+      payload: inspect(payload)
+    )
+
+    socket =
+      socket
+      |> assign(:device_trust_nonce, nil)
+      |> initialize_client()
+
+    {:noreply, socket}
+  end
 
   # This message is sent to the client to request a network flow with a gateway that can serve given resource.
   #
@@ -953,6 +984,451 @@ defmodule PortalAPI.Client.Channel do
     Logger.error("Unknown client message", message: message, payload: payload)
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
+  end
+
+  defp push_device_trust_request(socket) do
+    nonce = :crypto.strong_rand_bytes(@device_trust_nonce_bytes)
+
+    push(socket, "device_trust_request", %{
+      nonce: Base.encode64(nonce),
+      subject_cn: @device_trust_subject_cn
+    })
+
+    assign(socket, :device_trust_nonce, nonce)
+  end
+
+  defp recompute_authorized_resources(socket) do
+    {:ok, added_resources, removed_ids, cache} =
+      Cache.Client.recompute_connectable_resources(
+        socket.assigns.cache,
+        socket.assigns.client,
+        socket.assigns.session,
+        socket.assigns.subject
+      )
+
+    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+    for resource_id <- removed_ids do
+      push(socket, "resource_deleted", resource_id)
+    end
+
+    for resource <- added_resources, resource.type != :static_device_pool do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
+  defp initialize_client(%{assigns: %{cache: cache}} = socket) when not is_nil(cache) do
+    socket
+  end
+
+  defp initialize_client(socket) do
+    # Build and push `init` only after the device-trust round trip. The eventual device lookup
+    # belongs before resource authorization/rendering, so do not pre-render and stash this payload.
+    {:ok, resources, [], cache} =
+      Cache.Client.recompute_connectable_resources(
+        nil,
+        socket.assigns.client,
+        socket.assigns.session,
+        socket.assigns.subject
+      )
+
+    {:ok, relays} = select_relays(socket)
+    :ok = Presence.Relays.Global.subscribe()
+
+    socket =
+      socket
+      |> cache_relays(relays)
+      |> assign(cache: cache)
+      |> track_presence()
+
+    push(socket, "init", init_payload(resources, relays, socket))
+
+    socket
+  end
+
+  defp init_payload(resources, relays, socket) do
+    %{
+      # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
+      resources:
+        resources
+        |> Enum.reject(&(&1.type == :static_device_pool))
+        |> Views.Resource.render_many(),
+      # TODO: Re-enable after verifying compatibility with older clients
+      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
+      relays:
+        Views.Relay.render_many(
+          relays,
+          socket.assigns.session.public_key,
+          socket.assigns.subject.expires_at
+        ),
+      interface:
+        Views.Interface.render(%{
+          socket.assigns.client
+          | account: socket.assigns.subject.account
+        })
+    }
+  end
+
+  defp device_trust_supported?(socket) do
+    client_type =
+      socket.assigns.session.user_agent
+      |> ComponentVersions.get_component_type_from_user_agent()
+
+    version = socket.assigns.client_version
+
+    is_binary(version) and
+      case client_type do
+        :apple ->
+          Version.match?(version, ">= #{@device_trust_min_apple_client_version}")
+
+        :android ->
+          Version.match?(version, ">= #{@device_trust_min_android_client_version}")
+
+        _ ->
+          false
+      end
+  rescue
+    Version.InvalidVersionError -> false
+  end
+
+  defp log_device_trust_response(response, index, nonce, anchor_cert_bundles, socket) do
+    with %{"cert" => cert_base64, "signed_challenge" => signature_base64} <- response,
+         {:ok, leaf_der} <- decode_base64(cert_base64),
+         {:ok, signature} <- decode_base64(signature_base64),
+         {:ok, leaf_plain} <- X509.decode_der_certificate(leaf_der, :plain),
+         {:ok, leaf_otp} <- X509.decode_der_certificate(leaf_der, :otp) do
+      summary = certificate_summary(leaf_otp)
+
+      # The challenge signature must verify with the public key in this exact
+      # leaf certificate. That is the cryptographic binding between the payload
+      # certificate and the private key used by the client-side Keychain signer.
+      signature_valid = verify_device_trust_signature(nonce, signature, leaf_otp)
+      chain_validation = certificate_chain_validation(leaf_plain, anchor_cert_bundles)
+
+      log_device_trust_anchor_validations(
+        chain_validation.attempts,
+        index,
+        socket
+      )
+
+      Logger.debug("Device trust response",
+        client_id: socket.assigns.client.id,
+        account_id: socket.assigns.client.account_id,
+        response_index: index,
+        nonce_present: is_binary(nonce),
+        cert_sha256: certificate_fingerprint(leaf_der),
+        requested_subject_cn: @device_trust_subject_cn,
+        subject_cn: summary.subject_cn,
+        subject_cn_matches: summary.subject_cn == @device_trust_subject_cn,
+        issuer_cn: summary.issuer_cn,
+        serial_number: summary.serial_number,
+        not_before: summary.not_before,
+        not_after: summary.not_after,
+        client_auth_eku: summary.client_auth_eku,
+        san_values: inspect(summary.san_values),
+        signature_valid: signature_valid,
+        chain_valid: chain_validation.valid?,
+        anchor_bundle_count: length(anchor_cert_bundles),
+        valid_anchor_ids: inspect(chain_validation.valid_anchor_ids)
+      )
+    else
+      reason ->
+        Logger.debug("Invalid device trust response",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          response_index: index,
+          reason: inspect(reason)
+        )
+    end
+  end
+
+  defp decode_base64(value) when is_binary(value), do: Base.decode64(value)
+  defp decode_base64(_value), do: :error
+
+  defp device_trust_anchor_cert_bundles(account_id) do
+    Repo.all(
+      from anchor in DeviceTrustAnchor,
+        where: anchor.account_id == ^account_id,
+        select: %{id: anchor.id, name: anchor.name, certs: anchor.certs}
+    )
+    |> Enum.map(fn anchor ->
+      certs =
+        anchor.certs
+        |> Enum.with_index()
+        |> Enum.flat_map(fn {cert_der, cert_index} ->
+          with {:ok, plain} <- X509.decode_der_certificate(cert_der, :plain),
+               {:ok, otp} <- X509.decode_der_certificate(cert_der, :otp) do
+            summary = certificate_summary(otp)
+
+            [
+              %{
+                index: cert_index,
+                plain: plain,
+                sha256: certificate_fingerprint(cert_der),
+                subject_cn: summary.subject_cn,
+                issuer_cn: summary.issuer_cn,
+                serial_number: summary.serial_number
+              }
+            ]
+          else
+            {:error, _reason} -> []
+          end
+        end)
+
+      %{id: anchor.id, name: anchor.name, certs: certs}
+    end)
+    |> Enum.reject(&(&1.certs == []))
+  end
+
+  defp verify_device_trust_signature(nil, _signature, _leaf_otp), do: false
+
+  defp verify_device_trust_signature(nonce, signature, leaf_otp) do
+    with {:ok, public_key} <- certificate_public_key(leaf_otp) do
+      # Swift signs the raw 32-byte nonce with a message-level SHA-256
+      # Security.framework algorithm. OTP's verify/4 mirrors that operation:
+      # hash the message with SHA-256, then verify the signature with the
+      # certificate public key.
+      :public_key.verify(nonce, :sha256, signature, public_key)
+    else
+      _error -> false
+    end
+  rescue
+    _error -> false
+  end
+
+  defp certificate_public_key(
+         {:OTPCertificate,
+          {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity, _subject,
+           {:OTPSubjectPublicKeyInfo, _algorithm, public_key}, _issuer_id, _subject_id,
+           _extensions}, _sig_alg, _sig}
+       ) do
+    {:ok, public_key}
+  end
+
+  defp certificate_public_key(_cert), do: {:error, :invalid_certificate}
+
+  defp certificate_chain_validation(leaf_plain, anchor_cert_bundles) do
+    attempts =
+      for anchor <- anchor_cert_bundles,
+          trusted_cert <- anchor.certs do
+        intermediate_certs =
+          anchor.certs
+          |> Enum.reject(&(&1.index == trusted_cert.index))
+          |> Enum.map(& &1.plain)
+
+        result = validate_pkix_path(trusted_cert.plain, [leaf_plain | intermediate_certs])
+
+        %{
+          anchor_id: anchor.id,
+          anchor_name: anchor.name,
+          anchor_cert_index: trusted_cert.index,
+          anchor_cert_sha256: trusted_cert.sha256,
+          anchor_subject_cn: trusted_cert.subject_cn,
+          anchor_issuer_cn: trusted_cert.issuer_cn,
+          anchor_serial_number: trusted_cert.serial_number,
+          valid?: match?({:ok, _result}, result),
+          result: pkix_result_summary(result)
+        }
+      end
+
+    %{
+      valid?: Enum.any?(attempts, & &1.valid?),
+      valid_anchor_ids:
+        attempts
+        |> Enum.filter(& &1.valid?)
+        |> Enum.map(& &1.anchor_id)
+        |> Enum.uniq(),
+      attempts: attempts
+    }
+  end
+
+  defp log_device_trust_anchor_validations(attempts, response_index, socket) do
+    Enum.each(attempts, fn attempt ->
+      Logger.debug("Device trust anchor validation",
+        client_id: socket.assigns.client.id,
+        account_id: socket.assigns.client.account_id,
+        response_index: response_index,
+        anchor_id: attempt.anchor_id,
+        anchor_name: attempt.anchor_name,
+        anchor_cert_index: attempt.anchor_cert_index,
+        anchor_cert_sha256: attempt.anchor_cert_sha256,
+        anchor_subject_cn: attempt.anchor_subject_cn,
+        anchor_issuer_cn: attempt.anchor_issuer_cn,
+        anchor_serial_number: attempt.anchor_serial_number,
+        valid: attempt.valid?,
+        result: attempt.result
+      )
+    end)
+  end
+
+  defp validate_pkix_path(trusted_cert, candidate_chain) do
+    # A configured anchor may contain just an issuing CA, or a small CA
+    # bundle. Treat each cert in the bundle as a possible trust anchor and
+    # pass the rest as intermediates after the leaf.
+    case :public_key.pkix_path_validation(trusted_cert, candidate_chain, []) do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    error -> {:exception, Exception.message(error)}
+  catch
+    kind, reason -> {kind, reason}
+  end
+
+  defp pkix_result_summary({:ok, _result}), do: "ok"
+  defp pkix_result_summary({:error, reason}), do: inspect(reason)
+  defp pkix_result_summary({:exception, message}), do: "exception: #{message}"
+  defp pkix_result_summary({kind, reason}), do: "#{kind}: #{inspect(reason)}"
+
+  defp pkix_result_summary(result) do
+    inspect(result)
+  end
+
+  defp certificate_summary(
+         {:OTPCertificate,
+          {:OTPTBSCertificate, _version, serial, _signature, issuer, validity, subject, _spki,
+           _issuer_id, _subject_id, extensions}, _sig_alg, _sig}
+       ) do
+    {:Validity, not_before, not_after} = validity
+    extensions = certificate_extensions(extensions)
+
+    %{
+      subject_cn: common_name(subject),
+      issuer_cn: common_name(issuer),
+      serial_number: format_serial_number(serial),
+      not_before: format_time(not_before),
+      not_after: format_time(not_after),
+      client_auth_eku: client_auth_eku?(extensions),
+      san_values: subject_alt_names(extensions)
+    }
+  end
+
+  defp certificate_summary(_cert) do
+    %{
+      subject_cn: "<unknown>",
+      issuer_cn: "<unknown>",
+      serial_number: "<unknown>",
+      not_before: "<unknown>",
+      not_after: "<unknown>",
+      client_auth_eku: false,
+      san_values: []
+    }
+  end
+
+  defp certificate_extensions(extensions) when is_list(extensions), do: extensions
+  defp certificate_extensions(_extensions), do: []
+
+  defp client_auth_eku?(extensions) do
+    case find_certificate_extension(extensions, @extended_key_usage_oid) do
+      {:Extension, @extended_key_usage_oid, _critical, usages} ->
+        @client_auth_eku_oid in List.wrap(usages)
+
+      _other ->
+        false
+    end
+  end
+
+  defp subject_alt_names(extensions) do
+    case find_certificate_extension(extensions, @subject_alt_name_oid) do
+      {:Extension, @subject_alt_name_oid, _critical, general_names} ->
+        general_names
+        |> List.wrap()
+        |> Enum.map(&format_general_name/1)
+
+      _other ->
+        []
+    end
+  end
+
+  defp find_certificate_extension(extensions, oid) do
+    Enum.find(extensions, fn
+      {:Extension, ^oid, _critical, _value} -> true
+      _other -> false
+    end)
+  end
+
+  defp common_name({:rdnSequence, rdn_sequence}) do
+    rdn_sequence
+    |> Enum.flat_map(&List.wrap/1)
+    |> Enum.find_value("<unknown>", fn
+      {:AttributeTypeAndValue, @common_name_oid, value} -> asn1_string(value)
+      _other -> nil
+    end)
+  end
+
+  defp common_name(_name), do: "<unknown>"
+
+  defp format_general_name({:uniformResourceIdentifier, uri}) do
+    %{type: "uri", value: asn1_text(uri)}
+  end
+
+  defp format_general_name({:dNSName, name}) do
+    %{type: "dns", value: asn1_text(name)}
+  end
+
+  defp format_general_name({:rfc822Name, name}) do
+    %{type: "rfc822", value: asn1_text(name)}
+  end
+
+  defp format_general_name({:iPAddress, <<a, b, c, d>>}) do
+    %{type: "ip", value: :inet.ntoa({a, b, c, d}) |> to_string()}
+  end
+
+  defp format_general_name({:iPAddress, value}) do
+    %{type: "ip", value: inspect(value)}
+  end
+
+  defp format_general_name({:otherName, {oid, value}}) do
+    %{type: "other_name", oid: oid_string(oid), value: inspect(value)}
+  end
+
+  defp format_general_name({:otherName, oid, value}) do
+    %{type: "other_name", oid: oid_string(oid), value: inspect(value)}
+  end
+
+  defp format_general_name({type, value}) when is_atom(type) do
+    %{type: Atom.to_string(type), value: inspect(value)}
+  end
+
+  defp format_general_name(value) do
+    %{type: "unknown", value: inspect(value)}
+  end
+
+  defp format_time({:utcTime, value}), do: List.to_string(value)
+  defp format_time({:generalTime, value}), do: List.to_string(value)
+  defp format_time(other), do: inspect(other)
+
+  defp format_serial_number(serial) when is_integer(serial) do
+    serial
+    |> Integer.to_string(16)
+    |> String.downcase()
+  end
+
+  defp format_serial_number(serial), do: inspect(serial)
+
+  defp asn1_string({:utf8String, value}), do: asn1_text(value)
+  defp asn1_string({:printableString, value}), do: asn1_text(value)
+  defp asn1_string({:teletexString, value}), do: asn1_text(value)
+  defp asn1_string({:bmpString, value}), do: asn1_text(value)
+  defp asn1_string(value) when is_list(value) or is_binary(value), do: asn1_text(value)
+  defp asn1_string(value), do: inspect(value)
+
+  defp asn1_text(value) when is_binary(value), do: value
+  defp asn1_text(value) when is_list(value), do: List.to_string(value)
+  defp asn1_text(value), do: inspect(value)
+
+  defp oid_string(oid) when is_tuple(oid) do
+    oid
+    |> Tuple.to_list()
+    |> Enum.join(".")
+  end
+
+  defp oid_string(oid), do: inspect(oid)
+
+  defp certificate_fingerprint(der) do
+    :crypto.hash(:sha256, der)
+    |> Base.encode16(case: :lower)
   end
 
   defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)

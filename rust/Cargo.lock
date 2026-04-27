@@ -244,6 +244,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "asn1-rs"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56624a96882bb8c26d61312ae18cb45868e5a9992ea73c58e45c3101e56a1e60"
+dependencies = [
+ "asn1-rs-derive",
+ "asn1-rs-impl",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-traits",
+ "rusticata-macros",
+ "thiserror 2.0.18",
+ "time",
+]
+
+[[package]]
+name = "asn1-rs-derive"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3109e49b1e4909e9db6515a30c633684d68cdeaa252f215214cb4fa1a5bfee2c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "synstructure",
+]
+
+[[package]]
+name = "asn1-rs-impl"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b18050c2cd6fe86c3a76584ef5e0baf286d038cda203eb6223df2cc413565f7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "assert_matches"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1195,7 +1234,7 @@ dependencies = [
  "oslog",
  "phoenix-channel",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "serde_json",
  "socket-factory",
  "telemetry",
@@ -1228,7 +1267,7 @@ dependencies = [
  "logging",
  "parking_lot",
  "phoenix-channel",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "snownet",
@@ -1468,6 +1507,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptoki"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "781357a7779a8e92ea985121bbf379a9adf0777f44ab6392efc6abd5aa9b67db"
+dependencies = [
+ "bitflags 1.3.2",
+ "cryptoki-sys",
+ "libloading 0.8.7",
+ "log",
+ "paste",
+ "secrecy 0.8.0",
+]
+
+[[package]]
+name = "cryptoki-sys"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "753e27d860277930ae9f394c119c8c70303236aab0ffab1d51f3d207dbb2bc4b"
+dependencies = [
+ "libloading 0.8.7",
+]
+
+[[package]]
 name = "cssparser"
 version = "0.29.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1675,6 +1737,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-parser"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07da5016415d5a3c4dd39b11ed26f915f52fc4e0dc197d87908bc916e51bc1a6"
+dependencies = [
+ "asn1-rs",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-bigint",
+ "num-traits",
+ "rusticata-macros",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1744,6 +1820,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "device-trust"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "base64 0.22.1",
+ "cryptoki",
+ "sha2",
+ "tracing",
+ "tunnel",
+ "windows",
+ "x509-parser",
+]
+
+[[package]]
 name = "difference"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1778,7 +1868,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2208,7 +2298,7 @@ dependencies = [
  "clap",
  "nix",
  "rpassword",
- "secrecy",
+ "secrecy 0.10.3",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2243,7 +2333,7 @@ dependencies = [
  "phoenix-channel",
  "resolv-conf",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "snownet",
@@ -2270,6 +2360,7 @@ dependencies = [
  "arboard",
  "atomicwrites",
  "backoff",
+ "base64 0.22.1",
  "bin-shared",
  "chrono",
  "clap",
@@ -2277,6 +2368,7 @@ dependencies = [
  "connlib-model",
  "dbus-secret-service-keyring-store",
  "derive_more 2.1.1",
+ "device-trust",
  "dirs",
  "futures",
  "hex",
@@ -2298,7 +2390,7 @@ dependencies = [
  "rustls",
  "sadness-generator",
  "sd-notify",
- "secrecy",
+ "secrecy 0.10.3",
  "semver",
  "serde",
  "serde_json",
@@ -2341,10 +2433,12 @@ version = "1.5.9"
 dependencies = [
  "anyhow-ext",
  "backoff",
+ "base64 0.22.1",
  "bin-shared",
  "clap",
  "client-shared",
  "connlib-model",
+ "device-trust",
  "dns-types",
  "futures",
  "humantime",
@@ -2362,7 +2456,7 @@ dependencies = [
  "rpassword",
  "rustls",
  "sd-notify",
- "secrecy",
+ "secrecy 0.10.3",
  "socket-factory",
  "telemetry",
  "tokio",
@@ -2427,7 +2521,7 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "sha2",
  "smallvec",
@@ -3402,7 +3496,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -3883,7 +3977,7 @@ version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a1886916523694cd6ea3d175f03a1e5010699a2a4cc13696d83d7bea1d80638"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4478,7 +4572,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4849,6 +4943,15 @@ checksum = "126c3ca37c9c44cec575247f43a3e4374d8927684f129d2beeb0d2cef262fe12"
 dependencies = [
  "bytes",
  "serde",
+]
+
+[[package]]
+name = "oid-registry"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
+dependencies = [
+ "asn1-rs",
 ]
 
 [[package]]
@@ -5254,7 +5357,7 @@ dependencies = [
  "logging",
  "os_info",
  "rand_core 0.6.4",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "sha2",
@@ -5692,9 +5795,9 @@ source = "git+https://github.com/quinn-rs/quinn?branch=main#8acb578f10b02986050b
 dependencies = [
  "cfg_aliases",
  "libc",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6120,6 +6223,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusticata-macros"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faf0c4a6ece9950b9abdb62b1cfcf2a68b3b67a10ba445b3bb85be2a293d0632"
+dependencies = [
+ "nom 7.1.3",
+]
+
+[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6142,7 +6254,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6337,6 +6449,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e4ef7359e694bfaf1dd27a30f9d760b54c00dfae9f19bd0c05a39bc9128fe76"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "secrecy"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
+dependencies = [
+ "zeroize",
 ]
 
 [[package]]
@@ -6897,7 +7018,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7675,7 +7796,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8391,7 +8512,7 @@ dependencies = [
  "rand 0.8.5",
  "rangemap",
  "ringbuffer",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "serde_with",
@@ -9708,7 +9829,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9926,6 +10047,23 @@ dependencies = [
  "rand_core 0.6.4",
  "serde",
  "zeroize",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom 7.1.3",
+ "oid-registry",
+ "rusticata-macros",
+ "thiserror 2.0.18",
+ "time",
 ]
 
 [[package]]

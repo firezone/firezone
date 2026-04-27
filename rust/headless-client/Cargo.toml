@@ -10,6 +10,7 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
+base64 = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
 client-shared = { workspace = true }
@@ -40,9 +41,13 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+device-trust = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+device-trust = { workspace = true }
 
 [lints]
 workspace = true
