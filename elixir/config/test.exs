@@ -20,11 +20,13 @@ config :portal, run_manual_migrations: true
 config :portal, Portal.Repo,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5,
   queue_target: 1000
 
 config :portal, Portal.Repo.Replica,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5,
   queue_target: 1000
 
 for repo <- [
@@ -36,6 +38,7 @@ for repo <- [
   config :portal, repo,
     database: "firezone_test#{partition_suffix}",
     pool: Ecto.Adapters.SQL.Sandbox,
+    pool_size: 5,
     queue_target: 1000
 end
 
@@ -198,10 +201,10 @@ config :portal, PortalWeb.RateLimit,
 
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
+    "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self'"
+    "script-src 'self' 'nonce-${nonce}'"
   ]
 
 config :portal, :constant_execution_time, 1

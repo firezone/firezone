@@ -6,5 +6,9 @@ defmodule Portal.Banner do
 
   schema "banners" do
     field :message, :string
+
+    field :color, Ecto.Enum,
+      values: [:warning, :info, :error, :success, :announcement],
+      default: :warning
   end
 end

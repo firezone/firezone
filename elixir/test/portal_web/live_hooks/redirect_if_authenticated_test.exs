@@ -107,7 +107,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
       {:ok, _view, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account.slug}?as=client&nonce=test-nonce&state=test-state")
+        |> live(~p"/#{account.slug}/sign_in?as=client&nonce=test-nonce&state=test-state")
 
       # Should render the sign-in page, not redirect to /sites
       assert html =~ "Sign In"
@@ -122,7 +122,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
       {:ok, _view, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account.slug}?as=headless-client&state=test-state")
+        |> live(~p"/#{account.slug}/sign_in?as=headless-client&state=test-state")
 
       assert html =~ "Sign In"
     end
@@ -136,7 +136,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
       {:ok, _view, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account.slug}?as=gui-client&nonce=test-nonce&state=test-state")
+        |> live(~p"/#{account.slug}/sign_in?as=gui-client&nonce=test-nonce&state=test-state")
 
       assert html =~ "Sign In"
     end
@@ -152,7 +152,7 @@ defmodule PortalWeb.LiveHooks.RedirectIfAuthenticatedTest do
       {:error, {:redirect, %{to: redirect_path}}} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account.slug}")
+        |> live(~p"/#{account.slug}/sign_in")
 
       # Should redirect to /sites (portal)
       assert redirect_path == ~p"/#{account.slug}/sites"

@@ -1,5 +1,6 @@
-// Supports weights 200-900
-import "@fontsource-variable/source-sans-3";
+// Self-hosted variable fonts (avoids CSP issues with Google Fonts CDN)
+import "@fontsource-variable/roboto";
+import "@fontsource-variable/roboto-mono";
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html";
@@ -12,17 +13,31 @@ import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 import topbar from "../vendor/topbar";
 import Hooks from "./hooks";
+import { ThemeToggle } from "./hooks/theme";
+import { SidebarCollapse } from "./hooks/sidebar_collapse";
+import { TimePicker } from "./hooks/time_picker";
+import {
+  PageSizePreference,
+  getPageSizePreference,
+} from "./hooks/page_size_preference";
 import "./event_listeners";
+
+Hooks.ThemeToggle = ThemeToggle;
+Hooks.SidebarCollapse = SidebarCollapse;
+Hooks.TimePicker = TimePicker;
+Hooks.PageSizePreference = PageSizePreference;
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
+let pageSizePreference = getPageSizePreference();
 
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,
   params: {
     _csrf_token: csrfToken,
+    ...(pageSizePreference ? { page_size: pageSizePreference } : {}),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     locale: Intl.NumberFormat().resolvedOptions().locale,
   },

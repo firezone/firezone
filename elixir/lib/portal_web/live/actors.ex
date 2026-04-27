@@ -2,22 +2,29 @@ defmodule PortalWeb.Actors do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  import PortalWeb.Actors.Components
 
   alias Portal.Actor
   alias Portal.Authentication
+  alias Portal.Presence
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
   alias Portal.ClientToken
 
   import Ecto.Changeset
-  import PortalWeb.Clients.Components, only: [client_os_icon_name: 1]
 
   require Logger
 
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Actors")
+      |> assign(page_title: "People")
+      |> assign(
+        selected_actor: nil,
+        portal_sessions_subscribed_actor_id: nil,
+        client_tokens_subscribed_actor_id: nil
+      )
+      |> assign(base_actor_assigns())
       |> assign_live_table("actors",
         query_module: Database,
         sortable_fields: [
@@ -31,127 +38,48 @@ defmodule PortalWeb.Actors do
     {:ok, socket}
   end
 
-  # Add Actor - Type Selection Modal
-  def handle_params(params, uri, %{assigns: %{live_action: :add}} = socket) do
+  # New Person Panel — skip type selection, go straight to user form
+  def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
-
-    {:noreply, assign(socket, actor_type: nil)}
-  end
-
-  # Add User Modal
-  def handle_params(params, uri, %{assigns: %{live_action: :add_user}} = socket) do
     changeset = changeset(%Actor{}, %{type: :account_user})
-    socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
-     assign(socket,
-       form: to_form(changeset),
-       actor_type: :user
-     )}
+     socket
+     |> assign(selected_actor: nil)
+     |> assign(base_actor_assigns())
+     |> merge_state(:actor_panel, creating_actor: true, new_actor_type: :user)
+     |> assign(actor_form: actor_form_state(to_form(changeset)))}
   end
 
-  # Add Service Account Modal
-  def handle_params(params, uri, %{assigns: %{live_action: :add_service_account}} = socket) do
-    # Create an actor struct with type already set
-    actor = %Actor{type: :service_account}
-    changeset = changeset(actor, %{})
-    socket = handle_live_tables_params(socket, params, uri)
-
-    # Default token expiration to 1 year from now
-    default_expiration =
-      Date.utc_today()
-      |> Date.add(365)
-      |> Date.to_iso8601()
-
-    {:noreply,
-     assign(socket,
-       form: to_form(changeset),
-       actor_type: :service_account,
-       token_expiration: default_expiration
-     )}
-  end
-
-  # Show Actor Modal
+  # Show Actor Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
-      # Load identities and tokens/sessions based on actor type
-      identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
-      groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
+    socket = handle_live_tables_params(socket, params, uri)
 
-      # Load tokens and sessions based on actor type
-      {tokens, sessions} =
-        if actor.type == :service_account do
-          {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject), []}
-        else
-          # Users have both client tokens and portal sessions
-          {Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject),
-           Database.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)}
-        end
-
-      socket = handle_live_tables_params(socket, params, uri)
-
-      default_tab = if actor.type == :service_account, do: "tokens", else: "identities"
+    if selected_actor_matches?(socket, id) do
+      actor = socket.assigns.selected_actor
+      default_tab = default_actor_tab(actor)
 
       socket =
         socket
-        |> assign(
-          actor: actor,
-          active_tab: default_tab,
-          identities: identities,
-          groups: groups,
-          tokens: tokens,
-          sessions: sessions
+        |> merge_state(:actor_panel,
+          view: :detail,
+          active_tab: Map.get(params, "tab", default_tab),
+          confirm_disable_actor: false,
+          confirm_delete_actor: false,
+          confirm_delete_identity_id: nil,
+          confirm_delete_token_id: nil,
+          confirm_delete_session_id: nil
         )
-        |> assign_new(:created_token, fn -> nil end)
+        |> subscribe_portal_sessions(actor)
+        |> subscribe_client_tokens(actor)
 
       {:noreply, socket}
     else
-      {:error, :not_found} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Actor not found")
-         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
-
-      {:error, :unauthorized} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "You are not authorized to view this actor")
-         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+      {:noreply, handle_actor_show(socket, id, params)}
     end
   end
 
-  # Add Token Modal
-  def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :add_token}} = socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
-      socket = handle_live_tables_params(socket, params, uri)
-
-      # Default token expiration to 1 year from now
-      default_expiration =
-        Date.utc_today()
-        |> Date.add(365)
-        |> Date.to_iso8601()
-
-      {:noreply,
-       assign(socket,
-         actor: actor,
-         token_expiration: default_expiration
-       )}
-    else
-      {:error, :not_found} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Actor not found")
-         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
-
-      {:error, :unauthorized} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "You are not authorized to view this actor")
-         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
-    end
-  end
-
-  # Edit Actor Modal
+  # Edit Actor Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
       socket = handle_live_tables_params(socket, params, uri)
@@ -161,11 +89,18 @@ defmodule PortalWeb.Actors do
         actor.type == :account_admin_user and
           not other_enabled_admins_exist?(actor, socket.assigns.subject)
 
+      identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
+      groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
+
       {:noreply,
-       assign(socket,
-         actor: actor,
-         form: to_form(changeset),
-         is_last_admin: is_last_admin
+       socket
+       |> assign(selected_actor: actor)
+       |> assign(base_actor_assigns())
+       |> assign(
+         actor_panel: actor_panel_state(view: :edit, is_last_admin: is_last_admin),
+         actor_form: actor_form_state(to_form(changeset)),
+         actor_related: actor_related_state(identities: identities, groups: groups),
+         actor_group_membership: actor_group_membership_state()
        )}
     else
       {:error, :not_found} ->
@@ -182,41 +117,105 @@ defmodule PortalWeb.Actors do
     end
   end
 
-  # Default handler
+  # Default handler - list view, no selection
   def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+
     socket =
       socket
-      |> handle_live_tables_params(params, uri)
-      |> assign(created_token: nil)
+      |> assign(selected_actor: nil)
+      |> assign(base_actor_assigns())
+      |> unsubscribe_portal_sessions()
+      |> unsubscribe_client_tokens()
 
     {:noreply, socket}
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
+  def handle_event(event, params, socket)
+      when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
+      do: handle_live_table_event(event, params, socket)
 
-  def handle_event("close_modal", _params, socket) do
-    {:noreply, close_modal(socket)}
+  def handle_event(
+        "close_panel",
+        _params,
+        %{assigns: %{actor_panel: %{creating_actor: true}}} = socket
+      ) do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
   end
 
-  def handle_event("select_type", %{"type" => type}, socket) do
-    query_params = socket.assigns.query_params
+  def handle_event("close_panel", _params, socket) do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+  end
 
-    path =
-      case type do
-        "user" ->
-          ~p"/#{socket.assigns.account}/actors/add_user?#{query_params}"
+  def handle_event("handle_keydown", _params, %{assigns: %{live_action: :edit}} = socket)
+      when not is_nil(socket.assigns.selected_actor) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}"
+     )}
+  end
 
-        "service_account" ->
-          ~p"/#{socket.assigns.account}/actors/add_service_account?#{query_params}"
-      end
+  def handle_event("handle_keydown", _params, socket)
+      when not is_nil(socket.assigns.selected_actor) do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+  end
 
-    {:noreply, push_patch(socket, to: path)}
+  def handle_event(
+        "handle_keydown",
+        _params,
+        %{assigns: %{actor_panel: %{creating_actor: true}}} = socket
+      ) do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+  end
+
+  def handle_event("handle_keydown", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("open_new_actor_panel", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors/new")}
+  end
+
+  def handle_event("select_new_actor_type", %{"type" => "user"}, socket) do
+    changeset = changeset(%Actor{}, %{type: :account_user})
+
+    {:noreply,
+     socket
+     |> merge_state(:actor_panel, new_actor_type: :user)
+     |> assign(actor_form: actor_form_state(to_form(changeset)))}
+  end
+
+  def handle_event("select_new_actor_type", %{"type" => "service_account"}, socket) do
+    changeset = changeset(%Actor{type: :service_account}, %{})
+
+    {:noreply,
+     socket
+     |> merge_state(:actor_panel, new_actor_type: :service_account)
+     |> assign(actor_form: actor_form_state(to_form(changeset)))
+     |> assign(actor_token: actor_token_state(token_expiration: default_token_expiration()))}
+  end
+
+  def handle_event("open_actor_edit_form", _params, socket) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}/edit"
+     )}
+  end
+
+  def handle_event("cancel_actor_edit_form", _params, socket) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}"
+     )}
   end
 
   def handle_event("validate", %{"actor" => attrs} = params, socket) do
     # Use form data which has type already set, or actor from assigns for edit
-    actor = socket.assigns[:actor] || socket.assigns.form.data
+    actor = socket.assigns.selected_actor || socket.assigns.actor_form.form.data
 
     changeset =
       actor
@@ -225,9 +224,108 @@ defmodule PortalWeb.Actors do
 
     # Preserve token_expiration for service account form
     token_expiration =
-      Map.get(params, "token_expiration", socket.assigns[:token_expiration] || "")
+      Map.get(params, "token_expiration", socket.assigns.actor_token.token_expiration || "")
 
-    {:noreply, assign(socket, form: to_form(changeset), token_expiration: token_expiration)}
+    {:noreply,
+     socket
+     |> assign(actor_form: actor_form_state(to_form(changeset)))
+     |> merge_state(:actor_token, token_expiration: token_expiration)}
+  end
+
+  def handle_event("search_actor_groups", %{"value" => search_term}, socket) do
+    actor_id = socket.assigns.selected_actor && socket.assigns.selected_actor.id
+
+    results =
+      case Database.search_groups_for_actor(search_term, actor_id, socket.assigns.subject) do
+        {:error, _} -> []
+        groups -> groups
+      end
+
+    {:noreply, merge_state(socket, :actor_group_membership, group_search_results: results)}
+  end
+
+  def handle_event("focus_group_search", _params, socket) do
+    {:noreply, merge_state(socket, :actor_group_membership, group_search_results: [])}
+  end
+
+  def handle_event("blur_group_search", _params, socket) do
+    {:noreply, merge_state(socket, :actor_group_membership, group_search_results: nil)}
+  end
+
+  def handle_event("add_pending_group", %{"group_id" => group_id}, socket) do
+    existing_group_ids = Enum.map(socket.assigns.actor_related.groups, & &1.id)
+    pending_ids = Enum.map(socket.assigns.actor_group_membership.pending_group_additions, & &1.id)
+
+    already_exists = group_id in existing_group_ids or group_id in pending_ids
+
+    group =
+      Enum.find(
+        socket.assigns.actor_group_membership.group_search_results || [],
+        &(&1.id == group_id)
+      )
+
+    socket =
+      if already_exists or is_nil(group) do
+        socket
+      else
+        membership = socket.assigns.actor_group_membership
+
+        assign(
+          socket,
+          actor_group_membership:
+            membership
+            |> Map.put(
+              :pending_group_additions,
+              membership.pending_group_additions ++ [group]
+            )
+            |> Map.put(
+              :pending_group_removals,
+              Enum.reject(membership.pending_group_removals, &(&1 == group_id))
+            )
+            |> Map.put(:group_search_results, nil)
+        )
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_pending_group_addition", %{"group_id" => group_id}, socket) do
+    additions =
+      Enum.reject(
+        socket.assigns.actor_group_membership.pending_group_additions,
+        &(&1.id == group_id)
+      )
+
+    {:noreply, merge_state(socket, :actor_group_membership, pending_group_additions: additions)}
+  end
+
+  def handle_event("add_pending_group_removal", %{"group_id" => group_id}, socket) do
+    # Only for existing memberships; also remove from pending_group_additions if it was there
+    additions =
+      Enum.reject(
+        socket.assigns.actor_group_membership.pending_group_additions,
+        &(&1.id == group_id)
+      )
+
+    removals =
+      if group_id in socket.assigns.actor_group_membership.pending_group_removals do
+        socket.assigns.actor_group_membership.pending_group_removals
+      else
+        socket.assigns.actor_group_membership.pending_group_removals ++ [group_id]
+      end
+
+    {:noreply,
+     merge_state(socket, :actor_group_membership,
+       pending_group_additions: additions,
+       pending_group_removals: removals
+     )}
+  end
+
+  def handle_event("undo_pending_group_removal", %{"group_id" => group_id}, socket) do
+    removals =
+      Enum.reject(socket.assigns.actor_group_membership.pending_group_removals, &(&1 == group_id))
+
+    {:noreply, merge_state(socket, :actor_group_membership, pending_group_removals: removals)}
   end
 
   def handle_event("create_user", %{"actor" => attrs}, socket) do
@@ -248,17 +346,15 @@ defmodule PortalWeb.Actors do
           {:ok, actor} ->
             socket =
               socket
+              |> apply_group_membership_changes(actor, socket.assigns.subject)
               |> put_flash(:success, "User created successfully")
               |> reload_live_table!("actors")
-              |> push_patch(
-                to:
-                  ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
-              )
+              |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")
 
             {:noreply, socket}
 
           {:error, changeset} ->
-            {:noreply, assign(socket, form: to_form(changeset))}
+            {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
         end
     end
   end
@@ -284,26 +380,24 @@ defmodule PortalWeb.Actors do
         {:ok, {actor, nil}} ->
           socket =
             socket
+            |> apply_group_membership_changes(actor, socket.assigns.subject)
             |> reload_live_table!("actors")
-            |> push_patch(
-              to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
-            )
+            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")
 
           {:noreply, socket}
 
         {:ok, {actor, {_token, encoded_token}}} ->
           socket =
             socket
+            |> apply_group_membership_changes(actor, socket.assigns.subject)
             |> reload_live_table!("actors")
-            |> assign(created_token: encoded_token)
-            |> push_patch(
-              to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
-            )
+            |> merge_state(:actor_related, created_token: encoded_token)
+            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")
 
           {:noreply, socket}
 
         {:error, %Ecto.Changeset{} = changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset))}
+          {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
 
         {:error, reason} ->
           Logger.error("Failed to create service account",
@@ -326,23 +420,46 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("save", %{"actor" => attrs}, socket) do
-    actor = socket.assigns.actor
+    actor = socket.assigns.selected_actor
     changeset = changeset(actor, attrs)
 
-    case validate_role_change(changeset, actor, socket) do
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+    with :ok <- validate_role_change(changeset, actor, socket),
+         :ok <- validate_otp_change(changeset, actor, socket) do
+      save_actor(changeset, socket)
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
 
-      :ok ->
-        save_actor(changeset, socket)
+      {:error, message} when is_binary(message) ->
+        {:noreply, put_flash(socket, :error, message)}
     end
+  end
+
+  def handle_event("confirm_disable_actor", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_disable_actor: true)}
+  end
+
+  def handle_event("cancel_disable_actor", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_disable_actor: false)}
+  end
+
+  def handle_event("confirm_delete_actor", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_actor: true)}
+  end
+
+  def handle_event("cancel_delete_actor", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_actor: false)}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
          :ok <- ensure_not_self(actor, socket.assigns.subject),
          {:ok, _actor} <- Database.delete(actor, socket.assigns.subject) do
-      {:noreply, handle_success(socket, "Actor deleted successfully")}
+      {:noreply,
+       socket
+       |> put_flash(:success, "Actor deleted successfully")
+       |> reload_live_table!("actors")
+       |> push_patch(to: ~p"/#{socket.assigns.account}/actors")}
     else
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Actor not found")}
@@ -369,6 +486,7 @@ defmodule PortalWeb.Actors do
       socket =
         socket
         |> reload_live_table!("actors")
+        |> merge_state(:actor_panel, confirm_disable_actor: false)
         |> maybe_update_actor_assign(id, updated_actor)
 
       {:noreply, put_flash(socket, :success_inline, "Actor disabled successfully")}
@@ -414,49 +532,95 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("change_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, active_tab: tab)}
+    params = Map.put(socket.assigns.query_params, "tab", tab)
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}?#{params}"
+     )}
   end
 
   def handle_event("validate_token", params, socket) do
-    token_expiration = Map.get(params, "token_expiration", socket.assigns.token_expiration)
+    token_expiration =
+      Map.get(params, "token_expiration", socket.assigns.actor_token.token_expiration)
 
-    {:noreply, assign(socket, token_expiration: token_expiration)}
+    {:noreply, merge_state(socket, :actor_token, token_expiration: token_expiration)}
   end
 
   def handle_event("create_token", params, socket) do
-    actor = socket.assigns.actor
+    actor = socket.assigns.selected_actor
     token_expiration = Map.get(params, "token_expiration")
 
     case create_actor_token(actor, token_expiration, socket.assigns.subject) do
       {:ok, {_token, encoded_token}} ->
-        socket =
-          socket
-          |> assign(created_token: encoded_token)
-          |> push_patch(
-            to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
-          )
+        tokens = Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject)
 
-        {:noreply, socket}
+        {:noreply,
+         socket
+         |> merge_state(:actor_related, created_token: encoded_token, tokens: tokens)
+         |> merge_state(:actor_token, adding_token: false)}
 
-      {:error, _reason} ->
+      _ ->
         {:noreply, put_flash(socket, :error, "Failed to create token")}
     end
   end
 
+  def handle_event("confirm_delete_token", %{"id" => token_id}, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_token_id: token_id)}
+  end
+
+  def handle_event("cancel_delete_token", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_token_id: nil)}
+  end
+
+  def handle_event("confirm_delete_session", %{"id" => session_id}, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_session_id: session_id)}
+  end
+
+  def handle_event("cancel_delete_session", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_session_id: nil)}
+  end
+
+  def handle_event("open_add_token_form", _params, socket) do
+    default_expiration =
+      Date.utc_today()
+      |> Date.add(365)
+      |> Date.to_iso8601()
+
+    {:noreply,
+     merge_state(socket, :actor_token,
+       adding_token: true,
+       token_expiration: default_expiration
+     )}
+  end
+
+  def handle_event("cancel_add_token_form", _params, socket) do
+    {:noreply, merge_state(socket, :actor_token, adding_token: false)}
+  end
+
+  def handle_event("dismiss_created_token", _params, socket) do
+    {:noreply, merge_state(socket, :actor_related, created_token: nil)}
+  end
+
   def handle_event("delete_token", %{"id" => token_id}, socket) do
     token = Database.get_client_token_by_id(token_id, socket.assigns.subject)
-    entity = if socket.assigns.actor.type == :service_account, do: "token", else: "session"
+
+    entity =
+      if socket.assigns.selected_actor.type == :service_account, do: "token", else: "session"
 
     if token do
       case Database.delete(token, socket.assigns.subject) do
         {:ok, _} ->
           tokens =
-            Database.get_client_tokens_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+            Database.get_client_tokens_for_actor(
+              socket.assigns.selected_actor.id,
+              socket.assigns.subject
+            )
 
           {:noreply,
            socket
-           |> assign(tokens: tokens)
-           |> put_flash(:success_inline, "#{String.capitalize(entity)} deleted successfully")}
+           |> merge_state(:actor_related, tokens: tokens)
+           |> merge_state(:actor_panel, confirm_delete_token_id: nil)}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, "Failed to delete #{entity}")}
@@ -478,13 +642,28 @@ defmodule PortalWeb.Actors do
 
       # Reload sessions for the actor
       sessions =
-        Database.get_portal_sessions_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+        Database.get_portal_sessions_for_actor(
+          socket.assigns.selected_actor.id,
+          socket.assigns.subject
+        )
 
-      socket = assign(socket, sessions: sessions)
+      socket =
+        socket
+        |> merge_state(:actor_related, sessions: sessions)
+        |> merge_state(:actor_panel, confirm_delete_session_id: nil)
+
       {:noreply, put_flash(socket, :success_inline, "Session deleted successfully")}
     else
       {:noreply, put_flash(socket, :error, "Session not found")}
     end
+  end
+
+  def handle_event("confirm_delete_identity", %{"id" => identity_id}, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_identity_id: identity_id)}
+  end
+
+  def handle_event("cancel_delete_identity", _params, socket) do
+    {:noreply, merge_state(socket, :actor_panel, confirm_delete_identity_id: nil)}
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
@@ -495,12 +674,16 @@ defmodule PortalWeb.Actors do
       identity ->
         case Database.delete(identity, socket.assigns.subject) do
           {:ok, _} ->
-            # Reload identities for the actor
             identities =
-              Database.get_identities_for_actor(socket.assigns.actor.id, socket.assigns.subject)
+              Database.get_identities_for_actor(
+                socket.assigns.selected_actor.id,
+                socket.assigns.subject
+              )
 
-            socket = assign(socket, identities: identities)
-            {:noreply, put_flash(socket, :success_inline, "Identity deleted successfully")}
+            {:noreply,
+             socket
+             |> merge_state(:actor_related, identities: identities)
+             |> merge_state(:actor_panel, confirm_delete_identity_id: nil)}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to delete identity")}
@@ -509,7 +692,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("send_welcome_email", %{"id" => actor_id}, socket) do
-    actor = socket.assigns.actor
+    actor = socket.assigns.selected_actor
 
     if actor.id == actor_id and actor.email do
       Portal.Mailer.AuthEmail.new_user_email(
@@ -524,11 +707,8 @@ defmodule PortalWeb.Actors do
       )
       |> case do
         {:ok, _} ->
-          socket =
-            socket
-            |> put_flash(:success_inline, "Welcome email sent to #{actor.email}")
-
-          {:noreply, socket}
+          Process.send_after(self(), :clear_welcome_email_sent, 3000)
+          {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: true)}
 
         {:error, :rate_limited} ->
           socket =
@@ -552,6 +732,30 @@ defmodule PortalWeb.Actors do
     end
   end
 
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
+    actor = socket.assigns.selected_actor
+
+    cond do
+      is_nil(actor) ->
+        {:noreply, socket}
+
+      topic == "presences:portal_sessions:" <> actor.id ->
+        sessions = Database.get_portal_sessions_for_actor(actor.id, socket.assigns.subject)
+        {:noreply, merge_state(socket, :actor_related, sessions: sessions)}
+
+      topic == "presences:actor_clients:" <> actor.id ->
+        tokens = Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject)
+        {:noreply, merge_state(socket, :actor_related, tokens: tokens)}
+
+      true ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info(:clear_welcome_email_sent, socket) do
+    {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: false)}
+  end
+
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
 
@@ -572,7 +776,7 @@ defmodule PortalWeb.Actors do
       # Prevent promoting to admin when admin limit is reached
       actor.type != :account_admin_user and new_type == :account_admin_user and
           not Portal.Billing.can_create_admin_users?(
-            Database.fetch_account(socket.assigns.account.id)
+            Database.fetch_account(socket.assigns.subject)
           ) ->
         changeset =
           changeset
@@ -590,21 +794,36 @@ defmodule PortalWeb.Actors do
     end
   end
 
+  defp validate_otp_change(changeset, actor, socket) do
+    disabling_otp = get_change(changeset, :allow_email_otp_sign_in) == false
+    is_portal_user = actor.type in [:account_user, :account_admin_user]
+
+    if disabling_otp and is_portal_user do
+      identities = Database.get_identities_for_actor(actor.id, socket.assigns.subject)
+
+      if Enum.empty?(identities) do
+        {:error, "Cannot disable Email OTP. It is this actor's only sign-in method."}
+      else
+        :ok
+      end
+    else
+      :ok
+    end
+  end
+
   defp save_actor(changeset, socket) do
     case Database.update(changeset, socket.assigns.subject) do
       {:ok, actor} ->
-        socket =
-          socket
-          |> put_flash(:success_inline, "Actor updated successfully")
-          |> reload_live_table!("actors")
-          |> push_patch(
-            to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{socket.assigns.query_params}"
-          )
+        socket = apply_group_membership_changes(socket, actor, socket.assigns.subject)
 
-        {:noreply, socket}
+        {:noreply,
+         socket
+         |> put_flash(:success, "Actor updated successfully.")
+         |> reload_live_table!("actors")
+         |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
     end
   end
 
@@ -614,1120 +833,300 @@ defmodule PortalWeb.Actors do
     end
   end
 
-  defp maybe_update_actor_assign(socket, id, updated_actor) do
-    if Map.get(socket.assigns, :actor) && socket.assigns.actor.id == id do
-      assign(socket, actor: updated_actor)
+  defp subscribe_portal_sessions(socket, %{type: :service_account}), do: socket
+
+  defp subscribe_portal_sessions(socket, actor) do
+    if connected?(socket) and socket.assigns.portal_sessions_subscribed_actor_id != actor.id do
+      if prev_id = socket.assigns.portal_sessions_subscribed_actor_id do
+        Presence.PortalSessions.unsubscribe(prev_id)
+      end
+
+      Presence.PortalSessions.subscribe(actor.id)
+      assign(socket, portal_sessions_subscribed_actor_id: actor.id)
     else
       socket
     end
   end
 
+  defp unsubscribe_portal_sessions(socket) do
+    cond do
+      not connected?(socket) ->
+        socket
+
+      id = socket.assigns[:portal_sessions_subscribed_actor_id] ->
+        Presence.PortalSessions.unsubscribe(id)
+        assign(socket, portal_sessions_subscribed_actor_id: nil)
+
+      true ->
+        socket
+    end
+  end
+
+  defp subscribe_client_tokens(socket, actor) do
+    if connected?(socket) and socket.assigns.client_tokens_subscribed_actor_id != actor.id do
+      if prev_id = socket.assigns.client_tokens_subscribed_actor_id do
+        Presence.Clients.Actor.unsubscribe(prev_id)
+      end
+
+      Presence.Clients.Actor.subscribe(actor.id)
+      assign(socket, client_tokens_subscribed_actor_id: actor.id)
+    else
+      socket
+    end
+  end
+
+  defp unsubscribe_client_tokens(socket) do
+    cond do
+      not connected?(socket) ->
+        socket
+
+      id = socket.assigns[:client_tokens_subscribed_actor_id] ->
+        Presence.Clients.Actor.unsubscribe(id)
+        assign(socket, client_tokens_subscribed_actor_id: nil)
+
+      true ->
+        socket
+    end
+  end
+
+  defp maybe_update_actor_assign(socket, id, updated_actor) do
+    if Map.get(socket.assigns, :selected_actor) && socket.assigns.selected_actor.id == id do
+      assign(socket, selected_actor: updated_actor)
+    else
+      socket
+    end
+  end
+
+  defp handle_actor_show(socket, id, params) do
+    case actor_show_state(
+           id,
+           socket.assigns.subject,
+           Map.get(params, "tab"),
+           socket.assigns.actor_related.created_token
+         ) do
+      {:ok, actor, actor_panel, actor_related} ->
+        socket
+        |> assign(selected_actor: actor)
+        |> assign(base_actor_assigns())
+        |> assign(actor_panel: actor_panel, actor_related: actor_related)
+        |> subscribe_portal_sessions(actor)
+        |> subscribe_client_tokens(actor)
+
+      :error ->
+        socket
+        |> put_flash(:error, "Actor not found")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")
+    end
+  end
+
+  defp actor_show_state(id, subject, requested_tab, created_token) do
+    case Database.get_actor(id, subject) do
+      {:ok, actor} ->
+        identities = Database.get_identities_for_actor(actor.id, subject)
+        groups = Database.get_groups_for_actor(actor.id, subject)
+        {tokens, sessions} = actor_related_records(actor, subject)
+        active_tab = requested_tab || default_actor_tab(actor)
+
+        {:ok, actor, actor_panel_state(view: :detail, active_tab: active_tab),
+         actor_related_state(
+           identities: identities,
+           groups: groups,
+           tokens: tokens,
+           sessions: sessions,
+           created_token: created_token
+         )}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp actor_related_records(%{type: :service_account} = actor, subject) do
+    {Database.get_client_tokens_for_actor(actor.id, subject), []}
+  end
+
+  defp actor_related_records(actor, subject) do
+    {
+      Database.get_client_tokens_for_actor(actor.id, subject),
+      Database.get_portal_sessions_for_actor(actor.id, subject)
+    }
+  end
+
   def render(assigns) do
     ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}>{@page_title}</.breadcrumb>
-    </.breadcrumbs>
+    <div class="relative flex flex-col h-full overflow-hidden">
+      <.page_header>
+        <:icon>
+          <.icon name="ri-user-line" class="w-16 h-16 text-[var(--brand)]" />
+        </:icon>
+        <:title>People</:title>
+        <:description>
+          Admin users and regular users in this account.
+        </:description>
+        <:action>
+          <.docs_action path="/deploy/users" />
+        </:action>
+        <:action>
+          <.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
+            New Person
+          </.button>
+        </:action>
+      </.page_header>
 
-    <.section>
-      <:title>
-        Actors
-      </:title>
-
-      <:action>
-        <.docs_action path="/deploy/users" />
-      </:action>
-
-      <:action>
-        <.add_button navigate={~p"/#{@account}/actors/add?#{@query_params}"}>
-          Add Actor
-        </.add_button>
-      </:action>
-
-      <:help>
-        Actors are the people and services that can access your Resources.
-      </:help>
-
-      <:content>
+      <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <.live_table
           id="actors"
           rows={@actors}
           row_id={&"actor-#{&1.id}"}
-          row_patch={&row_patch_path(&1, @query_params)}
+          row_click={fn actor -> ~p"/#{@account}/actors/#{actor.id}?#{@query_params}" end}
+          row_selected={
+            fn actor -> not is_nil(@selected_actor) and actor.id == @selected_actor.id end
+          }
           filters={@filters_by_table_id["actors"]}
           filter={@filter_form_by_table_id["actors"]}
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
+          class="flex-1 min-h-0"
         >
-          <:col :let={actor} class="w-12">
-            <.actor_type_icon_with_badge actor={actor} />
+          <:col :let={actor} field={{:actors, :name}} label="name">
+            <div class="flex items-center gap-2.5">
+              <.actor_type_icon_with_badge actor={actor} />
+              <div>
+                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                  {actor.name}
+                </div>
+                <div class="font-mono text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                  {actor.id}
+                </div>
+              </div>
+            </div>
           </:col>
-          <:col :let={actor} field={{:actors, :name}} label="name" class="w-3/12">
-            {actor.name}
-          </:col>
-          <:col :let={actor} field={{:actors, :email}} label="email">
-            <span class="block truncate" title={actor.email}>
+          <:col :let={actor} field={{:actors, :email}} label="email" class="w-72">
+            <span class="text-[var(--text-secondary)] block truncate" title={actor.email}>
               {actor.email || "-"}
             </span>
           </:col>
-          <:col :let={actor} label="status" class="w-1/12">
-            <%= if actor.disabled_at do %>
-              <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-red-100 text-red-800">
-                Disabled
-              </span>
-            <% else %>
-              <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-green-100 text-green-800">
-                Active
-              </span>
-            <% end %>
-          </:col>
-          <:col :let={actor} field={{:actors, :updated_at}} label="last updated" class="w-2/12">
-            <.relative_datetime datetime={actor.updated_at} />
+          <:col :let={actor} label="status" class="w-32">
+            <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
           </:col>
           <:empty>
-            <div class="flex justify-center text-center text-neutral-500 p-4">
-              <div class="w-auto pb-4">
-                No actors to display.
-                <.link class={[link_style()]} navigate={~p"/#{@account}/actors/add"}>
-                  Add an actor
-                </.link>
-                to get started.
-              </div>
-            </div>
+            <span class="text-sm text-[var(--text-tertiary)]">No people to display.</span>
           </:empty>
         </.live_table>
-      </:content>
-    </.section>
-
-    <!-- Add Actor - Type Selection Modal -->
-    <.modal
-      :if={@live_action == :add}
-      id="add-actor-modal"
-      on_close="close_modal"
-    >
-      <:title>Add Actor</:title>
-      <:body>
-        <h3 class="text-lg font-semibold mb-4">Select type</h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          <button
-            type="button"
-            phx-click="select_type"
-            phx-value-type="user"
-            class="flex flex-col items-center justify-center p-6 border-2 border-neutral-200 rounded-md hover:border-accent-500 hover:bg-neutral-50 transition-all"
-          >
-            <.icon name="hero-user" class="w-12 h-12 mb-3 text-neutral-600" />
-            <span class="text-lg font-semibold text-neutral-900">User</span>
-            <span class="text-sm text-neutral-600 mt-2 text-center">
-              User accounts can sign in to the Firezone Client apps or to the admin portal
-            </span>
-          </button>
-
-          <button
-            type="button"
-            phx-click="select_type"
-            phx-value-type="service_account"
-            class="flex flex-col items-center justify-center p-6 border-2 border-neutral-200 rounded-md hover:border-accent-500 hover:bg-neutral-50 transition-all"
-          >
-            <.icon name="hero-server" class="w-12 h-12 mb-3 text-neutral-600" />
-            <span class="text-lg font-semibold text-neutral-900">Service account</span>
-            <span class="text-sm text-neutral-600 mt-2 text-center">
-              Service accounts are used to authenticate headless Clients
-            </span>
-          </button>
-        </div>
-      </:body>
-    </.modal>
-
-    <!-- Add User Modal -->
-    <.modal
-      :if={@live_action == :add_user}
-      id="add-user-modal"
-      on_close="close_modal"
-      confirm_disabled={not @form.source.valid?}
-    >
-      <:title>Add User</:title>
-      <:body>
-        <.flash kind={:error_inline} style="inline" flash={@flash} />
-        <.form id="user-form" for={@form} phx-change="validate" phx-submit="create_user">
-          <div class="space-y-6">
-            <.input
-              field={@form[:name]}
-              label="Name"
-              placeholder="Enter user name"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <.input
-              field={@form[:email]}
-              label="Email"
-              type="email"
-              placeholder="user@example.com"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <.input
-              field={@form[:type]}
-              label="Role"
-              type="select"
-              options={[
-                {"User", :account_user},
-                {"Admin", :account_admin_user}
-              ]}
-              required
-            />
-
-            <div
-              :if={@form[:type].value != :service_account}
-              id="allow-email-otp-checkbox"
-              phx-update="ignore"
-            >
-              <.input
-                field={@form[:allow_email_otp_sign_in]}
-                label="Allow Email OTP Sign In"
-                type="checkbox"
-              />
-            </div>
-          </div>
-        </.form>
-      </:body>
-      <:confirm_button form="user-form" type="submit">Create</:confirm_button>
-    </.modal>
-
-    <!-- Add Service Account Modal -->
-    <.modal
-      :if={@live_action == :add_service_account}
-      id="add-service-account-modal"
-      on_close="close_modal"
-      confirm_disabled={not @form.source.valid?}
-    >
-      <:title>Add Service Account</:title>
-      <:body>
-        <.flash kind={:error_inline} style="inline" flash={@flash} />
-        <.form
-          id="service-account-form"
-          for={@form}
-          phx-change="validate"
-          phx-submit="create_service_account"
-        >
-          <div class="space-y-6">
-            <.input
-              field={@form[:name]}
-              label="Name"
-              placeholder="E.g. GitHub CI"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-2">
-                Token expiration
-              </label>
-              <input
-                type="date"
-                name="token_expiration"
-                value={@token_expiration}
-                class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50"
-              />
-            </div>
-          </div>
-        </.form>
-      </:body>
-      <:confirm_button form="service-account-form" type="submit">Create</:confirm_button>
-    </.modal>
-
-    <!-- Show Actor Modal -->
-    <.modal
-      :if={@live_action == :show}
-      id="show-actor-modal"
-      on_close="close_modal"
-    >
-      <:title>
-        <div class="flex items-center gap-3">
-          <.actor_type_icon actor={@actor} class="w-8 h-8" />
-          <div>
-            <div class="flex items-center gap-2">
-              <span>{@actor.name}</span>
-              <.actor_type_badge actor={@actor} />
-              <%= if @actor.disabled_at do %>
-                <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-red-100 text-red-800">
-                  Disabled
-                </span>
-              <% end %>
-            </div>
-          </div>
-        </div>
-      </:title>
-      <:body>
-        <.flash id="actor-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
-        <%= if @created_token do %>
-          <div
-            id="created-token-display"
-            class="bg-green-50 border border-green-200 rounded-md p-4 mb-4"
-          >
-            <div class="flex items-start gap-3">
-              <.icon name="hero-check-circle" class="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-              <div class="flex-1">
-                <h4 class="text-sm font-semibold text-green-900 mb-2">Token Created Successfully</h4>
-                <p class="text-sm text-green-800 mb-3">
-                  Save this token now. You won't be able to see it again!
-                </p>
-                <div id="created-token-copy-container" class="relative" phx-hook="CopyClipboard">
-                  <code
-                    id="created-token-copy-container-code"
-                    class="block bg-white border border-green-300 rounded-sm px-3 py-2 pr-24 text-sm font-mono text-neutral-900 break-all"
-                  >
-                    {@created_token}
-                  </code>
-                  <button
-                    type="button"
-                    data-copy-to-clipboard-target="created-token-copy-container-code"
-                    data-copy-to-clipboard-content-type="innerHTML"
-                    data-copy-to-clipboard-html-entities="true"
-                    class="absolute top-1 right-1 px-3 py-1.5 text-sm font-medium text-green-700 bg-white border border-green-300 hover:bg-green-50 rounded-sm inline-flex items-center"
-                  >
-                    <span
-                      id="created-token-copy-container-default-message"
-                      class="inline-flex items-center"
-                    >
-                      <.icon name="hero-clipboard-document" class="w-4 h-4" />
-                    </span>
-                    <span
-                      id="created-token-copy-container-success-message"
-                      class="inline-flex items-center hidden"
-                    >
-                      <.icon name="hero-check" class="w-4 h-4 text-green-700" />
-                      <span class="ml-1 text-xs font-semibold">Copied!</span>
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-
-        <div class="space-y-6">
-          <!-- Actor Details -->
-          <div>
-            <div class="flex items-start justify-between mb-4">
-              <div class="grid grid-cols-2 gap-4 text-sm flex-1">
-                <div>
-                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Actor ID</p>
-                  <p class="text-sm text-neutral-900 font-mono truncate" title={@actor.id}>
-                    {@actor.id}
-                  </p>
-                </div>
-                <div :if={@actor.email}>
-                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Email</p>
-                  <p class="text-sm text-neutral-900 truncate" title={@actor.email}>
-                    {@actor.email}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Created</p>
-                  <p class="text-sm text-neutral-900">
-                    <.relative_datetime datetime={@actor.inserted_at} />
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Updated</p>
-                  <p class="text-sm text-neutral-900">
-                    <.relative_datetime datetime={@actor.updated_at} />
-                  </p>
-                </div>
-                <div :if={@actor.type != :service_account}>
-                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Email OTP Sign In</p>
-                  <div class="flex items-center gap-2">
-                    <span
-                      :if={@actor.allow_email_otp_sign_in}
-                      class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-green-100 text-green-800"
-                    >
-                      <.icon name="hero-check-circle" class="w-3.5 h-3.5 mr-1" /> Allowed
-                    </span>
-                    <span
-                      :if={!@actor.allow_email_otp_sign_in}
-                      class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-neutral-100 text-neutral-600"
-                    >
-                      <.icon name="hero-no-symbol" class="w-3.5 h-3.5 mr-1" /> Not Allowed
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <.popover placement="bottom-end" trigger="click">
-                <:target>
-                  <button
-                    type="button"
-                    class="text-neutral-500 hover:text-neutral-700 focus:outline-hidden ml-4"
-                  >
-                    <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
-                  </button>
-                </:target>
-                <:content>
-                  <div class="py-1">
-                    <.link
-                      navigate={~p"/#{@account}/actors/#{@actor.id}/edit?#{@query_params}"}
-                      class="px-3 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
-                    >
-                      <.icon name="hero-pencil" class="w-4 h-4" /> Edit
-                    </.link>
-                    <.link
-                      :if={@actor.type == :service_account}
-                      navigate={~p"/#{@account}/actors/#{@actor.id}/add_token?#{@query_params}"}
-                      class="px-3 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
-                    >
-                      <.icon name="hero-key" class="w-4 h-4" /> Add Token
-                    </.link>
-                    <button
-                      :if={@actor.type in [:account_user, :account_admin_user] and @actor.email}
-                      type="button"
-                      phx-click="send_welcome_email"
-                      phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-blue-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
-                    >
-                      <.icon name="hero-envelope" class="w-4 h-4" /> Send Welcome Email
-                    </button>
-                    <button
-                      :if={is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id}
-                      type="button"
-                      phx-click="disable"
-                      phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-orange-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
-                    >
-                      <.icon name="hero-lock-closed" class="w-4 h-4" /> Disable
-                    </button>
-                    <button
-                      :if={not is_nil(@actor.disabled_at)}
-                      type="button"
-                      phx-click="enable"
-                      phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-green-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
-                    >
-                      <.icon name="hero-lock-open" class="w-4 h-4" /> Enable
-                    </button>
-                    <button
-                      :if={@actor.id != @subject.actor.id}
-                      type="button"
-                      phx-click="delete"
-                      phx-value-id={@actor.id}
-                      class="w-full px-3 py-2 text-sm text-red-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
-                      data-confirm="Are you sure you want to delete this actor?"
-                    >
-                      <.icon name="hero-trash" class="w-4 h-4" /> Delete
-                    </button>
-                  </div>
-                </:content>
-              </.popover>
-            </div>
-          </div>
-          <!-- Tabs -->
-          <div class="border-b border-neutral-200">
-            <nav class="-mb-px flex space-x-8">
-              <%= if @actor.type != :service_account do %>
-                <button
-                  type="button"
-                  phx-click="change_tab"
-                  phx-value-tab="identities"
-                  class={[
-                    "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
-                    if(@active_tab == "identities",
-                      do: "border-accent-500 text-accent-600",
-                      else:
-                        "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
-                    )
-                  ]}
-                >
-                  <.icon name="hero-identification" class="w-5 h-5" /> External Identities
-                </button>
-                <button
-                  type="button"
-                  phx-click="change_tab"
-                  phx-value-tab="client_sessions"
-                  class={[
-                    "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
-                    if(@active_tab == "client_sessions",
-                      do: "border-accent-500 text-accent-600",
-                      else:
-                        "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
-                    )
-                  ]}
-                >
-                  <.icon name="hero-device-phone-mobile" class="w-5 h-5" /> Client Sessions
-                </button>
-                <button
-                  type="button"
-                  phx-click="change_tab"
-                  phx-value-tab="portal_sessions"
-                  class={[
-                    "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
-                    if(@active_tab == "portal_sessions",
-                      do: "border-accent-500 text-accent-600",
-                      else:
-                        "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
-                    )
-                  ]}
-                >
-                  <.icon name="hero-computer-desktop" class="w-5 h-5" /> Portal Sessions
-                </button>
-              <% else %>
-                <button
-                  type="button"
-                  phx-click="change_tab"
-                  phx-value-tab="tokens"
-                  class={[
-                    "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
-                    if(@active_tab == "tokens",
-                      do: "border-accent-500 text-accent-600",
-                      else:
-                        "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
-                    )
-                  ]}
-                >
-                  <.icon name="hero-key" class="w-5 h-5" /> Tokens
-                </button>
-              <% end %>
-              <button
-                type="button"
-                phx-click="change_tab"
-                phx-value-tab="groups"
-                class={[
-                  "py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2",
-                  if(@active_tab == "groups",
-                    do: "border-accent-500 text-accent-600",
-                    else:
-                      "border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300"
-                  )
-                ]}
-              >
-                <.icon name="hero-user-group" class="w-5 h-5" /> Groups
-              </button>
-            </nav>
-          </div>
-          <!-- Identities Tab -->
-          <%= if @actor.type != :service_account and @active_tab == "identities" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
-              <%= if @identities == [] do %>
-                <div class="text-center text-neutral-500 p-8">No external identities to display.</div>
-              <% else %>
-                <div class="divide-y divide-neutral-200">
-                  <div :for={identity <- @identities} class="p-4 hover:bg-neutral-50">
-                    <div class="flex items-start justify-between gap-4">
-                      <div class="flex-1 space-y-3">
-                        <div class="flex items-center gap-2 min-w-0">
-                          <.provider_icon
-                            type={provider_type_from_issuer(identity.issuer)}
-                            class="w-5 h-5 shrink-0"
-                          />
-                          <div
-                            class="font-medium text-sm text-neutral-900 truncate"
-                            title={identity.issuer}
-                          >
-                            {identity.issuer}
-                          </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                          <div :if={identity.directory_id}>
-                            <span class="text-xs uppercase text-neutral-500">Directory</span>
-                            <div class="text-neutral-900 truncate" title={identity.directory_name}>
-                              {identity.directory_name}
-                            </div>
-                          </div>
-
-                          <div>
-                            <span class="text-xs uppercase text-neutral-500">
-                              Identity Provider ID
-                            </span>
-                            <div
-                              class="text-neutral-900 truncate"
-                              title={extract_idp_id(identity.idp_id)}
-                            >
-                              {extract_idp_id(identity.idp_id)}
-                            </div>
-                          </div>
-
-                          <div :if={identity.email}>
-                            <span class="text-xs uppercase text-neutral-500">Email</span>
-                            <div class="text-neutral-900 truncate" title={identity.email}>
-                              {identity.email}
-                            </div>
-                          </div>
-
-                          <div :if={identity.name}>
-                            <span class="text-xs uppercase text-neutral-500">Name</span>
-                            <div class="text-neutral-900 truncate" title={identity.name}>
-                              {identity.name}
-                            </div>
-                          </div>
-
-                          <div :if={identity.given_name}>
-                            <span class="text-xs uppercase text-neutral-500">Given Name</span>
-                            <div class="text-neutral-900 truncate" title={identity.given_name}>
-                              {identity.given_name}
-                            </div>
-                          </div>
-
-                          <div :if={identity.family_name}>
-                            <span class="text-xs uppercase text-neutral-500">Family Name</span>
-                            <div class="text-neutral-900 truncate" title={identity.family_name}>
-                              {identity.family_name}
-                            </div>
-                          </div>
-
-                          <div :if={identity.middle_name}>
-                            <span class="text-xs uppercase text-neutral-500">Middle Name</span>
-                            <div class="text-neutral-900 truncate" title={identity.middle_name}>
-                              {identity.middle_name}
-                            </div>
-                          </div>
-
-                          <div :if={identity.nickname}>
-                            <span class="text-xs uppercase text-neutral-500">Nickname</span>
-                            <div class="text-neutral-900 truncate" title={identity.nickname}>
-                              {identity.nickname}
-                            </div>
-                          </div>
-
-                          <div :if={identity.preferred_username}>
-                            <span class="text-xs uppercase text-neutral-500">
-                              Preferred Username
-                            </span>
-                            <div
-                              class="text-neutral-900 truncate"
-                              title={identity.preferred_username}
-                            >
-                              {identity.preferred_username}
-                            </div>
-                          </div>
-
-                          <div :if={identity.profile}>
-                            <span class="text-xs uppercase text-neutral-500">Profile</span>
-                            <div class="text-neutral-900 truncate" title={identity.profile}>
-                              {identity.profile}
-                            </div>
-                          </div>
-
-                          <div :if={identity.last_synced_at}>
-                            <span class="text-xs uppercase text-neutral-500">Last Synced</span>
-                            <div class="text-neutral-900">
-                              <.relative_datetime datetime={identity.last_synced_at} />
-                            </div>
-                          </div>
-
-                          <div :if={identity.updated_at}>
-                            <span class="text-xs uppercase text-neutral-500">Updated</span>
-                            <div class="text-neutral-900">
-                              <.relative_datetime datetime={identity.updated_at} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        phx-click="delete_identity"
-                        phx-value-id={identity.id}
-                        class="text-red-600 hover:text-red-800 shrink-0"
-                        data-confirm="Are you sure you want to delete this identity?"
-                      >
-                        <.icon name="hero-trash" class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-          <!-- Client Sessions Tab (Users only) -->
-          <%= if @actor.type != :service_account and @active_tab == "client_sessions" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
-              <%= if @tokens == [] do %>
-                <div class="text-center text-neutral-500 p-8">
-                  No client sessions to display.
-                </div>
-              <% else %>
-                <div class="divide-y divide-neutral-200">
-                  <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
-                    <div class="flex items-center gap-4">
-                      <.ping_icon
-                        color={if token.online?, do: "success", else: "danger"}
-                        title={if token.online?, do: "Online", else: "Offline"}
-                      />
-                      <.icon
-                        name={
-                          client_os_icon_name(token.latest_session && token.latest_session.user_agent)
-                        }
-                        class="w-6 h-6 shrink-0"
-                      />
-                      <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
-                        <div class="w-28">
-                          <span class="text-xs uppercase text-neutral-500">Last connected</span>
-                          <div class="text-neutral-900">
-                            <.relative_datetime datetime={
-                              token.latest_session && token.latest_session.inserted_at
-                            } />
-                          </div>
-                        </div>
-                        <div class="w-20">
-                          <span class="text-xs uppercase text-neutral-500">Expires</span>
-                          <div class="text-neutral-900">
-                            <.relative_datetime datetime={token.expires_at} />
-                          </div>
-                        </div>
-                        <div>
-                          <span class="text-xs uppercase text-neutral-500">Location</span>
-                          <div class="text-neutral-900">
-                            <%= if token_location(token) || (token.latest_session && token.latest_session.remote_ip) do %>
-                              <div :if={token_location(token)}>{token_location(token)}</div>
-                              <div :if={token.latest_session && token.latest_session.remote_ip}>
-                                {token.latest_session.remote_ip}
-                              </div>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        phx-click="delete_token"
-                        phx-value-id={token.id}
-                        class="text-red-600 hover:text-red-800"
-                        data-confirm="Are you sure you want to delete this client session?"
-                      >
-                        <.icon name="hero-trash" class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-          <!-- Tokens Tab (Service Accounts only) -->
-          <%= if @actor.type == :service_account and @active_tab == "tokens" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
-              <%= if @tokens == [] do %>
-                <div class="text-center text-neutral-500 p-8">
-                  No tokens to display.
-                </div>
-              <% else %>
-                <div class="divide-y divide-neutral-200">
-                  <div :for={token <- @tokens} class="p-4 hover:bg-neutral-50">
-                    <div class="flex items-center gap-4">
-                      <.ping_icon
-                        color={if token.online?, do: "success", else: "danger"}
-                        title={if token.online?, do: "Online", else: "Offline"}
-                      />
-                      <.icon
-                        name={
-                          client_os_icon_name(token.latest_session && token.latest_session.user_agent)
-                        }
-                        class="w-6 h-6 shrink-0"
-                      />
-                      <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
-                        <div class="w-28">
-                          <span class="text-xs uppercase text-neutral-500">Last used</span>
-                          <div class="text-neutral-900">
-                            <.relative_datetime datetime={
-                              token.latest_session && token.latest_session.inserted_at
-                            } />
-                          </div>
-                        </div>
-                        <div class="w-20">
-                          <span class="text-xs uppercase text-neutral-500">Expires</span>
-                          <div class="text-neutral-900">
-                            <.relative_datetime datetime={token.expires_at} />
-                          </div>
-                        </div>
-                        <div>
-                          <span class="text-xs uppercase text-neutral-500">Location</span>
-                          <div class="text-neutral-900">
-                            <%= if token_location(token) || (token.latest_session && token.latest_session.remote_ip) do %>
-                              <div :if={token_location(token)}>{token_location(token)}</div>
-                              <div :if={token.latest_session && token.latest_session.remote_ip}>
-                                {token.latest_session.remote_ip}
-                              </div>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        phx-click="delete_token"
-                        phx-value-id={token.id}
-                        class="text-red-600 hover:text-red-800"
-                        data-confirm="Are you sure you want to delete this token?"
-                      >
-                        <.icon name="hero-trash" class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-          <!-- Portal Sessions Tab (Users only) -->
-          <%= if @actor.type != :service_account and @active_tab == "portal_sessions" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
-              <%= if @sessions == [] do %>
-                <div class="text-center text-neutral-500 p-8">
-                  No sessions to display.
-                </div>
-              <% else %>
-                <div class="divide-y divide-neutral-200">
-                  <div :for={session <- @sessions} class="p-4 hover:bg-neutral-50">
-                    <div class="flex items-center gap-4">
-                      <.ping_icon
-                        color={if session.online?, do: "success", else: "danger"}
-                        title={if session.online?, do: "Online", else: "Offline"}
-                      />
-                      <.icon
-                        name={session_user_agent_icon(session.user_agent)}
-                        class="w-6 h-6 shrink-0"
-                      />
-                      <div class="flex-1 grid grid-cols-[auto_auto_1fr] gap-x-4 text-sm">
-                        <div class="w-28">
-                          <span class="text-xs uppercase text-neutral-500">Signed in</span>
-                          <div class="text-neutral-900">
-                            <.relative_datetime datetime={session.inserted_at} />
-                          </div>
-                        </div>
-                        <div class="w-20">
-                          <span class="text-xs uppercase text-neutral-500">Expires</span>
-                          <div class="text-neutral-900">
-                            <.relative_datetime datetime={session.expires_at} />
-                          </div>
-                        </div>
-                        <div>
-                          <span class="text-xs uppercase text-neutral-500">Location</span>
-                          <div class="text-neutral-900">
-                            <%= if session_location(session) || session.remote_ip do %>
-                              <div :if={session_location(session)}>{session_location(session)}</div>
-                              <div :if={session.remote_ip}>
-                                {session.remote_ip}
-                              </div>
-                            <% else %>
-                              -
-                            <% end %>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        phx-click="delete_session"
-                        phx-value-id={session.id}
-                        class="text-red-600 hover:text-red-800"
-                        data-confirm="Are you sure you want to delete this session?"
-                      >
-                        <.icon name="hero-trash" class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-          <!-- Groups Tab -->
-          <%= if @active_tab == "groups" do %>
-            <div class="max-h-96 overflow-y-auto border border-neutral-200 rounded-md">
-              <%= if @groups == [] do %>
-                <div class="text-center text-neutral-500 p-8">No groups to display.</div>
-              <% else %>
-                <div class="divide-y divide-neutral-200">
-                  <%= for {section, section_groups} <- groups_by_section(@groups) do %>
-                    <div class="bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                      <span class="text-xs font-semibold text-neutral-600 uppercase">
-                        {section}
-                      </span>
-                    </div>
-                    <.link
-                      :for={group <- section_groups}
-                      navigate={
-                        ~p"/#{@account}/groups/#{group.id}?#{[return_to: ~p"/#{@account}/actors/#{@actor.id}"]}"
-                      }
-                      class="block p-4 hover:bg-neutral-50"
-                    >
-                      <div class="flex items-center gap-3">
-                        <.provider_icon
-                          type={provider_type_from_group(group)}
-                          class="w-5 h-5 shrink-0"
-                        />
-                        <div class="flex-1 min-w-0">
-                          <span class="flex items-center gap-2">
-                            <span class="font-medium text-sm text-neutral-900 truncate">
-                              {group.name}
-                            </span>
-                            <span
-                              :if={group.entity_type == :org_unit}
-                              class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-neutral-100 text-neutral-600"
-                              title="Organizational Unit"
-                            >
-                              OU
-                            </span>
-                          </span>
-                        </div>
-                        <.icon name="hero-chevron-right" class="w-5 h-5 text-neutral-400" />
-                      </div>
-                    </.link>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-        </div>
-      </:body>
-    </.modal>
-
-    <!-- Edit Actor Modal -->
-    <.modal
-      :if={@live_action == :edit}
-      id="edit-actor-modal"
-      on_close="close_modal"
-      on_back={JS.patch(~p"/#{@account}/actors/#{@actor}?#{@query_params}")}
-      confirm_disabled={not @form.source.valid?}
-    >
-      <:title>Edit {@actor.name}</:title>
-      <:body>
-        <.form id="actor-form" for={@form} phx-change="validate" phx-submit="save">
-          <div class="space-y-6">
-            <.input
-              field={@form[:name]}
-              label="Name"
-              placeholder="Enter actor name"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <.input
-              :if={@actor.type != :service_account}
-              field={@form[:email]}
-              label="Email"
-              type="email"
-              placeholder="user@example.com"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <div :if={@actor.type != :service_account}>
-              <.input
-                field={@form[:type]}
-                label="Role"
-                type="select"
-                options={[
-                  {"User", :account_user},
-                  {"Admin", :account_admin_user}
-                ]}
-                disabled={@is_last_admin}
-                required
-              />
-              <p :if={@is_last_admin} class="mt-1 text-xs text-orange-600">
-                Cannot change role. At least one admin must remain in the account.
-              </p>
-            </div>
-
-            <div
-              :if={@form[:type].value != :service_account}
-              id="edit-allow-email-otp-checkbox"
-              phx-update="ignore"
-            >
-              <.input
-                field={@form[:allow_email_otp_sign_in]}
-                label="Allow Email OTP Sign In"
-                type="checkbox"
-              />
-            </div>
-          </div>
-        </.form>
-      </:body>
-      <:back_button>Back</:back_button>
-      <:confirm_button form="actor-form" type="submit">Save</:confirm_button>
-    </.modal>
-
-    <!-- Add Token Modal -->
-    <.modal
-      :if={@live_action == :add_token}
-      id="add-token-modal"
-      on_close="close_modal"
-      confirm_disabled={@token_expiration == ""}
-    >
-      <:title>Add Token for {@actor.name}</:title>
-      <:body>
-        <form id="token-form" phx-change="validate_token" phx-submit="create_token">
-          <div class="space-y-6">
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-2">
-                Token expiration
-              </label>
-              <input
-                type="date"
-                name="token_expiration"
-                value={@token_expiration}
-                class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50"
-                required
-              />
-            </div>
-          </div>
-        </form>
-      </:body>
-      <:confirm_button form="token-form" type="submit">Create Token</:confirm_button>
-    </.modal>
-    """
-  end
-
-  # Helper Components
-  defp actor_type_icon(assigns) do
-    assigns = assign_new(assigns, :class, fn -> "w-6 h-6" end)
-
-    ~H"""
-    <%= case @actor.type do %>
-      <% :service_account -> %>
-        <.icon name="hero-server" class={@class} />
-      <% :account_admin_user -> %>
-        <.icon name="hero-shield-check" class={@class} />
-      <% _ -> %>
-        <.icon name="hero-user" class={@class} />
-    <% end %>
-    """
-  end
-
-  defp actor_type_icon_with_badge(assigns) do
-    ~H"""
-    <div class="relative inline-flex">
-      <div class={[
-        "inline-flex items-center justify-center w-8 h-8 rounded-full",
-        actor_type_icon_bg_color(@actor.type)
-      ]}>
-        <%= case @actor.type do %>
-          <% :service_account -> %>
-            <.icon name="hero-server" class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
-          <% :account_admin_user -> %>
-            <.icon
-              name="hero-shield-check"
-              class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"}
-            />
-          <% _ -> %>
-            <.icon name="hero-user" class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
-        <% end %>
       </div>
-      <span
-        :if={@actor.identity_count > 0}
-        class="absolute top-0 left-0 inline-flex items-center justify-center w-3.5 h-3.5 text-[8px] font-semibold text-white bg-neutral-800 rounded-full"
-      >
-        {@actor.identity_count}
-      </span>
+
+      <.actor_panel
+        account={@account}
+        actor={@selected_actor}
+        query_params={@query_params}
+        subject={@subject}
+        panel={@actor_panel}
+        form_state={@actor_form}
+        related_state={@actor_related}
+        token_state={@actor_token}
+        group_membership_state={@actor_group_membership}
+      />
     </div>
     """
   end
 
-  defp actor_type_badge(assigns) do
-    ~H"""
-    <span class={[
-      "inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium uppercase",
-      actor_type_badge_color(@actor.type)
-    ]}>
-      {actor_display_type(@actor)}
-    </span>
-    """
+  defp base_actor_assigns do
+    [
+      actor_panel: actor_panel_state(),
+      actor_form: actor_form_state(),
+      actor_related: actor_related_state(),
+      actor_token: actor_token_state(),
+      actor_group_membership: actor_group_membership_state()
+    ]
   end
 
-  defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
-  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
-  defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
-
-  defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
-  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
-  defp actor_type_icon_text_color(_), do: "text-neutral-800"
-
-  defp actor_type_badge_color(:service_account), do: "bg-blue-100 text-blue-800"
-  defp actor_type_badge_color(:account_admin_user), do: "bg-purple-100 text-purple-800"
-  defp actor_type_badge_color(_), do: "bg-neutral-100 text-neutral-800"
-
-  defp actor_display_type(%{type: :service_account}), do: "Service Account"
-  defp actor_display_type(%{type: :account_admin_user}), do: "Admin"
-  defp actor_display_type(%{type: :account_user}), do: "User"
-  defp actor_display_type(_), do: "User"
-
-  defp extract_idp_id(idp_id) do
-    String.split(idp_id, ":", parts: 2) |> List.last()
+  defp actor_panel_state(overrides \\ []) do
+    %{
+      view: :detail,
+      active_tab: "identities",
+      creating_actor: false,
+      new_actor_type: nil,
+      is_last_admin: false,
+      welcome_email_sent: false,
+      confirm_disable_actor: false,
+      confirm_delete_actor: false,
+      confirm_delete_identity_id: nil,
+      confirm_delete_token_id: nil,
+      confirm_delete_session_id: nil
+    }
+    |> Map.merge(Map.new(overrides))
   end
 
-  defp group_section_name(%{directory_name: name}) when not is_nil(name),
-    do: "Synced from #{name}"
-
-  defp group_section_name(%{idp_id: idp_id}) when not is_nil(idp_id),
-    do: "Synced from Unknown"
-
-  defp group_section_name(_), do: "Firezone"
-
-  defp groups_by_section(groups) do
-    groups
-    |> Enum.group_by(&group_section_name/1)
-    |> Enum.sort_by(fn {section, _} ->
-      case section do
-        "Firezone" -> 0
-        "Synced from Unknown" -> 2
-        _ -> 1
-      end
-    end)
+  defp actor_form_state(form \\ nil) do
+    %{form: form}
   end
+
+  defp actor_related_state(overrides \\ []) do
+    %{
+      identities: [],
+      groups: [],
+      tokens: [],
+      sessions: [],
+      created_token: nil
+    }
+    |> Map.merge(Map.new(overrides))
+  end
+
+  defp actor_token_state(overrides \\ []) do
+    %{
+      adding_token: false,
+      token_expiration: ""
+    }
+    |> Map.merge(Map.new(overrides))
+  end
+
+  defp actor_group_membership_state(overrides \\ []) do
+    %{
+      pending_group_additions: [],
+      pending_group_removals: [],
+      group_search_results: nil
+    }
+    |> Map.merge(Map.new(overrides))
+  end
+
+  defp merge_state(socket, key, updates) do
+    update(socket, key, &Map.merge(&1, Map.new(updates)))
+  end
+
+  defp default_token_expiration do
+    Date.utc_today()
+    |> Date.add(365)
+    |> Date.to_iso8601()
+  end
+
+  defp selected_actor_matches?(socket, id) do
+    match?(%{id: ^id}, socket.assigns.selected_actor)
+  end
+
+  defp default_actor_tab(%{type: :service_account}), do: "tokens"
+  defp default_actor_tab(_actor), do: "identities"
 
   # Utility helpers
   defp ensure_not_self(actor, subject) do
     if actor.id == subject.actor.id, do: {:error, :self_operation}, else: :ok
   end
 
-  defp handle_success(socket, message) do
-    socket
-    |> put_flash(:success, message)
-    |> reload_live_table!("actors")
-    |> close_modal()
-  end
-
-  # Navigation helpers
-  defp row_patch_path(actor, query_params) do
-    ~p"/#{actor.account_id}/actors/#{actor.id}?#{query_params}"
-  end
-
-  defp close_modal(socket) do
-    if return_to = handle_return_to(socket) do
-      push_navigate(socket, to: return_to)
-    else
-      push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{socket.assigns.query_params}")
-    end
-  end
-
-  defp handle_return_to(%{
-         assigns: %{query_params: %{"return_to" => return_to}, current_path: current_path}
-       })
-       when not is_nil(return_to) and not is_nil(current_path) do
-    validate_return_to(
-      String.split(return_to, "/", parts: 2),
-      String.split(current_path, "/", parts: 2)
-    )
-  end
-
-  defp handle_return_to(_socket), do: nil
-
-  defp validate_return_to([account | _ret_parts] = return_to, [account | _cur_parts]),
-    do: Enum.join(return_to, "/")
-
-  defp validate_return_to(_return_to, _current_path), do: nil
-
   # Changesets
   defp changeset(actor, attrs) do
     actor
     |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
+  end
+
+  defp apply_group_membership_changes(socket, actor, subject) do
+    Enum.each(socket.assigns.actor_group_membership.pending_group_additions, fn group ->
+      Database.add_group_member(group.id, actor, subject)
+    end)
+
+    Enum.each(socket.assigns.actor_group_membership.pending_group_removals, fn group_id ->
+      Database.remove_group_member(group_id, actor, subject)
+    end)
+
+    assign(socket, actor_group_membership: actor_group_membership_state())
   end
 
   # Helper functions
@@ -1765,83 +1164,6 @@ defmodule PortalWeb.Actors do
     end
   end
 
-  # Firezone client user agents (e.g., "Windows/10.0", "Mac OS/15.0")
-  @firezone_client_patterns [
-    {"Windows/", "os-windows"},
-    {"Mac OS/", "os-macos"},
-    {"iOS/", "os-ios"},
-    {"Android/", "os-android"},
-    {"Ubuntu/", "os-ubuntu"},
-    {"Debian/", "os-debian"},
-    {"Manjaro/", "os-manjaro"},
-    {"CentOS/", "os-linux"},
-    {"Fedora/", "os-linux"}
-  ]
-
-  # Browser user agents (standard Mozilla format)
-  @browser_patterns [
-    {"iPhone", "os-ios"},
-    {"iPad", "os-ios"},
-    {"Android", "os-android"},
-    {"Macintosh", "os-macos"},
-    {"Mac OS X", "os-macos"},
-    {"Windows NT", "os-windows"},
-    {"linux", "os-linux"}
-  ]
-
-  defp detect_os_icon(user_agent) do
-    find_matching_pattern(user_agent, @firezone_client_patterns) ||
-      find_matching_pattern(user_agent, @browser_patterns) ||
-      detect_x11_linux(user_agent)
-  end
-
-  defp find_matching_pattern(user_agent, patterns) do
-    Enum.find_value(patterns, fn {pattern, icon} ->
-      if String.contains?(user_agent, pattern), do: icon
-    end)
-  end
-
-  defp detect_x11_linux(user_agent) do
-    if String.contains?(user_agent, "X11") and String.contains?(user_agent, "Linux") do
-      "os-linux"
-    end
-  end
-
-  defp token_location(%{latest_session: nil}), do: nil
-
-  defp token_location(%{latest_session: session}) do
-    cond do
-      session.remote_ip_location_city && session.remote_ip_location_region ->
-        "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
-
-      session.remote_ip_location_region ->
-        session.remote_ip_location_region
-
-      true ->
-        nil
-    end
-  end
-
-  # Helper functions for session display
-  defp session_user_agent_icon(user_agent) when is_binary(user_agent) do
-    detect_os_icon(user_agent) || "hero-computer-desktop"
-  end
-
-  defp session_user_agent_icon(_), do: "hero-computer-desktop"
-
-  defp session_location(session) do
-    cond do
-      session.remote_ip_location_city && session.remote_ip_location_region ->
-        "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
-
-      session.remote_ip_location_region ->
-        session.remote_ip_location_region
-
-      true ->
-        nil
-    end
-  end
-
   defp other_enabled_admins_exist?(actor, subject) do
     case actor do
       %{type: :account_admin_user, account_id: account_id, id: id} ->
@@ -1862,6 +1184,7 @@ defmodule PortalWeb.Actors do
     alias Portal.Safe
     alias Portal.Directory
     alias Portal.Repo.Filter
+    alias Portal.Repo.OffsetPaginator
 
     def all do
       from(actors in Actor, as: :actors)
@@ -1881,6 +1204,11 @@ defmodule PortalWeb.Actors do
       })
     end
 
+    defp index_query do
+      from(actors in Actor, as: :actors)
+      |> where([actors: actors], actors.type in [:account_user, :account_admin_user])
+    end
+
     def cursor_fields do
       [
         {:actors, :asc, :inserted_at},
@@ -1890,6 +1218,12 @@ defmodule PortalWeb.Actors do
 
     def filters do
       [
+        %Filter{
+          name: :name_or_email,
+          title: "Name or Email",
+          type: {:string, :websearch},
+          fun: &filter_by_name_or_email/2
+        },
         %Filter{
           name: :status,
           title: "Status",
@@ -1901,17 +1235,21 @@ defmodule PortalWeb.Actors do
           fun: &filter_by_status/2
         },
         %Filter{
+          name: :type,
+          title: "Role",
+          type: {:string, :select},
+          values: [
+            {"Admins", "admin"},
+            {"Users", "user"}
+          ],
+          fun: &filter_by_type/2
+        },
+        %Filter{
           name: :directory_id,
           title: "Directory",
           type: {:string, :select},
           values: &directory_values/1,
           fun: &filter_by_directory/2
-        },
-        %Filter{
-          name: :name_or_email,
-          title: "Name or Email",
-          type: {:string, :websearch},
-          fun: &filter_by_name_or_email/2
         }
       ]
     end
@@ -1963,6 +1301,18 @@ defmodule PortalWeb.Actors do
       {queryable, dynamic([actors: actors], not is_nil(actors.disabled_at))}
     end
 
+    def filter_by_type(queryable, "admin") do
+      {queryable, dynamic([actors: actors], actors.type == :account_admin_user)}
+    end
+
+    def filter_by_type(queryable, "user") do
+      {queryable, dynamic([actors: actors], actors.type == :account_user)}
+    end
+
+    def filter_by_type(queryable, "service_account") do
+      {queryable, dynamic([actors: actors], actors.type == :service_account)}
+    end
+
     def filter_by_directory(queryable, "firezone") do
       # Firezone directory - actors with no directory-linked identities
       # (either no identities, or identities without directory_id)
@@ -1998,14 +1348,51 @@ defmodule PortalWeb.Actors do
     end
 
     def list_actors(subject, opts \\ []) do
-      all()
-      |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, opts)
+      {filter, opts} = Keyword.pop(opts, :filter, [])
+      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+      {page_opts, _opts} = Keyword.pop(opts, :page, [])
+
+      with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, order_by, page_opts),
+           {:ok, filtered_query} <- Filter.filter(index_query(), __MODULE__, filter),
+           count when is_integer(count) <-
+             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+           actor_ids <- list_actor_ids(filtered_query, paginator_opts, subject),
+           {actor_ids, metadata} <- OffsetPaginator.metadata(actor_ids, paginator_opts) do
+        actors = fetch_actors_page(actor_ids, subject)
+        {:ok, actors, %{metadata | count: count}}
+      else
+        {:error, :unauthorized} = error -> error
+        {:error, _reason} = error -> error
+      end
     end
 
-    def fetch_account(account_id) do
-      from(a in Portal.Account, where: a.id == ^account_id)
-      |> Safe.unscoped(:replica)
+    defp list_actor_ids(filtered_query, paginator_opts, subject) do
+      filtered_query
+      |> select([actors: actors], actors.id)
+      |> OffsetPaginator.query(paginator_opts)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+    end
+
+    defp fetch_actors_page([], _subject), do: []
+
+    defp fetch_actors_page(actor_ids, subject) do
+      actors =
+        all()
+        |> where([actors: actors], actors.id in ^actor_ids)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+
+      actors_by_id = Map.new(actors, &{&1.id, &1})
+
+      Enum.map(actor_ids, fn actor_id ->
+        Map.fetch!(actors_by_id, actor_id)
+      end)
+    end
+
+    def fetch_account(subject) do
+      from(a in Portal.Account)
+      |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end
 
@@ -2077,22 +1464,20 @@ defmodule PortalWeb.Actors do
         |> Safe.all()
 
       tokens
-      |> preload_latest_sessions_for_tokens()
+      |> preload_latest_sessions_for_tokens(subject)
       |> Presence.Clients.preload_client_tokens_presence()
     end
 
-    defp preload_latest_sessions_for_tokens(tokens) do
-      account_ids = tokens |> Enum.map(& &1.account_id) |> Enum.uniq()
+    defp preload_latest_sessions_for_tokens(tokens, subject) do
       token_ids = Enum.map(tokens, & &1.id)
 
       sessions_by_token_id =
         from(s in ClientSession,
-          where: s.account_id in ^account_ids,
           where: s.client_token_id in ^token_ids,
           distinct: s.client_token_id,
           order_by: [asc: s.client_token_id, desc: s.inserted_at]
         )
-        |> Safe.unscoped(:replica)
+        |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new(&{&1.client_token_id, &1})
 
@@ -2211,6 +1596,60 @@ defmodule PortalWeb.Actors do
       actor
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+
+    @spec search_groups_for_actor(
+            String.t(),
+            Ecto.UUID.t() | nil,
+            Portal.Authentication.Subject.t()
+          ) ::
+            {:error, any()} | list(Portal.Group.t())
+    def search_groups_for_actor(search_term, actor_id, subject) do
+      query =
+        from(g in Portal.Group, as: :groups)
+        |> where([groups: g], g.type == :static)
+        |> where([groups: g], ilike(g.name, ^"%#{search_term}%"))
+        |> limit(10)
+
+      query =
+        if actor_id do
+          existing_group_ids =
+            from(m in Portal.Membership, where: m.actor_id == ^actor_id, select: m.group_id)
+
+          where(query, [groups: g], g.id not in subquery(existing_group_ids))
+        else
+          query
+        end
+
+      query
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} = err -> err
+        groups -> groups
+      end
+    end
+
+    @spec add_group_member(Ecto.UUID.t(), Portal.Actor.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Membership.t()} | {:error, Ecto.Changeset.t()}
+    def add_group_member(group_id, actor, subject) do
+      import Ecto.Changeset
+
+      %Portal.Membership{}
+      |> change(%{account_id: actor.account_id, group_id: group_id, actor_id: actor.id})
+      |> Portal.Membership.changeset()
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+    end
+
+    @spec remove_group_member(Ecto.UUID.t(), Portal.Actor.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Membership.t()} | {:error, any()}
+    def remove_group_member(group_id, actor, subject) do
+      from(m in Portal.Membership, as: :memberships)
+      |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!()
+      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
     end
   end
 end

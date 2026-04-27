@@ -11,10 +11,13 @@ defmodule PortalWeb.LiveTableTest do
         filter: filter_to_form(%{}, "table-id"),
         ordered_by: {:assoc, :name},
         metadata: %{
-          previous_page_cursor: nil,
-          next_page_cursor: nil,
+          previous_offset: nil,
+          next_offset: nil,
+          offset: 0,
           limit: 10,
-          count: 1
+          count: 1,
+          has_previous_page: false,
+          has_next_page: false
         },
         col: [
           %{
@@ -76,7 +79,7 @@ defmodule PortalWeb.LiveTableTest do
       form =
         render_component(&live_table/1, assigns)
         |> Floki.parse_fragment!()
-        |> Floki.find("form")
+        |> Floki.find("form#table-id-filters")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
@@ -108,7 +111,7 @@ defmodule PortalWeb.LiveTableTest do
       form =
         render_component(&live_table/1, assigns)
         |> Floki.parse_fragment!()
-        |> Floki.find("form")
+        |> Floki.find("form#table-id-filters")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
@@ -145,7 +148,7 @@ defmodule PortalWeb.LiveTableTest do
       form =
         render_component(&live_table/1, assigns)
         |> Floki.parse_fragment!()
-        |> Floki.find("form")
+        |> Floki.find("form#table-id-filters")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
@@ -187,7 +190,7 @@ defmodule PortalWeb.LiveTableTest do
       form =
         render_component(&live_table/1, assigns)
         |> Floki.parse_fragment!()
-        |> Floki.find("form")
+        |> Floki.find("form#table-id-filters")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
@@ -241,7 +244,7 @@ defmodule PortalWeb.LiveTableTest do
       form =
         render_component(&live_table/1, assigns)
         |> Floki.parse_fragment!()
-        |> Floki.find("form")
+        |> Floki.find("form#table-id-filters")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
@@ -280,12 +283,11 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(order_button, "phx-value-order_by") == ["assoc:desc:name"]
     end
 
-    test "renders page size and total count", %{assigns: assigns} do
+    test "renders page size selector and record range", %{assigns: assigns} do
       assert render_component(&live_table/1, assigns)
              |> Floki.parse_fragment!()
-             |> Floki.find("nav > span")
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1 of 1"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1-1 of 1"
 
       assert render_component(&live_table/1, %{
                assigns
@@ -293,19 +295,30 @@ defmodule PortalWeb.LiveTableTest do
                  rows: Enum.map(1..10, fn _i -> ["foo"] end)
              })
              |> Floki.parse_fragment!()
-             |> Floki.find("nav > span")
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 10 of 10"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1-10 of 10"
 
       assert render_component(&live_table/1, %{
                assigns
-               | metadata: %{assigns.metadata | count: 100, limit: 10},
-                 rows: Enum.map(1..100, fn _i -> ["foo"] end)
+               | metadata: %{assigns.metadata | count: 100, limit: 10, offset: 20},
+                 rows: Enum.map(1..10, fn _i -> ["foo"] end)
              })
              |> Floki.parse_fragment!()
-             |> Floki.find("nav > span")
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 100 of 100"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 21-30 of 100"
+    end
+
+    test "renders page size selector wired to change_limit", %{assigns: assigns} do
+      html =
+        render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
+      form = Floki.find(html, "form#table-id-pagination")
+      select = Floki.find(html, "select[name='page_size']")
+      hidden_input = Floki.find(html, "input[type='hidden'][name='table_id']")
+
+      assert Floki.attribute(form, "phx-change") == ["change_limit"]
+      assert Floki.attribute(hidden_input, "value") == ["table-id"]
+      assert Floki.attribute(select, "name") == ["page_size"]
     end
 
     test "renders pagination buttons", %{assigns: assigns} do
@@ -313,42 +326,50 @@ defmodule PortalWeb.LiveTableTest do
 
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav button")
+             |> Floki.find("button[phx-click='paginate']")
              |> Floki.attribute("disabled") == ["disabled", "disabled"]
 
-      assigns = %{assigns | metadata: %{assigns.metadata | next_page_cursor: "next_cursor"}}
+      assigns = %{assigns | metadata: %{assigns.metadata | next_offset: 10, has_next_page: true}}
       html = render_component(&live_table/1, assigns)
 
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav button")
+             |> Floki.find("button[phx-click='paginate']")
              |> Floki.attribute("disabled") == ["disabled"]
 
-      enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
+      enabled_button =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("button[phx-click='paginate']:not([disabled])")
+
       assert Floki.attribute(enabled_button, "phx-click") == ["paginate"]
-      assert Floki.attribute(enabled_button, "phx-value-cursor") == ["next_cursor"]
+      assert Floki.attribute(enabled_button, "phx-value-page") == ["2"]
       assert Floki.attribute(enabled_button, "phx-value-table_id") == ["table-id"]
 
-      assigns = %{assigns | metadata: %{assigns.metadata | previous_page_cursor: "prev_cursor"}}
+      assigns = %{assigns | metadata: %{assigns.metadata | previous_offset: 0, has_previous_page: true}}
       html = render_component(&live_table/1, assigns)
 
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav button")
+             |> Floki.find("button[phx-click='paginate']")
              |> Floki.attribute("disabled") == []
 
-      enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
-      assert "prev_cursor" in Floki.attribute(enabled_button, "phx-value-cursor")
+      enabled_button =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("button[phx-click='paginate']:not([disabled])")
+
+      assert "1" in Floki.attribute(enabled_button, "phx-value-page")
     end
 
     test "does not render pagination when table is empty", %{assigns: assigns} do
       assigns = %{assigns | rows: []}
       html = render_component(&live_table/1, assigns)
 
-      # Should not find any nav element for pagination
+      # Should not find any paginate buttons when table is empty
       assert html
              |> Floki.parse_fragment!()
-             |> Floki.find("nav[aria-label='Table navigation']") == []
+             |> Floki.find("button[phx-click='paginate']") == []
     end
   end
 
@@ -416,6 +437,25 @@ defmodule PortalWeb.LiveTableTest do
                  ],
                  hide_filters: [:email],
                  limit: 11,
+                 callback: fn socket, list_opts ->
+                   {:ok, %{socket | private: %{list_opts: list_opts}}}
+                 end
+               )
+    end
+
+    test "uses browser page size preference from connect params", %{socket: socket} do
+      socket = %{socket | private: %{connect_params: %{"page_size" => "25"}}}
+
+      assert %{
+               assigns: %{
+                 limit_by_table_id: %{"table-id" => 25}
+               }
+             } =
+               assign_live_table(socket, "table-id",
+                 query_module: Actor.Query,
+                 sortable_fields: [
+                   {:actors, :name}
+                 ],
                  callback: fn socket, list_opts ->
                    {:ok, %{socket | private: %{list_opts: list_opts}}}
                  end
@@ -500,7 +540,7 @@ defmodule PortalWeb.LiveTableTest do
                },
                private: %{
                  list_opts: [
-                   page: [limit: 10],
+                   page: [offset: 0, limit: 10],
                    filter: [],
                    order_by: []
                  ]
@@ -513,7 +553,7 @@ defmodule PortalWeb.LiveTableTest do
                },
                private: %{
                  list_opts: [
-                   page: [cursor: "next_page", limit: 10],
+                   page: [offset: 10, limit: 10],
                    filter: [{:name, "foo"}],
                    order_by: [{:actors, :asc, :name}]
                  ]
@@ -522,7 +562,7 @@ defmodule PortalWeb.LiveTableTest do
                handle_live_tables_params(
                  socket,
                  %{
-                   "table-id_cursor" => "next_page",
+                   "table-id_page" => "2",
                    "table-id_filter" => %{"name" => "foo"},
                    "table-id_order_by" => "actors:asc:name"
                  },
@@ -532,7 +572,7 @@ defmodule PortalWeb.LiveTableTest do
 
     test "does nothing when list opts are not changed", %{socket: socket} do
       socket = handle_live_tables_params(socket, %{}, "/actors")
-      assert_receive {:callback, _socket, [page: [limit: 10], filter: [], order_by: []]}
+      assert_receive {:callback, _socket, [page: [offset: 0, limit: 10], filter: [], order_by: []]}
 
       handle_live_tables_params(socket, %{}, "/actors")
       refute_receive {:callback, _socket, _list_opts}
@@ -548,7 +588,7 @@ defmodule PortalWeb.LiveTableTest do
         |> put_uri_assigns("/current_uri")
 
       for {reason, message} <- [
-            {:invalid_cursor, "The page was reset due to invalid pagination cursor."},
+            {:invalid_page, "The page was reset due to invalid pagination page."},
             {{:unknown_filter, []},
              "The page was reset due to use of undefined pagination filter."},
             {{:invalid_type, []},
@@ -608,7 +648,7 @@ defmodule PortalWeb.LiveTableTest do
           assigns: %{subject: subject, __changed__: %{}}
         }
         |> put_uri_assigns(
-          "/actors?table-id_cursor=prev_page" <>
+          "/actors?table-id_page=2" <>
             "&table-id_filter%5Bname%5D=buz" <>
             "&table-id_order_by=actors%3Aasc%3Aname"
         )
@@ -625,16 +665,56 @@ defmodule PortalWeb.LiveTableTest do
       %{socket: socket}
     end
 
-    test "updates query parameters with new cursor", %{socket: socket} do
+    test "updates query parameters with new page", %{socket: socket} do
       assert handle_live_table_event(
                "paginate",
-               %{"table_id" => "table-id", "cursor" => "very_next_page"},
+               %{"table_id" => "table-id", "page" => "3"},
                socket
              )
              |> fetch_patched_query_params!() == %{
                "table-id_order_by" => "actors:asc:name",
-               "table-id_cursor" => "very_next_page",
+               "table-id_page" => "3",
                "table-id_filter[name]" => "buz"
+             }
+    end
+  end
+
+  describe "handle_live_table_event/3 for page size" do
+    setup do
+      subject = subject_fixture()
+
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{subject: subject, __changed__: %{}}
+        }
+        |> put_uri_assigns(
+          "/actors?table-id_page=2" <>
+            "&table-id_filter%5Bname%5D=buz" <>
+            "&table-id_order_by=actors%3Aasc%3Aname"
+        )
+        |> assign_live_table("table-id",
+          query_module: Actor.Query,
+          sortable_fields: [
+            {:actors, :name}
+          ],
+          callback: fn socket, list_opts ->
+            {:ok, %{socket | private: %{list_opts: list_opts}}}
+          end
+        )
+
+      %{socket: socket}
+    end
+
+    test "updates query parameters with new page size and resets the page", %{socket: socket} do
+      assert handle_live_table_event(
+               "change_limit",
+               %{"table_id" => "table-id", "page_size" => "25"},
+               socket
+             )
+             |> fetch_patched_query_params!() == %{
+               "table-id_filter[name]" => "buz",
+               "table-id_page_size" => "25",
+               "table-id_order_by" => "actors:asc:name"
              }
     end
   end
@@ -648,7 +728,7 @@ defmodule PortalWeb.LiveTableTest do
           assigns: %{subject: subject, __changed__: %{}}
         }
         |> put_uri_assigns(
-          "/actors?table-id_cursor=next_page" <>
+          "/actors?table-id_page=2" <>
             "&table-id_filter%5Bemail%5D=bar" <>
             "&table-id_filter%5Bname%5D=buz" <>
             "&table-id_order_by=actors%3Aasc%3Aname"
@@ -678,7 +758,7 @@ defmodule PortalWeb.LiveTableTest do
              }
     end
 
-    test "updates query parameters with new filter and resets the cursor", %{socket: socket} do
+    test "updates query parameters with new filter and resets the page", %{socket: socket} do
       assert handle_live_table_event(
                "filter",
                %{"table_id" => "table-id", "table-id" => %{"name" => "foo", "email" => "bar"}},
@@ -712,7 +792,7 @@ defmodule PortalWeb.LiveTableTest do
           assigns: %{subject: subject, __changed__: %{}}
         }
         |> put_uri_assigns(
-          "/actors?table-id_cursor=next_page&table-id_filter%5Bname%5D=bar&table-id_order_by=actors%3Aasc%3Aname"
+          "/actors?table-id_page=2&table-id_filter%5Bname%5D=bar&table-id_order_by=actors%3Aasc%3Aname"
         )
         |> assign_live_table("table-id",
           query_module: Actor.Query,
@@ -727,7 +807,7 @@ defmodule PortalWeb.LiveTableTest do
       %{socket: socket}
     end
 
-    test "updates query parameters with reverse order and resets the cursor", %{socket: socket} do
+    test "updates query parameters with reverse order and resets the page", %{socket: socket} do
       assert handle_live_table_event(
                "order_by",
                %{"table_id" => "table-id", "order_by" => "actors:desc:name"},

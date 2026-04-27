@@ -7,6 +7,8 @@ defmodule Portal.Actor do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @type t :: %__MODULE__{}
+
   schema "actors" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
@@ -31,6 +33,8 @@ defmodule Portal.Actor do
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
     has_many :groups, through: [:memberships, :group]
+
+    embeds_one :preferences, Portal.Actor.Preferences, on_replace: :update
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :identity_count, :integer, virtual: true

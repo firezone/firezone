@@ -23,7 +23,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
         conn =
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
-          |> Map.put(:path_info, [account.slug])
+          |> Map.put(:path_info, [account.slug, "sign_in"])
           |> Map.put(:query_string, "as=#{as_value}&state=test-state")
           |> AutoRedirectDefaultProvider.call([])
 
@@ -44,7 +44,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
         conn =
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
-          |> Map.put(:path_info, [account.slug])
+          |> Map.put(:path_info, [account.slug, "sign_in"])
           |> Map.put(:query_string, "as=#{as_value}")
           |> AutoRedirectDefaultProvider.call([])
 
@@ -63,7 +63,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
         conn =
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
-          |> Map.put(:path_info, [account.slug])
+          |> Map.put(:path_info, [account.slug, "sign_in"])
           |> Map.put(:query_string, "as=#{as_value}")
           |> AutoRedirectDefaultProvider.call([])
 
@@ -82,7 +82,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
         conn =
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
-          |> Map.put(:path_info, [account.slug])
+          |> Map.put(:path_info, [account.slug, "sign_in"])
           |> Map.put(:query_string, "as=#{as_value}")
           |> AutoRedirectDefaultProvider.call([])
 
@@ -144,22 +144,22 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       conn =
         conn
         |> Map.put(:params, %{"as" => "client", "account_id_or_slug" => "nonexistent-slug"})
-        |> Map.put(:path_info, ["nonexistent-slug"])
+        |> Map.put(:path_info, ["nonexistent-slug", "sign_in"])
         |> AutoRedirectDefaultProvider.call([])
 
       refute conn.halted
     end
 
-    test "does not redirect when path_info has more than one segment", %{
+    test "does not redirect when path_info is a provider-specific route", %{
       conn: conn,
       account: account
     } do
-      _provider = oidc_provider_fixture(account: account, is_default: true)
+      provider = oidc_provider_fixture(account: account, is_default: true)
 
       conn =
         conn
         |> Map.put(:params, %{"as" => "client", "account_id_or_slug" => account.slug})
-        |> Map.put(:path_info, [account.slug, "sign_in"])
+        |> Map.put(:path_info, [account.slug, "sign_in", "oidc", provider.id])
         |> AutoRedirectDefaultProvider.call([])
 
       refute conn.halted
@@ -174,7 +174,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       conn =
         conn
         |> Map.put(:params, %{"as" => "client", "account_id_or_slug" => account.slug})
-        |> Map.put(:path_info, [account.slug])
+        |> Map.put(:path_info, [account.slug, "sign_in"])
         |> Map.put(:query_string, "")
         |> AutoRedirectDefaultProvider.call([])
 
@@ -193,7 +193,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       conn =
         conn
         |> Map.put(:params, %{"as" => "client", "account_id_or_slug" => account.id})
-        |> Map.put(:path_info, [account.id])
+        |> Map.put(:path_info, [account.id, "sign_in"])
         |> AutoRedirectDefaultProvider.call([])
 
       assert conn.halted
@@ -209,7 +209,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     } do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
-      conn = get(conn, ~p"/#{account.slug}?as=client&nonce=test-nonce&state=test-state")
+      conn = get(conn, ~p"/#{account.slug}/sign_in?as=client&nonce=test-nonce&state=test-state")
 
       location = redirected_to(conn)
       assert location =~ "/sign_in/oidc/#{provider.id}"
@@ -224,7 +224,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     } do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
-      conn = get(conn, ~p"/#{account.slug}?as=headless-client&state=test-state")
+      conn = get(conn, ~p"/#{account.slug}/sign_in?as=headless-client&state=test-state")
 
       location = redirected_to(conn)
       assert location =~ "/sign_in/oidc/#{provider.id}"
@@ -238,7 +238,8 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     } do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
-      conn = get(conn, ~p"/#{account.slug}?as=gui-client&nonce=test-nonce&state=test-state")
+      conn =
+        get(conn, ~p"/#{account.slug}/sign_in?as=gui-client&nonce=test-nonce&state=test-state")
 
       location = redirected_to(conn)
       assert location =~ "/sign_in/oidc/#{provider.id}"
@@ -250,7 +251,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     test "does not redirect when no default provider", %{conn: conn, account: account} do
       _provider = oidc_provider_fixture(account: account, is_default: false)
 
-      conn = get(conn, ~p"/#{account.slug}?as=client&state=test-state")
+      conn = get(conn, ~p"/#{account.slug}/sign_in?as=client&state=test-state")
 
       assert html_response(conn, 200) =~ "Sign In"
     end

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=client-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
     <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
     <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
@@ -16,25 +16,38 @@
     <link
       phx-track-static
       rel="stylesheet"
-      nonce={@conn.private[:csp_nonce]}
+      nonce={@csp_nonce}
       href={~p"/assets/app.css"}
     />
     <link
       phx-track-static
       rel="stylesheet"
-      nonce={@conn.private[:csp_nonce]}
+      nonce={@csp_nonce}
       href={~p"/assets/main.css"}
     />
+    <script nonce={@csp_nonce}>
+      if (localStorage.theme === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.dataset.theme = "dark";
+      } else if (localStorage.theme === "light") {
+        document.documentElement.dataset.theme = "light";
+      } else {
+        document.documentElement.dataset.theme = "system";
+        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          document.documentElement.classList.add("dark");
+        }
+      }
+    </script>
     <script
       defer
       phx-track-static
       type="text/javascript"
-      nonce={@conn.private[:csp_nonce]}
+      nonce={@csp_nonce}
       src={~p"/assets/app.js"}
     >
     </script>
   </head>
-  <body class="bg-neutral-50">
+  <body>
     {@inner_content}
   </body>
 </html>

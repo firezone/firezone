@@ -29,12 +29,12 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticated do
 
   def call(
         %Plug.Conn{
-          assigns: %{account: %Account{} = account, subject: %Subject{}}
+          assigns: %{account: %Account{} = account, subject: %Subject{} = subject}
         } = conn,
         _opts
       ) do
     conn
-    |> Redirector.portal_signed_in(account, conn.params)
+    |> Redirector.portal_signed_in(account, conn.params, subject.actor)
     |> Plug.Conn.halt()
   end
 

@@ -1,5 +1,13 @@
 import { NextResponse, NextRequest } from "next/server";
 
+// Top-level marketing pages that support markdown content negotiation
+const STATIC_MARKDOWN_PATHS = new Set(["/", "/pricing", "/product", "/about"]);
+
+function wantsMarkdown(request: NextRequest): boolean {
+  const accept = request.headers.get("accept") ?? "";
+  return accept.includes("text/markdown");
+}
+
 // This proxy is needed because NextJS doesn't populate params in the destination
 // more than once. See https://github.com/vercel/next.js/issues/66891
 const versionedRedirects = [
@@ -85,12 +93,23 @@ export const config = {
     "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/x86_64",
     "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/aarch64",
     "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/armv7",
+    // Markdown content negotiation
+    "/",
+    "/pricing",
+    "/product",
+    "/about",
+    "/kb",
+    "/kb/:path*",
   ],
 };
 
+// Next.js 16 calls the `proxy` export from proxy.ts (not `middleware`).
+// See: next/dist/build/templates/middleware.js line:
+//   const handlerUserland = (isProxy ? mod.proxy : mod.middleware) || mod.default;
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Handle /dl/ download redirects
   for (const redirect of versionedRedirects) {
     const match = pathname.match(redirect.source);
 
@@ -99,6 +118,20 @@ export function proxy(request: NextRequest) {
       const destination = redirect.destination.replace(/:version/g, version);
       return NextResponse.redirect(destination);
     }
+  }
+
+  // Markdown content negotiation — RFC 8288 / Cloudflare Markdown for Agents
+  // Match top-level marketing pages and all /kb/** documentation pages
+  const isMarkdownPath =
+    STATIC_MARKDOWN_PATHS.has(pathname) ||
+    pathname === "/kb" ||
+    pathname.startsWith("/kb/");
+
+  if (wantsMarkdown(request) && isMarkdownPath) {
+    const slug = pathname === "/" ? "home" : pathname.replace(/^\//, "");
+    const mdUrl = request.nextUrl.clone();
+    mdUrl.pathname = `/api/md/${slug}`;
+    return NextResponse.rewrite(mdUrl);
   }
 
   return NextResponse.next();

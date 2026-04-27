@@ -32,6 +32,33 @@ defmodule Portal.Repo.Seeds do
     Userpass
   }
 
+  # User agent strings for seeded clients and gateways.
+  # Update these when bumping the connlib version used in dev/test.
+  @ua_gateway "Linux/6.1.0 connlib/1.4.1 (x86_64)"
+  @ua_ios "iOS/18.7.7 apple-client/1.4.1 (24.6.0)"
+  @ua_android "Android/14 connlib/1.4.1"
+  @ua_windows "Windows/11.0.22631 connlib/1.4.1"
+  @ua_ubuntu "Ubuntu/22.04 connlib/1.4.1"
+  @ua_macos "Mac OS/14.1.0 apple-client/1.4.1 (arm64; 23.1.0)"
+
+  @client_user_agents [@ua_ios, @ua_android, @ua_windows, @ua_ubuntu, @ua_macos]
+
+  # {region, city, lat, lon} tuples for seeded sessions.
+  @locations [
+    {"US-CA", "San Francisco", 37.7749, -122.4194},
+    {"US-NY", "New York", 40.7128, -74.006},
+    {"GB", "London", 51.5074, -0.1278},
+    {"DE", "Berlin", 52.52, 13.405},
+    {"FR", "Paris", 48.8566, 2.3522},
+    {"NL", "Amsterdam", 52.3676, 4.9041},
+    {"SG", "Singapore", 1.3521, 103.8198},
+    {"JP", "Tokyo", 35.6762, 139.6503},
+    {"AU", "Sydney", -33.8688, 151.2093},
+    {"CA", "Toronto", 43.6532, -79.3832},
+    {"BR", "Sao Paulo", -23.5505, -46.6333},
+    {"UA", "Kyiv", 50.4333, 30.5167}
+  ]
+
   # Populate these in your .env
   defp google_idp_id do
     System.get_env("GOOGLE_IDP_ID", "dummy")
@@ -94,7 +121,7 @@ defmodule Portal.Repo.Seeds do
     # Extract version from user agent
     version =
       context.user_agent
-      |> String.split(" connlib/")
+      |> String.split("/")
       |> List.last()
       |> String.split(" ")
       |> List.first()
@@ -141,6 +168,8 @@ defmodule Portal.Repo.Seeds do
       )
 
     # Create a gateway session
+    {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
     %GatewaySession{
       account_id: site.account_id,
       device_id: gateway.id,
@@ -148,10 +177,10 @@ defmodule Portal.Repo.Seeds do
       public_key: public_key,
       user_agent: context.user_agent,
       remote_ip: context.remote_ip,
-      remote_ip_location_region: "US-CA",
-      remote_ip_location_city: "San Francisco",
-      remote_ip_location_lat: 37.7749,
-      remote_ip_location_lon: -122.4194,
+      remote_ip_location_region: location_region,
+      remote_ip_location_city: location_city,
+      remote_ip_location_lat: location_lat,
+      remote_ip_location_lon: location_lon,
       version: version
     }
     |> Repo.insert!()
@@ -161,9 +190,9 @@ defmodule Portal.Repo.Seeds do
 
   # Helper function to create client directly without context module
   defp create_client(attrs, subject, client_token_id, user_agent) do
-    # Extract version from user agent (e.g., "iOS/12.7 (iPhone) connlib/0.7.412" -> "0.7.412")
+    # Extract version from user agent (e.g., "macOS/14.6 apple-client/1.4.1" -> "1.4.1")
     version =
-      user_agent |> String.split(" connlib/") |> List.last() |> String.split(" ") |> List.first()
+      user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
     firezone_id = attrs["firezone_id"] || attrs[:firezone_id]
 
@@ -196,6 +225,8 @@ defmodule Portal.Repo.Seeds do
           raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
       end
 
+    {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
     # Create a client session
     Repo.insert!(%ClientSession{
       account_id: subject.account.id,
@@ -204,6 +235,10 @@ defmodule Portal.Repo.Seeds do
       public_key: public_key,
       user_agent: user_agent,
       remote_ip: subject.context.remote_ip,
+      remote_ip_location_region: location_region,
+      remote_ip_location_city: location_city,
+      remote_ip_location_lat: location_lat,
+      remote_ip_location_lon: location_lon,
       version: version
     })
 
@@ -521,14 +556,16 @@ defmodule Portal.Repo.Seeds do
           name: actor.name
         })
 
+      {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
       context = %Authentication.Context{
         type: :client,
-        user_agent: "Windows/10.0.22631 seeds/1",
+        user_agent: @ua_windows,
         remote_ip: {172, 28, 0, 100},
-        remote_ip_location_region: "UA",
-        remote_ip_location_city: "Kyiv",
-        remote_ip_location_lat: 50.4333,
-        remote_ip_location_lon: 30.5167
+        remote_ip_location_region: location_region,
+        remote_ip_location_city: location_city,
+        remote_ip_location_lat: location_lat,
+        remote_ip_location_lon: location_lon
       }
 
       {:ok, token} =
@@ -547,12 +584,7 @@ defmodule Portal.Repo.Seeds do
 
       for i <- 0..count do
         user_agent =
-          Enum.random([
-            "iOS/12.7 (iPhone) connlib/1.5.0",
-            "Android/14 connlib/1.4.1",
-            "Windows/10.0.22631 connlib/1.3.412",
-            "Ubuntu/22.4.0 connlib/1.2.2"
-          ])
+          Enum.random(@client_user_agents)
 
         client_name = String.split(user_agent, "/") |> List.first()
 
@@ -589,6 +621,8 @@ defmodule Portal.Repo.Seeds do
               raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
           end
 
+        {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
         # Create a client session
         Repo.insert!(%ClientSession{
           account_id: subject.account.id,
@@ -597,6 +631,10 @@ defmodule Portal.Repo.Seeds do
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           user_agent: user_agent,
           remote_ip: subject.context.remote_ip,
+          remote_ip_location_region: location_region,
+          remote_ip_location_city: location_city,
+          remote_ip_location_lat: location_lat,
+          remote_ip_location_lon: location_lon,
           version: version
         })
       end
@@ -635,14 +673,16 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.change(password_hash: password_hash)
       |> Repo.update!()
 
+    {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
     _unprivileged_actor_context = %Authentication.Context{
       type: :client,
-      user_agent: "iOS/18.1.0 connlib/1.3.5",
+      user_agent: @ua_ios,
       remote_ip: {172, 28, 0, 100},
-      remote_ip_location_region: "UA",
-      remote_ip_location_city: "Kyiv",
-      remote_ip_location_lat: 50.4333,
-      remote_ip_location_lon: 30.5167
+      remote_ip_location_region: location_region,
+      remote_ip_location_city: location_city,
+      remote_ip_location_lat: location_lat,
+      remote_ip_location_lon: location_lon
     }
 
     # Create client token for unprivileged actor so policy authorizations can reference it
@@ -740,7 +780,7 @@ defmodule Portal.Repo.Seeds do
         },
         unprivileged_subject,
         unprivileged_client_token.id,
-        "iOS/12.7 (iPhone) connlib/0.7.412"
+        @ua_ios
       )
 
     {:ok, _user_android_phone} =
@@ -753,7 +793,7 @@ defmodule Portal.Repo.Seeds do
         },
         unprivileged_subject,
         unprivileged_client_token.id,
-        "Android/14 connlib/0.7.412"
+        @ua_android
       )
 
     {:ok, _user_windows_laptop} =
@@ -766,7 +806,7 @@ defmodule Portal.Repo.Seeds do
         },
         unprivileged_subject,
         unprivileged_client_token.id,
-        "Windows/10.0.22631 connlib/0.7.412"
+        @ua_windows
       )
 
     {:ok, _user_linux_laptop} =
@@ -779,10 +819,10 @@ defmodule Portal.Repo.Seeds do
         },
         unprivileged_subject,
         unprivileged_client_token.id,
-        "Ubuntu/22.4.0 connlib/0.7.412"
+        @ua_ubuntu
       )
 
-    {:ok, _admin_iphone} =
+    {:ok, _admin_laptop} =
       create_client(
         %{
           name: "FZ Admin Laptop",
@@ -793,8 +833,15 @@ defmodule Portal.Repo.Seeds do
         },
         admin_subject,
         admin_client_token.id,
-        "Mac OS/14.5 connlib/0.7.412"
+        @ua_macos
       )
+
+    admin_encoded_client_token = Authentication.encode_fragment!(admin_client_token)
+    unprivileged_encoded_client_token = Authentication.encode_fragment!(unprivileged_client_token)
+
+    IO.puts("Client tokens:")
+    IO.puts("  Admin: #{admin_encoded_client_token}")
+    IO.puts("  Unprivileged: #{unprivileged_encoded_client_token}")
 
     IO.puts("Clients created")
     IO.puts("")
@@ -1013,7 +1060,7 @@ defmodule Portal.Repo.Seeds do
 
     site =
       %Site{account: account}
-      |> Ecto.Changeset.cast(%{name: "mycro-aws-gws"}, [:name])
+      |> Ecto.Changeset.cast(%{name: "AWS US-East"}, [:name])
       |> Portal.Changeset.trim_change([:name])
       |> Portal.Changeset.put_default_value(:name, &NameGenerator.generate/0)
       |> Ecto.Changeset.validate_required([:name])
@@ -1050,7 +1097,7 @@ defmodule Portal.Repo.Seeds do
         },
         %Authentication.Context{
           type: :gateway,
-          user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+          user_agent: @ua_gateway,
           remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
         }
       )
@@ -1066,7 +1113,7 @@ defmodule Portal.Repo.Seeds do
         },
         %Authentication.Context{
           type: :gateway,
-          user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+          user_agent: @ua_gateway,
           remote_ip: %Postgrex.INET{address: {164, 112, 78, 62}}
         }
       )
@@ -1083,7 +1130,7 @@ defmodule Portal.Repo.Seeds do
           },
           %Authentication.Context{
             type: :gateway,
-            user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+            user_agent: @ua_gateway,
             remote_ip: %Postgrex.INET{address: {164, 112, 78, 62 + i}}
           }
         )
@@ -1459,7 +1506,7 @@ defmodule Portal.Repo.Seeds do
         account_id: unprivileged_subject.account.id,
         token_id: unprivileged_subject.credential.id,
         client_remote_ip: {127, 0, 0, 1},
-        client_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+        client_user_agent: @ua_ios,
         gateway_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
         expires_at: unprivileged_subject.expires_at || DateTime.utc_now() |> DateTime.add(3600)
       }

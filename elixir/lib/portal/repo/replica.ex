@@ -4,7 +4,7 @@ defmodule Portal.Repo.Replica do
     adapter: Ecto.Adapters.Postgres,
     read_only: true
 
-  alias Portal.Repo.{List, Paginator}
+  alias Portal.Repo.{List, OffsetList, OffsetPaginator, Paginator}
 
   defoverridable get_dynamic_repo: 0
 
@@ -33,5 +33,19 @@ defmodule Portal.Repo.Replica do
           | {:error, term()}
   def list(queryable, query_module, opts \\ []) do
     List.call(__MODULE__, queryable, query_module, opts)
+  end
+
+  @spec list_offset(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts :: Keyword.t()
+        ) ::
+          {:ok, [Ecto.Schema.t()], OffsetPaginator.Metadata.t()}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
+          | {:error, term()}
+  def list_offset(queryable, query_module, opts \\ []) do
+    OffsetList.call(__MODULE__, queryable, query_module, opts)
   end
 end

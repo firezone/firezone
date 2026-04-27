@@ -43,6 +43,11 @@ const nextConfig = {
             key: "Permissions-Policy",
             value: "browsing-topics=()",
           },
+          {
+            key: "Link",
+            value:
+              '</.well-known/api-catalog>; rel="api-catalog", <https://api.firezone.dev/swaggerui>; rel="service-doc", <https://api.firezone.dev/openapi>; rel="service-desc"',
+          },
         ],
       },
     ];

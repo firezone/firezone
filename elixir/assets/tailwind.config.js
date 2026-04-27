@@ -7,6 +7,8 @@ const path = require("path");
 const defaultTheme = require("tailwindcss/defaultTheme");
 const colors = require("tailwindcss/colors");
 
+const depsDir = process.env.MIX_DEPS_PATH || path.join(__dirname, "../deps");
+
 const firezoneColors = {
   // See our brand palette in Figma.
   // These have been reversed to match Tailwind's default order.
@@ -66,7 +68,12 @@ module.exports = {
   ],
   theme: {
     fontFamily: {
-      sans: ['"Source Sans 3 Variable"', ...defaultTheme.fontFamily.sans],
+      sans: ["Roboto Variable", "Roboto", ...defaultTheme.fontFamily.sans],
+      mono: [
+        "Roboto Mono Variable",
+        "Roboto Mono",
+        ...defaultTheme.fontFamily.mono,
+      ],
     },
     extend: {
       colors: {
@@ -99,34 +106,34 @@ module.exports = {
       ])
     ),
 
-    // Embeds Hero Icons (https://heroicons.com) into your app.css bundle
-    // See your `CoreComponents.icon/1` for more information.
-    //
+    // Embeds Remix Icons (https://remixicon.com) into your app.css bundle.
+    // Icons are sourced from the remixicons dep (deps/remixicons/icons/).
+    // Use any icon with the `ri-` prefix, e.g. `ri-settings-3-line`.
     plugin(function ({ matchComponents, theme }) {
-      let iconsDir = path.join(__dirname, "./vendor/heroicons/optimized");
+      let iconsDir = path.join(depsDir, "remixicons/icons");
       let values = {};
-      let icons = [
-        ["", "/24/outline"],
-        ["-solid", "/24/solid"],
-        ["-mini", "/20/solid"],
-      ];
-      icons.forEach(([suffix, dir]) => {
-        fs.readdirSync(path.join(iconsDir, dir)).map((file) => {
-          let name = path.basename(file, ".svg") + suffix;
-          values[name] = { name, fullPath: path.join(iconsDir, dir, file) };
+      function scanDir(dir) {
+        fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+          if (entry.isDirectory()) {
+            scanDir(path.join(dir, entry.name));
+          } else if (entry.name.endsWith(".svg")) {
+            let name = path.basename(entry.name, ".svg");
+            values[name] = { name, fullPath: path.join(dir, entry.name) };
+          }
         });
-      });
+      }
+      scanDir(iconsDir);
       matchComponents(
         {
-          hero: ({ name, fullPath }) => {
+          ri: ({ name, fullPath }) => {
             let content = fs
               .readFileSync(fullPath)
               .toString()
               .replace(/\r?\n|\r/g, "");
             return {
-              [`--hero-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
-              "-webkit-mask": `var(--hero-${name})`,
-              mask: `var(--hero-${name})`,
+              [`--ri-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
+              "-webkit-mask": `var(--ri-${name})`,
+              mask: `var(--ri-${name})`,
               "background-color": "currentColor",
               "vertical-align": "middle",
               display: "inline-block",

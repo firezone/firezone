@@ -101,7 +101,7 @@ defmodule PortalWeb.FormComponents do
   def input(%{type: "radio", label: _label} = assigns) do
     ~H"""
     <div>
-      <label class="flex items-center gap-2 text-neutral-900">
+      <label class="flex items-center gap-2 text-[var(--text-primary)]">
         <input
           type="radio"
           id={@id}
@@ -109,7 +109,7 @@ defmodule PortalWeb.FormComponents do
           value={@value}
           checked={@checked}
           class={[
-            "w-4 h-4 border-neutral-300",
+            "w-4 h-4 border-[var(--control-border)]",
             @class
           ]}
           {@rest}
@@ -148,7 +148,7 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div>
       <input :if={@unchecked_value} type="hidden" name={@name} value={@unchecked_value} />
-      <label class="flex items-center gap-4 text-sm leading-6 text-neutral-600">
+      <label class="flex items-center gap-4 text-sm leading-6 text-[var(--text-secondary)]">
         <input
           type="checkbox"
           id={@id}
@@ -156,8 +156,8 @@ defmodule PortalWeb.FormComponents do
           value="true"
           checked={@checked}
           class={[
-            "bg-neutral-50",
-            "border border-neutral-300 text-neutral-900 rounded-sm",
+            "bg-[var(--control-bg)]",
+            "border border-[var(--control-border)] text-[var(--text-primary)] rounded-sm",
             "checked:bg-accent-500 checked:hover:bg-accent-500",
             @class
           ]}
@@ -186,11 +186,16 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "text-sm bg-neutral-50",
-          "border border-neutral-300 text-neutral-900 rounded-sm",
-          "block p-2",
+          "text-xs py-1 pl-2.5 pr-6 rounded",
+          "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
+          "border border-[var(--border)]",
+          "outline-none transition-colors cursor-pointer",
+          "hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]",
+          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
+          @class
         ]}
         multiple={@multiple}
         {@rest}
@@ -228,11 +233,16 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "text-sm bg-neutral-50",
-          "border border-neutral-300 text-neutral-900 rounded-sm",
+          "text-xs py-1 pl-2.5 pr-6 rounded",
+          "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
+          "border border-[var(--border)]",
+          "outline-none transition-colors cursor-pointer",
+          "hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]",
+          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
           "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
+          @class
         ]}
         multiple={@multiple}
         {@rest}
@@ -255,12 +265,14 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "block rounded-sm sm:text-sm sm:leading-6",
-          "bg-neutral-50",
-          "border border-neutral-300 rounded-sm",
+          "block rounded-md text-sm px-3 py-2",
+          "bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
+          "border border-[var(--control-border)]",
+          "outline-none transition-colors",
+          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
           "min-h-[6rem]",
           !@inline_errors && "w-full",
-          @errors != [] && "border-rose-400 focus:border-rose-400",
+          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
           @class
         ]}
         {@rest}
@@ -288,7 +300,7 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div>
       <.label :if={@label}>{@label}</.label>
-      <div class="border border-neutral-200 border-solid rounded-sm p-2 text-sm text-neutral-500">
+      <div class="border border-[var(--control-border)] rounded-md px-3 py-2 text-sm text-[var(--text-tertiary)] bg-[var(--surface-raised)]">
         {assigns.value}
       </div>
       <input
@@ -318,11 +330,13 @@ defmodule PortalWeb.FormComponents do
         class={[
           "block",
           !@inline_errors && "w-full",
-          "p-2.5 rounded-sm",
-          "bg-neutral-50 text-neutral-900 text-sm",
-          "border border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          @errors != [] && "border-rose-400 focus:border-rose-400",
+          "px-3 py-2 rounded text-sm",
+          "bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
+          "border border-[var(--control-border)]",
+          "outline-none transition-colors",
+          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "disabled:opacity-40 disabled:cursor-not-allowed",
+          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
           @class
         ]}
         {@rest}
@@ -444,7 +458,7 @@ defmodule PortalWeb.FormComponents do
               type="button"
               phx-click={@on_close}
             >
-              <.icon name="hero-x-mark" class="h-4 w-4" />
+              <.icon name="ri-close-line" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
             </button>
           </div>
@@ -531,7 +545,7 @@ defmodule PortalWeb.FormComponents do
               type="submit"
               value="cancel"
             >
-              <.icon name="hero-x-mark" class="h-4 w-4" />
+              <.icon name="ri-close-line" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
             </button>
           </div>
@@ -587,7 +601,7 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.button style="primary" navigate={~p"/actors/new"} icon="hero-plus">
+      <.button style="primary" navigate={~p"/actors/new"} icon="ri-add-line">
         Add user
       </.button>
 
@@ -711,7 +725,7 @@ defmodule PortalWeb.FormComponents do
 
   def delete_button(assigns) do
     ~H"""
-    <.button style="danger" size={@size} icon="hero-trash-solid" {@rest}>
+    <.button style="danger" size={@size} icon="ri-delete-bin-fill" {@rest}>
       {render_slot(@inner_block)}
     </.button>
     """
@@ -737,7 +751,7 @@ defmodule PortalWeb.FormComponents do
 
   def add_button(%{navigate: navigate} = assigns) when not is_nil(navigate) do
     ~H"""
-    <.button style="primary" class={@class} navigate={@navigate} icon="hero-plus">
+    <.button style="primary" class={@class} navigate={@navigate} icon="ri-add-line">
       {render_slot(@inner_block)}
     </.button>
     """
@@ -745,7 +759,7 @@ defmodule PortalWeb.FormComponents do
 
   def add_button(%{patch: patch} = assigns) when not is_nil(patch) do
     ~H"""
-    <.button style="primary" class={@class} patch={@patch} icon="hero-plus">
+    <.button style="primary" class={@class} patch={@patch} icon="ri-add-line">
       {render_slot(@inner_block)}
     </.button>
     """
@@ -765,7 +779,7 @@ defmodule PortalWeb.FormComponents do
 
   def edit_button(assigns) do
     ~H"""
-    <.button style="primary" navigate={@navigate} icon="hero-pencil-solid">
+    <.button style="primary" navigate={@navigate} icon="ri-pencil-fill">
       {render_slot(@inner_block)}
     </.button>
     """
@@ -782,9 +796,9 @@ defmodule PortalWeb.FormComponents do
   def button_style("warning") do
     button_style() ++
       [
-        "text-primary-500",
-        "border border-primary-500",
-        "hover:text-white hover:bg-primary-500"
+        "text-[var(--brand)]",
+        "border border-[var(--brand)]",
+        "hover:text-white hover:bg-[var(--brand)]"
       ]
   end
 
@@ -800,17 +814,17 @@ defmodule PortalWeb.FormComponents do
   def button_style("info") do
     button_style() ++
       [
-        "text-neutral-900",
-        "border border-neutral-200",
-        "hover:bg-neutral-100 hover:text-neutral-900"
+        "text-[var(--text-primary)]",
+        "border border-[var(--border-strong)]",
+        "hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
       ]
   end
 
   def button_style("disabled") do
     button_style() ++
       [
-        "text-neutral-200",
-        "border border-neutral-200",
+        "text-[var(--text-muted)]",
+        "border border-[var(--border)]",
         "cursor-not-allowed"
       ]
   end
@@ -819,8 +833,8 @@ defmodule PortalWeb.FormComponents do
     button_style() ++
       [
         "text-white",
-        "bg-accent-450",
-        "hover:bg-accent-700"
+        "bg-[var(--brand)]",
+        "hover:bg-[var(--brand-hover)]"
       ]
   end
 

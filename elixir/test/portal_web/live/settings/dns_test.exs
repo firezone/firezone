@@ -1,433 +1,268 @@
-defmodule PortalWeb.Live.Settings.DNSTest do
+defmodule PortalWeb.Settings.DNSTest do
   use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
 
+  alias Portal.Account
+
   setup do
-    Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
-
     account = account_fixture()
-    actor = actor_fixture(account: account, type: :account_admin_user)
+    actor = admin_actor_fixture(account: account)
+    %{account: account, actor: actor}
+  end
 
-    %{
+  describe "unauthorized" do
+    test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
+      path = ~p"/#{account}/settings/dns"
+
+      assert live(conn, path) ==
+               {:error,
+                {:redirect,
+                 %{
+                   to: ~p"/#{account}/sign_in?#{%{redirect_to: path}}",
+                   flash: %{"error" => "You must sign in to access that page."}
+                 }}}
+    end
+  end
+
+  describe "index (default action)" do
+    test "renders custom upstream resolvers and unset search domain", %{
+      conn: conn,
       account: account,
       actor: actor
-    }
-  end
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns")
 
-  test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    path = ~p"/#{account}/settings/dns"
+      assert html =~ "DNS Configuration"
+      assert html =~ "Not configured"
+      assert html =~ "Custom DNS"
+      assert html =~ "1.1.1.1"
+      assert html =~ "2606:4700:4700::1111"
+    end
 
-    assert live(conn, path) ==
-             {:error,
-              {:redirect,
-               %{
-                 to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access that page."}
-               }}}
-  end
-
-  test "renders breadcrumbs item", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
-    breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "DNS Settings"
-  end
-
-  test "renders form with DNS type options", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :system, addresses: []}}
-    })
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert html =~ "System DNS"
-    assert html =~ "Secure DNS"
-    assert html =~ "Custom DNS"
-  end
-
-  test "shows DoH provider dropdown when secure DNS selected", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :google, addresses: []}}
-    })
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert html =~ "DNS-over-HTTPS Provider"
-    assert html =~ "Google Public DNS"
-    assert html =~ "Cloudflare DNS"
-    assert html =~ "Quad9 DNS"
-    assert html =~ "OpenDNS"
-  end
-
-  test "shows custom DNS fields when custom type selected", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{
-        clients_upstream_dns: %{
-          type: :custom,
-          addresses: [%{address: "8.8.8.8"}]
-        }
-      }
-    })
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert html =~ "IP Address"
-    assert html =~ "8.8.8.8"
-    assert html =~ "New Resolver"
-  end
-
-  test "saves search domain", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    account =
-      update_account(account, %{
-        config: %{clients_upstream_dns: %{type: :system, addresses: []}}
-      })
-
-    attrs = %{
-      account: %{
-        config: %{
-          search_domain: "example.com"
-        }
-      }
-    }
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    lv
-    |> form("form[phx-submit]", attrs)
-    |> render_submit()
-
-    account = Repo.get!(Portal.Account, account.id)
-    assert account.config.search_domain == "example.com"
-  end
-
-  test "renders error for invalid search domain", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    account =
-      update_account(account, %{
-        config: %{clients_upstream_dns: %{type: :system, addresses: []}}
-      })
-
-    attrs = %{
-      account: %{
-        config: %{
-          search_domain: "example"
-        }
-      }
-    }
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert lv
-           |> form("form[phx-submit]", attrs)
-           |> render_change() =~ "must be a valid fully-qualified domain name"
-  end
-
-  test "saves custom DNS server address", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{
-        clients_upstream_dns: %{
-          type: :custom,
-          addresses: [%{address: "1.1.1.1"}]
-        }
-      }
-    })
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "custom",
-            addresses: %{"0" => %{"address" => "8.8.8.8"}}
+    test "renders secure DNS provider details", %{conn: conn} do
+      account =
+        account_fixture(
+          config: %{
+            search_domain: "corp.example.com",
+            clients_upstream_dns: %{type: :secure, doh_provider: :quad9}
           }
-        }
-      }
-    }
+        )
 
-    lv
-    |> form("form[phx-submit]", attrs)
-    |> render_submit()
+      actor = admin_actor_fixture(account: account)
 
-    account = Repo.get!(Portal.Account, account.id)
-    assert account.config.clients_upstream_dns.type == :custom
-    assert length(account.config.clients_upstream_dns.addresses) == 1
-    assert hd(account.config.clients_upstream_dns.addresses).address == "8.8.8.8"
-  end
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns")
 
-  test "returns error when custom type has no addresses", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :system, addresses: []}}
-    })
+      assert html =~ "corp.example.com"
+      assert html =~ "Secure DNS"
+      assert html =~ "Quad9 DNS"
+    end
 
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert lv
-           |> form("form[phx-submit]", %{
-             account: %{
-               config: %{
-                 clients_upstream_dns: %{
-                   type: "custom"
-                 }
-               }
-             }
-           })
-           |> render_submit() =~ "must have at least one custom resolver"
-  end
-
-  test "validates duplicate addresses", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert lv
-           |> form("form[phx-submit]", %{
-             account: %{
-               config: %{
-                 clients_upstream_dns: %{
-                   type: "custom",
-                   addresses: %{
-                     "0" => %{"address" => "8.8.8.8"},
-                     "1" => %{"address" => "8.8.8.8"}
-                   }
-                 }
-               }
-             }
-           })
-           |> render_change() =~ "all addresses must be unique"
-  end
-
-  test "validates IP addresses", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    assert lv
-           |> form("form[phx-submit]", %{
-             account: %{
-               config: %{
-                 clients_upstream_dns: %{
-                   type: "custom",
-                   addresses: %{"0" => %{"address" => "invalid"}}
-                 }
-               }
-             }
-           })
-           |> render_change() =~ "must be a valid IP address"
-
-    refute lv
-           |> form("form[phx-submit]", %{
-             account: %{
-               config: %{
-                 clients_upstream_dns: %{
-                   type: "custom",
-                   addresses: %{"0" => %{"address" => "8.8.8.8"}}
-                 }
-               }
-             }
-           })
-           |> render_change() =~ "must be a valid IP address"
-  end
-
-  test "saves secure DNS with DoH provider", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :google, addresses: []}}
-    })
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    lv
-    |> form("form[phx-submit]", %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "secure",
-            doh_provider: "google"
+    test "renders system DNS details", %{conn: conn} do
+      account =
+        account_fixture(
+          config: %{
+            clients_upstream_dns: %{type: :system}
           }
-        }
-      }
-    })
-    |> render_submit()
+        )
 
-    account = Repo.reload!(account)
-    assert account.config.clients_upstream_dns.type == :secure
-    assert account.config.clients_upstream_dns.doh_provider == :google
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns")
+
+      assert html =~ "System DNS"
+      assert html =~ "Use the device&#39;s default DNS resolvers."
+    end
   end
 
-  test "saves system resolver selection", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :cloudflare, addresses: []}}
-    })
+  describe ":edit action" do
+    test "renders edit panel and closes it", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
 
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
+      assert html =~ "Edit DNS Settings"
+      assert html =~ "Add Resolver"
 
-    lv
-    |> form("form[phx-submit]", %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "system"
-          }
-        }
-      }
-    })
-    |> render_submit()
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/dns")
+    end
 
-    account = Repo.get!(Portal.Account, account.id)
-    assert account.config.clients_upstream_dns.type == :system
-    assert Enum.empty?(account.config.clients_upstream_dns.addresses)
-  end
+    test "closes edit panel on escape", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
 
-  test "can add multiple custom DNS addresses", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
+      render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
+      assert_patch(lv, ~p"/#{account}/settings/dns")
+    end
 
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "custom",
-            addresses: %{
-              "0" => %{"address" => "8.8.8.8"},
-              "1" => %{"address" => "1.1.1.1"},
-              "2" => %{"address" => "2001:4860:4860::8888"}
+    test "switches to secure DNS and saves search domain", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
+
+      params = %{
+        "account" => %{
+          "config" => %{
+            "search_domain" => "example.com",
+            "clients_upstream_dns" => %{
+              "type" => "secure",
+              "doh_provider" => "cloudflare",
+              "addresses" => %{
+                "0" => %{"address" => "1.1.1.1"},
+                "1" => %{"address" => "2606:4700:4700::1111"},
+                "2" => %{"address" => "9.9.9.9"}
+              },
+              "addresses_sort" => ["0", "1", "2"],
+              "addresses_drop" => [""]
             }
           }
         }
       }
-    }
 
-    lv
-    |> form("form[phx-submit]", attrs)
-    |> render_submit()
+      render_change(lv, "change", params)
+      html = render_submit(lv, "submit", params)
 
-    account = Repo.get!(Portal.Account, account.id)
-    assert account.config.clients_upstream_dns.type == :custom
-    assert length(account.config.clients_upstream_dns.addresses) == 3
+      assert html =~ "DNS settings saved successfully"
+      assert_patch(lv, ~p"/#{account}/settings/dns")
 
-    addresses = Enum.map(account.config.clients_upstream_dns.addresses, & &1.address)
-    assert "8.8.8.8" in addresses
-    assert "1.1.1.1" in addresses
-    assert "2001:4860:4860::8888" in addresses
-  end
+      assert %Account{} = saved = Repo.get!(Account, account.id)
+      assert saved.config.search_domain == "example.com"
+      assert saved.config.clients_upstream_dns.type == :secure
+      assert saved.config.clients_upstream_dns.doh_provider == :cloudflare
+    end
 
-  test "can change DoH provider", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :google, addresses: []}}
-    })
+    test "adds and removes custom resolvers through the form", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
 
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/dns")
-
-    lv
-    |> form("form[phx-submit]", %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "secure",
-            doh_provider: "cloudflare"
+      html =
+        render_change(lv, "change", %{
+          "account" => %{
+            "config" => %{
+              "search_domain" => "dns.example.com",
+              "clients_upstream_dns" => %{
+                "type" => "custom",
+                "addresses" => %{
+                  "0" => %{"address" => "1.1.1.1"},
+                  "1" => %{"address" => "8.8.8.8"}
+                },
+                "addresses_sort" => ["0", "1"],
+                "addresses_drop" => [""]
+              }
+            }
           }
-        }
-      }
-    })
-    |> render_submit()
+        })
 
-    account = Repo.get!(Portal.Account, account.id)
-    assert account.config.clients_upstream_dns.type == :secure
-    assert account.config.clients_upstream_dns.doh_provider == :cloudflare
+      assert html =~ "1.1.1.1"
+      assert html =~ "8.8.8.8"
+
+      html =
+        render_submit(lv, "submit", %{
+          "account" => %{
+            "config" => %{
+              "search_domain" => "dns.example.com",
+              "clients_upstream_dns" => %{
+                "type" => "custom",
+                "addresses" => %{
+                  "0" => %{"address" => "8.8.8.8"}
+                },
+                "addresses_sort" => ["0"],
+                "addresses_drop" => [""]
+              }
+            }
+          }
+        })
+
+      assert html =~ "DNS settings saved successfully"
+
+      assert %Account{} = saved = Repo.get!(Account, account.id)
+
+      assert Enum.map(saved.config.clients_upstream_dns.addresses, & &1.address) == ["8.8.8.8"]
+    end
+
+    test "shows validation errors for invalid search domains", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
+
+      html =
+        lv
+        |> form("#dns-form",
+          account: %{
+            config: %{
+              search_domain: ".bad.example.com",
+              clients_upstream_dns: %{
+                type: "system"
+              }
+            }
+          }
+        )
+        |> render_change()
+
+      assert html =~ "must not start with a dot"
+    end
+
+    test "shows validation error when custom DNS has duplicate resolvers", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
+
+      html =
+        lv
+        |> form("#dns-form",
+          account: %{
+            config: %{
+              search_domain: "example.com",
+              clients_upstream_dns: %{
+                type: "custom",
+                addresses: %{
+                  "0" => %{address: "1.1.1.1"},
+                  "1" => %{address: "1.1.1.1"}
+                },
+                addresses_sort: ["0", "1"],
+                addresses_drop: [""]
+              }
+            }
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "all addresses must be unique"
+    end
   end
 end

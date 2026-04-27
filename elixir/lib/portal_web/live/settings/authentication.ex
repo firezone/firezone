@@ -25,10 +25,10 @@ defmodule PortalWeb.Settings.Authentication do
     {"Admin Portal Only", "portal_only"}
   ]
 
-  @select_type_classes ~w[
-    component bg-white rounded-md p-4 flex items-center cursor-pointer
-    border-2 transition-all duration-150
-    border-neutral-200 hover:border-accent-300 hover:bg-neutral-50 hover:shadow-xs
+  @select_type_classes [
+    "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
+    "border-[var(--border)] bg-[var(--surface)]",
+    "hover:bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)]"
   ]
 
   @new_types ~w[google entra okta oidc]
@@ -48,6 +48,10 @@ defmodule PortalWeb.Settings.Authentication do
 
   def mount(_params, _session, socket) do
     socket = assign(socket, page_title: "Authentication")
+
+    if connected?(socket) do
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
 
     {:ok, init(socket)}
   end
@@ -91,8 +95,17 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, socket}
   end
 
-  def handle_event("close_modal", _params, socket) do
+  def handle_event("close_panel", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/authentication")}
+  end
+
+  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+      when socket.assigns.live_action in [:select_type, :new, :edit] do
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/authentication")}
+  end
+
+  def handle_event("handle_keydown", _params, socket) do
+    {:noreply, socket}
   end
 
   def handle_event("validate", %{"auth_provider" => attrs}, socket) do
@@ -254,6 +267,22 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, assign(socket, default_provider_changed: true)}
   end
 
+  def handle_event("request_confirm", %{"id" => id, "action" => action}, socket) do
+    {:noreply, assign(socket, pending_confirm: %{id: id, action: action})}
+  end
+
+  def handle_event("cancel_confirm", _params, socket) do
+    {:noreply, assign(socket, pending_confirm: nil)}
+  end
+
+  def handle_event("set_default_provider", %{"id" => id}, socket) do
+    assign_default_provider(id, socket)
+  end
+
+  def handle_event("clear_default_provider", _params, socket) do
+    clear_default_provider(socket)
+  end
+
   def handle_event("revoke_sessions", %{"id" => id}, socket) do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
@@ -276,6 +305,22 @@ defmodule PortalWeb.Settings.Authentication do
 
   def handle_event("default_provider_save", %{"provider_id" => provider_id}, socket) do
     assign_default_provider(provider_id, socket)
+  end
+
+  def handle_info(%Portal.Changes.Change{struct: %Portal.ClientToken{}}, socket) do
+    {:noreply, refresh_session_counts(socket)}
+  end
+
+  def handle_info(%Portal.Changes.Change{old_struct: %Portal.ClientToken{}}, socket) do
+    {:noreply, refresh_session_counts(socket)}
+  end
+
+  def handle_info(%Portal.Changes.Change{struct: %Portal.PortalSession{}}, socket) do
+    {:noreply, refresh_session_counts(socket)}
+  end
+
+  def handle_info(%Portal.Changes.Change{old_struct: %Portal.PortalSession{}}, socket) do
+    {:noreply, refresh_session_counts(socket)}
   end
 
   # Sent by VerificationController/OIDCController to fetch config+verifier for code exchange
@@ -328,6 +373,10 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_info({:verification_failed, reason}, socket) do
     error = "Verification failed: #{format_verification_error_reason(reason)}"
     {:noreply, assign(socket, verification_error: error)}
+  end
+
+  def handle_info(_message, socket) do
+    {:noreply, socket}
   end
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
@@ -405,6 +454,13 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
+  defp refresh_session_counts(socket) do
+    providers =
+      Database.enrich_with_session_counts(socket.assigns.providers, socket.assigns.subject)
+
+    assign(socket, providers: providers)
+  end
+
   defp init(socket) do
     providers =
       Database.list_all_providers(socket.assigns.subject)
@@ -413,428 +469,598 @@ defmodule PortalWeb.Settings.Authentication do
     assign(socket,
       providers: providers,
       verification_error: nil,
-      default_provider_changed: false
+      pending_confirm: nil
     )
   end
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/settings/authentication"}>
-        Authentication Settings
-      </.breadcrumb>
-    </.breadcrumbs>
-    <.section>
-      <:title>Authentication Providers</:title>
-      <:action><.docs_action path="/authenticate" /></:action>
-      <:action>
-        <.add_button patch={~p"/#{@account}/settings/authentication/select_type"}>
-          Add Provider
-        </.add_button>
-      </:action>
-      <:help>
-        Authentication providers authenticate your users with an external source.
-      </:help>
-      <:content>
-        <div class="pb-8 px-1">
-          <div class="text-lg text-neutral-600 mb-4">
-            Default Authentication Provider
+    <div class="flex flex-col h-full">
+      <.settings_nav account={@account} current_path={@current_path} />
+
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+          <div class="flex items-center gap-2">
+            <h2 class="text-xs font-semibold text-[var(--text-primary)]">Identity Providers</h2>
+            <span class="text-xs text-[var(--text-tertiary)] tabular-nums">{length(@providers)}</span>
           </div>
-          <.default_provider_form
-            providers={@providers}
-            default_provider_changed={@default_provider_changed}
-          />
-        </div>
-
-        <div class="text-lg text-neutral-600 mb-4 px-1">
-          All Authentication Providers
-        </div>
-      </:content>
-      <:content>
-        <div class="flex flex-wrap gap-4">
-          <%= for provider <- @providers do %>
-            <.provider_card type={provider_type(provider)} account={@account} provider={provider} />
-          <% end %>
-        </div>
-      </:content>
-    </.section>
-
-    <!-- Select Provider Type Modal -->
-    <.modal :if={@live_action == :select_type} id="select-provider-type-modal" on_close="close_modal">
-      <:title>Select Provider Type</:title>
-      <:body>
-        <p class="mb-4 text-base text-neutral-700">
-          Select an authentication provider type to add:
-        </p>
-        <ul class="grid w-full gap-4 grid-cols-1">
-          <li>
-            <.link
-              patch={~p"/#{@account}/settings/authentication/google/new"}
-              class={select_type_classes()}
-            >
-              <span class="w-1/3 flex items-center">
-                <.provider_icon type="google" class="w-10 h-10 inline-block mr-2" />
-                <span class="font-medium"> Google </span>
-              </span>
-              <span class="w-2/3"> Authenticate users against a Google account. </span>
-            </.link>
-          </li>
-          <li>
-            <.link
-              patch={~p"/#{@account}/settings/authentication/entra/new"}
-              class={select_type_classes()}
-            >
-              <span class="w-1/3 flex items-center">
-                <.provider_icon type="entra" class="w-10 h-10 inline-block mr-2" />
-                <span class="font-medium"> Entra </span>
-              </span>
-              <span class="w-2/3"> Authenticate users against a Microsoft Entra account. </span>
-            </.link>
-          </li>
-          <li>
-            <.link
-              patch={~p"/#{@account}/settings/authentication/okta/new"}
-              class={select_type_classes()}
-            >
-              <span class="w-1/3 flex items-center">
-                <.provider_icon type="okta" class="w-10 h-10 inline-block mr-2" />
-                <span class="font-medium">Okta</span>
-              </span>
-              <span class="w-2/3">Authenticate users against an Okta account. </span>
-            </.link>
-          </li>
-          <li>
-            <.link
-              patch={~p"/#{@account}/settings/authentication/oidc/new"}
-              class={select_type_classes()}
-            >
-              <span class="w-1/3 flex items-center">
-                <.provider_icon type="oidc" class="w-10 h-10 inline-block mr-2" />
-                <span class="font-medium">OIDC</span>
-              </span>
-              <span class="w-2/3">
-                Authenticate users against any OpenID Connect compliant identity provider.
-              </span>
-            </.link>
-          </li>
-        </ul>
-      </:body>
-    </.modal>
-
-    <!-- New Auth Provider Modal -->
-    <.modal
-      :if={@live_action == :new}
-      id="new-auth-provider-modal"
-      on_close="close_modal"
-      confirm_disabled={not @form.source.valid?}
-    >
-      <:title icon={@type}>
-        Add {titleize(@type)} Provider <.docs_action path={"/authenticate/#{@type}"} />
-      </:title>
-      <:body>
-        <.provider_form
-          account_id={@account.id}
-          verification_error={@verification_error}
-          form={@form}
-          type={@type}
-          submit_event="submit_provider"
-        />
-      </:body>
-      <:confirm_button form="auth-provider-form" type="submit">Create</:confirm_button>
-    </.modal>
-
-    <!-- Edit Auth Provider Modal -->
-    <.modal
-      :if={@live_action == :edit}
-      id="edit-auth-provider-modal"
-      on_close="close_modal"
-      confirm_disabled={
-        not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
-      }
-    >
-      <:title icon={@type}>
-        Edit {@provider_name} <.docs_action path={"/authenticate/#{@type}"} />
-      </:title>
-      <:body>
-        <.flash :if={assigns[:is_legacy]} kind={:warning_inline}>
-          This provider uses legacy configuration. We recommend setting up a new authentication provider
-          for your identity service to take advantage of improved security and features.
-        </.flash>
-        <.provider_form
-          account_id={@account.id}
-          verification_error={@verification_error}
-          form={@form}
-          type={@type}
-          submit_event="submit_provider"
-          is_legacy={assigns[:is_legacy]}
-        />
-      </:body>
-      <:confirm_button
-        form="auth-provider-form"
-        type="submit"
-      >
-        Save
-      </:confirm_button>
-    </.modal>
-    """
-  end
-
-  attr :providers, :list, required: true
-  attr :default_provider_changed, :boolean, required: true
-
-  defp default_provider_form(assigns) do
-    options =
-      assigns.providers
-      |> Enum.filter(fn provider ->
-        # Exclude email_otp and userpass from being default
-        provider_type(provider) not in ["email_otp", "userpass"]
-      end)
-      |> Enum.map(fn provider ->
-        {provider.name, provider.id}
-      end)
-
-    options = [{"None", ""} | options]
-
-    value =
-      case Enum.find(assigns.providers, fn provider ->
-             # Only check is_default if the field exists (OIDC, Entra, etc.)
-             Map.has_key?(provider, :is_default) && provider.is_default
-           end) do
-        nil -> ""
-        provider -> provider.id
-      end
-
-    assigns = assign(assigns, options: options, value: value)
-
-    ~H"""
-    <.form
-      id="default-provider-form"
-      phx-submit="default_provider_save"
-      phx-change="default_provider_change"
-      for={nil}
-    >
-      <div class="flex gap-2 items-center">
-        <.input
-          id="default-provider-select"
-          name="provider_id"
-          type="select"
-          options={@options}
-          value={@value}
-        />
-        <.submit_button
-          phx-disable-with="Saving..."
-          {if @default_provider_changed, do: [], else: [disabled: true, style: "disabled"]}
-          icon="hero-identification"
-        >
-          Make Default
-        </.submit_button>
-      </div>
-      <p class="text-xs text-neutral-500 mt-2">
-        When selected, users signing in from the Firezone client will be taken directly to this provider for authentication.
-      </p>
-    </.form>
-    """
-  end
-
-  defp provider_card(assigns) do
-    ~H"""
-    <div class="w-[28rem] flex flex-col bg-neutral-50 rounded-md p-4">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center flex-1 min-w-0 gap-2">
-          <.provider_icon type={@type} class="w-7 h-7 shrink-0" />
-          <div class="flex flex-col min-w-0">
-            <span class="font-medium text-xl truncate" title={@provider.name}>
-              {@provider.name}
-            </span>
-            <span class="text-xs text-neutral-500 font-mono">
-              ID: {@provider.id}
-            </span>
-          </div>
-          <%= if Map.has_key?(@provider, :is_default) && @provider.is_default do %>
-            <.badge type="primary" class="shrink-0">DEFAULT</.badge>
-          <% end %>
-          <%= if Map.get(@provider, :is_legacy) do %>
-            <.badge type="warning" class="shrink-0">LEGACY</.badge>
-          <% end %>
-        </div>
-        <div class="flex items-center gap-1">
-          <.button_with_confirmation
-            id={"toggle-provider-#{@provider.id}"}
-            on_confirm="toggle_provider"
-            on_confirm_id={@provider.id}
-            class="p-0 border-0 bg-transparent shadow-none hover:bg-transparent"
+          <.link
+            patch={~p"/#{@account}/settings/authentication/new"}
+            class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
           >
-            <.toggle
-              id={"provider-toggle-#{@provider.id}"}
-              checked={not @provider.is_disabled}
-            />
-            <:dialog_title>
-              {if @provider.is_disabled, do: "Enable", else: "Disable"} Authentication Provider
-            </:dialog_title>
-            <:dialog_content>
-              <p>
-                Are you sure you want to {if @provider.is_disabled, do: "enable", else: "disable"} <strong>{@provider.name}</strong>?
-              </p>
-              <%= if not @provider.is_disabled do %>
-                <p class="mt-2">
-                  Users will not be able to sign in using this provider while it is disabled.
-                </p>
-              <% end %>
-            </:dialog_content>
-            <:dialog_confirm_button>
-              {if @provider.is_disabled, do: "Enable", else: "Disable"}
-            </:dialog_confirm_button>
-            <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-          </.button_with_confirmation>
-          <.popover placement="bottom" trigger="click">
-            <:target>
+            <.icon name="ri-add-line" class="w-3 h-3" /> Add
+          </.link>
+        </div>
+
+        <div class="flex-1 overflow-auto">
+          <table class="w-full text-sm border-collapse">
+            <thead class="sticky top-0 z-10 bg-[var(--surface-raised)]">
+              <tr class="border-b border-[var(--border-strong)]">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                  Provider
+                </th>
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-32">
+                  Context
+                </th>
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                  Issuer
+                </th>
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                  Portal TTL
+                </th>
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                  Client TTL
+                </th>
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-48">
+                  Sessions
+                </th>
+                <th class="px-6 py-2.5 w-14"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <.provider_row
+                :for={provider <- @providers}
+                type={provider_type(provider)}
+                account={@account}
+                provider={provider}
+                pending_confirm={@pending_confirm}
+              />
+            </tbody>
+          </table>
+        </div>
+
+    <!-- Add Provider Panel -->
+        <div
+          id="add-provider-panel"
+          class={[
+            "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+            "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+            "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+            "transition-transform duration-200 ease-in-out",
+            (@live_action in [:select_type, :new] && "translate-x-0") || "translate-x-full"
+          ]}
+          phx-window-keydown="handle_keydown"
+          phx-key="Escape"
+        >
+          <!-- Select Provider Type -->
+          <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)]">Select Provider Type</h2>
               <button
-                type="button"
-                class="p-1 text-neutral-500 hover:text-neutral-700 rounded-sm"
+                phx-click="close_panel"
+                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                title="Close (Esc)"
               >
-                <.icon name="hero-ellipsis-horizontal" class="text-neutral-800 w-5 h-5" />
+                <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
-            </:target>
-            <:content>
-              <div class="flex flex-col py-1">
+            </div>
+            <div class="flex-1 overflow-y-auto px-5 py-4">
+              <p class="mb-4 text-xs text-[var(--text-tertiary)]">
+                Select an authentication provider type to add:
+              </p>
+              <ul class="flex flex-col gap-2">
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/authentication/google/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon type="google" class="w-7 h-7 shrink-0" />
+                      <span class="text-sm font-medium text-[var(--text-primary)]">Google</span>
+                    </span>
+                    <span class="text-xs text-[var(--text-secondary)]">
+                      Authenticate users against a Google account.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/authentication/entra/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon type="entra" class="w-7 h-7 shrink-0" />
+                      <span class="text-sm font-medium text-[var(--text-primary)]">Entra</span>
+                    </span>
+                    <span class="text-xs text-[var(--text-secondary)]">
+                      Authenticate users against a Microsoft Entra account.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/authentication/okta/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon type="okta" class="w-7 h-7 shrink-0" />
+                      <span class="text-sm font-medium text-[var(--text-primary)]">Okta</span>
+                    </span>
+                    <span class="text-xs text-[var(--text-secondary)]">
+                      Authenticate users against an Okta account.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/authentication/oidc/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon type="oidc" class="w-7 h-7 shrink-0" />
+                      <span class="text-sm font-medium text-[var(--text-primary)]">OIDC</span>
+                    </span>
+                    <span class="text-xs text-[var(--text-secondary)]">
+                      Authenticate users against any OpenID Connect compliant identity provider.
+                    </span>
+                  </.link>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+    <!-- New Provider Form -->
+          <div
+            :if={@live_action == :new and assigns[:form] != nil}
+            class="flex flex-col h-full overflow-hidden"
+          >
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+              <div class="flex items-center gap-2">
                 <.link
-                  patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
-                  class="px-4 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2"
+                  patch={~p"/#{@account}/settings/authentication/new"}
+                  class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                  title="Back"
                 >
-                  <.icon name="hero-pencil" class="w-4 h-4" /> Edit
+                  <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
-                <.button_with_confirmation
-                  :if={@type not in ["email_otp", "userpass"]}
-                  id={"delete-provider-#{@provider.id}"}
-                  on_confirm="delete_provider"
-                  on_confirm_id={@provider.id}
-                  class="w-full px-4 py-2 text-sm text-red-600 rounded-md flex items-center gap-2 text-left border-0 bg-transparent"
-                >
-                  <.icon name="hero-trash" class="w-4 h-4" /> Delete
-                  <:dialog_title>Delete Authentication Provider</:dialog_title>
-                  <:dialog_content>
-                    <p>
-                      Are you sure you want to delete <strong>{@provider.name}</strong>? This action cannot be undone.
-                    </p>
-                    <p>
-                      This will immediately sign out all users authenticated via this provider.
-                    </p>
-                  </:dialog_content>
-                  <:dialog_confirm_button>Delete</:dialog_confirm_button>
-                  <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-                </.button_with_confirmation>
+                <div class="flex items-center gap-2">
+                  <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
+                  <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+                    Add {titleize(@type)} Provider
+                  </h2>
+                  <.docs_action path={"/authenticate/#{@type}"} />
+                </div>
               </div>
-            </:content>
-          </.popover>
+              <button
+                phx-click="close_panel"
+                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                title="Close (Esc)"
+              >
+                <.icon name="ri-close-line" class="w-4 h-4" />
+              </button>
+            </div>
+            <div class="flex-1 overflow-y-auto px-5 py-4">
+              <.provider_form
+                account_id={@account.id}
+                verification_error={@verification_error}
+                form={@form}
+                type={@type}
+                submit_event="submit_provider"
+              />
+            </div>
+            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
+              <button
+                phx-click="close_panel"
+                class="px-3 py-1.5 text-sm rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                form="auth-provider-form"
+                type="submit"
+                disabled={not @form.source.valid?}
+                class="px-3 py-1.5 text-sm rounded bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="mt-auto bg-white rounded-md p-3 space-y-3 text-sm text-neutral-600">
-        <div :if={Map.get(@provider, :issuer)} class="flex items-center gap-2 min-w-0">
-          <.icon name="hero-identification" class="w-5 h-5 shrink-0" title="Issuer" />
-          <span class="truncate font-medium" title={@provider.issuer}>{@provider.issuer}</span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <.icon name="hero-window" class="w-5 h-5" title="Portal Session Lifetime" />
-          <span class="font-medium">
-            <%= if @provider.context in [:clients_and_portal, :portal_only] do %>
-              Portal: {format_duration(
-                Map.get(@provider, :portal_session_lifetime_secs) ||
-                  @provider.__struct__.default_portal_session_lifetime_secs()
-              )}
-              <%= if is_nil(Map.get(@provider, :portal_session_lifetime_secs)) do %>
-                <span class="text-neutral-400 text-xs">(default)</span>
-              <% end %>
-            <% else %>
-              <span class="text-neutral-400">Portal: disabled</span>
-            <% end %>
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <.icon name="hero-device-phone-mobile" class="w-5 h-5" title="Client Session Lifetime" />
-          <span class="font-medium">
-            <%= if @provider.context in [:clients_and_portal, :clients_only] do %>
-              Clients: {format_duration(
-                Map.get(@provider, :client_session_lifetime_secs) ||
-                  @provider.__struct__.default_client_session_lifetime_secs()
-              )}
-              <%= if is_nil(Map.get(@provider, :client_session_lifetime_secs)) do %>
-                <span class="text-neutral-400 text-xs">(default)</span>
-              <% end %>
-            <% else %>
-              <span class="text-neutral-400">Client: disabled</span>
-            <% end %>
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <.icon name="hero-clock" class="w-5 h-5" />
-          <span class="font-medium">
-            updated <.relative_datetime datetime={@provider.updated_at} />
-          </span>
-        </div>
-
-        <div class="pt-3 mt-1 border-t border-neutral-200">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-4">
-              <div class="flex items-center gap-1">
-                <.icon name="hero-device-phone-mobile" class="w-4 h-4" title="Client Sessions" />
-                <span class="font-medium">
-                  {@provider.client_tokens_count} client {ngettext(
-                    "session",
-                    "sessions",
-                    @provider.client_tokens_count
-                  )}
-                </span>
-              </div>
-              <div class="flex items-center gap-1">
-                <.icon name="hero-window" class="w-4 h-4" title="Portal Sessions" />
-                <span class="font-medium">
-                  {@provider.portal_sessions_count} portal {ngettext(
-                    "session",
-                    "sessions",
-                    @provider.portal_sessions_count
-                  )}
-                </span>
-              </div>
+    <!-- Edit Provider Panel -->
+      <div
+        id="edit-provider-panel"
+        class={[
+          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+          "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+          "transition-transform duration-200 ease-in-out",
+          (@live_action == :edit && assigns[:form] != nil && "translate-x-0") || "translate-x-full"
+        ]}
+        phx-window-keydown="handle_keydown"
+        phx-key="Escape"
+      >
+        <div
+          :if={@live_action == :edit and assigns[:form] != nil}
+          class="flex flex-col h-full overflow-hidden"
+        >
+          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+            <div class="flex items-center gap-2">
+              <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
+              <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+                Edit {@provider_name}
+              </h2>
+              <.docs_action path={"/authenticate/#{@type}"} />
             </div>
-            <.button_with_confirmation
-              :if={@provider.client_tokens_count > 0 or @provider.portal_sessions_count > 0}
-              id={"revoke-sessions-#{@provider.id}"}
-              on_confirm="revoke_sessions"
-              on_confirm_id={@provider.id}
-              style="danger"
-              size="xs"
+            <button
+              phx-click="close_panel"
+              class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+              title="Close (Esc)"
             >
-              Revoke All
-              <:dialog_title>Revoke All Sessions</:dialog_title>
-              <:dialog_content>
-                <p>
-                  Are you sure you want to revoke all sessions for <strong>{@provider.name}</strong>?
-                </p>
-                <p class="mt-2">
-                  This will immediately end {@provider.client_tokens_count} client {ngettext(
-                    "session",
-                    "sessions",
-                    @provider.client_tokens_count
-                  )} and {@provider.portal_sessions_count} admin portal {ngettext(
-                    "session",
-                    "sessions",
-                    @provider.portal_sessions_count
-                  )}.
-                </p>
-              </:dialog_content>
-              <:dialog_confirm_button>Revoke All Sessions</:dialog_confirm_button>
-              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </.button_with_confirmation>
+              <.icon name="ri-close-line" class="w-4 h-4" />
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto px-5 py-4">
+            <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
+              This provider uses legacy configuration. We recommend setting up a new authentication
+              provider for your identity service to take advantage of improved security and features.
+            </.flash>
+            <.provider_form
+              account_id={@account.id}
+              verification_error={@verification_error}
+              form={@form}
+              type={@type}
+              submit_event="submit_provider"
+              is_legacy={assigns[:is_legacy]}
+            />
+          </div>
+          <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
+            <button
+              phx-click="close_panel"
+              class="px-3 py-1.5 text-sm rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              form="auth-provider-form"
+              type="submit"
+              disabled={
+                not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
+              }
+              class="px-3 py-1.5 text-sm rounded bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Save
+            </button>
           </div>
         </div>
       </div>
     </div>
     """
   end
+
+  defp provider_row(assigns) do
+    assigns =
+      assign(assigns, provider_row_state(assigns.provider, assigns.type, assigns.pending_confirm))
+
+    ~H"""
+    <tr class={[
+      "border-b transition-colors",
+      @is_pending_toggle && "border-amber-200 bg-amber-50",
+      @is_pending_delete && "border-red-200 bg-red-50",
+      @is_pending_revoke && "border-orange-200 bg-orange-50",
+      !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
+        "border-[var(--border)] hover:bg-[var(--surface-raised)]",
+      @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
+        "opacity-60"
+    ]}>
+      <td class="px-6 py-3">
+        <div class="flex items-center gap-3">
+          <.provider_icon type={@type} class="w-7 h-7 shrink-0" />
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class={[
+                "text-sm font-medium",
+                @is_pending_toggle && "text-amber-900",
+                @is_pending_delete && "text-red-900",
+                @is_pending_revoke && "text-orange-900",
+                !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
+                  "text-[var(--text-primary)]"
+              ]}>
+                {@provider.name}
+              </span>
+              <span
+                :if={@is_default && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke}
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--brand-muted)] text-[var(--brand)]"
+              >
+                Default
+              </span>
+              <span
+                :if={
+                  @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete &&
+                    !@is_pending_revoke
+                }
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--text-tertiary)] border border-[var(--border)]"
+              >
+                Disabled
+              </span>
+              <span
+                :if={
+                  Map.get(@provider, :is_legacy) && !@is_pending_toggle && !@is_pending_delete &&
+                    !@is_pending_revoke
+                }
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700"
+              >
+                Legacy
+              </span>
+            </div>
+            <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">{@provider.id}</div>
+          </div>
+        </div>
+      </td>
+      <%= if @is_pending_revoke do %>
+        <td colspan="6" class="px-6 py-3">
+          <div class="flex items-center gap-4">
+            <span class="text-xs text-orange-700">
+              Revoke all sessions for this provider? This will immediately sign out all users authenticated this provider.
+            </span>
+            <div class="flex items-center gap-2 ml-auto shrink-0">
+              <button
+                phx-click="cancel_confirm"
+                class="px-2.5 py-1 text-xs rounded border border-orange-300 bg-white text-orange-800 hover:bg-orange-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                phx-click="revoke_sessions"
+                phx-value-id={@provider.id}
+                class="px-2.5 py-1 text-xs rounded bg-orange-600 text-white hover:bg-orange-700 transition-colors"
+              >
+                Revoke sessions
+              </button>
+            </div>
+          </div>
+        </td>
+      <% else %>
+        <%= if @is_pending_toggle do %>
+          <td colspan="6" class="px-6 py-3">
+            <div class="flex items-center gap-4">
+              <span class="text-xs text-amber-700">
+                {if @provider.is_disabled,
+                  do: "Re-enable this provider?",
+                  else:
+                    "Disable this provider? Users will not be able to sign in while it is disabled."}
+              </span>
+              <div class="flex items-center gap-2 ml-auto shrink-0">
+                <button
+                  phx-click="cancel_confirm"
+                  class="px-2.5 py-1 text-xs rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  phx-click="toggle_provider"
+                  phx-value-id={@provider.id}
+                  class="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                >
+                  {if @provider.is_disabled, do: "Enable", else: "Disable"}
+                </button>
+              </div>
+            </div>
+          </td>
+        <% else %>
+          <%= if @is_pending_delete do %>
+            <td colspan="6" class="px-6 py-3">
+              <div class="flex items-center gap-4">
+                <span class="text-xs text-red-700">
+                  Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
+                </span>
+                <div class="flex items-center gap-2 ml-auto shrink-0">
+                  <button
+                    phx-click="cancel_confirm"
+                    class="px-2.5 py-1 text-xs rounded border border-red-300 bg-white text-red-800 hover:bg-red-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    phx-click="delete_provider"
+                    phx-value-id={@provider.id}
+                    class="px-2.5 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </td>
+          <% else %>
+            <td class="px-6 py-3">
+              <.context_badge context={@provider.context} />
+            </td>
+            <td class="px-6 py-3">
+              <span class="font-mono text-xs text-[var(--text-secondary)]">
+                {Map.get(@provider, :issuer) || "—"}
+              </span>
+            </td>
+            <td class="px-6 py-3 text-sm tabular-nums text-[var(--text-secondary)]">
+              {@portal_ttl || "—"}
+            </td>
+            <td class="px-6 py-3 text-sm tabular-nums text-[var(--text-secondary)]">
+              {@client_ttl || "—"}
+            </td>
+            <td class="px-6 py-3">
+              <div class="flex items-center gap-2.5 text-xs text-[var(--text-secondary)] tabular-nums">
+                <span>
+                  <span class="font-medium text-[var(--text-primary)]">
+                    {@provider.portal_sessions_count}
+                  </span>
+                  portal
+                </span>
+                <span class="w-px h-3 bg-[var(--border-strong)] shrink-0"></span>
+                <span>
+                  <span class="font-medium text-[var(--text-primary)]">
+                    {@provider.client_tokens_count}
+                  </span>
+                  client
+                </span>
+              </div>
+            </td>
+            <td class="px-6 py-3">
+              <div class="flex justify-end">
+                <.popover placement="bottom" trigger="click">
+                  <:target>
+                    <button
+                      type="button"
+                      class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                    >
+                      <.icon name="ri-more-2-line" class="w-4 h-4" />
+                    </button>
+                  </:target>
+                  <:content>
+                    <div class="flex flex-col py-1 w-44">
+                      <button
+                        :if={@can_be_default and not @is_default}
+                        phx-click="set_default_provider"
+                        phx-value-id={@provider.id}
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                      >
+                        <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                      </button>
+                      <button
+                        :if={@can_be_default and @is_default}
+                        phx-click="clear_default_provider"
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                      >
+                        <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
+                      </button>
+                      <button
+                        :if={not @can_be_default}
+                        disabled
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
+                      >
+                        <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                      </button>
+                      <div class="my-1 border-t border-[var(--border)]"></div>
+                      <.link
+                        patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                      >
+                        <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                      </.link>
+                      <div class="my-1 border-t border-[var(--border)]"></div>
+                      <button
+                        :if={@has_sessions}
+                        phx-click="request_confirm"
+                        phx-value-id={@provider.id}
+                        phx-value-action="revoke"
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                      >
+                        <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                        Revoke sessions
+                      </button>
+                      <button
+                        :if={not @has_sessions}
+                        disabled
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
+                      >
+                        <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                        Revoke sessions
+                      </button>
+                      <div class="my-1 border-t border-[var(--border)]"></div>
+                      <button
+                        phx-click="request_confirm"
+                        phx-value-id={@provider.id}
+                        phx-value-action="toggle"
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                      >
+                        <.icon
+                          name={
+                            if @provider.is_disabled,
+                              do: "ri-checkbox-circle-line",
+                              else: "ri-close-circle-line"
+                          }
+                          class="w-3.5 h-3.5 shrink-0"
+                        />
+                        {if @provider.is_disabled, do: "Enable", else: "Disable"}
+                      </button>
+                      <button
+                        :if={@can_be_deleted}
+                        phx-click="request_confirm"
+                        phx-value-id={@provider.id}
+                        phx-value-action="delete"
+                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
+                      >
+                        <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                      </button>
+                    </div>
+                  </:content>
+                </.popover>
+              </div>
+            </td>
+          <% end %>
+        <% end %>
+      <% end %>
+    </tr>
+    """
+  end
+
+  defp provider_row_state(provider, type, pending_confirm) do
+    pending_state = provider_pending_state(provider, pending_confirm)
+
+    %{
+      is_default: provider_default?(provider),
+      can_be_default: provider_action_allowed?(type),
+      can_be_deleted: provider_action_allowed?(type),
+      has_sessions: provider_has_sessions?(provider),
+      is_pending_toggle: pending_state == :toggle,
+      is_pending_delete: pending_state == :delete,
+      is_pending_revoke: pending_state == :revoke,
+      portal_ttl: provider_portal_ttl(provider),
+      client_ttl: provider_client_ttl(provider)
+    }
+  end
+
+  defp provider_default?(provider), do: Map.get(provider, :is_default, false)
+
+  defp provider_action_allowed?(type), do: type not in ["email_otp", "userpass"]
+
+  defp provider_has_sessions?(provider) do
+    provider.client_tokens_count > 0 or provider.portal_sessions_count > 0
+  end
+
+  defp provider_pending_state(provider, %{id: id, action: action}) when id == provider.id,
+    do: String.to_existing_atom(action)
+
+  defp provider_pending_state(_provider, _pending_confirm), do: nil
+
+  defp provider_portal_ttl(%{context: context} = provider)
+       when context in [:clients_and_portal, :portal_only] do
+    format_duration(
+      Map.get(provider, :portal_session_lifetime_secs) ||
+        provider.__struct__.default_portal_session_lifetime_secs()
+    )
+  end
+
+  defp provider_portal_ttl(_provider), do: nil
+
+  defp provider_client_ttl(%{context: context} = provider)
+       when context in [:clients_and_portal, :clients_only] do
+    format_duration(
+      Map.get(provider, :client_session_lifetime_secs) ||
+        provider.__struct__.default_client_session_lifetime_secs()
+    )
+  end
+
+  defp provider_client_ttl(_provider), do: nil
 
   attr :account_id, :string, required: true
   attr :form, :any, required: true
@@ -844,7 +1070,6 @@ defmodule PortalWeb.Settings.Authentication do
   attr :is_legacy, :boolean, default: false
 
   defp provider_form(assigns) do
-    # Build the redirect URI based on legacy status
     redirect_uri =
       if assigns[:is_legacy] do
         account_id = assigns.account_id
@@ -865,194 +1090,257 @@ defmodule PortalWeb.Settings.Authentication do
       phx-change="validate"
       phx-submit={@submit_event}
     >
-      <div class="space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="space-y-5">
+        <%!-- General --%>
+        <div class="grid grid-cols-2 gap-4">
           <div>
+            <label
+              for={@form[:name].id}
+              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            >
+              Name <span class="text-[var(--status-error)]">*</span>
+            </label>
             <.input
               field={@form[:name]}
               type="text"
-              label="Name"
               autocomplete="off"
               phx-debounce="300"
               data-1p-ignore
               required
             />
-            <p class="mt-1 text-xs text-neutral-600">
-              Enter a name to identify this provider. This will be shown to end-users during authentication.
-            </p>
           </div>
-
           <div>
+            <label
+              for={@form[:context].id}
+              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            >
+              Context <span class="text-[var(--status-error)]">*</span>
+            </label>
             <.input
               field={@form[:context]}
               type="select"
-              label="Context"
               options={context_options()}
               required
             />
-            <p class="mt-1 text-xs text-neutral-600">
-              Choose where this provider can be used for authentication.
-            </p>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <.input
-              field={@form[:portal_session_lifetime_secs]}
-              type="number"
-              label="Portal Session Lifetime (seconds)"
-              placeholder="28800"
-              phx-debounce="300"
-            />
-            <p class="mt-1 text-xs text-neutral-600">
-              Session lifetime for Admin Portal users (5 minutes to 24 hours). Default: 8 hours (28800).
-            </p>
+        <%!-- Session lifetimes --%>
+        <div class="pt-4 border-t border-[var(--border)]">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+            Session Lifetimes
+          </p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                for={@form[:portal_session_lifetime_secs].id}
+                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              >
+                Portal (seconds)
+              </label>
+              <.input
+                field={@form[:portal_session_lifetime_secs]}
+                type="number"
+                placeholder="28800"
+                phx-debounce="300"
+              />
+            </div>
+            <div>
+              <label
+                for={@form[:client_session_lifetime_secs].id}
+                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              >
+                Client (seconds)
+              </label>
+              <.input
+                field={@form[:client_session_lifetime_secs]}
+                type="number"
+                placeholder="604800"
+                phx-debounce="300"
+              />
+            </div>
           </div>
-
-          <div>
-            <.input
-              field={@form[:client_session_lifetime_secs]}
-              type="number"
-              label="Client Session Lifetime (seconds)"
-              placeholder="604800"
-              phx-debounce="300"
-            />
-            <p class="mt-1 text-xs text-neutral-600">
-              Session lifetime for Client applications (1 hour to 90 days). Default: 7 days (604800).
-            </p>
-          </div>
-        </div>
-
-        <div :if={@type == "entra"}>
-          <.input
-            field={@form[:email_claim]}
-            type="select"
-            label="Email Claim"
-            options={[
-              {"UPN (upn)", "upn"},
-              {"Email (email)", "email"},
-              {"Preferred Username (preferred_username)", "preferred_username"}
-            ]}
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            The OIDC claim to use as the user's email address during sign-in.
+          <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+            Portal default: 8 hours · Client default: 7 days
           </p>
         </div>
 
-        <div :if={@type == "okta"}>
-          <.input
-            field={@form[:okta_domain]}
-            type="text"
-            label="Okta Domain"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Enter your fully-qualified Okta organization domain (e.g., example.okta.com).
+        <%!-- Entra-specific config --%>
+        <div :if={@type == "entra"} class="pt-4 border-t border-[var(--border)] space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+            Provider Configuration
           </p>
-        </div>
-
-        <div :if={@type == "oidc"}>
-          <.input
-            field={@form[:discovery_document_uri]}
-            type="text"
-            label="Discovery Document URI"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Enter the OpenID Connect discovery document URI (e.g., https://example.com/.well-known/openid-configuration).
-          </p>
-        </div>
-
-        <div :if={@type in ["okta", "oidc"]} class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <.input
-              field={@form[:client_id]}
-              type="text"
-              label="Client ID"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-            <p class="mt-1 text-xs text-neutral-600">
-              Enter the Client ID from your {titleize(@type)} application settings.
-            </p>
-          </div>
-
-          <div>
-            <.input
-              field={@form[:client_secret]}
-              type="password"
-              label="Client Secret"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-            <p class="mt-1 text-xs text-neutral-600">
-              Enter the Client Secret from your {titleize(@type)} application settings.
-            </p>
-          </div>
-        </div>
-
-        <div :if={@type in ["okta", "oidc"]}>
-          <label class="block text-sm text-neutral-900 mb-2">Redirect URI</label>
-          <div class="flex" id="redirect-uri" phx-hook="CopyClipboard">
-            <span id="redirect-uri-text" class="hidden">{@redirect_uri}</span>
-            <input
-              type="text"
-              readonly
-              value={@redirect_uri}
-              class="block w-full rounded-l-md border-0 py-1.5 text-neutral-900 shadow-xs ring-1 ring-inset ring-neutral-300 bg-neutral-50 cursor-default sm:text-sm sm:leading-6"
-            />
-            <button
-              type="button"
-              data-copy-to-clipboard-target="redirect-uri-text"
-              class="inline-flex items-center rounded-r-md border border-l-0 border-neutral-300 bg-white px-3 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+            <label
+              for={@form[:email_claim].id}
+              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
             >
-              <span id="redirect-uri-default-message">
-                <.icon name="hero-clipboard-document" class="h-5 w-5" />
-              </span>
-              <span id="redirect-uri-success-message" class="hidden">
-                <.icon name="hero-check" class="h-5 w-5 text-green-600" />
-              </span>
-            </button>
+              Email Claim <span class="text-[var(--status-error)]">*</span>
+            </label>
+            <.input
+              field={@form[:email_claim]}
+              type="select"
+              options={[
+                {"UPN (upn)", "upn"},
+                {"Email (email)", "email"},
+                {"Preferred Username (preferred_username)", "preferred_username"}
+              ]}
+              required
+            />
+            <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+              The OIDC claim to use as the user's email address during sign-in.
+            </p>
           </div>
-          <p class="mt-1 text-xs text-neutral-600">
-            Copy this URI into your {titleize(@type)} application's allowed redirect URIs.
-          </p>
         </div>
 
+        <%!-- Provider-specific config (Okta / OIDC) --%>
+        <div :if={@type in ["okta", "oidc"]} class="pt-4 border-t border-[var(--border)] space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+            Provider Configuration
+          </p>
+
+          <div :if={@type == "okta"}>
+            <label
+              for={@form[:okta_domain].id}
+              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            >
+              Okta Domain <span class="text-[var(--status-error)]">*</span>
+            </label>
+            <.input
+              field={@form[:okta_domain]}
+              type="text"
+              placeholder="example.okta.com"
+              autocomplete="off"
+              phx-debounce="300"
+              data-1p-ignore
+              required
+            />
+          </div>
+
+          <div :if={@type == "oidc"}>
+            <label
+              for={@form[:discovery_document_uri].id}
+              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            >
+              Discovery Document URI <span class="text-[var(--status-error)]">*</span>
+            </label>
+            <.input
+              field={@form[:discovery_document_uri]}
+              type="text"
+              placeholder="https://example.com/.well-known/openid-configuration"
+              autocomplete="off"
+              phx-debounce="300"
+              data-1p-ignore
+              required
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label
+                for={@form[:client_id].id}
+                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              >
+                Client ID <span class="text-[var(--status-error)]">*</span>
+              </label>
+              <.input
+                field={@form[:client_id]}
+                type="text"
+                autocomplete="off"
+                phx-debounce="300"
+                data-1p-ignore
+                required
+              />
+            </div>
+            <div>
+              <label
+                for={@form[:client_secret].id}
+                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              >
+                Client Secret <span class="text-[var(--status-error)]">*</span>
+              </label>
+              <.input
+                field={@form[:client_secret]}
+                type="password"
+                autocomplete="off"
+                phx-debounce="300"
+                data-1p-ignore
+                required
+              />
+            </div>
+          </div>
+
+          <%!-- Redirect URI --%>
+          <div>
+            <label class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+              Redirect URI
+            </label>
+            <div
+              class="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] bg-[var(--surface-raised)]"
+              id="redirect-uri"
+              phx-hook="CopyClipboard"
+            >
+              <span id="redirect-uri-text" class="hidden">{@redirect_uri}</span>
+              <code class="flex-1 text-xs font-mono text-[var(--text-secondary)] truncate">
+                {@redirect_uri}
+              </code>
+              <button
+                type="button"
+                data-copy-to-clipboard-target="redirect-uri-text"
+                class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <span id="redirect-uri-default-message">
+                  <.icon name="ri-clipboard-line" class="w-4 h-4" />
+                </span>
+                <span id="redirect-uri-success-message" class="hidden">
+                  <.icon name="ri-check-line" class="w-4 h-4 text-green-600" />
+                </span>
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+              Add this to your {titleize(@type)} application's allowed redirect URIs.
+            </p>
+          </div>
+        </div>
+
+        <%!-- Verification --%>
         <div
           :if={@type in ["entra", "google", "okta", "oidc"] and not @is_legacy}
-          class="p-4 border-2 border-accent-200 bg-accent-50 rounded-md"
+          class="pt-4 border-t border-[var(--border)]"
         >
-          <.flash :if={@verification_error} kind={:error}>
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+            Verification
+          </p>
+          <.flash :if={@verification_error} kind={:error} class="mb-3">
             {@verification_error}
           </.flash>
-          <div class="flex items-center justify-between">
-            <div class="flex-1">
-              <h3 class="text-base font-semibold text-neutral-900">Provider Verification</h3>
-              <p class="mt-1 text-sm text-neutral-600">
+          <div class="rounded border border-[var(--border)] overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3">
+              <p class="text-sm text-[var(--text-secondary)]">
                 {verification_help_text(@form, @type)}
               </p>
+              <div class="ml-4 shrink-0">
+                <.verification_status_badge id="verify-button" form={@form} />
+              </div>
             </div>
-            <div class="ml-4">
-              <.verification_status_badge id="verify-button" form={@form} />
+            <div
+              :if={verified?(@form)}
+              class="flex items-center justify-between px-4 py-2.5 border-t border-[var(--border)] bg-[var(--surface-raised)]"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-xs text-[var(--text-tertiary)] shrink-0">Issuer</span>
+                <span class="text-xs font-mono text-[var(--text-primary)] truncate">
+                  {get_field(@form.source, :issuer)}
+                </span>
+              </div>
+              <button
+                type="button"
+                phx-click="reset_verification"
+                class="ml-4 shrink-0 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                Reset
+              </button>
             </div>
-          </div>
-
-          <div class="mt-4 pt-4 border-t border-accent-300 space-y-3">
-            <.verification_fields_status type={@type} form={@form} />
-            <.reset_verification_button form={@form} />
           </div>
         </div>
       </div>
@@ -1064,26 +1352,24 @@ defmodule PortalWeb.Settings.Authentication do
     if verified?(form) do
       "This provider has been successfully verified."
     else
-      "Verify your provider configuration by signing in with your #{titleize(type)} account."
+      "Sign in with your #{titleize(type)} account to verify the configuration."
     end
   end
 
-  # Verification status badge
   defp verification_status_badge(assigns) do
     ~H"""
     <div
       :if={verified?(@form)}
-      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
+      class="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-100 px-2.5 py-1 rounded"
     >
-      <.icon name="hero-check-circle" class="h-5 w-5 mr-2" />
-      <span class="font-medium">Verified</span>
+      <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
     </div>
     <.button
       :if={not verified?(@form) and ready_to_verify?(@form)}
       type="button"
       id="verify-button"
       style="primary"
-      icon="hero-arrow-top-right-on-square"
+      icon="ri-external-link-line"
       phx-click="start_verification"
       phx-hook="OpenURL"
     >
@@ -1093,48 +1379,11 @@ defmodule PortalWeb.Settings.Authentication do
       :if={not verified?(@form) and not ready_to_verify?(@form)}
       type="button"
       style="primary"
-      icon="hero-arrow-top-right-on-square"
+      icon="ri-external-link-line"
       disabled
     >
       Verify Now
     </.button>
-    """
-  end
-
-  defp verification_fields_status(assigns) do
-    ~H"""
-    <div class="flex justify-between items-center">
-      <label class="text-sm font-medium text-neutral-700">Issuer</label>
-      <div class="text-right">
-        <p class="text-sm font-semibold text-neutral-900">
-          {verification_field_display(@form.source, :issuer)}
-        </p>
-      </div>
-    </div>
-    """
-  end
-
-  defp verification_field_display(changeset, field) do
-    if get_field(changeset, :is_verified) do
-      get_field(changeset, field)
-    else
-      "Awaiting verification..."
-    end
-  end
-
-  # Reset verification button
-  defp reset_verification_button(assigns) do
-    ~H"""
-    <div :if={verified?(@form)} class="text-right">
-      <button
-        type="button"
-        phx-click="reset_verification"
-        class="text-sm text-neutral-600 hover:text-neutral-700 underline"
-        title="Reset verification to reverify credentials"
-      >
-        Reset verification
-      </button>
-    </div>
     """
   end
 
@@ -1176,6 +1425,31 @@ defmodule PortalWeb.Settings.Authentication do
       {_field, _errors} ->
         false
     end)
+  end
+
+  defp context_badge(assigns) do
+    {label, classes} =
+      case assigns.context do
+        :clients_and_portal ->
+          {"All", "bg-[var(--brand-muted)] text-[var(--brand)]"}
+
+        :clients_only ->
+          {"Clients", "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"}
+
+        :portal_only ->
+          {"Portal", "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"}
+
+        _ ->
+          {"—", "text-[var(--text-tertiary)]"}
+      end
+
+    assigns = assign(assigns, label: label, classes: classes)
+
+    ~H"""
+    <span class={["text-[10px] font-semibold px-1.5 py-0.5 rounded", @classes]}>
+      {@label}
+    </span>
+    """
   end
 
   defp context_options, do: @context_options

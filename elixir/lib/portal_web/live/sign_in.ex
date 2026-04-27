@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignIn do
-  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
 
   alias Portal.{
     Safe,
@@ -37,162 +37,134 @@ defmodule PortalWeb.SignIn do
 
   def render(assigns) do
     ~H"""
-    <section>
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.hero_logo text={@account.name} />
+    <.flash flash={@flash} kind={:error} />
+    <.flash flash={@flash} kind={:info} />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
-          <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <.flash flash={@flash} kind={:error} />
-            <.flash flash={@flash} kind={:info} />
+    <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>
+      <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
 
-            <.flash :if={not Portal.Account.active?(@account)} kind={:error} style="wide">
-              This account has been disabled. Please contact your administrator to re-enable it.
-            </.flash>
+      <.flash :if={trial_ends_in_days <= 0} kind={:error}>
+        Your trial has expired and needs to be renewed.
+        Contact your account manager or administrator to ensure uninterrupted service.
+      </.flash>
+    <% end %>
 
-            <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>
-              <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
-
-              <.flash :if={trial_ends_in_days <= 0} kind={:error}>
-                Your trial has expired and needs to be renewed.
-                Contact your account manager or administrator to ensure uninterrupted service.
-              </.flash>
-            <% end %>
-
-            <.intersperse_blocks :if={not disabled?(@account, @params)}>
-              <:separator>
-                <.separator />
-              </:separator>
-
-              <:item :if={
-                Enum.any?(
-                  @google_auth_providers ++
-                    @okta_auth_providers ++ @entra_auth_providers ++ @oidc_auth_providers
-                )
-              }>
-                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with a configured provider
-                </h2>
-
-                <div class="space-y-3 items-center">
-                  <.auth_button
-                    :for={provider <- @google_auth_providers}
-                    account={@account}
-                    params={@params}
-                    provider={provider}
-                    type="google"
-                  >
-                    <:icon>
-                      <img
-                        src={~p"/images/google-logo.svg"}
-                        alt="Google Workspace Logo"
-                        class="w-5 h-5 mr-2"
-                      />
-                    </:icon>
-                  </.auth_button>
-
-                  <.auth_button
-                    :for={provider <- @okta_auth_providers}
-                    account={@account}
-                    params={@params}
-                    provider={provider}
-                    type="okta"
-                  >
-                    <:icon>
-                      <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5 mr-2" />
-                    </:icon>
-                  </.auth_button>
-
-                  <.auth_button
-                    :for={provider <- @entra_auth_providers}
-                    account={@account}
-                    params={@params}
-                    provider={provider}
-                    type="entra"
-                  >
-                    <:icon>
-                      <img
-                        src={~p"/images/entra-logo.svg"}
-                        alt="Microsoft Entra Logo"
-                        class="w-5 h-5 mr-2"
-                      />
-                    </:icon>
-                  </.auth_button>
-
-                  <.auth_button
-                    :for={provider <- @oidc_auth_providers}
-                    account={@account}
-                    params={@params}
-                    provider={provider}
-                    type="oidc"
-                  >
-                    <:icon>
-                      <.provider_icon
-                        type={provider_type_from_issuer(provider.issuer)}
-                        class="w-5 h-5 mr-2"
-                      />
-                    </:icon>
-                  </.auth_button>
-                </div>
-              </:item>
-
-              <:item :if={@email_otp_auth_provider}>
-                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with email
-                </h2>
-
-                <.email_form
-                  provider={@email_otp_auth_provider}
-                  account={@account}
-                  flash={@flash}
-                  params={@params}
-                />
-              </:item>
-
-              <:item :if={@userpass_auth_provider}>
-                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with username and password
-                </h2>
-
-                <.userpass_form
-                  provider={@userpass_auth_provider}
-                  account={@account}
-                  flash={@flash}
-                  params={@params}
-                />
-              </:item>
-            </.intersperse_blocks>
-          </div>
-        </div>
-        <div :if={@params["as"] != "client"} class="mx-auto p-6 sm:p-8">
-          <p class="py-2">
-            Meant to sign in from a client instead?
-            <.website_link path="/kb/client-apps">Read the docs.</.website_link>
-          </p>
-          <p class="py-2">
-            Looking for a different account?
-            <.link href={~p"/"} class={[link_style()]}>
-              See recently used accounts.
-            </.link>
-          </p>
-        </div>
+    <div class="flex items-center gap-3 mb-8 mt-4">
+      <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
+        <span class="text-lg font-bold text-[var(--brand)]">
+          {String.upcase(String.first(@account.name))}
+        </span>
       </div>
-    </section>
+      <div>
+        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+          Sign in to {@account.name}
+        </h1>
+        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+          Choose how you'd like to sign in.
+        </p>
+      </div>
+    </div>
+
+    <.intersperse_blocks>
+      <:separator>
+        <.separator />
+      </:separator>
+
+      <:item :if={
+        Enum.any?(
+          @google_auth_providers ++
+            @okta_auth_providers ++ @entra_auth_providers ++ @oidc_auth_providers
+        )
+      }>
+        <div class="flex flex-col gap-2">
+          <.auth_button
+            :for={provider <- @google_auth_providers}
+            account={@account}
+            params={@params}
+            provider={provider}
+            type="google"
+          >
+            <:icon>
+              <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-5 h-5" />
+            </:icon>
+          </.auth_button>
+
+          <.auth_button
+            :for={provider <- @okta_auth_providers}
+            account={@account}
+            params={@params}
+            provider={provider}
+            type="okta"
+          >
+            <:icon>
+              <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5" />
+            </:icon>
+          </.auth_button>
+
+          <.auth_button
+            :for={provider <- @entra_auth_providers}
+            account={@account}
+            params={@params}
+            provider={provider}
+            type="entra"
+          >
+            <:icon>
+              <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5" />
+            </:icon>
+          </.auth_button>
+
+          <.auth_button
+            :for={provider <- @oidc_auth_providers}
+            account={@account}
+            params={@params}
+            provider={provider}
+            type="oidc"
+          >
+            <:icon>
+              <.provider_icon type={provider_type_from_issuer(provider.issuer)} class="w-5 h-5" />
+            </:icon>
+          </.auth_button>
+        </div>
+      </:item>
+
+      <:item :if={@email_otp_auth_provider}>
+        <.email_form
+          provider={@email_otp_auth_provider}
+          account={@account}
+          flash={@flash}
+          params={@params}
+        />
+      </:item>
+
+      <:item :if={@userpass_auth_provider}>
+        <.userpass_form
+          provider={@userpass_auth_provider}
+          account={@account}
+          flash={@flash}
+          params={@params}
+        />
+      </:item>
+    </.intersperse_blocks>
+
+    <div :if={@params["as"] != "client"} class="mt-8 pt-6 border-t border-[var(--border)] text-center">
+      <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+        Meant to sign in from a client instead?
+        <.website_link path="/kb/client-apps">Read the docs.</.website_link>
+      </p>
+      <p class="text-xs text-[var(--text-tertiary)] mt-1.5">
+        Looking for a different account?
+        <.link href={~p"/"} class={[link_style()]}>See recently used accounts.</.link>
+      </p>
+    </div>
     """
   end
 
-  # We allow signing in to Web UI even for disabled accounts
-  def disabled?(account, %{"as" => as}) when as in ["client", "gui-client", "headless-client"],
-    do: not Portal.Account.active?(account)
-
-  def disabled?(_account, _params), do: false
-
   def separator(assigns) do
     ~H"""
-    <div class="flex items-center">
-      <div class="w-full h-0.5 bg-neutral-200"></div>
-      <div class="px-5 text-center text-neutral-500">or</div>
-      <div class="w-full h-0.5 bg-neutral-200"></div>
+    <div class="flex items-center gap-3 my-5">
+      <div class="flex-1 h-px bg-[var(--border)]"></div>
+      <span class="text-xs text-[var(--text-muted)]">or</span>
+      <div class="flex-1 h-px bg-[var(--border)]"></div>
     </div>
     """
   end
@@ -206,10 +178,15 @@ defmodule PortalWeb.SignIn do
   defp auth_button(assigns) do
     ~H"""
     <.link
-      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
+      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] hover:shadow-sm transition-all duration-150 group text-sm font-medium text-[var(--text-primary)]"
       href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
     >
-      {render_slot(@icon)} <span>Sign in with <strong>{@provider.name}</strong></span>
+      {render_slot(@icon)}
+      <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
+      <.icon
+        name="ri-arrow-right-s-line"
+        class="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
+      />
     </.link>
     """
   end
@@ -223,35 +200,34 @@ defmodule PortalWeb.SignIn do
     <.form
       for={@userpass_form}
       action={~p"/#{@account}/sign_in/userpass/#{@provider.id}"}
-      class="space-y-4 lg:space-y-6"
+      class="flex flex-col gap-3"
       id="userpass_form"
       phx-update="ignore"
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#userpass_form")}
     >
-      <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-        <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
-
-        <.input
-          field={@userpass_form[:idp_id]}
-          type="text"
-          label="Username"
-          placeholder="Enter your username"
-          required
-        />
-
-        <.input
-          field={@userpass_form[:secret]}
-          type="password"
-          label="Password"
-          placeholder="Enter your password"
-          required
-        />
-      </div>
-
-      <.submit_button class="w-full" style="info" icon="hero-key">
+      <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+      <input
+        type="text"
+        name="userpass[idp_id]"
+        value={@userpass_form[:idp_id].value}
+        placeholder="Username"
+        class="w-full px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+        required
+      />
+      <input
+        type="password"
+        name="userpass[secret]"
+        placeholder="Password"
+        class="w-full px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+        required
+      />
+      <button
+        type="submit"
+        class="w-full py-2.5 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
+      >
         Sign in
-      </.submit_button>
+      </button>
     </.form>
     """
   end
@@ -265,24 +241,28 @@ defmodule PortalWeb.SignIn do
     <.form
       for={@email_form}
       action={~p"/#{@account}/sign_in/email_otp/#{@provider.id}"}
-      class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#email_form")}
     >
       <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
-
-      <.input
-        field={@email_form[:email]}
-        type="email"
-        label="Email"
-        placeholder="Enter your email"
-        required
-      />
-      <.submit_button class="w-full" style="info" icon="hero-envelope">
-        Request sign in token
-      </.submit_button>
+      <div class="flex gap-2">
+        <input
+          type="email"
+          name="email[email]"
+          value={@email_form[:email].value}
+          placeholder="you@example.com"
+          class="flex-1 px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+          required
+        />
+        <button
+          type="submit"
+          class="px-4 py-2 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors whitespace-nowrap"
+        >
+          Send code →
+        </button>
+      </div>
     </.form>
     """
   end

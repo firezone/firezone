@@ -7,6 +7,8 @@ defmodule Portal.Group do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @type t :: %__MODULE__{}
+
   schema "groups" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
@@ -27,6 +29,9 @@ defmodule Portal.Group do
     field :count, :integer, virtual: true
     field :directory_name, :string, virtual: true
     field :directory_type, :string, virtual: true
+    field :policy_id, :binary_id, virtual: true
+    field :policy_disabled_at, :utc_datetime_usec, virtual: true
+    field :policy_count, :integer, virtual: true
 
     has_many :actors, through: [:memberships, :actor]
 

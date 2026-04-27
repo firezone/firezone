@@ -1,5 +1,5 @@
 defmodule PortalWeb.SignIn.Email do
-  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :public}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   alias __MODULE__.Database
 
   def mount(
@@ -61,84 +61,75 @@ defmodule PortalWeb.SignIn.Email do
 
   def render(assigns) do
     ~H"""
-    <section>
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.hero_logo text={@account.name} />
+    <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
+    <.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
-          <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl leading-tight tracking-tight text-neutral-900 sm:text-2xl">
-              Please check your email
-            </h1>
-            <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
-            <.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
+    <h1 class="text-xl font-semibold text-[var(--text-primary)] mb-2">
+      Check your email
+    </h1>
+    <p class="text-sm text-[var(--text-secondary)] mb-6">
+      If <strong class="text-[var(--text-primary)]">{@email}</strong>
+      is registered, a sign-in code has been sent.
+    </p>
 
-            <div>
-              <p>
-                If <strong>{@email}</strong> is registered, a sign-in code has been sent.
-              </p>
-              <form
-                id="verify-sign-in-token"
-                action={@verify_action}
-                method="post"
-                class="my-4 flex"
-                phx-update="ignore"
-                phx-hook="AttachDisableSubmit"
-                phx-submit={JS.dispatch("form:disable_and_submit", to: "#verify-sign-in-token")}
-              >
-                <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-                <.input
-                  :for={{key, value} <- @redirect_params}
-                  type="hidden"
-                  name={key}
-                  value={value}
-                />
+    <form
+      id="verify-sign-in-token"
+      action={@verify_action}
+      method="post"
+      phx-update="ignore"
+      phx-hook="AttachDisableSubmit"
+      phx-submit={JS.dispatch("form:disable_and_submit", to: "#verify-sign-in-token")}
+    >
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <.input
+        :for={{key, value} <- @redirect_params}
+        type="hidden"
+        name={key}
+        value={value}
+      />
 
-                <input
-                  type="text"
-                  name="secret"
-                  id="secret"
-                  class={[
-                    "block p-2.5 w-full text-sm",
-                    "bg-neutral-50 text-neutral-900",
-                    "rounded-l border-neutral-300"
-                  ]}
-                  required
-                  placeholder="Enter code from email"
-                />
-
-                <button
-                  type="submit"
-                  class={[
-                    "block p-2.5",
-                    "text-sm text-white",
-                    "items-center text-center",
-                    "bg-accent-600 rounded-r",
-                    "hover:bg-accent-700"
-                  ]}
-                >
-                  Submit
-                </button>
-              </form>
-              <.resend
-                resend_action={@resend_action}
-                email={@email}
-                redirect_params={@redirect_params}
-              /> or
-              <.link navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"} class={link_style()}>
-                use a different Sign In method
-              </.link>
-              .
-            </div>
-            <div class="flex">
-              <.dev_email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
-              <.email_provider_link url="https://mail.google.com/mail/" name="Gmail" />
-              <.email_provider_link url="https://outlook.live.com/mail/" name="Outlook" />
-            </div>
-          </div>
-        </div>
+      <div
+        id="pin-input"
+        phx-hook="PINInput"
+        phx-update="ignore"
+        class="flex gap-3 justify-center mb-6"
+      >
+        <input
+          :for={i <- 0..4}
+          data-pin-index={i}
+          type="text"
+          maxlength="1"
+          inputmode="text"
+          autocomplete="off"
+          class="w-12 h-14 text-center text-xl font-semibold rounded-md border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-2 focus:ring-[var(--control-focus)]/30 transition-colors uppercase"
+        />
+        <input type="hidden" name="secret" id="secret" />
       </div>
-    </section>
+
+      <button
+        type="submit"
+        class="w-full px-3 py-2.5 rounded-md text-sm font-medium bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
+      >
+        Verify code
+      </button>
+    </form>
+
+    <div class="mt-4 grid grid-cols-2 gap-2">
+      <.link
+        navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
+        class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+      >
+        <.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        Different method
+      </.link>
+      <.resend
+        resend_action={@resend_action}
+        email={@email}
+        redirect_params={@redirect_params}
+      />
+    </div>
+
+    <.dev_mailbox_link />
     """
   end
 
@@ -147,13 +138,20 @@ defmodule PortalWeb.SignIn.Email do
   end
 
   if Mix.env() in [:dev, :test] do
-    defp dev_email_provider_link(assigns) do
+    defp dev_mailbox_link(assigns) do
       ~H"""
-      <.email_provider_link url={~p"/dev/mailbox"} name="Local" />
+      <a
+        href={~p"/dev/mailbox"}
+        target="_blank"
+        class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+      >
+        <.icon name="ri-mail-open-line" class="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+        Open local mailbox
+      </a>
       """
     end
   else
-    defp dev_email_provider_link(assigns), do: ~H""
+    defp dev_mailbox_link(assigns), do: ~H""
   end
 
   defp resend(assigns) do
@@ -162,35 +160,19 @@ defmodule PortalWeb.SignIn.Email do
       for={%{}}
       id="resend-email"
       as={:email}
-      class="inline"
       action={@resend_action}
       method="post"
     >
       <.input type="hidden" name="email[email]" value={@email} />
       <.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
-      <span>
-        Did not receive it?
-        <button type="submit" class="inline text-accent-500 hover:underline">
-          Resend email
-        </button>
-      </span>
+      <button
+        type="submit"
+        class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+      >
+        <.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        Resend email
+      </button>
     </.form>
-    """
-  end
-
-  defp email_provider_link(assigns) do
-    ~H"""
-    <a
-      href={@url}
-      class={[
-        "w-1/2 m-2 inline-flex items-center justify-center py-2.5 px-5",
-        "text-sm text-neutral-900 bg-white ",
-        "rounded-sm border border-neutral-200",
-        "hover:text-neutral-900 hover:bg-neutral-100"
-      ]}
-    >
-      Open {@name}
-    </a>
     """
   end
 

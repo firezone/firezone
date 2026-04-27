@@ -61,8 +61,8 @@ defmodule PortalWeb.CoreComponents do
   defp device_path(account, %Portal.Device{type: :client, id: id}),
     do: ~p"/#{account}/clients/#{id}"
 
-  defp device_path(account, %Portal.Device{type: :gateway, id: id}),
-    do: ~p"/#{account}/gateways/#{id}"
+  defp device_path(account, %Portal.Device{type: :gateway}),
+    do: ~p"/#{account}"
 
   @doc """
   Renders a generic <p> tag using our color scheme.
@@ -148,11 +148,11 @@ defmodule PortalWeb.CoreComponents do
         ]}
       >
         <span id={"#{@id}-default-message"} class="inline-flex items-center">
-          <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
+          <.icon name="ri-clipboard-line" data-icon class="h-4 w-4 me-1.5" />
           <span class="text-xs font-semibold">Copy</span>
         </span>
         <span id={"#{@id}-success-message"} class="hidden items-center">
-          <.icon name="hero-check" data-icon class="text-green-700 h-4 w-4 me-1.5" />
+          <.icon name="ri-check-line" data-icon class="text-green-700 h-4 w-4 me-1.5" />
           <span class="text-xs font-semibold text-green-700">Copied</span>
         </span>
       </button>
@@ -184,7 +184,7 @@ defmodule PortalWeb.CoreComponents do
         data-copy-to-clipboard-target={"#{@id}-code"}
         title="Copy to clipboard"
       >
-        <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
+        <.icon name="ri-clipboard-line" data-icon class="h-4 w-4" />
       </button>
     </div>
     """
@@ -304,7 +304,7 @@ defmodule PortalWeb.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <div class="py-6 px-1">
+    <div class="py-4 px-1 md:py-6">
       <div class="grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
         <div class="col-span-full">
           <div class="flex justify-between items-center">
@@ -384,12 +384,20 @@ defmodule PortalWeb.CoreComponents do
       popover={if @style == "toast", do: "manual", else: nil}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @base_kind == :success && "text-green-800 bg-green-100 border-green-300",
-        @base_kind == :info && "text-blue-800 bg-blue-100 border-blue-300",
-        @base_kind == :warning && "text-yellow-800 bg-yellow-100 border-yellow-300",
-        @base_kind == :error && "text-red-800 bg-red-100 border-red-300",
+        @base_kind == :success && "text-[var(--status-active)] border-[var(--status-active)]/30",
+        @base_kind == :info && "text-[var(--status-info)] border-[var(--status-info)]/30",
+        @base_kind == :warning && "text-[var(--status-warn)] border-[var(--status-warn)]/30",
+        @base_kind == :error && "text-[var(--status-error)] border-[var(--status-error)]/30",
+        @style == "inline" && @base_kind == :success && "bg-[var(--status-active-bg)]",
+        @style == "inline" && @base_kind == :info && "bg-[var(--status-info-bg)]",
+        @style == "inline" && @base_kind == :warning && "bg-[var(--status-warn-bg)]",
+        @style == "inline" && @base_kind == :error && "bg-[var(--status-error-bg)]",
+        @style == "toast" && @base_kind == :success && "bg-[var(--toast-bg-success)]",
+        @style == "toast" && @base_kind == :info && "bg-[var(--toast-bg-info)]",
+        @style == "toast" && @base_kind == :warning && "bg-[var(--toast-bg-warn)]",
+        @style == "toast" && @base_kind == :error && "bg-[var(--toast-bg-error)]",
         @style == "toast" && "m-0 border rounded-sm shadow-md",
-        @style == "inline" && "mb-4 rounded-sm border",
+        @style == "inline" && "mb-6 rounded-sm border",
         @class
       ]}
       role="alert"
@@ -397,15 +405,29 @@ defmodule PortalWeb.CoreComponents do
       data-autoshow={if @style == "toast", do: to_string(@autoshow), else: nil}
       {@rest}
     >
-      <div class={[@style == "toast" && "flex items-start gap-3"]}>
-        <div class="flex-1">
-          <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6 mb-1">
-            <.icon :if={@base_kind == :info} name="hero-information-circle" class="h-4 w-4" />
-            <.icon :if={@base_kind == :success} name="hero-check-circle" class="h-4 w-4" />
-            <.icon :if={@base_kind == :warning} name="hero-exclamation-triangle" class="h-4 w-4" />
-            <.icon :if={@base_kind == :error} name="hero-exclamation-circle" class="h-4 w-4" />
-            {@title}
-          </p>
+      <div class={["flex items-start gap-2", @style == "toast" && ""]}>
+        <.icon
+          :if={@base_kind == :info}
+          name="ri-information-line"
+          class="h-4 w-4 shrink-0 mt-0.5"
+        />
+        <.icon
+          :if={@base_kind == :success}
+          name="ri-checkbox-circle-line"
+          class="h-4 w-4 shrink-0 mt-0.5"
+        />
+        <.icon
+          :if={@base_kind == :warning}
+          name="ri-error-warning-line"
+          class="h-4 w-4 shrink-0 mt-0.5"
+        />
+        <.icon
+          :if={@base_kind == :error}
+          name="ri-alert-line"
+          class="h-4 w-4 shrink-0 mt-0.5"
+        />
+        <div class="flex-1 min-w-0">
+          <p :if={@title} class="font-semibold leading-6 mb-1">{@title}</p>
           {maybe_render_changeset_as_flash(msg)}
         </div>
         <button
@@ -416,7 +438,7 @@ defmodule PortalWeb.CoreComponents do
           popovertargetaction="hide"
           aria-label="Close"
         >
-          <.icon name="hero-x-mark" class="h-4 w-4" />
+          <.icon name="ri-close-line" class="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -449,7 +471,10 @@ defmodule PortalWeb.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class={["block text-sm text-neutral-900 mb-2", @class]}>
+    <label
+      for={@for}
+      class={["block text-xs font-semibold text-[var(--text-secondary)] mb-1.5", @class]}
+    >
       {render_slot(@inner_block)}
     </label>
     """
@@ -468,13 +493,13 @@ defmodule PortalWeb.CoreComponents do
     <p
       class={[
         "flex items-center gap-2 text-sm leading-6",
-        "text-rose-600",
+        "text-[var(--status-error)]",
         (@inline && "ml-2") || "mt-2 w-full",
         @class
       ]}
       {@rest}
     >
-      <.icon name="hero-exclamation-circle-mini" class="h-4 w-4 flex-none" />
+      <.icon name="ri-alert-line" class="h-4 w-4 flex-none" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -502,7 +527,7 @@ defmodule PortalWeb.CoreComponents do
       class="mt-3 mb-3 flex gap-3 text-m leading-6 text-rose-600"
       {@rest}
     >
-      <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
+      <.icon name="ri-alert-line" class="mt-0.5 h-5 w-5 flex-none" />
       {translate_error(@error)}
     </p>
     """
@@ -536,28 +561,33 @@ defmodule PortalWeb.CoreComponents do
   end
 
   @doc """
-  Renders a [Hero Icon](https://heroicons.com).
+  Renders a [Hero Icon](https://heroicons.com) or [Remix Icon](https://remixicon.com).
 
   Hero icons come in three styles – outline, solid, and mini.
   By default, the outline style is used, but solid and mini may
   be applied by using the `-solid` and `-mini` suffix.
 
+  Remix icons come in two styles – fill and line – applied via the
+  `-fill` and `-line` suffix.
+
   You can customize the size and colors of the icons by setting
   width, height, and background color classes.
 
-  Icons are extracted from your `assets/vendor/heroicons` directory and bundled
-  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
+  Icons are extracted from `assets/vendor/heroicons` and `assets/vendor/remix_icons`
+  and bundled within your compiled app.css by the plugins in `assets/tailwind.config.js`.
 
   ## Examples
 
-      <.icon name="hero-x-mark-solid" />
-      <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
+      <.icon name="ri-close-fill" />
+      <.icon name="ri-loop-left-line" class="ml-1 w-3 h-3 animate-spin" />
+      <.icon name="ri-user-fill" class="w-5 h-5" />
+      <.icon name="ri-settings-3-line" class="w-4 h-4 text-gray-500" />
   """
   attr :name, :string, required: true
   attr :class, :string, default: nil
   attr :rest, :global
 
-  def icon(%{name: "hero-" <> _} = assigns) do
+  def icon(%{name: "ri-" <> _} = assigns) do
     ~H"""
     <span class={[@name, @class]} {@rest} />
     """
@@ -893,11 +923,11 @@ defmodule PortalWeb.CoreComponents do
 
   def badge(assigns) do
     colors = %{
-      "success" => "bg-green-100 text-green-800 ",
+      "success" => "bg-green-100 text-green-800",
       "danger" => "bg-red-100 text-red-800",
       "warning" => "bg-yellow-100 text-yellow-800",
-      "info" => "bg-blue-100 text-blue-800",
-      "primary" => "bg-primary-400 text-primary-800",
+      "info" => "bg-[var(--badge-dns-bg)] text-[var(--badge-dns-text)]",
+      "primary" => "bg-[var(--brand-muted)] text-[var(--brand)]",
       "accent" => "bg-accent-200 text-accent-800",
       "neutral" => "bg-neutral-100 text-neutral-800"
     }
@@ -1058,7 +1088,7 @@ defmodule PortalWeb.CoreComponents do
 
     <div data-popover id={@target_id} role="tooltip" class={~w[
       absolute z-10 invisible inline-block
-      text-sm text-neutral-500 transition-opacity
+      text-xs text-neutral-500 transition-opacity
       duration-50 bg-white border border-neutral-200
       rounded-md shadow-xs opacity-0
       ]}>
@@ -1147,7 +1177,7 @@ defmodule PortalWeb.CoreComponents do
       </span>
 
       <span :if={@connected?}>
-        <.icon name="hero-check" class="h-3.5 w-3.5 mr-1" /> Connected, click to continue
+        <.icon name="ri-check-line" class="h-3.5 w-3.5 mr-1" /> Connected, click to continue
       </span>
     </.link>
     """
@@ -1167,7 +1197,7 @@ defmodule PortalWeb.CoreComponents do
   def verified(%{schema: %{verified_at: _verified_at}} = assigns) do
     ~H"""
     <div class="flex items-center gap-x-1">
-      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
+      <.icon name="ri-shield-check-line" class="w-4 h-4" /> Verified
       <.relative_datetime datetime={@schema.verified_at} />
     </div>
     """
@@ -1178,7 +1208,7 @@ defmodule PortalWeb.CoreComponents do
 
   def actor_link(%{actor: %Portal.Actor{type: :api_client}} = assigns) do
     ~H"""
-    <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
+    <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients"}>
       {assigns.actor.name}
     </.link>
     """
@@ -1210,7 +1240,7 @@ defmodule PortalWeb.CoreComponents do
       @class
     ]}>
       <span class="inline-flex items-center justify-center py-0.5 px-1.5 text-primary-600 bg-primary-100 border-r border-primary-300">
-        <.icon name="hero-exclamation-triangle-mini" class="h-3.5 w-3.5" />
+        <.icon name="ri-error-warning-line" class="h-3.5 w-3.5" />
       </span>
       <span class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-primary-700">
         Group deleted
@@ -1336,7 +1366,7 @@ defmodule PortalWeb.CoreComponents do
           target="_blank"
           href={"http://www.google.com/maps/place/#{@display_remote_ip_location_lat},#{@display_remote_ip_location_lon}"}
         >
-          <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
+          <.icon name="ri-external-link-line" class="mb-3 w-3 h-3" />
         </a>
       </span>
     <% else %>
@@ -1520,9 +1550,9 @@ defmodule PortalWeb.CoreComponents do
   defp ping_icon_color(color) do
     case color do
       "info" -> {"bg-accent-500", "bg-accent-400"}
-      "success" -> {"bg-green-500", "bg-green-400"}
-      "warning" -> {"bg-orange-500", "bg-orange-400"}
-      "danger" -> {"bg-red-500", "bg-red-400"}
+      "success" -> {"bg-[var(--status-active)]", "bg-green-400"}
+      "warning" -> {"bg-[var(--status-warn)]", "bg-amber-400"}
+      "danger" -> {"bg-[var(--status-danger)]", "bg-red-400"}
     end
   end
 
@@ -1575,7 +1605,7 @@ defmodule PortalWeb.CoreComponents do
 
   def provider_icon(%{type: "email_otp"} = assigns) do
     ~H"""
-    <.icon name="hero-envelope" {@rest} />
+    <.icon name="ri-mail-line" {@rest} />
     """
   end
 
@@ -1599,13 +1629,13 @@ defmodule PortalWeb.CoreComponents do
 
   def provider_icon(%{type: "userpass"} = assigns) do
     ~H"""
-    <.icon name="hero-key" {@rest} />
+    <.icon name="ri-key-line" {@rest} />
     """
   end
 
   def provider_icon(%{type: "unknown"} = assigns) do
     ~H"""
-    <.icon name="hero-question-mark-circle" {@rest} />
+    <.icon name="ri-question-line" {@rest} />
     """
   end
 
@@ -1685,6 +1715,8 @@ defmodule PortalWeb.CoreComponents do
   attr :checked, :boolean, default: false
   attr :label, :string, default: nil
   attr :disabled, :boolean, default: false
+  attr :name, :string, default: nil
+  attr :value, :string, default: nil
   attr :class, :string, default: nil
   attr :rest, :global
 
@@ -1694,6 +1726,8 @@ defmodule PortalWeb.CoreComponents do
       <input
         type="checkbox"
         id={@id}
+        name={@name}
+        value={@value}
         checked={@checked}
         disabled={@disabled}
         class="sr-only peer"
@@ -1715,5 +1749,90 @@ defmodule PortalWeb.CoreComponents do
       </span>
     </label>
     """
+  end
+
+  @doc """
+  Renders a status badge pill.
+
+  ## Statuses
+
+  - `:online` / `:healthy` / `:active` — green
+  - `:degraded` — amber
+  - `:offline` — gray
+  - `:disabled` — red
+
+  ## Examples
+
+    <.status_badge status={:online} />
+    <.status_badge status={:offline} />
+    <.status_badge status={:active} />
+    <.status_badge status={:disabled} />
+    <.status_badge status={:healthy} />
+    <.status_badge status={:degraded} />
+  """
+  attr :status, :atom,
+    required: true,
+    values: [:online, :offline, :active, :disabled, :healthy, :degraded]
+
+  def status_badge(assigns) do
+    assigns = assign(assigns, :cfg, status_badge_config(assigns.status))
+
+    ~H"""
+    <span class={[
+      "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
+      @cfg.pill_class
+    ]}>
+      <span class={["w-1.5 h-1.5 rounded-full shrink-0", @cfg.dot_class]}></span>
+      {@cfg.label}
+    </span>
+    """
+  end
+
+  defp status_badge_config(:online) do
+    %{
+      label: "Online",
+      pill_class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      dot_class: "bg-green-500"
+    }
+  end
+
+  defp status_badge_config(:healthy) do
+    %{
+      label: "Healthy",
+      pill_class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      dot_class: "bg-green-500"
+    }
+  end
+
+  defp status_badge_config(:active) do
+    %{
+      label: "Active",
+      pill_class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      dot_class: "bg-green-500"
+    }
+  end
+
+  defp status_badge_config(:degraded) do
+    %{
+      label: "Degraded",
+      pill_class: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+      dot_class: "bg-amber-500"
+    }
+  end
+
+  defp status_badge_config(:offline) do
+    %{
+      label: "Offline",
+      pill_class: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+      dot_class: "bg-gray-400"
+    }
+  end
+
+  defp status_badge_config(:disabled) do
+    %{
+      label: "Disabled",
+      pill_class: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+      dot_class: "bg-red-500"
+    }
   end
 end

@@ -8,6 +8,21 @@
 # to prevent having too many overrides in other files.
 import Config
 
+parse_log_level = fn
+  nil ->
+    :info
+
+  value ->
+    case value |> String.trim() |> String.downcase() do
+      "debug" -> :debug
+      "info" -> :info
+      "warning" -> :warning
+      "warn" -> :warning
+      "error" -> :error
+      _ -> :info
+    end
+end
+
 ###############################
 ##### Portal ##################
 ###############################
@@ -273,11 +288,11 @@ config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
   fetch_from_url: true,
   versions: [
-    apple: "1.3.8",
-    android: "1.3.6",
-    gateway: "1.4.0",
-    gui: "1.3.11",
-    headless: "1.3.5"
+    apple: "1.5.14",
+    android: "1.5.9",
+    gateway: "1.5.1",
+    gui: "1.5.11",
+    headless: "1.5.7"
   ]
 
 config :portal, Portal.Cluster,
@@ -349,10 +364,10 @@ config :portal, country_code_blocklist: []
 
 config :portal, PortalWeb.Plugs.PutCSPHeader,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://firezone.statuspage.io",
+    "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self'"
+    "script-src 'self' 'nonce-${nonce}'"
   ]
 
 config :portal, api_url_override: "ws://localhost:13001/"
@@ -436,7 +451,8 @@ config :opentelemetry,
   span_processor: :batch,
   traces_exporter: :none
 
-config :logger, level: String.to_atom(System.get_env("LOG_LEVEL", "info"))
+config :logger,
+  level: System.get_env("LOG_LEVEL", "info") |> parse_log_level.()
 
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

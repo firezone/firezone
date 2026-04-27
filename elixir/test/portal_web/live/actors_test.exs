@@ -1,449 +1,196 @@
-defmodule PortalWeb.Live.ActorsTest do
+defmodule PortalWeb.ActorsTest do
   use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
+  import Portal.ClientFixtures
+  import Portal.GroupFixtures
   import Portal.IdentityFixtures
+  import Portal.MembershipFixtures
+  import Portal.PortalSessionFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
-
     %{account: account, actor: actor}
   end
 
-  describe "handle_params :show" do
-    test "redirects to actors list when actor is not found", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      assert {:error, {:live_redirect, %{to: path}}} =
-               conn
-               |> authorize_conn(actor)
-               |> live(~p"/#{account}/actors/#{Ecto.UUID.generate()}")
-
-      assert path == ~p"/#{account}/actors"
-    end
-  end
-
-  describe "handle_params :edit" do
-    test "redirects to actors list when actor is not found", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      assert {:error, {:live_redirect, %{to: path}}} =
-               conn
-               |> authorize_conn(actor)
-               |> live(~p"/#{account}/actors/#{Ecto.UUID.generate()}/edit")
-
-      assert path == ~p"/#{account}/actors"
-    end
-  end
-
-  describe "handle_params :add_token" do
-    test "redirects to actors list when actor is not found", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      assert {:error, {:live_redirect, %{to: path}}} =
-               conn
-               |> authorize_conn(actor)
-               |> live(~p"/#{account}/actors/#{Ecto.UUID.generate()}/add_token")
-
-      assert path == ~p"/#{account}/actors"
-    end
-  end
-
-  describe "handle_event delete" do
-    test "shows error flash when actor is not found", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      html = render_click(lv, "delete", %{"id" => Ecto.UUID.generate()})
-      assert html =~ "Actor not found"
-    end
-  end
-
-  describe "handle_event disable" do
-    test "shows error flash when actor is not found", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      html = render_click(lv, "disable", %{"id" => Ecto.UUID.generate()})
-      assert html =~ "Actor not found"
-    end
-  end
-
-  describe "handle_event enable" do
-    test "shows error flash when actor is not found", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      html = render_click(lv, "enable", %{"id" => Ecto.UUID.generate()})
-      assert html =~ "Actor not found"
-    end
-  end
-
-  describe "handle_event create_user" do
-    test "enforces users_count limit", %{account: account, actor: actor, conn: conn} do
-      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{users_count: 1})
-      |> Repo.update!()
-
-      actor_with_email_fixture(type: :account_user, account: account)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_user")
-
-      html =
-        lv
-        |> form("#user-form",
-          actor: %{
-            "name" => "Another User",
-            "email" => "another-user@example.com",
-            "type" => "account_user",
-            "allow_email_otp_sign_in" => "true"
-          }
-        )
-        |> render_submit()
-
-      assert html =~ "User limit reached for your account"
-      refute Repo.get_by(Portal.Actor, account_id: account.id, email: "another-user@example.com")
-    end
-  end
-
-  describe "actors list" do
-    test "redirects unauthorized users to sign-in", %{account: account, conn: conn} do
+  describe "unauthorized" do
+    test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
       path = ~p"/#{account}/actors"
 
       assert live(conn, path) ==
                {:error,
                 {:redirect,
                  %{
-                   to: ~p"/#{account}?#{%{redirect_to: path}}",
+                   to: ~p"/#{account}/sign_in?#{%{redirect_to: path}}",
                    flash: %{"error" => "You must sign in to access that page."}
                  }}}
     end
+  end
 
-    test "renders breadcrumbs", %{account: account, actor: actor, conn: conn} do
+  describe "index (default action)" do
+    test "renders actor list page", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors")
 
-      assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
-      breadcrumbs = String.trim(Floki.text(item))
-      assert breadcrumbs =~ "Actors"
+      assert html =~ "Actors"
+      assert html =~ actor.name
     end
 
-    test "renders actors table with name, email, status, and last updated columns", %{
+    test "opens and closes new actor side panel", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      html = render_click(lv, "open_new_actor_panel")
+      assert html =~ "Create User"
+
+      html = render_click(lv, "close_panel")
+      refute html =~ "Create User"
+    end
+  end
+
+  describe ":new action" do
+    test "New Actor button patches to /actors/new", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/actors/new")
+    end
+
+    test "renders user creation form when navigating directly to /actors/new", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
-      other_actor = actor_fixture(account: account)
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/new")
 
+      assert html =~ "Create User"
+    end
+
+    test "close panel patches back to /actors/new", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/new")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/actors")
+    end
+  end
+
+  describe "create user panel" do
+    test "creates user from side panel and assigns pending group memberships", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors")
 
-      rows =
-        lv
-        |> element("#actors")
-        |> render()
-        |> table_to_map()
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/actors/new")
+      html = render_click(lv, "select_new_actor_type", %{"type" => "user"})
 
-      assert Enum.any?(rows, fn row -> row["name"] =~ other_actor.name end)
-    end
+      assert html =~ "Create User"
 
-    test "renders Add Actor button", %{account: account, actor: actor, conn: conn} do
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      assert html =~ "Add Actor"
-    end
-
-    test "renders empty state when no actors exist", %{conn: conn} do
-      # Create a fresh account with only the admin actor and no other actors
-      fresh_account = account_fixture()
-      fresh_actor = admin_actor_fixture(account: fresh_account)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(fresh_actor)
-        |> live(~p"/#{fresh_account}/actors")
-
-      # The admin actor itself is present, but we can check the table renders
-      assert html =~ "actors"
-    end
-
-    test "filters actors by name", %{account: account, actor: actor, conn: conn} do
-      unique_num = System.unique_integer([:positive, :monotonic])
-      searchable_name = "UniqueSearchableName#{unique_num}"
-      other_actor = actor_fixture(account: account, name: searchable_name)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      # Confirm both actors appear before filtering
-      pre_filter_html = lv |> element("#actors") |> render()
-      assert pre_filter_html =~ other_actor.name
-      assert pre_filter_html =~ actor.name
-
-      # Apply the filter and confirm the target actor appears
       lv
-      |> element("#actors-filters")
-      |> render_change(%{"actors_filter" => %{"name_or_email" => searchable_name}})
+      |> form("form[phx-submit='create_user']",
+        actor: %{
+          name: "John Smith",
+          email: "john.smith@example.com",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
 
-      filtered_html = lv |> element("#actors") |> render()
-      assert filtered_html =~ other_actor.name
+      html = render(lv)
+      assert html =~ "John Smith"
     end
   end
 
-  describe "actor show" do
-    test "renders actor name and type for a user actor", %{
+  describe "create service account panel" do
+    test "creates service account from side panel and shows created token", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
-      user_actor = actor_fixture(account: account, type: :account_user)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{user_actor.id}")
-
-      assert html =~ user_actor.name
-      assert html =~ "User"
-    end
-
-    test "renders actor name for a service account", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      sa = service_account_fixture(account: account)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{sa.id}")
-
-      assert html =~ sa.name
-      assert html =~ "Service Account"
-    end
-
-    test "renders identities tab for user actors", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      user_actor = actor_fixture(account: account, type: :account_user)
-      _identity = identity_fixture(account: account, actor: user_actor)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{user_actor.id}")
-
-      assert html =~ "External Identities"
-    end
-
-    test "renders tokens tab for service accounts", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      sa = service_account_fixture(account: account)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{sa.id}")
-
-      assert html =~ "Tokens"
-    end
-  end
-
-  describe "add user" do
-    test "renders the add user form", %{account: account, actor: actor, conn: conn} do
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_user")
-
-      assert html =~ "Add User"
-      assert html =~ "user-form"
-    end
-
-    test "validates required fields on submit", %{account: account, actor: actor, conn: conn} do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_user")
+        |> live(~p"/#{account}/actors")
 
-      html =
-        lv
-        |> form("#user-form", actor: %{"name" => "", "email" => ""})
-        |> render_submit()
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/actors/new")
+      html = render_click(lv, "select_new_actor_type", %{"type" => "service_account"})
 
-      # form should still be shown (not navigated away) because of validation errors
-      assert html =~ "Add User"
+      assert html =~ "Create Service Account"
+
+      expiration =
+        Date.utc_today()
+        |> Date.add(30)
+        |> Date.to_iso8601()
+
+      lv
+      |> form("form[phx-submit='create_service_account']",
+        actor: %{name: "CI Service Account"},
+        token_expiration: expiration
+      )
+      |> render_submit()
+
+      html = render(lv)
+      assert html =~ "CI Service Account"
+      assert html =~ "Token Created"
     end
 
-    test "creates a new user successfully and navigates to actor show", %{
+    test "creates service account without token when expiration is blank", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
-      unique_num = System.unique_integer([:positive, :monotonic])
-      new_email = "newuser#{unique_num}@example.com"
-      new_name = "New User #{unique_num}"
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_user")
+        |> live(~p"/#{account}/actors")
 
-      result =
-        lv
-        |> form("#user-form",
-          actor: %{
-            "name" => new_name,
-            "email" => new_email,
-            "type" => "account_user",
-            "allow_email_otp_sign_in" => "false"
-          }
-        )
-        |> render_submit()
+      render_click(lv, "open_new_actor_panel")
+      render_click(lv, "select_new_actor_type", %{"type" => "service_account"})
 
-      # After creation, it patches to the new actor's show page. The response
-      # is either a redirect or the rendered show page.
-      case result do
-        {:error, {:live_redirect, %{to: path}}} ->
-          assert path =~ "/actors/"
+      lv
+      |> form("form[phx-submit='create_service_account']",
+        actor: %{name: "Tokenless SA"},
+        token_expiration: ""
+      )
+      |> render_submit()
 
-        html when is_binary(html) ->
-          assert html =~ new_name
-      end
-
-      assert Repo.get_by(Portal.Actor, account_id: account.id, email: new_email)
-    end
-  end
-
-  describe "add service account" do
-    test "renders the add service account form", %{account: account, actor: actor, conn: conn} do
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_service_account")
-
-      assert html =~ "Add Service Account"
-      assert html =~ "service-account-form"
+      html = render(lv)
+      assert html =~ "Tokenless SA"
+      refute html =~ "Token Created"
     end
 
-    test "creates a new service account successfully", %{
+    test "re-renders form when service account name is invalid", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
-    } do
-      unique_num = System.unique_integer([:positive, :monotonic])
-      sa_name = "My Service Account #{unique_num}"
-      expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_service_account")
-
-      result =
-        lv
-        |> form("#service-account-form", actor: %{"name" => sa_name})
-        |> render_submit(%{"token_expiration" => expiration})
-
-      case result do
-        {:error, {:live_redirect, %{to: path}}} ->
-          assert path =~ "/actors/"
-
-        html when is_binary(html) ->
-          assert html =~ sa_name
-      end
-
-      assert Repo.get_by(Portal.Actor,
-               account_id: account.id,
-               name: sa_name,
-               type: :service_account
-             )
-    end
-
-    test "creates a new service account without a token when expiration is blank", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      unique_num = System.unique_integer([:positive, :monotonic])
-      sa_name = "My Service Account #{unique_num}"
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_service_account")
-
-      result =
-        lv
-        |> form("#service-account-form", actor: %{"name" => sa_name})
-        |> render_submit(%{"token_expiration" => ""})
-
-      case result do
-        {:error, {:live_redirect, %{to: path}}} ->
-          assert path =~ "/actors/"
-
-        html when is_binary(html) ->
-          assert html =~ sa_name
-      end
-
-      created_actor =
-        Repo.get_by!(Portal.Actor,
-          account_id: account.id,
-          name: sa_name,
-          type: :service_account
-        )
-        |> Repo.preload(:client_tokens)
-
-      assert created_actor.client_tokens == []
-    end
-
-    test "re-renders the form when service account attrs are invalid", %{
-      account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
       invalid_name = String.duplicate("a", 256)
       expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
@@ -451,415 +198,598 @@ defmodule PortalWeb.Live.ActorsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_service_account")
+        |> live(~p"/#{account}/actors")
+
+      render_click(lv, "open_new_actor_panel")
+      render_click(lv, "select_new_actor_type", %{"type" => "service_account"})
 
       html =
         lv
-        |> form("#service-account-form", actor: %{"name" => invalid_name})
-        |> render_submit(%{"token_expiration" => expiration})
+        |> form("form[phx-submit='create_service_account']",
+          actor: %{name: invalid_name},
+          token_expiration: expiration
+        )
+        |> render_submit()
 
-      assert html =~ "Add Service Account"
-      assert html =~ "service-account-form"
-
-      refute Repo.get_by(Portal.Actor,
-               account_id: account.id,
-               name: invalid_name,
-               type: :service_account
-             )
+      assert html =~ "Create Service Account"
+      assert html =~ "create_service_account"
     end
 
-    test "shows temporary-error flash when token creation fails with non-changeset error", %{
+    test "shows flash error when token expiration is unparsable", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
-      unique_num = System.unique_integer([:positive, :monotonic])
-      sa_name = "My Service Account #{unique_num}"
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_click(lv, "open_new_actor_panel")
+      render_click(lv, "select_new_actor_type", %{"type" => "service_account"})
+
+      html =
+        lv
+        |> form("form[phx-submit='create_service_account']",
+          actor: %{name: "Bad Date SA"},
+          token_expiration: "not-a-date"
+        )
+        |> render_submit()
+
+      assert html =~ "A temporary error occurred"
+      assert html =~ "Please try again"
+    end
+  end
+
+  describe ":show action" do
+    test "renders actor detail panel", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert html =~ other_actor.name
+    end
+
+    test "shows identities tab content", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert html =~ "identities"
+    end
+
+    test "shows linked groups in groups tab", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+      group = group_fixture(account: account, name: "Operators")
+      membership_fixture(actor: other_actor, group: group)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_service_account")
+        |> live(~p"/#{account}/actors/#{other_actor}")
 
-      # An unparsable date causes create_actor_token/3 to return
-      # {:error, :invalid_date} — a non-changeset error tuple — which previously
-      # crashed the LV via to_form(:invalid_date).
+      html = render_click(lv, "change_tab", %{"tab" => "groups"})
+      assert_patch(lv, ~p"/#{account}/actors/#{other_actor}?tab=groups")
+
+      assert html =~ group.name
+      assert html =~ "Groups"
+    end
+
+    test "revokes identity from actor details", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+      identity = identity_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "confirm_delete_identity", %{"id" => identity.id})
+      assert html =~ "Delete this identity?"
+
+      html = render_click(lv, "delete_identity", %{"id" => identity.id})
+      refute html =~ identity.email
+    end
+
+    test "revokes portal session from portal sessions tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      session =
+        portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=portal_sessions")
+
+      html = render_click(lv, "confirm_delete_session", %{"id" => session.id})
+      assert html =~ "Revoke this session?"
+
+      render_click(lv, "delete_session", %{"id" => session.id})
+
+      refute Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+    end
+
+    test "opens and cancels actor edit form", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "open_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{other_actor}/edit")
+      assert html =~ "Save Changes"
+
+      html = render_click(lv, "cancel_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{other_actor}")
+      refute html =~ "Save Changes"
+    end
+
+    test "disables and re-enables actor", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "confirm_disable_actor")
+      assert html =~ "Disable this actor?"
+
+      html = render_click(lv, "cancel_disable_actor")
+      refute html =~ "Disable this actor?"
+
+      render_click(lv, "confirm_disable_actor")
+      html = render_click(lv, "disable", %{"id" => other_actor.id})
+      assert html =~ "Enable"
+      refute html =~ "Disable this actor?"
+
+      html = render_click(lv, "enable", %{"id" => other_actor.id})
+      refute html =~ "Enable"
+      assert html =~ "Disable"
+    end
+
+    test "cancel delete actor returns to detail view", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "confirm_delete_actor")
+      assert html =~ "Delete this actor?"
+
+      html = render_click(lv, "cancel_delete_actor")
+      refute html =~ "Delete this actor?"
+      assert html =~ other_actor.name
+    end
+
+    test "deletes a token from service account", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{service_account}")
+
+      html = render_click(lv, "confirm_delete_token", %{"id" => token.id})
+      assert html =~ "Delete this token?"
+
+      html = render_click(lv, "cancel_delete_token")
+      refute html =~ "Delete this token?"
+
+      render_click(lv, "confirm_delete_token", %{"id" => token.id})
+      render_click(lv, "delete_token", %{"id" => token.id})
+
+      html = render(lv)
+      assert html =~ "No tokens."
+    end
+
+    test "sends welcome email", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_with_email_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "send_welcome_email", %{"id" => other_actor.id})
+      assert html =~ "Email sent to #{other_actor.email}"
+    end
+
+    test "creates and dismisses token for service account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{service_account}")
+
+      html = render_click(lv, "open_add_token_form")
+      assert html =~ "New Token"
+
+      expiration =
+        Date.utc_today()
+        |> Date.add(30)
+        |> Date.to_iso8601()
+
       html =
-        lv
-        |> form("#service-account-form", actor: %{"name" => sa_name})
-        |> render_submit(%{"token_expiration" => "not-a-date"})
+        render_submit(element(lv, "form[phx-submit='create_token']"), %{
+          "token_expiration" => expiration
+        })
 
-      assert html =~ "A temporary error occurred"
-      assert html =~ "Please try again"
+      assert html =~ "Token Created"
 
-      refute Repo.get_by(Portal.Actor,
-               account_id: account.id,
-               name: sa_name,
-               type: :service_account
-             )
+      html = render_click(lv, "dismiss_created_token")
+      refute html =~ "Token Created"
+    end
+
+    test "redirects to actor list when actor does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      fake_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/actors/#{fake_id}")
+
+      assert path == ~p"/#{account}/actors"
+      assert flash["error"] == "Actor not found"
+    end
+
+    test "redirects to actor list when actor belongs to a different account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account)
+
+      assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert path == ~p"/#{account}/actors"
+      assert flash["error"] == "Actor not found"
     end
   end
 
-  describe "edit actor" do
-    test "renders the edit form with current actor name", %{
+  describe ":edit action" do
+    test "renders edit form pre-populated with actor name", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
       other_actor = actor_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
 
-      assert html =~ "Edit #{other_actor.name}"
-      assert html =~ "actor-form"
+      assert html =~ "Save Changes"
+      assert html =~ other_actor.name
     end
 
-    test "saves changes to actor name successfully", %{
+    test "searches groups and removes pending addition in edit form", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
       other_actor = actor_fixture(account: account)
-      unique_num = System.unique_integer([:positive, :monotonic])
-      updated_name = "Updated Name #{unique_num}"
+      group = group_fixture(account: account, name: "Searchable Group")
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
 
-      result =
+      html =
         lv
-        |> form("#actor-form",
-          actor: %{
-            "name" => updated_name,
+        |> element("input[placeholder='Search to add groups...']")
+        |> render_change(%{"value" => group.name})
+
+      assert html =~ group.name
+
+      html = render_click(lv, "add_pending_group", %{"group_id" => group.id})
+      assert html =~ "To Add"
+
+      html = render_click(lv, "remove_pending_group_addition", %{"group_id" => group.id})
+      refute html =~ "To Add"
+    end
+
+    test "undoes pending group removal in edit form", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      group = group_fixture(account: account, name: "Existing Group")
+      membership_fixture(actor: other_actor, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      html = render_click(lv, "add_pending_group_removal", %{"group_id" => group.id})
+      assert html =~ "To Remove"
+
+      html = render_click(lv, "undo_pending_group_removal", %{"group_id" => group.id})
+      refute html =~ "To Remove"
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: other_actor.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      assert Portal.Repo.get_by(Portal.Membership,
+               actor_id: other_actor.id,
+               group_id: group.id
+             )
+    end
+
+    test "prevents disabling OTP when it is the only sign-in method", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account, allow_email_otp_sign_in: true)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      assert html =~ "This actor has no SSO identity. Disabling Email OTP will lock them out."
+
+      html =
+        render_click(lv, "save", %{
+          "actor" => %{
+            "name" => other_actor.name,
             "email" => other_actor.email,
-            "type" => "account_user"
+            "type" => "account_user",
+            "allow_email_otp_sign_in" => "false"
           }
-        )
-        |> render_submit()
+        })
 
-      case result do
-        {:error, {:live_redirect, %{to: _path}}} ->
-          :ok
+      assert html =~ "Cannot disable Email OTP. It is this actor&#39;s only sign-in method."
 
-        html when is_binary(html) ->
-          assert html =~ updated_name
-      end
-
-      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
-      assert updated.name == updated_name
+      assert Portal.Repo.get_by!(Portal.Actor,
+               id: other_actor.id,
+               account_id: account.id
+             ).allow_email_otp_sign_in
     end
 
-    test "shows validation error when name is empty", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      other_actor = actor_fixture(account: account)
-
-      {:ok, lv, _html} =
+    test "prevents changing role of last admin", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
+        |> live(~p"/#{account}/actors/#{actor}/edit")
 
+      assert html =~ "Cannot change role. At least one admin must remain in the account."
+      assert has_element?(lv, "input[value='account_user'][disabled]")
+      assert has_element?(lv, "label.opacity-50.cursor-not-allowed", "User")
+
+      # User radio is disabled; verify server-side guard by submitting the event directly
       html =
-        lv
-        |> form("#actor-form", actor: %{"name" => "", "email" => other_actor.email})
-        |> render_change()
-
-      # Form should show a validation error or remain on the edit page
-      assert html =~ "actor-form"
-    end
-
-    test "prevents promoting user to admin when admin limit is reached", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      other_actor = actor_fixture(account: account, type: :account_user)
-
-      # Set admin limit to 1 (the setup admin already counts)
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
-      )
-      |> Repo.update!()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
-
-      lv
-      |> form("#actor-form",
-        actor: %{
-          "name" => other_actor.name,
-          "email" => other_actor.email,
-          "type" => "account_admin_user"
-        }
-      )
-      |> render_submit()
-
-      # The error should be visible in the rendered LV
-      html = render(lv)
-      assert html =~ "Admin user limit reached for your account"
-
-      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
-      assert updated.type == :account_user
-    end
-
-    test "allows promoting user to admin when under the limit", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      other_actor = actor_fixture(account: account, type: :account_user)
-
-      # Set admin limit to 5 (plenty of room)
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
-      )
-      |> Repo.update!()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
-
-      lv
-      |> form("#actor-form",
-        actor: %{
-          "name" => other_actor.name,
-          "email" => other_actor.email,
-          "type" => "account_admin_user"
-        }
-      )
-      |> render_submit()
-
-      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
-      assert updated.type == :account_admin_user
-    end
-
-    test "allows promoting user to admin when limit is nil", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      other_actor = actor_fixture(account: account, type: :account_user)
-
-      # nil limit means unlimited
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: nil}
-      )
-      |> Repo.update!()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_actor.id}/edit")
-
-      lv
-      |> form("#actor-form",
-        actor: %{
-          "name" => other_actor.name,
-          "email" => other_actor.email,
-          "type" => "account_admin_user"
-        }
-      )
-      |> render_submit()
-
-      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
-      assert updated.type == :account_admin_user
-    end
-
-    test "allows demoting admin to user even when admin limit is reached", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      other_admin = actor_fixture(account: account, type: :account_admin_user)
-
-      # Set admin limit to 1 — both admins are over the limit
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
-      )
-      |> Repo.update!()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/#{other_admin.id}/edit")
-
-      lv
-      |> form("#actor-form",
-        actor: %{
-          "name" => other_admin.name,
-          "email" => other_admin.email,
-          "type" => "account_user"
-        }
-      )
-      |> render_submit()
-
-      updated = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_admin.id)
-      assert updated.type == :account_user
-    end
-  end
-
-  describe "handle_event create_user admin limits" do
-    test "prevents creating admin user when admin limit is reached", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      # Set admin limit to 1 (the setup admin already counts)
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
-      )
-      |> Repo.update!()
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_user")
-
-      html =
-        lv
-        |> form("#user-form",
-          actor: %{
-            "name" => "New Admin",
-            "email" => "new-admin@example.com",
-            "type" => "account_admin_user",
+        render_click(lv, "save", %{
+          "actor" => %{
+            "name" => actor.name,
+            "email" => actor.email,
+            "type" => "account_user",
             "allow_email_otp_sign_in" => "true"
           }
-        )
-        |> render_submit()
+        })
 
-      assert html =~ "Admin user limit reached for your account"
-      refute Repo.get_by(Portal.Actor, account_id: account.id, email: "new-admin@example.com")
+      assert html =~ "Cannot change role. At least one admin must remain in the account."
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: actor.id, account_id: account.id).type ==
+               :account_admin_user
     end
 
-    test "allows creating admin user when under the limit", %{
+    test "saves edited actor name and group membership changes", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
-      # Set admin limit to 5 (plenty of room)
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
-      )
-      |> Repo.update!()
+      other_actor = actor_fixture(account: account)
+      current_group = group_fixture(account: account, name: "Current Group")
+      added_group = group_fixture(account: account, name: "Added Group")
+      membership_fixture(actor: other_actor, group: current_group)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors/add_user")
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      html = render_click(lv, "add_pending_group_removal", %{"group_id" => current_group.id})
+      assert html =~ "To Remove"
+
+      html =
+        lv
+        |> element("input[placeholder='Search to add groups...']")
+        |> render_change(%{"value" => "Added Group"})
+
+      assert html =~ added_group.name
+
+      html = render_click(lv, "add_pending_group", %{"group_id" => added_group.id})
+      assert html =~ "To Add"
 
       lv
-      |> form("#user-form",
+      |> form("form[phx-submit='save']",
         actor: %{
-          "name" => "New Admin",
-          "email" => "new-admin@example.com",
-          "type" => "account_admin_user",
-          "allow_email_otp_sign_in" => "true"
+          name: "Edited Actor Name",
+          email: other_actor.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
         }
       )
       |> render_submit()
 
-      assert Repo.get_by(Portal.Actor, account_id: account.id, email: "new-admin@example.com")
+      html = render(lv)
+      assert html =~ "Actor updated successfully."
+      assert html =~ "Edited Actor Name"
+
+      assert Portal.Repo.get_by(Portal.Membership,
+               actor_id: other_actor.id,
+               group_id: added_group.id
+             )
+
+      refute Portal.Repo.get_by(Portal.Membership,
+               actor_id: other_actor.id,
+               group_id: current_group.id
+             )
+    end
+
+    test "redirects to actor list when actor does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      fake_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/actors/#{fake_id}/edit")
+
+      assert path == ~p"/#{account}/actors"
+      assert flash["error"] == "Actor not found"
+    end
+
+    test "redirects to actor list when actor belongs to a different account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account)
+
+      assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      assert path == ~p"/#{account}/actors"
+      assert flash["error"] == "Actor not found"
     end
   end
 
-  describe "handle_event delete (extended)" do
-    test "successfully deletes an actor that is not self", %{
+  describe "keydown Escape" do
+    test "pressing Escape while viewing actor detail closes the panel", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
       other_actor = actor_fixture(account: account)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
+        |> live(~p"/#{account}/actors/#{other_actor}")
 
-      html = render_click(lv, "delete", %{"id" => other_actor.id})
-      assert html =~ "Actor deleted successfully"
-
-      refute Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id)
+      render_click(lv, "handle_keydown", %{"key" => "Escape"})
+      assert_patch(lv, ~p"/#{account}/actors")
     end
 
-    test "shows error when trying to delete self", %{
+    test "pressing Escape while editing actor returns to actor detail view", %{
+      conn: conn,
       account: account,
-      actor: actor,
-      conn: conn
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      html = render_click(lv, "delete", %{"id" => actor.id})
-      assert html =~ "You cannot delete yourself"
-
-      assert Repo.get_by(Portal.Actor, account_id: account.id, id: actor.id)
-    end
-  end
-
-  describe "handle_event disable/enable" do
-    test "successfully disables an active actor that is not self", %{
-      account: account,
-      actor: actor,
-      conn: conn
+      actor: actor
     } do
       other_actor = actor_fixture(account: account)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
 
-      render_click(lv, "disable", %{"id" => other_actor.id})
-
-      disabled = Repo.get_by!(Portal.Actor, account_id: account.id, id: other_actor.id)
-      assert disabled.disabled_at
+      render_click(lv, "handle_keydown", %{"key" => "Escape"})
+      assert_patch(lv, ~p"/#{account}/actors/#{other_actor}")
     end
+  end
 
-    test "shows error when trying to disable self", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
-
-      html = render_click(lv, "disable", %{"id" => actor.id})
-      assert html =~ "You cannot disable yourself"
-
-      not_disabled = Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id)
-      refute not_disabled.disabled_at
-    end
-
-    test "successfully enables a disabled actor", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      disabled_actor = disabled_actor_fixture(account: account)
+  describe "confirm_delete_actor event" do
+    test "shows delete confirmation UI", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
+        |> live(~p"/#{account}/actors/#{other_actor}")
 
-      render_click(lv, "enable", %{"id" => disabled_actor.id})
+      html = render_click(lv, "confirm_delete_actor")
 
-      enabled = Repo.get_by!(Portal.Actor, account_id: account.id, id: disabled_actor.id)
-      refute enabled.disabled_at
+      assert html =~ "Delete"
+    end
+  end
+
+  describe "delete event" do
+    test "deletes actor and removes from list", %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      render_click(lv, "delete", %{"id" => other_actor.id})
+
+      html = render(lv)
+      refute html =~ other_actor.name
+    end
+
+    test "deletes actor with client devices without crashing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      render_click(lv, "delete", %{"id" => other_actor.id})
+
+      assert is_nil(Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id))
+      assert is_nil(Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id))
     end
   end
 end

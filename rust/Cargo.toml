@@ -72,7 +72,7 @@ bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4.44", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.61"
+clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
@@ -124,11 +124,11 @@ l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
-libc = "0.2.184"
+libc = "0.2.186"
 libfuzzer-sys = "0.4.12"
 log = "0.4.29"
 logging = { path = "libs/logging" }
-lru = "0.16.1"
+lru = "0.17.0"
 mio = "1.1.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
@@ -136,7 +136,7 @@ netlink-packet-core = "0.8.1"
 netlink-packet-route = "0.29.0"
 network-types = "0.1.0"
 nix = "0.30.1"
-notify-rust = "4.14.0"
+notify-rust = "4.16.0"
 nu-ansi-term = "0.50.3"
 num_cpus = "1.17.0"
 once_cell = "1.21.4"
@@ -163,7 +163,7 @@ ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.4.0"
 rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
-rustls = { version = "0.23.37", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.39", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.14.0"
 sadness-generator = "0.7.0"
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
@@ -207,15 +207,15 @@ test-case = "3.3.1"
 test-strategy = "0.4.5"
 thiserror = "2.0.18"
 time = "0.3.46"
-tokio = "1.51.0"
+tokio = "1.52.1"
 tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.18"
-tokio-tungstenite = "0.28.0"
+tokio-tungstenite = "0.29.0"
 tokio-util = "0.7.18"
 toml = "1.1.2"
 tower = "0.5"
 tracing = { version = "0.1.40" }
-tracing-appender = "0.2.4"
+tracing-appender = "0.2.5"
 tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
@@ -227,8 +227,8 @@ tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
 uniffi = "0.31.0"
 url = "2.5.2"
-uuid = "1.23.0"
-webpki-roots = "1.0.6"
+uuid = "1.23.1"
+webpki-roots = "1.0.7"
 which = "4.4.2"
 windows = "0.61.3"
 windows-core = "0.61.1"

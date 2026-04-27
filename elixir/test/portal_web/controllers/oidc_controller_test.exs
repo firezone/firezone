@@ -89,7 +89,7 @@ defmodule PortalWeb.OIDCControllerTest do
         build_conn()
         |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
 
-      assert redirected_to(victim_conn) == "/"
+      assert redirected_to(victim_conn) == "/sign_in"
       assert flash(victim_conn, :error) == "Your sign-in session has timed out. Please try again."
     end
   end
@@ -105,7 +105,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "redirects with error when OIDC state not found", %{conn: conn} do
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => "test-state", "code" => "test-code"})
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
     end
 
@@ -147,7 +147,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "This authentication method is not available for your sign-in context."
@@ -200,7 +200,7 @@ defmodule PortalWeb.OIDCControllerTest do
       conn = perform_callback(conn, auth_state)
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Copy token to clipboard"
+      assert conn.resp_body =~ "Copy to clipboard"
     end
   end
 
@@ -214,7 +214,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = get(conn, ~p"/auth/oidc/callback", params)
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Invalid sign-in request. Please try again."
     end
 
@@ -356,14 +356,14 @@ defmodule PortalWeb.OIDCControllerTest do
     } do
       conn = get(conn, ~p"/auth/oidc/callback", %{"foo" => "bar"})
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Invalid sign-in request. Please try again."
     end
 
     test "redirects with invalid callback params error when no params", %{conn: conn} do
       conn = get(conn, ~p"/auth/oidc/callback")
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Invalid sign-in request. Please try again."
     end
   end
@@ -425,7 +425,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "The authorization code has expired or was already used. Please try signing in again."
@@ -441,7 +441,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Identity provider rejected the client credentials. Please verify your Client ID and Client Secret."
@@ -457,7 +457,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Identity provider rejected the credentials. Please verify your Client ID and Client Secret are correct."
@@ -473,7 +473,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Identity provider returned a server error (HTTP 500). Please try again later."
@@ -493,7 +493,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Unable to verify your identity token. Please try signing in again."
@@ -511,7 +511,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Unable to reach identity provider: Connection refused. The provider may be down or blocking requests."
@@ -527,7 +527,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Unable to reach identity provider: DNS lookup failed. Please verify the provider's domain is correct."
@@ -545,7 +545,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Unable to reach identity provider: Connection timed out. Please try again."
@@ -563,7 +563,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Unable to reach identity provider. Please check your network connection and try again."
@@ -602,7 +602,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = perform_callback(conn, auth_state)
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           # JSON decode errors fall through to catch-all since they're unexpected
           assert flash(conn, :error) =~ "An unexpected error occurred"
@@ -621,7 +621,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Identity provider returned an error while signing you in. Please try again."
@@ -637,7 +637,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(account, provider)
       conn = perform_callback(conn, auth_state)
 
-      assert redirected_to(conn) == "/#{account.slug}"
+      assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Identity provider returned an error (HTTP 418). Please try again."
@@ -862,7 +862,7 @@ defmodule PortalWeb.OIDCControllerTest do
       auth_state = build_oidc_auth_state(ctx.account, ctx.provider)
       conn = perform_callback(ctx.conn, auth_state)
 
-      assert redirected_to(conn) == "/#{ctx.account.slug}"
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
       assert flash(conn, :error) == "This action requires admin privileges."
     end
 
@@ -963,7 +963,7 @@ defmodule PortalWeb.OIDCControllerTest do
         |> recycle()
         |> get(~p"/auth/oidc/callback", %{"state" => "tampered-state", "code" => "test-code"})
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
     end
 
@@ -985,7 +985,7 @@ defmodule PortalWeb.OIDCControllerTest do
         |> recycle()
         |> get(~p"/auth/oidc/callback", %{"state" => "some-state", "code" => "test-code"})
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
     end
   end
@@ -1046,7 +1046,7 @@ defmodule PortalWeb.OIDCControllerTest do
       cookie = build_oidc_auth_state(ctx.account, ctx.provider)
       conn = perform_callback(ctx.conn, cookie)
 
-      assert redirected_to(conn) == "/#{ctx.account.slug}"
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
       assert flash(conn, :error) == "Unable to sign you in. Please contact your administrator."
     end
 
@@ -1074,7 +1074,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = perform_callback(ctx.conn, cookie)
 
-          assert redirected_to(conn) == "/#{ctx.account.slug}"
+          assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Your identity provider returned invalid profile data. Please contact your administrator."
@@ -1151,7 +1151,7 @@ defmodule PortalWeb.OIDCControllerTest do
           capture_log(fn ->
             conn = perform_callback(ctx.conn, cookie)
 
-            assert redirected_to(conn) == "/#{ctx.account.slug}"
+            assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
 
             assert flash(conn, :error) ==
                      "Your identity provider returned invalid profile data. Please contact your administrator."
@@ -1260,7 +1260,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       conn = get(conn, ~p"/auth/oidc/callback", params)
 
-      assert redirected_to(conn) == "/"
+      assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Invalid sign-in request. Please try again."
     end
   end
@@ -1359,7 +1359,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Unable to fetch discovery document: Connection refused. The identity provider may be down."
@@ -1381,7 +1381,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) =~
                    "Discovery document contains invalid JSON"
@@ -1401,7 +1401,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Discovery document not found (HTTP 404). Please verify the Discovery Document URI is correct."
@@ -1421,7 +1421,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Identity provider returned a server error (HTTP 500). Please try again later."
@@ -1440,7 +1440,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Unable to fetch discovery document: DNS lookup failed. Please verify the Discovery Document URI domain is correct."
@@ -1478,7 +1478,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "The Discovery Document URI must not point to a private or reserved IP address."
@@ -1502,7 +1502,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Unable to fetch discovery document: Connection timed out. Please try again."
@@ -1522,7 +1522,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Failed to fetch discovery document (HTTP 418). Please verify your provider configuration."
@@ -1547,7 +1547,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Unable to fetch discovery document. Please check the Discovery Document URI."
@@ -1584,7 +1584,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "The Discovery Document URI is invalid. Please check your provider configuration."
@@ -1610,7 +1610,7 @@ defmodule PortalWeb.OIDCControllerTest do
         capture_log(fn ->
           conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}")
 
-          assert redirected_to(conn) == "/#{account.slug}"
+          assert redirected_to(conn) == "/#{account.slug}/sign_in"
 
           assert flash(conn, :error) ==
                    "Unable to connect to the identity provider. Please try again or contact your administrator."
@@ -1665,7 +1665,7 @@ defmodule PortalWeb.OIDCControllerTest do
         retry_conn =
           get(
             recycle(conn),
-            "/#{account.slug}",
+            "/#{account.slug}/sign_in",
             retry_params
           )
 
@@ -1935,7 +1935,7 @@ defmodule PortalWeb.OIDCControllerTest do
     conn = perform_callback(ctx.conn, auth_state)
 
     assert conn.status == 200
-    assert conn.resp_body =~ "Copy token to clipboard"
+    assert conn.resp_body =~ "Copy to clipboard"
     # Headless client should NOT set client_auth cookie
     refute conn.resp_cookies["client_auth"]
 

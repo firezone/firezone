@@ -10,7 +10,7 @@ defmodule PortalWeb.LiveHooks.EnsureAuthenticated do
   end
 
   def on_mount(:default, params, _session, socket) do
-    redirect_to = ~p"/#{params["account_id_or_slug"]}"
+    redirect_to = ~p"/#{params["account_id_or_slug"]}/sign_in"
 
     socket =
       socket

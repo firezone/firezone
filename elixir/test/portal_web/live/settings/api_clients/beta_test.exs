@@ -1,95 +1,90 @@
-defmodule PortalWeb.Live.Settings.ApiClients.BetaTest do
+defmodule PortalWeb.Settings.ApiClients.BetaTest do
   use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.OutboundEmailTestHelpers
+
+  alias Portal.Account
 
   setup do
-    account = account_fixture()
+    # Disable rest_api feature so the account lands on the beta page instead of index
+    account = account_fixture(features: %{rest_api: false})
     actor = admin_actor_fixture(account: account)
+    %{account: account, actor: actor}
+  end
 
-    %{
+  describe "unauthorized" do
+    test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
+      path = ~p"/#{account}/settings/api_clients/beta"
+
+      assert live(conn, path) ==
+               {:error,
+                {:redirect,
+                 %{
+                   to: ~p"/#{account}/sign_in?#{%{redirect_to: path}}",
+                   flash: %{"error" => "You must sign in to access that page."}
+                 }}}
+    end
+  end
+
+  describe "index (default action)" do
+    test "redirects to api clients index when rest api is enabled", %{conn: conn} do
+      account = account_fixture(features: %{rest_api: true})
+      actor = admin_actor_fixture(account: account)
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/settings/api_clients/beta")
+
+      assert to == ~p"/#{account}/settings/api_clients"
+    end
+
+    test "renders REST API beta info page", %{conn: conn, account: account, actor: actor} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/beta")
+
+      assert html =~ "REST API is in closed beta"
+      assert html =~ "Request access"
+      assert html =~ "swaggerui"
+    end
+
+    test "shows access request submitted after requesting", %{
+      conn: conn,
       account: account,
       actor: actor
-    }
-  end
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/beta")
 
-  test "redirects to sign in page for unauthorized user", %{account: account, conn: conn} do
-    path = ~p"/#{account}/settings/api_clients/beta"
+      html = render_click(lv, "request_access")
+      assert html =~ "Access request submitted"
+      refute html =~ "Request access"
 
-    assert live(conn, path) ==
-             {:error,
-              {:redirect,
-               %{
-                 to: ~p"/#{account}?#{%{redirect_to: path}}",
-                 flash: %{"error" => "You must sign in to access that page."}
-               }}}
-  end
+      assert %Account{} = saved = Repo.get!(Account, account.id)
+      assert saved.metadata.rest_api_requested_at
+    end
 
-  test "redirects to API client index when feature enabled", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    assert {:error, {:live_redirect, %{to: path, flash: _}}} =
-             conn
-             |> authorize_conn(actor)
-             |> live(~p"/#{account}/settings/api_clients/beta")
+    test "renders requested state when access was already requested", %{conn: conn} do
+      account =
+        account_fixture(
+          features: %{rest_api: false},
+          metadata: %{rest_api_requested_at: DateTime.utc_now(), stripe: %{}}
+        )
 
-    assert path == ~p"/#{account}/settings/api_clients"
-  end
+      actor = admin_actor_fixture(account: account)
 
-  test "renders breadcrumbs item", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    account = update_account(account, %{features: %{rest_api: false}})
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/beta")
 
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/api_clients/beta")
-
-    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
-    breadcrumbs = String.trim(Floki.text(item))
-    assert breadcrumbs =~ "API Clients"
-    assert breadcrumbs =~ "Beta"
-  end
-
-  test "sends beta request email", %{
-    account: account,
-    actor: actor,
-    conn: conn
-  } do
-    account =
-      update_account(account, %{
-        features: %{
-          rest_api: false,
-          traffic_filters: true,
-          policy_conditions: true,
-          idp_sync: true
-        }
-      })
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/api_clients/beta")
-
-    assert lv
-           |> element("#beta-request")
-           |> render_click()
-           |> Floki.parse_fragment!()
-           |> Floki.find(".flash-info")
-           |> element_to_text() =~ "request to join"
-
-    assert_email_queued(account.id, fn email ->
-      assert email.subject == "REST API Beta Request - #{account.id}"
-      assert email.text_body =~ "REST API Beta Request"
-      assert email.text_body =~ "#{account.id}"
-      assert email.text_body =~ "#{actor.id}"
-    end)
+      assert html =~ "Access request submitted."
+      refute html =~ "Request access"
+    end
   end
 end

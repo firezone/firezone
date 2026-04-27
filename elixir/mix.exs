@@ -28,7 +28,8 @@ defmodule Portal.MixProject do
       deps: deps(),
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
-        plt_add_apps: [:mix, :credo]
+        plt_add_apps: [:mix, :credo],
+        ignore_warnings: ".dialyzer_ignore.exs"
       ],
       aliases: aliases(),
       releases: releases()
@@ -153,6 +154,13 @@ defmodule Portal.MixProject do
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
+      {:remixicons,
+       github: "Remix-Design/RemixIcon",
+       sparse: "icons",
+       tag: "v4.6.0",
+       app: false,
+       compile: false,
+       depth: 1},
 
       # Test deps
       {:bypass, "~> 2.1", only: :test},
@@ -183,7 +191,7 @@ defmodule Portal.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       reboot: ["ecto.reset", "run priv/repo/seeds.exs", "start"],
       sobelow: [
-        "sobelow --skip -i Config.HTTPS,Config.Secrets,Config.CSWH,Config.CSRFRoute,Config.Headers"
+        "sobelow --skip -i Config.HTTPS,Config.Secrets,Config.CSWH,Config.CSRFRoute,Config.Headers --ignore-files lib/portal/dev/account_population.ex"
       ],
       "assets.setup": [
         "cmd --shell cd assets && CI=true pnpm i",

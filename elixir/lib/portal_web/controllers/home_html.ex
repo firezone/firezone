@@ -3,84 +3,191 @@ defmodule PortalWeb.HomeHTML do
 
   def home(assigns) do
     ~H"""
-    <section>
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.hero_logo />
+    <.flash kind={:error} flash={@flash} />
 
-        <div class="w-full col-span-6 mx-auto bg-white rounded-sm shadow-sm md:mt-0 sm:max-w-lg xl:p-0">
-          <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h2
-              :if={@accounts != []}
-              class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900"
-            >
-              Sign in with a recently used account
-            </h2>
-
-            <div :if={@accounts != []} class="space-y-3 items-center">
-              <.account_button
-                :for={account <- @accounts}
-                account={account}
-                params={@params}
-              />
-            </div>
-
-            <.separator :if={@accounts != []} />
-
-            <.flash kind={:error} flash={@flash} />
-
-            <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-              Sign in using your account ID or slug
-            </h2>
-            <.form :let={f} for={%{}} action={~p"/?#{@params}"} class="space-y-4 lg:space-y-6">
-              <.input
-                field={f[:account_id_or_slug]}
-                type="text"
-                label="Account ID or Slug"
-                prefix={url(~p"/")}
-                placeholder="Enter account ID from the welcome email"
-                required
-                autofocus
-              />
-
-              <.button class="w-full" style="info">
-                Go to Sign In page
-              </.button>
-            </.form>
-
-            <p :if={@params["as"] != "client"} class="py-2 text-center">
-              Don't have an account?
-              <a href={~p"/sign_up"} class={[link_style()]}>
-                Sign up here.
-              </a>
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  def account_button(assigns) do
-    ~H"""
-    <a href={~p"/#{@account}?#{@params}"} class={~w[
-          w-full inline-flex items-center justify-center py-2.5 px-5
-          bg-white rounded
-          text-sm text-neutral-900
-          border border-neutral-200
-          hover:bg-neutral-100 hover:text-neutral-900
-    ]}>
-      {@account.name}
-    </a>
-    """
-  end
-
-  def separator(assigns) do
-    ~H"""
-    <div class="flex items-center">
-      <div class="w-full h-0.5 bg-neutral-200"></div>
-      <div class="px-5 text-center text-neutral-500">or</div>
-      <div class="w-full h-0.5 bg-neutral-200"></div>
+    <div :if={!@show_account_chooser}>
+      <.get_started params={@params} />
     </div>
+
+    <div :if={@show_account_chooser}>
+      <.account_chooser
+        accounts={@accounts}
+        params={@params}
+        show_account_chooser={@show_account_chooser}
+      />
+    </div>
+    """
+  end
+
+  defp get_started(assigns) do
+    ~H"""
+    <div class="mb-10 text-center">
+      <div class="flex lg:hidden items-center justify-center gap-2 mb-8">
+        <img src="/images/logo.svg" class="w-5 h-5" alt="Firezone Logo" />
+        <span class="text-sm font-semibold text-[var(--text-primary)]">Firezone</span>
+      </div>
+      <h1 class="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Let's get started!</h1>
+      <p class="text-sm text-[var(--text-secondary)] mt-2">Which best describes why you're here?</p>
+    </div>
+
+    <div class="space-y-2.5">
+      <a
+        href={~p"/sign_up"}
+        class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] transition-all duration-150 group"
+      >
+        <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-[var(--brand)]/10">
+          <.icon name="ri-building-line" class="w-6 h-6 text-[var(--brand)]" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+            Set up a new organization
+          </p>
+          <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            Create an admin account for your team.
+          </p>
+        </div>
+        <.icon
+          name="ri-arrow-right-s-line"
+          class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
+        />
+      </a>
+
+      <a
+        href={~p"/find_account?#{@params}"}
+        class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] transition-all duration-150 group"
+      >
+        <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-violet-500/10 dark:bg-violet-400/10">
+          <.icon name="ri-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+            My company uses Firezone
+          </p>
+          <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            Find your organization's sign-in page.
+          </p>
+        </div>
+        <.icon
+          name="ri-arrow-right-s-line"
+          class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
+        />
+      </a>
+
+      <a
+        href={~p"/sign_in?#{@params}"}
+        class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] transition-all duration-150 group"
+      >
+        <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800">
+          <.icon name="ri-terminal-line" class="w-5 h-5 text-slate-500 dark:text-slate-400" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+            I know what I'm doing
+          </p>
+          <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            Go straight to account sign-in.
+          </p>
+        </div>
+        <.icon
+          name="ri-arrow-right-s-line"
+          class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
+        />
+      </a>
+    </div>
+    """
+  end
+
+  defp account_chooser(assigns) do
+    ~H"""
+    <%!-- Branded header --%>
+    <div class="flex items-center gap-3 mb-8">
+      <div class="w-10 h-10 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0 lg:hidden">
+        <img src="/images/logo.svg" class="w-5 h-5" alt="Firezone Logo" />
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+          Sign in to Firezone
+        </h1>
+        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+          Choose your organization to continue.
+        </p>
+      </div>
+    </div>
+
+    <%!-- Recently signed in --%>
+    <div :if={@accounts != []}>
+      <div class="flex items-center gap-3 mb-3">
+        <div class="flex-1 h-px bg-[var(--border)]"></div>
+        <span class="text-xs font-medium text-[var(--text-muted)] uppercase tracking-widest">
+          Recently signed in
+        </span>
+        <div class="flex-1 h-px bg-[var(--border)]"></div>
+      </div>
+      <div class="flex flex-col gap-2 mb-6">
+        <.account_button :for={account <- @accounts} account={account} params={@params} />
+      </div>
+    </div>
+
+    <%!-- Slug entry card --%>
+    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4">
+      <p class="text-xs font-semibold text-[var(--text-secondary)] mb-3">
+        Enter your organization's account slug
+      </p>
+      <.form :let={f} for={%{}} action={~p"/sign_in?#{@params}"}>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            name={f[:account_id_or_slug].name}
+            placeholder="e.g. acme-corp"
+            autofocus={@accounts == []}
+            required
+            class="flex-1 px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+          />
+          <button
+            type="submit"
+            class="px-4 py-2 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors whitespace-nowrap"
+          >
+            Continue →
+          </button>
+        </div>
+      </.form>
+    </div>
+
+    <div class="mt-6 text-xs text-[var(--text-tertiary)] space-y-1.5 text-center">
+      <p :if={@params["as"] != "client"}>
+        Organization need a new account?
+        <a href={~p"/sign_up"} class={[link_style()]}>Sign up here.</a>
+      </p>
+      <p :if={@params["as"] != "client"}>
+        Not sure where to start?
+        <a href={~p"/getting_started?#{@params}"} class={[link_style()]}>Let's get started.</a>
+      </p>
+    </div>
+    """
+  end
+
+  defp account_button(assigns) do
+    ~H"""
+    <a
+      href={~p"/#{@account}/sign_in?#{@params}"}
+      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] hover:shadow-sm transition-all duration-150 group"
+    >
+      <div class="w-9 h-9 rounded bg-[var(--brand)]/10 flex items-center justify-center shrink-0 group-hover:bg-[var(--brand)]/20 transition-colors">
+        <span class="text-sm font-bold text-[var(--brand)]">
+          {String.upcase(String.first(@account.name))}
+        </span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors truncate">
+          {@account.name}
+        </p>
+        <p class="text-xs text-[var(--text-tertiary)] truncate">{@account.slug}</p>
+      </div>
+      <.icon
+        name="ri-arrow-right-s-line"
+        class="w-5.5 h-5.5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
+      />
+    </a>
     """
   end
 end

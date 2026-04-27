@@ -14,6 +14,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
     socket =
       socket
       |> assign(:search_query, nil)
+      |> assign(:selected_slot_assigns, nil)
 
     {:ok, socket}
   end
@@ -46,17 +47,26 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
   defp maybe_load_and_dispatch_selected_option(socket, assigns) do
     value = assigns.value || assigns.field.value
 
-    name =
-      if value not in [nil, ""] do
-        {:ok, {_value, name, _slot_assigns} = option} =
+    {name, slot_assigns} =
+      if value in [nil, ""] do
+        {nil, nil}
+      else
+        {:ok, {_value, name, slot_assigns} = option} =
           assigns.fetch_option_callback.(value)
 
-        _ = maybe_execute_on_change_callback(socket, option)
+        if socket.assigns[:dispatched_value] != value do
+          _ = maybe_execute_on_change_callback(socket, option)
+        end
 
-        name
+        {name, slot_assigns}
       end
 
-    assign(socket, :value_name, name)
+    dispatched_value = if value in [nil, ""], do: nil, else: value
+
+    socket
+    |> assign(:dispatched_value, dispatched_value)
+    |> assign(:value_name, name)
+    |> assign(:selected_slot_assigns, slot_assigns)
   end
 
   defp maybe_execute_on_change_callback(socket, option) do
@@ -115,10 +125,17 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
     default: nil,
     doc: "a callback that receives the selected option when it changes"
 
+  attr :card, :boolean,
+    default: false,
+    doc: "render as a compact card-style button trigger instead of a text input"
+
   slot :options_group, doc: "the content to render for the options group header"
   slot :option, doc: "the content to render for each option"
   slot :no_options, doc: "the content to render when no options are available"
   slot :no_search_results, doc: "the content to render when no search results are available"
+
+  slot :card_subtitle,
+    doc: "optional subtitle rendered in the card trigger below the selected name (card mode only)"
 
   @impl true
   def render(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
@@ -137,6 +154,177 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
       field.value
     end)
     |> render()
+  end
+
+  def render(%{card: true} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="relative"
+      phx-click-away={
+        JS.add_class("hidden", to: "#select-#{@id}-backdrop")
+        |> JS.add_class("hidden", to: "#select-#{@id}-dropdown")
+        |> JS.set_attribute({"aria-expanded", "false"}, to: "##{@id}-trigger")
+      }
+    >
+      <input type="text" name={@name} value={@value} class="hidden" />
+
+      <%!-- Card trigger --%>
+      <button
+        id={"#{@id}-trigger"}
+        type="button"
+        aria-expanded="false"
+        disabled={@disabled}
+        class={[
+          "w-full text-left px-3 py-2.5 rounded border transition-colors",
+          "bg-[var(--surface-raised)] hover:bg-[var(--surface)]",
+          "border-[var(--border)] hover:border-[var(--border-emphasis)]",
+          (@disabled && "cursor-not-allowed opacity-60") || "cursor-pointer",
+          @errors != [] && "border-rose-400"
+        ]}
+        phx-click={
+          JS.toggle_class("hidden", to: "#select-#{@id}-backdrop")
+          |> JS.toggle_class("hidden", to: "#select-#{@id}-dropdown")
+          |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+          |> JS.focus(to: "#select-#{@id}-search-input")
+        }
+      >
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+          {@label}
+        </p>
+        <p class="text-sm font-medium text-[var(--text-primary)] truncate">
+          {if @value_name, do: @value_name, else: @placeholder}
+        </p>
+        <p
+          :if={@card_subtitle != [] and not is_nil(@selected_slot_assigns)}
+          class="font-mono text-xs text-[var(--text-tertiary)] truncate mt-0.5"
+        >
+          {render_slot(@card_subtitle, @selected_slot_assigns)}
+        </p>
+      </button>
+
+      <%!-- Backdrop --%>
+      <div
+        id={"select-#{@id}-backdrop"}
+        class="hidden fixed inset-0 z-20"
+        phx-click={
+          JS.add_class("hidden", to: "#select-#{@id}-backdrop")
+          |> JS.add_class("hidden", to: "#select-#{@id}-dropdown")
+          |> JS.set_attribute({"aria-expanded", "false"}, to: "##{@id}-trigger")
+        }
+      >
+      </div>
+
+      <%!-- Dropdown --%>
+      <div
+        id={"select-#{@id}-dropdown"}
+        class={[
+          "hidden",
+          "absolute mt-2 pb-1 px-1 space-y-0.5 z-30",
+          "w-full bg-white",
+          input_border_class(),
+          "border border-neutral-200 rounded-sm shadow-sm",
+          "overflow-hidden"
+        ]}
+        role="listbox"
+        tabindex="-1"
+        aria-orientation="vertical"
+      >
+        <div class="max-h-72 overflow-y-auto overflow-x-hidden">
+          <div class="bg-white p-2 sticky top-1 z-40">
+            <input
+              name={"search_query-#{@id}"}
+              id={"select-#{@id}-search-input"}
+              type="text"
+              placeholder="Search"
+              autocomplete={false}
+              class={input_class()}
+              value={@search_query}
+              phx-change="search"
+              phx-debounce="300"
+              phx-target={@myself}
+            />
+          </div>
+
+          <div>
+            <div class={["hidden only:block", "py-2 px-2", "text-sm text-neutral-400"]}>
+              <%= if @no_search_results == [] do %>
+                Nothing has been found.
+              <% else %>
+                {render_slot(@no_search_results, @search_query)}
+              <% end %>
+            </div>
+            <div
+              :for={{group, group_options} <- @options}
+              class={["py-2 px-4", "w-full", "text-sm text-neutral-400"]}
+            >
+              <div>
+                {render_slot(@options_group, group)}
+              </div>
+              <div :for={{value, _name, slot_assigns} <- group_options}>
+                <label
+                  for={"#{@name}[#{value}]"}
+                  tabindex="1"
+                  role="option"
+                  class={[
+                    "block",
+                    "w-full py-2 px-4",
+                    "text-sm text-neutral-800",
+                    "rounded",
+                    "hover:bg-neutral-100",
+                    "focus:outline-hidden focus:bg-neutral-100",
+                    value != @value && "cursor-pointer",
+                    value == @value &&
+                      "bg-neutral-200 focus:bg-neutral-200 hover:bg-neutral-200"
+                  ]}
+                >
+                  <input
+                    type="radio"
+                    name={@name}
+                    id={"#{@name}[#{value}]"}
+                    value={value}
+                    checked={value == @value}
+                    class="hidden"
+                  />
+                  <div
+                    phx-click={
+                      JS.add_class("hidden", to: "#select-#{@id}-backdrop")
+                      |> JS.add_class("hidden", to: "#select-#{@id}-dropdown")
+                      |> JS.set_attribute({"aria-expanded", "false"}, to: "##{@id}-trigger")
+                    }
+                    class="flex items-center"
+                  >
+                    <div class="text-gray-800">
+                      {render_slot(@option, slot_assigns)}
+                    </div>
+                    <div :if={value == @value} class="ml-auto">
+                      <.icon name="ri-check-line" class="w-4 h-4" />
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div
+            :if={Map.get(@metadata, :next_page_cursor)}
+            class="py-2 px-4 text-sm text-neutral-400"
+          >
+            <span class="font-semibold">{@metadata.count - @metadata.limit}</span>
+            more options available. Use the search to refine the list.
+          </div>
+        </div>
+      </div>
+
+      <.error :for={message <- @errors} data-validation-error-for={@name <> "_name"}>
+        {message}
+      </.error>
+
+      <%= if @options == [] and is_nil(@value) and @no_options != [] and @search_query in [nil, ""] do %>
+        {render_slot(@no_options, @name <> "_name")}
+      <% end %>
+    </div>
+    """
   end
 
   def render(assigns) do
@@ -193,7 +381,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             end
           }
         >
-          <.icon name="hero-chevron-up-down" class="w-5 h-5" />
+          <.icon name="ri-arrow-down-s-line" class="w-5 h-5" />
         </div>
 
         <div
@@ -293,7 +481,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                         {render_slot(@option, slot_assigns)}
                       </div>
                       <div :if={value == @value} class="ml-auto">
-                        <.icon name="hero-check" class="w-4 h-4" />
+                        <.icon name="ri-check-line" class="w-4 h-4" />
                       </div>
                     </div>
                   </label>

@@ -43,6 +43,9 @@ defmodule PortalWeb.Router do
     pipe_through :public
 
     get "/", HomeController, :home
+    get "/getting_started", HomeController, :getting_started
+    get "/sign_in", HomeController, :sign_in_chooser
+    post "/sign_in", HomeController, :redirect_to_sign_in
     post "/", HomeController, :redirect_to_sign_in
   end
 
@@ -67,9 +70,11 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox
       ] do
-      live "/sign_up", SignUp
+      live "/sign_up", SignUp, :fill_form
+      live "/verify_sign_up", SignUp, :verify
+      live "/find_account", FindAccount
       # Maintained from the LaunchHN - show SignUp form
-      live "/try", SignUp
+      live "/try", SignUp, :fill_form
     end
   end
 
@@ -92,6 +97,12 @@ defmodule PortalWeb.Router do
     pipe_through :public
 
     get "/sign_in/providers/:auth_provider_id/handle_callback", OIDCController, :callback
+  end
+
+  scope "/:account_id_or_slug", PortalWeb do
+    pipe_through :public
+
+    get "/", AccountLandingController, :redirect_to_sign_in
   end
 
   scope "/:account_id_or_slug", PortalWeb do
@@ -119,7 +130,7 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.FetchSubject,
         PortalWeb.LiveHooks.RedirectIfAuthenticated
       ] do
-      live "/", SignIn
+      live "/sign_in", SignIn
     end
 
     live_session :email_otp_verify,
@@ -147,6 +158,7 @@ defmodule PortalWeb.Router do
 
     get "/sign_in/client_redirect", SignInController, :client_redirect
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
+    get "/sign_in/client_account_disabled", SignInController, :client_account_disabled
   end
 
   # Sign out route (needs portal session)
@@ -180,80 +192,66 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.EnsureAdmin,
         PortalWeb.LiveHooks.SetCurrentUri
       ] do
-      # Actors
+      # People (non-service-account actors)
       live "/actors", Actors
-      live "/actors/add", Actors, :add
-      live "/actors/add_user", Actors, :add_user
-      live "/actors/add_service_account", Actors, :add_service_account
+      live "/actors/new", Actors, :new
       live "/actors/:id/edit", Actors, :edit
-      live "/actors/:id/add_token", Actors, :add_token
       live "/actors/:id", Actors, :show
+
+      # Service Accounts
+      live "/service_accounts", ServiceAccounts
+      live "/service_accounts/new", ServiceAccounts, :new
+      live "/service_accounts/:id/edit", ServiceAccounts, :edit
+      live "/service_accounts/:id", ServiceAccounts, :show
 
       # Groups
       live "/groups", Groups
-      live "/groups/add", Groups, :add
+      live "/groups/new", Groups, :new
       live "/groups/:id/edit", Groups, :edit
       live "/groups/:id", Groups, :show
 
-      scope "/clients", Clients do
-        live "/", Index
-        live "/:id", Show
-        live "/:id/edit", Edit
-      end
+      # Clients
+      live "/clients", Clients
+      live "/clients/:id/edit", Clients, :edit
+      live "/clients/:id", Clients, :show
 
-      scope "/sites", Sites do
-        live "/", Index
-        live "/new", New
+      # Sites
+      live "/sites", Sites
+      live "/sites/new", Sites, :new
+      live "/sites/:id/edit", Sites, :edit
+      live "/sites/:id", Sites, :show
 
-        scope "/:id/gateways", Gateways do
-          live "/", Index
-        end
+      # Resources
+      live "/resources", Resources
+      live "/resources/new", Resources, :new
+      live "/resources/:id/edit", Resources, :edit
+      live "/resources/:id", Resources, :show
 
-        live "/:id/new_token", NewToken
-        live "/:id/edit", Edit
-        live "/:id", Show
-      end
-
-      scope "/gateways", Gateways do
-        live "/:id", Show
-      end
-
-      scope "/resources", Resources do
-        live "/", Index
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id", Show
-      end
-
-      scope "/policies", Policies do
-        live "/", Index
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id", Show
-      end
+      # Policies
+      live "/policies", Policies
+      live "/policies/new", Policies, :new
+      live "/policies/:id/edit", Policies, :edit
+      live "/policies/:id", Policies, :show
 
       scope "/settings", Settings do
-        scope "/account" do
-          live "/", Account
-          live "/edit", Account.Edit
-          live "/notifications/edit", Account.Notifications.Edit
-        end
+        live "/profile", Profile
+        live "/account", Account
 
-        live "/billing", Billing
+        scope "/notifications" do
+          live "/", Notifications
+        end
 
         scope "/api_clients", ApiClients do
           live "/beta", Beta
           live "/", Index
-          live "/new", New
-          live "/:id/new_token", NewToken
-          live "/:id", Show
-          live "/:id/edit", Edit
+          live "/new", Index, :new
+          live "/:id/edit", Index, :edit
         end
 
         # AuthProviders
         scope "/authentication" do
           live "/", Authentication
-          live "/select_type", Authentication, :select_type
+          live "/new", Authentication, :select_type
           live "/:type/new", Authentication, :new
           live "/:type/:id/edit", Authentication, :edit
         end
@@ -261,12 +259,15 @@ defmodule PortalWeb.Router do
         # Directories
         scope "/directory_sync" do
           live "/", DirectorySync
-          live "/select_type", DirectorySync, :select_type
+          live "/new", DirectorySync, :select_type
           live "/:type/new", DirectorySync, :new
           live "/:type/:id/edit", DirectorySync, :edit
         end
 
-        live "/dns", DNS
+        scope "/dns" do
+          live "/", DNS
+          live "/edit", DNS, :edit
+        end
       end
     end
   end

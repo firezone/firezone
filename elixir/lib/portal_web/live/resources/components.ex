@@ -1,6 +1,15 @@
 defmodule PortalWeb.Resources.Components do
   use PortalWeb, :component_library
+
+  import PortalWeb.Policies.Components,
+    only: [
+      grant_condition_card: 1,
+      available_conditions: 1,
+      condition_type_label: 1
+    ]
+
   alias __MODULE__.Database
+  alias Portal.Presence
 
   @resource_types %{
     internet: %{index: 1, label: nil},
@@ -119,9 +128,9 @@ defmodule PortalWeb.Resources.Components do
         <legend class="text-xl">Traffic Restriction</legend>
 
         <%= if @traffic_filters_enabled? == false do %>
-          <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
+          <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+              <.icon name="ri-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
             </.badge>
           </.link>
         <% end %>
@@ -329,82 +338,525 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :form, :any, required: true
+  attr :resource, :any, default: nil
+  attr :client_to_client_enabled, :boolean, default: false
+
+  def resource_type_picker(assigns) do
+    ~H"""
+    <div :if={is_nil(@resource) || @resource.type != :internet}>
+      <span class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        Type <span class="text-[var(--status-error)]">*</span>
+      </span>
+      <ul class={"grid w-full gap-3 #{if @client_to_client_enabled, do: "grid-cols-4", else: "grid-cols-3"}"}>
+        <li>
+          <.input
+            id="resource-form-type--dns"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="dns"
+            checked={to_string(@form[:type].value) == "dns"}
+            required
+          />
+          <label
+            for="resource-form-type--dns"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
+              </div>
+              <div class="w-full text-[10px]">
+                By DNS address
+              </div>
+            </div>
+          </label>
+        </li>
+        <li>
+          <.input
+            id="resource-form-type--ip"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="ip"
+            checked={to_string(@form[:type].value) == "ip"}
+            required
+          />
+          <label
+            for="resource-form-type--ip"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
+              </div>
+              <div class="w-full text-[10px]">
+                By IP address
+              </div>
+            </div>
+          </label>
+        </li>
+        <li>
+          <.input
+            id="resource-form-type--cidr"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="cidr"
+            checked={to_string(@form[:type].value) == "cidr"}
+            required
+          />
+          <label
+            for="resource-form-type--cidr"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
+              </div>
+              <div class="w-full text-[10px]">
+                By CIDR range
+              </div>
+            </div>
+          </label>
+        </li>
+        <li :if={@client_to_client_enabled}>
+          <.input
+            id="resource-form-type--static-device-pool"
+            type="radio_button_group"
+            field={@form[:type]}
+            value="static_device_pool"
+            checked={to_string(@form[:type].value) == "static_device_pool"}
+            required
+          />
+          <label
+            for="resource-form-type--static-device-pool"
+            class="inline-flex items-center justify-between w-full p-3 text-[var(--text-secondary)] bg-[var(--surface)] border border-[var(--border)] rounded cursor-pointer peer-checked:border-[var(--brand)] peer-checked:text-[var(--brand)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
+              </div>
+              <div class="w-full text-[10px]">
+                Direct client access
+              </div>
+            </div>
+          </label>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :resource, :any, default: nil
+
+  def resource_core_fields(assigns) do
+    ~H"""
+    <div>
+      <label
+        for={@form[:name].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Name <span class="text-[var(--status-error)]">*</span>
+      </label>
+      <.input
+        field={@form[:name]}
+        type="text"
+        placeholder="Name this resource"
+        phx-debounce="300"
+        required
+      />
+    </div>
+
+    <div :if={
+      (is_nil(@resource) || @resource.type != :internet) &&
+        to_string(@form[:type].value) != "static_device_pool"
+    }>
+      <label
+        for={@form[:address].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Address <span class="text-[var(--status-error)]">*</span>
+      </label>
+      <.input
+        field={@form[:address]}
+        autocomplete="off"
+        placeholder={
+          cond do
+            to_string(@form[:type].value) == "dns" -> "gitlab.company.com"
+            to_string(@form[:type].value) == "cidr" -> "10.0.0.0/24"
+            to_string(@form[:type].value) == "ip" -> "10.3.2.1"
+            true -> "First select a type above"
+          end
+        }
+        disabled={is_nil(@form[:type].value)}
+        phx-debounce="300"
+        required
+        class="font-mono"
+      />
+    </div>
+
+    <div :if={
+      (is_nil(@resource) || @resource.type != :internet) &&
+        to_string(@form[:type].value) != "static_device_pool"
+    }>
+      <label
+        for={@form[:address_description].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Address Description <span class="text-[var(--text-muted)] font-normal">(optional)</span>
+      </label>
+      <.input
+        field={@form[:address_description]}
+        type="text"
+        placeholder="Enter a description or URL"
+        phx-debounce="300"
+      />
+      <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+        Optional description or URL shown in Clients.
+      </p>
+    </div>
+    """
+  end
+
+  attr :selected_clients, :list, required: true
+  attr :client_search_results, :any, default: nil
+  attr :client_search, :string, default: ""
+
+  def resource_device_pool_section(assigns) do
+    ~H"""
+    <div>
+      <span class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        Devices <span class="text-[var(--text-muted)] font-normal">(optional)</span>
+      </span>
+      <p class="mb-2 text-xs text-[var(--text-tertiary)]">
+        Select clients to include in this pool.
+      </p>
+      <.client_picker
+        selected_clients={@selected_clients}
+        client_search={@client_search}
+        client_search_results={@client_search_results}
+      />
+    </div>
+    """
+  end
+
+  attr :form, :any, required: true
+
+  def resource_dns_ip_stack_section(assigns) do
+    ~H"""
+    <div>
+      <%!-- Hidden radio inputs for form submission --%>
+      <.input
+        id="resource-form-ip-stack--dual"
+        type="radio_button_group"
+        field={@form[:ip_stack]}
+        value="dual"
+        checked={"#{@form[:ip_stack].value}" == "" or "#{@form[:ip_stack].value}" == "dual"}
+      />
+      <.input
+        id="resource-form-ip-stack--ipv4"
+        type="radio_button_group"
+        field={@form[:ip_stack]}
+        value="ipv4_only"
+        checked={"#{@form[:ip_stack].value}" == "ipv4_only"}
+      />
+      <.input
+        id="resource-form-ip-stack--ipv6"
+        type="radio_button_group"
+        field={@form[:ip_stack]}
+        value="ipv6_only"
+        checked={"#{@form[:ip_stack].value}" == "ipv6_only"}
+      />
+      <span class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        IP Stack
+      </span>
+      <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+        <label
+          for="resource-form-ip-stack--dual"
+          class={[
+            "px-4 py-1.5 text-xs transition-colors border-l border-[var(--border)] first:border-l-0 cursor-pointer",
+            if(
+              "#{@form[:ip_stack].value}" == "" or "#{@form[:ip_stack].value}" == "dual",
+              do: "bg-[var(--brand)] text-white",
+              else:
+                "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            )
+          ]}
+        >
+          Both
+        </label>
+        <label
+          for="resource-form-ip-stack--ipv4"
+          class={[
+            "px-4 py-1.5 text-xs transition-colors border-l border-[var(--border)] first:border-l-0 cursor-pointer",
+            if(
+              "#{@form[:ip_stack].value}" == "ipv4_only",
+              do: "bg-[var(--brand)] text-white",
+              else:
+                "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            )
+          ]}
+        >
+          IPv4
+        </label>
+        <label
+          for="resource-form-ip-stack--ipv6"
+          class={[
+            "px-4 py-1.5 text-xs transition-colors border-l border-[var(--border)] first:border-l-0 cursor-pointer",
+            if(
+              "#{@form[:ip_stack].value}" == "ipv6_only",
+              do: "bg-[var(--brand)] text-white",
+              else:
+                "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            )
+          ]}
+        >
+          IPv6
+        </label>
+      </div>
+      <p class="mt-1.5 text-xs text-[var(--text-secondary)] leading-snug">
+        {case "#{@form[:ip_stack].value}" do
+          "ipv4_only" ->
+            "Resolves only A records — clients connect over IPv4."
+
+          "ipv6_only" ->
+            "Resolves only AAAA records — clients connect over IPv6."
+
+          _ ->
+            "Resolves A and AAAA records — clients connect over IPv4 or IPv6, whichever is available."
+        end}
+      </p>
+    </div>
+    """
+  end
+
+  attr :resource, :any, default: nil
+  attr :form, :any, required: true
+  attr :active_protocols, :list, default: []
+  attr :filters_dropdown_open, :boolean, default: false
+  attr :filter_ports, :map, default: %{}
+
+  def resource_traffic_restrictions_section(assigns) do
+    ~H"""
+    <div :if={
+      (is_nil(@resource) || @resource.type != :internet) &&
+        to_string(@form[:type].value) != "static_device_pool"
+    }>
+      <div class="flex items-center justify-between mb-2">
+        <span class="block text-xs font-medium text-[var(--text-secondary)]">
+          Traffic Restrictions <span class="font-normal text-[var(--text-tertiary)]">(optional)</span>
+        </span>
+        <div class="relative">
+          <button
+            type="button"
+            phx-click="toggle_resource_filters_dropdown"
+            class="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] rounded px-2 py-1 bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors"
+          >
+            <.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
+            <.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
+          </button>
+          <div
+            :if={@filters_dropdown_open}
+            phx-click-away="close_resource_filters_dropdown"
+            class="absolute right-0 top-full mt-1 z-20 bg-[var(--surface-overlay)] border border-[var(--border)] rounded shadow-md min-w-[120px]"
+          >
+            <button
+              :if={:tcp not in @active_protocols}
+              type="button"
+              phx-click="add_resource_filter"
+              phx-value-protocol="tcp"
+              class="flex items-center w-full px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              TCP
+            </button>
+            <button
+              :if={:udp not in @active_protocols}
+              type="button"
+              phx-click="add_resource_filter"
+              phx-value-protocol="udp"
+              class="flex items-center w-full px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              UDP
+            </button>
+            <button
+              :if={:icmp not in @active_protocols}
+              type="button"
+              phx-click="add_resource_filter"
+              phx-value-protocol="icmp"
+              class="flex items-center w-full px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            >
+              ICMP
+            </button>
+            <div
+              :if={
+                :tcp in @active_protocols and :udp in @active_protocols and :icmp in @active_protocols
+              }
+              class="px-3 py-2 text-xs text-[var(--text-tertiary)]"
+            >
+              All protocols added
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        :if={@active_protocols == []}
+        class="flex items-center justify-center rounded border border-dashed border-[var(--border-strong)] px-4 py-5 text-xs text-[var(--text-tertiary)]"
+      >
+        No restrictions — All protocols/ports permitted
+      </div>
+
+      <div :if={@active_protocols != []} class="flex flex-col gap-2">
+        <div
+          :for={protocol <- @active_protocols}
+          class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+        >
+          <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+          <input
+            type="hidden"
+            name={"resource[filters][#{protocol}][protocol]"}
+            value={"#{protocol}"}
+          />
+          <span class="w-10 shrink-0 text-xs font-medium text-[var(--text-primary)] uppercase">
+            {protocol}
+          </span>
+          <div :if={protocol != :icmp} class="flex-1">
+            <input
+              type="text"
+              name={"resource[filters][#{protocol}][ports]"}
+              value={Map.get(@filter_ports, protocol, "")}
+              placeholder="All ports"
+              class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors border-[var(--control-border)] focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30"
+            />
+          </div>
+          <span
+            :if={protocol == :icmp}
+            class="flex-1 text-xs text-[var(--text-tertiary)] italic"
+          >
+            echo request/reply
+          </span>
+          <button
+            type="button"
+            phx-click="remove_resource_filter"
+            phx-value-protocol={"#{protocol}"}
+            class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label={"Remove #{protocol} filter"}
+          >
+            <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :sites, :list, required: true
+
+  def resource_site_selector(assigns) do
+    ~H"""
+    <div :if={to_string(@form[:type].value) != "static_device_pool"}>
+      <label
+        for={@form[:site_id].id}
+        class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+      >
+        Site <span class="text-[var(--status-error)]">*</span>
+      </label>
+      <.input
+        field={@form[:site_id]}
+        type="select"
+        options={Enum.map(@sites, fn s -> {s.name, s.id} end)}
+        prompt="Select a Site"
+        required
+      />
+    </div>
+    """
+  end
+
   attr :selected_clients, :list, required: true
   attr :client_search_results, :any, default: nil
   attr :client_search, :string, default: ""
 
   def client_picker(assigns) do
     ~H"""
-    <div class="border border-neutral-200 rounded-sm">
-      <div
-        class="p-3 bg-neutral-50 border-b border-neutral-200 relative"
-        phx-click-away="blur_client_search"
-      >
+    <div class="space-y-1">
+      <div class="relative mb-2" phx-click-away="blur_client_search">
+        <.icon
+          name="ri-search-line"
+          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+        />
         <input
           type="text"
           name="client_search"
           value={@client_search}
-          placeholder="Search clients to add..."
+          placeholder="Search clients to add…"
           phx-change="search_client"
           phx-debounce="300"
           phx-focus="focus_client_search"
           autocomplete="off"
           data-1p-ignore
-          class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
+          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
         />
+      </div>
 
-        <div
-          :if={@client_search_results != nil}
-          class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-md shadow-md max-h-48 overflow-y-auto"
-        >
+      <ul :if={@selected_clients != []} class="space-y-1 mb-1">
+        <li :for={client <- @selected_clients}>
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--brand)] bg-[var(--brand-muted)]">
+            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+              <.icon name="ri-computer-line" class="w-4 h-4 text-[var(--brand)]" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-[var(--brand)] truncate">{client.name}</p>
+              <p class="text-[10px] text-[var(--text-tertiary)] truncate">{client_details(client)}</p>
+            </div>
+            <button
+              type="button"
+              phx-click="remove_client"
+              phx-value-client_id={client.id}
+              class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-[var(--brand)]/50 hover:text-[var(--brand)] transition-colors"
+              aria-label="Remove client"
+            >
+              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </li>
+      </ul>
+
+      <ul :if={@client_search_results != nil && @client_search_results != []} class="space-y-1">
+        <li :for={client <- @client_search_results}>
           <button
-            :for={client <- @client_search_results}
             type="button"
             phx-click="add_client"
             phx-value-client_id={client.id}
-            class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
+            class="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] cursor-pointer transition-colors"
           >
-            <div class="flex items-center gap-2">
-              <div class={[
-                "w-2 h-2 rounded-full flex-shrink-0",
-                if(client.online?, do: "bg-green-500", else: "bg-red-500")
-              ]} />
-              <div class="space-y-0.5 min-w-0">
-                <div class="text-sm font-medium text-neutral-900">{client.name}</div>
-                <div class="text-xs text-neutral-500">
-                  {client_details(client)}
-                </div>
-              </div>
+            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+              <.icon name="ri-computer-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
             </div>
-          </button>
-          <div
-            :if={@client_search_results == []}
-            class="px-3 py-4 text-center text-sm text-neutral-500"
-          >
-            No clients found
-          </div>
-        </div>
-      </div>
-
-      <ul :if={@selected_clients != []} class="divide-y divide-neutral-200 max-h-64 overflow-y-auto">
-        <li :for={client <- @selected_clients} class="p-3 flex items-center justify-between">
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-neutral-900 truncate">{client.name}</p>
-            <p class="text-xs text-neutral-500 truncate">{client_details(client)}</p>
-          </div>
-          <button
-            type="button"
-            phx-click="remove_client"
-            phx-value-client_id={client.id}
-            class="text-xs text-red-600 hover:text-red-700"
-          >
-            Remove
+            <div class="flex-1 min-w-0 text-left">
+              <p class="text-sm font-medium text-[var(--text-primary)] truncate">{client.name}</p>
+              <p class="text-[10px] text-[var(--text-tertiary)] truncate">{client_details(client)}</p>
+            </div>
+            <span class={[
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              if(client.online?, do: "bg-[var(--status-active)]", else: "bg-[var(--status-neutral)]")
+            ]} />
           </button>
         </li>
       </ul>
 
-      <div :if={@selected_clients == []} class="p-4 text-sm text-neutral-500">
-        No devices selected.
+      <div
+        :if={@client_search_results == []}
+        class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+      >
+        No clients found
+      </div>
+
+      <div
+        :if={@selected_clients == [] && is_nil(@client_search_results)}
+        class="flex items-center justify-center h-12 text-xs text-[var(--text-tertiary)]"
+      >
+        Search above to add devices
       </div>
     </div>
     """
@@ -434,6 +886,814 @@ defmodule PortalWeb.Resources.Components do
       end)
     end
   end
+
+  attr :open, :boolean, required: true
+  slot :inner_block, required: true
+
+  def panel_shell(assigns) do
+    ~H"""
+    <div
+      id="resource-panel"
+      class={[
+        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
+        "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+        "transition-transform duration-200 ease-in-out",
+        if(@open, do: "translate-x-0", else: "translate-x-full")
+      ]}
+      phx-window-keydown="handle_keydown"
+      phx-key="Escape"
+    >
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  attr :resource, :any, default: nil
+  attr :panel_view, :atom, required: true
+  attr :form_state, :map, required: true
+
+  def resource_form_panel(assigns) do
+    assigns = assign(assigns, assigns.form_state)
+
+    ~H"""
+    <div class="flex flex-col h-full overflow-hidden">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+            {if @panel_view == :new_form, do: "Add Resource", else: "Edit Resource"}
+          </h2>
+          <button
+            phx-click="cancel_resource_form"
+            class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            title="Close (Esc)"
+          >
+            <.icon name="ri-close-line" class="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      <.form
+        for={@resource_form}
+        phx-submit="submit_resource_form"
+        phx-change="change_resource_form"
+        class="flex flex-col flex-1 min-h-0 overflow-hidden"
+      >
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <.resource_type_picker
+            form={@resource_form}
+            resource={@resource}
+            client_to_client_enabled={@client_to_client_enabled}
+          />
+
+          <.resource_core_fields form={@resource_form} resource={@resource} />
+
+          <.resource_device_pool_section
+            :if={to_string(@resource_form[:type].value) == "static_device_pool"}
+            selected_clients={@resource_form_selected_clients}
+            client_search={@resource_form_client_search}
+            client_search_results={@resource_form_client_search_results}
+          />
+
+          <.resource_dns_ip_stack_section
+            :if={"#{@resource_form[:type].value}" == "dns"}
+            form={@resource_form}
+          />
+
+          <.resource_traffic_restrictions_section
+            resource={@resource}
+            form={@resource_form}
+            active_protocols={@resource_form_active_protocols}
+            filters_dropdown_open={@resource_form_filters_dropdown_open}
+            filter_ports={@filter_ports}
+          />
+
+          <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
+        </div>
+
+        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
+          <button
+            type="button"
+            phx-click="cancel_resource_form"
+            class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
+          >
+            {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
+          </button>
+        </div>
+      </.form>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :resource, :any, required: true
+  attr :groups, :list, default: []
+  attr :panel_view, :atom, required: true
+  attr :grant_state, :map, required: true
+  attr :ui_state, :map, required: true
+
+  def resource_details_panel(assigns) do
+    assigns = assign(assigns, assigns.ui_state)
+
+    ~H"""
+    <div class="flex flex-col h-full overflow-hidden">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)]">{@resource.name}</h2>
+              <span class={type_badge_class(@resource.type)}>
+                {resource_type_label(@resource.type)}
+              </span>
+            </div>
+            <div :if={@resource.type != :internet} class="flex items-center gap-1.5 mt-1">
+              <span class="font-mono text-xs text-[var(--text-secondary)]">
+                {@resource.address}
+              </span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button
+              :if={not @confirm_delete_resource && @resource.type != :internet}
+              phx-click="open_edit_form"
+              class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+            >
+              <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+            </button>
+            <button
+              phx-click="close_panel"
+              class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+              title="Close (Esc)"
+            >
+              <.icon name="ri-close-line" class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              Status
+            </span>
+            <.status_badge status={if resource_online?(@resource), do: :online, else: :offline} />
+          </div>
+          <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              Site
+            </span>
+            <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
+              <%= if @resource.site do %>
+                <.link
+                  navigate={~p"/#{@account}/sites/#{@resource.site}"}
+                  class="text-xs underline font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  {@resource.site.name}
+                </.link>
+              <% else %>
+                <span class="text-xs italic text-[var(--text-muted)]">No Site Needed</span>
+              <% end %>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
+        <div class="flex-1 flex flex-col overflow-hidden">
+          <.resource_access_list
+            :if={@panel_view == :list}
+            account={@account}
+            groups={@groups}
+            ui_state={@ui_state}
+          />
+          <.resource_grant_form
+            :if={@panel_view == :grant_form}
+            resource={@resource}
+            grant_state={@grant_state}
+          />
+        </div>
+        <.resource_sidebar
+          account={@account}
+          resource={@resource}
+          ui_state={@ui_state}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :groups, :list, default: []
+  attr :ui_state, :map, required: true
+
+  def resource_access_list(assigns) do
+    assigns = assign(assigns, assigns.ui_state)
+
+    ~H"""
+    <div class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-semibold text-[var(--text-primary)]">
+          Groups with access
+        </span>
+        <span class="text-xs text-[var(--text-tertiary)]">{length(@groups)}</span>
+      </div>
+      <button
+        phx-click="open_grant_form"
+        class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+      >
+        <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto">
+      <ul>
+        <li
+          :for={group <- @groups}
+          class={[
+            "border-b border-[var(--border)] transition-colors",
+            if(@group_actions_open_id == group.id, do: "relative z-20", else: "")
+          ]}
+        >
+          <div
+            :if={@confirm_remove_group_id == group.id}
+            class="flex items-center justify-between gap-2 px-4 py-2.5 bg-[var(--surface-raised)]"
+          >
+            <span class="text-xs text-[var(--text-secondary)] truncate">
+              Remove <span class="font-medium text-[var(--text-primary)]">{group.name}</span>'s access?
+              <span class="block text-[var(--text-tertiary)]">
+                All group members will immediately lose access.
+              </span>
+            </span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                phx-click="cancel_remove_group"
+                class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                phx-click="remove_group_access"
+                phx-value-group_id={group.id}
+                class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/30 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+          <div
+            :if={@confirm_remove_group_id != group.id}
+            class={[
+              "flex items-center gap-1 pr-4 hover:bg-[var(--surface-raised)] group/item",
+              if(not is_nil(group.policy_disabled_at),
+                do: "opacity-50 hover:opacity-75",
+                else: ""
+              )
+            ]}
+          >
+            <.link
+              navigate={~p"/#{@account}/groups/#{group.id}"}
+              class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0"
+            >
+              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4" />
+              </div>
+              <div class="flex-1 min-w-0 flex items-center gap-2">
+                <p class="text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
+                  {group.name}
+                </p>
+                <span
+                  :if={not is_nil(group.policy_disabled_at)}
+                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+                >
+                  disabled
+                </span>
+              </div>
+            </.link>
+            <div class="relative shrink-0">
+              <button
+                type="button"
+                phx-click="toggle_group_actions"
+                phx-value-group_id={group.id}
+                class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+                title="More actions"
+              >
+                <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
+              </button>
+              <div
+                :if={@group_actions_open_id == group.id}
+                phx-click-away="close_group_actions"
+                class="absolute right-0 top-full mt-1 w-40 rounded-md border border-[var(--border)] bg-[var(--surface-overlay)] shadow-lg z-10 py-1"
+              >
+                <button
+                  :if={is_nil(group.policy_disabled_at)}
+                  type="button"
+                  phx-click="disable_policy"
+                  phx-value-group_id={group.id}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                >
+                  <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
+                </button>
+                <button
+                  :if={not is_nil(group.policy_disabled_at)}
+                  type="button"
+                  phx-click="enable_policy"
+                  phx-value-group_id={group.id}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                >
+                  <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
+                </button>
+                <button
+                  type="button"
+                  phx-click="confirm_remove_group"
+                  phx-value-group_id={group.id}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
+                >
+                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                </button>
+              </div>
+            </div>
+          </div>
+        </li>
+      </ul>
+      <div
+        :if={@groups == []}
+        class="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]"
+      >
+        No groups have access yet.
+      </div>
+    </div>
+    """
+  end
+
+  attr :resource, :any, required: true
+  attr :grant_state, :map, required: true
+
+  def resource_grant_form(assigns) do
+    assigns = assign(assigns, assigns.grant_state)
+
+    assigns =
+      assign(assigns, :conditions_state, %{
+        timezone: assigns.timezone,
+        location_search: assigns.location_search,
+        location_operator: assigns.location_operator,
+        location_values: assigns.location_values,
+        ip_range_operator: assigns.ip_range_operator,
+        ip_range_values: assigns.ip_range_values,
+        ip_range_input: assigns.ip_range_input,
+        auth_provider_operator: assigns.auth_provider_operator,
+        auth_provider_values: assigns.auth_provider_values,
+        tod_values: assigns.tod_values,
+        tod_adding: assigns.tod_adding?,
+        tod_pending: assigns.tod_pending,
+        tod_pending_error: assigns.tod_pending_error
+      })
+
+    ~H"""
+    <div class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          phx-click="close_grant_form"
+          class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+          title="Back to group list"
+        >
+          <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
+        </button>
+        <span class="text-xs font-semibold text-[var(--text-primary)]">Grant access</span>
+      </div>
+    </div>
+    <.form
+      for={@grant_form}
+      phx-submit="submit_grant"
+      id="grant-form"
+      class="flex-1 flex flex-col overflow-hidden"
+    >
+      <div class="flex-1 overflow-y-auto">
+        <div class="px-5 py-4 space-y-5">
+          <div>
+            <label class="block text-xs font-medium text-[var(--text-secondary)] mb-2">
+              Groups <span class="text-[var(--status-error)]">*</span>
+            </label>
+            <% filtered_available =
+              @available_groups
+              |> Enum.reject(&(&1.id in @grant_selected_group_ids))
+              |> then(fn groups ->
+                if @grant_search == "" do
+                  groups
+                else
+                  Enum.filter(groups, fn g ->
+                    String.contains?(
+                      String.downcase(g.name),
+                      String.downcase(@grant_search)
+                    )
+                  end)
+                end
+              end)
+              selected_groups =
+                Enum.filter(@available_groups, &(&1.id in @grant_selected_group_ids))
+              at_max = length(@grant_selected_group_ids) >= 5 %>
+            <div class="flex gap-2 h-52">
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Available
+                  </span>
+                  <span class="text-[10px] text-[var(--text-muted)]">
+                    {length(filtered_available)}
+                  </span>
+                </div>
+                <div class="px-2 pt-1.5 shrink-0">
+                  <div class="relative">
+                    <.icon
+                      name="ri-search-line"
+                      class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search…"
+                      value={@grant_search}
+                      phx-keyup="search_grant_groups"
+                      phx-debounce="200"
+                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                    />
+                  </div>
+                </div>
+                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+                  <li :for={group <- filtered_available}>
+                    <button
+                      type="button"
+                      phx-click="toggle_grant_group"
+                      phx-value-group_id={group.id}
+                      disabled={at_max}
+                      class={[
+                        "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
+                        if at_max do
+                          "opacity-40 cursor-not-allowed"
+                        else
+                          "hover:bg-[var(--surface)] cursor-pointer"
+                        end
+                      ]}
+                    >
+                      <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                        <.provider_icon type={provider_type_from_group(group)} class="w-3 h-3" />
+                      </div>
+                      <span class="text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+                    </button>
+                  </li>
+                  <li
+                    :if={@available_groups == []}
+                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                  >
+                    All groups already have access.
+                  </li>
+                  <li
+                    :if={@available_groups != [] && filtered_available == []}
+                    class="flex items-center justify-center h-12 text-xs text-[var(--text-tertiary)]"
+                  >
+                    No groups match.
+                  </li>
+                </ul>
+              </div>
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Selected
+                  </span>
+                  <span class={[
+                    "text-[10px] font-medium",
+                    if(length(@grant_selected_group_ids) >= 5,
+                      do: "text-[var(--status-warning)]",
+                      else: "text-[var(--text-muted)]"
+                    )
+                  ]}>
+                    {length(@grant_selected_group_ids)} / 5
+                  </span>
+                </div>
+                <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
+                  <li :for={group <- selected_groups}>
+                    <button
+                      type="button"
+                      phx-click="toggle_grant_group"
+                      phx-value-group_id={group.id}
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors cursor-pointer group"
+                    >
+                      <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                        <.provider_icon type={provider_type_from_group(group)} class="w-3 h-3" />
+                      </div>
+                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+                      <.icon
+                        name="ri-close-line"
+                        class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                      />
+                    </button>
+                  </li>
+                  <li
+                    :if={selected_groups == []}
+                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                  >
+                    No groups selected.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="border-t border-[var(--border)] pt-4">
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                Conditions
+                <span class="ml-1 font-normal normal-case tracking-normal text-[var(--text-muted)]">
+                  (optional)
+                </span>
+              </h4>
+              <div
+                :if={available_conditions(@resource) -- @active_conditions != []}
+                class="relative"
+              >
+                <button
+                  type="button"
+                  phx-click="toggle_conditions_dropdown"
+                  class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                >
+                  <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+                </button>
+                <div :if={@conditions_dropdown_open}>
+                  <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
+                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-overlay)] shadow-lg py-1 overflow-hidden">
+                    <button
+                      :for={type <- available_conditions(@resource) -- @active_conditions}
+                      type="button"
+                      phx-click="add_condition"
+                      phx-value-type={type}
+                      class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                    >
+                      {condition_type_label(type)}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p
+              :if={@active_conditions == []}
+              class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
+            >
+              No conditions — access is unrestricted
+            </p>
+            <div class="space-y-2">
+              <.grant_condition_card
+                :for={type <- @active_conditions}
+                type={type}
+                providers={@providers}
+                conditions_state={@conditions_state}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        :if={@grant_form && @grant_form.errors != []}
+        class="px-5 py-2 text-xs text-[var(--status-error)]"
+      >
+        <p :for={{_field, {msg, _}} <- @grant_form.errors}>{msg}</p>
+      </div>
+      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
+        <button
+          type="button"
+          phx-click="close_grant_form"
+          class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={@grant_selected_group_ids == []}
+          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Grant access
+        </button>
+      </div>
+    </.form>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :resource, :any, required: true
+  attr :ui_state, :map, required: true
+
+  def resource_sidebar(assigns) do
+    assigns = assign(assigns, assigns.ui_state)
+
+    ~H"""
+    <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
+      <section>
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+          Details
+        </h3>
+        <dl class="space-y-2.5">
+          <div>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Resource ID</dt>
+            <dd class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+              {@resource.id}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Type</dt>
+            <dd>
+              <span class={type_badge_class(@resource.type)}>
+                {resource_type_label(@resource.type)}
+              </span>
+            </dd>
+          </div>
+          <div :if={@resource.type == :dns}>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">IP Stack</dt>
+            <dd class="text-xs text-[var(--text-secondary)]">
+              {case @resource.ip_stack do
+                :dual -> "Dual-stack (A + AAAA)"
+                :ipv4_only -> "IPv4 only (A)"
+                :ipv6_only -> "IPv6 only (AAAA)"
+                _ -> "Dual-stack (A + AAAA)"
+              end}
+            </dd>
+          </div>
+          <div :if={@resource.type not in [:internet, :static_device_pool]}>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Address</dt>
+            <dd class="font-mono text-xs text-[var(--text-primary)] font-medium break-all">
+              {@resource.address}
+            </dd>
+          </div>
+          <div :if={@resource.type == :static_device_pool}>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Address</dt>
+            <dd class="text-xs italic text-[var(--text-muted)]">Multiple Addresses</dd>
+          </div>
+          <div>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Description</dt>
+            <dd class={[
+              "text-xs",
+              if(@resource.address_description,
+                do: "text-[var(--text-secondary)]",
+                else: "text-[var(--text-muted)] italic"
+              )
+            ]}>
+              {@resource.address_description || "No Address Description"}
+            </dd>
+          </div>
+        </dl>
+      </section>
+      <div :if={@resource.type != :internet} class="border-t border-[var(--border)]"></div>
+      <section :if={@resource.type != :internet}>
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+          Traffic Restrictions
+        </h3>
+        <p
+          :if={@resource.filters == []}
+          class="text-xs text-[var(--text-muted)] italic"
+        >
+          None — all protocols/ports permitted
+        </p>
+        <ul :if={@resource.filters != []} class="space-y-1">
+          <li
+            :for={filter <- @resource.filters}
+            class="text-xs font-mono text-[var(--text-secondary)]"
+          >
+            {format_filter(filter)}
+          </li>
+        </ul>
+      </section>
+      <div class="border-t border-[var(--border)]"></div>
+      <section>
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+          Infrastructure
+        </h3>
+        <dl class="space-y-2.5">
+          <div :if={@resource.type == :static_device_pool}>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-1">Site</dt>
+            <dd class="text-xs italic text-[var(--text-muted)]">No Site Needed</dd>
+          </div>
+          <div :if={@resource.site && @resource.type != :static_device_pool}>
+            <dt class="text-[10px] text-[var(--text-tertiary)] mb-1">Site</dt>
+            <dd class="flex items-center gap-1.5 flex-wrap">
+              <.link
+                navigate={~p"/#{@account}/sites/#{@resource.site}"}
+                class="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                {@resource.site.name}
+              </.link>
+              <span
+                :if={resource_online?(@resource)}
+                class="relative flex items-center justify-center w-1.5 h-1.5"
+              >
+                <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
+                </span>
+                <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
+                </span>
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+      <div class="border-t border-[var(--border)]"></div>
+      <section :if={@resource.type != :internet}>
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--status-error)]/60 mb-3">
+          Danger Zone
+        </h3>
+        <button
+          :if={not @confirm_delete_resource}
+          type="button"
+          phx-click="confirm_delete_resource"
+          class="w-full text-left px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+        >
+          Delete resource
+        </button>
+        <div
+          :if={@confirm_delete_resource}
+          class="px-3 py-2.5 rounded border border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+        >
+          <p class="text-xs font-medium text-[var(--status-error)] mb-1">
+            Delete this resource?
+          </p>
+          <p class="text-xs text-[var(--status-error)]/70 mb-3">
+            All associated policies will also be deleted and clients will immediately lose access.
+          </p>
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              phx-click="cancel_delete_resource"
+              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              phx-click="delete_resource"
+              class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  @spec format_filter(map()) :: String.t()
+  def format_filter(%{protocol: :icmp}), do: "ICMP: Allowed"
+
+  def format_filter(%{protocol: protocol, ports: []}),
+    do: "#{String.upcase("#{protocol}")}: All ports"
+
+  def format_filter(%{protocol: protocol, ports: ports}),
+    do: "#{String.upcase("#{protocol}")}: #{Enum.join(ports, ", ")}"
+
+  @spec to_grant_form() :: Phoenix.HTML.Form.t()
+  def to_grant_form do
+    %Portal.Policy{}
+    |> Ecto.Changeset.change()
+    |> to_form(as: :policy)
+  end
+
+  @spec resource_online?(map()) :: boolean()
+  def resource_online?(%{site_id: nil}), do: false
+
+  def resource_online?(%{site_id: site_id}) do
+    Presence.Gateways.Site.list(site_id) |> map_size() > 0
+  end
+
+  @spec resource_type_label(atom()) :: String.t()
+  def resource_type_label(:dns), do: "DNS"
+  def resource_type_label(:ip), do: "IP"
+  def resource_type_label(:cidr), do: "CIDR"
+  def resource_type_label(:internet), do: "Internet"
+  def resource_type_label(:static_device_pool), do: "Device Pool"
+  def resource_type_label(type), do: to_string(type)
+
+  @spec type_badge_class(atom()) :: String.t()
+  def type_badge_class(:dns),
+    do:
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-dns-bg)] text-[var(--badge-dns-text)]"
+
+  def type_badge_class(:ip),
+    do:
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-ip-bg)] text-[var(--badge-ip-text)]"
+
+  def type_badge_class(:cidr),
+    do:
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-cidr-bg)] text-[var(--badge-cidr-text)]"
+
+  def type_badge_class(:internet),
+    do:
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium trcking-wider uppercase bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+
+  def type_badge_class(:static_device_pool),
+    do:
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-device-pool-bg)] text-[var(--badge-device-pool-text)]"
+
+  def type_badge_class(_),
+    do:
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--surface-raised)] text-[var(--text-secondary)]"
 
   defmodule Database do
     import Ecto.Query

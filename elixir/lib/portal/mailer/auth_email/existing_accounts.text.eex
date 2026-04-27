@@ -1,0 +1,13 @@
+Your Firezone accounts
+
+We found the following accounts associated with your email address.
+
+<%= for {account, sign_in_url} <- @accounts_with_urls do %>
+<%= account.name %> (<%= account.slug %>)
+Sign in: <%= sign_in_url %>
+
+<% end %>
+If you didn't request this, you can safely ignore this email.
+
+Thanks,
+The Firezone Team

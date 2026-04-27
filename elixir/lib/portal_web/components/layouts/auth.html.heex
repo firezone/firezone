@@ -1,0 +1,46 @@
+<div class="h-screen flex overflow-hidden">
+  <%!-- Left panel --%>
+  <div class="hidden lg:flex lg:w-[460px] shrink-0 bg-blue-700 dark:bg-blue-950 flex-col justify-between p-12 relative overflow-hidden">
+    <div class="absolute inset-0 pointer-events-none dot-grid"></div>
+    <div class="relative flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center shrink-0">
+        <img src="/images/logo.svg" class="w-5 h-5" alt="Firezone Logo" />
+      </div>
+      <span class="text-base font-semibold text-white tracking-tight">Firezone</span>
+    </div>
+    <div class="relative">
+      <p class="text-3xl font-bold text-white leading-tight tracking-tight">
+        Secure access.<br />Zero complexity.
+      </p>
+      <p class="text-sm text-white/60 mt-4 leading-relaxed">
+        Connect your team to the infrastructure they need without opening holes in your network.
+      </p>
+      <div class="mt-8 space-y-3">
+        <div class="flex items-center gap-3">
+          <div class="w-7 h-7 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+            <.icon name="ri-lock-2-line" class="w-3.5 h-3.5 text-blue-200" />
+          </div>
+          <span class="text-sm text-white/75">End-to-end encrypted with WireGuard</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-7 h-7 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+            <.icon name="ri-shield-check-line" class="w-3.5 h-3.5 text-blue-200" />
+          </div>
+          <span class="text-sm text-white/75">Fine-grained access policies</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-7 h-7 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+            <.icon name="ri-id-card-line" class="w-3.5 h-3.5 text-blue-200" />
+          </div>
+          <span class="text-sm text-white/75">Works with your existing identity provider</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <%!-- Right panel --%>
+  <div class="flex-1 flex items-center justify-center bg-[var(--surface)] overflow-y-auto">
+    <div class="w-full max-w-lg px-6 py-12">
+      {@inner_content}
+    </div>
+  </div>
+</div>

@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.15" date={new Date("2026-04-27")}>
         <ChangeItem pull={12849}>
           Fixes an issue on macOS where the app could be silently terminated by
           the system under memory pressure, leaving the tunnel running without a
@@ -42,7 +43,7 @@ export default function Apple() {
         <ChangeItem pull={12684}>
           Takes into account traffic filters when routing packets to resources.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.14" date={new Date("2026-03-17")}>
         <ChangeItem pull={12407}>
           Fixes update notification dismissal on macOS where dismissing one

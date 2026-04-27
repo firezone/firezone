@@ -8,6 +8,8 @@ defmodule PortalWeb.LiveTable do
   import PortalWeb.CoreComponents
   import PortalWeb.FormComponents
 
+  @page_size_values ["10", "25", "50"]
+
   @doc """
   A drop-in replacement of `PortalWeb.TableComponents.table/1` component that adds sorting, filtering and pagination.
   """
@@ -16,6 +18,7 @@ defmodule PortalWeb.LiveTable do
   attr :filters, :list, required: true, doc: "the query filters enabled for the table"
   attr :filter, :map, required: true, doc: "the filter form for the table"
   attr :stale, :boolean, default: false, doc: "hint to the UI that the table data is stale"
+  attr :class, :string, default: nil, doc: "additional classes for the live_table wrapper div"
 
   attr :metadata, :map,
     required: true,
@@ -24,7 +27,8 @@ defmodule PortalWeb.LiveTable do
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_patch, :any, default: nil, doc: "the function for generating patch path for each row"
-  attr :class, :string, default: nil, doc: "the class for the table"
+  attr :row_click, :any, default: nil, doc: "fn(row) -> patch path for row click"
+  attr :row_selected, :any, default: nil, doc: "fn(row) -> boolean indicating if row is selected"
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -38,6 +42,7 @@ defmodule PortalWeb.LiveTable do
 
   slot :action, doc: "the slot for showing user actions in the last table column"
   slot :empty, doc: "the slot for showing a message or content when there are no rows"
+  slot :prepend_rows, doc: "rows to prepend before the stream rows (rendered in a separate tbody)"
 
   slot :notice,
     doc: "the slot for showing a notice in the filter bar (e.g. active filter description)" do
@@ -46,48 +51,76 @@ defmodule PortalWeb.LiveTable do
 
   def live_table(assigns) do
     ~H"""
-    <.resource_filter
-      stale={@stale}
-      live_table_id={@id}
-      form={@filter}
-      filters={@filters}
-      notice={@notice}
-    />
-    <div class="overflow-x-auto">
-      <table class={["w-full text-sm text-left text-neutral-500 table-fixed"]} id={@id}>
-        <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
-        <tbody
-          id={"#{@id}-rows"}
-          phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
+    <div class={["flex flex-col", @class]}>
+      <.resource_filter
+        stale={@stale}
+        live_table_id={@id}
+        form={@filter}
+        filters={@filters}
+        notice={@notice}
+      />
+      <div class="flex-1 overflow-auto flex flex-col">
+        <table
+          class={["w-full text-sm text-left text-[var(--text-secondary)] table-fixed shrink-0"]}
+          id={@id}
         >
-          <.table_row
-            :for={row <- @rows}
-            columns={@col}
-            actions={@action}
-            row={row}
-            id={@row_id && @row_id.(row)}
-            patch={@row_patch}
-            mapper={@row_item}
-          />
-        </tbody>
-      </table>
-      <div :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
-        {render_slot(@empty)}
-      </div>
-      <div :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
-        <div class="flex justify-center text-center text-neutral-500 p-4">
-          <div class="w-auto pb-4">
-            There are no results matching your filters. <button
+          <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
+          <tbody :if={@prepend_rows != []}>
+            {render_slot(@prepend_rows)}
+          </tbody>
+          <tbody
+            id={"#{@id}-rows"}
+            phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
+          >
+            <.table_row
+              :for={row <- @rows}
+              columns={@col}
+              actions={@action}
+              row={row}
+              id={@row_id && @row_id.(row)}
+              patch={@row_patch}
+              click={@row_click}
+              selected={not is_nil(@row_selected) and @row_selected.(row)}
+              mapper={@row_item}
+            />
+          </tbody>
+        </table>
+        <div
+          :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)}
+          id={"#{@id}-empty"}
+          class="flex flex-1 items-center justify-center"
+        >
+          {render_slot(@empty)}
+        </div>
+        <div
+          :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)}
+          id={"#{@id}-empty"}
+          class="flex flex-1 items-center justify-center"
+        >
+          <div class="flex flex-col items-center gap-3 py-16">
+            <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
+              <.icon name="ri-search-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-medium text-[var(--text-primary)]">No results found</p>
+              <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                Try adjusting your search or filters.
+              </p>
+            </div>
+            <button
               phx-click="filter"
               phx-value-table_id={@id}
               phx-value-filter={nil}
-              class={link_style()}
-            >Clear filters</button>.
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+            >
+              <.icon name="ri-filter-3-line" class="w-4 h-4" />
+              Clear filters
+            </button>
           </div>
         </div>
       </div>
+      <.paginator id={@id} metadata={@metadata} rows_count={Enum.count(@rows)} />
     </div>
-    <.paginator id={@id} metadata={@metadata} rows_count={Enum.count(@rows)} />
     """
   end
 
@@ -113,9 +146,9 @@ defmodule PortalWeb.LiveTable do
         min="2023-01-01"
         autocomplete="off"
         class={[
-          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded-sm",
+          "bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--text-primary)] text-sm rounded-sm",
           "block w-1/2 mr-1",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
+          "disabled:opacity-50 disabled:shadow-none",
           "focus:outline-hidden focus:ring-0",
           @field.errors != [] && "border-rose-400"
         ]}
@@ -128,10 +161,10 @@ defmodule PortalWeb.LiveTable do
         id={@field.id <> "[#{@from_or_to}][time]"}
         value={normalize_value("time", Map.get(@field.value || %{}, @from_or_to)) || "00:00:00"}
         class={[
-          "bg-neutral-50 border text-neutral-900 text-sm rounded-sm",
+          "bg-[var(--surface-raised)] border text-[var(--text-primary)] text-sm rounded-sm",
           "block w-1/2",
-          "border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
+          "border-[var(--border)]",
+          "disabled:opacity-50 disabled:shadow-none",
           "focus:outline-hidden focus:ring-0",
           @field.errors != [] && "border-rose-400"
         ]}
@@ -152,33 +185,14 @@ defmodule PortalWeb.LiveTable do
   defp normalize_value(_, nil),
     do: nil
 
-  defp notice_style("info"), do: "bg-blue-100 text-neutral-900"
-  defp notice_style("warning"), do: "bg-yellow-100 text-neutral-900"
-  defp notice_style("danger"), do: "bg-red-100 text-neutral-900"
-  defp notice_style(_), do: "bg-neutral-100 text-neutral-900"
+  defp notice_style("info"), do: "bg-blue-100 text-[var(--text-primary)]"
+  defp notice_style("warning"), do: "bg-amber-100 text-[var(--text-primary)]"
+  defp notice_style("danger"), do: "bg-rose-100 text-[var(--text-primary)]"
+  defp notice_style(_), do: "bg-[var(--surface-raised)] text-[var(--text-primary)]"
 
   defp resource_filter(assigns) do
     ~H"""
-    <div class="mb-2 space-y-2 md:space-y-0 md:gap-2 md:flex md:justify-between md:items-center">
-      <div class="flex items-center gap-2">
-        <.button
-          :if={@stale}
-          id={"#{@live_table_id}-reload-btn"}
-          type="button"
-          style="info"
-          title="The table data has changed."
-          phx-click="reload"
-          phx-value-table_id={@live_table_id}
-        >
-          <.icon name="hero-arrow-path" class="mr-1 w-3.5 h-3.5" /> Reload
-        </.button>
-        <%= for notice <- @notice do %>
-          <span class={["text-sm px-3 py-1.5 rounded-sm", notice_style(notice[:type])]}>
-            {render_slot(notice)}
-          </span>
-        <% end %>
-      </div>
-
+    <div class="flex items-center gap-3 px-6 py-3 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
       <.form
         :if={@filters != []}
         id={"#{@live_table_id}-filters"}
@@ -186,18 +200,34 @@ defmodule PortalWeb.LiveTable do
         phx-change="filter"
         phx-debounce="100"
         data-prevent-enter-submit
+        class="flex items-center gap-3 flex-1"
       >
         <.input type="hidden" name="table_id" value={@live_table_id} />
-
-        <div class="space-y-2 md:space-y-0 md:gap-1 md:flex">
-          <.filter
-            :for={filter <- @filters}
-            live_table_id={@live_table_id}
-            form={@form}
-            filter={filter}
-          />
-        </div>
+        <.filter
+          :for={filter <- @filters}
+          live_table_id={@live_table_id}
+          form={@form}
+          filter={filter}
+        />
       </.form>
+      <.button
+        :if={@stale}
+        id={"#{@live_table_id}-reload-btn"}
+        type="button"
+        style="info"
+        title="The table data has changed."
+        phx-click="reload"
+        phx-value-table_id={@live_table_id}
+        class="shrink-0"
+      >
+        <.icon name="ri-loop-left-line" class="mr-1 w-3.5 h-3.5" /> Reload
+      </.button>
+      <span
+        :for={notice <- @notice}
+        class={["text-sm px-3 py-1.5 rounded-sm shrink-0", notice_style(notice[:type])]}
+      >
+        {render_slot(notice)}
+      </span>
     </div>
     """
   end
@@ -211,7 +241,7 @@ defmodule PortalWeb.LiveTable do
         from_or_to={:from}
         max={Date.utc_today()}
       />
-      <div class="mx-2 text-neutral-500">to</div>
+      <div class="mx-2 text-[var(--text-tertiary)]">to</div>
       <.datetime_input
         field={@form[@filter.name]}
         filter={@filter}
@@ -224,68 +254,58 @@ defmodule PortalWeb.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last">
-      <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
-        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-          <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-        </div>
-
-        <input
-          type="text"
-          name={@form[@filter.name].name}
-          id={@form[@filter.name].id}
-          value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
-          placeholder={"Search by " <> @filter.title}
-          phx-debounce="300"
-          class={[
-            "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded-sm",
-            "block w-full md:w-72 pl-10 p-2",
-            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
-            "focus:outline-hidden focus:border-1 focus:ring-0",
-            @form[@filter.name].errors != [] && "border-rose-400"
-          ]}
-        />
-        <.error
-          :for={msg <- @form[@filter.name].errors}
-          data-validation-error-for={@form[@filter.name].name}
-        >
-          {msg}
-        </.error>
-      </div>
+    <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
+      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+      <input
+        type="text"
+        name={@form[@filter.name].name}
+        id={@form[@filter.name].id}
+        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
+        placeholder={"Search by " <> @filter.title}
+        phx-debounce="300"
+        class={[
+          "w-full pl-8 pr-3 py-1.5 text-sm rounded border",
+          "bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)]",
+          "placeholder:text-[var(--text-muted)] outline-none transition-colors",
+          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          @form[@filter.name].errors != [] && "border-rose-400"
+        ]}
+      />
+      <.error
+        :for={msg <- @form[@filter.name].errors}
+        data-validation-error-for={@form[@filter.name].name}
+      >
+        {msg}
+      </.error>
     </div>
     """
   end
 
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last">
-      <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
-        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-          <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-        </div>
-
-        <input
-          type="text"
-          name={@form[@filter.name].name}
-          id={@form[@filter.name].id}
-          value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
-          placeholder={"Search by " <> @filter.title}
-          phx-debounce="300"
-          class={[
-            "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded-sm",
-            "block w-full md:w-72 pl-10 p-2",
-            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
-            "focus:outline-hidden focus:border-1 focus:ring-0",
-            @form[@filter.name].errors != [] && "border-rose-400"
-          ]}
-        />
-        <.error
-          :for={msg <- @form[@filter.name].errors}
-          data-validation-error-for={@form[@filter.name].name}
-        >
-          {msg}
-        </.error>
-      </div>
+    <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
+      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+      <input
+        type="text"
+        name={@form[@filter.name].name}
+        id={@form[@filter.name].id}
+        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
+        placeholder={"Search by " <> @filter.title}
+        phx-debounce="300"
+        class={[
+          "w-full pl-8 pr-3 py-1.5 text-sm rounded border",
+          "bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)]",
+          "placeholder:text-[var(--text-muted)] outline-none transition-colors",
+          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          @form[@filter.name].errors != [] && "border-rose-400"
+        ]}
+      />
+      <.error
+        :for={msg <- @form[@filter.name].errors}
+        data-validation-error-for={@form[@filter.name].name}
+      >
+        {msg}
+      </.error>
     </div>
     """
   end
@@ -311,14 +331,12 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :select}}} = assigns) do
     ~H"""
     <div class="flex items-center order-4">
-      <div class="w-full">
-        <.input
-          type="select"
-          field={@form[@filter.name]}
-          prompt={"For any " <> @filter.title}
-          options={@filter.values}
-        />
-      </div>
+      <.input
+        type="select"
+        field={@form[@filter.name]}
+        prompt={"All " <> pluralize(@filter.title)}
+        options={@filter.values}
+      />
     </div>
     """
   end
@@ -326,58 +344,48 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: :string, values: values}} = assigns)
        when values != [] and length(values) < 5 do
     ~H"""
-    <div class="flex items-center order-first">
-      <div class="flex rounded-sm" role="group">
-        <.intersperse_blocks>
-          <:item>
-            <label
-              for={"#{@live_table_id}-#{@filter.name}-__all__"}
-              class={[
-                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
-                "hover:bg-neutral-200 hover:text-neutral-700",
-                "cursor-pointer",
-                "border-y border-l rounded-l",
-                is_nil(@form[@filter.name].value) && "bg-neutral-100"
-              ]}
-            >
-              <.input
-                id={"#{@live_table_id}-#{@filter.name}-__all__"}
-                type="radio"
-                field={@form[@filter.name]}
-                name={"_reset:" <> @form[@filter.name].name}
-                value="true"
-                checked={is_nil(@form[@filter.name].value)}
-                class="hidden"
-              /> All
-            </label>
-          </:item>
-
-          <:item :let={position} :for={{label, value} <- @filter.values}>
-            <label
-              for={"#{@live_table_id}-#{@filter.name}-#{value}"}
-              class={[
-                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
-                "hover:bg-neutral-200 hover:text-neutral-700",
-                "cursor-pointer",
-                @form[@filter.name].value == value && "bg-neutral-100",
-                position == :first && "border-y border-l rounded-l",
-                position == :last && "border-y border-r rounded-r",
-                position != :first && position != :last && "border"
-              ]}
-            >
-              <.input
-                id={"#{@live_table_id}-#{@filter.name}-#{value}"}
-                type="radio"
-                field={@form[@filter.name]}
-                value={value}
-                checked={@form[@filter.name].value == value}
-                class="hidden"
-              />
-              {label}
-            </label>
-          </:item>
-        </.intersperse_blocks>
-      </div>
+    <div class="flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--control-bg)] p-0.5 shrink-0">
+      <label
+        for={"#{@live_table_id}-#{@filter.name}-__all__"}
+        class={[
+          "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
+          if(is_nil(@form[@filter.name].value),
+            do: "bg-[var(--surface)] text-[var(--text-primary)] shadow-sm",
+            else: "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          )
+        ]}
+      >
+        <.input
+          id={"#{@live_table_id}-#{@filter.name}-__all__"}
+          type="radio"
+          field={@form[@filter.name]}
+          name={"_reset:" <> @form[@filter.name].name}
+          value="true"
+          checked={is_nil(@form[@filter.name].value)}
+          class="hidden"
+        /> All
+      </label>
+      <label
+        :for={{label, value} <- @filter.values}
+        for={"#{@live_table_id}-#{@filter.name}-#{value}"}
+        class={[
+          "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
+          if(@form[@filter.name].value == value,
+            do: "bg-[var(--surface)] text-[var(--text-primary)] shadow-sm",
+            else: "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          )
+        ]}
+      >
+        <.input
+          id={"#{@live_table_id}-#{@filter.name}-#{value}"}
+          type="radio"
+          field={@form[@filter.name]}
+          value={value}
+          checked={@form[@filter.name].value == value}
+          class="hidden"
+        />
+        {label}
+      </label>
     </div>
     """
   end
@@ -398,53 +406,93 @@ defmodule PortalWeb.LiveTable do
   end
 
   def paginator(assigns) do
+    first_row = assigns.metadata.offset + 1
+    last_row = min(assigns.metadata.offset + assigns.rows_count, assigns.metadata.count)
+
+    assigns =
+      assign(assigns,
+        first_row: first_row,
+        last_row: last_row,
+        previous_page: page_from_offset(assigns.metadata.previous_offset, assigns.metadata.limit),
+        next_page: page_from_offset(assigns.metadata.next_offset, assigns.metadata.limit),
+        page_size_options: [{"10", 10}, {"25", 25}, {"50", 50}]
+      )
+
     ~H"""
-    <nav
+    <div
       :if={@rows_count > 0}
-      class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
-      aria-label="Table navigation"
+      class="shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-[var(--border)] bg-[var(--surface-raised)] text-xs text-[var(--text-tertiary)]"
     >
-      <span class="text-sm text-neutral-500">
-        Showing <span class="font-medium text-neutral-900">{@rows_count}</span>
-        of <span class="font-medium text-neutral-900">{@metadata.count}</span>
+      <div class="flex items-center gap-4">
+        <.form
+          id={"#{@id}-pagination"}
+          for={%{}}
+          phx-change="change_limit"
+          phx-hook="PageSizePreference"
+          data-table-id={@id}
+          class="contents"
+        >
+          <input type="hidden" name="table_id" value={@id} />
+          <label class="flex items-center gap-2">
+            <span>Page Size</span>
+            <div class="relative">
+              <select
+                name="page_size"
+                class="appearance-none bg-none bg-[var(--surface)] border border-[var(--border)] rounded pl-2 pr-7 py-1 text-xs text-[var(--text-primary)] leading-5"
+              >
+                <option
+                  :for={{label, value} <- @page_size_options}
+                  value={value}
+                  selected={value == @metadata.limit}
+                >
+                  {label}
+                </option>
+              </select>
+              <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--text-tertiary)]">
+                <.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
+              </span>
+            </div>
+          </label>
+        </.form>
+        <div class="flex items-center gap-0.5">
+          <button
+            disabled={is_nil(@metadata.previous_offset)}
+            class={[
+              "flex items-center justify-center w-7 h-7 rounded transition-colors",
+              "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]",
+              "disabled:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            ]}
+            phx-click="paginate"
+            phx-value-page={@previous_page}
+            phx-value-table_id={@id}
+          >
+            <.icon name="ri-arrow-left-s-line" class="w-5 h-5" />
+          </button>
+          <button
+            disabled={is_nil(@metadata.next_offset)}
+            class={[
+              "flex items-center justify-center w-7 h-7 rounded transition-colors",
+              "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]",
+              "disabled:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            ]}
+            phx-click="paginate"
+            phx-value-page={@next_page}
+            phx-value-table_id={@id}
+          >
+            <.icon name="ri-arrow-right-s-line" class="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+      <span>
+        Showing <span class="font-medium tabular-nums text-[var(--text-primary)]">{@first_row}</span>-<span class="font-medium tabular-nums text-[var(--text-primary)]">{@last_row}</span>
+        of <span class="font-medium tabular-nums text-[var(--text-primary)]">{@metadata.count}</span>
       </span>
-      <ul class="inline-flex items-stretch -space-x-px">
-        <li>
-          <button
-            disabled={is_nil(@metadata.previous_page_cursor)}
-            class={[pagination_button_class(), "rounded-l"]}
-            phx-click="paginate"
-            phx-value-cursor={@metadata.previous_page_cursor}
-            phx-value-table_id={@id}
-          >
-            <span class="sr-only">Previous</span>
-            <.icon name="hero-chevron-left" class="w-5 h-5" />
-          </button>
-        </li>
-        <li>
-          <button
-            disabled={is_nil(@metadata.next_page_cursor)}
-            class={[pagination_button_class(), "rounded-r"]}
-            phx-click="paginate"
-            phx-value-cursor={@metadata.next_page_cursor}
-            phx-value-table_id={@id}
-          >
-            <span class="sr-only">Next</span>
-            <.icon name="hero-chevron-right" class="w-5 h-5" />
-          </button>
-        </li>
-      </ul>
-    </nav>
+    </div>
     """
   end
 
-  defp pagination_button_class do
-    ~w[
-      flex items-center justify-center h-full py-1.5 px-3 ml-0 text-neutral-500 bg-white
-      border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-      disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-neutral-100
-    ]
-  end
+  defp page_from_offset(nil, _limit), do: nil
+  defp page_from_offset(offset, limit), do: div(offset, limit) + 1
 
   @doc """
   Loads the initial state for a live table and persists it to the socket assigns.
@@ -455,7 +503,7 @@ defmodule PortalWeb.LiveTable do
     callback = Keyword.fetch!(opts, :callback)
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
-    limit = Keyword.get(opts, :limit, 10)
+    limit = default_page_size(socket, Keyword.get(opts, :limit, 10))
 
     # Note: we don't support nesting, :and or :where on the UI yet
     hidden_filters = Enum.map(enforce_filters, &elem(&1, 0)) ++ hide_filters
@@ -608,8 +656,8 @@ defmodule PortalWeb.LiveTable do
               )
           )
 
-        {:error, :invalid_cursor} ->
-          message = "The page was reset due to invalid pagination cursor."
+        {:error, :invalid_page} ->
+          message = "The page was reset due to invalid pagination page."
           reset_live_table_params(socket, id, message)
 
         {:error, {:unknown_filter, _metadata}} ->
@@ -628,6 +676,10 @@ defmodule PortalWeb.LiveTable do
           raise PortalWeb.LiveErrors.NotFoundError
       end
     else
+      {:error, :invalid_page} ->
+        message = "The page was reset due to invalid pagination page."
+        reset_live_table_params(socket, id, message)
+
       {:error, :invalid_filter} ->
         message = "The page was reset due to invalid pagination filter."
         reset_live_table_params(socket, id, message)
@@ -682,11 +734,49 @@ defmodule PortalWeb.LiveTable do
   defp preload_values(filter, _query_module, _subject),
     do: filter
 
+  defp default_page_size(socket, default) do
+    connect_params = Map.get(socket.private, :connect_params, %{})
+
+    case Map.get(connect_params, "page_size") do
+      val when val in @page_size_values -> String.to_integer(val)
+      _ -> default
+    end
+  end
+
   defp params_to_page(id, limit, params) do
-    if cursor = Map.get(params, "#{id}_cursor") do
-      {:ok, [cursor: cursor, limit: limit]}
-    else
-      {:ok, [limit: limit]}
+    effective_limit =
+      case Map.get(params, "#{id}_page_size") || Map.get(params, "#{id}_limit") do
+        val when val in @page_size_values -> String.to_integer(val)
+        _ -> limit
+      end
+
+    case Map.get(params, "#{id}_page") do
+      nil -> legacy_params_to_page(id, effective_limit, params)
+      page -> page_to_offset(page, effective_limit)
+    end
+  end
+
+  defp legacy_params_to_page(id, effective_limit, params) do
+    case Map.get(params, "#{id}_offset") do
+      nil -> {:ok, [offset: 0, limit: effective_limit]}
+      offset -> offset_to_page(offset, effective_limit)
+    end
+  end
+
+  defp page_to_offset(page, effective_limit) do
+    case Integer.parse(page) do
+      {page, ""} when page >= 1 ->
+        {:ok, [offset: (page - 1) * effective_limit, limit: effective_limit]}
+
+      _other ->
+        {:error, :invalid_page}
+    end
+  end
+
+  defp offset_to_page(offset, effective_limit) do
+    case Integer.parse(offset) do
+      {offset, ""} when offset >= 0 -> {:ok, [offset: offset, limit: effective_limit]}
+      _other -> {:error, :invalid_page}
     end
   end
 
@@ -769,13 +859,26 @@ defmodule PortalWeb.LiveTable do
     end
   end
 
+  def handle_live_table_event("table_row_click", %{"path" => path}, socket) do
+    {:noreply, push_patch(socket, to: path)}
+  end
+
+  def handle_live_table_event("change_limit", %{"table_id" => id, "page_size" => page_size}, socket) do
+    update_query_params(socket, fn query_params ->
+      query_params
+      |> delete_page_from_params(id)
+      |> delete_page_size_from_params(id)
+      |> Map.put("#{id}_page_size", page_size)
+    end)
+  end
+
   def handle_live_table_event("reload", %{"table_id" => id}, socket) do
     {:noreply, reload_live_table!(socket, id)}
   end
 
-  def handle_live_table_event("paginate", %{"table_id" => id, "cursor" => cursor}, socket) do
+  def handle_live_table_event("paginate", %{"table_id" => id, "page" => page}, socket) do
     update_query_params(socket, fn query_params ->
-      put_cursor_to_params(query_params, id, cursor)
+      put_page_to_params(query_params, id, page)
     end)
   end
 
@@ -789,7 +892,7 @@ defmodule PortalWeb.LiveTable do
 
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
+      |> delete_page_from_params(id)
       |> put_order_by_to_params(id, order_by)
     end)
   end
@@ -801,7 +904,7 @@ defmodule PortalWeb.LiveTable do
       ) do
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
+      |> delete_page_from_params(id)
       |> Map.reject(fn {key, _} -> String.starts_with?(key, "#{id}_filter[#{field}]") end)
     end)
   end
@@ -811,7 +914,7 @@ defmodule PortalWeb.LiveTable do
 
     update_query_params(socket, fn query_params ->
       query_params
-      |> delete_cursor_from_params(id)
+      |> delete_page_from_params(id)
       |> put_filter_to_params(id, filter)
     end)
   end
@@ -835,12 +938,23 @@ defmodule PortalWeb.LiveTable do
     {:noreply, push_patch(socket, to: String.trim_trailing("#{path}?#{query}", "?"))}
   end
 
-  defp put_cursor_to_params(params, id, cursor) do
-    Map.put(params, "#{id}_cursor", cursor)
+  defp put_page_to_params(params, id, page) do
+    params
+    |> delete_page_from_params(id)
+    |> Map.put("#{id}_page", page)
   end
 
-  defp delete_cursor_from_params(params, id) do
-    Map.delete(params, "#{id}_cursor")
+  defp delete_page_from_params(params, id) do
+    params
+    |> Map.delete("#{id}_page")
+    |> Map.delete("#{id}_offset")
+    |> Map.delete("#{id}_cursor")
+  end
+
+  defp delete_page_size_from_params(params, id) do
+    params
+    |> Map.delete("#{id}_page_size")
+    |> Map.delete("#{id}_limit")
   end
 
   defp put_order_by_to_params(params, id, {assoc, direction, field}) do
@@ -908,5 +1022,13 @@ defmodule PortalWeb.LiveTable do
 
   defp normalize_time_filter(time) do
     Time.from_iso8601(time)
+  end
+
+  defp pluralize(word) do
+    cond do
+      String.ends_with?(word, "y") -> String.slice(word, 0..-2//1) <> "ies"
+      String.ends_with?(word, "s") -> word
+      true -> word <> "s"
+    end
   end
 end

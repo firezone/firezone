@@ -2,19 +2,29 @@ defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  import PortalWeb.Groups.Components
+
+  @member_page_size 10
 
   import Ecto.Changeset
+
+  import PortalWeb.Policies.Components,
+    only: [
+      map_condition_params: 2,
+      maybe_drop_unsupported_conditions: 2,
+      available_conditions: 1
+    ]
 
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Groups")
+      |> assign(page_title: "Groups", groups_with_policies_count: 0, selected_group: nil)
+      |> assign(base_group_assigns(socket))
       |> assign_live_table("groups",
         query_module: Database,
         sortable_fields: [
           {:groups, :name},
-          {:member_counts, :count},
-          {:groups, :updated_at}
+          {:member_counts, :count}
         ],
         callback: &handle_groups_update!/2
       )
@@ -22,29 +32,22 @@ defmodule PortalWeb.Groups do
     {:ok, socket}
   end
 
-  # Add Group Modal
-  def handle_params(params, uri, %{assigns: %{live_action: :add}} = socket) do
+  # Add Group Panel
+  def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     changeset = changeset(%Portal.Group{}, %{})
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
-     assign(socket,
-       form: to_form(changeset),
-       members_to_add: [],
-       member_search_results: nil,
-       last_member_search: ""
+     socket
+     |> assign(selected_group: nil)
+     |> assign(base_group_assigns(socket))
+     |> assign(
+       group_panel: group_panel_state(view: :new_form),
+       group_form: group_form_state(to_form(changeset))
      )}
   end
 
-  # Show Group Modal
-  def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    group = Database.get_group_with_actors!(id, socket.assigns.subject)
-    socket = handle_live_tables_params(socket, params, uri)
-
-    {:noreply, assign(socket, group: group, show_member_filter: "")}
-  end
-
-  # Edit Group Modal
+  # Edit Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     group = Database.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
@@ -53,55 +56,122 @@ defmodule PortalWeb.Groups do
       changeset = changeset(group, %{})
 
       {:noreply,
-       assign(socket,
-         group: group,
-         form: to_form(changeset),
-         members_to_add: [],
-         members_to_remove: [],
-         member_search_results: nil,
-         last_member_search: ""
+       socket
+       |> assign(selected_group: group)
+       |> assign(base_group_assigns(socket))
+       |> assign(
+         group_panel: group_panel_state(view: :edit_form),
+         group_form: group_form_state(to_form(changeset))
        )}
     else
-      # Redirect to show if trying to edit a protected group
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(
-         to: ~p"/#{socket.assigns.account}/groups/#{id}?#{socket.assigns.query_params}"
-       )}
+       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
     end
+  end
+
+  # Show Group Panel
+  def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
+    group = Database.get_group_with_actors!(id, socket.assigns.subject)
+    resources = Database.list_resources_for_group(group, socket.assigns.subject)
+    socket = handle_live_tables_params(socket, params, uri)
+
+    socket =
+      socket
+      |> assign(selected_group: group)
+      |> assign(base_group_assigns(socket))
+      |> assign(
+        group_panel:
+          group_panel_state(tab: String.to_existing_atom(Map.get(params, "tab", "members"))),
+        group_resources: group_resources_state(resources: resources)
+      )
+      |> load_panel_members()
+
+    {:noreply, socket}
   end
 
   # Default handler
   def handle_params(params, uri, socket) do
     socket = handle_live_tables_params(socket, params, uri)
+
+    {:noreply,
+     socket
+     |> assign(selected_group: nil)
+     |> assign(base_group_assigns(socket))}
+  end
+
+  def handle_event(event, params, socket)
+      when event in [
+             "paginate",
+             "order_by",
+             "filter",
+             "reload",
+             "table_row_click",
+             "change_limit"
+           ],
+      do: handle_live_table_event(event, params, socket)
+
+  def handle_event("close_panel", _params, socket) do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+  end
+
+  def handle_event("confirm_delete_group", _params, socket) do
+    {:noreply, merge_state(socket, :group_panel, confirm_delete?: true)}
+  end
+
+  def handle_event("cancel_delete_group", _params, socket) do
+    {:noreply, merge_state(socket, :group_panel, confirm_delete?: false)}
+  end
+
+  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+      when socket.assigns.group_panel.view == :edit_form do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}"
+     )}
+  end
+
+  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+      when socket.assigns.group_panel.view == :new_form do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+  end
+
+  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+      when not is_nil(socket.assigns.selected_group) do
+    params = Map.drop(socket.assigns.query_params, ["tab"])
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+  end
+
+  def handle_event("handle_keydown", _params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
-
-  def handle_event("close_modal", _params, socket) do
-    {:noreply, close_modal(socket)}
-  end
-
   def handle_event("validate", %{"group" => attrs}, socket) do
-    group = Map.get(socket.assigns, :group, %Portal.Group{})
+    group = socket.assigns.selected_group || %Portal.Group{}
     changeset = changeset(group, attrs)
 
     # Only search if member_search value has changed
     current_search = Map.get(attrs, "member_search", "")
-    last_search = socket.assigns.last_member_search
+    last_search = socket.assigns.group_form.last_member_search
 
     {member_search_results, last_member_search} =
       if current_search != last_search do
-        {get_search_results(current_search, socket), current_search}
+        {get_search_results(
+           current_search,
+           socket.assigns.selected_group,
+           socket.assigns.group_form.members_to_add,
+           socket.assigns.group_form.members_to_remove,
+           socket.assigns.subject
+         ), current_search}
       else
-        {socket.assigns.member_search_results, last_search}
+        {socket.assigns.group_form.member_search_results, last_search}
       end
 
     {:noreply,
-     assign(socket,
+     merge_state(socket, :group_form,
        form: to_form(changeset),
        member_search_results: member_search_results,
        last_member_search: last_member_search
@@ -109,53 +179,457 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("focus_search", _params, socket) do
-    member_search = get_in(socket.assigns.form.params, ["member_search"]) || ""
-    search_results = get_search_results(member_search, socket)
-    {:noreply, assign(socket, member_search_results: search_results)}
+    member_search = get_in(socket.assigns.group_form.form.params, ["member_search"]) || ""
+
+    search_results =
+      get_search_results(
+        member_search,
+        socket.assigns.selected_group,
+        socket.assigns.group_form.members_to_add,
+        socket.assigns.group_form.members_to_remove,
+        socket.assigns.subject
+      )
+
+    {:noreply, merge_state(socket, :group_form, member_search_results: search_results)}
   end
 
   def handle_event("add_member", %{"actor_id" => actor_id}, socket) do
     actor = Database.get_actor!(actor_id, socket.assigns.subject)
 
     {members_to_add, members_to_remove} =
-      if Map.has_key?(socket.assigns, :members_to_remove) do
-        add_member(actor, socket)
-      else
-        {uniq_by_id([actor | socket.assigns.members_to_add]), []}
-      end
+      add_member(
+        actor,
+        socket.assigns.selected_group,
+        socket.assigns.group_form.members_to_add,
+        socket.assigns.group_form.members_to_remove
+      )
 
-    group = Map.get(socket.assigns, :group, %Portal.Group{})
-    updated_params = Map.put(socket.assigns.form.params, "member_search", "")
+    group = socket.assigns.selected_group || %Portal.Group{}
+    updated_params = Map.put(socket.assigns.group_form.form.params, "member_search", "")
     changeset = changeset(group, updated_params)
 
-    assigns = [
-      members_to_add: members_to_add,
-      member_search_results: nil,
-      form: to_form(changeset),
-      last_member_search: ""
-    ]
-
-    assigns =
-      if members_to_remove != [],
-        do: Keyword.put(assigns, :members_to_remove, members_to_remove),
-        else: assigns
-
-    {:noreply, assign(socket, assigns)}
+    {:noreply,
+     merge_state(socket, :group_form,
+       members_to_add: members_to_add,
+       members_to_remove: members_to_remove,
+       member_search_results: nil,
+       form: to_form(changeset),
+       last_member_search: ""
+     )}
   end
 
   def handle_event("remove_member", %{"actor_id" => actor_id}, socket) do
-    {members_to_add, members_to_remove} = remove_member(actor_id, socket)
+    {members_to_add, members_to_remove} =
+      remove_member(
+        actor_id,
+        socket.assigns.selected_group,
+        socket.assigns.group_form.members_to_add,
+        socket.assigns.group_form.members_to_remove
+      )
 
     {:noreply,
-     assign(socket, members_to_add: members_to_add, members_to_remove: members_to_remove)}
+     merge_state(socket, :group_form,
+       members_to_add: members_to_add,
+       members_to_remove: members_to_remove
+     )}
+  end
+
+  def handle_event("undo_member_removal", %{"actor_id" => actor_id}, socket) do
+    members_to_remove =
+      Enum.reject(socket.assigns.group_form.members_to_remove, &(&1.id == actor_id))
+
+    {:noreply, merge_state(socket, :group_form, members_to_remove: members_to_remove)}
   end
 
   def handle_event("blur_search", _params, socket) do
-    {:noreply, assign(socket, member_search_results: nil)}
+    {:noreply, merge_state(socket, :group_form, member_search_results: nil)}
   end
 
   def handle_event("filter_show_members", %{"filter" => filter}, socket) do
-    {:noreply, assign(socket, show_member_filter: filter)}
+    socket =
+      socket
+      |> merge_state(:group_panel, show_member_filter: filter, member_page: 1)
+      |> load_panel_members()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("switch_group_tab", %{"tab" => tab}, socket) do
+    params = Map.put(socket.assigns.query_params, "tab", tab)
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}?#{params}"
+     )}
+  end
+
+  def handle_event("open_grant_resource_form", _params, socket) do
+    existing_ids = Enum.map(socket.assigns.group_resources.resources, & &1.id)
+    available = Database.list_available_resources(existing_ids, socket.assigns.subject)
+    providers = Database.list_providers(socket.assigns.subject)
+
+    {:noreply,
+     socket
+     |> merge_state(:group_resources,
+       tab_view: :grant_form,
+       available_resources: available,
+       grant_selected_resource_ids: [],
+       grant_resource_form: to_grant_resource_form(),
+       grant_resource_search: ""
+     )
+     |> assign(grant_conditions: grant_conditions_state(socket, providers: providers))}
+  end
+
+  def handle_event("close_grant_resource_form", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       group_resources: group_resources_state(resources: socket.assigns.group_resources.resources)
+     )
+     |> assign(grant_conditions: grant_conditions_state(socket))}
+  end
+
+  def handle_event("search_grant_resources", %{"value" => search}, socket) do
+    {:noreply, merge_state(socket, :group_resources, grant_resource_search: search)}
+  end
+
+  def handle_event("toggle_grant_resource", %{"resource_id" => resource_id}, socket) do
+    selected = socket.assigns.group_resources.grant_selected_resource_ids
+
+    updated =
+      if resource_id in selected do
+        List.delete(selected, resource_id)
+      else
+        if length(selected) < 5 do
+          selected ++ [resource_id]
+        else
+          selected
+        end
+      end
+
+    allowed =
+      updated
+      |> Enum.map(fn id ->
+        Enum.find(socket.assigns.group_resources.available_resources, &(&1.id == id))
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&available_conditions/1)
+      |> case do
+        [] -> []
+        lists -> Enum.reduce(lists, &(Enum.filter(&2, fn c -> c in &1 end)))
+      end
+
+    active =
+      Enum.filter(socket.assigns.grant_conditions.active_conditions, &(&1 in allowed))
+
+    {:noreply,
+     socket
+     |> merge_state(:group_resources, grant_selected_resource_ids: updated)
+     |> merge_state(:grant_conditions, active_conditions: active)}
+  end
+
+  def handle_event("submit_grant_resource", params, socket) do
+    group = socket.assigns.selected_group
+    selected_resource_ids = socket.assigns.group_resources.grant_selected_resource_ids
+    policy_params = Map.get(params, "policy", %{})
+
+    condition_attrs =
+      policy_params
+      |> map_condition_params(empty_values: :drop)
+      |> maybe_drop_unsupported_conditions(socket)
+      |> Map.put("group_id", group.id)
+
+    result =
+      Enum.reduce_while(selected_resource_ids, :ok, fn resource_id, :ok ->
+        attrs = Map.put(condition_attrs, "resource_id", resource_id)
+
+        case Database.insert_policy(attrs, socket.assigns.subject) do
+          {:ok, _policy} -> {:cont, :ok}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+      end)
+
+    case result do
+      :ok ->
+        resources = Database.list_resources_for_group(group, socket.assigns.subject)
+
+        {:noreply,
+         socket
+         |> assign(group_resources: group_resources_state(resources: resources))
+         |> assign(grant_conditions: grant_conditions_state(socket))}
+
+      {:error, changeset} ->
+        {:noreply,
+         merge_state(socket, :group_resources,
+           grant_resource_form: to_form(changeset, as: :policy)
+         )}
+    end
+  end
+
+  def handle_event("toggle_conditions_dropdown", _params, socket) do
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       conditions_dropdown_open?: !socket.assigns.grant_conditions.conditions_dropdown_open?
+     )}
+  end
+
+  def handle_event("add_condition", %{"type" => type}, socket) do
+    type = String.to_existing_atom(type)
+
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       active_conditions: socket.assigns.grant_conditions.active_conditions ++ [type],
+       conditions_dropdown_open?: false
+     )}
+  end
+
+  def handle_event("remove_condition", %{"type" => type}, socket) do
+    type = String.to_existing_atom(type)
+
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       active_conditions: List.delete(socket.assigns.grant_conditions.active_conditions, type)
+     )}
+  end
+
+  def handle_event("update_location_search", %{"_location_search" => search}, socket) do
+    {:noreply, merge_state(socket, :grant_conditions, location_search: search)}
+  end
+
+  def handle_event("change_location_operator", %{"operator" => op}, socket) do
+    {:noreply, merge_state(socket, :grant_conditions, location_operator: op)}
+  end
+
+  def handle_event("toggle_location_value", %{"code" => code}, socket) do
+    values = socket.assigns.grant_conditions.location_values
+    updated = if code in values, do: List.delete(values, code), else: values ++ [code]
+    {:noreply, merge_state(socket, :grant_conditions, location_values: updated)}
+  end
+
+  def handle_event("change_ip_range_operator", %{"operator" => op}, socket) do
+    {:noreply, merge_state(socket, :grant_conditions, ip_range_operator: op)}
+  end
+
+  def handle_event("update_ip_range_input", %{"_ip_range_input" => value}, socket) do
+    {:noreply, merge_state(socket, :grant_conditions, ip_range_input: value)}
+  end
+
+  def handle_event("add_ip_range_value", _params, socket) do
+    value = String.trim(socket.assigns.grant_conditions.ip_range_input)
+
+    if value != "" and value not in socket.assigns.grant_conditions.ip_range_values do
+      {:noreply,
+       merge_state(socket, :grant_conditions,
+         ip_range_values: socket.assigns.grant_conditions.ip_range_values ++ [value],
+         ip_range_input: ""
+       )}
+    else
+      {:noreply, merge_state(socket, :grant_conditions, ip_range_input: "")}
+    end
+  end
+
+  def handle_event("remove_ip_range_value", %{"value" => value}, socket) do
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       ip_range_values: List.delete(socket.assigns.grant_conditions.ip_range_values, value)
+     )}
+  end
+
+  def handle_event("change_auth_provider_operator", %{"operator" => op}, socket) do
+    {:noreply, merge_state(socket, :grant_conditions, auth_provider_operator: op)}
+  end
+
+  def handle_event("toggle_auth_provider_value", %{"id" => id}, socket) do
+    values = socket.assigns.grant_conditions.auth_provider_values
+    updated = if id in values, do: List.delete(values, id), else: values ++ [id]
+    {:noreply, merge_state(socket, :grant_conditions, auth_provider_values: updated)}
+  end
+
+  def handle_event("start_add_tod_range", _params, socket) do
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       tod_adding?: true,
+       tod_pending: %{"on" => "", "off" => "", "days" => []}
+     )}
+  end
+
+  def handle_event("cancel_tod_range", _params, socket) do
+    {:noreply,
+     merge_state(socket, :grant_conditions,
+       tod_adding?: false,
+       tod_pending: %{"on" => "", "off" => "", "days" => []},
+       tod_pending_error: nil
+     )}
+  end
+
+  def handle_event("toggle_tod_pending_day", %{"day" => day}, socket) do
+    {:noreply,
+     update(socket, :grant_conditions, fn cond ->
+       days = cond.tod_pending["days"]
+       updated = if day in days, do: List.delete(days, day), else: days ++ [day]
+       Map.put(cond, :tod_pending, Map.put(cond.tod_pending, "days", updated))
+     end)}
+  end
+
+  def handle_event("confirm_tod_range", _params, socket) do
+    pending = socket.assigns.grant_conditions.tod_pending
+    on = pending["on"] || ""
+    off = pending["off"] || ""
+    days = pending["days"] || []
+
+    cond do
+      days == [] or on == "" or off == "" ->
+        {:noreply, merge_state(socket, :grant_conditions, tod_pending_error: "Must choose day, on-time, and off-time")}
+
+      not valid_tod_range?(on, off) ->
+        {:noreply, merge_state(socket, :grant_conditions, tod_pending_error: "End time must be after start time")}
+
+      true ->
+        {:noreply,
+         update(socket, :grant_conditions, fn cond ->
+           cond
+           |> Map.put(:tod_values, cond.tod_values ++ [pending])
+           |> Map.put(:tod_adding?, false)
+           |> Map.put(:tod_pending, %{"on" => "", "off" => "", "days" => []})
+           |> Map.put(:tod_pending_error, nil)
+         end)}
+    end
+  end
+
+  def handle_event("remove_tod_range", %{"index" => index}, socket) do
+    index = String.to_integer(index)
+
+    {:noreply,
+     update(socket, :grant_conditions, fn cond ->
+       Map.put(cond, :tod_values, List.delete_at(cond.tod_values, index))
+     end)}
+  end
+
+  def handle_event("change_tod_pending", params, socket) do
+    {:noreply,
+     update(socket, :grant_conditions, fn cond ->
+       updates =
+         Map.take(params, ["_tod_on", "_tod_off"])
+         |> Map.new(fn
+           {"_tod_on", v} -> {"on", v}
+           {"_tod_off", v} -> {"off", v}
+         end)
+
+       cond
+       |> Map.put(:tod_pending, Map.merge(cond.tod_pending, updates))
+       |> Map.put(:tod_pending_error, nil)
+     end)}
+  end
+
+  def handle_event("toggle_resource_access_actions", %{"resource_id" => id}, socket) do
+    current = socket.assigns.group_resources.resource_access_actions_open_id
+
+    {:noreply,
+     merge_state(socket, :group_resources,
+       resource_access_actions_open_id: if(current == id, do: nil, else: id)
+     )}
+  end
+
+  def handle_event("close_resource_access_actions", _params, socket) do
+    {:noreply, merge_state(socket, :group_resources, resource_access_actions_open_id: nil)}
+  end
+
+  def handle_event("disable_resource_access", %{"resource_id" => resource_id}, socket) do
+    case Database.disable_policy_for_resource(
+           socket.assigns.selected_group,
+           resource_id,
+           socket.assigns.subject
+         ) do
+      {:ok, _} ->
+        resources =
+          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+
+        {:noreply,
+         merge_state(socket, :group_resources,
+           resources: resources,
+           resource_access_actions_open_id: nil
+         )}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("enable_resource_access", %{"resource_id" => resource_id}, socket) do
+    case Database.enable_policy_for_resource(
+           socket.assigns.selected_group,
+           resource_id,
+           socket.assigns.subject
+         ) do
+      {:ok, _} ->
+        resources =
+          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+
+        {:noreply,
+         merge_state(socket, :group_resources,
+           resources: resources,
+           resource_access_actions_open_id: nil
+         )}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("confirm_remove_resource_access", %{"resource_id" => resource_id}, socket) do
+    {:noreply,
+     merge_state(socket, :group_resources,
+       confirm_remove_resource_access_id: resource_id,
+       resource_access_actions_open_id: nil
+     )}
+  end
+
+  def handle_event("cancel_remove_resource_access", _params, socket) do
+    {:noreply, merge_state(socket, :group_resources, confirm_remove_resource_access_id: nil)}
+  end
+
+  def handle_event("remove_resource_access", %{"resource_id" => resource_id}, socket) do
+    case Database.delete_policy_for_resource(
+           socket.assigns.selected_group,
+           resource_id,
+           socket.assigns.subject
+         ) do
+      {:ok, _} ->
+        resources =
+          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+
+        {:noreply,
+         merge_state(socket, :group_resources,
+           resources: resources,
+           confirm_remove_resource_access_id: nil
+         )}
+
+      {:error, _} ->
+        {:noreply, merge_state(socket, :group_resources, confirm_remove_resource_access_id: nil)}
+    end
+  end
+
+  def handle_event("prev_member_page", _params, socket) do
+    socket =
+      socket
+      |> merge_state(:group_panel,
+        member_page: max(1, socket.assigns.group_panel.member_page - 1)
+      )
+      |> load_panel_members()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("next_member_page", _params, socket) do
+    socket =
+      socket
+      |> merge_state(:group_panel,
+        member_page:
+          min(socket.assigns.group_panel.member_pages, socket.assigns.group_panel.member_page + 1)
+      )
+      |> load_panel_members()
+
+    {:noreply, socket}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -164,7 +638,13 @@ defmodule PortalWeb.Groups do
     if deletable_group?(group) do
       case Database.delete(group, socket.assigns.subject) do
         {:ok, _group} ->
-          {:noreply, handle_success(socket, "Group deleted successfully")}
+          socket =
+            socket
+            |> put_flash(:success, "Group deleted successfully")
+            |> reload_live_table!("groups")
+            |> push_patch(to: ~p"/#{socket.assigns.account}/groups")
+
+          {:noreply, socket}
 
         {:error, _changeset} ->
           {:noreply, put_flash(socket, :error, "Failed to delete group")}
@@ -175,617 +655,341 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("create", %{"group" => attrs}, socket) do
-    attrs = build_attrs_with_memberships_for_add(attrs, socket)
+    attrs = build_attrs_with_memberships_for_add(attrs, socket.assigns.group_form.members_to_add)
     group = %Portal.Group{account_id: socket.assigns.subject.account.id}
     changeset = changeset(group, attrs)
 
     case Database.create(changeset, socket.assigns.subject) do
-      {:ok, _group} ->
+      {:ok, group} ->
         socket =
           socket
           |> put_flash(:success, "Group created successfully")
           |> reload_live_table!("groups")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/groups")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
 
         {:noreply, socket}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, merge_state(socket, :group_form, form: to_form(changeset))}
     end
   end
 
   def handle_event("save", %{"group" => attrs}, socket) do
-    if editable_group?(socket.assigns.group) do
-      attrs = build_attrs_with_memberships(attrs, socket)
-      changeset = changeset(socket.assigns.group, attrs)
+    if editable_group?(socket.assigns.selected_group) do
+      attrs =
+        build_attrs_with_memberships(
+          attrs,
+          socket.assigns.selected_group,
+          socket.assigns.group_form.members_to_add,
+          socket.assigns.group_form.members_to_remove
+        )
+
+      changeset = changeset(socket.assigns.selected_group, attrs)
 
       case Database.update(changeset, socket.assigns.subject) do
         {:ok, group} ->
           socket =
             socket
-            |> put_flash(:success_inline, "Group updated successfully")
+            |> put_flash(:success, "Group updated successfully")
             |> reload_live_table!("groups")
-            |> push_patch(
-              to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{socket.assigns.query_params}"
-            )
+            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
 
           {:noreply, socket}
 
         {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset))}
+          {:noreply, merge_state(socket, :group_form, form: to_form(changeset))}
       end
     else
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> close_modal()}
+       |> close_panel()}
     end
   end
 
   def handle_groups_update!(socket, list_opts) do
+    filter = Keyword.get(list_opts, :filter, [])
+
     with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
-         groups_metadata: metadata
+         groups_metadata: metadata,
+         groups_with_policies_count:
+           Database.count_groups_with_policies(socket.assigns.subject, filter)
        )}
     end
   end
 
   def render(assigns) do
     ~H"""
-    <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/groups"}>{@page_title}</.breadcrumb>
-    </.breadcrumbs>
+    <div class="relative flex flex-col h-full overflow-hidden">
+      <.page_header>
+        <:icon>
+          <.icon name="ri-team-line" class="w-16 h-16 text-[var(--brand)]" />
+        </:icon>
+        <:title>Groups</:title>
+        <:description>
+          Collections of users.
+        </:description>
+        <:action>
+          <.docs_action path="/deploy/groups" />
+          <.button
+            style="primary"
+            icon="ri-add-line"
+            patch={~p"/#{@account}/groups/new"}
+          >
+            New Group
+          </.button>
+        </:action>
+        <:filters>
+          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
+            All {@groups_metadata.count}
+          </span>
+          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
+            With policies {@groups_with_policies_count}
+          </span>
+          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
+            No policies {@groups_metadata.count - @groups_with_policies_count}
+          </span>
+        </:filters>
+      </.page_header>
 
-    <.section>
-      <:title>
-        Groups
-      </:title>
-
-      <:action>
-        <.docs_action path="/deploy/groups" />
-      </:action>
-
-      <:action>
-        <.add_button navigate={~p"/#{@account}/groups/add?#{@query_params}"}>
-          Add Group
-        </.add_button>
-      </:action>
-
-      <:help>
-        Groups organize Actors and form the basis of the Firezone access control model.
-      </:help>
-
-      <:content>
+      <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <.live_table
           id="groups"
           rows={@groups}
           row_id={&"group-#{&1.id}"}
-          row_patch={&row_patch_path(&1, @query_params)}
+          row_click={fn g -> ~p"/#{@account}/groups/#{g.id}?#{@query_params}" end}
+          row_selected={fn g -> not is_nil(@selected_group) and g.id == @selected_group.id end}
           filters={@filters_by_table_id["groups"]}
           filter={@filter_form_by_table_id["groups"]}
           ordered_by={@order_by_table_id["groups"]}
           metadata={@groups_metadata}
+          class="flex-1 min-h-0"
         >
-          <:col :let={group} class="w-12">
-            <.provider_icon type={provider_type_from_group(group)} class="w-8 h-8" />
+          <:col :let={group} field={{:groups, :name}} label="Name" class="w-full">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4" />
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                  <span class="truncate">{group.name}</span>
+                  <span
+                    :if={group.entity_type == :org_unit}
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)] shrink-0"
+                    title="Organizational Unit"
+                  >
+                    OU
+                  </span>
+                </div>
+                <div class="text-xs text-[var(--text-tertiary)] truncate">
+                  {directory_display_name(group)}
+                </div>
+              </div>
+            </div>
           </:col>
-          <:col :let={group} field={{:groups, :name}} label="group" class="w-3/12">
-            <span class="flex items-center gap-2">
-              {group.name}
-              <span
-                :if={group.entity_type == :org_unit}
-                class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium bg-neutral-100 text-neutral-600"
-                title="Organizational Unit"
-              >
-                OU
-              </span>
+          <:col :let={group} field={{:member_counts, :count}} label="Members" class="w-40">
+            <div class="text-sm text-[var(--text-primary)] tabular-nums">
+              <span class="font-medium">{group.member_count}</span>
+              <span class="text-xs text-[var(--text-tertiary)]">users</span>
+            </div>
+          </:col>
+          <:col :let={group} label="Resources" class="w-54">
+            <span class={[
+              "inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums",
+              if((group.policy_count || 0) > 0,
+                do: "bg-[var(--brand-tertiary)] text-[var(--brand)]",
+                else: "bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+              )
+            ]}>
+              {group.policy_count || 0}
             </span>
           </:col>
-          <:col :let={group} field={{:member_counts, :count}} label="members">
-            {group.member_count}
-          </:col>
-          <:col :let={group} field={{:groups, :updated_at}} label="updated">
-            <.relative_datetime datetime={group.updated_at} />
-          </:col>
+          <:action :let={_group}></:action>
           <:empty>
-            <div class="flex justify-center text-center text-neutral-500 p-4">
-              <div class="w-auto pb-4">
-                No groups to display.
-                <.link class={[link_style()]} navigate={~p"/#{@account}/groups/add"}>
-                  Add a group manually
-                </.link>
-                or
-                <.link class={[link_style()]} navigate={~p"/#{@account}/settings/directory_sync"}>
-                  go to settings
-                </.link>
-                to sync groups from an identity provider.
+            <div class="flex flex-col items-center gap-3 py-16">
+              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
+                <.icon name="ri-team-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
               </div>
+              <div class="text-center">
+                <p class="text-sm font-medium text-[var(--text-primary)]">No groups yet</p>
+                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  No groups have been created yet.
+                </p>
+              </div>
+              <.link
+                patch={~p"/#{@account}/groups/new"}
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+              >
+                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
+              </.link>
             </div>
           </:empty>
         </.live_table>
-      </:content>
-    </.section>
-
-    <!-- Add Group Modal -->
-    <.modal
-      :if={@live_action == :add}
-      id="add-group-modal"
-      on_close="close_modal"
-      confirm_disabled={not @form.source.valid?}
-    >
-      <:title>Add Group</:title>
-      <:body>
-        <.form id="group-form" for={@form} phx-change="validate" phx-submit="create">
-          <div class="space-y-6">
-            <.input
-              field={@form[:name]}
-              label="Group Name"
-              placeholder="Enter group name"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <div>
-              <h3 class="text-sm font-semibold text-neutral-900 mb-3">
-                Members ({length(@members_to_add)})
-              </h3>
-
-              <div class="border border-neutral-200 rounded-md overflow-hidden">
-                <.member_search_input form={@form} member_search_results={@member_search_results} />
-
-                <.member_list members={@members_to_add}>
-                  <:badge :let={actor}>
-                    <.actor_type_badge actor={actor} />
-                  </:badge>
-                  <:actions :let={actor}>
-                    <div class="ml-4 flex items-center gap-2">
-                      <button
-                        type="button"
-                        phx-click="remove_member"
-                        phx-value-actor_id={actor.id}
-                        class="shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
-                      >
-                        <.icon name="hero-user-minus" class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </:actions>
-                  <:empty_message>
-                    No members in this group.
-                  </:empty_message>
-                </.member_list>
-              </div>
-            </div>
-          </div>
-        </.form>
-      </:body>
-      <:confirm_button form="group-form" type="submit">Create</:confirm_button>
-    </.modal>
-
-    <!-- Show Group Modal -->
-    <.modal
-      :if={@live_action == :show}
-      id="show-group-modal"
-      on_close="close_modal"
-    >
-      <:title>
-        <div class="flex items-center gap-3">
-          <.provider_icon
-            type={provider_type_from_group(@group)}
-            class="w-8 h-8 shrink-0"
-          />
-          <span>{@group.name}</span>
-        </div>
-      </:title>
-      <:body>
-        <.flash id="group-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
-        <div class="space-y-6">
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-semibold text-neutral-900">Details</h3>
-              <.popover :if={deletable_group?(@group)} placement="bottom-end" trigger="click">
-                <:target>
-                  <button
-                    type="button"
-                    class="text-neutral-500 hover:text-neutral-700 focus:outline-hidden"
-                  >
-                    <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
-                  </button>
-                </:target>
-                <:content>
-                  <div class="py-1">
-                    <.link
-                      :if={editable_group?(@group)}
-                      navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{@query_params}"}
-                      class="px-3 py-2 text-sm text-neutral-800 rounded-md hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
-                    >
-                      <.icon name="hero-pencil" class="w-4 h-4" /> Edit
-                    </.link>
-                    <div
-                      :if={not editable_group?(@group)}
-                      class="px-3 py-2 text-sm text-neutral-400 rounded-md flex items-center gap-2 whitespace-nowrap cursor-not-allowed"
-                      title="Synced groups cannot be edited"
-                    >
-                      <.icon name="hero-pencil" class="w-4 h-4" /> Edit
-                    </div>
-                    <button
-                      type="button"
-                      phx-click="delete"
-                      phx-value-id={@group.id}
-                      class="w-full px-3 py-2 text-sm text-red-600 rounded-md hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
-                      data-confirm="Are you sure you want to delete this group?"
-                    >
-                      <.icon name="hero-trash" class="w-4 h-4" /> Delete
-                    </button>
-                  </div>
-                </:content>
-              </.popover>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <p class="text-xs font-medium text-neutral-500 uppercase">ID</p>
-                <p class="text-sm text-neutral-900 font-mono truncate" title={@group.id}>
-                  {@group.id}
-                </p>
-              </div>
-              <div :if={@group.entity_type == :org_unit}>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Type</p>
-                <p class="text-sm text-neutral-900">
-                  Org Unit
-                </p>
-              </div>
-              <div>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Created</p>
-                <p class="text-sm text-neutral-900">
-                  <.relative_datetime datetime={@group.inserted_at} />
-                </p>
-              </div>
-              <div>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Directory</p>
-                <p class="text-sm text-neutral-900 truncate" title={directory_display_name(@group)}>
-                  {directory_display_name(@group)}
-                </p>
-              </div>
-              <div>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Updated</p>
-                <p class="text-sm text-neutral-900">
-                  <.relative_datetime datetime={@group.updated_at} />
-                </p>
-              </div>
-              <div :if={@group.last_synced_at}>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Last Synced</p>
-                <p class="text-sm text-neutral-900">
-                  <.relative_datetime datetime={@group.last_synced_at} />
-                </p>
-              </div>
-              <div :if={@group.idp_id && get_idp_id(@group.idp_id)}>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Identity Provider ID</p>
-                <p
-                  class="text-sm text-neutral-900 font-mono truncate"
-                  title={get_idp_id(@group.idp_id)}
-                >
-                  {get_idp_id(@group.idp_id)}
-                </p>
-              </div>
-              <div :if={@group.email}>
-                <p class="text-xs font-medium text-neutral-500 uppercase">Email</p>
-                <p class="text-sm text-neutral-900 truncate" title={@group.email}>
-                  {@group.email}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 class="text-sm font-semibold text-neutral-900 mb-3">
-              Members ({length(@group.actors)})
-            </h3>
-
-            <% filtered_actors = filter_members(@group.actors, @show_member_filter) %>
-
-            <div class="border border-neutral-200 rounded-md overflow-hidden">
-              <.member_filter_input show_member_filter={@show_member_filter} />
-
-              <.member_list members={filtered_actors} item_class="p-3 hover:bg-neutral-50 group">
-                <:badge :let={actor}>
-                  <.actor_type_badge actor={actor} />
-                </:badge>
-                <:empty_message>
-                  <%= if has_content?(@show_member_filter) do %>
-                    No members match your filter.
-                  <% else %>
-                    No members in this group.
-                  <% end %>
-                </:empty_message>
-              </.member_list>
-            </div>
-          </div>
-        </div>
-      </:body>
-    </.modal>
-
-    <!-- Edit Group Modal -->
-    <.modal
-      :if={@live_action == :edit}
-      id="edit-group-modal"
-      on_close="close_modal"
-      on_back={JS.patch(~p"/#{@account}/groups/#{@group}?#{@query_params}")}
-      confirm_disabled={edit_form_unchanged?(@form, @members_to_add, @members_to_remove)}
-    >
-      <:title>
-        <div class="flex items-center gap-3">
-          <.provider_icon
-            type={provider_type_from_group(@group)}
-            class="w-8 h-8 shrink-0"
-          />
-          <span>Edit {@group.name}</span>
-        </div>
-      </:title>
-      <:body>
-        <.flash id="group-success-inline" kind={:success_inline} style="inline" flash={@flash} />
-        <.form id="group-form" for={@form} phx-change="validate" phx-submit="save">
-          <div class="space-y-6">
-            <.input
-              field={@form[:name]}
-              label="Group Name"
-              placeholder="Enter group name"
-              autocomplete="off"
-              phx-debounce="300"
-              data-1p-ignore
-              required
-            />
-
-            <div>
-              <% all_members =
-                get_all_members_for_display(@group, @members_to_add, @members_to_remove) %>
-              <h3 class="text-sm font-semibold text-neutral-900 mb-3">
-                Members ({get_member_count(all_members, @members_to_remove)})
-              </h3>
-
-              <div class="border border-neutral-200 rounded-md overflow-hidden">
-                <.member_search_input form={@form} member_search_results={@member_search_results} />
-
-                <.member_list members={all_members}>
-                  <:badge :let={actor}>
-                    <.actor_type_badge actor={actor} />
-                  </:badge>
-                  <:actions :let={actor}>
-                    <div class="ml-4 flex items-center gap-2">
-                      <% is_current = current_member?(actor, @group)
-                      is_to_add = Enum.any?(@members_to_add, &(&1.id == actor.id))
-                      is_to_remove = Enum.any?(@members_to_remove, &(&1.id == actor.id)) %>
-                      <span :if={is_current and not is_to_remove} class="text-xs text-neutral-500">
-                        Current
-                      </span>
-                      <span :if={is_to_add} class="text-xs text-green-600 font-medium">
-                        To Add
-                      </span>
-                      <span :if={is_to_remove} class="text-xs text-red-600 font-medium">
-                        To Remove
-                      </span>
-                      <button
-                        type="button"
-                        phx-click="remove_member"
-                        phx-value-actor_id={actor.id}
-                        class="shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
-                      >
-                        <.icon name="hero-user-minus" class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </:actions>
-                  <:empty_message>
-                    No members in this group.
-                  </:empty_message>
-                </.member_list>
-              </div>
-            </div>
-          </div>
-        </.form>
-      </:body>
-      <:back_button>Back</:back_button>
-      <:confirm_button form="group-form" type="submit">Save</:confirm_button>
-    </.modal>
-    """
-  end
-
-  defp actor_type_badge(assigns) do
-    assigns = assign_new(assigns, :class, fn -> "w-7 h-7" end)
-
-    ~H"""
-    <div class={[
-      "inline-flex items-center justify-center rounded-full shrink-0",
-      @class,
-      actor_type_icon_bg_color(@actor.type)
-    ]}>
-      <%= case @actor.type do %>
-        <% :service_account -> %>
-          <.icon name="hero-server" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
-        <% :account_admin_user -> %>
-          <.icon
-            name="hero-shield-check"
-            class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
-          />
-        <% _ -> %>
-          <.icon name="hero-user" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
-      <% end %>
-    </div>
-    """
-  end
-
-  defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
-  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
-  defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
-
-  defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
-  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
-  defp actor_type_icon_text_color(_), do: "text-neutral-800"
-
-  defp member_search_input(assigns) do
-    assigns = assign_new(assigns, :placeholder, fn -> "Search to add members..." end)
-
-    ~H"""
-    <div class="p-3 bg-neutral-50 border-b border-neutral-200 relative" phx-click-away="blur_search">
-      <input
-        type="text"
-        name={@form[:member_search].name}
-        value={@form[:member_search].value}
-        placeholder={@placeholder}
-        phx-debounce="300"
-        phx-focus="focus_search"
-        autocomplete="off"
-        data-1p-ignore
-        class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
-      />
-
-      <div
-        :if={@member_search_results != nil}
-        class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-md shadow-md max-h-48 overflow-y-auto"
-      >
-        <button
-          :for={actor <- @member_search_results}
-          type="button"
-          phx-click="add_member"
-          phx-value-actor_id={actor.id}
-          class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
-        >
-          <div class="space-y-0.5">
-            <div class="flex items-start gap-2">
-              <.actor_type_badge actor={actor} />
-              <div class="text-sm font-medium text-neutral-900">{actor.name}</div>
-            </div>
-            <div :if={actor.email} class="text-xs text-neutral-500">
-              {actor.email}
-            </div>
-          </div>
-        </button>
-        <div
-          :if={@member_search_results == []}
-          class="px-3 py-4 text-center text-sm text-neutral-500"
-        >
-          No members found
-        </div>
       </div>
-    </div>
-    """
-  end
-
-  defp member_filter_input(assigns) do
-    ~H"""
-    <form phx-change="filter_show_members" class="p-3 bg-neutral-50 border-b border-neutral-200">
-      <input
-        type="text"
-        value={@show_member_filter}
-        placeholder="Filter members..."
-        phx-debounce="300"
-        name="filter"
-        autocomplete="off"
-        data-1p-ignore
-        class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-neutral-900 text-sm"
+      <.group_panel
+        account={@account}
+        group={@selected_group}
+        query_params={@query_params}
+        flash={@flash}
+        panel={@group_panel}
+        form_state={@group_form}
+        members_state={@group_members}
+        resources_state={@group_resources}
+        conditions_state={@grant_conditions}
       />
-    </form>
+    </div>
     """
   end
 
-  defp member_list(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:item_class, fn -> "p-3 flex items-center justify-between group" end)
-      |> assign(:has_actions, Map.get(assigns, :actions) != nil)
+  defp base_group_assigns(socket) do
+    [
+      group_panel: group_panel_state(),
+      group_form: group_form_state(),
+      group_members: group_members_state(),
+      group_resources: group_resources_state(),
+      grant_conditions: grant_conditions_state(socket)
+    ]
+  end
 
-    ~H"""
-    <ul :if={@members != []} class="divide-y divide-neutral-200 h-64 overflow-y-auto">
-      <li :for={actor <- @members} class={@item_class}>
-        <div class={["flex items-center gap-3", @has_actions && "flex-1 min-w-0"]}>
-          <%= if Map.get(assigns, :badge) do %>
-            {render_slot(@badge, actor)}
-          <% end %>
-          <div class={@has_actions && "flex-1 min-w-0"}>
-            <p class={["text-sm font-medium text-neutral-900", @has_actions && "truncate"]}>
-              {actor.name}
-            </p>
-            <p :if={actor.email} class={["text-xs text-neutral-500", @has_actions && "truncate"]}>
-              {actor.email}
-            </p>
-          </div>
-        </div>
-        <%= if @has_actions do %>
-          {render_slot(@actions, actor)}
-        <% end %>
-      </li>
-    </ul>
+  defp group_panel_state(overrides \\ []) do
+    Map.merge(
+      %{
+        view: :list,
+        tab: :members,
+        confirm_delete?: false,
+        show_member_filter: "",
+        member_page: 1,
+        member_pages: 1,
+        member_total: 0
+      },
+      Map.new(overrides)
+    )
+  end
 
-    <div :if={@members == []} class="flex items-center justify-center h-64 bg-white">
-      <p class="text-sm text-neutral-500">
-        {render_slot(@empty_message)}
-      </p>
-    </div>
-    """
+  defp group_form_state(form \\ nil, overrides \\ []) do
+    Map.merge(
+      %{
+        form: form,
+        members_to_add: [],
+        members_to_remove: [],
+        member_search_results: nil,
+        last_member_search: ""
+      },
+      Map.new(overrides)
+    )
+  end
+
+  defp group_members_state(overrides \\ []) do
+    Map.merge(%{panel_members: []}, Map.new(overrides))
+  end
+
+  defp group_resources_state(overrides \\ []) do
+    Map.merge(
+      %{
+        resources: [],
+        tab_view: :list,
+        available_resources: [],
+        grant_selected_resource_ids: [],
+        grant_resource_form: nil,
+        grant_resource_search: "",
+        resource_access_actions_open_id: nil,
+        confirm_remove_resource_access_id: nil
+      },
+      Map.new(overrides)
+    )
+  end
+
+  defp grant_conditions_state(socket, overrides \\ []) do
+    timezone =
+      socket.private
+      |> Map.get(:connect_params, %{})
+      |> Map.get("timezone", "UTC")
+
+    Map.merge(
+      %{
+        providers: [],
+        timezone: timezone,
+        active_conditions: [],
+        conditions_dropdown_open?: false,
+        location_search: "",
+        location_operator: "is_in",
+        location_values: [],
+        ip_range_operator: "is_in_cidr",
+        ip_range_values: [],
+        ip_range_input: "",
+        auth_provider_operator: "is_in",
+        auth_provider_values: [],
+        tod_values: [],
+        tod_adding?: false,
+        tod_pending: %{"on" => "", "off" => "", "days" => []},
+        tod_pending_error: nil
+      },
+      Map.new(overrides)
+    )
+  end
+
+  defp merge_state(socket, key, updates) do
+    update(socket, key, &Map.merge(&1, Map.new(updates)))
+  end
+
+  @spec valid_tod_range?(String.t(), String.t()) :: boolean()
+  defp valid_tod_range?(on, off) do
+    with [on_h, on_m | _] <- String.split(on, ":"),
+         [off_h, off_m | _] <- String.split(off, ":"),
+         {on_h, ""} <- Integer.parse(on_h),
+         {on_m, ""} <- Integer.parse(on_m),
+         {off_h, ""} <- Integer.parse(off_h),
+         {off_m, ""} <- Integer.parse(off_m) do
+      on_h * 60 + on_m < off_h * 60 + off_m
+    else
+      _ -> false
+    end
   end
 
   defp editable_group?(%{type: :managed, name: "Everyone"}), do: false
   defp editable_group?(%{idp_id: nil}), do: true
   defp editable_group?(_group), do: false
 
-  defp deletable_group?(%{name: "Everyone"}), do: false
-  defp deletable_group?(_group), do: true
+  @spec load_panel_members(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  defp load_panel_members(socket) do
+    group = socket.assigns.selected_group
+    subject = socket.assigns.subject
+    page = socket.assigns.group_panel.member_page
+    filter = socket.assigns.group_panel.show_member_filter
+
+    {members, total} =
+      Database.list_group_members(group, subject, page, @member_page_size, filter)
+
+    socket
+    |> assign(group_members: group_members_state(panel_members: members))
+    |> merge_state(:group_panel,
+      member_total: total,
+      member_pages: max(1, ceil(total / @member_page_size))
+    )
+  end
 
   defp directory_display_name(%{directory_name: name}) when not is_nil(name), do: name
   defp directory_display_name(%{idp_id: idp_id}) when not is_nil(idp_id), do: "Unknown"
   defp directory_display_name(_), do: "Firezone"
 
-  defp get_idp_id(nil), do: nil
-
-  defp get_idp_id(idp_id) do
-    case String.split(idp_id, ":", parts: 2) do
-      [_provider, actual_id] -> actual_id
-      _ -> idp_id
-    end
-  end
-
-  defp filter_members(actors, filter) do
-    if has_content?(filter) do
-      search_pattern = String.downcase(filter)
-
-      Enum.filter(actors, fn actor ->
-        String.contains?(String.downcase(actor.name || ""), search_pattern) or
-          String.contains?(String.downcase(actor.email || ""), search_pattern)
-      end)
-    else
-      actors
-    end
-  end
+  defp deletable_group?(%{name: "Everyone"}), do: false
+  defp deletable_group?(_group), do: true
 
   # Utility helpers
   defp has_content?(str), do: String.trim(str) != ""
 
   defp uniq_by_id(list), do: Enum.uniq_by(list, & &1.id)
 
-  defp handle_success(socket, message) do
-    socket
-    |> put_flash(:success, message)
-    |> reload_live_table!("groups")
-    |> close_modal()
-  end
-
-  defp edit_form_unchanged?(form, members_to_add, members_to_remove) do
-    not form.source.valid? or
-      (Enum.empty?(form.source.changes) and members_to_add == [] and members_to_remove == [])
-  end
-
   # Navigation helpers
-  defp row_patch_path(group, query_params) do
-    ~p"/#{group.account_id}/groups/#{group.id}?#{query_params}"
-  end
-
-  defp close_modal(socket) do
+  defp close_panel(socket) do
     if return_to = handle_return_to(socket) do
       push_navigate(socket, to: return_to)
     else
-      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{socket.assigns.query_params}")
+      params = Map.drop(socket.assigns.query_params, ["tab"])
+      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")
     end
   end
 
@@ -807,74 +1011,61 @@ defmodule PortalWeb.Groups do
   defp validate_return_to(_return_to, _current_path), do: nil
 
   # Member search helpers
-  defp get_search_results(search_term, socket) do
+  defp get_search_results(search_term, selected_group, members_to_add, members_to_remove, subject) do
     if has_content?(search_term) do
-      group = Map.get(socket.assigns, :group, %Portal.Group{actors: []})
-      members_to_remove = Map.get(socket.assigns, :members_to_remove, [])
+      group = selected_group || %Portal.Group{actors: []}
       remove_ids = MapSet.new(members_to_remove, & &1.id)
 
       # Exclude current members (minus those pending removal) and pending additions
       current_actors = Enum.reject(group.actors, &MapSet.member?(remove_ids, &1.id))
-      exclude_actors = uniq_by_id(current_actors ++ socket.assigns.members_to_add)
+      exclude_actors = uniq_by_id(current_actors ++ members_to_add)
 
-      Database.search_actors(search_term, socket.assigns.subject, exclude_actors)
+      Database.search_actors(search_term, subject, exclude_actors)
     else
       nil
     end
   end
 
-  # Member management helpers
-  defp get_all_members_for_display(group, members_to_add, members_to_remove) do
-    # Combine current members and members to add, remove duplicates
-    all_members = uniq_by_id(group.actors ++ members_to_add)
-
-    # Remove members marked for deletion, then add them back at the end (to show "To Remove")
-    all_members
-    |> Enum.reject(fn actor -> Enum.any?(members_to_remove, &(&1.id == actor.id)) end)
-    |> Kernel.++(members_to_remove)
-  end
-
-  defp get_member_count(all_members, members_to_remove) do
-    length(all_members) - length(members_to_remove)
-  end
-
-  defp add_member(actor, socket) do
-    members_to_remove = Enum.reject(socket.assigns.members_to_remove, &(&1.id == actor.id))
+  defp add_member(actor, selected_group, members_to_add, members_to_remove) do
+    members_to_remove = Enum.reject(members_to_remove, &(&1.id == actor.id))
 
     members_to_add =
-      if current_member?(actor, socket.assigns.group) do
-        socket.assigns.members_to_add
+      if current_member?(actor, selected_group) do
+        members_to_add
       else
-        uniq_by_id([actor | socket.assigns.members_to_add])
+        uniq_by_id([actor | members_to_add])
       end
 
     {members_to_add, members_to_remove}
   end
 
-  defp remove_member(actor_id, socket) do
-    members_to_add = Enum.reject(socket.assigns.members_to_add, &(&1.id == actor_id))
+  defp remove_member(actor_id, selected_group, members_to_add, members_to_remove) do
+    members_to_add = Enum.reject(members_to_add, &(&1.id == actor_id))
 
     members_to_remove =
-      if actor = find_current_member(actor_id, socket.assigns.group) do
-        uniq_by_id([actor | socket.assigns.members_to_remove])
+      if actor = find_current_member(actor_id, selected_group) do
+        uniq_by_id([actor | members_to_remove])
       else
-        socket.assigns.members_to_remove
+        members_to_remove
       end
 
     {members_to_add, members_to_remove}
   end
+
+  defp current_member?(_actor, nil), do: false
 
   defp current_member?(actor, group) do
     Enum.any?(group.actors, &(&1.id == actor.id))
   end
 
+  defp find_current_member(_actor_id, nil), do: nil
+
   defp find_current_member(actor_id, group) do
     Enum.find(group.actors, &(&1.id == actor_id))
   end
 
-  defp build_attrs_with_memberships(attrs, socket) do
-    group = socket.assigns.group
-    final_member_ids = calculate_final_member_ids(socket)
+  defp build_attrs_with_memberships(attrs, group, members_to_add, members_to_remove) do
+    final_member_ids = calculate_final_member_ids(group, members_to_add, members_to_remove)
 
     # Build a lookup from actor_id to the existing membership struct so we can
     # include PK fields (id, account_id) for unchanged memberships. Without these,
@@ -892,20 +1083,27 @@ defmodule PortalWeb.Groups do
     Map.put(attrs, "memberships", memberships)
   end
 
-  defp build_attrs_with_memberships_for_add(attrs, socket) do
-    member_ids = Enum.map(socket.assigns.members_to_add, & &1.id)
+  defp build_attrs_with_memberships_for_add(attrs, members_to_add) do
+    member_ids = Enum.map(members_to_add, & &1.id)
     memberships = Enum.map(member_ids, &%{actor_id: &1})
     Map.put(attrs, "memberships", memberships)
   end
 
-  defp calculate_final_member_ids(socket) do
-    current_ids = Enum.map(socket.assigns.group.actors, & &1.id)
-    to_add_ids = Enum.map(socket.assigns.members_to_add, & &1.id)
-    to_remove_ids = Enum.map(socket.assigns.members_to_remove, & &1.id)
+  defp calculate_final_member_ids(group, members_to_add, members_to_remove) do
+    current_ids = Enum.map(group.actors, & &1.id)
+    to_add_ids = Enum.map(members_to_add, & &1.id)
+    to_remove_ids = Enum.map(members_to_remove, & &1.id)
 
     (current_ids ++ to_add_ids)
     |> Enum.uniq()
     |> Enum.reject(&(&1 in to_remove_ids))
+  end
+
+  @spec to_grant_resource_form() :: Phoenix.HTML.Form.t()
+  defp to_grant_resource_form do
+    %Portal.Policy{}
+    |> Ecto.Changeset.change()
+    |> to_form(as: :policy)
   end
 
   # Changesets
@@ -928,16 +1126,18 @@ defmodule PortalWeb.Groups do
     alias Portal.Safe
     alias Portal.Directory
     alias Portal.Repo.Filter
+    alias Portal.Repo.OffsetPaginator
 
     def all do
+      index_query()
+      |> hydrate_group_query()
+    end
+
+    defp base_group_query do
       from(groups in Portal.Group, as: :groups)
     end
 
-    # Inlined from Portal.Actors.list_groups
-    def list_groups(subject, opts \\ []) do
-      # Extract order_by to handle member_count sorting specially
-      {order_by, opts} = Keyword.pop(opts, :order_by, [])
-
+    defp joined_group_query(query) do
       member_counts_query =
         from(m in Portal.Membership,
           group_by: m.group_id,
@@ -947,25 +1147,74 @@ defmodule PortalWeb.Groups do
           }
         )
 
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:left, [groups: g], mc in subquery(member_counts_query),
-          on: mc.group_id == g.id,
-          as: :member_counts
+      policy_counts_query =
+        from(p in Portal.Policy,
+          where: is_nil(p.disabled_at),
+          group_by: p.group_id,
+          select: %{
+            group_id: p.group_id,
+            count: count(p.id)
+          }
         )
-        |> join(:left, [groups: g], d in Directory,
-          on: d.id == g.directory_id and d.account_id == g.account_id,
-          as: :directory
-        )
-        |> where(
-          [groups: g],
-          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-        )
-        |> select_merge([groups: g, member_counts: mc, directory: d], %{
-          count: coalesce(mc.count, 0),
-          member_count: coalesce(mc.count, 0),
-          directory_type: d.type
-        })
+
+      query
+      |> join(:left, [groups: g], mc in subquery(member_counts_query),
+        on: mc.group_id == g.id,
+        as: :member_counts
+      )
+      |> join(:left, [groups: g], pc in subquery(policy_counts_query),
+        on: pc.group_id == g.id,
+        as: :policy_counts
+      )
+      |> join(:left, [groups: g], d in Directory,
+        on: d.id == g.directory_id and d.account_id == g.account_id,
+        as: :directory
+      )
+      |> join(:left, [directory: d], gd in Portal.Google.Directory,
+        on: gd.id == d.id and d.type == :google,
+        as: :google_directory
+      )
+      |> join(:left, [directory: d], ed in Portal.Entra.Directory,
+        on: ed.id == d.id and d.type == :entra,
+        as: :entra_directory
+      )
+      |> join(:left, [directory: d], od in Portal.Okta.Directory,
+        on: od.id == d.id and d.type == :okta,
+        as: :okta_directory
+      )
+    end
+
+    defp hydrate_group_query(query) do
+      query
+      |> select_merge([groups: g, member_counts: mc, policy_counts: pc, directory: d], %{
+        count: coalesce(mc.count, 0),
+        member_count: coalesce(mc.count, 0),
+        policy_count: coalesce(pc.count, 0),
+        directory_type: d.type
+      })
+      |> select_merge(
+        [google_directory: gd, entra_directory: ed, okta_directory: od],
+        %{
+          directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
+        }
+      )
+    end
+
+    defp index_query do
+      base_group_query()
+      |> joined_group_query()
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
+    end
+
+    # Inlined from Portal.Actors.list_groups
+    def list_groups(subject, opts \\ []) do
+      {filter, opts} = Keyword.pop(opts, :filter, [])
+      {order_by, opts} = Keyword.pop(opts, :order_by, [])
+      {page_opts, _opts} = Keyword.pop(opts, :page, [])
+      base_query = index_query()
 
       # Apply manual ordering with NULLS LAST for count field
       {query, final_order_by} =
@@ -973,7 +1222,7 @@ defmodule PortalWeb.Groups do
           [{:member_counts, :desc, :count}] ->
             # Apply ordering manually with NULLS LAST, don't pass to Safe.list
             updated_query =
-              query
+              base_query
               |> order_by([member_counts: mc], fragment("? DESC NULLS LAST", mc.count))
 
             {updated_query, []}
@@ -981,19 +1230,108 @@ defmodule PortalWeb.Groups do
           [{:member_counts, :asc, :count}] ->
             # Apply ordering manually with NULLS FIRST, don't pass to Safe.list
             updated_query =
-              query
+              base_query
               |> order_by([member_counts: mc], fragment("? ASC NULLS FIRST", mc.count))
 
             {updated_query, []}
 
           _ ->
             # Let Safe.list handle the ordering normally
-            {query, order_by}
+            {base_query, order_by}
+        end
+
+      with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, final_order_by, page_opts),
+           {:ok, filtered_query} <- Filter.filter(query, __MODULE__, filter),
+           count when is_integer(count) <-
+             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+           group_ids <- list_group_ids(filtered_query, paginator_opts, subject),
+           {group_ids, metadata} <- OffsetPaginator.metadata(group_ids, paginator_opts) do
+        groups = fetch_groups_page(group_ids, subject)
+        {:ok, groups, %{metadata | count: count}}
+      else
+        {:error, :unauthorized} = error -> error
+        {:error, _reason} = error -> error
+      end
+    end
+
+    defp list_group_ids(filtered_query, paginator_opts, subject) do
+      filtered_query
+      |> select([groups: g], g.id)
+      |> OffsetPaginator.query(paginator_opts)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+    end
+
+    defp fetch_groups_page([], _subject), do: []
+
+    defp fetch_groups_page(group_ids, subject) do
+      groups =
+        index_query()
+        |> hydrate_group_query()
+        |> where([groups: g], g.id in ^group_ids)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+
+      groups_by_id = Map.new(groups, &{&1.id, &1})
+
+      Enum.map(group_ids, fn group_id ->
+        Map.fetch!(groups_by_id, group_id)
+      end)
+    end
+
+    def count_groups_with_policies(subject, filter \\ []) do
+      query =
+        from(g in Portal.Group, as: :groups)
+        |> join(:inner, [groups: g], p in Portal.Policy,
+          on: p.group_id == g.id and is_nil(p.disabled_at),
+          as: :policies
+        )
+        |> where(
+          [groups: g],
+          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+        )
+        |> select([groups: g], count(g.id, :distinct))
+
+      query =
+        case Filter.filter(query, __MODULE__, filter) do
+          {:ok, filtered} -> filtered
+          _ -> query
         end
 
       query
       |> Safe.scoped(subject, :replica)
-      |> Safe.list(__MODULE__, Keyword.put(opts, :order_by, final_order_by))
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        count -> count
+      end
+    end
+
+    def count_total_members(subject) do
+      member_counts_query =
+        from(m in Portal.Membership,
+          group_by: m.group_id,
+          select: %{group_id: m.group_id, count: count(m.actor_id)}
+        )
+
+      from(g in Portal.Group, as: :groups)
+      |> join(:left, [groups: g], mc in subquery(member_counts_query),
+        on: mc.group_id == g.id,
+        as: :member_counts
+      )
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
+      |> select([member_counts: mc], sum(coalesce(mc.count, 0)))
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        count -> count
+      end
     end
 
     def cursor_fields do
@@ -1109,6 +1447,180 @@ defmodule PortalWeb.Groups do
            |> Safe.all() do
         actors when is_list(actors) -> actors
         {:error, _} -> []
+      end
+    end
+
+    def disable_policy_for_resource(group, resource_id, subject) do
+      from(p in Portal.Policy, as: :policies)
+      |> where(
+        [policies: p],
+        p.group_id == ^group.id and p.resource_id == ^resource_id and is_nil(p.disabled_at)
+      )
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!()
+      |> then(fn policy ->
+        Ecto.Changeset.change(policy, %{disabled_at: DateTime.utc_now()})
+        |> Safe.scoped(subject)
+        |> Safe.update()
+      end)
+    end
+
+    def enable_policy_for_resource(group, resource_id, subject) do
+      from(p in Portal.Policy, as: :policies)
+      |> where(
+        [policies: p],
+        p.group_id == ^group.id and p.resource_id == ^resource_id and not is_nil(p.disabled_at)
+      )
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!()
+      |> then(fn policy ->
+        Ecto.Changeset.change(policy, %{disabled_at: nil})
+        |> Safe.scoped(subject)
+        |> Safe.update()
+      end)
+    end
+
+    def delete_policy_for_resource(group, resource_id, subject) do
+      from(p in Portal.Policy, as: :policies)
+      |> where([policies: p], p.group_id == ^group.id and p.resource_id == ^resource_id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!()
+      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
+    end
+
+    def list_group_members(group, subject, page, page_size, filter) do
+      base =
+        from(a in Portal.Actor, as: :actors)
+        |> join(:inner, [actors: a], m in Portal.Membership,
+          on: m.actor_id == a.id and m.group_id == ^group.id,
+          as: :memberships
+        )
+        |> order_by([actors: a], asc: a.name)
+
+      base =
+        if filter != "" do
+          search = "%#{String.downcase(filter)}%"
+
+          where(
+            base,
+            [actors: a],
+            ilike(a.name, ^search) or ilike(a.email, ^search)
+          )
+        else
+          base
+        end
+
+      total =
+        base
+        |> exclude(:order_by)
+        |> select([actors: a], count(a.id))
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one()
+        |> case do
+          {:error, _} -> 0
+          nil -> 0
+          n -> n
+        end
+
+      members =
+        base
+        |> limit(^page_size)
+        |> offset(^((page - 1) * page_size))
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+        |> case do
+          {:error, _} -> []
+          list -> list
+        end
+
+      {members, total}
+    end
+
+    def remove_group_member(group, actor_id, subject) do
+      from(m in Portal.Membership, as: :memberships)
+      |> where([memberships: m], m.group_id == ^group.id and m.actor_id == ^actor_id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one!()
+      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
+    end
+
+    def list_available_resources(existing_resource_ids, subject) do
+      from(r in Portal.Resource, as: :resources)
+      |> where([resources: r], r.id not in ^existing_resource_ids)
+      |> order_by([resources: r], asc: r.name)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        resources -> resources
+      end
+    end
+
+    def insert_policy(attrs, subject) do
+      import Ecto.Changeset
+
+      changeset =
+        %Portal.Policy{}
+        |> cast(attrs, ~w[group_id resource_id]a)
+        |> validate_required(~w[group_id resource_id]a)
+        |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
+        |> Portal.Policy.changeset()
+        |> put_change(:account_id, subject.account.id)
+        |> populate_group_idp_id(subject)
+
+      Safe.scoped(changeset, subject)
+      |> Safe.insert()
+    end
+
+    def list_providers(subject) do
+      [
+        Portal.Userpass.AuthProvider,
+        Portal.EmailOTP.AuthProvider,
+        Portal.OIDC.AuthProvider,
+        Portal.Google.AuthProvider,
+        Portal.Entra.AuthProvider,
+        Portal.Okta.AuthProvider
+      ]
+      |> Enum.flat_map(fn schema ->
+        from(p in schema, where: not p.is_disabled)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.all()
+      end)
+    end
+
+    defp populate_group_idp_id(changeset, subject) do
+      import Ecto.Changeset
+
+      case get_change(changeset, :group_id) do
+        nil ->
+          changeset
+
+        group_id ->
+          idp_id =
+            from(g in Portal.Group, where: g.id == ^group_id, select: g.idp_id)
+            |> Safe.scoped(subject, :replica)
+            |> Safe.one()
+
+          put_change(changeset, :group_idp_id, idp_id)
+      end
+    end
+
+    def list_resources_for_group(group, subject) do
+      from(r in Portal.Resource, as: :resources)
+      |> join(:inner, [resources: r], p in Portal.Policy,
+        on: p.resource_id == r.id and p.group_id == ^group.id,
+        as: :policies
+      )
+      |> select_merge([policies: p], %{
+        policy_id: p.id,
+        policy_disabled_at: p.disabled_at
+      })
+      |> order_by([policies: p, resources: r], desc: is_nil(p.disabled_at), asc: r.name)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        resources -> resources
       end
     end
 

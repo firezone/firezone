@@ -2,6 +2,12 @@
 
 @config '../../tailwind.config.mjs';
 
+@theme inline {
+  --font-sans: var(--font-roboto), sans-serif;
+  --font-serif: var(--font-roboto-serif), serif;
+  --font-mono: var(--font-roboto-mono), monospace;
+}
+
 @variant dark (&:where(.dark, .dark *));
 
 @utility fade-side {
@@ -67,19 +73,6 @@
 
 @utility bg-hero {
   background-image: url("/images/ribbon.svg");
-}
-
-html {
-  font-family: var(--font-source-sans-3);
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-manrope);
 }
 
 @layer base {

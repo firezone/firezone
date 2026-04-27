@@ -125,6 +125,12 @@ defmodule Portal.Presence do
         |> PubSub.subscribe()
       end
 
+      def unsubscribe(actor_id) do
+        actor_id
+        |> topic()
+        |> PubSub.unsubscribe()
+      end
+
       def online_token_ids(actor_id) do
         actor_id
         |> list()
@@ -166,6 +172,18 @@ defmodule Portal.Presence do
         session_id,
         %{}
       )
+    end
+
+    def subscribe(actor_id) do
+      actor_id
+      |> topic()
+      |> PubSub.subscribe()
+    end
+
+    def unsubscribe(actor_id) do
+      actor_id
+      |> topic()
+      |> PubSub.unsubscribe()
     end
 
     def online_session_ids(actor_id) do

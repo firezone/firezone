@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agentskills.io/schema/v0.2.0/index.json",
+  "skills": [
+    {
+      "name": "firezone-rest-api",
+      "type": "openapi",
+      "description": "Manage Firezone zero-trust access via the REST API. Create and manage resources, policies, sites, gateways, actors, and groups.",
+      "url": "https://api.firezone.dev/openapi"
+    }
+  ]
+}
