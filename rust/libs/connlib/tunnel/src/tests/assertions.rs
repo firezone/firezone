@@ -322,7 +322,7 @@ fn assert_packets_properties<T, U>(
     }
 
     for (dst_client_id, expected_handshakes) in &all_expected_client_handshakes {
-        let mut num_expected_handshakes = expected_handshakes.len();
+        let num_expected_handshakes = expected_handshakes.len();
 
         let received_requests_for_client = received_requests_by_client.get(dst_client_id).unwrap();
 
@@ -330,10 +330,8 @@ fn assert_packets_properties<T, U>(
             let _guard = make_span(*t, *u).entered();
 
             let src_ref_client = ref_clients.get(src_client_id).unwrap();
-            let dst_ref_client = ref_clients.get(dst_client_id).unwrap();
 
-            let Some((sent_at, client_sent_request)) =
-                all_sent_requests.get(&(*src_client_id, (*t, *u)))
+            let Some((_, client_sent_request)) = all_sent_requests.get(&(*src_client_id, (*t, *u)))
             else {
                 tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
                 continue;
@@ -341,13 +339,6 @@ fn assert_packets_properties<T, U>(
             let Some(client_received_reply) =
                 all_received_replies_on_client.get(&(*src_client_id, (*t, *u).reply_to()))
             else {
-                // If the request was made after we reset our connections, missing a reply is okay.
-                if dst_ref_client.has_reset_connections_within_ice_timeout(*sent_at) {
-                    tracing::debug!(target: "assertions", %dst_client_id, "Destination client reset its connections and packet got lost");
-                    num_expected_handshakes -= 1;
-                    continue;
-                }
-
                 tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} reply on client");
                 continue;
             };
