@@ -121,9 +121,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div
-            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4 font-manrope`}
-          >
+          <div className="p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4">
             <h3 className="mb-6 text-xl tracking-tight font-semibold text-neutral-900">
               Team
             </h3>
@@ -221,9 +219,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div
-            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-light mb-4 font-manrope`}
-          >
+          <div className="p-8 md:p-6 lg:p-8 xl:p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-light mb-4">
             <div className="mb-6 flex items-center justify-between">
               <h3 className="text-xl tracking-tight font-semibold text-neutral-50">
                 Enterprise
