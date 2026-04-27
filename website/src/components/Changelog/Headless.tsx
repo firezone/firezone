@@ -9,11 +9,12 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.8" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>
           Takes into account traffic filters when routing packets to resources.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.7" date={new Date("2026-03-16")}>
         <ChangeItem pull={12355}>
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
