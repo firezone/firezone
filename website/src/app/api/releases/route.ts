@@ -9,7 +9,7 @@ export async function GET() {
     // mark:current-android-version
     android: "1.5.9",
     // mark:current-gui-version
-    gui: "1.5.11",
+    gui: "1.5.12",
     // mark:current-headless-version
     headless: "1.5.7",
     // mark:current-gateway-version

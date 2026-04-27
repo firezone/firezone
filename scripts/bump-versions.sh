@@ -157,8 +157,8 @@ function android() {
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.11"
-    next_gui_client_version="1.5.12"
+    current_gui_client_version="1.5.12"
+    next_gui_client_version="1.5.13"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     update_version_marker "mark:current-gui-version" "$current_gui_client_version"
