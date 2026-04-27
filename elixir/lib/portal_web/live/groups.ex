@@ -54,6 +54,7 @@ defmodule PortalWeb.Groups do
 
     if editable_group?(group) do
       changeset = changeset(group, %{})
+      resources = preserved_group_resources(socket, id)
 
       {:noreply,
        socket
@@ -61,7 +62,8 @@ defmodule PortalWeb.Groups do
        |> assign(base_group_assigns(socket))
        |> assign(
          group_panel: group_panel_state(view: :edit_form),
-         group_form: group_form_state(to_form(changeset))
+         group_form: group_form_state(to_form(changeset)),
+         group_resources: group_resources_state(resources: resources)
        )}
     else
       {:noreply,
@@ -73,22 +75,38 @@ defmodule PortalWeb.Groups do
 
   # Show Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    group = Database.get_group_with_actors!(id, socket.assigns.subject)
-    resources = Database.list_resources_for_group(group, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
+    tab = String.to_existing_atom(Map.get(params, "tab", "members"))
 
-    socket =
-      socket
-      |> assign(selected_group: group)
-      |> assign(base_group_assigns(socket))
-      |> assign(
-        group_panel:
-          group_panel_state(tab: String.to_existing_atom(Map.get(params, "tab", "members"))),
-        group_resources: group_resources_state(resources: resources)
-      )
-      |> load_panel_members()
+    if selected_group_matches?(socket, id) do
+      socket =
+        socket
+        |> assign(base_group_assigns(socket))
+        |> assign(
+          selected_group: socket.assigns.selected_group,
+          group_panel: group_panel_state(tab: tab),
+          group_resources:
+            group_resources_state(resources: socket.assigns.group_resources.resources)
+        )
+        |> load_panel_members_from_selected_group()
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      group = Database.get_group_with_actors!(id, socket.assigns.subject)
+      resources = Database.list_resources_for_group(group, socket.assigns.subject)
+
+      socket =
+        socket
+        |> assign(selected_group: group)
+        |> assign(base_group_assigns(socket))
+        |> assign(
+          group_panel: group_panel_state(tab: tab),
+          group_resources: group_resources_state(resources: resources)
+        )
+        |> load_panel_members()
+
+      {:noreply, socket}
+    end
   end
 
   # Default handler
@@ -661,8 +679,14 @@ defmodule PortalWeb.Groups do
 
     case Database.create(changeset, socket.assigns.subject) do
       {:ok, group} ->
+        group =
+          group
+          |> Map.put(:actors, Enum.sort_by(socket.assigns.group_form.members_to_add, &actor_sort_key/1))
+          |> Map.put(:memberships, build_memberships_for_group(group, socket.assigns.group_form.members_to_add))
+
         socket =
           socket
+          |> assign(selected_group: group)
           |> put_flash(:success, "Group created successfully")
           |> reload_live_table!("groups")
           |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
@@ -688,8 +712,17 @@ defmodule PortalWeb.Groups do
 
       case Database.update(changeset, socket.assigns.subject) do
         {:ok, group} ->
+          updated_group =
+            apply_member_updates_to_group(
+              socket.assigns.selected_group,
+              group,
+              socket.assigns.group_form.members_to_add,
+              socket.assigns.group_form.members_to_remove
+            )
+
           socket =
             socket
+            |> assign(selected_group: updated_group)
             |> put_flash(:success, "Group updated successfully")
             |> reload_live_table!("groups")
             |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
@@ -953,18 +986,49 @@ defmodule PortalWeb.Groups do
   defp editable_group?(%{idp_id: nil}), do: true
   defp editable_group?(_group), do: false
 
-  @spec load_panel_members(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
-  defp load_panel_members(socket) do
+  @spec load_panel_members(Phoenix.LiveView.Socket.t(), keyword()) :: Phoenix.LiveView.Socket.t()
+  defp load_panel_members(socket, opts \\ []) do
     group = socket.assigns.selected_group
     subject = socket.assigns.subject
     page = socket.assigns.group_panel.member_page
     filter = socket.assigns.group_panel.show_member_filter
+    repo = Keyword.get(opts, :repo, :replica)
 
     {members, total} =
-      Database.list_group_members(group, subject, page, @member_page_size, filter)
+      Database.list_group_members(group, subject, page, @member_page_size, filter, repo: repo)
 
     socket
     |> assign(group_members: group_members_state(panel_members: members))
+    |> merge_state(:group_panel,
+      member_total: total,
+      member_pages: max(1, ceil(total / @member_page_size))
+    )
+  end
+
+  defp load_panel_members_from_selected_group(socket) do
+    group = socket.assigns.selected_group
+    page = socket.assigns.group_panel.member_page
+    filter = socket.assigns.group_panel.show_member_filter
+
+    members =
+      group.actors
+      |> Enum.filter(fn actor ->
+        if filter == "" do
+          true
+        else
+          normalized = String.downcase(filter)
+          String.contains?(String.downcase(actor.name || ""), normalized) or
+            String.contains?(String.downcase(actor.email || ""), normalized)
+        end
+      end)
+      |> Enum.sort_by(&actor_sort_key/1)
+
+    total = length(members)
+    offset = max(page - 1, 0) * @member_page_size
+    paged_members = Enum.slice(members, offset, @member_page_size)
+
+    socket
+    |> assign(group_members: group_members_state(panel_members: paged_members))
     |> merge_state(:group_panel,
       member_total: total,
       member_pages: max(1, ceil(total / @member_page_size))
@@ -977,6 +1041,52 @@ defmodule PortalWeb.Groups do
 
   defp deletable_group?(%{name: "Everyone"}), do: false
   defp deletable_group?(_group), do: true
+
+  defp selected_group_matches?(socket, id) do
+    match?(%{id: ^id}, socket.assigns.selected_group)
+  end
+
+  defp preserved_group_resources(socket, id) do
+    if selected_group_matches?(socket, id) do
+      socket.assigns.group_resources.resources
+    else
+      []
+    end
+  end
+
+  defp apply_member_updates_to_group(existing_group, updated_group, members_to_add, members_to_remove) do
+    remove_ids = MapSet.new(members_to_remove, & &1.id)
+
+    actors =
+      existing_group.actors
+      |> Enum.reject(&MapSet.member?(remove_ids, &1.id))
+      |> Kernel.++(members_to_add)
+      |> uniq_by_id()
+      |> Enum.sort_by(&actor_sort_key/1)
+
+    memberships =
+      existing_group.memberships
+      |> Enum.reject(&MapSet.member?(remove_ids, &1.actor_id))
+      |> Kernel.++(build_memberships_for_group(updated_group, members_to_add))
+      |> Enum.uniq_by(& &1.actor_id)
+
+    updated_group
+    |> Map.put(:actors, actors)
+    |> Map.put(:memberships, memberships)
+  end
+
+  defp build_memberships_for_group(group, actors) do
+    Enum.map(actors, fn actor ->
+      %Portal.Membership{
+        account_id: group.account_id,
+        group_id: group.id,
+        actor_id: actor.id,
+        actor: actor
+      }
+    end)
+  end
+
+  defp actor_sort_key(actor), do: {String.downcase(actor.name || ""), actor.id}
 
   # Utility helpers
   defp has_content?(str), do: String.trim(str) != ""
@@ -1488,7 +1598,9 @@ defmodule PortalWeb.Groups do
       |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
     end
 
-    def list_group_members(group, subject, page, page_size, filter) do
+    def list_group_members(group, subject, page, page_size, filter, opts \\ []) do
+      repo = Keyword.get(opts, :repo, :replica)
+
       base =
         from(a in Portal.Actor, as: :actors)
         |> join(:inner, [actors: a], m in Portal.Membership,
@@ -1514,7 +1626,7 @@ defmodule PortalWeb.Groups do
         base
         |> exclude(:order_by)
         |> select([actors: a], count(a.id))
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject, repo)
         |> Safe.one()
         |> case do
           {:error, _} -> 0
@@ -1526,7 +1638,7 @@ defmodule PortalWeb.Groups do
         base
         |> limit(^page_size)
         |> offset(^((page - 1) * page_size))
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject, repo)
         |> Safe.all()
         |> case do
           {:error, _} -> []
@@ -1624,7 +1736,9 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def get_group_with_actors!(id, subject) do
+    def get_group_with_actors!(id, subject, opts \\ []) do
+      repo = Keyword.get(opts, :repo, :replica)
+
       query =
         from(g in Portal.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
@@ -1660,7 +1774,7 @@ defmodule PortalWeb.Groups do
         )
         |> preload([memberships: m, actors: a], memberships: m, actors: a)
 
-      query |> Safe.scoped(subject, :replica) |> Safe.one!(fallback_to_primary: true)
+      query |> Safe.scoped(subject, repo) |> Safe.one!(fallback_to_primary: true)
     end
 
     def preloads do
