@@ -22,12 +22,13 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.2" date={new Date("2026-04-27")}>
         <ChangeItem pull={12506}>
           Fixes an issue where the Gateway would disconnect from a relay under
           high-load.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.1" date={new Date("2026-03-16")}>
         <ChangeItem pull={12355}>
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
