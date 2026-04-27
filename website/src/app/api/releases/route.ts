@@ -11,7 +11,7 @@ export async function GET() {
     // mark:current-gui-version
     gui: "1.5.12",
     // mark:current-headless-version
-    headless: "1.5.7",
+    headless: "1.5.8",
     // mark:current-gateway-version
     gateway: "1.5.2",
   };
