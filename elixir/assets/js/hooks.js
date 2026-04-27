@@ -1,16 +1,6 @@
-import { initTabs, Popover } from "flowbite";
+import { Popover } from "flowbite";
 
 let Hooks = {};
-
-Hooks.Tabs = {
-  mounted() {
-    initTabs();
-  },
-
-  updated() {
-    initTabs();
-  },
-};
 
 /* The phx-disable-with attribute on submit buttons only applies to liveview forms.
  * However, we need to disable the submit button for regular forms as well to prevent
