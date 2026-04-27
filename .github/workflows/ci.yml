@@ -356,6 +356,9 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
+          - image: ${{ needs.data-plane.outputs.client_image }}
+            tag: ${{ github.sha }}
+            ci-name: sha
           - image: "ghcr.io/firezone/client"
             tag: "latest"
         gateway:
