@@ -24,6 +24,60 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
+  describe "billing plan UI" do
+    test "shows upgrade button for non-enterprise provisioned account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test", product_name: "Team"}}
+        })
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Upgrade plan"
+      refute html =~ "Contact your account manager for plan changes."
+    end
+
+    test "shows contact message instead of upgrade button for enterprise provisioned account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test", product_name: "Enterprise"}}
+        })
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Upgrade plan"
+      assert html =~ "Contact your account manager for plan changes."
+    end
+
+    test "shows neither upgrade button nor contact message for unprovisioned account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Upgrade plan"
+      refute html =~ "Contact your account manager for plan changes."
+    end
+  end
+
   describe "index (default action)" do
     test "renders account settings page with account slug", %{
       conn: conn,
