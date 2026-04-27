@@ -14,6 +14,7 @@ defmodule PortalWeb.Settings.Account do
       assign(socket,
         page_title: "Account",
         billing_provisioned: Billing.account_provisioned?(account),
+        billing_plan_type: Billing.plan_type(account),
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
@@ -66,7 +67,7 @@ defmodule PortalWeb.Settings.Account do
               This account has not had billing provisioned.
             </p>
             <div
-              :if={@billing_provisioned and Billing.plan_type(@account) == :enterprise}
+              :if={@billing_provisioned and @billing_plan_type == :enterprise}
               class="pt-2 border-t border-[var(--border)]"
             >
               <div class="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 p-3 flex gap-2.5 items-start">
@@ -85,7 +86,7 @@ defmodule PortalWeb.Settings.Account do
               </div>
             </div>
             <button
-              :if={@billing_provisioned and Billing.plan_type(@account) != :enterprise}
+              :if={@billing_provisioned and @billing_plan_type != :enterprise}
               phx-click="redirect_to_billing_portal"
               class="w-full mt-1 px-3 py-1.5 rounded text-xs font-medium border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
             >
