@@ -1387,7 +1387,7 @@ defmodule PortalWeb.Resources.Components do
                       <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
                       <.icon
                         name="ri-close-line"
-                        class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                        class="w-3.5 h-3.5 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
                     </button>
                   </li>

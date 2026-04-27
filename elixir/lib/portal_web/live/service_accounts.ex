@@ -80,6 +80,7 @@ defmodule PortalWeb.ServiceAccounts do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
       socket = handle_live_tables_params(socket, params, uri)
       changeset = changeset(actor, %{})
+      groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
 
       {:noreply,
        socket
@@ -88,7 +89,7 @@ defmodule PortalWeb.ServiceAccounts do
        |> assign(
          actor_panel: actor_panel_state(view: :edit, is_last_admin: false),
          actor_form: actor_form_state(to_form(changeset)),
-         actor_related: actor_related_state(),
+         actor_related: actor_related_state(groups: groups),
          actor_group_membership: actor_group_membership_state()
        )}
     else
@@ -777,7 +778,11 @@ defmodule PortalWeb.ServiceAccounts do
       Database.remove_group_member(group_id, actor, subject)
     end)
 
-    assign(socket, actor_group_membership: actor_group_membership_state())
+    groups = Database.get_groups_for_actor(actor.id, subject)
+
+    socket
+    |> assign(actor_group_membership: actor_group_membership_state())
+    |> merge_state(:actor_related, groups: groups)
   end
 
   defp parse_date_to_datetime(date_string) do

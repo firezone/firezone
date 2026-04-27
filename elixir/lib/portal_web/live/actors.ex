@@ -1126,7 +1126,11 @@ defmodule PortalWeb.Actors do
       Database.remove_group_member(group_id, actor, subject)
     end)
 
-    assign(socket, actor_group_membership: actor_group_membership_state())
+    groups = Database.get_groups_for_actor(actor.id, subject)
+
+    socket
+    |> assign(actor_group_membership: actor_group_membership_state())
+    |> merge_state(:actor_related, groups: groups)
   end
 
   # Helper functions

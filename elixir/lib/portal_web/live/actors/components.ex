@@ -1399,122 +1399,170 @@ defmodule PortalWeb.Actors.Components do
   attr :account, :any, required: true
 
   defp actor_group_picker(assigns) do
+    current_groups =
+      if Enum.empty?(assigns.pending_removals) do
+        assigns.current_groups
+      else
+        remove_ids = MapSet.new(assigns.pending_removals)
+        Enum.reject(assigns.current_groups, &MapSet.member?(remove_ids, &1.id))
+      end
+
+    removed_groups =
+      if Enum.empty?(assigns.pending_removals) do
+        []
+      else
+        remove_ids = MapSet.new(assigns.pending_removals)
+        Enum.filter(assigns.current_groups, &MapSet.member?(remove_ids, &1.id))
+      end
+
+    assigns =
+      assigns
+      |> assign(:current_groups, current_groups)
+      |> assign(:removed_groups, removed_groups)
+
     ~H"""
     <div>
       <% visible_count =
-        length(@current_groups) - length(@pending_removals) + length(@pending_additions) %>
+        length(@current_groups) + length(@pending_additions) %>
       <h3 class="text-sm font-medium text-[var(--text-secondary)] mb-2">
         Groups ({visible_count})
       </h3>
-      <div class="border border-[var(--border)] rounded-md overflow-hidden">
-        <div
-          class="p-3 bg-[var(--surface-raised)] border-b border-[var(--border)] relative"
-          phx-click-away="blur_group_search"
-        >
-          <div class="relative">
-            <.icon
-              name="ri-search-line"
-              class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
-            />
-            <input
-              type="text"
-              name="value"
-              placeholder="Search to add groups..."
-              phx-change="search_actor_groups"
-              phx-focus="focus_group_search"
-              phx-debounce="300"
-              autocomplete="off"
-              data-1p-ignore
-              class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
-            />
-          </div>
-          <div
-            :if={@search_results != nil}
-            class="absolute z-10 left-3 right-3 mt-1 bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto"
-          >
-            <button
-              :for={group <- @search_results}
-              type="button"
-              phx-click="add_pending_group"
-              phx-value-group_id={group.id}
-              class="w-full text-left px-3 py-2 hover:bg-[var(--surface-raised)] border-b border-[var(--border)] last:border-b-0 transition-colors text-xs text-[var(--text-primary)]"
-            >
-              {group.name}
-            </button>
-            <div
-              :if={@search_results == []}
-              class="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
-            >
-              No static groups found
-            </div>
-          </div>
+      <div
+        class="p-3 bg-[var(--surface-raised)] border border-[var(--border)] rounded-md relative"
+        phx-click-away="blur_group_search"
+      >
+        <div class="relative">
+          <.icon
+            name="ri-search-line"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+          />
+          <input
+            type="text"
+            name="value"
+            placeholder="Search to add groups..."
+            phx-change="search_actor_groups"
+            phx-focus="focus_group_search"
+            phx-debounce="300"
+            autocomplete="off"
+            data-1p-ignore
+            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+          />
         </div>
-        <ul class="divide-y divide-[var(--border)] max-h-48 overflow-y-auto">
-          <li
-            :for={group <- @current_groups}
-            class="px-3 py-2.5 flex items-center justify-between group"
-          >
-            <p class="text-xs font-medium text-[var(--text-primary)] flex-1 min-w-0 truncate">
-              {group.name}
-            </p>
-            <div class="ml-4 flex items-center gap-2 shrink-0">
-              <span
-                :if={group.id not in @pending_removals}
-                class="text-xs text-[var(--text-tertiary)]"
-              >
-                Current
-              </span>
-              <span :if={group.id in @pending_removals} class="text-xs text-red-600 font-medium">
-                To Remove
-              </span>
-              <button
-                :if={group.id not in @pending_removals}
-                type="button"
-                phx-click="add_pending_group_removal"
-                phx-value-group_id={group.id}
-                class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
-              >
-                <.icon name="ri-user-minus-line" class="w-4 h-4" />
-              </button>
-              <button
-                :if={group.id in @pending_removals}
-                type="button"
-                phx-click="undo_pending_group_removal"
-                phx-value-group_id={group.id}
-                class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                <.icon name="ri-arrow-go-back-line" class="w-4 h-4" />
-              </button>
-            </div>
-          </li>
-          <li
-            :for={group <- @pending_additions}
-            class="px-3 py-2.5 flex items-center justify-between group"
-          >
-            <p class="text-xs font-medium text-[var(--text-primary)] flex-1 min-w-0 truncate">
-              {group.name}
-            </p>
-            <div class="ml-4 flex items-center gap-2 shrink-0">
-              <span class="text-xs text-green-600 font-medium">To Add</span>
-              <button
-                type="button"
-                phx-click="remove_pending_group_addition"
-                phx-value-group_id={group.id}
-                class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
-              >
-                <.icon name="ri-user-minus-line" class="w-4 h-4" />
-              </button>
-            </div>
-          </li>
-        </ul>
         <div
-          :if={@current_groups == [] and @pending_additions == []}
-          class="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
+          :if={@search_results != nil}
+          class="absolute z-10 left-3 right-3 mt-1 bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto"
         >
-          No groups added yet.
+          <button
+            :for={group <- @search_results}
+            type="button"
+            phx-click="add_pending_group"
+            phx-value-group_id={group.id}
+            class="w-full text-left px-3 py-2 hover:bg-[var(--surface-raised)] border-b border-[var(--border)] last:border-b-0 transition-colors text-xs text-[var(--text-primary)]"
+          >
+            {group.name}
+          </button>
+          <div
+            :if={@search_results == []}
+            class="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
+          >
+            No static groups found
+          </div>
         </div>
       </div>
+      <div class="grid gap-2 mt-2 lg:grid-cols-3">
+        <.group_bucket
+          title="Current"
+          count={length(@current_groups)}
+          groups={@current_groups}
+          empty_message="No current groups."
+        >
+          <:actions :let={group}>
+            <button
+              type="button"
+              phx-click="add_pending_group_removal"
+              phx-value-group_id={group.id}
+              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+              title="Remove from current groups"
+            >
+              <.icon name="ri-close-line" class="w-4 h-4" />
+            </button>
+          </:actions>
+        </.group_bucket>
+
+        <.group_bucket
+          title="To Add"
+          title_class="text-green-700"
+          count={length(@pending_additions)}
+          groups={@pending_additions}
+          empty_message="No pending additions."
+        >
+          <:actions :let={group}>
+            <button
+              type="button"
+              phx-click="remove_pending_group_addition"
+              phx-value-group_id={group.id}
+              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+              title="Remove from pending additions"
+            >
+              <.icon name="ri-close-line" class="w-4 h-4" />
+            </button>
+          </:actions>
+        </.group_bucket>
+
+        <.group_bucket
+          title="To Remove"
+          title_class="text-red-700"
+          count={length(@removed_groups)}
+          groups={@removed_groups}
+          empty_message="No pending removals."
+        >
+          <:actions :let={group}>
+            <button
+              type="button"
+              phx-click="undo_pending_group_removal"
+              phx-value-group_id={group.id}
+              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              title="Remove from pending removals"
+            >
+              <.icon name="ri-close-line" class="w-4 h-4" />
+            </button>
+          </:actions>
+        </.group_bucket>
+      </div>
     </div>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :count, :integer, required: true
+  attr :groups, :list, required: true
+  attr :title_class, :string, default: nil
+  attr :empty_message, :string, required: true
+  slot :actions
+
+  defp group_bucket(assigns) do
+    ~H"""
+    <section class="min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-[var(--text-tertiary)]"]}>
+          {@title}
+        </h4>
+        <span class="text-[10px] text-[var(--text-muted)]">{@count}</span>
+      </div>
+      <ul :if={@groups != []} class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5">
+        <li :for={group <- @groups}>
+          <div class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors group">
+            <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+            {render_slot(@actions, group)}
+          </div>
+        </li>
+      </ul>
+      <div :if={@groups == []} class="flex items-center justify-center h-16 px-3 text-center">
+        <p class="text-xs text-[var(--text-tertiary)]">
+          {@empty_message}
+        </p>
+      </div>
+    </section>
     """
   end
 

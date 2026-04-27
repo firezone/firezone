@@ -79,10 +79,10 @@ defmodule PortalWeb.Groups.Components do
     assigns =
       assign(
         assigns,
-        :all_members,
+        :current_members,
         if(assigns.panel_view == :edit_form && assigns.group,
-          do: get_all_members_for_display(assigns.group, assigns.members_to_add),
-          else: assigns.members_to_add
+          do: current_members_for_display(assigns.group, assigns.members_to_remove),
+          else: []
         )
       )
 
@@ -133,56 +133,78 @@ defmodule PortalWeb.Groups.Components do
           <div>
             <h3 class="text-sm font-medium text-[var(--text-secondary)] mb-2">
               {if @panel_view == :edit_form,
-                do: "Members (#{get_member_count(@all_members, @members_to_remove)})",
+                do: "Members (#{length(@current_members) + length(@members_to_add)})",
                 else: "Members (#{length(@members_to_add)})"}
             </h3>
-            <div class="border border-[var(--border)] rounded-md overflow-hidden">
-              <.member_search_input form={@form} member_search_results={@member_search_results} />
-              <.member_list members={@all_members}>
+            <.member_search_input form={@form} member_search_results={@member_search_results} />
+            <div class="grid gap-2 mt-2 lg:grid-cols-3">
+              <.member_bucket
+                title="Current"
+                count={length(@current_members)}
+                members={@current_members}
+                empty_message="No current members."
+              >
                 <:badge :let={actor}>
                   <.actor_type_badge actor={actor} />
                 </:badge>
                 <:actions :let={actor}>
-                  <% is_current = current_member?(actor, @group)
-                  is_to_add = Enum.any?(@members_to_add, &(&1.id == actor.id))
-                  is_to_remove = Enum.any?(@members_to_remove, &(&1.id == actor.id)) %>
-                  <div class="ml-4 flex items-center gap-2">
-                    <span
-                      :if={is_current and not is_to_remove}
-                      class="text-xs text-[var(--text-tertiary)]"
-                    >
-                      Current
-                    </span>
-                    <span :if={is_to_add} class="text-xs text-green-600 font-medium">
-                      To Add
-                    </span>
-                    <span :if={is_to_remove} class="text-xs text-red-600 font-medium">
-                      To Remove
-                    </span>
-                    <button
-                      :if={is_to_remove}
-                      type="button"
-                      phx-click="undo_member_removal"
-                      phx-value-actor_id={actor.id}
-                      class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-                    >
-                      <.icon name="ri-arrow-go-back-line" class="w-5 h-5" />
-                    </button>
-                    <button
-                      :if={not is_to_remove}
-                      type="button"
-                      phx-click="remove_member"
-                      phx-value-actor_id={actor.id}
-                      class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
-                    >
-                      <.icon name="ri-user-minus-line" class="w-5 h-5" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    phx-click="remove_member"
+                    phx-value-actor_id={actor.id}
+                    class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+                    title="Remove from current members"
+                  >
+                    <.icon name="ri-close-line" class="w-4 h-4" />
+                  </button>
                 </:actions>
-                <:empty_message>
-                  No members added yet.
-                </:empty_message>
-              </.member_list>
+              </.member_bucket>
+
+              <.member_bucket
+                title="To Add"
+                title_class="text-green-700"
+                count={length(@members_to_add)}
+                members={@members_to_add}
+                empty_message="No pending additions."
+              >
+                <:badge :let={actor}>
+                  <.actor_type_badge actor={actor} />
+                </:badge>
+                <:actions :let={actor}>
+                  <button
+                    type="button"
+                    phx-click="remove_member"
+                    phx-value-actor_id={actor.id}
+                    class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+                    title="Remove from pending additions"
+                  >
+                    <.icon name="ri-close-line" class="w-4 h-4" />
+                  </button>
+                </:actions>
+              </.member_bucket>
+
+              <.member_bucket
+                title="To Remove"
+                title_class="text-red-700"
+                count={length(@members_to_remove)}
+                members={@members_to_remove}
+                empty_message="No pending removals."
+              >
+                <:badge :let={actor}>
+                  <.actor_type_badge actor={actor} />
+                </:badge>
+                <:actions :let={actor}>
+                  <button
+                    type="button"
+                    phx-click="undo_member_removal"
+                    phx-value-actor_id={actor.id}
+                    class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                    title="Remove from pending removals"
+                  >
+                    <.icon name="ri-close-line" class="w-4 h-4" />
+                  </button>
+                </:actions>
+              </.member_bucket>
             </div>
           </div>
         </div>
@@ -685,7 +707,7 @@ defmodule PortalWeb.Groups.Components do
                       </div>
                       <.icon
                         name="ri-close-line"
-                        class="w-3 h-3 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                        class="w-3.5 h-3.5 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
                     </button>
                   </li>
@@ -1126,8 +1148,39 @@ defmodule PortalWeb.Groups.Components do
   end
 
   attr :members, :list, required: true
+  attr :title, :string, required: true
+  attr :count, :integer, required: true
+  attr :title_class, :string, default: nil
+  attr :empty_message, :string, required: true
+  slot :badge
+  slot :actions
+
+  defp member_bucket(assigns) do
+    ~H"""
+    <section class="min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-[var(--text-tertiary)]"]}>
+          {@title}
+        </h4>
+        <span class="text-[10px] text-[var(--text-muted)]">{@count}</span>
+      </div>
+      <.member_list
+        members={@members}
+        item_class="px-2 py-1.5 flex items-center justify-between gap-2 rounded group hover:bg-[var(--surface)] transition-colors"
+        list_class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5"
+        empty_class="flex items-center justify-center h-16"
+      >
+        <:badge :let={actor}>{render_slot(@badge, actor)}</:badge>
+        <:actions :let={actor}>{render_slot(@actions, actor)}</:actions>
+        <:empty_message>{@empty_message}</:empty_message>
+      </.member_list>
+    </section>
+    """
+  end
+
+  attr :members, :list, required: true
   attr :item_class, :string, default: "px-3 py-2.5 flex items-center justify-between group"
-  attr :list_class, :string, default: "divide-y divide-[var(--border)] h-64 overflow-y-auto"
+  attr :list_class, :string, default: "divide-y divide-[var(--border)] h-48 overflow-y-auto"
   attr :empty_class, :string, default: "flex items-center justify-center h-64"
   slot :badge
   slot :actions
@@ -1224,14 +1277,8 @@ defmodule PortalWeb.Groups.Components do
       (Enum.empty?(form.source.changes) and members_to_add == [] and members_to_remove == [])
   end
 
-  defp get_all_members_for_display(group, members_to_add) do
-    Enum.uniq_by(group.actors ++ members_to_add, & &1.id)
+  defp current_members_for_display(group, members_to_remove) do
+    remove_ids = MapSet.new(members_to_remove, & &1.id)
+    Enum.reject(group.actors, &MapSet.member?(remove_ids, &1.id))
   end
-
-  defp get_member_count(all_members, members_to_remove) do
-    length(all_members) - length(members_to_remove)
-  end
-
-  defp current_member?(_actor, nil), do: false
-  defp current_member?(actor, group), do: Enum.any?(group.actors, &(&1.id == actor.id))
 end

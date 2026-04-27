@@ -493,8 +493,17 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "remove_member", %{"actor_id" => member.id})
       assert html =~ "To Remove"
 
-      html = render_click(lv, "undo_member_removal", %{"actor_id" => member.id})
-      refute html =~ "To Remove"
+      render_click(lv, "undo_member_removal", %{"actor_id" => member.id})
+
+      refute has_element?(
+               lv,
+               "button[phx-click='undo_member_removal'][phx-value-actor_id='#{member.id}']"
+             )
+
+      assert has_element?(
+               lv,
+               "button[phx-click='remove_member'][phx-value-actor_id='#{member.id}']"
+             )
 
       lv
       |> form("#group-form", group: %{name: group.name, member_search: ""})

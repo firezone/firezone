@@ -522,7 +522,13 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "To Add"
 
       html = render_click(lv, "remove_pending_group_addition", %{"group_id" => group.id})
-      refute html =~ "To Add"
+
+      refute html =~ group.name
+
+      refute has_element?(
+               lv,
+               "button[phx-click='remove_pending_group_addition'][phx-value-group_id='#{group.id}']"
+             )
     end
 
     test "undoes pending group removal in edit form", %{
@@ -542,8 +548,17 @@ defmodule PortalWeb.ActorsTest do
       html = render_click(lv, "add_pending_group_removal", %{"group_id" => group.id})
       assert html =~ "To Remove"
 
-      html = render_click(lv, "undo_pending_group_removal", %{"group_id" => group.id})
-      refute html =~ "To Remove"
+      render_click(lv, "undo_pending_group_removal", %{"group_id" => group.id})
+
+      refute has_element?(
+               lv,
+               "button[phx-click='undo_pending_group_removal'][phx-value-group_id='#{group.id}']"
+             )
+
+      assert has_element?(
+               lv,
+               "button[phx-click='add_pending_group_removal'][phx-value-group_id='#{group.id}']"
+             )
 
       lv
       |> form("form[phx-submit='save']",
@@ -673,6 +688,55 @@ defmodule PortalWeb.ActorsTest do
                actor_id: other_actor.id,
                group_id: current_group.id
              )
+    end
+
+    test "shows updated group list without full refresh after saving edits", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      current_group = group_fixture(account: account, name: "Current Group")
+      added_group = group_fixture(account: account, name: "Added Group")
+      membership_fixture(actor: other_actor, group: current_group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=groups")
+
+      assert render(lv) =~ current_group.name
+
+      render_click(lv, "open_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{other_actor}/edit")
+
+      render_click(lv, "add_pending_group_removal", %{"group_id" => current_group.id})
+
+      html =
+        lv
+        |> element("input[placeholder='Search to add groups...']")
+        |> render_change(%{"value" => added_group.name})
+
+      assert html =~ added_group.name
+
+      render_click(lv, "add_pending_group", %{"group_id" => added_group.id})
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: other_actor.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      render_click(lv, "change_tab", %{"tab" => "groups"})
+
+      html = render(lv)
+      assert html =~ added_group.name
+      refute html =~ current_group.name
     end
 
     test "redirects to actor list when actor does not exist", %{
