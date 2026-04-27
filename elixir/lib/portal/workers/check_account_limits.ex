@@ -3,8 +3,8 @@ defmodule Portal.Workers.CheckAccountLimits do
   Oban worker that checks account limits and updates limit exceeded flags.
   Runs every 30 minutes.
 
-  Optimized to use batched GROUP BY queries instead of per-account queries
-  to minimize database load.
+  Optimized to use batched GROUP BY queries per account batch instead of
+  per-account queries to minimize database load while keeping each query bounded.
   """
 
   use Oban.Worker,
@@ -26,21 +26,21 @@ defmodule Portal.Workers.CheckAccountLimits do
 
   @impl Oban.Worker
   def perform(_job) do
-    # Pre-compute all counts for all active accounts in 5 batched queries
-    # instead of 5 queries per account (N+1 -> 5 total queries)
-    counts = Database.fetch_all_counts_for_active_accounts()
-    process_accounts_in_batches(nil, counts)
+    process_accounts_in_batches(nil)
   end
 
-  defp process_accounts_in_batches(cursor, counts) do
+  defp process_accounts_in_batches(cursor) do
     case Database.fetch_active_accounts_batch(cursor, @batch_size) do
       [] ->
         :ok
 
       accounts ->
+        account_ids = Enum.map(accounts, & &1.id)
+        counts = Database.fetch_counts_for_accounts(account_ids)
+
         Enum.each(accounts, &check_account_limits(&1, counts))
         last_account = List.last(accounts)
-        process_accounts_in_batches(last_account.id, counts)
+        process_accounts_in_batches(last_account.id)
     end
   end
 
@@ -190,40 +190,25 @@ defmodule Portal.Workers.CheckAccountLimits do
     alias Portal.Device
 
     @doc """
-    Fetches all counts for all active accounts in batched GROUP BY queries.
+    Fetches counts for the given accounts in batched GROUP BY queries.
     Returns a map of account_id -> %{users: n, active_users: n, service_accounts: n, sites: n, admins: n}
     """
-    def fetch_all_counts_for_active_accounts do
-      # Run all count queries in parallel using Task.async_stream
-      # Each query returns a map of account_id -> count
-      tasks = [
-        {:users, fn -> count_users_by_account() end},
-        {:active_users, fn -> count_1m_active_users_by_account() end},
-        {:service_accounts, fn -> count_service_accounts_by_account() end},
-        {:sites, fn -> count_sites_by_account() end},
-        {:admins, fn -> count_admins_by_account() end}
-      ]
+    def fetch_counts_for_accounts([]), do: %{}
 
-      results =
-        tasks
-        |> Task.async_stream(fn {key, func} -> {key, func.()} end, timeout: :infinity)
-        |> Enum.map(fn {:ok, result} -> result end)
-        |> Map.new()
+    def fetch_counts_for_accounts(account_ids) do
+      results = %{
+        users: count_users_by_account(account_ids),
+        active_users: count_1m_active_users_by_account(account_ids),
+        service_accounts: count_service_accounts_by_account(account_ids),
+        sites: count_sites_by_account(account_ids),
+        admins: count_admins_by_account(account_ids)
+      }
 
-      # Merge all count maps into a single map of account_id -> %{users: n, ...}
-      merge_count_maps(results)
+      merge_count_maps(account_ids, results)
     end
 
-    defp merge_count_maps(results) do
-      # Get all unique account_ids from all result maps
-      all_account_ids =
-        results
-        |> Map.values()
-        |> Enum.flat_map(&Map.keys/1)
-        |> Enum.uniq()
-
-      # Build the merged map
-      Map.new(all_account_ids, fn account_id ->
+    defp merge_count_maps(account_ids, results) do
+      Map.new(account_ids, fn account_id ->
         counts = %{
           users: get_in(results, [:users, account_id]) || 0,
           active_users: get_in(results, [:active_users, account_id]) || 0,
@@ -256,12 +241,10 @@ defmodule Portal.Workers.CheckAccountLimits do
       |> Safe.update()
     end
 
-    # Batched count queries - one query for all active accounts using GROUP BY
-
-    defp count_users_by_account do
+    # Batched count queries - one query per count type for the current account batch
+    defp count_users_by_account(account_ids) do
       from(a in Actor,
-        join: acc in Account,
-        on: acc.id == a.account_id and is_nil(acc.disabled_at),
+        where: a.account_id in ^account_ids,
         where: is_nil(a.disabled_at),
         where: a.type in [:account_admin_user, :account_user],
         group_by: a.account_id,
@@ -272,10 +255,9 @@ defmodule Portal.Workers.CheckAccountLimits do
       |> Map.new()
     end
 
-    defp count_service_accounts_by_account do
+    defp count_service_accounts_by_account(account_ids) do
       from(a in Actor,
-        join: acc in Account,
-        on: acc.id == a.account_id and is_nil(acc.disabled_at),
+        where: a.account_id in ^account_ids,
         where: is_nil(a.disabled_at),
         where: a.type == :service_account,
         group_by: a.account_id,
@@ -286,10 +268,9 @@ defmodule Portal.Workers.CheckAccountLimits do
       |> Map.new()
     end
 
-    defp count_admins_by_account do
+    defp count_admins_by_account(account_ids) do
       from(a in Actor,
-        join: acc in Account,
-        on: acc.id == a.account_id and is_nil(acc.disabled_at),
+        where: a.account_id in ^account_ids,
         where: is_nil(a.disabled_at),
         where: a.type == :account_admin_user,
         group_by: a.account_id,
@@ -300,42 +281,41 @@ defmodule Portal.Workers.CheckAccountLimits do
       |> Map.new()
     end
 
-    defp count_1m_active_users_by_account do
-      # Use a subquery to get distinct actor_ids per account, then count
-      subquery =
-        from(c in Device, as: :clients)
-        |> where([clients: c], c.type == :client)
-        |> join(:inner, [clients: c], acc in Account,
-          on: acc.id == c.account_id and is_nil(acc.disabled_at),
-          as: :account
-        )
-        |> join(:inner, [clients: c], s in Portal.ClientSession,
-          on: s.device_id == c.id and s.account_id == c.account_id,
-          as: :session
-        )
-        |> where([session: s], s.inserted_at > ago(1, "month"))
-        |> join(:inner, [clients: c], a in Actor,
-          on: c.actor_id == a.id and c.account_id == a.account_id,
-          as: :actor
-        )
-        |> where([actor: a], is_nil(a.disabled_at))
-        |> where([actor: a], a.type in [:account_user, :account_admin_user])
-        |> select([clients: c], %{account_id: c.account_id, actor_id: c.actor_id})
-        |> distinct(true)
-
-      from(s in subquery(subquery),
-        group_by: s.account_id,
-        select: {s.account_id, count(s.actor_id)}
+    defp count_1m_active_users_by_account(account_ids) do
+      from(c in Device, as: :clients)
+      |> where([clients: c], c.type == :client)
+      |> where([clients: c], c.account_id in ^account_ids)
+      |> join(:inner, [clients: c], a in Actor,
+        on: c.actor_id == a.id and c.account_id == a.account_id,
+        as: :actor
       )
+      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.type in [:account_user, :account_admin_user])
+      |> join(
+        :inner_lateral,
+        [clients: c],
+        s in subquery(
+          from(s in Portal.ClientSession,
+            where: s.device_id == parent_as(:clients).id,
+            where: s.account_id == parent_as(:clients).account_id,
+            where: s.inserted_at > ago(1, "month"),
+            select: s.id,
+            limit: 1
+          )
+        ),
+        on: true,
+        as: :recent_session
+      )
+      |> group_by([clients: c], c.account_id)
+      |> select([clients: c], {c.account_id, count(c.actor_id, :distinct)})
       |> Safe.unscoped(:replica)
       |> Safe.all()
       |> Map.new()
     end
 
-    defp count_sites_by_account do
+    defp count_sites_by_account(account_ids) do
       from(g in Portal.Site,
-        join: acc in Account,
-        on: acc.id == g.account_id and is_nil(acc.disabled_at),
+        where: g.account_id in ^account_ids,
         where: g.managed_by == :account,
         group_by: g.account_id,
         select: {g.account_id, count(g.id)}

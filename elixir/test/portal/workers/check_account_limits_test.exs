@@ -2,6 +2,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -11,6 +12,20 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   alias Portal.Workers.CheckAccountLimits
 
   describe "perform/1" do
+    test "count batching returns zero counts for accounts without counted records" do
+      account = provisioned_account_fixture()
+
+      assert %{
+               account.id => %{
+                 users: 0,
+                 active_users: 0,
+                 service_accounts: 0,
+                 sites: 0,
+                 admins: 0
+               }
+             } == CheckAccountLimits.Database.fetch_counts_for_accounts([account.id])
+    end
+
     test "does nothing when limits are not violated" do
       account = provisioned_account_fixture()
       admin_actor_fixture(account: account)
@@ -217,6 +232,34 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       refute_email_queued(account.id)
     end
 
+    test "processes accounts beyond the first batch" do
+      warning_last_sent_at = DateTime.utc_now()
+
+      account_ids =
+        for _ <- 1..101 do
+          account =
+            provisioned_account_fixture()
+            |> update_account(%{
+              limits: %{account_admin_users_count: 0},
+              warning_last_sent_at: warning_last_sent_at
+            })
+
+          admin_actor_fixture(account: account)
+          account.id
+        end
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      exceeded_count =
+        from(a in Portal.Account,
+          where: a.id in ^account_ids,
+          where: a.admins_limit_exceeded
+        )
+        |> Repo.aggregate(:count)
+
+      assert exceeded_count == 101
+    end
+
     test "only sends emails to enabled admin actors" do
       account = provisioned_account_fixture()
       admin1 = admin_actor_fixture(account: account)
@@ -253,6 +296,21 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert admin1.email in email_recipients
       assert admin2.email in email_recipients
       refute disabled_admin.email in email_recipients
+    end
+
+    test "logs and does not enqueue email when no admins can receive exceeded limit warning" do
+      account = provisioned_account_fixture()
+      actor_fixture(account: account, type: :account_user)
+      update_account(account, %{limits: %{users_count: 0}})
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(CheckAccountLimits, %{})
+        end)
+
+      assert log =~ "No admin actors found for account"
+      assert log =~ account.id
+      refute_email_queued(account.id)
     end
 
     test "email shows multiple exceeded limits with count/limit format" do
