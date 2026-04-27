@@ -8384,6 +8384,7 @@ dependencies = [
  "logging",
  "lru",
  "opentelemetry",
+ "phoenix-channel",
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",

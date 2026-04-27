@@ -416,6 +416,12 @@ enum OutboundMsg {
     Bar,
 }
 
+impl phoenix_channel::MustQueue for OutboundMsg {
+    fn must_queue(&self) -> bool {
+        false
+    }
+}
+
 #[tokio::test]
 async fn http_429_triggers_retry() {
     let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;

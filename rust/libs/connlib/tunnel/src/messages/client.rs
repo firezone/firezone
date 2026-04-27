@@ -269,6 +269,25 @@ pub enum EgressMessages {
     InvalidateClientIceCandidates(ClientIceCandidates),
 }
 
+impl phoenix_channel::MustQueue for EgressMessages {
+    fn must_queue(&self) -> bool {
+        match self {
+            // Invalidations need to reach the peer for it to drop superseded
+            // candidates; if we drop them on a portal hiccup the peer can
+            // hold on to a stale candidate that "wins" priority and stick a
+            // dead path. Persist them across reconnects.
+            EgressMessages::InvalidateGatewayIceCandidates(_)
+            | EgressMessages::InvalidateClientIceCandidates(_) => true,
+            EgressMessages::CreateFlow { .. }
+            | EgressMessages::RequestDeviceAccess { .. }
+            | EgressMessages::ResolveDevicePoolDomain { .. }
+            | EgressMessages::NoRelays {}
+            | EgressMessages::NewGatewayIceCandidates(_)
+            | EgressMessages::NewClientIceCandidates(_) => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

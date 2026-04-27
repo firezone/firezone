@@ -40,6 +40,31 @@ pub use tokio_tungstenite::tungstenite::http::StatusCode;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
+/// Bound for the persistent queue used by must-queue messages (see [`MustQueue`]).
+///
+/// Persistent messages survive reconnects, so the queue can grow while we're
+/// disconnected. We cap it to avoid unbounded growth; if the cap is exceeded
+/// the oldest entry is dropped.
+const MAX_PERSISTENT_MESSAGES: usize = 32;
+
+/// Outbound messages that the channel must not silently drop on disconnect.
+///
+/// Messages whose [`MustQueue::must_queue`] returns `true` are placed on a
+/// persistent queue inside [`PhoenixChannel`] and re-sent on the next
+/// successful join. Messages where it returns `false` use the existing
+/// best-effort [`PhoenixChannel::send`] path: they are queued only while
+/// connected and dropped if the channel disconnects before they reach the
+/// wire.
+pub trait MustQueue {
+    fn must_queue(&self) -> bool;
+}
+
+impl MustQueue for () {
+    fn must_queue(&self) -> bool {
+        false
+    }
+}
+
 const INITIAL_CONNECT_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
 const INITIAL_CONNECT_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -65,6 +90,13 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     backoff: Option<ExponentialBackoff>,
     was_connected: bool,
+
+    /// Messages that must survive reconnects.
+    ///
+    /// Lives at the channel level (rather than inside `Connected`) so we keep
+    /// it across `State` transitions. Drained into the active connection's
+    /// `pending_messages` once we've rejoined.
+    pending_persistent: VecDeque<(String, TOutboundMsg)>,
 
     login: &'static str,
     init_req: TInitReq,
@@ -352,7 +384,7 @@ impl<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
     PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish>
 where
     TInitReq: Serialize + Clone,
-    TOutboundMsg: Serialize + PartialEq + fmt::Debug,
+    TOutboundMsg: Serialize + PartialEq + fmt::Debug + MustQueue,
     TInboundMsg: DeserializeOwned,
     TFinish: IntoIterator<Item = (&'static str, String)>,
 {
@@ -385,6 +417,7 @@ where
             login,
             init_req,
             last_url: None,
+            pending_persistent: VecDeque::new(),
         }
     }
 
@@ -414,12 +447,38 @@ where
     }
 
     /// Send a message to a topic.
+    ///
+    /// Messages whose [`MustQueue::must_queue`] returns `true` are placed on
+    /// the persistent queue and re-sent across reconnects. Other messages are
+    /// queued only while the channel is connected and rejected with
+    /// [`NotConnected`] otherwise.
     pub fn send(
         &mut self,
         topic: impl Into<String>,
         message: TOutboundMsg,
     ) -> Result<(), NotConnected<TOutboundMsg>> {
         let topic = topic.into();
+
+        if message.must_queue() {
+            if self.pending_persistent.iter().any(|(_, m)| m == &message) {
+                tracing::debug!(?message, "Refusing to queue exact duplicate");
+                return Ok(());
+            }
+
+            if self.pending_persistent.len() >= MAX_PERSISTENT_MESSAGES
+                && let Some((_, dropped)) = self.pending_persistent.pop_front()
+            {
+                tracing::warn!(?dropped, "Persistent queue full; dropping oldest message");
+            }
+
+            self.pending_persistent.push_back((topic, message));
+
+            if let Some(waker) = self.waker.take() {
+                waker.wake();
+            }
+
+            return Ok(());
+        }
 
         let State::Connected(Connected {
             pending_messages,
@@ -531,8 +590,41 @@ where
         Ok(())
     }
 
+    /// Drain the persistent queue into the active connection's pending
+    /// messages. No-op while we're disconnected or waiting for a join reply
+    /// (we want our room to exist before we send into it).
+    fn drain_persistent_into_pending(&mut self) {
+        let Self {
+            state,
+            pending_persistent,
+            ..
+        } = self;
+        let State::Connected(connected) = state else {
+            return;
+        };
+        if !connected.pending_join_requests.is_empty() {
+            return;
+        }
+
+        for (topic, message) in pending_persistent.drain(..) {
+            let request_id = fetch_add_request_id(&mut connected.next_request_id);
+            connected
+                .pending_messages
+                .push_back(PhoenixMessage::new_message(
+                    topic,
+                    message,
+                    Some(request_id),
+                ));
+        }
+    }
+
     pub fn poll(&mut self, cx: &mut Context) -> Poll<Result<Event<TInboundMsg>, Error>> {
         loop {
+            // Drain the persistent queue before doing anything else this
+            // iteration so messages we held across reconnects get a request
+            // ID and join the regular send path.
+            self.drain_persistent_into_pending();
+
             // First, check if we are connected.
             let Connected {
                 stream,
