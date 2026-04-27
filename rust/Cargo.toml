@@ -215,7 +215,7 @@ tokio-util = "0.7.18"
 toml = "1.1.2"
 tower = "0.5"
 tracing = { version = "0.1.40" }
-tracing-appender = "0.2.4"
+tracing-appender = "0.2.5"
 tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
