@@ -65,8 +65,27 @@ defmodule PortalWeb.Settings.Account do
             >
               This account has not had billing provisioned.
             </p>
+            <div
+              :if={@billing_provisioned and Billing.plan_type(@account) == :enterprise}
+              class="pt-2 border-t border-[var(--border)]"
+            >
+              <div class="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 p-3 flex gap-2.5 items-start">
+                <.icon
+                  name="ri-customer-service-2-line"
+                  class="w-4 h-4 shrink-0 text-violet-500 dark:text-violet-400 mt-0.5"
+                />
+                <div>
+                  <p class="text-xs font-medium text-violet-700 dark:text-violet-300">
+                    Enterprise Plan
+                  </p>
+                  <p class="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
+                    Contact your account manager for plan changes.
+                  </p>
+                </div>
+              </div>
+            </div>
             <button
-              :if={@billing_provisioned}
+              :if={@billing_provisioned and Billing.plan_type(@account) != :enterprise}
               phx-click="redirect_to_billing_portal"
               class="w-full mt-1 px-3 py-1.5 rounded text-xs font-medium border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
             >
