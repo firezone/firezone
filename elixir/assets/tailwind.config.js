@@ -61,7 +61,6 @@ module.exports = {
   // Use "media" to synchronize dark mode with the OS, "class" to require manual toggle
   darkMode: "class",
   content: [
-    "./node_modules/flowbite/**/*.js",
     "./js/**/*.js",
     "../lib/portal_web.ex",
     "../lib/portal_web/**/*.*ex",
@@ -85,8 +84,8 @@ module.exports = {
     },
   },
   plugins: [
-    // flowbite/plugin and @tailwindcss/forms are now loaded via
-    // @plugin directives in css/main.css (Tailwind v4 CSS-native syntax)
+    // @tailwindcss/forms is loaded via @plugin directive in css/main.css
+    // (Tailwind v4 CSS-native syntax)
     plugin(({ addVariant }) =>
       addVariant("phx-click-loading", [
         ".phx-click-loading&",

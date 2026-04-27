@@ -1,7 +1,6 @@
 {
   "dependencies": {
     "@fontsource-variable/roboto": "^5.2.8",
-    "@fontsource-variable/roboto-mono": "^5.2.8",
-    "flowbite": "^4.0.1"
+    "@fontsource-variable/roboto-mono": "^5.2.8"
   }
 }

@@ -5,9 +5,6 @@ import "@fontsource-variable/roboto-mono";
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html";
 
-// Flowbite's Phoenix LiveView integration
-import "flowbite/dist/flowbite.phoenix.js";
-
 // Establish Phoenix Socket and LiveView configuration.
 import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
