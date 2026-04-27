@@ -13,7 +13,7 @@ use logging::err_with_src;
 
 use crate::{
     client::IpProvider,
-    dns::{Pattern, pattern::Candidate},
+    dns::pattern::{Candidate, Pattern},
 };
 
 /// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
@@ -267,7 +267,7 @@ impl ResourceStubResolver {
     }
 
     /// Processes the incoming DNS query.
-    pub(crate) fn handle(&mut self, query: &Query) -> ResolveStrategy {
+    pub(crate) fn handle_query(&mut self, query: &Query) -> ResolveStrategy {
         let domain = query.domain();
         let qtype = query.qtype();
 
@@ -363,49 +363,6 @@ pub struct DnsResourceRecord {
     pub domain: DomainName,
     pub resources: BTreeSet<(Pattern, ResourceId)>,
     pub ips: Vec<IpAddr>,
-}
-
-#[derive(Default)]
-pub struct DeviceStubResolver {
-    device_pools: BTreeMap<Pattern, ResourceId>,
-}
-
-impl DeviceStubResolver {
-    pub(crate) fn add_resource(&mut self, id: ResourceId, pattern: String) -> bool {
-        let parsed = match Pattern::new(&pattern) {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!(%pattern, "Device pool pattern is not valid: {}", err_with_src(&e));
-                return false;
-            }
-        };
-
-        self.device_pools.insert(parsed, id).is_none()
-    }
-
-    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.device_pools.retain(|_, r| *r != id);
-    }
-
-    /// Attempts to match the given domain against device pool patterns.
-    ///
-    /// Returns the [`ResourceId`] of the first matching device pool, if any.
-    #[allow(dead_code)] // Will be used when DNS query interception is wired up.
-    pub(crate) fn match_device_pool_linear(
-        &self,
-        domain: &dns_types::DomainName,
-    ) -> Option<ResourceId> {
-        let name = Candidate::from_domain(domain);
-
-        for (pattern, id) in &self.device_pools {
-            if pattern.matches(&name) {
-                tracing::trace!(resource_id = %id, %pattern, %domain, "Matched device pool");
-                return Some(*id);
-            }
-        }
-
-        None
-    }
 }
 
 pub(crate) fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
@@ -587,7 +544,7 @@ mod tests {
             RecordType::A,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -610,7 +567,7 @@ mod tests {
             RecordType::A,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -633,7 +590,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -656,7 +613,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        resolver.handle(&query);
+        resolver.handle_query(&query);
 
         resolver.add_resource(
             ResourceId::from_u128(1),
@@ -664,7 +621,7 @@ mod tests {
             IpStack::Ipv4Only,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -703,7 +660,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -721,7 +678,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -762,7 +719,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -771,7 +728,7 @@ mod tests {
 
         assert!(resolver.poll_event().is_some());
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -779,65 +736,6 @@ mod tests {
         };
 
         assert!(resolver.poll_event().is_none());
-    }
-
-    #[test]
-    fn dynamic_device_pool_wildcard_match() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        resolver.add_resource(rid, "*.devices.example.com".to_owned());
-
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
-
-        assert_eq!(matched, Some(rid));
-    }
-
-    #[test]
-    fn dynamic_device_pool_no_match_for_unrelated_domain() {
-        let mut resolver = DeviceStubResolver::default();
-        resolver.add_resource(ResourceId::from_u128(1), "*.devices.example.com".to_owned());
-
-        let matched = resolver.match_device_pool_linear(&"foo.other.example.com".parse().unwrap());
-
-        assert_eq!(matched, None);
-    }
-
-    #[test]
-    fn dynamic_device_pool_remove_resource() {
-        let mut resolver = DeviceStubResolver::default();
-        let rid = ResourceId::from_u128(1);
-        resolver.add_resource(rid, "*.devices.example.com".to_owned());
-
-        resolver.remove_resource(rid);
-
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
-
-        assert_eq!(matched, None);
-    }
-
-    #[test]
-    fn dynamic_device_pool_prioritises_specific_over_wildcard() {
-        let mut resolver = DeviceStubResolver::default();
-        let wildcard = ResourceId::from_u128(1);
-        let specific = ResourceId::from_u128(2);
-
-        resolver.add_resource(wildcard, "**.devices.example.com".to_owned());
-        resolver.add_resource(specific, "foo.devices.example.com".to_owned());
-
-        let matched =
-            resolver.match_device_pool_linear(&"foo.devices.example.com".parse().unwrap());
-
-        assert_eq!(matched, Some(specific));
-    }
-
-    #[test]
-    fn dynamic_device_pool_invalid_pattern_returns_false() {
-        let mut resolver = DeviceStubResolver::default();
-        let added = resolver.add_resource(ResourceId::from_u128(1), "[invalid".to_owned());
-
-        assert!(!added);
     }
 }
 

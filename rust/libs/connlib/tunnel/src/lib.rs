@@ -611,6 +611,10 @@ pub enum ClientEvent {
     DeviceConnectionIntent {
         ipv4: Ipv4Addr,
     },
+    DevicePoolDomainQueried {
+        resource_id: ResourceId,
+        domain: DomainName,
+    },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<ResourceView>,

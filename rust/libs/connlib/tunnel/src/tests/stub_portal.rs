@@ -7,12 +7,11 @@ use super::{
 };
 use crate::{
     client,
-    messages::{UpstreamDo53, UpstreamDoH},
+    client::{DnsResource, DynamicDevicePoolResource},
+    messages::{UpstreamDo53, UpstreamDoH, gateway},
     proptest::*,
 };
-use crate::{client::DnsResource, messages::gateway};
-use connlib_model::{ClientId, GatewayId, Site};
-use connlib_model::{ResourceId, SiteId};
+use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use itertools::Itertools;
@@ -31,7 +30,7 @@ use std::{
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
-    clients: BTreeMap<ClientId, (Ipv4Addr, Ipv6Addr)>,
+    clients: BTreeMap<ClientId, StubClient>,
     gateways_by_site: BTreeMap<SiteId, BTreeSet<(GatewayId, Ipv4Addr, Ipv6Addr)>>,
 
     #[debug(skip)]
@@ -40,6 +39,7 @@ pub(crate) struct StubPortal {
     // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
     cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
     dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    device_pool_resources: BTreeMap<ResourceId, DynamicDevicePoolResource>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -50,6 +50,17 @@ pub(crate) struct StubPortal {
     gateway_selector: Selector,
 }
 
+#[derive(Clone, Debug)]
+struct StubClient {
+    ipv4: Ipv4Addr,
+    ipv6: Ipv6Addr,
+    /// Label under which this client is registered as a device in dynamic device pools.
+    ///
+    /// In production the portal maps each device to a tunnel IP; in the test harness
+    /// we assign one stable label per client (e.g. `device0`) and use it for all pools.
+    device_label: String,
+}
+
 impl StubPortal {
     pub(crate) fn new(
         clients: BTreeSet<ClientId>,
@@ -57,6 +68,7 @@ impl StubPortal {
         gateway_selector: Selector,
         cidr_resources: BTreeSet<client::CidrResource>,
         dns_resources: BTreeSet<client::DnsResource>,
+        device_pool_resources: BTreeSet<DynamicDevicePoolResource>,
         internet_resource: client::InternetResource,
         search_domain: Option<DomainName>,
         upstream_do53: Vec<UpstreamDo53>,
@@ -67,6 +79,10 @@ impl StubPortal {
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
         let dns_resources = dns_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>();
+        let device_pool_resources = device_pool_resources
             .into_iter()
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
@@ -106,11 +122,15 @@ impl StubPortal {
 
         let clients = clients
             .into_iter()
-            .map(|id| {
-                let client_tunnel_ipv4 = tunnel_ip4s.next().unwrap();
-                let client_tunnel_ipv6 = tunnel_ip6s.next().unwrap();
+            .enumerate()
+            .map(|(idx, id)| {
+                let client = StubClient {
+                    ipv4: tunnel_ip4s.next().unwrap(),
+                    ipv6: tunnel_ip6s.next().unwrap(),
+                    device_label: format!("device{idx}"),
+                };
 
-                (id, (client_tunnel_ipv4, client_tunnel_ipv6))
+                (id, client)
             })
             .collect();
 
@@ -140,11 +160,33 @@ impl StubPortal {
             ),
             cidr_resources,
             dns_resources,
+            device_pool_resources,
             internet_resource,
             search_domain,
             upstream_do53,
             upstream_doh,
         }
+    }
+
+    /// All device labels the portal knows about, in client order.
+    pub(crate) fn device_labels(&self) -> Vec<String> {
+        self.clients
+            .values()
+            .map(|c| c.device_label.clone())
+            .collect()
+    }
+
+    /// Resolves a device-pool domain (e.g. `device0.pool.example.com`) to the
+    /// tunnel IPv4 of the matching client, if the label corresponds to a known device.
+    pub(crate) fn resolve_device_pool_domain(&self, domain: &str) -> Option<Ipv4Addr> {
+        let label = domain.split_once('.')?.0;
+
+        let client = self
+            .clients
+            .values()
+            .find(|c| c.device_label.as_str() == label)?;
+
+        Some(client.ipv4)
     }
 
     pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
@@ -157,6 +199,12 @@ impl StubPortal {
                     .values()
                     .cloned()
                     .map(client::Resource::Dns),
+            )
+            .chain(
+                self.device_pool_resources
+                    .values()
+                    .cloned()
+                    .map(client::Resource::DynamicDevicePool),
             )
             .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),
@@ -355,10 +403,15 @@ impl StubPortal {
     {
         self.clients
             .iter()
-            .map(|(id, (ipv4, ipv6))| {
+            .map(|(id, client)| {
                 (
                     Just(*id),
-                    ref_client_host(*id, Just(*ipv4), Just(*ipv6), system_dns.clone()),
+                    ref_client_host(
+                        *id,
+                        Just(client.ipv4),
+                        Just(client.ipv6),
+                        system_dns.clone(),
+                    ),
                 )
             })
             .collect::<Vec<_>>()

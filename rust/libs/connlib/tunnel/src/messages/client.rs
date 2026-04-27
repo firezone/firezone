@@ -62,9 +62,6 @@ pub struct ResourceDescriptionStaticDevicePool {
     pub name: String,
 }
 
-/// Description of a dynamic device pool resource.
-///
-/// Dynamic device pools have a DNS pattern that connlib matches against to resolve device addresses.
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDynamicDevicePool {
     pub id: ResourceId,
@@ -154,6 +151,22 @@ pub struct ClientDeviceAccessDenied {
     pub reason: FailReason,
 }
 
+/// Portal's response when a dynamic device pool domain is resolved to a tunnel IPv4.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DevicePoolDomainResolved {
+    pub resource_id: ResourceId,
+    pub domain: String,
+    pub ipv4: Ipv4Addr,
+}
+
+/// Portal's response when a dynamic device pool domain cannot be resolved.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DevicePoolDomainResolutionFailed {
+    pub resource_id: ResourceId,
+    pub domain: String,
+    pub reason: FailReason,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum FailReason {
@@ -207,6 +220,9 @@ pub enum IngressMessages {
 
     ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized),
     ClientDeviceAccessDenied(ClientDeviceAccessDenied),
+
+    DevicePoolDomainResolved(DevicePoolDomainResolved),
+    DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
 }
 
 #[serde_with::serde_as]
@@ -241,6 +257,10 @@ pub enum EgressMessages {
     },
     RequestDeviceAccess {
         ipv4: Ipv4Addr,
+    },
+    ResolveDevicePoolDomain {
+        resource_id: ResourceId,
+        domain: String,
     },
     NoRelays {},
     NewGatewayIceCandidates(GatewayIceCandidates),
@@ -561,26 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_static_device_pool_resource_with_address() {
-        let resources = r#"[
-            {
-                "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                "type": "static_device_pool",
-                "name": "IoT Devices",
-                "address": "*.devices.example.com"
-            }
-        ]"#;
-
-        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
-
-        assert!(matches!(
-            parsed[0],
-            ResourceDescription::StaticDevicePool(_)
-        ));
-    }
-
-    #[test]
-    fn can_deserialize_static_device_pool_resource_without_address() {
+    fn can_deserialize_static_device_pool_resource() {
         let resources = r#"[
             {
                 "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -627,6 +628,58 @@ mod tests {
         let desc = ResourceDescriptionDynamicDevicePool::deserialize(json).unwrap();
         assert_eq!(desc.name, "Employee Laptops");
         assert_eq!(desc.address, "*.laptops.example.com");
+    }
+
+    #[test]
+    fn resolve_device_pool_domain_serialises_correctly() {
+        let msg = EgressMessages::ResolveDevicePoolDomain {
+            resource_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901".parse().unwrap(),
+            domain: "device-42.laptops.example.com".to_owned(),
+        };
+
+        let actual = serde_json::to_value(&msg).unwrap();
+        let expected = serde_json::json!({
+            "event": "resolve_device_pool_domain",
+            "payload": {
+                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "domain": "device-42.laptops.example.com",
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_deserialize_device_pool_domain_resolved() {
+        let json = serde_json::json!({
+            "event": "device_pool_domain_resolved",
+            "payload": {
+                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "domain": "device-42.laptops.example.com",
+                "ipv4": "100.64.0.42"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        assert!(matches!(msg, IngressMessages::DevicePoolDomainResolved(_)));
+    }
+
+    #[test]
+    fn can_deserialize_device_pool_domain_resolution_failed() {
+        let json = serde_json::json!({
+            "event": "device_pool_domain_resolution_failed",
+            "payload": {
+                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "domain": "device-42.laptops.example.com",
+                "reason": "not_found"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            msg,
+            IngressMessages::DevicePoolDomainResolutionFailed(_)
+        ));
     }
 
     #[test]

@@ -1240,6 +1240,22 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
+            ClientEvent::DevicePoolDomainQueried {
+                resource_id,
+                domain,
+            } => {
+                let client = self.clients.get_mut(&src).unwrap();
+
+                let result = portal
+                    .resolve_device_pool_domain(&domain.to_string())
+                    .ok_or(crate::messages::client::FailReason::NotFound);
+                client.exec_mut(|c| {
+                    c.sut
+                        .handle_device_pool_domain_resolved(resource_id, domain, result);
+                });
+
+                Ok(())
+            }
         }
     }
 

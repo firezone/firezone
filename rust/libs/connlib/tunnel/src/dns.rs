@@ -1,17 +1,19 @@
-pub(crate) mod pattern;
-pub(crate) mod stub_resolver;
+mod pattern;
 
-pub(crate) use pattern::Pattern;
-pub(crate) use stub_resolver::{DeviceStubResolver, ResolveStrategy, ResourceStubResolver};
+pub(crate) mod device_stub_resolver;
+pub(crate) mod resource_stub_resolver;
 
-pub use stub_resolver::DnsResourceRecord;
+pub(crate) use device_stub_resolver::DeviceStubResolver;
+pub(crate) use resource_stub_resolver::ResourceStubResolver;
 
+pub use pattern::Pattern;
+pub use resource_stub_resolver::DnsResourceRecord;
+
+use crate::dns::pattern::Candidate;
 use anyhow::Result;
 use dns_types::DoHUrl;
 use logging::err_with_src;
 use std::net::SocketAddr;
-
-use crate::dns::pattern::Candidate;
 
 pub(crate) const DNS_PORT: u16 = 53;
 

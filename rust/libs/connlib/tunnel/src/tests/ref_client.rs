@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     ClientState,
-    client::{CidrResource, DnsResource, InternetResource, Resource},
+    client::{CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource},
     dns,
     filter_engine::FilterEngine,
     malicious_behaviour::MaliciousBehaviour,
@@ -164,16 +164,20 @@ impl RefClient {
             self.connected_internet_resource = false;
         }
 
-        let Some(site) = self.site_for_resource(*resource) else {
-            tracing::error!(%resource, "No site for resource");
-            return;
+        let site = match self.site_for_resource(*resource) {
+            Ok(site) => site,
+            Err(SiteLookupError::ResourceHasNoSite) => return,
+            Err(SiteLookupError::ResourceNotFound) => {
+                tracing::error!(%resource, "No site for resource");
+                return;
+            }
         };
 
         // If this was the last resource we were connected to for this site,
         // the connection will be GC'd.
         if self
             .connected_resources()
-            .all(|r| self.site_for_resource(r).is_some_and(|s| s != site))
+            .all(|r| self.site_for_resource(r).is_ok_and(|s| s != site))
         {
             tracing::debug!(
                 last_resource = %resource,
@@ -301,6 +305,19 @@ impl RefClient {
         }
     }
 
+    pub(crate) fn add_dynamic_device_pool_resource(&mut self, r: DynamicDevicePoolResource) {
+        let r = Resource::DynamicDevicePool(r);
+        let rid = r.id();
+
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
+            && existing.has_different_address(&r)
+        {
+            self.remove_resource(&existing.id());
+        }
+
+        self.resources.push(r);
+    }
+
     /// Re-adds all resources in the order they have been initially added.
     pub(crate) fn readd_all_resources(&mut self) {
         for resource in mem::take(&mut self.resources) {
@@ -308,7 +325,10 @@ impl RefClient {
                 Resource::Dns(d) => self.add_dns_resource(d),
                 Resource::Cidr(c) => self.add_cidr_resource(c),
                 Resource::Internet(i) => self.add_internet_resource(i),
-                Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {}
+                Resource::DynamicDevicePool(d) => {
+                    self.add_dynamic_device_pool_resource(d);
+                }
+                Resource::StaticDevicePool(_) => {}
             }
         }
     }
@@ -340,15 +360,14 @@ impl RefClient {
 
         let maybe_online_sites = resources_with_tcp_connections
             .into_iter()
-            .flat_map(|r| self.site_for_resource(r))
+            .filter_map(|r| self.site_for_resource(r).ok())
             .collect::<BTreeSet<_>>();
 
         self.resources
             .iter()
             .filter_map(move |r| {
-                maybe_online_sites
-                    .contains(r.site().unwrap())
-                    .then_some(r.id())
+                let site = r.site().ok()?;
+                maybe_online_sites.contains(site).then_some(r.id())
             })
             .collect()
     }
@@ -504,9 +523,13 @@ impl RefClient {
     }
 
     fn set_resource_online(&mut self, rid: ResourceId) {
-        let Some(site) = self.site_for_resource(rid) else {
-            tracing::error!(%rid, "Unknown resource or multi-site resource");
-            return;
+        let site = match self.site_for_resource(rid) {
+            Ok(site) => site,
+            Err(SiteLookupError::ResourceHasNoSite) => return,
+            Err(SiteLookupError::ResourceNotFound) => {
+                tracing::error!(%rid, "Unknown resource or multi-site resource");
+                return;
+            }
         };
 
         let previous = self.site_status.insert(site.id, ResourceStatus::Online);
@@ -535,6 +558,11 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery, upstream_do53: &[UpstreamDo53]) {
+        if self.is_dynamic_device_pool_dns_query(query) {
+            self.expect_dns_response(query);
+            return;
+        }
+
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
@@ -588,6 +616,12 @@ impl RefClient {
         }
     }
 
+    fn is_dynamic_device_pool_dns_query(&mut self, query: &DnsQuery) -> bool {
+        self.resources.iter().any(|r| {
+            matches!(r, Resource::DynamicDevicePool(dp) if dns::is_subdomain(&query.domain, &dp.address))
+        })
+    }
+
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
         self.resources
             .iter()
@@ -612,15 +646,19 @@ impl RefClient {
             .collect()
     }
 
-    fn site_for_resource(&self, resource: ResourceId) -> Option<Site> {
-        let site = self
+    fn site_for_resource(&self, resource: ResourceId) -> Result<Site, SiteLookupError> {
+        let r = self
             .resources
             .iter()
-            .find_map(|r| (r.id() == resource).then_some(r.site()))?
-            .ok()?
-            .clone();
+            .find(|r| r.id() == resource)
+            .ok_or(SiteLookupError::ResourceNotFound)?;
 
-        Some(site)
+        let sites = r.sites();
+        if sites.is_empty() {
+            return Err(SiteLookupError::ResourceHasNoSite);
+        }
+
+        Ok(r.site().expect("resources should only have 1 site").clone())
     }
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
@@ -1211,6 +1249,14 @@ fn default_routes_v4() -> Vec<IpNetwork> {
         IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap()),
         IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap()),
     ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SiteLookupError {
+    /// Resource does not exist for this client.
+    ResourceNotFound,
+    /// Resource exists but has no site by design (e.g. device pool resources).
+    ResourceHasNoSite,
 }
 
 fn default_routes_v6() -> Vec<IpNetwork> {

@@ -11,9 +11,8 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use crate::unroutable_packet::UnroutablePacket;
 #[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::{CidrResource, DnsResource};
+pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
 pub(crate) use resource::{InternetResource, Resource};
 
 use crate::client::dns_cache::DnsCache;
@@ -21,13 +20,17 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
-use crate::dns::{DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, stub_resolver};
+use crate::dns::{
+    DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, device_stub_resolver,
+    resource_stub_resolver,
+};
 use crate::filter_engine::FilterEngine;
 use crate::messages::{
     IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
 use crate::peer_store::PeerStore;
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -284,6 +287,17 @@ impl ClientState {
         self.clients.remove(&id);
         self.node
             .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
+    }
+
+    pub fn handle_device_pool_domain_resolved(
+        &mut self,
+        resource_id: ResourceId,
+        domain: DomainName,
+        result: Result<Ipv4Addr, FailReason>,
+    ) {
+        self.device_stub_resolver
+            .handle_device_domain_resolved(resource_id, domain, result);
+        self.drain_device_stub_resolver_events();
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -576,19 +590,24 @@ impl ClientState {
         let message = message.with_id(qid);
 
         self.dns_cache.insert(domain, &message, now);
+        self.send_dns_response(response.local, response.remote, response.transport, message);
+    }
 
-        match response.transport {
+    fn send_dns_response(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        transport: dns::Transport,
+        response: dns_types::Response,
+    ) {
+        match transport {
             dns::Transport::Udp => {
-                self.buffered_packets.extend(into_udp_dns_packet(
-                    response.local,
-                    response.remote,
-                    message,
-                ));
+                self.buffered_packets
+                    .extend(into_udp_dns_packet(local, remote, response));
             }
             dns::Transport::Tcp => {
                 unwrap_or_warn!(
-                    self.tcp_dns_server
-                        .send_message(response.local, response.remote, message),
+                    self.tcp_dns_server.send_message(local, remote, response),
                     "Failed to send TCP DNS response: {}"
                 );
             }
@@ -1190,20 +1209,27 @@ impl ClientState {
                     .poll_timeout()
                     .map(|instant| (instant, "TCP DNS server")),
             )
+            .chain(
+                self.device_stub_resolver
+                    .poll_timeout()
+                    .map(|instant| (instant, "Device stub resolver")),
+            )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.dns_cache.handle_timeout(now);
+        self.device_stub_resolver.handle_timeout(now);
+
         self.drain_node_events(now);
-        self.drain_stub_resolver_events();
+        self.drain_resource_stub_resolver_events();
+        self.drain_device_stub_resolver_events();
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
         self.reset_offline_site_status(now);
-
-        self.dns_cache.handle_timeout(now);
     }
 
     /// Advance the DNS server and client state machines.
@@ -1421,8 +1447,8 @@ impl ClientState {
             }
         };
 
-        match self.resource_stub_resolver.handle(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
+        match self.resource_stub_resolver.handle_query(&message) {
+            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
                 if response.response_code() == ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
                 {
@@ -1447,10 +1473,10 @@ impl ClientState {
 
                 self.buffered_packets.extend(maybe_packet);
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            resource_stub_resolver::ResolveStrategy::RecurseLocal => {
                 tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
             }
-            dns::ResolveStrategy::RecurseSite(_) => {
+            resource_stub_resolver::ResolveStrategy::RecurseSite(_) => {
                 tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
             }
         }
@@ -1471,16 +1497,32 @@ impl ClientState {
             return Some(response);
         }
 
-        match self.resource_stub_resolver.handle(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
+        // Check device pool patterns before consulting the resource stub resolver;
+        // device pools and DNS resources are independent resolution strategies.
+        match self
+            .device_stub_resolver
+            .handle_query(&message, local, remote, transport, now)
+        {
+            device_stub_resolver::ResolveStrategy::Passthrough => {}
+            device_stub_resolver::ResolveStrategy::LocalResponse(response) => {
+                return Some(response);
+            }
+            device_stub_resolver::ResolveStrategy::Pending => {
+                self.drain_device_stub_resolver_events();
+                return None;
+            }
+        }
+
+        match self.resource_stub_resolver.handle_query(&message) {
+            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
-                self.drain_stub_resolver_events();
+                self.drain_resource_stub_resolver_events();
                 self.dns_cache.insert(message.domain(), &response, now);
 
                 return Some(response);
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            resource_stub_resolver::ResolveStrategy::RecurseLocal => {
                 if let Some(upstream) = self.should_forward_dns_query_to_gateway(&upstream) {
                     self.forward_dns_query_to_new_upstream_via_tunnel(
                         local, remote, upstream, message, transport, now,
@@ -1499,7 +1541,7 @@ impl ClientState {
                     transport,
                 });
             }
-            dns::ResolveStrategy::RecurseSite(resource) => {
+            resource_stub_resolver::ResolveStrategy::RecurseSite(resource) => {
                 let Some((_, gateway)) =
                     peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
                 else {
@@ -1675,8 +1717,8 @@ impl ClientState {
         }
     }
 
-    fn drain_stub_resolver_events(&mut self) {
-        while let Some(stub_resolver::Event::RecordsChanged(records)) =
+    fn drain_resource_stub_resolver_events(&mut self) {
+        while let Some(resource_stub_resolver::Event::RecordsChanged(records)) =
             self.resource_stub_resolver.poll_event()
         {
             for record in &records {
@@ -1701,6 +1743,31 @@ impl ClientState {
 
             self.buffered_events
                 .push_back(ClientEvent::DnsRecordsChanged { records });
+        }
+    }
+
+    fn drain_device_stub_resolver_events(&mut self) {
+        while let Some(event) = self.device_stub_resolver.poll_event() {
+            match event {
+                device_stub_resolver::Event::QueryDomain {
+                    resource_id,
+                    domain,
+                } => {
+                    self.buffered_events
+                        .push_back(ClientEvent::DevicePoolDomainQueried {
+                            resource_id,
+                            domain,
+                        });
+                }
+                device_stub_resolver::Event::SendResponse {
+                    local,
+                    remote,
+                    transport,
+                    response,
+                } => {
+                    self.send_dns_response(local, remote, transport, response);
+                }
+            }
         }
     }
 
@@ -1843,8 +1910,10 @@ impl ClientState {
             }
         }
 
-        self.resources_by_id
-            .insert(new_resource.id(), new_resource.clone());
+        let is_new = self
+            .resources_by_id
+            .insert(new_resource.id(), new_resource.clone())
+            .is_none();
 
         let activated = match &new_resource {
             Resource::Dns(dns) => {
@@ -1859,7 +1928,7 @@ impl ClientState {
                 },
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
-            Resource::StaticDevicePool(_) => false,
+            Resource::StaticDevicePool(_) => is_new,
             Resource::DynamicDevicePool(pool) => self
                 .device_stub_resolver
                 .add_resource(pool.id, pool.address.clone()),
@@ -1869,7 +1938,7 @@ impl ClientState {
             self.log_activating_resource(&new_resource);
         }
 
-        self.drain_stub_resolver_events();
+        self.drain_resource_stub_resolver_events();
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
@@ -1878,9 +1947,9 @@ impl ClientState {
     fn log_activating_resource(&self, resource: &Resource) {
         let name = resource.name();
         let address = resource.address_string().map(tracing::field::display);
-        let sites = resource.sites_string();
+        let sites = resource.sites_string().map(tracing::field::display);
 
-        tracing::info!(%name, address, %sites, "Activating resource");
+        tracing::info!(%name, address, sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1911,9 +1980,9 @@ impl ClientState {
 
         let name = resource.name();
         let address = resource.address_string().map(tracing::field::display);
-        let sites = resource.sites_string();
+        let sites = resource.sites_string().map(tracing::field::display);
 
-        tracing::info!(%name, address, %sites, "Deactivating resource");
+        tracing::info!(%name, address, sites, "Deactivating resource");
 
         self.pending_flows.remove(&id);
 

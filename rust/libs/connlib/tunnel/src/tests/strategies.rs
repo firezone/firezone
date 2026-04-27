@@ -106,6 +106,8 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 ],
                 1..5,
             );
+            let device_pool_resources =
+                collection::btree_set(dynamic_device_pool_resource(), 0..=2);
             let internet_resource = internet_resource(Just(internet_site.clone()));
 
             // Assign between 1 and 3 gateways to each site.
@@ -125,6 +127,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 gateways_by_site,
                 cidr_resources,
                 dns_resources,
+                device_pool_resources,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
@@ -137,6 +140,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 gateways_by_site,
                 cidr_resources,
                 dns_resources,
+                device_pool_resources,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
@@ -146,34 +150,40 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 let extra_dns = extra_dns_resources(dns_resources.clone());
 
                 (
-                    Just(clients),
-                    Just(gateways_by_site),
-                    Just(cidr_resources),
+                    Just((
+                        clients,
+                        gateways_by_site,
+                        cidr_resources,
+                        dns_resources.clone(),
+                        device_pool_resources,
+                        internet_resource,
+                        gateway_selector,
+                        upstream_do53_servers,
+                        upstream_doh_servers,
+                    )),
                     extra_cidr,
-                    search_domain(dns_resources.clone()),
-                    Just(dns_resources),
                     extra_dns,
-                    Just(internet_resource),
-                    Just(gateway_selector),
-                    Just(upstream_do53_servers),
-                    Just(upstream_doh_servers),
+                    search_domain(dns_resources),
                     coin::head_biased(80),
                 )
             },
         )
         .prop_map(
             |(
-                clients,
-                gateways_by_site,
-                mut cidr_resources,
+                (
+                    clients,
+                    gateways_by_site,
+                    mut cidr_resources,
+                    mut dns_resources,
+                    device_pool_resources,
+                    internet_resource,
+                    gateway_selector,
+                    upstream_do53_servers,
+                    upstream_doh_servers,
+                ),
                 extra_cidr,
-                search_domain,
-                mut dns_resources,
                 extra_dns,
-                internet_resource,
-                gateway_selector,
-                upstream_do53_servers,
-                upstream_doh_servers,
+                search_domain,
                 coin_80,
             )| {
                 // Merge in the overlapping resources before applying any mutations,
@@ -217,6 +227,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     gateway_selector,
                     cidr_resources,
                     dns_resources,
+                    device_pool_resources,
                     internet_resource,
                     search_domain,
                     upstream_do53_servers,
