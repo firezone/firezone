@@ -18,6 +18,8 @@ defmodule PortalWeb.Settings.Account do
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
+        edit_account_open: false,
+        name_form: to_form(Database.change_account_name(account)),
         admins_count: Database.count_account_admin_users_for_account(subject),
         service_accounts_count: Database.count_service_accounts_for_account(subject),
         users_count: Database.count_users_for_account(subject),
@@ -30,8 +32,17 @@ defmodule PortalWeb.Settings.Account do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+    <div class="flex flex-col h-full relative">
+      <.settings_nav account={@account} current_path={@current_path}>
+        <:actions>
+          <button
+            phx-click="open_edit_account"
+            class="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+          >
+            <.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
+          </button>
+        </:actions>
+      </.settings_nav>
 
       <%!-- Two-column body --%>
       <div class="flex flex-1 bg-[var(--surface)] overflow-hidden">
@@ -275,6 +286,8 @@ defmodule PortalWeb.Settings.Account do
           </div>
         </div>
       </div>
+
+      <.edit_account_panel open={@edit_account_open} form={@name_form} />
     </div>
     """
   end
@@ -366,6 +379,67 @@ defmodule PortalWeb.Settings.Account do
 
   defp bar_pct(_, _), do: 0
 
+  attr :open, :boolean, required: true
+  attr :form, :any, required: true
+
+  defp edit_account_panel(assigns) do
+    ~H"""
+    <div class={[
+      "absolute inset-y-0 right-0 z-20",
+      "w-full lg:w-3/4 xl:w-96",
+      "flex flex-col bg-[var(--surface)] border-l border-[var(--border)] shadow-xl",
+      "transition-transform duration-200",
+      @open && "translate-x-0",
+      not @open && "translate-x-full"
+    ]}>
+      <div class="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+        <h2 class="text-sm font-semibold text-[var(--text-primary)]">Edit Account</h2>
+        <button
+          type="button"
+          phx-click="close_edit_account"
+          class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          title="Close (Esc)"
+        >
+          <.icon name="ri-close-line" class="w-4 h-4" />
+        </button>
+      </div>
+
+      <.form
+        for={@form}
+        phx-change="change_account_name"
+        phx-submit="submit_account_name"
+        as={:account}
+        class="flex flex-col flex-1 overflow-hidden"
+      >
+        <div class="flex-1 overflow-y-auto p-5">
+          <.input
+            field={@form[:name]}
+            label="Account Name"
+            phx-debounce="300"
+          />
+        </div>
+
+        <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
+          <button
+            type="button"
+            phx-click="close_edit_account"
+            class="px-3 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={not @form.source.valid?}
+            class="px-3 py-1.5 rounded text-xs bg-[var(--brand)] text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Save
+          </button>
+        </div>
+      </.form>
+    </div>
+    """
+  end
+
   defp feature_enabled?(account, feature) do
     features = account.features || %Portal.Accounts.Features{}
     Map.get(features, feature) == true
@@ -399,6 +473,47 @@ defmodule PortalWeb.Settings.Account do
   defp billing_support_label("email"), do: "Email"
   defp billing_support_label("email_and_slack"), do: "Email & Slack"
   defp billing_support_label(_), do: "Community"
+
+  def handle_event("open_edit_account", _params, socket) do
+    account = socket.assigns.account
+
+    {:noreply,
+     assign(socket,
+       edit_account_open: true,
+       name_form: to_form(Database.change_account_name(account))
+     )}
+  end
+
+  def handle_event("close_edit_account", _params, socket) do
+    {:noreply, assign(socket, edit_account_open: false)}
+  end
+
+  def handle_event("change_account_name", %{"account" => params}, socket) do
+    changeset =
+      socket.assigns.account
+      |> Database.change_account_name(params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, name_form: to_form(changeset))}
+  end
+
+  def handle_event("submit_account_name", %{"account" => params}, socket) do
+    account = socket.assigns.account
+    subject = socket.assigns.subject
+
+    case Database.update_account_name(account, params, subject) do
+      {:ok, updated_account} ->
+        {:noreply,
+         assign(socket,
+           account: updated_account,
+           edit_account_open: false,
+           name_form: to_form(Database.change_account_name(updated_account))
+         )}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, name_form: to_form(changeset))}
+    end
+  end
 
   def handle_event("redirect_to_billing_portal", _params, socket) do
     with {:ok, billing_portal_url} <-
@@ -491,6 +606,23 @@ defmodule PortalWeb.Settings.Account do
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Device
+
+    @spec update_account_name(Account.t(), map(), Portal.Authentication.Subject.t()) ::
+            {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
+    def update_account_name(%Account{} = account, attrs, subject) do
+      account
+      |> cast(attrs, [:name])
+      |> Account.changeset()
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    @spec change_account_name(Account.t(), map()) :: Ecto.Changeset.t()
+    def change_account_name(%Account{} = account, attrs \\ %{}) do
+      account
+      |> cast(attrs, [:name])
+      |> Account.changeset()
+    end
 
     @spec cancel_account_deletion(Account.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}

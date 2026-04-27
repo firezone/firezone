@@ -111,6 +111,63 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
+  describe "edit account name" do
+    test "renders account name on the settings page", %{conn: conn, account: account, actor: actor} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ account.name
+    end
+
+    test "can open the edit account panel", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+      assert html =~ "Edit Account"
+    end
+
+    test "validates name length", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
+        |> render_change()
+
+      assert html =~ "should be at least 3 character(s)"
+    end
+
+    test "saves updated account name", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      new_name = "Updated Account Name"
+
+      lv
+      |> form("form[phx-submit='submit_account_name']", %{account: %{name: new_name}})
+      |> render_submit()
+
+      html = render(lv)
+      assert html =~ new_name
+      # Panel slides back off-screen after save (translate-x-full = hidden)
+      assert html =~ "translate-x-full"
+    end
+  end
+
   describe "delete account" do
     test "shows confirm delete dialog on click", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =

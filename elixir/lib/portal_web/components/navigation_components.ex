@@ -359,6 +359,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
+  slot :actions
 
   def settings_nav(assigns) do
     ~H"""
@@ -369,8 +370,15 @@ defmodule PortalWeb.NavigationComponents do
         <div class="flex items-center gap-5">
           <.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
           <div class="flex-1 min-w-0">
-            <h1 class="text-base font-semibold text-[var(--text-primary)]">{@account.name}</h1>
-            <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{@account.legal_name}</p>
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <h1 class="text-base font-semibold text-[var(--text-primary)]">{@account.name}</h1>
+                <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{@account.legal_name}</p>
+              </div>
+              <div :if={@actions != []} class="shrink-0">
+                {render_slot(@actions)}
+              </div>
+            </div>
             <div class="flex items-start gap-6 md:gap-12 mt-4">
               <div class="flex flex-col gap-0.5">
                 <span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-widest font-semibold">
