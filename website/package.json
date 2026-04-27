@@ -55,7 +55,8 @@
   "pnpm": {
     "overrides": {
       "@typescript-eslint/typescript-estree": "^8.46.1",
-      "webpack": "^5.94.0"
+      "webpack": "^5.94.0",
+      "postcss": "^8.5.10"
     },
     "ignoredBuiltDependencies": [
       "core-js",
