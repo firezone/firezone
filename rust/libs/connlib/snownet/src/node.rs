@@ -113,53 +113,6 @@ pub struct Node<TId, RId> {
 pub struct NoTurnServers {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct IceConfig {
-    max_retrans: usize,
-    max_rto: Duration,
-    initial_rto: Duration,
-}
-
-impl IceConfig {
-    pub fn server_default() -> Self {
-        Self {
-            max_retrans: 45,
-            max_rto: Duration::from_millis(15_000),
-            initial_rto: Duration::from_millis(250),
-        }
-    }
-
-    pub fn server_idle() -> Self {
-        IceConfig {
-            max_retrans: 40,
-            max_rto: Duration::from_secs(25),
-            initial_rto: Duration::from_secs(25),
-        }
-    }
-
-    pub fn client_default() -> Self {
-        Self {
-            max_retrans: 12,
-            max_rto: Duration::from_millis(1500),
-            initial_rto: Duration::from_millis(250),
-        }
-    }
-
-    pub fn client_idle() -> Self {
-        Self {
-            max_retrans: 4,
-            max_rto: Duration::from_secs(25),
-            initial_rto: Duration::from_secs(25),
-        }
-    }
-
-    fn apply(&self, agent: &mut IceAgent) {
-        agent.set_max_stun_retransmits(self.max_retrans);
-        agent.set_max_stun_rto(self.max_rto);
-        agent.set_initial_stun_rto(self.initial_rto)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub enum IceRole {
     Controlling,
     Controlled,
@@ -249,8 +202,6 @@ where
         local_creds: Credentials,
         remote_creds: Credentials,
         ice_role: IceRole,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
@@ -276,9 +227,6 @@ where
             && c.agent.controlling() == matches!(ice_role, IceRole::Controlling)
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
-
-            c.state
-                .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
 
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
@@ -320,7 +268,6 @@ where
         }
 
         let mut agent = new_agent(ice_role);
-        default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -342,8 +289,6 @@ where
             preshared_key,
             selected_relay,
             index,
-            default_ice_config,
-            idle_ice_config,
             now,
             now,
         );
@@ -377,8 +322,7 @@ where
         };
 
         let peer_socket = match connection.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Connected { peer_socket, .. } => peer_socket,
             ConnectionState::Connecting { .. } => {
                 tracing::info!("Connection closed during ICE");
                 return;
@@ -388,7 +332,7 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(cid, peer_socket, &goodbye, now, &mut self.allocations) {
+        match connection.encapsulate(peer_socket, &goodbye, now, &mut self.allocations) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
 
@@ -433,7 +377,7 @@ where
             return;
         };
 
-        c.add_remote_candidate(cid, candidate.clone(), now);
+        c.add_remote_candidate(candidate.clone());
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -463,7 +407,7 @@ where
             return;
         };
 
-        c.remove_remote_candidate(cid, candidate, now);
+        c.remove_remote_candidate(candidate, now);
     }
 
     /// Decapsulate an incoming packet.
@@ -540,7 +484,6 @@ where
             return Ok(None);
         }
 
-        let override_socket = conn.peer_socket_override;
         let socket = match &mut conn.state {
             ConnectionState::Connecting { ip_buffer, .. } => {
                 ip_buffer.enqueue(packet.clone());
@@ -550,17 +493,17 @@ where
 
                 return Ok(None);
             }
-            ConnectionState::Connected { peer_socket, .. } => {
-                override_socket.unwrap_or(*peer_socket)
-            }
-            ConnectionState::Idle { peer_socket } => override_socket.unwrap_or(*peer_socket),
+            ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+            } => peer_socket_override.unwrap_or(*peer_socket),
             ConnectionState::Failed => {
                 return Err(anyhow!("Connection {cid} failed"));
             }
         };
 
         let maybe_transmit = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations)
+            .encapsulate(socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
         Ok(maybe_transmit)
@@ -613,7 +556,7 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.allocations.handle_timeout(now);
 
-        self.allocations_drain_events(now);
+        self.allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(
@@ -625,16 +568,11 @@ where
             );
         }
 
-        if self.connections.all_idle() {
-            // If all connections are idle, there is no point in resetting the rate limiter.
-            self.next_rate_limiter_reset = None;
-        } else {
-            let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
+        let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
-            if now >= next_reset {
-                self.rate_limiter.reset_count_at(now);
-                self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
-            }
+        if now >= next_reset {
+            self.rate_limiter.reset_count_at(now);
+            self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
         let removed_allocations = self.allocations.gc();
@@ -757,8 +695,6 @@ where
         key: x25519::StaticSecret,
         relay: RId,
         index: Index,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -806,12 +742,9 @@ where
                 wg_buffer: AllocRingBuffer::new(128),
                 ip_buffer: AllocRingBuffer::new(128),
             },
-            peer_socket_override: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
-            default_ice_config,
-            idle_ice_config,
             poll_timeout_cache: Default::default(),
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         }
@@ -1024,8 +957,8 @@ where
             parsed_packet,
             Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
         );
-        let handshake_decapsulated_ok = is_handshake
-            && matches!(&control_flow, ControlFlow::Break(Ok(())));
+        let handshake_decapsulated_ok =
+            is_handshake && matches!(&control_flow, ControlFlow::Break(Ok(())));
 
         if handshake_decapsulated_ok && conn.first_handshake_completed_at.is_none() {
             conn.first_handshake_completed_at = Some(now);
@@ -1045,14 +978,14 @@ where
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
-    fn allocations_drain_events(&mut self, now: Instant) {
+    fn allocations_drain_events(&mut self) {
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        c.add_local_candidate(cid, &candidate, &mut self.pending_events);
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1272,16 +1205,6 @@ struct Connection<RId> {
 
     state: ConnectionState,
 
-    /// Temporary override for the outbound `PeerSocket`, set when we observe
-    /// an authenticated WireGuard handshake from a source that doesn't match
-    /// our current ICE nomination. Cleared by the next `NominatedSend` event
-    /// from ICE.
-    ///
-    /// This lets outgoing WG traffic follow the peer across cross-kind
-    /// path shifts (direct↔relay) that the controlled side of ICE can't
-    /// re-nominate without `USE-CANDIDATE` from the controlling side.
-    peer_socket_override: Option<PeerSocket>,
-
     stats: ConnectionStats,
     intent_sent_at: Instant,
     candidate_timeout: Option<Instant>,
@@ -1289,9 +1212,6 @@ struct Connection<RId> {
     first_handshake_completed_at: Option<Instant>,
 
     buffer: Vec<u8>,
-
-    default_ice_config: IceConfig,
-    idle_ice_config: IceConfig,
 
     #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
@@ -1325,7 +1245,6 @@ where
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
-            .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
@@ -1350,8 +1269,6 @@ where
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
         self.agent.handle_timeout(now);
-        self.state
-            .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
         if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
             tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
@@ -1420,13 +1337,6 @@ where
                     // control back to it by dropping any WG-handshake-driven
                     // peer_socket override. The override was only there to
                     // bridge the window until this event arrived.
-                    if self.peer_socket_override.take().is_some() {
-                        tracing::debug!(
-                            %cid,
-                            "Clearing peer_socket override; ICE has re-nominated"
-                        );
-                    }
-
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
                             wg_buffer,
@@ -1455,7 +1365,7 @@ where
                             );
                             transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
                                 let transmit = self
-                                    .encapsulate(cid, remote_socket, &packet, now, allocations)
+                                    .encapsulate(remote_socket, &packet, now, allocations)
                                     .inspect_err(|e| {
                                         tracing::debug!(
                                             "Failed to encapsulate buffered IP packet: {e:#}"
@@ -1468,35 +1378,42 @@ where
 
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                last_activity: now,
+                                peer_socket_override: None,
                             };
                             None
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            last_activity,
+                            peer_socket_override,
                         } if peer_socket == remote_socket => {
+                            // ICE re-nominated the same path. Drop any
+                            // override so we go back to following ICE.
+                            if peer_socket_override.is_some() {
+                                tracing::debug!(
+                                    %cid,
+                                    "Clearing peer_socket override; ICE has re-nominated"
+                                );
+                            }
                             self.state = ConnectionState::Connected {
                                 peer_socket,
-                                last_activity,
+                                peer_socket_override: None,
                             };
 
                             continue; // If we re-nominate the same socket, don't just continue. TODO: Should this be fixed upstream?
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            last_activity,
+                            peer_socket_override,
                         } => {
+                            if peer_socket_override.is_some() {
+                                tracing::debug!(
+                                    %cid,
+                                    "Clearing peer_socket override; ICE has re-nominated"
+                                );
+                            }
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                last_activity,
-                            };
-
-                            Some(peer_socket)
-                        }
-                        ConnectionState::Idle { peer_socket } => {
-                            self.state = ConnectionState::Idle {
-                                peer_socket: remote_socket,
+                                peer_socket_override: None,
                             };
 
                             Some(peer_socket)
@@ -1614,20 +1531,13 @@ where
         };
     }
 
-    fn encapsulate<TId>(
+    fn encapsulate(
         &mut self,
-        cid: TId,
         socket: PeerSocket,
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-    ) -> Result<Option<Transmit>>
-    where
-        TId: fmt::Display,
-    {
-        self.state
-            .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
-
+    ) -> Result<Option<Transmit>> {
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
         let mut buffer = self.buffer_pool.pull();
@@ -1700,7 +1610,7 @@ where
     {
         let mut ip_packet = IpPacketBuf::new();
 
-        let control_flow = match self
+        match self
             .tunnel
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
@@ -1744,7 +1654,6 @@ where
             // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
             // Overall, this results in a much nicer API for our caller and should not affect performance.
             TunnResult::WriteToNetwork(bytes) => {
-                let override_socket = self.peer_socket_override;
                 match &mut self.state {
                     ConnectionState::Connecting { wg_buffer, .. } => {
                         tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
@@ -1758,9 +1667,11 @@ where
                             wg_buffer.enqueue(packet.to_owned());
                         }
                     }
-                    ConnectionState::Connected { peer_socket, .. }
-                    | ConnectionState::Idle { peer_socket } => {
-                        let peer_socket = override_socket.unwrap_or(*peer_socket);
+                    ConnectionState::Connected {
+                        peer_socket,
+                        peer_socket_override,
+                    } => {
+                        let peer_socket = peer_socket_override.unwrap_or(*peer_socket);
                         transmits.extend(make_owned_transmit(
                             self.relay.id,
                             peer_socket,
@@ -1789,14 +1700,7 @@ where
 
                 ControlFlow::Break(Ok(()))
             }
-        };
-
-        if let ControlFlow::Continue(packet) = &control_flow {
-            self.state
-                .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
         }
-
-        control_flow
     }
 
     fn initiate_wg_session(
@@ -1858,16 +1762,12 @@ where
         cid: TId,
         candidate: &Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
-        now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
         if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
             pending_events.push_back(new_ice_candidate_event(cid, candidate));
         }
-
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
     fn remove_local_candidate<TId>(
@@ -1897,45 +1797,30 @@ where
         }
     }
 
-    fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
-    where
-        TId: fmt::Display,
-    {
+    fn add_remote_candidate(&mut self, candidate: Candidate) {
         self.agent.add_remote_candidate(candidate);
         self.candidate_timeout = None;
 
         generate_optimistic_candidates(&mut self.agent);
-
-        // Make sure we move out of idle mode when we add new candidates.
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
-    fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
-    where
-        TId: fmt::Display,
-    {
+    fn remove_remote_candidate(&mut self, candidate: Candidate, now: Instant) {
         self.agent.invalidate_candidate(&candidate);
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
-
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
     /// The socket outgoing WireGuard traffic should use.
     ///
-    /// If [`Connection::peer_socket_override`] is set, it takes precedence
-    /// over the ICE-nominated `peer_socket`: we've observed an authenticated
-    /// handshake from a source different from what ICE nominated, and until
-    /// ICE catches up we trust the crypto signal.
+    /// If a `peer_socket_override` is set on the `Connected` state it takes
+    /// precedence over the ICE-nominated `peer_socket`: we've observed an
+    /// authenticated handshake from a source different from what ICE
+    /// nominated, and until ICE catches up we trust the crypto signal.
     fn socket(&self) -> Option<PeerSocket> {
-        if let Some(s) = self.peer_socket_override {
-            return Some(s);
-        }
-
         match self.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => Some(peer_socket),
+            ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+            } => Some(peer_socket_override.unwrap_or(peer_socket)),
             ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
         }
     }
@@ -1944,17 +1829,12 @@ where
         matches!(self.state, ConnectionState::Failed)
     }
 
-    fn is_idle(&self) -> bool {
-        matches!(self.state, ConnectionState::Idle { .. })
-    }
-
     fn migrate_relay<TId>(
         &mut self,
         cid: TId,
         new_relay: RId,
         new_allocation: &Allocation,
         pending_events: &mut VecDeque<Event<TId>>,
-        now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
@@ -1963,12 +1843,12 @@ where
         self.relay.id = new_relay;
 
         for candidate in new_allocation.current_relay_candidates() {
-            self.add_local_candidate(cid, &candidate, pending_events, now);
+            self.add_local_candidate(cid, &candidate, pending_events);
         }
     }
 
-    /// Set or update [`Connection::peer_socket_override`] based on the source
-    /// of an authenticated WG handshake.
+    /// Set or update the `peer_socket_override` on `Connected` based on the
+    /// source of an authenticated WG handshake.
     ///
     /// The override applies only once we have an ICE-nominated socket to
     /// deviate from; during `Connecting` ICE hasn't picked anything yet and
@@ -1979,13 +1859,15 @@ where
     where
         TId: fmt::Display,
     {
-        let current = match self.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => peer_socket,
-            ConnectionState::Connecting { .. } | ConnectionState::Failed => return,
+        let ConnectionState::Connected {
+            peer_socket,
+            peer_socket_override,
+        } = &mut self.state
+        else {
+            return;
         };
 
-        let effective = self.peer_socket_override.unwrap_or(current);
+        let effective = peer_socket_override.unwrap_or(*peer_socket);
         if effective == observed {
             return;
         }
@@ -1997,7 +1879,7 @@ where
             "Overriding peer_socket from authenticated WG handshake"
         );
 
-        self.peer_socket_override = Some(observed);
+        *peer_socket_override = Some(observed);
     }
 
     /// Re-form all ICE candidate pairs in place without tearing anything down.
@@ -2073,6 +1955,13 @@ fn new_agent(role: IceRole) -> IceAgent {
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
     agent.set_timing_advance(Duration::ZERO);
+    // 25 s keeps NAT bindings open with consistent STUN traffic regardless of
+    // whether the connection is currently carrying app data. We previously
+    // toggled an "idle" config to relax this once a connection had been
+    // nominated, but a quieter STUN cadence let path-validation lag and
+    // hurt roam recovery, so we now run at the active interval all the
+    // time.
+    agent.set_max_stun_rto(Duration::from_secs(25));
 
     agent
 }
@@ -2082,53 +1971,6 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
     use super::*;
-
-    #[test]
-    fn client_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::client_default().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(16500))
-    }
-
-    // Our WireGuard rekey attempt time must be greater than the ICE timeout,
-    // otherwise we cannot migrate an existing tunnel to a new candidate pair.
-    #[test]
-    fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::client_default().apply(&mut agent);
-
-        assert!(agent.ice_timeout() < WG_REKEY_ATTEMPT_TIME)
-    }
-
-    #[test]
-    fn client_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::client_idle().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
-    }
-
-    #[test]
-    fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::server_default().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(615_500))
-    }
-
-    #[test]
-    fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::server_idle().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
-    }
 
     #[test]
     fn generates_correct_optimistic_candidates() {

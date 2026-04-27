@@ -122,7 +122,7 @@ where
                     continue;
                 };
 
-                c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+                c.migrate_relay(cid, new_relay, new_allocation, pending_events);
             }
         }
 
@@ -137,7 +137,7 @@ where
                 continue;
             };
 
-            c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+            c.migrate_relay(cid, new_relay, new_allocation, pending_events);
         }
     }
 
@@ -288,10 +288,6 @@ where
         self.established.keys().copied()
     }
 
-    pub(crate) fn all_idle(&self) -> bool {
-        self.established.values().all(|c| c.is_idle())
-    }
-
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
@@ -434,14 +430,14 @@ mod tests {
         x25519::{PublicKey, StaticSecret},
     };
     use bufferpool::BufferPool;
-    use is::{Candidate, IceAgent, IceCreds};
+    use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
 
     use std::net::{Ipv4Addr, SocketAddrV4};
 
     use crate::{
-        IceConfig, RelaySocket,
+        RelaySocket,
         node::{ConnectionState, SelectedRelay, allocations::Allocations},
     };
     use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -627,15 +623,12 @@ mod tests {
                 wg_buffer: AllocRingBuffer::new(1),
                 ip_buffer: AllocRingBuffer::new(1),
             },
-            peer_socket_override: None,
             stats: Default::default(),
             intent_sent_at: Instant::now(),
             candidate_timeout: None,
             first_handshake_completed_at: None,
             buffer: Default::default(),
             buffer_pool: BufferPool::new(0, "test"),
-            default_ice_config: IceConfig::client_default(),
-            idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),
         }
     }
