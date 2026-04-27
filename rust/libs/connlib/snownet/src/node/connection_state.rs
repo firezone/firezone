@@ -25,9 +25,14 @@ pub(crate) enum ConnectionState {
 
         /// A socket override applied on top of `peer_socket`.
         ///
-        /// Set when an authenticated WireGuard handshake arrives from a
-        /// source different from the ICE-nominated path (typically because
-        /// the peer migrated and we got the WG signal before ICE caught up).
+        /// Set when an authenticated WireGuard `HandshakeInit` arrives from
+        /// a source different from the ICE-nominated path: an init is the
+        /// peer's choice of send-from socket, so it tells us where the peer
+        /// wants future traffic to go. We deliberately ignore
+        /// `HandshakeResponse` here — a response just confirms wherever we
+        /// sent the matching init from, which would falsely look like a
+        /// peer-side path change if ICE re-nominated in between.
+        ///
         /// Cleared once ICE catches up via a fresh `NominatedSend`. Only
         /// meaningful while we are `Connected` — `Connecting` has nothing to
         /// override and `Failed` is going away — which is why it lives here

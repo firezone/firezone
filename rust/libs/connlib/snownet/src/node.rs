@@ -953,14 +953,14 @@ where
             now,
         );
 
+        let decap_ok = matches!(&control_flow, ControlFlow::Break(Ok(())));
         let is_handshake = matches!(
             parsed_packet,
             Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
         );
-        let handshake_decapsulated_ok =
-            is_handshake && matches!(&control_flow, ControlFlow::Break(Ok(())));
+        let is_handshake_init = matches!(parsed_packet, Packet::HandshakeInit(_));
 
-        if handshake_decapsulated_ok && conn.first_handshake_completed_at.is_none() {
+        if decap_ok && is_handshake && conn.first_handshake_completed_at.is_none() {
             conn.first_handshake_completed_at = Some(now);
 
             tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
@@ -969,7 +969,10 @@ where
                 .push_back(Event::ConnectionEstablished(cid))
         }
 
-        if handshake_decapsulated_ok {
+        // Only `HandshakeInit` reflects the peer's choice of send-from
+        // socket; a `HandshakeResponse` just confirms wherever we sent the
+        // matching init from and would race ICE re-nominations.
+        if decap_ok && is_handshake_init {
             conn.maybe_override_peer_socket(cid, observed_peer_socket);
         }
 
@@ -1848,7 +1851,12 @@ where
     }
 
     /// Set or update the `peer_socket_override` on `Connected` based on the
-    /// source of an authenticated WG handshake.
+    /// source of an authenticated WG `HandshakeInit`.
+    ///
+    /// Caller must only invoke this for a `HandshakeInit`, never for a
+    /// `HandshakeResponse`: an init is the peer's choice of send-from
+    /// socket, while a response just confirms wherever we sent the matching
+    /// init from.
     ///
     /// The override applies only once we have an ICE-nominated socket to
     /// deviate from; during `Connecting` ICE hasn't picked anything yet and
@@ -1876,7 +1884,7 @@ where
             %cid,
             current = %effective.fmt(self.relay.id),
             new = %observed.fmt(self.relay.id),
-            "Overriding peer_socket from authenticated WG handshake"
+            "Overriding peer_socket from authenticated WG handshake init"
         );
 
         *peer_socket_override = Some(observed);
