@@ -592,7 +592,7 @@ defmodule PortalWeb.Sites.Components do
         class="rounded border border-[var(--status-error)]/20 bg-[var(--status-error-bg)] p-3 space-y-3"
       >
         <p class="text-xs text-[var(--status-error)]">
-          Delete this site? Gateways and resources will be detached.
+          Delete this site? Associated gateways and resources will be permanently deleted.
         </p>
         <div class="flex items-center gap-2">
           <button

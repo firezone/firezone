@@ -282,6 +282,7 @@ defmodule PortalWeb.SitesTest do
 
       html = render_click(lv, "confirm_delete_site")
       assert html =~ "Delete this site?"
+      assert html =~ "Associated gateways and resources will be permanently deleted."
 
       html = render_click(lv, "cancel_delete_site")
       refute html =~ "Delete this site?"
