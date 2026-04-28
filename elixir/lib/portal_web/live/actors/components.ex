@@ -786,16 +786,16 @@ defmodule PortalWeb.Actors.Components do
           Not a member of any groups.
         </div>
         <ul :if={@groups != []}>
-          <li :for={group <- @groups} class="border-b border-[var(--border)] transition-colors">
+          <li :for={row <- @groups} class="border-b border-[var(--border)] transition-colors">
             <.link
-              navigate={~p"/#{@account}/groups/#{group.id}"}
+              navigate={~p"/#{@account}/groups/#{row.group.id}"}
               class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0 hover:bg-[var(--surface-raised)] group/item"
             >
               <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4" />
+                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
               </div>
               <span class="flex-1 text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
-                {group.name}
+                {row.group.name}
               </span>
               <.icon
                 name="ri-arrow-right-s-line"
@@ -1404,7 +1404,7 @@ defmodule PortalWeb.Actors.Components do
         assigns.current_groups
       else
         remove_ids = MapSet.new(assigns.pending_removals)
-        Enum.reject(assigns.current_groups, &MapSet.member?(remove_ids, &1.id))
+        Enum.reject(assigns.current_groups, &MapSet.member?(remove_ids, &1.group.id))
       end
 
     removed_groups =
@@ -1412,7 +1412,7 @@ defmodule PortalWeb.Actors.Components do
         []
       else
         remove_ids = MapSet.new(assigns.pending_removals)
-        Enum.filter(assigns.current_groups, &MapSet.member?(remove_ids, &1.id))
+        Enum.filter(assigns.current_groups, &MapSet.member?(remove_ids, &1.group.id))
       end
 
     assigns =
@@ -1428,7 +1428,7 @@ defmodule PortalWeb.Actors.Components do
         Groups ({visible_count})
       </h3>
       <div
-        class="p-3 bg-[var(--surface-raised)] border border-[var(--border)] rounded-md relative"
+        class="p-3 bg-[var(--surface-raised)] border-b border-[var(--border)] relative"
         phx-click-away="blur_group_search"
       >
         <div class="relative">
@@ -1473,7 +1473,7 @@ defmodule PortalWeb.Actors.Components do
         <.group_bucket
           title="Current"
           count={length(@current_groups)}
-          groups={@current_groups}
+          groups={Enum.map(@current_groups, & &1.group)}
           empty_message="No current groups."
         >
           <:actions :let={group}>
@@ -1513,7 +1513,7 @@ defmodule PortalWeb.Actors.Components do
           title="To Remove"
           title_class="text-red-700"
           count={length(@removed_groups)}
-          groups={@removed_groups}
+          groups={Enum.map(@removed_groups, & &1.group)}
           empty_message="No pending removals."
         >
           <:actions :let={group}>

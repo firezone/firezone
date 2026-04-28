@@ -25,14 +25,6 @@ defmodule Portal.Group do
     has_many :policies, Portal.Policy, references: :id
     has_many :memberships, Portal.Membership, references: :id, on_replace: :delete
 
-    field :member_count, :integer, virtual: true
-    field :count, :integer, virtual: true
-    field :directory_name, :string, virtual: true
-    field :directory_type, :string, virtual: true
-    field :policy_id, :binary_id, virtual: true
-    field :policy_disabled_at, :utc_datetime_usec, virtual: true
-    field :policy_count, :integer, virtual: true
-
     has_many :actors, through: [:memberships, :actor]
 
     belongs_to :directory, Portal.Directory

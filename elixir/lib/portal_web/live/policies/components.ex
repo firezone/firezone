@@ -363,10 +363,10 @@ defmodule PortalWeb.Policies.Components do
       required
     >
       <:options_group :let={options_group}>{options_group}</:options_group>
-      <:option :let={group}>
+      <:option :let={row}>
         <div class="flex items-center gap-2">
-          <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4 shrink-0" />
-          <span>{group.name}</span>
+          <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4 shrink-0" />
+          <span>{row.group.name}</span>
         </div>
       </:option>
       <:no_options :let={name}>
@@ -2555,9 +2555,10 @@ defmodule PortalWeb.Policies.Components do
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        |> select(
+          [groups: g, directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
           %{
+            group: g,
             directory_name:
               fragment(
                 "COALESCE(?, ?, ?, 'Firezone')",
@@ -2590,9 +2591,10 @@ defmodule PortalWeb.Policies.Components do
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        |> select(
+          [groups: g, directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
           %{
+            group: g,
             directory_name:
               fragment(
                 "COALESCE(?, ?, ?, 'Firezone')",
@@ -2608,44 +2610,44 @@ defmodule PortalWeb.Policies.Components do
 
       query =
         if search_query_or_nil != "" and search_query_or_nil != nil do
-          from(g in query, where: fulltext_search(g.name, ^search_query_or_nil))
+          from([groups: g] in query, where: fulltext_search(g.name, ^search_query_or_nil))
         else
           query
         end
 
-      groups = query |> Safe.scoped(subject, :replica) |> Safe.all()
+      rows = query |> Safe.scoped(subject, :replica) |> Safe.all()
 
       # For metadata, we'll return a simple count
-      metadata = %{limit: 25, count: length(groups)}
+      metadata = %{limit: 25, count: length(rows)}
 
-      {:ok, grouped_select_options(groups), metadata}
+      {:ok, grouped_select_options(rows), metadata}
     end
 
-    defp grouped_select_options(groups) do
-      groups
+    defp grouped_select_options(rows) do
+      rows
       |> Enum.group_by(&option_groups_index_and_label/1)
-      |> Enum.sort_by(fn {{options_group_index, options_group_label}, _groups} ->
+      |> Enum.sort_by(fn {{options_group_index, options_group_label}, _rows} ->
         {options_group_index, options_group_label}
       end)
-      |> Enum.map(fn {{_options_group_index, options_group_label}, groups} ->
-        {options_group_label, groups |> Enum.sort_by(& &1.name) |> Enum.map(&group_option/1)}
+      |> Enum.map(fn {{_options_group_index, options_group_label}, rows} ->
+        {options_group_label, rows |> Enum.sort_by(& &1.group.name) |> Enum.map(&group_option/1)}
       end)
     end
 
-    defp option_groups_index_and_label(group) do
+    defp option_groups_index_and_label(row) do
       index =
         cond do
-          group_synced?(group) -> 9
-          group_managed?(group) -> 1
+          group_synced?(row.group) -> 9
+          group_managed?(row.group) -> 1
           true -> 2
         end
 
       label =
         cond do
-          group_synced?(group) ->
-            "Synced from #{group.directory_name}"
+          group_synced?(row.group) ->
+            "Synced from #{row.directory_name}"
 
-          group_managed?(group) ->
+          group_managed?(row.group) ->
             "Managed by Firezone"
 
           true ->
@@ -2655,8 +2657,8 @@ defmodule PortalWeb.Policies.Components do
       {index, label}
     end
 
-    defp group_option(group) do
-      {group.id, group.name, group}
+    defp group_option(row) do
+      {row.group.id, row.group.name, row}
     end
 
     # Inlined from Portal.Actors helpers

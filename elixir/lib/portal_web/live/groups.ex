@@ -282,7 +282,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("open_grant_resource_form", _params, socket) do
-    existing_ids = Enum.map(socket.assigns.group_resources.resources, & &1.id)
+    existing_ids = Enum.map(socket.assigns.group_resources.resources, & &1.resource.id)
     available = Database.list_available_resources(existing_ids, socket.assigns.subject)
     providers = Database.list_providers(socket.assigns.subject)
 
@@ -792,25 +792,25 @@ defmodule PortalWeb.Groups do
         <.live_table
           id="groups"
           rows={@groups}
-          row_id={&"group-#{&1.id}"}
-          row_click={fn g -> ~p"/#{@account}/groups/#{g.id}?#{@query_params}" end}
-          row_selected={fn g -> not is_nil(@selected_group) and g.id == @selected_group.id end}
+          row_id={&"group-#{&1.group.id}"}
+          row_click={fn row -> ~p"/#{@account}/groups/#{row.group.id}?#{@query_params}" end}
+          row_selected={fn row -> not is_nil(@selected_group) and row.group.id == @selected_group.id end}
           filters={@filters_by_table_id["groups"]}
           filter={@filter_form_by_table_id["groups"]}
           ordered_by={@order_by_table_id["groups"]}
           metadata={@groups_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={group} field={{:groups, :name}} label="Name" class="w-full">
+          <:col :let={row} field={{:groups, :name}} label="Name" class="w-full">
             <div class="flex items-center gap-3">
               <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4" />
+                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
               </div>
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
-                  <span class="truncate">{group.name}</span>
+                  <span class="truncate">{row.group.name}</span>
                   <span
-                    :if={group.entity_type == :org_unit}
+                    :if={row.group.entity_type == :org_unit}
                     class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)] shrink-0"
                     title="Organizational Unit"
                   >
@@ -818,29 +818,29 @@ defmodule PortalWeb.Groups do
                   </span>
                 </div>
                 <div class="text-xs text-[var(--text-tertiary)] truncate">
-                  {directory_display_name(group)}
+                  {directory_display_name(row)}
                 </div>
               </div>
             </div>
           </:col>
-          <:col :let={group} field={{:member_counts, :count}} label="Members" class="w-40">
+          <:col :let={row} field={{:member_counts, :count}} label="Members" class="w-40">
             <div class="text-sm text-[var(--text-primary)] tabular-nums">
-              <span class="font-medium">{group.member_count}</span>
+              <span class="font-medium">{row.member_count}</span>
               <span class="text-xs text-[var(--text-tertiary)]">users</span>
             </div>
           </:col>
-          <:col :let={group} label="Resources" class="w-54">
+          <:col :let={row} label="Resources" class="w-54">
             <span class={[
               "inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums",
-              if((group.policy_count || 0) > 0,
+              if((row.policy_count || 0) > 0,
                 do: "bg-[var(--brand-tertiary)] text-[var(--brand)]",
                 else: "bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
               )
             ]}>
-              {group.policy_count || 0}
+              {row.policy_count || 0}
             </span>
           </:col>
-          <:action :let={_group}></:action>
+          <:action :let={_row}></:action>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
@@ -1296,15 +1296,14 @@ defmodule PortalWeb.Groups do
 
     defp hydrate_group_query(query) do
       query
-      |> select_merge([groups: g, member_counts: mc, policy_counts: pc, directory: d], %{
-        count: coalesce(mc.count, 0),
-        member_count: coalesce(mc.count, 0),
-        policy_count: coalesce(pc.count, 0),
-        directory_type: d.type
-      })
-      |> select_merge(
-        [google_directory: gd, entra_directory: ed, okta_directory: od],
+      |> select(
+        [groups: g, member_counts: mc, policy_counts: pc, directory: d,
+         google_directory: gd, entra_directory: ed, okta_directory: od],
         %{
+          group: g,
+          member_count: coalesce(mc.count, 0),
+          policy_count: coalesce(pc.count, 0),
+          directory_type: d.type,
           directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name)
         }
       )
@@ -1382,7 +1381,7 @@ defmodule PortalWeb.Groups do
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
 
-      groups_by_id = Map.new(groups, &{&1.id, &1})
+      groups_by_id = Map.new(groups, &{&1.group.id, &1})
 
       Enum.map(group_ids, fn group_id ->
         Map.fetch!(groups_by_id, group_id)
@@ -1524,14 +1523,7 @@ defmodule PortalWeb.Groups do
 
     def get_group!(id, subject) do
       from(g in Portal.Group, as: :groups)
-      |> join(:left, [groups: g], d in Directory,
-        on: d.id == g.directory_id and d.account_id == g.account_id,
-        as: :directory
-      )
       |> where([groups: groups], groups.id == ^id)
-      |> select_merge([groups: g, directory: d], %{
-        directory_type: d.type
-      })
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
     end
@@ -1723,7 +1715,8 @@ defmodule PortalWeb.Groups do
         on: p.resource_id == r.id and p.group_id == ^group.id,
         as: :policies
       )
-      |> select_merge([policies: p], %{
+      |> select([resources: r, policies: p], %{
+        resource: r,
         policy_id: p.id,
         policy_disabled_at: p.disabled_at
       })
@@ -1732,7 +1725,7 @@ defmodule PortalWeb.Groups do
       |> Safe.all()
       |> case do
         {:error, _} -> []
-        resources -> resources
+        rows -> rows
       end
     end
 
@@ -1743,9 +1736,6 @@ defmodule PortalWeb.Groups do
         from(g in Portal.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
-        |> select_merge([groups: g, directory: d], %{
-          directory_type: d.type
-        })
         |> join(:left, [directory: d], gd in Portal.Google.Directory,
           on: gd.id == d.id and d.type == :google,
           as: :google_directory
@@ -1760,19 +1750,13 @@ defmodule PortalWeb.Groups do
         )
         |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
         |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
-          %{
-            directory_name:
-              fragment(
-                "COALESCE(?, ?, ?)",
-                gd.name,
-                ed.name,
-                od.name
-              )
-          }
+        |> preload(
+          [memberships: m, actors: a, directory: d, google_directory: gd,
+           entra_directory: ed, okta_directory: od],
+          memberships: m,
+          actors: a,
+          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od}
         )
-        |> preload([memberships: m, actors: a], memberships: m, actors: a)
 
       query |> Safe.scoped(subject, repo) |> Safe.one!(fallback_to_primary: true)
     end

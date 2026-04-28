@@ -315,7 +315,7 @@ defmodule PortalWeb.Groups.Components do
                 OU
               </span>
               <span class="text-xs text-[var(--text-tertiary)]">
-                {directory_display_name(@group)}
+                {directory_display_name(@group.directory)}
               </span>
             </div>
           </div>
@@ -830,19 +830,19 @@ defmodule PortalWeb.Groups.Components do
       </div>
       <ul :if={@resources != []}>
         <li
-          :for={resource <- @resources}
+          :for={row <- @resources}
           class={[
             "border-b border-[var(--border)] transition-colors",
-            @confirm_remove_resource_access_id == resource.id &&
+            @confirm_remove_resource_access_id == row.resource.id &&
               "bg-[var(--status-error-bg,#fef2f2)] border-[var(--status-error)]/20"
           ]}
         >
           <div
-            :if={@confirm_remove_resource_access_id == resource.id}
+            :if={@confirm_remove_resource_access_id == row.resource.id}
             class="flex items-center justify-between gap-2 px-4 py-2.5"
           >
             <span class="text-xs text-[var(--text-secondary)] truncate">
-              Remove access to <span class="font-medium text-[var(--text-primary)]">{resource.name}</span>?
+              Remove access to <span class="font-medium text-[var(--text-primary)]">{row.resource.name}</span>?
               <span class="block text-[var(--text-tertiary)]">
                 All group members will immediately lose access.
               </span>
@@ -858,7 +858,7 @@ defmodule PortalWeb.Groups.Components do
               <button
                 type="button"
                 phx-click="remove_resource_access"
-                phx-value-resource_id={resource.id}
+                phx-value-resource_id={row.resource.id}
                 class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/30 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors"
               >
                 Remove
@@ -866,38 +866,38 @@ defmodule PortalWeb.Groups.Components do
             </div>
           </div>
           <div
-            :if={@confirm_remove_resource_access_id != resource.id}
+            :if={@confirm_remove_resource_access_id != row.resource.id}
             class={[
               "flex items-center gap-1 pr-4 hover:bg-[var(--surface-raised)] group/item",
-              @resource_access_actions_open_id == resource.id && "relative z-20"
+              @resource_access_actions_open_id == row.resource.id && "relative z-20"
             ]}
           >
             <.link
-              navigate={~p"/#{@account}/resources/#{resource.id}"}
+              navigate={~p"/#{@account}/resources/#{row.resource.id}"}
               class={[
                 "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
-                not is_nil(resource.policy_disabled_at) && "opacity-50 hover:opacity-75"
+                not is_nil(row.policy_disabled_at) && "opacity-50 hover:opacity-75"
               ]}
             >
               <div class="w-14 shrink-0 flex">
-                <span class={type_badge_class(resource.type)}>
-                  {resource.type}
+                <span class={type_badge_class(row.resource.type)}>
+                  {row.resource.type}
                 </span>
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                   <p class="text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
-                    {resource.name}
+                    {row.resource.name}
                   </p>
                   <span
-                    :if={not is_nil(resource.policy_disabled_at)}
+                    :if={not is_nil(row.policy_disabled_at)}
                     class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)] shrink-0"
                   >
                     disabled
                   </span>
                 </div>
                 <span class="text-xs text-[var(--text-tertiary)] font-mono truncate block">
-                  {resource.address}
+                  {row.resource.address}
                 </span>
               </div>
             </.link>
@@ -905,31 +905,31 @@ defmodule PortalWeb.Groups.Components do
               <button
                 type="button"
                 phx-click="toggle_resource_access_actions"
-                phx-value-resource_id={resource.id}
+                phx-value-resource_id={row.resource.id}
                 class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
                 title="More actions"
               >
                 <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
               </button>
               <div
-                :if={@resource_access_actions_open_id == resource.id}
+                :if={@resource_access_actions_open_id == row.resource.id}
                 phx-click-away="close_resource_access_actions"
                 class="absolute right-0 top-full mt-1 w-44 rounded-md border border-[var(--border)] bg-[var(--surface-overlay)] shadow-lg z-10 py-1"
               >
                 <button
-                  :if={is_nil(resource.policy_disabled_at)}
+                  :if={is_nil(row.policy_disabled_at)}
                   type="button"
                   phx-click="disable_resource_access"
-                  phx-value-resource_id={resource.id}
+                  phx-value-resource_id={row.resource.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
                 </button>
                 <button
-                  :if={not is_nil(resource.policy_disabled_at)}
+                  :if={not is_nil(row.policy_disabled_at)}
                   type="button"
                   phx-click="enable_resource_access"
-                  phx-value-resource_id={resource.id}
+                  phx-value-resource_id={row.resource.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
@@ -937,7 +937,7 @@ defmodule PortalWeb.Groups.Components do
                 <button
                   type="button"
                   phx-click="confirm_remove_resource_access"
-                  phx-value-resource_id={resource.id}
+                  phx-value-resource_id={row.resource.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
@@ -977,7 +977,7 @@ defmodule PortalWeb.Groups.Components do
           <div>
             <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Directory</dt>
             <dd class="text-xs text-[var(--text-secondary)]">
-              {directory_display_name(@group)}
+              {directory_display_name(@group.directory)}
             </dd>
           </div>
           <div :if={@group.entity_type == :org_unit}>
@@ -1237,9 +1237,14 @@ defmodule PortalWeb.Groups.Components do
   defp deletable_group?(%{name: "Everyone"}), do: false
   defp deletable_group?(_group), do: true
 
-  defp directory_display_name(%{directory_name: name}) when not is_nil(name), do: name
-  defp directory_display_name(%{idp_id: idp_id}) when not is_nil(idp_id), do: "Unknown"
-  defp directory_display_name(_), do: "Firezone"
+  defp directory_display_name(directory) do
+    case directory do
+      %{google_directory: %{name: name}} when not is_nil(name) -> name
+      %{entra_directory: %{name: name}} when not is_nil(name) -> name
+      %{okta_directory: %{name: name}} when not is_nil(name) -> name
+      _ -> "Firezone"
+    end
+  end
 
   defp type_badge_class(:dns),
     do:

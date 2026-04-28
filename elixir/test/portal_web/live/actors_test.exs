@@ -739,6 +739,42 @@ defmodule PortalWeb.ActorsTest do
       refute html =~ current_group.name
     end
 
+    test "shows error flash when adding a group membership fails", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      group = group_fixture(account: account, name: "Target Group")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> element("input[placeholder='Search to add groups...']")
+      |> render_change(%{"value" => group.name})
+
+      render_click(lv, "add_pending_group", %{"group_id" => group.id})
+
+      # Create the membership directly in the DB to cause a unique constraint failure on save
+      membership_fixture(actor: other_actor, group: group)
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: other_actor.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      assert render(lv) =~ "Failed to update some group memberships."
+    end
+
     test "redirects to actor list when actor does not exist", %{
       conn: conn,
       account: account,

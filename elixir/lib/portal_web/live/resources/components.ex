@@ -1112,18 +1112,18 @@ defmodule PortalWeb.Resources.Components do
     <div class="flex-1 overflow-y-auto">
       <ul>
         <li
-          :for={group <- @groups}
+          :for={row <- @groups}
           class={[
             "border-b border-[var(--border)] transition-colors",
-            if(@group_actions_open_id == group.id, do: "relative z-20", else: "")
+            if(@group_actions_open_id == row.group.id, do: "relative z-20", else: "")
           ]}
         >
           <div
-            :if={@confirm_remove_group_id == group.id}
+            :if={@confirm_remove_group_id == row.group.id}
             class="flex items-center justify-between gap-2 px-4 py-2.5 bg-[var(--surface-raised)]"
           >
             <span class="text-xs text-[var(--text-secondary)] truncate">
-              Remove <span class="font-medium text-[var(--text-primary)]">{group.name}</span>'s access?
+              Remove <span class="font-medium text-[var(--text-primary)]">{row.group.name}</span>'s access?
               <span class="block text-[var(--text-tertiary)]">
                 All group members will immediately lose access.
               </span>
@@ -1139,7 +1139,7 @@ defmodule PortalWeb.Resources.Components do
               <button
                 type="button"
                 phx-click="remove_group_access"
-                phx-value-group_id={group.id}
+                phx-value-group_id={row.group.id}
                 class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/30 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors"
               >
                 Remove
@@ -1147,28 +1147,28 @@ defmodule PortalWeb.Resources.Components do
             </div>
           </div>
           <div
-            :if={@confirm_remove_group_id != group.id}
+            :if={@confirm_remove_group_id != row.group.id}
             class={[
               "flex items-center gap-1 pr-4 hover:bg-[var(--surface-raised)] group/item",
-              if(not is_nil(group.policy_disabled_at),
+              if(not is_nil(row.policy_disabled_at),
                 do: "opacity-50 hover:opacity-75",
                 else: ""
               )
             ]}
           >
             <.link
-              navigate={~p"/#{@account}/groups/#{group.id}"}
+              navigate={~p"/#{@account}/groups/#{row.group.id}"}
               class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0"
             >
               <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(group)} class="w-4 h-4" />
+                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
               </div>
               <div class="flex-1 min-w-0 flex items-center gap-2">
                 <p class="text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
-                  {group.name}
+                  {row.group.name}
                 </p>
                 <span
-                  :if={not is_nil(group.policy_disabled_at)}
+                  :if={not is_nil(row.policy_disabled_at)}
                   class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
                 >
                   disabled
@@ -1179,31 +1179,31 @@ defmodule PortalWeb.Resources.Components do
               <button
                 type="button"
                 phx-click="toggle_group_actions"
-                phx-value-group_id={group.id}
+                phx-value-group_id={row.group.id}
                 class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
                 title="More actions"
               >
                 <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
               </button>
               <div
-                :if={@group_actions_open_id == group.id}
+                :if={@group_actions_open_id == row.group.id}
                 phx-click-away="close_group_actions"
                 class="absolute right-0 top-full mt-1 w-40 rounded-md border border-[var(--border)] bg-[var(--surface-overlay)] shadow-lg z-10 py-1"
               >
                 <button
-                  :if={is_nil(group.policy_disabled_at)}
+                  :if={is_nil(row.policy_disabled_at)}
                   type="button"
                   phx-click="disable_policy"
-                  phx-value-group_id={group.id}
+                  phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
                 </button>
                 <button
-                  :if={not is_nil(group.policy_disabled_at)}
+                  :if={not is_nil(row.policy_disabled_at)}
                   type="button"
                   phx-click="enable_policy"
-                  phx-value-group_id={group.id}
+                  phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
@@ -1211,7 +1211,7 @@ defmodule PortalWeb.Resources.Components do
                 <button
                   type="button"
                   phx-click="confirm_remove_group"
-                  phx-value-group_id={group.id}
+                  phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
                 >
                   <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
@@ -1282,21 +1282,21 @@ defmodule PortalWeb.Resources.Components do
             </label>
             <% filtered_available =
               @available_groups
-              |> Enum.reject(&(&1.id in @grant_selected_group_ids))
+              |> Enum.reject(&(&1.group.id in @grant_selected_group_ids))
               |> then(fn groups ->
                 if @grant_search == "" do
                   groups
                 else
-                  Enum.filter(groups, fn g ->
+                  Enum.filter(groups, fn row ->
                     String.contains?(
-                      String.downcase(g.name),
+                      String.downcase(row.group.name),
                       String.downcase(@grant_search)
                     )
                   end)
                 end
               end)
               selected_groups =
-                Enum.filter(@available_groups, &(&1.id in @grant_selected_group_ids))
+                Enum.filter(@available_groups, &(&1.group.id in @grant_selected_group_ids))
               at_max = length(@grant_selected_group_ids) >= 5 %>
             <div class="flex gap-2 h-52">
               <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
@@ -1325,11 +1325,11 @@ defmodule PortalWeb.Resources.Components do
                   </div>
                 </div>
                 <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
-                  <li :for={group <- filtered_available}>
+                  <li :for={row <- filtered_available}>
                     <button
                       type="button"
                       phx-click="toggle_grant_group"
-                      phx-value-group_id={group.id}
+                      phx-value-group_id={row.group.id}
                       disabled={at_max}
                       class={[
                         "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
@@ -1341,9 +1341,9 @@ defmodule PortalWeb.Resources.Components do
                       ]}
                     >
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                        <.provider_icon type={provider_type_from_group(group)} class="w-3 h-3" />
+                        <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
                       </div>
-                      <span class="text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+                      <span class="text-xs text-[var(--text-primary)] truncate">{row.group.name}</span>
                     </button>
                   </li>
                   <li
@@ -1376,17 +1376,17 @@ defmodule PortalWeb.Resources.Components do
                   </span>
                 </div>
                 <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
-                  <li :for={group <- selected_groups}>
+                  <li :for={row <- selected_groups}>
                     <button
                       type="button"
                       phx-click="toggle_grant_group"
-                      phx-value-group_id={group.id}
+                      phx-value-group_id={row.group.id}
                       class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors cursor-pointer group"
                     >
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                        <.provider_icon type={provider_type_from_group(group)} class="w-3 h-3" />
+                        <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
                       </div>
-                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{row.group.name}</span>
                       <.icon
                         name="ri-close-line"
                         class="w-3.5 h-3.5 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"

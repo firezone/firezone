@@ -28,5 +28,6 @@ defmodule Portal.Membership do
     |> assoc_constraint(:actor)
     |> assoc_constraint(:group)
     |> assoc_constraint(:account)
+    |> unique_constraint([:actor_id, :group_id], name: :memberships_actor_id_group_id_index)
   end
 end
