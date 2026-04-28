@@ -45,7 +45,8 @@
         ".credo/check/warning/missing_database_alias.ex",
         ".credo/check/warning/cross_module_database_call.ex",
         ".credo/check/warning/action_fallback_usage.ex",
-        ".credo/check/warning/missing_changeset_function.ex"
+        ".credo/check/warning/missing_changeset_function.ex",
+        ".credo/check/warning/unsafe_template_html.ex"
       ],
       #
       # If you want to enforce a style guide and need a more traditional linting
@@ -165,7 +166,8 @@
           {Credo.Check.Warning.SafeCallsOutsideDatabaseModule, []},
           {Credo.Check.Warning.UnsafeRepoUsage, []},
           {Credo.Check.Warning.MissingDatabaseAlias, []},
-          {Credo.Check.Warning.CrossModuleDatabaseCall, []}
+          {Credo.Check.Warning.CrossModuleDatabaseCall, []},
+          {Credo.Check.Warning.UnsafeTemplateHTML, []}
         ],
         disabled: [
           {Credo.Check.Readability.AliasOrder, []},

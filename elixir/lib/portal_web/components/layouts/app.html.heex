@@ -29,6 +29,7 @@
           <div class="flex items-center justify-center gap-2.5">
             <.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
             <p class={["text-sm font-medium", text_class]}>
+              <%!-- credo:disable-for-next-line Credo.Check.Warning.UnsafeTemplateHTML --%>
               {Phoenix.HTML.raw(banner.message)}
             </p>
           </div>
