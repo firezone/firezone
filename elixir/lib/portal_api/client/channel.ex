@@ -126,7 +126,7 @@ defmodule PortalAPI.Client.Channel do
     end
 
     for resource <- added_resources, resource.type != :static_device_pool do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource, socket.assigns.session))
     end
 
     {:noreply, assign(socket, cache: cache)}
@@ -289,23 +289,18 @@ defmodule PortalAPI.Client.Channel do
       {timer_ref, remaining} ->
         Process.cancel_timer(timer_ref)
 
-        reply_payload = %{
-          resource_id: resource_id,
-          preshared_key: preshared_key,
-          client_ice_credentials: ice_credentials.initiator,
-          # TODO: conditionally rename to site_id based on client version
-          # apple: >= 1.5.11
-          # headless: >= 1.5.6
-          # android: >= 1.5.8
-          # gui: >= 1.5.10
-          # See https://github.com/firezone/firezone/commit/9d8b55212aea418264a272109776e795f5eda6ce
-          gateway_group_id: site_id,
-          gateway_id: gateway_id,
-          gateway_public_key: gateway_public_key,
-          gateway_ipv4: gateway_ipv4,
-          gateway_ipv6: gateway_ipv6,
-          gateway_ice_credentials: ice_credentials.receiver
-        }
+        reply_payload =
+          %{
+            resource_id: resource_id,
+            preshared_key: preshared_key,
+            client_ice_credentials: ice_credentials.initiator,
+            gateway_id: gateway_id,
+            gateway_public_key: gateway_public_key,
+            gateway_ipv4: gateway_ipv4,
+            gateway_ipv6: gateway_ipv6,
+            gateway_ice_credentials: ice_credentials.receiver
+          }
+          |> put_site_id(site_id, socket.assigns.session)
 
         push(socket, "flow_created", reply_payload)
         {:noreply, assign(socket, :pending_flows, remaining)}
@@ -374,6 +369,17 @@ defmodule PortalAPI.Client.Channel do
 
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp put_site_id(payload, site_id, client_session) do
+    key =
+      if Portal.Version.client_supports_sites_payload?(client_session) do
+        :site_id
+      else
+        :gateway_group_id
+      end
+
+    Map.put(payload, key, site_id)
+  end
 
   ####################################
   ##### Client-initiated actions #####
@@ -1009,7 +1015,7 @@ defmodule PortalAPI.Client.Channel do
       resources:
         resources
         |> Enum.reject(&(&1.type == :static_device_pool))
-        |> Views.Resource.render_many(),
+        |> Views.Resource.render_many(socket.assigns.session),
       # TODO: Re-enable after verifying compatibility with older clients
       # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
@@ -1355,7 +1361,7 @@ defmodule PortalAPI.Client.Channel do
 
     # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
     for resource <- added_resources, resource.type != :static_device_pool do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource, socket.assigns.session))
     end
 
     {:noreply, assign(socket, cache: cache)}

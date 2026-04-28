@@ -63,10 +63,19 @@ defmodule Portal.ComponentVersions do
 
   def get_component_type(%Device{type: :client}), do: :gui
 
-  def get_component_type_from_user_agent("Mac OS" <> _rest), do: :apple
-  def get_component_type_from_user_agent("iOS" <> _rest), do: :apple
-  def get_component_type_from_user_agent("Android" <> _rest), do: :android
-  def get_component_type_from_user_agent(_), do: :gui
+  def get_component_type_from_user_agent(user_agent) when is_binary(user_agent) do
+    cond do
+      String.contains?(user_agent, "headless-client/") -> :headless
+      String.contains?(user_agent, "gui-client/") -> :gui
+      String.contains?(user_agent, "apple-client/") -> :apple
+      String.contains?(user_agent, "android-client/") -> :android
+      String.starts_with?(user_agent, "Mac OS") -> :apple
+      String.starts_with?(user_agent, "macOS") -> :apple
+      String.starts_with?(user_agent, "iOS") -> :apple
+      String.starts_with?(user_agent, "Android") -> :android
+      true -> :gui
+    end
+  end
 
   defp fetch_config! do
     Portal.Config.fetch_env!(:portal, __MODULE__)

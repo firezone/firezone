@@ -40,6 +40,41 @@ defmodule Portal.VersionTest do
     end
   end
 
+  describe "client_supports_sites_payload?/1" do
+    test "uses component-specific minimum versions" do
+      cases = [
+        {"Mac OS/15.1.1 apple-client/1.5.11 (arm64; 24.1.0)", "1.5.10", "1.5.11"},
+        {"Fedora/42.0.0 headless-client/1.5.6 (arm64; 24.1.0)", "1.5.5", "1.5.6"},
+        {"Android/14 android-client/1.5.8 (arm64; 24.1.0)", "1.5.7", "1.5.8"},
+        {"Windows/10.0.22631 gui-client/1.5.10 (arm64; 24.1.0)", "1.5.9", "1.5.10"}
+      ]
+
+      for {user_agent, unsupported_version, supported_version} <- cases do
+        refute Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
+                 version: unsupported_version,
+                 user_agent: user_agent
+               })
+
+        assert Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
+                 version: supported_version,
+                 user_agent: user_agent
+               })
+      end
+    end
+
+    test "returns false for nil or invalid versions" do
+      refute Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
+               version: nil,
+               user_agent: "Windows/10.0.22631 gui-client/1.5.10"
+             })
+
+      refute Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
+               version: "not-a-version",
+               user_agent: "Windows/10.0.22631 gui-client/not-a-version"
+             })
+    end
+  end
+
   describe "resource_cannot_change_sites_on_client?/1 with ClientSession" do
     test "apple session below version cannot change sites" do
       session = %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}

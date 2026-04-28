@@ -103,6 +103,15 @@ defmodule Portal.ComponentVersionsTest do
       assert get_component_type(client) == :gui
     end
 
+    test "returns component from explicit client tokens in user agent" do
+      assert get_component_type_from_user_agent("Fedora/42.0.0 headless-client/1.5.6") ==
+               :headless
+
+      assert get_component_type_from_user_agent("Fedora/42.0.0 gui-client/1.5.10") == :gui
+      assert get_component_type_from_user_agent("Darwin/24.0.0 apple-client/1.5.11") == :apple
+      assert get_component_type_from_user_agent("Linux/6.1.0 android-client/1.5.8") == :android
+    end
+
     test "returns :gui when latest_session is nil" do
       client = %Portal.Device{
         type: :client,
