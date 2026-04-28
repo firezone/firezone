@@ -1,9 +1,9 @@
-//! Not implemented for Linux yet
+//! Network change detection for Linux via DBus / NetworkManager
 
 use crate::DnsControlMethod;
 use anyhow::Result;
 use futures::StreamExt as _;
-use std::time::Duration;
+use std::{collections::HashMap, pin::Pin, time::Duration};
 use tokio::time::{Interval, MissedTickBehavior};
 
 /// Parameters to tell `zbus` how to listen for a signal.
@@ -15,8 +15,6 @@ struct SignalParams {
     dest: &'static str,
     path: &'static str,
     /// "Interface" in DBus terms means like a Rust trait.
-    ///
-    /// Currently we don't process the data, we just notify when the signal comes in, so this doesn't matter much.
     interface: &'static str,
     /// The name of the signal we care about.
     member: &'static str,
@@ -37,39 +35,61 @@ pub async fn new_dns_notifier(
             Ok(Worker::new_dns_poller())
         }
         DnsControlMethod::SystemdResolved => {
-            Worker::new_dbus(SignalParams {
-                dest: "org.freedesktop.resolve1",
-                path: "/org/freedesktop/resolve1",
-                interface: "org.freedesktop.DBus.Properties",
-                member: "PropertiesChanged",
-            })
+            Worker::new_dbus(
+                SignalParams {
+                    dest: "org.freedesktop.resolve1",
+                    path: "/org/freedesktop/resolve1",
+                    interface: "org.freedesktop.DBus.Properties",
+                    member: "PropertiesChanged",
+                },
+                |_| true,
+            )
             .await
         }
     }
 }
 
-/// Listens for changes between Wi-Fi networks
+/// Listens for changes to the primary egress path (the interface NM considers
+/// the default route).
 ///
-/// Should be similar to `dbus-monitor --system "type='signal',interface='org.freedesktop.NetworkManager',member='StateChanged'"`
+/// Notifies when `PrimaryConnection` changes, meaning the interface used for
+/// egress traffic has switched. Toggling an ethernet adapter while Wi-Fi is
+/// still up will not trigger a notification unless ethernet was the primary
+/// connection, which is exactly what we care about for session resets.
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
-    method: DnsControlMethod,
+    _method: DnsControlMethod,
 ) -> Result<Worker> {
-    match method {
-        DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => Ok(Worker {
-            just_started: true,
-            inner: Inner::Null,
-        }),
-        DnsControlMethod::SystemdResolved => {
-            Worker::new_dbus(SignalParams {
-                dest: "org.freedesktop.NetworkManager",
-                path: "/org/freedesktop/NetworkManager",
-                interface: "org.freedesktop.NetworkManager",
-                member: "StateChanged",
-            })
-            .await
-        }
-    }
+    Worker::new_dbus(
+        SignalParams {
+            dest: "org.freedesktop.NetworkManager",
+            path: "/org/freedesktop/NetworkManager",
+            // Despite what the payload's first argument says, NM stamps
+            // org.freedesktop.DBus.Properties in the message header, as
+            // confirmed by bus monitoring. The match rule must use that.
+            interface: "org.freedesktop.DBus.Properties",
+            member: "PropertiesChanged",
+        },
+        primary_connection_changed,
+    )
+    .await
+}
+
+/// Returns `true` if the `PropertiesChanged` signal body contains a change to
+/// `PrimaryConnection`, meaning the default-route interface has switched.
+fn primary_connection_changed(body: &zbus::message::Body) -> bool {
+    // NM emits one PropertiesChanged per property, with body
+    // (interface_name, changed_properties, invalidated_properties).
+    type Payload = (
+        String,
+        HashMap<String, zbus::zvariant::OwnedValue>,
+        Vec<String>,
+    );
+    let Ok((_iface, changed, invalidated)) = body.deserialize::<Payload>() else {
+        return false;
+    };
+    changed.contains_key("PrimaryConnection")
+        || invalidated.iter().any(|k| k == "PrimaryConnection")
 }
 
 pub struct Worker {
@@ -78,7 +98,7 @@ pub struct Worker {
 }
 
 enum Inner {
-    DBus(Box<zbus::proxy::SignalStream<'static>>),
+    DBus(Pin<Box<dyn futures::Stream<Item = ()> + Send>>),
     DnsPoller(Interval),
     Null,
 }
@@ -93,7 +113,10 @@ impl Worker {
         }
     }
 
-    async fn new_dbus(params: SignalParams) -> Result<Self> {
+    async fn new_dbus(
+        params: SignalParams,
+        filter: fn(&zbus::message::Body) -> bool,
+    ) -> Result<Self> {
         let SignalParams {
             dest,
             path,
@@ -103,10 +126,14 @@ impl Worker {
 
         let cxn = zbus::Connection::system().await?;
         let proxy = zbus::Proxy::new_owned(cxn, dest, path, interface).await?;
-        let stream = proxy.receive_signal(member).await?;
+        let stream = proxy
+            .receive_signal(member)
+            .await?
+            .filter(move |msg| std::future::ready(filter(&msg.body())))
+            .map(|_| ());
         Ok(Self {
             just_started: true,
-            inner: Inner::DBus(Box::new(stream)),
+            inner: Inner::DBus(Box::pin(stream)),
         })
     }
 
