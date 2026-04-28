@@ -10,7 +10,14 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os == OS.Linux && (
+          <ChangeItem pull={12993}>
+            Fixes a bug where connectivity was lost when moving from Ethernet to
+            WiFi.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>
           Takes into account traffic filters when routing packets to resources.
