@@ -11,6 +11,7 @@ defmodule PortalWeb.Resources do
   import PortalWeb.Resources.Components,
     only: [
       map_filters_form_attrs: 2,
+      nil_site_label: 1,
       panel_shell: 1,
       resource_details_panel: 1,
       resource_form_panel: 1,
@@ -474,7 +475,7 @@ defmodule PortalWeb.Resources do
               {resource.site.name}
             </.link>
             <span :if={is_nil(resource.site)} class="text-[var(--text-muted)] italic">
-              No Site Needed
+              {nil_site_label(resource)}
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">

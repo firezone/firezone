@@ -65,6 +65,40 @@ defmodule PortalWeb.ResourcesTest do
       assert_patch(lv, ~p"/#{account}/resources")
       refute render(lv) =~ "Add Resource"
     end
+
+    test "shows conventional nil-site copy in the resources table", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ resource.name
+      assert count_occurrences(html, "No Site Associated") == 1
+      refute html =~ "No Site Needed"
+    end
+
+    test "shows device pool nil-site copy in the resources table", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = static_device_pool_resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ resource.name
+      assert count_occurrences(html, "No Site Needed") == 1
+      refute html =~ "No Site Associated"
+    end
   end
 
   describe ":new action" do
@@ -274,6 +308,40 @@ defmodule PortalWeb.ResourcesTest do
 
       assert html =~ resource.name
       assert html =~ resource.address
+    end
+
+    test "shows conventional nil-site copy consistently in the selected resource panel", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ resource.name
+      assert count_occurrences(html, "No Site Associated") == 3
+      refute html =~ "No Site Needed"
+    end
+
+    test "shows device pool nil-site copy consistently in the selected resource panel", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = static_device_pool_resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ resource.name
+      assert count_occurrences(html, "No Site Needed") == 3
+      refute html =~ "No Site Associated"
     end
 
     test "opens grant access form, creates access, and returns to list", %{
@@ -579,5 +647,12 @@ defmodule PortalWeb.ResourcesTest do
       html = render_click(lv, "cancel_delete_resource")
       refute html =~ "Delete this resource?"
     end
+  end
+
+  defp count_occurrences(haystack, needle) do
+    haystack
+    |> String.split(needle)
+    |> length()
+    |> Kernel.-(1)
   end
 end

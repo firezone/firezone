@@ -62,6 +62,9 @@ defmodule PortalWeb.Resources.Components do
     {resource.id, resource.name, resource}
   end
 
+  def nil_site_label(%{type: :static_device_pool}), do: "No Site Needed"
+  def nil_site_label(_resource), do: "No Site Associated"
+
   def map_filters_form_attrs(attrs, account) do
     attrs =
       if Portal.Account.traffic_filters_enabled?(account) do
@@ -1055,7 +1058,9 @@ defmodule PortalWeb.Resources.Components do
                   {@resource.site.name}
                 </.link>
               <% else %>
-                <span class="text-xs italic text-[var(--text-muted)]">No Site Needed</span>
+                <span class="text-xs italic text-[var(--text-muted)]">
+                  {nil_site_label(@resource)}
+                </span>
               <% end %>
             </span>
           </div>
@@ -1568,29 +1573,29 @@ defmodule PortalWeb.Resources.Components do
           Infrastructure
         </h3>
         <dl class="space-y-2.5">
-          <div :if={@resource.type == :static_device_pool}>
+          <div :if={@resource.type != :internet}>
             <dt class="text-[10px] text-[var(--text-tertiary)] mb-1">Site</dt>
-            <dd class="text-xs italic text-[var(--text-muted)]">No Site Needed</dd>
-          </div>
-          <div :if={@resource.site && @resource.type != :static_device_pool}>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-1">Site</dt>
-            <dd class="flex items-center gap-1.5 flex-wrap">
-              <.link
-                navigate={~p"/#{@account}/sites/#{@resource.site}"}
-                class="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                {@resource.site.name}
-              </.link>
-              <span
-                :if={resource_online?(@resource)}
-                class="relative flex items-center justify-center w-1.5 h-1.5"
-              >
-                <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
+            <%= if @resource.site do %>
+              <dd class="flex items-center gap-1.5 flex-wrap">
+                <.link
+                  navigate={~p"/#{@account}/sites/#{@resource.site}"}
+                  class="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  {@resource.site.name}
+                </.link>
+                <span
+                  :if={resource_online?(@resource)}
+                  class="relative flex items-center justify-center w-1.5 h-1.5"
+                >
+                  <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
+                  </span>
+                  <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
+                  </span>
                 </span>
-                <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-                </span>
-              </span>
-            </dd>
+              </dd>
+            <% else %>
+              <dd class="text-xs italic text-[var(--text-muted)]">{nil_site_label(@resource)}</dd>
+            <% end %>
           </div>
         </dl>
       </section>
