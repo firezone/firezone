@@ -638,10 +638,7 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_traffic_restrictions_section(assigns) do
     ~H"""
-    <div :if={
-      (is_nil(@resource) || @resource.type != :internet) &&
-        to_string(@form[:type].value) != "static_device_pool"
-    }>
+    <div :if={is_nil(@resource) || @resource.type != :internet}>
       <div class="flex items-center justify-between mb-2">
         <span class="block text-xs font-medium text-[var(--text-secondary)]">
           Traffic Restrictions <span class="font-normal text-[var(--text-tertiary)]">(optional)</span>
