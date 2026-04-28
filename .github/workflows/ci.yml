@@ -356,8 +356,12 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
+          - image: ${{ needs.data-plane.outputs.client_image }}
+            tag: ${{ github.sha }}
+            ci-name: sha
           - image: "ghcr.io/firezone/client"
             tag: "latest"
+            ci-name: latest
         gateway:
           - image: ${{ needs.data-plane.outputs.gateway_image }}
             tag: ${{ github.sha }}
@@ -369,7 +373,7 @@ jobs:
     # it'll be red if there was a breaking change we're trying to publish,
     # and the deploy_production workflow checks for main to be green.
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-    name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
+    name: compatibility-tests-client(${{ matrix.client.ci-name }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
     needs: [control-plane, data-plane]
     secrets: inherit
