@@ -452,6 +452,48 @@ defmodule PortalWeb.GroupsTest do
       assert Repo.get_by!(Membership, group_id: group.id, actor_id: added_member.id)
       assert is_nil(Repo.get_by(Membership, group_id: group.id, actor_id: current_member.id))
     end
+
+    test "shows updated members without full refresh after saving edits", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      current_member = actor_fixture(account: account, name: "Current Member")
+      added_member = actor_fixture(account: account, name: "Added Member")
+      membership_fixture(account: account, actor: current_member, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}")
+
+      assert render(lv) =~ current_member.name
+
+      lv
+      |> element("a[href='#{~p"/#{account}/groups/#{group}/edit"}']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/groups/#{group}/edit")
+
+      render_click(lv, "remove_member", %{"actor_id" => current_member.id})
+
+      html =
+        lv
+        |> form("#group-form", group: %{name: group.name, member_search: added_member.name})
+        |> render_change()
+
+      assert html =~ added_member.name
+      render_click(lv, "add_member", %{"actor_id" => added_member.id})
+
+      lv
+      |> form("#group-form", group: %{name: group.name, member_search: ""})
+      |> render_submit()
+
+      html = render(lv)
+      assert html =~ added_member.name
+      refute html =~ current_member.name
+    end
   end
 
   describe "confirm_delete_group event" do
@@ -493,8 +535,17 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "remove_member", %{"actor_id" => member.id})
       assert html =~ "To Remove"
 
-      html = render_click(lv, "undo_member_removal", %{"actor_id" => member.id})
-      refute html =~ "To Remove"
+      render_click(lv, "undo_member_removal", %{"actor_id" => member.id})
+
+      refute has_element?(
+               lv,
+               "button[phx-click='undo_member_removal'][phx-value-actor_id='#{member.id}']"
+             )
+
+      assert has_element?(
+               lv,
+               "button[phx-click='remove_member'][phx-value-actor_id='#{member.id}']"
+             )
 
       lv
       |> form("#group-form", group: %{name: group.name, member_search: ""})

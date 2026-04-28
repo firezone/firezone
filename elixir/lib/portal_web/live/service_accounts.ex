@@ -80,6 +80,7 @@ defmodule PortalWeb.ServiceAccounts do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
       socket = handle_live_tables_params(socket, params, uri)
       changeset = changeset(actor, %{})
+      groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
 
       {:noreply,
        socket
@@ -88,7 +89,7 @@ defmodule PortalWeb.ServiceAccounts do
        |> assign(
          actor_panel: actor_panel_state(view: :edit, is_last_admin: false),
          actor_form: actor_form_state(to_form(changeset)),
-         actor_related: actor_related_state(),
+         actor_related: actor_related_state(groups: groups),
          actor_group_membership: actor_group_membership_state()
        )}
     else
@@ -777,7 +778,26 @@ defmodule PortalWeb.ServiceAccounts do
       Database.remove_group_member(group_id, actor, subject)
     end)
 
-    assign(socket, actor_group_membership: actor_group_membership_state())
+    groups =
+      updated_groups(
+        socket.assigns.actor_related.groups,
+        socket.assigns.actor_group_membership.pending_group_additions,
+        socket.assigns.actor_group_membership.pending_group_removals
+      )
+
+    socket
+    |> assign(actor_group_membership: actor_group_membership_state())
+    |> merge_state(:actor_related, groups: groups)
+  end
+
+  defp updated_groups(current_groups, pending_additions, pending_removals) do
+    remove_ids = MapSet.new(pending_removals)
+
+    current_groups
+    |> Enum.reject(&MapSet.member?(remove_ids, &1.id))
+    |> Kernel.++(pending_additions)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.sort_by(&String.downcase(&1.name || ""))
   end
 
   defp parse_date_to_datetime(date_string) do
@@ -951,7 +971,9 @@ defmodule PortalWeb.ServiceAccounts do
       |> Safe.one(fallback_to_primary: true)
     end
 
-    def get_groups_for_actor(actor_id, subject) do
+    def get_groups_for_actor(actor_id, subject, opts \\ []) do
+      repo = Keyword.get(opts, :repo, :replica)
+
       from(g in Portal.Group, as: :groups)
       |> join(:inner, [groups: g], m in Portal.Membership,
         on: m.group_id == g.id and m.account_id == g.account_id,
@@ -959,7 +981,7 @@ defmodule PortalWeb.ServiceAccounts do
       )
       |> where([membership: m], m.actor_id == ^actor_id)
       |> order_by([groups: g], asc: g.name)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject, repo)
       |> Safe.all()
     end
 
