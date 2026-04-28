@@ -1817,7 +1817,7 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset();
+        self.node.reset(now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

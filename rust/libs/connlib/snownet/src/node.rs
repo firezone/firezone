@@ -162,7 +162,7 @@ where
     ///   any prior nomination state,
     /// - [`Allocation`]s are cleared — upper layers MUST rebind the sockets
     ///   they use for ICE and re-register TURN servers afterwards.
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, now: Instant) {
         self.allocations.clear();
         self.buffered_transmits.clear();
         self.pending_events.clear();
@@ -182,7 +182,7 @@ where
             }
         }
 
-        self.connections.ice_restart();
+        self.connections.ice_restart(self.unix_ms(now));
     }
 
     /// Returns the current Unix time in milliseconds, derived from the
@@ -1901,11 +1901,8 @@ where
     ///
     /// The existing local and remote candidates stay; only the candidate-pair
     /// list and Firezone-level handshake bookkeeping are cleared. The
-    /// underlying WireGuard session is left alone, and the candidate epoch
-    /// is NOT bumped — that decision belongs to the caller, since the right
-    /// side to bump the epoch on depends on which side's candidates are
-    /// superseding the others.
-    fn ice_restart(&mut self) {
+    /// underlying WireGuard session is left alone.
+    fn ice_restart(&mut self, unix_ms: u64) {
         // If the ICE agent is already checking candidates, recreating the
         // pair list would abort those in-flight checks for no benefit — the
         // agent is already on the path we'd restart it on.
@@ -1913,6 +1910,17 @@ where
             tracing::trace!("Agent is already checking candidates, skipping ICE restart");
             return;
         }
+
+        // Take the controlling role with a monotonically-increasing
+        // tiebreaker, so the next binding request to the peer triggers a
+        // role conflict (RFC 8445 §7.3.1.1) that the just-roamed side wins.
+        // Combined with `peer_socket_override`, this gives us — the side
+        // that knows it has new candidates — unilateral authority to
+        // nominate a new pair, which is what we need in c2c where the
+        // previously-controlled side could otherwise never drive a path
+        // swap.
+        self.agent.set_controlling(true);
+        self.agent.set_control_tie_breaker(unix_ms);
 
         self.agent.recreate_candidate_pairs();
 

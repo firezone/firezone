@@ -277,10 +277,11 @@ where
     ///
     /// Candidates, ICE credentials, and the underlying
     /// [`boringtun::noise::Tunn`] are left alone so WireGuard sessions
-    /// survive.
-    pub(crate) fn ice_restart(&mut self) {
+    /// survive. The tiebreaker refresh happens inside
+    /// `Connection::ice_restart`.
+    pub(crate) fn ice_restart(&mut self, unix_ms: u64) {
         for c in self.established.values_mut() {
-            c.ice_restart();
+            c.ice_restart(unix_ms);
         }
     }
 
