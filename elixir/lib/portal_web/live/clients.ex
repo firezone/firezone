@@ -592,10 +592,10 @@ defmodule PortalWeb.Clients do
     def filters do
       [
         %Portal.Repo.Filter{
-          name: :name,
+          name: :search,
           title: "Client or Actor",
           type: {:string, :websearch},
-          fun: &filter_by_name_or_email_fts/2
+          fun: &filter_by_search_fts/2
         },
         %Portal.Repo.Filter{
           name: :verification,
@@ -620,7 +620,7 @@ defmodule PortalWeb.Clients do
       ]
     end
 
-    def filter_by_name_or_email_fts(queryable, name_or_email) do
+    def filter_by_search_fts(queryable, search_term) do
       queryable =
         if has_named_binding?(queryable, :actors) do
           queryable
@@ -631,9 +631,9 @@ defmodule PortalWeb.Clients do
       {queryable,
        dynamic(
          [devices: devices, actors: actors],
-         fulltext_search(actors.name, ^name_or_email) or
-           fulltext_search(devices.name, ^name_or_email) or
-           fulltext_search(devices.email, ^name_or_email)
+         fulltext_search(actors.name, ^search_term) or
+           fulltext_search(devices.name, ^search_term) or
+           fulltext_search(actors.email, ^search_term)
        )}
     end
 

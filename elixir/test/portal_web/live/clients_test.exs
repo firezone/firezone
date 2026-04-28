@@ -55,6 +55,26 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ client.name
     end
 
+    test "filters clients by client name or actor name/email", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      owner = actor_fixture(account: account, name: "Owner Person", email: "owner@example.com")
+      client = client_fixture(account: account, actor: owner, name: "Owner Laptop")
+      other_client = client_fixture(account: account, actor: actor, name: "Other Laptop")
+
+      conn = authorize_conn(conn, actor)
+
+      for search <- [client.name, owner.name, owner.email] do
+        {:ok, _lv, html} =
+          live(conn, ~p"/#{account}/clients?#{%{"clients_filter[search]" => search}}")
+
+        assert html =~ client.name
+        refute html =~ other_client.name
+      end
+    end
+
     test "renders verified and unverified client states", %{
       conn: conn,
       account: account,
