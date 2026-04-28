@@ -156,14 +156,12 @@ where
     /// - the remote candidates and ICE credentials we already know.
     ///
     /// What does get reset:
-    /// - each connection's candidate epoch is bumped so newly added local
-    ///   candidates strictly outrank candidates from the previous network,
     /// - each connection's ICE candidate-pair list is re-formed, clearing
     ///   any prior nomination state,
-    /// - [`Allocation`]s are cleared — upper layers MUST rebind the sockets
+    /// - [`Allocation`]s are reset — upper layers MUST rebind the sockets
     ///   they use for ICE and re-register TURN servers afterwards.
     pub fn reset(&mut self, now: Instant) {
-        self.allocations.clear();
+        self.allocations.reset(now);
         self.buffered_transmits.clear();
         self.pending_events.clear();
         self.inflight_stun_requests.clear();

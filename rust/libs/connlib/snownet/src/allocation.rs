@@ -260,6 +260,25 @@ impl Allocation {
         allocation
     }
 
+    pub fn reset(&mut self, now: Instant) {
+        self.active_socket = None;
+        self.ip4_host_candidate = None;
+        self.ip6_host_candidate = None;
+        self.ip4_srflx_candidate = None;
+        self.ip6_srflx_candidate = None;
+        self.ip4_allocation = None;
+        self.ip6_allocation = None;
+        self.buffered_transmits.clear();
+        self.events.clear();
+        self.sent_requests.clear();
+        self.allocation_lifetime = None;
+        self.channel_bindings.clear();
+        self.buffered_channel_bindings.clear();
+        self.explicit_failure = None;
+
+        self.send_binding_requests(now);
+    }
+
     pub fn host_and_server_reflexive_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
         [
             self.ip4_host_candidate.clone(),
