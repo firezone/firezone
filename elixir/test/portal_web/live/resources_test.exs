@@ -250,6 +250,65 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "input[name='resource[filters][tcp][ports]']")
     end
 
+    test "manages static device pool traffic restriction controls and creates resource with filters",
+         %{
+           conn: conn,
+           account: account,
+           actor: actor
+         } do
+      enable_feature(:client_to_client)
+
+      features =
+        account.features
+        |> Map.from_struct()
+        |> Map.put(:client_to_client, true)
+
+      account = update_account(account, features: features)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> render_change()
+
+      render_click(lv, "toggle_resource_filters_dropdown")
+      assert has_element?(lv, "button[phx-value-protocol='tcp']", "TCP")
+
+      render_click(lv, "add_resource_filter", %{"protocol" => "tcp"})
+      assert has_element?(lv, "input[name='resource[filters][tcp][enabled]'][value='true']")
+      assert has_element?(lv, "input[name='resource[filters][tcp][ports]']")
+
+      render_click(lv, "add_resource_filter", %{"protocol" => "icmp"})
+      assert has_element?(lv, "input[name='resource[filters][icmp][enabled]'][value='true']")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{
+            type: "static_device_pool",
+            name: "Filtered Device Pool",
+            filters: %{
+              tcp: %{enabled: "true", protocol: "tcp", ports: "443, 8443"},
+              icmp: %{enabled: "true", protocol: "icmp"}
+            }
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource =
+        Repo.get_by!(Portal.Resource, account_id: account.id, name: "Filtered Device Pool")
+
+      assert Map.new(resource.filters, &{&1.protocol, &1.ports}) == %{
+               tcp: ["443", "8443"],
+               icmp: []
+             }
+    end
+
     test "manages static device pool client picker", %{
       conn: conn,
       account: account,
