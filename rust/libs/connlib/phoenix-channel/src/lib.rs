@@ -1050,6 +1050,9 @@ fn make_request(url: Url, host: String, user_agent: String, token: &SecretString
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
     let user_agent = user_agent.replace(|c: char| !c.is_ascii(), "");
+    let token = token
+        .expose_secret()
+        .replace(|c: char| c.is_whitespace(), "");
 
     Request::builder()
         .method("GET")
@@ -1059,10 +1062,7 @@ fn make_request(url: Url, host: String, user_agent: String, token: &SecretString
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
-        .header(
-            "X-Authorization",
-            format!("Bearer {}", token.expose_secret()),
-        )
+        .header("X-Authorization", format!("Bearer {token}"))
         .uri(url.to_string())
         .body(())
         .expect("should always be able to build a request if we only pass strings to it")
@@ -1332,6 +1332,51 @@ mod tests {
         assert!(
             matches!(result, Err(InternalError::ConnectTimeout)),
             "Expected ConnectTimeout"
+        );
+    }
+
+    #[test]
+    fn make_request_strips_newline_from_token() {
+        let request = make_request(
+            Url::parse("ws://example.com/websocket").unwrap(),
+            "example.com".to_string(),
+            "test-agent".to_string(),
+            &SecretString::from("valid-token-part\ninjected".to_string()),
+        );
+
+        assert_eq!(
+            request.headers()["X-Authorization"],
+            "Bearer valid-token-partinjected"
+        );
+    }
+
+    #[test]
+    fn make_request_strips_carriage_return_from_token() {
+        let request = make_request(
+            Url::parse("ws://example.com/websocket").unwrap(),
+            "example.com".to_string(),
+            "test-agent".to_string(),
+            &SecretString::from("valid-token-part\rinjected".to_string()),
+        );
+
+        assert_eq!(
+            request.headers()["X-Authorization"],
+            "Bearer valid-token-partinjected"
+        );
+    }
+
+    #[test]
+    fn make_request_accepts_valid_token() {
+        let request = make_request(
+            Url::parse("ws://example.com/websocket").unwrap(),
+            "example.com".to_string(),
+            "test-agent".to_string(),
+            &SecretString::from("a-perfectly-valid.token_123".to_string()),
+        );
+
+        assert_eq!(
+            request.headers()["X-Authorization"],
+            "Bearer a-perfectly-valid.token_123"
         );
     }
 }
