@@ -105,24 +105,43 @@ jobs:
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
           ../../scripts/upload/github-release.sh
+      - name: Authenticate to Google Cloud (Firebase)
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
+        id: firebase-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: firebase-app-distributor@firezone-55040.iam.gserviceaccount.com
       - name: Distribute release to Firebase App Distribution
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         env:
-          FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
-          FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
+          FIREBASE_CREDENTIALS_PATH: ${{ steps.firebase-auth.outputs.credentials_file_path }}
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
-        run: |
-          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > "$FIREBASE_CREDENTIALS_PATH"
-          ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
-      - name: Upload AAB to Google Play Console as draft
+        run: ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
+      - name: Authenticate to Google Cloud (Play Store upload)
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
-        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        id: gcp-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_UPLOAD_AAB_CREDENTIALS }}
-          packageName: dev.firezone.android
-          releaseFiles: kotlin/android/${{ matrix.output-path }}
-          track: production
-          status: draft
+          workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: play-store-publisher@firezone-55040.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          access_token_lifetime: 600s
+      # The play-store-publisher service account is intentionally granted only
+      # internal-track upload permission in the Play Console. Production-track
+      # permission would let it (or anyone who compromises CI) publish a release
+      # straight to end users. Promotion from internal -> production is a manual
+      # step in the Play Console.
+      - name: Upload AAB to Google Play Console (internal track)
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        env:
+          ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
+          PACKAGE_NAME: dev.firezone.android
+          AAB_PATH: ${{ matrix.output-path }}
+          TRACK: internal
+          RELEASE_STATUS: draft
+        run: ../../scripts/upload/play-store.sh
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
