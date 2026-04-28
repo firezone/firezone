@@ -9,14 +9,6 @@ import OSLog
 import Sentry
 import SystemPackage
 
-/// Protocol for errors that can opt out of Telemetry capture in DEBUG builds.
-///
-/// Used to avoid noise from expected failures (e.g. missing IPC data when the
-/// tunnel process isn't running during development).
-public protocol TelemetryCapturable: Error {
-  var shouldCaptureInDebug: Bool { get }
-}
-
 public final class Log {
   private static let sentryLock = NSLock()
   nonisolated(unsafe) private static var _streamingActive = false
@@ -184,15 +176,7 @@ public final class Log {
     try FileManager.default.removeItem(at: directory)
   }
 
-  // Don't capture certain kinds of IPC errors in DEBUG builds
-  // because these happen often due to code signing requirements.
   private static func shouldCaptureError(_ err: Error) -> Bool {
-    #if DEBUG
-      if let capturable = err as? TelemetryCapturable {
-        return capturable.shouldCaptureInDebug
-      }
-    #endif
-
     return true
   }
 }

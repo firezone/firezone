@@ -12,17 +12,10 @@ import SystemPackage
 // TODO: Use a more abstract IPC protocol to make this less terse
 
 enum IPCClient {
-  enum Error: Swift.Error, TelemetryCapturable {
+  enum Error: Swift.Error {
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
-
-    var shouldCaptureInDebug: Bool {
-      switch self {
-      case .noIPCData: return false
-      case .decodeIPCDataFailed, .invalidStatus: return true
-      }
-    }
 
     var localizedDescription: String {
       switch self {
