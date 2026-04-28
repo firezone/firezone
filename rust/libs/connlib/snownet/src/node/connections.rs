@@ -275,13 +275,11 @@ where
 
     /// Restart ICE on every established connection without tearing anything down.
     ///
-    /// Each connection's candidate epoch is bumped before its ICE pair list
-    /// is re-formed. Candidates, ICE credentials, and the underlying
+    /// Candidates, ICE credentials, and the underlying
     /// [`boringtun::noise::Tunn`] are left alone so WireGuard sessions
     /// survive.
     pub(crate) fn ice_restart(&mut self) {
         for c in self.established.values_mut() {
-            c.candidate_epoch.inc();
             c.ice_restart();
         }
     }
@@ -436,7 +434,7 @@ mod tests {
         x25519::{PublicKey, StaticSecret},
     };
     use bufferpool::BufferPool;
-    use is::IceAgent;
+    use is::{Candidate, IceAgent, IceCreds};
     use rand::random;
     use ringbuffer::AllocRingBuffer;
 

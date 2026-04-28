@@ -215,6 +215,20 @@ where
         self.pending_events.clear();
         self.inflight_stun_requests.clear();
 
+        // Tell peers to drop the candidates we previously signalled. The
+        // candidate epoch already makes the new candidates win locally and
+        // for any peer running this version; this is a backwards-compat
+        // nudge for peers that don't grade candidates by epoch yet.
+        for (cid, c) in self.connections.iter_established() {
+            for candidate in c.agent.local_candidates() {
+                self.pending_events
+                    .push_back(Event::InvalidateIceCandidate {
+                        connection: cid,
+                        candidate,
+                    });
+            }
+        }
+
         self.connections.ice_restart();
     }
 
