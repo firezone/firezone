@@ -1,3 +1,5 @@
+#![expect(clippy::print_stdout)]
+
 //! Manual test tool for the network-changes module.
 //!
 //! Prints a timestamped line to stdout whenever a DNS or network change is
