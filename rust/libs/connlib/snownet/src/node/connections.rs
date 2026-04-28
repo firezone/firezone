@@ -615,7 +615,6 @@ mod tests {
             ),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
             next_wg_timer_update: Instant::now(),
-            last_proactive_handshake_sent_at: None,
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),
