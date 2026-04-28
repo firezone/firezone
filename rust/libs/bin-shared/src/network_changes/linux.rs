@@ -100,7 +100,6 @@ pub struct Worker {
 enum Inner {
     DBus(Pin<Box<dyn futures::Stream<Item = ()> + Send>>),
     DnsPoller(Interval),
-    Null,
 }
 
 impl Worker {
@@ -131,6 +130,7 @@ impl Worker {
             .await?
             .filter(move |msg| std::future::ready(filter(&msg.body())))
             .map(|_| ());
+
         Ok(Self {
             just_started: true,
             inner: Inner::DBus(Box::pin(stream)),
@@ -157,7 +157,6 @@ impl Worker {
                 }
                 tracing::debug!("DBus notified us");
             }
-            Inner::Null => futures::future::pending::<()>().await,
         }
         Ok(())
     }
