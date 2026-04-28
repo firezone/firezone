@@ -20,14 +20,15 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.10" date={new Date("2026-04-28")}>
         <ChangeItem pull={12416}>
           Does not send a notification in case the user explicitly signs out.
         </ChangeItem>
         <ChangeItem pull={12684}>
           Takes into account traffic filters when routing packets to resources.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.9" date={new Date("2026-03-24")}>
         <ChangeItem pull={12355}>
           Reduces CPU overhead by processing up to 16 UDP datagram batches at a
