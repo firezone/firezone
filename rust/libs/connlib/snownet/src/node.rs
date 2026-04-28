@@ -185,6 +185,13 @@ where
         self.connections.ice_restart();
     }
 
+    /// Returns the current Unix time in milliseconds, derived from the
+    /// `unix_ts`/`unix_now` anchors captured at `Node::new` plus the elapsed
+    /// `Instant` delta — pure with respect to wall-clock time.
+    fn unix_ms(&self, now: Instant) -> u64 {
+        (self.unix_ts + now.saturating_duration_since(self.unix_now)).as_millis() as u64
+    }
+
     pub fn num_connections(&self) -> usize {
         self.connections.len()
     }
@@ -267,7 +274,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = new_agent(ice_role);
+        let mut agent = new_agent(ice_role, self.unix_ms(now));
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -1959,9 +1966,13 @@ where
     Some(transmit)
 }
 
-fn new_agent(role: IceRole) -> IceAgent {
+fn new_agent(role: IceRole, unix_ms: u64) -> IceAgent {
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
+    // Seed the tiebreaker from a Unix-ms timestamp so role-conflict
+    // comparisons (RFC 8445 §7.3.1.1) between peers are over a comparable
+    // monotonic range.
+    agent.set_control_tie_breaker(unix_ms);
     agent.set_timing_advance(Duration::ZERO);
     // 25 s keeps NAT bindings open with consistent STUN traffic regardless of
     // whether the connection is currently carrying app data. We previously
