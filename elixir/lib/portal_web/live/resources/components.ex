@@ -1573,7 +1573,7 @@ defmodule PortalWeb.Resources.Components do
           Infrastructure
         </h3>
         <dl class="space-y-2.5">
-          <div :if={@resource.type != :internet}>
+          <div>
             <dt class="text-[10px] text-[var(--text-tertiary)] mb-1">Site</dt>
             <%= if @resource.site do %>
               <dd class="flex items-center gap-1.5 flex-wrap">

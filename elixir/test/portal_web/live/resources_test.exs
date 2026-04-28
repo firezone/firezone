@@ -651,8 +651,7 @@ defmodule PortalWeb.ResourcesTest do
 
   defp count_occurrences(haystack, needle) do
     haystack
-    |> String.split(needle)
+    |> :binary.matches(needle)
     |> length()
-    |> Kernel.-(1)
   end
 end
