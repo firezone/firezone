@@ -15,6 +15,10 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
 
   defp request_confirm(lv, action, actor_id) do
     lv
+    |> element("button[phx-click='toggle_actor_actions'][phx-value-id='#{actor_id}']")
+    |> render_click()
+
+    lv
     |> element(
       "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{actor_id}']"
     )

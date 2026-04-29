@@ -1,6 +1,7 @@
 defmodule PortalWeb.Settings.AuthenticationTest do
   use PortalWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -26,9 +27,19 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
   defp request_confirm(lv, action, provider_id) do
     lv
+    |> element("button[phx-click='toggle_provider_actions'][phx-value-id='#{provider_id}']")
+    |> render_click()
+
+    lv
     |> element(
       "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{provider_id}']"
     )
+    |> render_click()
+  end
+
+  defp open_provider_actions(lv, provider_id) do
+    lv
+    |> element("button[phx-click='toggle_provider_actions'][phx-value-id='#{provider_id}']")
     |> render_click()
   end
 
@@ -102,14 +113,14 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      google_provider_fixture(account: account)
+      provider = google_provider_fixture(account: account)
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "Make default"
+      assert open_provider_actions(lv, provider.id) =~ "Make default"
     end
   end
 
@@ -1235,6 +1246,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication")
 
       lv
+      |> open_provider_actions(provider.id)
+
+      lv
       |> element("button[phx-click='set_default_provider'][phx-value-id='#{provider.id}']")
       |> render_click()
 
@@ -1243,12 +1257,15 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
 
     test "can clear default provider", %{account: account, actor: actor, conn: conn} do
-      google_provider_fixture(account: account, is_default: true)
+      provider = google_provider_fixture(account: account, is_default: true)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
+
+      lv
+      |> open_provider_actions(provider.id)
 
       lv
       |> element("button[phx-click='clear_default_provider']")
@@ -1259,40 +1276,39 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
 
     test "shows current default in select", %{account: account, actor: actor, conn: conn} do
-      google_provider_fixture(account: account, is_default: true, name: "Default Provider")
+      provider = google_provider_fixture(account: account, is_default: true, name: "Default Provider")
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
       assert html =~ "Default Provider"
-      assert html =~ "Remove default"
+      assert open_provider_actions(lv, provider.id) =~ "Remove default"
     end
 
     test "email_otp cannot be set as default", %{account: account, actor: actor, conn: conn} do
-      # authorize_conn creates email_otp
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      parsed = Floki.parse_fragment!(html)
-      buttons = Floki.find(parsed, "button[phx-click='set_default_provider']")
-      assert Enum.empty?(buttons)
+      provider = Repo.one!(from p in EmailOTP.AuthProvider, where: p.account_id == ^account.id)
+      html = open_provider_actions(lv, provider.id)
+
+      refute html =~ "phx-click=\"set_default_provider\""
     end
 
     test "userpass cannot be set as default", %{account: account, actor: actor, conn: conn} do
-      userpass_provider_fixture(account: account)
+      provider = userpass_provider_fixture(account: account)
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      parsed = Floki.parse_fragment!(html)
-      buttons = Floki.find(parsed, "button[phx-click='set_default_provider']")
-      assert Enum.empty?(buttons)
+      html = open_provider_actions(lv, provider.id)
+      refute html =~ "phx-click=\"set_default_provider\""
     end
 
     test "disabled providers appear in default provider select", %{
@@ -2123,24 +2139,21 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       parsed = Floki.parse_fragment!(html)
 
       toggles =
-        Floki.find(parsed, "button[phx-click='request_confirm'][phx-value-action='toggle']")
+        Floki.find(parsed, "button[phx-click='toggle_provider_actions']")
 
       assert length(toggles) >= 2
     end
 
     test "shows edit link for each provider", %{account: account, actor: actor, conn: conn} do
-      google_provider_fixture(account: account)
+      provider = google_provider_fixture(account: account)
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      # Should have edit links
-      parsed = Floki.parse_fragment!(html)
-      edit_links = Floki.find(parsed, "a[href*='/edit']")
-      # At least 2 edit links (email_otp + google)
-      assert length(edit_links) >= 2
+      html = open_provider_actions(lv, provider.id)
+      assert html =~ "/#{account.slug}/settings/authentication/google/#{provider.id}/edit"
     end
 
     test "shows updated timestamp", %{account: account, actor: actor, conn: conn} do
@@ -3433,6 +3446,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication")
 
       lv
+      |> open_provider_actions(provider.id)
+
+      lv
       |> element("button[phx-click='set_default_provider'][phx-value-id='#{provider.id}']")
       |> render_click()
 
@@ -3445,12 +3461,15 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      google_provider_fixture(account: account, name: "Default Google", is_default: true)
+      provider = google_provider_fixture(account: account, name: "Default Google", is_default: true)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
+
+      lv
+      |> open_provider_actions(provider.id)
 
       lv
       |> element("button[phx-click='clear_default_provider']")

@@ -901,49 +901,42 @@ defmodule PortalWeb.Groups.Components do
                 </span>
               </div>
             </.link>
-            <div class="relative shrink-0">
+            <.actions_dropdown
+              open={@resource_access_actions_open_id == resource.id}
+              close_event="close_resource_access_actions"
+              button_class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+              icon_class="w-3.5 h-3.5"
+              phx-click="toggle_resource_access_actions"
+              phx-value-resource_id={resource.id}
+              title="More actions"
+            >
+              <button
+                :if={is_nil(resource.policy_disabled_at)}
+                type="button"
+                phx-click="disable_resource_access"
+                phx-value-resource_id={resource.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+              >
+                <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
+              </button>
+              <button
+                :if={not is_nil(resource.policy_disabled_at)}
+                type="button"
+                phx-click="enable_resource_access"
+                phx-value-resource_id={resource.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+              >
+                <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
+              </button>
               <button
                 type="button"
-                phx-click="toggle_resource_access_actions"
-                phx-value-resource_id={row.resource.id}
-                class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
-                title="More actions"
+                phx-click="confirm_remove_resource_access"
+                phx-value-resource_id={resource.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
               >
-                <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
+                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
               </button>
-              <div
-                :if={@resource_access_actions_open_id == row.resource.id}
-                phx-click-away="close_resource_access_actions"
-                class="absolute right-0 top-full mt-1 w-44 rounded-md border border-[var(--border)] bg-[var(--surface-overlay)] shadow-lg z-10 py-1"
-              >
-                <button
-                  :if={is_nil(row.policy_disabled_at)}
-                  type="button"
-                  phx-click="disable_resource_access"
-                  phx-value-resource_id={row.resource.id}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                >
-                  <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
-                </button>
-                <button
-                  :if={not is_nil(row.policy_disabled_at)}
-                  type="button"
-                  phx-click="enable_resource_access"
-                  phx-value-resource_id={row.resource.id}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                >
-                  <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
-                </button>
-                <button
-                  type="button"
-                  phx-click="confirm_remove_resource_access"
-                  phx-value-resource_id={row.resource.id}
-                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
-                >
-                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
-                </button>
-              </div>
-            </div>
+            </.actions_dropdown>
           </div>
         </li>
       </ul>

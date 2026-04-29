@@ -80,7 +80,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> assign(actors_with_tokens: actors_with_tokens)
         |> assign(selected_actor: nil)
         |> assign(form: nil, encoded_token: nil)
-        |> assign(pending_confirm: nil)
+        |> assign(pending_confirm: nil, open_actor_actions_id: nil)
 
       {:ok, socket}
     else
@@ -127,7 +127,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   def handle_params(_params, _uri, socket) do
     {:noreply,
-     assign(socket, selected_actor: nil, form: nil, encoded_token: nil, pending_confirm: nil)}
+     assign(socket,
+       selected_actor: nil,
+       form: nil,
+       encoded_token: nil,
+       pending_confirm: nil,
+       open_actor_actions_id: nil
+     )}
   end
 
   def render(assigns) do
@@ -207,6 +213,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   actor={actor}
                   token={token}
                   pending_confirm={@pending_confirm}
+                  open_actor_actions_id={@open_actor_actions_id}
                 />
               </tbody>
             </table>
@@ -360,6 +367,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   attr :actor, :any, required: true
   attr :token, :any, required: true
   attr :pending_confirm, :any, required: true
+  attr :open_actor_actions_id, :string, default: nil
 
   defp api_client_row(assigns) do
     pending = assigns.pending_confirm
@@ -478,52 +486,45 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           </td>
           <td class="px-6 py-3 w-10">
             <div class="flex justify-end">
-              <.popover placement="bottom" trigger="click">
-                <:target>
-                  <button
-                    type="button"
-                    class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                  >
-                    <.icon name="ri-more-2-line" class="w-4 h-4" />
-                  </button>
-                </:target>
-                <:content>
-                  <div class="flex flex-col py-1 w-44">
-                    <.link
-                      patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
-                      class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                    >
-                      <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-                    </.link>
-                    <div class="my-1 border-t border-[var(--border)]"></div>
-                    <button
-                      phx-click="request_confirm"
-                      phx-value-id={@actor.id}
-                      phx-value-action="toggle"
-                      class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                    >
-                      <.icon
-                        name={
-                          if is_nil(@actor.disabled_at),
-                            do: "ri-pause-line",
-                            else: "ri-play-line"
-                        }
-                        class="w-3.5 h-3.5 shrink-0"
-                      />
-                      {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
-                    </button>
-                    <div class="my-1 border-t border-[var(--border)]"></div>
-                    <button
-                      phx-click="request_confirm"
-                      phx-value-id={@actor.id}
-                      phx-value-action="delete"
-                      class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
-                    >
-                      <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-                    </button>
-                  </div>
-                </:content>
-              </.popover>
+              <.actions_dropdown
+                open={@open_actor_actions_id == @actor.id}
+                close_event="close_actor_actions"
+                phx-click="toggle_actor_actions"
+                phx-value-id={@actor.id}
+              >
+                <.link
+                  patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                >
+                  <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                </.link>
+                <div class="my-1 border-t border-[var(--border)]"></div>
+                <button
+                  phx-click="request_confirm"
+                  phx-value-id={@actor.id}
+                  phx-value-action="toggle"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                >
+                  <.icon
+                    name={
+                      if is_nil(@actor.disabled_at),
+                        do: "ri-pause-line",
+                        else: "ri-play-line"
+                    }
+                    class="w-3.5 h-3.5 shrink-0"
+                  />
+                  {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
+                </button>
+                <div class="my-1 border-t border-[var(--border)]"></div>
+                <button
+                  phx-click="request_confirm"
+                  phx-value-id={@actor.id}
+                  phx-value-action="delete"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
+                >
+                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                </button>
+              </.actions_dropdown>
             </div>
           </td>
         <% end %>
@@ -647,7 +648,11 @@ defmodule PortalWeb.Settings.ApiClients.Index do
            Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
       socket =
         socket
-        |> assign(actors_with_tokens: reload_actors_with_tokens(socket), pending_confirm: nil)
+        |> assign(
+          actors_with_tokens: reload_actors_with_tokens(socket),
+          pending_confirm: nil,
+          open_actor_actions_id: nil
+        )
         |> maybe_update_selected(updated)
 
       {:noreply, socket}
@@ -666,7 +671,11 @@ defmodule PortalWeb.Settings.ApiClients.Index do
            Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
       socket =
         socket
-        |> assign(actors_with_tokens: reload_actors_with_tokens(socket), pending_confirm: nil)
+        |> assign(
+          actors_with_tokens: reload_actors_with_tokens(socket),
+          pending_confirm: nil,
+          open_actor_actions_id: nil
+        )
         |> maybe_update_selected(updated)
 
       {:noreply, socket}
@@ -674,11 +683,22 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   end
 
   def handle_event("request_confirm", %{"id" => id, "action" => action}, socket) do
-    {:noreply, assign(socket, pending_confirm: %{id: id, action: action})}
+    {:noreply, assign(socket, pending_confirm: %{id: id, action: action}, open_actor_actions_id: nil)}
   end
 
   def handle_event("cancel_confirm", _params, socket) do
     {:noreply, assign(socket, pending_confirm: nil)}
+  end
+
+  def handle_event("toggle_actor_actions", %{"id" => id}, socket) do
+    current = socket.assigns.open_actor_actions_id
+    next = if current == id, do: nil, else: id
+
+    {:noreply, assign(socket, open_actor_actions_id: next)}
+  end
+
+  def handle_event("close_actor_actions", _params, socket) do
+    {:noreply, assign(socket, open_actor_actions_id: nil)}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -688,7 +708,11 @@ defmodule PortalWeb.Settings.ApiClients.Index do
            Portal.Safe.scoped(actor, socket.assigns.subject) |> Portal.Safe.delete() do
       socket =
         socket
-        |> assign(actors_with_tokens: reload_actors_with_tokens(socket), pending_confirm: nil)
+        |> assign(
+          actors_with_tokens: reload_actors_with_tokens(socket),
+          pending_confirm: nil,
+          open_actor_actions_id: nil
+        )
         |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
 
       {:noreply, socket}

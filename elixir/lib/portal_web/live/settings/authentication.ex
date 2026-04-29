@@ -268,11 +268,23 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   def handle_event("request_confirm", %{"id" => id, "action" => action}, socket) do
-    {:noreply, assign(socket, pending_confirm: %{id: id, action: action})}
+    {:noreply,
+     assign(socket, pending_confirm: %{id: id, action: action}, open_provider_actions_id: nil)}
   end
 
   def handle_event("cancel_confirm", _params, socket) do
     {:noreply, assign(socket, pending_confirm: nil)}
+  end
+
+  def handle_event("toggle_provider_actions", %{"id" => id}, socket) do
+    current = socket.assigns.open_provider_actions_id
+    next = if current == id, do: nil, else: id
+
+    {:noreply, assign(socket, open_provider_actions_id: next)}
+  end
+
+  def handle_event("close_provider_actions", _params, socket) do
+    {:noreply, assign(socket, open_provider_actions_id: nil)}
   end
 
   def handle_event("set_default_provider", %{"id" => id}, socket) do
@@ -469,7 +481,8 @@ defmodule PortalWeb.Settings.Authentication do
     assign(socket,
       providers: providers,
       verification_error: nil,
-      pending_confirm: nil
+      pending_confirm: nil,
+      open_provider_actions_id: nil
     )
   end
 
@@ -524,6 +537,7 @@ defmodule PortalWeb.Settings.Authentication do
                 account={@account}
                 provider={provider}
                 pending_confirm={@pending_confirm}
+                open_provider_actions_id={@open_provider_actions_id}
               />
             </tbody>
           </table>
@@ -916,94 +930,87 @@ defmodule PortalWeb.Settings.Authentication do
             </td>
             <td class="px-6 py-3">
               <div class="flex justify-end">
-                <.popover placement="bottom" trigger="click">
-                  <:target>
-                    <button
-                      type="button"
-                      class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                    >
-                      <.icon name="ri-more-2-line" class="w-4 h-4" />
-                    </button>
-                  </:target>
-                  <:content>
-                    <div class="flex flex-col py-1 w-44">
-                      <button
-                        :if={@can_be_default and not @is_default}
-                        phx-click="set_default_provider"
-                        phx-value-id={@provider.id}
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                      >
-                        <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
-                      </button>
-                      <button
-                        :if={@can_be_default and @is_default}
-                        phx-click="clear_default_provider"
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                      >
-                        <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
-                      </button>
-                      <button
-                        :if={not @can_be_default}
-                        disabled
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
-                      >
-                        <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
-                      </button>
-                      <div class="my-1 border-t border-[var(--border)]"></div>
-                      <.link
-                        patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                      >
-                        <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-                      </.link>
-                      <div class="my-1 border-t border-[var(--border)]"></div>
-                      <button
-                        :if={@has_sessions}
-                        phx-click="request_confirm"
-                        phx-value-id={@provider.id}
-                        phx-value-action="revoke"
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                      >
-                        <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
-                        Revoke sessions
-                      </button>
-                      <button
-                        :if={not @has_sessions}
-                        disabled
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
-                      >
-                        <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
-                        Revoke sessions
-                      </button>
-                      <div class="my-1 border-t border-[var(--border)]"></div>
-                      <button
-                        phx-click="request_confirm"
-                        phx-value-id={@provider.id}
-                        phx-value-action="toggle"
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                      >
-                        <.icon
-                          name={
-                            if @provider.is_disabled,
-                              do: "ri-checkbox-circle-line",
-                              else: "ri-close-circle-line"
-                          }
-                          class="w-3.5 h-3.5 shrink-0"
-                        />
-                        {if @provider.is_disabled, do: "Enable", else: "Disable"}
-                      </button>
-                      <button
-                        :if={@can_be_deleted}
-                        phx-click="request_confirm"
-                        phx-value-id={@provider.id}
-                        phx-value-action="delete"
-                        class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
-                      >
-                        <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-                      </button>
-                    </div>
-                  </:content>
-                </.popover>
+                <.actions_dropdown
+                  open={@open_provider_actions_id == @provider.id}
+                  close_event="close_provider_actions"
+                  phx-click="toggle_provider_actions"
+                  phx-value-id={@provider.id}
+                >
+                  <button
+                    :if={@can_be_default and not @is_default}
+                    phx-click="set_default_provider"
+                    phx-value-id={@provider.id}
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  >
+                    <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                  </button>
+                  <button
+                    :if={@can_be_default and @is_default}
+                    phx-click="clear_default_provider"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  >
+                    <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
+                  </button>
+                  <button
+                    :if={not @can_be_default}
+                    disabled
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
+                  >
+                    <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                  </button>
+                  <div class="my-1 border-t border-[var(--border)]"></div>
+                  <.link
+                    patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  >
+                    <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                  </.link>
+                  <div class="my-1 border-t border-[var(--border)]"></div>
+                  <button
+                    :if={@has_sessions}
+                    phx-click="request_confirm"
+                    phx-value-id={@provider.id}
+                    phx-value-action="revoke"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  >
+                    <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                    Revoke sessions
+                  </button>
+                  <button
+                    :if={not @has_sessions}
+                    disabled
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
+                  >
+                    <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                    Revoke sessions
+                  </button>
+                  <div class="my-1 border-t border-[var(--border)]"></div>
+                  <button
+                    phx-click="request_confirm"
+                    phx-value-id={@provider.id}
+                    phx-value-action="toggle"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  >
+                    <.icon
+                      name={
+                        if @provider.is_disabled,
+                          do: "ri-checkbox-circle-line",
+                          else: "ri-close-circle-line"
+                      }
+                      class="w-3.5 h-3.5 shrink-0"
+                    />
+                    {if @provider.is_disabled, do: "Enable", else: "Disable"}
+                  </button>
+                  <button
+                    :if={@can_be_deleted}
+                    phx-click="request_confirm"
+                    phx-value-id={@provider.id}
+                    phx-value-action="delete"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
+                  >
+                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                  </button>
+                </.actions_dropdown>
               </div>
             </td>
           <% end %>

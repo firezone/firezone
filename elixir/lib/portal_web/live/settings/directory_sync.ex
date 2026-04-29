@@ -60,8 +60,9 @@ defmodule PortalWeb.Settings.DirectorySync do
       socket
       |> assign_new(:directories, fn -> directories end)
       |> assign_new(:verification_error, fn -> nil end)
+      |> assign_new(:open_directory_actions_id, fn -> nil end)
     else
-      assign(socket, directories: directories, verification_error: nil)
+      assign(socket, directories: directories, verification_error: nil, open_directory_actions_id: nil)
     end
   end
 
@@ -293,6 +294,17 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  def handle_event("toggle_directory_actions", %{"id" => id}, socket) do
+    current = socket.assigns.open_directory_actions_id
+    next = if current == id, do: nil, else: id
+
+    {:noreply, assign(socket, open_directory_actions_id: next)}
+  end
+
+  def handle_event("close_directory_actions", _params, socket) do
+    {:noreply, assign(socket, open_directory_actions_id: nil)}
+  end
+
   defp toggle_directory_changeset(directory, true) do
     changeset(directory, %{
       "is_disabled" => true,
@@ -444,6 +456,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     directory={directory}
                     subject={@subject}
                     most_recent_job={directory.most_recent_job}
+                    open_directory_actions_id={@open_directory_actions_id}
                   />
                 </tbody>
               </table>
@@ -788,6 +801,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :directory, :any, required: true
   attr :subject, :any, required: true
   attr :most_recent_job, :map, default: nil
+  attr :open_directory_actions_id, :string, default: nil
 
   defp directory_row(assigns) do
     is_legacy = assigns.type == "google" && assigns.directory.legacy_service_account_key != nil
@@ -864,85 +878,78 @@ defmodule PortalWeb.Settings.DirectorySync do
       </td>
       <td class="px-6 py-3 w-14">
         <div class="flex justify-end">
-          <.popover placement="bottom" trigger="click">
-            <:target>
-              <button
-                type="button"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-              >
-                <.icon name="ri-more-2-line" class="w-4 h-4" />
-              </button>
-            </:target>
-            <:content>
-              <div class="flex flex-col py-1 w-44">
-                <.link
-                  patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
-                >
-                  <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-                </.link>
-                <button
-                  type="button"
-                  phx-click="sync_directory"
-                  phx-value-id={@directory.id}
-                  phx-value-type={@type}
-                  disabled={@directory.is_disabled or @directory.has_active_job}
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
-                </button>
-                <div class="my-1 border-t border-[var(--border)]"></div>
-                <.button_with_confirmation
-                  id={"toggle-directory-#{@directory.id}"}
-                  on_confirm="toggle_directory"
-                  on_confirm_id={@directory.id}
-                  class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] border-0 bg-transparent"
-                >
-                  <.icon
-                    name={
-                      if @directory.is_disabled,
-                        do: "ri-checkbox-circle-line",
-                        else: "ri-close-circle-line"
-                    }
-                    class="w-3.5 h-3.5 shrink-0"
-                  />
-                  {if @directory.is_disabled, do: "Enable", else: "Disable"}
-                  <:dialog_title>
-                    {if @directory.is_disabled, do: "Enable", else: "Disable"} Directory
-                  </:dialog_title>
-                  <:dialog_content>
-                    <p>
-                      Are you sure you want to {if @directory.is_disabled,
-                        do: "enable",
-                        else: "disable"} <strong>{@directory.name}</strong>?
-                    </p>
-                    <%= if not @directory.is_disabled do %>
-                      <p class="mt-2">This directory will no longer sync while disabled.</p>
-                    <% end %>
-                  </:dialog_content>
-                  <:dialog_confirm_button>
-                    {if @directory.is_disabled, do: "Enable", else: "Disable"}
-                  </:dialog_confirm_button>
-                  <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-                </.button_with_confirmation>
-                <div class="my-1 border-t border-[var(--border)]"></div>
-                <.button_with_confirmation
-                  id={"delete-directory-#{@directory.id}"}
-                  on_confirm="delete_directory"
-                  on_confirm_id={@directory.id}
-                  class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)] border-0 bg-transparent"
-                >
-                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-                  <:dialog_title>Delete Directory</:dialog_title>
-                  <:dialog_content>
-                    <.deletion_stats directory={@directory} subject={@subject} />
-                  </:dialog_content>
-                  <:dialog_confirm_button>Delete</:dialog_confirm_button>
-                  <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-                </.button_with_confirmation>
-              </div>
-            </:content>
-          </.popover>
+          <.actions_dropdown
+            open={@open_directory_actions_id == @directory.id}
+            close_event="close_directory_actions"
+            phx-click="toggle_directory_actions"
+            phx-value-id={@directory.id}
+          >
+            <.link
+              patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+            >
+              <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+            </.link>
+            <button
+              type="button"
+              phx-click="sync_directory"
+              phx-value-id={@directory.id}
+              phx-value-type={@type}
+              disabled={@directory.is_disabled or @directory.has_active_job}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+            </button>
+            <div class="my-1 border-t border-[var(--border)]"></div>
+            <.button_with_confirmation
+              id={"toggle-directory-#{@directory.id}"}
+              on_confirm="toggle_directory"
+              on_confirm_id={@directory.id}
+              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] border-0 bg-transparent"
+            >
+              <.icon
+                name={
+                  if @directory.is_disabled,
+                    do: "ri-checkbox-circle-line",
+                    else: "ri-close-circle-line"
+                }
+                class="w-3.5 h-3.5 shrink-0"
+              />
+              {if @directory.is_disabled, do: "Enable", else: "Disable"}
+              <:dialog_title>
+                {if @directory.is_disabled, do: "Enable", else: "Disable"} Directory
+              </:dialog_title>
+              <:dialog_content>
+                <p>
+                  Are you sure you want to {if @directory.is_disabled,
+                    do: "enable",
+                    else: "disable"} <strong>{@directory.name}</strong>?
+                </p>
+                <%= if not @directory.is_disabled do %>
+                  <p class="mt-2">This directory will no longer sync while disabled.</p>
+                <% end %>
+              </:dialog_content>
+              <:dialog_confirm_button>
+                {if @directory.is_disabled, do: "Enable", else: "Disable"}
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
+            </.button_with_confirmation>
+            <div class="my-1 border-t border-[var(--border)]"></div>
+            <.button_with_confirmation
+              id={"delete-directory-#{@directory.id}"}
+              on_confirm="delete_directory"
+              on_confirm_id={@directory.id}
+              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)] border-0 bg-transparent"
+            >
+              <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+              <:dialog_title>Delete Directory</:dialog_title>
+              <:dialog_content>
+                <.deletion_stats directory={@directory} subject={@subject} />
+              </:dialog_content>
+              <:dialog_confirm_button>Delete</:dialog_confirm_button>
+              <:dialog_cancel_button>Cancel</:dialog_cancel_button>
+            </.button_with_confirmation>
+          </.actions_dropdown>
         </div>
       </td>
     </tr>
