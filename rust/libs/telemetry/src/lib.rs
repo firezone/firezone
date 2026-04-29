@@ -478,6 +478,8 @@ mod tests {
 
     #[tokio::test]
     async fn starting_session_for_unsupported_env_disables_current_one() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         let mut telemetry = Telemetry::new();
         telemetry
             .start("wss://api.firez.one", "1.0.0", TESTING, String::new())

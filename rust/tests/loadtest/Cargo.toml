@@ -16,7 +16,7 @@ clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 logging = { workspace = true }
 rand = { workspace = true }
-reqwest = { workspace = true, features = ["rustls-tls", "gzip", "http2"] }
+reqwest = { workspace = true, features = ["rustls-no-provider", "gzip", "http2"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 surge-ping = "0.8"
