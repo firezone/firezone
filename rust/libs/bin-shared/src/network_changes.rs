@@ -10,4 +10,4 @@ mod imp;
 #[path = "network_changes/macos.rs"]
 mod imp;
 
-pub use imp::{NetworkNotifier, new_dns_notifier, new_network_notifier};
+pub use imp::{new_dns_notifier, new_network_notifier};

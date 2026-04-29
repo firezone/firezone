@@ -57,7 +57,7 @@ pub async fn new_dns_notifier(
 /// Returns a [`NetworkNotifier`] which implements [`Default`] as a no-op
 /// stream, so callers can use `.unwrap_or_default()` to gracefully handle
 /// failure.
-pub async fn new_network_notifier() -> Result<NetworkNotifier> {
+pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + Default + Unpin> {
     let stream = dbus_stream(
         "org.freedesktop.NetworkManager",
         "/org/freedesktop/NetworkManager",
@@ -80,7 +80,7 @@ pub async fn new_network_notifier() -> Result<NetworkNotifier> {
 /// Implements [`Default`] as a no-op stream so callers can use
 /// `.unwrap_or_default()` to gracefully degrade when the notifier fails to
 /// initialise.
-pub struct NetworkNotifier(BoxStream<'static, Result<()>>);
+struct NetworkNotifier(BoxStream<'static, Result<()>>);
 
 impl Default for NetworkNotifier {
     fn default() -> Self {
