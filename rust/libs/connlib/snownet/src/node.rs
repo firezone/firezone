@@ -1257,11 +1257,6 @@ struct Connection<RId> {
     agent: IceAgent,
 
     /// Per-connection epoch counter used for generational ICE candidates.
-    ///
-    /// Starts at 0 for each freshly created connection (so a post-teardown
-    /// rebuild has no "history" to outrank), and bumps any time this
-    /// connection acquires candidates that supersede previous ones — such as
-    /// when roaming or replacing the selected TURN relay.
     candidate_epoch: CandidateEpoch,
 
     index: Index,
@@ -2007,10 +2002,6 @@ where
 
         self.relay.id = new_relay;
 
-        // Bump the epoch so candidates derived from the new relay strictly
-        // outrank candidates from the replaced one. This lets both sides'
-        // ICE agents migrate to the new relay's pairs without an explicit
-        // ICE restart.
         self.candidate_epoch.inc();
 
         for candidate in new_allocation.current_relay_candidates() {
