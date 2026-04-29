@@ -6351,8 +6351,7 @@ dependencies = [
 [[package]]
 name = "sentry"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8ac94aab850a23d7507307cc505332ed2bafd36c65930dfc5c43610f9e9b477"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "cfg_aliases",
  "httpdate",
@@ -6370,8 +6369,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b803539b9ec0bde4ad759bf07190f6c24062363d519790ac2552dd5a6b21232"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "backtrace",
  "regex",
@@ -6381,8 +6379,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e09c2dadaaa7b2a6dd5e84650b70bbdba504e318a2059a7ff0b9eedc51ef336"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "hostname",
  "libc",
@@ -6395,8 +6392,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56de6f8c10ed1b74543b9654b99d3d9a2d876bd5996f3ecd60afdc30ef40ad0e"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "rand 0.9.4",
  "sentry-types",
@@ -6408,8 +6404,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1524373dd0f1001eff4d323f0ce877ee47a9bcf109f6343d1e208752fd9c95f"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "findshlibs",
  "sentry-core",
@@ -6418,8 +6413,7 @@ dependencies = [
 [[package]]
 name = "sentry-log"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45ce87f3c93659f8ab95f0e62a80b63c2d49f2012980ae6b3c1abce29bd6cde2"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "bitflags 2.10.0",
  "log",
@@ -6429,8 +6423,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "382b8f029465d2e2da7ef25bd08110e91817cfe9e2849ac0547359e0ae50f27e"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -6439,8 +6432,7 @@ dependencies = [
 [[package]]
 name = "sentry-tracing"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77782d2a65e141f20020ec59552aaf9449aeea64bd7624e20c114b8474c4a9ee"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "bitflags 2.10.0",
  "sentry-backtrace",
@@ -6452,8 +6444,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00c69667ff14f47aad798e6be2ad8409e350b3ab0b8d72b338b462ed35f7bcc4"
+source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
 dependencies = [
  "debugid",
  "hex",
