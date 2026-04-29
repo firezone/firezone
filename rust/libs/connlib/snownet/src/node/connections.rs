@@ -618,10 +618,11 @@ mod tests {
             last_proactive_handshake_sent_at: None,
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
-                wg_buffer: AllocRingBuffer::new(1),
                 ip_buffer: AllocRingBuffer::new(1),
+                session_socket: None,
             },
             disconnected_at: None,
+            outbound_handshakes: Default::default(),
             stats: Default::default(),
             intent_sent_at: Instant::now(),
             candidate_timeout: None,

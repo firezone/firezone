@@ -33,7 +33,7 @@ use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
@@ -384,9 +384,13 @@ where
             return;
         };
 
-        let peer_socket = match connection.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => peer_socket,
+        let nominated_socket = match connection.state {
+            ConnectionState::Connected {
+                nominated_socket, ..
+            }
+            | ConnectionState::Idle {
+                nominated_socket, ..
+            } => connection.wireguard_socket().unwrap_or(nominated_socket),
             ConnectionState::Connecting { .. } => {
                 tracing::info!("Connection closed during ICE");
                 return;
@@ -396,7 +400,7 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(cid, peer_socket, &goodbye, now, &mut self.allocations) {
+        match connection.encapsulate(cid, nominated_socket, &goodbye, now, &mut self.allocations) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
 
@@ -502,7 +506,7 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, packet, now) {
+        let (id, packet) = match self.connections_try_handle(destination, from, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
@@ -542,8 +546,16 @@ where
 
                 return Ok(None);
             }
-            ConnectionState::Connected { peer_socket, .. } => *peer_socket,
-            ConnectionState::Idle { peer_socket } => *peer_socket,
+            ConnectionState::Connected {
+                nominated_socket, ..
+            }
+            | ConnectionState::Idle {
+                nominated_socket, ..
+            } => {
+                let nominated_socket = *nominated_socket;
+
+                conn.wireguard_socket().unwrap_or(nominated_socket)
+            }
             ConnectionState::Failed => {
                 return Err(anyhow!("Connection {cid} failed"));
             }
@@ -793,13 +805,14 @@ where
             remote_pub_key: remote,
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
-                wg_buffer: AllocRingBuffer::new(128),
                 ip_buffer: AllocRingBuffer::new(128),
+                session_socket: None,
             },
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
+            outbound_handshakes: BTreeMap::new(),
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
@@ -810,7 +823,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`BTreeMap`](std::collections::BTreeMap)s and linear searches across small lists are expensive at this point.
+    /// Even look-ups in [`BTreeMap`]s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
@@ -955,6 +968,7 @@ where
 
     fn connections_try_handle(
         &mut self,
+        local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
@@ -1000,28 +1014,23 @@ where
             },
         };
 
+        let observed_peer_socket = conn.peer_socket_for_tuple(&mut self.allocations, local, from);
+
+        let was_first_handshake = conn.first_handshake_completed_at.is_none();
+
         let control_flow = conn.decapsulate(
             cid,
             from.ip(),
             packet,
+            observed_peer_socket,
             &mut self.allocations,
             &mut self.buffered_transmits,
             now,
         );
 
-        if let ControlFlow::Break(Ok(())) = &control_flow
-            && conn.first_handshake_completed_at.is_none()
-            && matches!(
-                parsed_packet,
-                Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
-            )
-        {
-            conn.first_handshake_completed_at = Some(now);
-
-            tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
-
+        if was_first_handshake && conn.first_handshake_completed_at.is_some() {
             self.pending_events
-                .push_back(Event::ConnectionEstablished(cid))
+                .push_back(Event::ConnectionEstablished(cid));
         }
 
         control_flow
@@ -1257,6 +1266,22 @@ struct Connection<RId> {
     state: ConnectionState,
     disconnected_at: Option<Instant>,
 
+    /// Sockets used for outbound WireGuard handshakes,
+    /// keyed by the session component of our local sender
+    /// index — see [`boringtun::noise::Index`].
+    ///
+    /// Populated on every [`HandshakeInit`](boringtun::noise::HandshakeInit) we emit,
+    /// with the outbound socket that frame rode on.
+    /// When the [`HandshakeResponse`] lands and authenticates, we look up the
+    /// *write* path of that handshake — independent of where the
+    /// reply happened to arrive on, which makes us tolerant of
+    /// reorderings between concurrent handshakes on different paths.
+    ///
+    /// Keyed by the 8-bit rotating session component (the global
+    /// part is constant per [`Tunn`]), so the map is bounded to 256
+    /// entries.
+    outbound_handshakes: BTreeMap<u8, PeerSocket>,
+
     stats: ConnectionStats,
     intent_sent_at: Instant,
     candidate_timeout: Option<Instant>,
@@ -1419,26 +1444,9 @@ where
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
-                            wg_buffer,
                             ip_buffer,
-                            ..
+                            session_socket,
                         } => {
-                            tracing::debug!(
-                                num_buffered = %wg_buffer.len(),
-                                "Flushing WireGuard packets buffered during ICE"
-                            );
-
-                            transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
-                                make_owned_transmit(
-                                    self.relay.id,
-                                    remote_socket,
-                                    &packet,
-                                    &self.buffer_pool,
-                                    allocations,
-                                    now,
-                                )
-                            }));
-
                             tracing::debug!(
                                 num_buffered = %ip_buffer.len(),
                                 "Flushing IP packets buffered during ICE"
@@ -1457,39 +1465,48 @@ where
                             }));
 
                             self.state = ConnectionState::Connected {
-                                peer_socket: remote_socket,
+                                nominated_socket: remote_socket,
+                                session_socket,
                                 last_activity: now,
                             };
                             None
                         }
                         ConnectionState::Connected {
-                            peer_socket,
+                            nominated_socket,
+                            session_socket,
                             last_activity,
-                        } if peer_socket == remote_socket => {
+                        } if nominated_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
-                                peer_socket,
+                                nominated_socket,
+                                session_socket,
                                 last_activity,
                             };
 
                             continue; // If we re-nominate the same socket, don't just continue. TODO: Should this be fixed upstream?
                         }
                         ConnectionState::Connected {
-                            peer_socket,
+                            nominated_socket,
+                            session_socket,
                             last_activity,
                         } => {
                             self.state = ConnectionState::Connected {
-                                peer_socket: remote_socket,
+                                nominated_socket: remote_socket,
+                                session_socket,
                                 last_activity,
                             };
 
-                            Some(peer_socket)
+                            Some(nominated_socket)
                         }
-                        ConnectionState::Idle { peer_socket } => {
+                        ConnectionState::Idle {
+                            nominated_socket,
+                            session_socket,
+                        } => {
                             self.state = ConnectionState::Idle {
-                                peer_socket: remote_socket,
+                                nominated_socket: remote_socket,
+                                session_socket,
                             };
 
-                            Some(peer_socket)
+                            Some(nominated_socket)
                         }
                         ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     };
@@ -1567,8 +1584,12 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
     ) {
-        // Don't update wireguard timers until we are connected.
-        let Some(peer_socket) = self.socket() else {
+        // We need somewhere to send to, otherwise nothing in here can
+        // actually go on the wire. The session socket (set on the first
+        // authenticated handshake) lets us flush queued packets even
+        // before ICE has nominated, so prefer it over the nominated
+        // socket.
+        let Some(data_socket) = self.wireguard_socket().or_else(|| self.nominated_socket()) else {
             return;
         };
 
@@ -1589,9 +1610,10 @@ where
                 tracing::warn!("boringtun error: {e}");
             }
             TunnResult::WriteToNetwork(b) => {
+                self.record_outbound_handshake(b, data_socket);
                 transmits.extend(make_owned_transmit(
                     self.relay.id,
-                    peer_socket,
+                    data_socket,
                     b,
                     &self.buffer_pool,
                     allocations,
@@ -1602,6 +1624,25 @@ where
                 panic!("Unexpected result from update_timers")
             }
         };
+
+        // Drain any packets boringtun has queued internally (typically
+        // application data the app sent before a session was usable, or
+        // immediately after a session was rotated). These ride
+        // `data_socket` — the path of the most recently completed
+        // handshake.
+        while let TunnResult::WriteToNetwork(packet) =
+            self.tunnel
+                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
+        {
+            transmits.extend(make_owned_transmit(
+                self.relay.id,
+                data_socket,
+                packet,
+                &self.buffer_pool,
+                allocations,
+                now,
+            ));
+        }
     }
 
     fn encapsulate<TId>(
@@ -1638,6 +1679,11 @@ where
 
         let packet_end = packet_start + len;
         buffer.truncate(packet_end);
+
+        // Hot path: the type byte check fast-skips for `PacketData`.
+        // Only when boringtun emits a fresh `HandshakeInit` here (e.g.
+        // session expired) do we record it.
+        self.record_outbound_handshake(&buffer[packet_start..packet_end], socket);
 
         match socket {
             PeerSocket::PeerToPeer {
@@ -1681,6 +1727,7 @@ where
         cid: TId,
         src: IpAddr,
         packet: &[u8],
+        observed_peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
@@ -1729,51 +1776,81 @@ where
                 }
             }
 
-            // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-            // However, in case `Tunn` has buffered packets, they may be returned here instead.
-            // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-            // Overall, this results in a much nicer API for our caller and should not affect performance.
+            // boringtun emits to the network for two reasons:
+            //   - Normal handshake handling: inbound `HandshakeInit`
+            //     produces `HandshakeResponse` (or `PacketCookieReply`
+            //     when rate-limited), inbound `HandshakeResponse`
+            //     produces a keepalive `PacketData` on the new session.
+            //   - Queued data flush: this code path doesn't trigger
+            //     that — we drain the queue lazily in
+            //     `handle_tunnel_timeout` once we have a data socket.
             TunnResult::WriteToNetwork(bytes) => {
-                match &mut self.state {
-                    ConnectionState::Connecting { wg_buffer, .. } => {
-                        tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
+                let inbound = Tunn::parse_incoming_packet(packet).ok();
+                let outbound = Tunn::parse_incoming_packet(bytes).ok();
 
-                        wg_buffer.enqueue(bytes.to_owned());
-
-                        while let TunnResult::WriteToNetwork(packet) =
-                            self.tunnel
-                                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
-                        {
-                            wg_buffer.enqueue(packet.to_owned());
-                        }
+                let (newly_established_session_socket, send_socket) = match (&inbound, &outbound) {
+                    (Some(Packet::HandshakeInit(_)), Some(Packet::HandshakeResponse(_))) => {
+                        (Some(observed_peer_socket), observed_peer_socket)
                     }
-                    ConnectionState::Connected { peer_socket, .. }
-                    | ConnectionState::Idle { peer_socket } => {
-                        transmits.extend(make_owned_transmit(
-                            self.relay.id,
-                            *peer_socket,
-                            bytes,
-                            &self.buffer_pool,
-                            allocations,
-                            now,
-                        ));
-
-                        while let TunnResult::WriteToNetwork(packet) =
-                            self.tunnel
-                                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
-                        {
-                            transmits.extend(make_owned_transmit(
-                                self.relay.id,
-                                *peer_socket,
-                                packet,
-                                &self.buffer_pool,
-                                allocations,
-                                now,
-                            ));
-                        }
+                    (Some(Packet::HandshakeInit(_)), Some(Packet::PacketCookieReply(_))) => {
+                        (None, observed_peer_socket)
                     }
-                    ConnectionState::Failed => {}
+                    (
+                        Some(Packet::HandshakeResponse(HandshakeResponse { receiver_idx, .. })),
+                        Some(Packet::PacketData(_)),
+                    ) => {
+                        let session = Index::from_peer(*receiver_idx).session() as u8;
+                        let Some(socket) = self.outbound_handshakes.get(&session).copied() else {
+                            return ControlFlow::Break(Err(anyhow!(
+                                "No socket for session index of HandshakeResponse (receiver_idx={receiver_idx})"
+                            )));
+                        };
+                        (Some(socket), socket)
+                    }
+                    _ => {
+                        return ControlFlow::Break(Err(anyhow!(
+                            "Unexpected (inbound, outbound) WG packet pair: inbound={inbound:?}, outbound={outbound:?}"
+                        )));
+                    }
+                };
+
+                if let Some(socket) = newly_established_session_socket
+                    && self.state.session_socket() != Some(socket)
+                {
+                    tracing::debug!(
+                        %cid,
+                        socket = %socket.fmt(self.relay.id),
+                        "Pinning WG data socket to write path of completed handshake"
+                    );
+                    self.state.set_session_socket(socket);
                 }
+
+                if newly_established_session_socket.is_some()
+                    && self.first_handshake_completed_at.is_none()
+                {
+                    self.first_handshake_completed_at = Some(now);
+                    tracing::debug!(
+                        %cid,
+                        duration_since_intent = ?self.duration_since_intent(now),
+                        "Completed wireguard handshake"
+                    );
+                }
+
+                // No `record_outbound_handshake` here: the only
+                // outbound type emitted in this branch that would be
+                // recorded is a `HandshakeResponse`, and its
+                // `sender_idx` is never the target of an
+                // `outbound_handshakes` lookup (the map is consulted
+                // exclusively via `HandshakeResponse.receiver_idx`,
+                // which matches an outbound *init*'s `sender_idx`).
+                transmits.extend(make_owned_transmit(
+                    self.relay.id,
+                    send_socket,
+                    bytes,
+                    &self.buffer_pool,
+                    allocations,
+                    now,
+                ));
 
                 ControlFlow::Break(Ok(()))
             }
@@ -1795,23 +1872,10 @@ where
     ) where
         RId: Copy,
     {
-        let Some(socket) = self.socket() else {
+        let Some(socket) = self.nominated_socket() else {
             tracing::debug!("Cannot initiate WG session without a socket");
             return;
         };
-
-        // If we have sent a handshake in the last 20s, don't bother making a new session.
-        // Our re-key timeout is 15s, meaning if more than 20s have passed and we are still
-        // here, we have a working connection and can refresh it.
-        if let Some(last_handshake) = self
-            .last_proactive_handshake_sent_at
-            .map(|last_sent_at| now.duration_since(last_sent_at))
-            && last_handshake < Duration::from_secs(20)
-        {
-            tracing::debug!(?last_handshake, "Suppressing repeated handshake");
-
-            return;
-        }
 
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
@@ -1820,9 +1884,14 @@ where
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
+        // `force_new_session = true` so every ICE nomination produces a
+        // fresh WG handshake on the freshly-nominated socket. Without
+        // this, boringtun would skip the handshake when it considers an
+        // existing session still valid, leaving subsequent data packets
+        // riding the stale path until the next rekey.
         let TunnResult::WriteToNetwork(bytes) = self
             .tunnel
-            .format_handshake_initiation_at(&mut buf, false, now)
+            .format_handshake_initiation_at(&mut buf, true, now)
         else {
             tracing::debug!("Another handshake is already in progress");
 
@@ -1830,6 +1899,8 @@ where
         };
 
         self.last_proactive_handshake_sent_at = Some(now);
+
+        self.record_outbound_handshake(bytes, socket);
 
         transmits.extend(make_owned_transmit(
             self.relay.id,
@@ -1910,12 +1981,15 @@ where
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
-    fn socket(&self) -> Option<PeerSocket> {
-        match self.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => Some(peer_socket),
-            ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
-        }
+    fn nominated_socket(&self) -> Option<PeerSocket> {
+        self.state.nominated_socket()
+    }
+
+    /// The socket that outbound WireGuard data should ride on — the
+    /// write path of the most recently completed handshake. `None`
+    /// until the first handshake completes.
+    fn wireguard_socket(&self) -> Option<PeerSocket> {
+        self.state.session_socket()
     }
 
     fn is_failed(&self) -> bool {
@@ -1943,6 +2017,64 @@ where
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
+    }
+
+    /// The outbound `PeerSocket` corresponding to an inbound packet that
+    /// arrived on `local` from `from`.
+    ///
+    /// Used to construct the reply-path socket for an authenticated WG
+    /// handshake: by sending back to the source we always follow the
+    /// path the peer is currently using, regardless of where ICE has
+    /// nominated.
+    fn peer_socket_for_tuple(
+        &self,
+        allocations: &mut Allocations<RId>,
+        local: SocketAddr,
+        from: SocketAddr,
+    ) -> PeerSocket {
+        let source_relay = allocations.get_mut_by_allocation(local).map(|(r, _)| r);
+
+        let dest_is_relay = self
+            .agent
+            .remote_candidates()
+            .any(|c| c.addr() == from && c.kind() == CandidateKind::Relayed);
+
+        match (source_relay, dest_is_relay) {
+            (None, false) => PeerSocket::PeerToPeer {
+                source: local,
+                dest: from,
+            },
+            (None, true) => PeerSocket::PeerToRelay {
+                source: local,
+                dest: from,
+            },
+            (Some(_), false) => PeerSocket::RelayToPeer { dest: from },
+            (Some(_), true) => PeerSocket::RelayToRelay { dest: from },
+        }
+    }
+
+    /// Record an outbound handshake init so that when
+    /// the peer's matching reply lands we can look up which write
+    /// path that handshake rode on.
+    ///
+    /// Cheap and safe to call on any outbound WG byte slice:
+    /// non-handshake frames are ignored. Keyed by the 8-bit rotating
+    /// session index, so the map is bounded to 256 entries per
+    /// [`Connection`].
+    fn record_outbound_handshake(&mut self, packet: &[u8], socket: PeerSocket) {
+        let Ok(Packet::HandshakeInit(_)) = Tunn::parse_incoming_packet(packet) else {
+            return;
+        };
+
+        // `sender_idx` is private on both struct variants, so we read
+        // it directly from the well-known wire layout (LE u32 at
+        // offset 4..8). The parser above already validated the packet
+        // is long enough for either variant.
+        let bytes: [u8; 4] = packet[4..8]
+            .try_into()
+            .expect("validated packet has at least 8 bytes");
+        let session = Index::from_peer(u32::from_le_bytes(bytes)).session() as u8;
+        self.outbound_handshakes.insert(session, socket);
     }
 }
 

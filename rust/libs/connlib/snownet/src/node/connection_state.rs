@@ -15,28 +15,37 @@ use crate::IceConfig;
 pub(crate) enum ConnectionState {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
-        /// Packets emitted by wireguard whilst are still running ICE.
-        ///
-        /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
-        /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        wg_buffer: AllocRingBuffer<Vec<u8>>,
-
         /// Packets we are told to send whilst we are still running ICE.
         ///
         /// These need to be encrypted and sent once the tunnel is established.
         ip_buffer: AllocRingBuffer<IpPacket>,
+
+        /// The outbound socket of the most recently completed WG
+        /// handshake, if any. Set even before ICE finishes because we
+        /// can authenticate handshakes from the inbound socket alone.
+        session_socket: Option<PeerSocket>,
     },
     /// A socket has been nominated.
     Connected {
         /// Our nominated socket.
-        peer_socket: PeerSocket,
+        nominated_socket: PeerSocket,
+
+        /// The outbound socket of the most recently completed WG
+        /// handshake. Outbound `PacketData` rides this socket
+        /// regardless of what ICE has nominated.
+        session_socket: Option<PeerSocket>,
 
         last_activity: Instant,
     },
     /// We haven't seen application packets in a while.
     Idle {
         /// Our nominated socket.
-        peer_socket: PeerSocket,
+        nominated_socket: PeerSocket,
+
+        /// The outbound socket of the most recently completed WG
+        /// handshake. Outbound `PacketData` rides this socket
+        /// regardless of what ICE has nominated.
+        session_socket: Option<PeerSocket>,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
@@ -66,7 +75,8 @@ impl ConnectionState {
     ) {
         let Self::Connected {
             last_activity,
-            peer_socket,
+            nominated_socket,
+            session_socket,
         } = self
         else {
             return;
@@ -80,9 +90,10 @@ impl ConnectionState {
             return;
         }
 
-        let peer_socket = *peer_socket;
+        let nominated_socket = *nominated_socket;
+        let session_socket = *session_socket;
 
-        self.transition_to_idle(peer_socket, agent, idle_ice_config);
+        self.transition_to_idle(nominated_socket, session_socket, agent, idle_ice_config);
     }
 
     pub(crate) fn on_upsert<TId>(
@@ -94,8 +105,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (nominated_socket, session_socket) = match self {
+            Self::Idle {
+                nominated_socket,
+                session_socket,
+            } => (*nominated_socket, *session_socket),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -103,7 +117,15 @@ impl ConnectionState {
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(cid, peer_socket, agent, default_ice_config, "upsert", now);
+        self.transition_to_connected(
+            cid,
+            nominated_socket,
+            session_socket,
+            agent,
+            default_ice_config,
+            "upsert",
+            now,
+        );
     }
 
     pub(crate) fn on_candidate<TId>(
@@ -115,8 +137,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (nominated_socket, session_socket) = match self {
+            Self::Idle {
+                nominated_socket,
+                session_socket,
+            } => (*nominated_socket, *session_socket),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -126,7 +151,8 @@ impl ConnectionState {
 
         self.transition_to_connected(
             cid,
-            peer_socket,
+            nominated_socket,
+            session_socket,
             agent,
             default_ice_config,
             "candidates changed",
@@ -144,8 +170,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (nominated_socket, session_socket) = match self {
+            Self::Idle {
+                nominated_socket,
+                session_socket,
+            } => (*nominated_socket, *session_socket),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -155,7 +184,8 @@ impl ConnectionState {
 
         self.transition_to_connected(
             cid,
-            peer_socket,
+            nominated_socket,
+            session_socket,
             agent,
             default_ice_config,
             tracing::field::debug(packet),
@@ -173,8 +203,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (nominated_socket, session_socket) = match self {
+            Self::Idle {
+                nominated_socket,
+                session_socket,
+            } => (*nominated_socket, *session_socket),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -184,7 +217,8 @@ impl ConnectionState {
 
         self.transition_to_connected(
             cid,
-            peer_socket,
+            nominated_socket,
+            session_socket,
             agent,
             default_ice_config,
             tracing::field::debug(packet),
@@ -194,19 +228,24 @@ impl ConnectionState {
 
     fn transition_to_idle(
         &mut self,
-        peer_socket: PeerSocket,
+        nominated_socket: PeerSocket,
+        session_socket: Option<PeerSocket>,
         agent: &mut IceAgent,
         idle_ice_config: IceConfig,
     ) {
         tracing::debug!("Connection is idle");
-        *self = Self::Idle { peer_socket };
+        *self = Self::Idle {
+            nominated_socket,
+            session_socket,
+        };
         idle_ice_config.apply(agent);
     }
 
     fn transition_to_connected<TId>(
         &mut self,
         cid: TId,
-        peer_socket: PeerSocket,
+        nominated_socket: PeerSocket,
+        session_socket: Option<PeerSocket>,
         agent: &mut IceAgent,
         default_ice_config: IceConfig,
         trigger: impl tracing::Value,
@@ -216,7 +255,8 @@ impl ConnectionState {
     {
         tracing::debug!(trigger, %cid, "Connection resumed");
         *self = Self::Connected {
-            peer_socket,
+            nominated_socket,
+            session_socket,
             last_activity: now,
         };
         default_ice_config.apply(agent);
@@ -225,16 +265,68 @@ impl ConnectionState {
     pub(crate) fn has_nominated_socket(&self) -> bool {
         matches!(self, Self::Connected { .. } | Self::Idle { .. })
     }
+
+    /// The nominated ICE socket, if one has been picked.
+    pub(crate) fn nominated_socket(&self) -> Option<PeerSocket> {
+        match self {
+            Self::Connected {
+                nominated_socket, ..
+            }
+            | Self::Idle {
+                nominated_socket, ..
+            } => Some(*nominated_socket),
+            Self::Connecting { .. } | Self::Failed => None,
+        }
+    }
+
+    /// The outbound socket of the most recently completed WG
+    /// handshake, if any.
+    pub(crate) fn session_socket(&self) -> Option<PeerSocket> {
+        match self {
+            Self::Connecting { session_socket, .. }
+            | Self::Connected { session_socket, .. }
+            | Self::Idle { session_socket, .. } => *session_socket,
+            Self::Failed => None,
+        }
+    }
+
+    /// Pin the outbound socket of the most recently completed WG
+    /// handshake. No-op in the [`Self::Failed`] state.
+    pub(crate) fn set_session_socket(&mut self, socket: PeerSocket) {
+        match self {
+            Self::Connecting { session_socket, .. }
+            | Self::Connected { session_socket, .. }
+            | Self::Idle { session_socket, .. } => *session_socket = Some(socket),
+            Self::Failed => {}
+        }
+    }
 }
 
 impl fmt::Display for ConnectionState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConnectionState::Connecting { .. } => write!(f, "Connecting"),
-            ConnectionState::Connected { peer_socket, .. } => {
-                write!(f, "Connected({})", peer_socket.kind())
+            ConnectionState::Connected {
+                nominated_socket,
+                session_socket,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Connected({} | {:?})",
+                    nominated_socket.kind(),
+                    session_socket.map(|p| p.kind())
+                )
             }
-            ConnectionState::Idle { peer_socket } => write!(f, "Idle({})", peer_socket.kind()),
+            ConnectionState::Idle {
+                nominated_socket,
+                session_socket,
+            } => write!(
+                f,
+                "Idle({} | {:?})",
+                nominated_socket.kind(),
+                session_socket.map(|p| p.kind())
+            ),
             ConnectionState::Failed => write!(f, "Failed"),
         }
     }
