@@ -1043,9 +1043,9 @@ where
         // are we allowed to (temporarily) override the `PeerSocket` of this connection
         // with what we have observed.
         if decap_ok
+            && let Packet::HandshakeInit(_) = parsed_packet
             && let observed_peer_socket =
                 conn.peer_socket_for_tuple(&mut self.allocations, destination, from)
-            && let Packet::HandshakeInit(_) = parsed_packet
             && let ConnectionState::Connected {
                 peer_socket,
                 peer_socket_override,
