@@ -182,9 +182,16 @@ class TunnelService : VpnService() {
 
                 addAddress(tunnelIpv4Address!!, 32)
                 addAddress(tunnelIpv6Address!!, 128)
-            }.establish()
-            ?.detachFd()
-            ?.also { fd -> sendTunnelCommand(TunnelCommand.SetTun(fd)) }
+            }.runCatching { establish() }
+            .onFailure { Log.e(TAG, "Error establishing VPN service", it) }
+            .onSuccess { fd ->
+                if (fd == null) {
+                    Log.d(TAG, "VpnService.Builder.establish() returned null")
+                    return@onSuccess
+                }
+
+                sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
+            }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
