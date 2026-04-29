@@ -11,7 +11,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
-use crate::node::connections::Connections;
+use crate::node::connections::{CandidateEpoch, Connections};
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::outbound_handshakes::OutboundHandshakes;
 use crate::node::timeout_cache::TimeoutCache;
@@ -329,7 +329,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = new_agent(ice_role);
+        let (mut agent, candidate_epoch) = new_agent(ice_role);
         default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
@@ -348,6 +348,7 @@ where
         let connection = self.init_connection(
             cid,
             agent,
+            candidate_epoch,
             remote,
             preshared_key,
             selected_relay,
@@ -757,6 +758,7 @@ where
         &mut self,
         cid: TId,
         mut agent: IceAgent,
+        candidate_epoch: CandidateEpoch,
         remote: PublicKey,
         key: x25519::StaticSecret,
         relay: RId,
@@ -798,6 +800,7 @@ where
 
         Connection {
             agent,
+            candidate_epoch,
             index,
             tunnel,
             next_wg_timer_update: now,
@@ -1252,6 +1255,14 @@ impl fmt::Debug for Transmit {
 #[derive(derive_more::Debug)]
 struct Connection<RId> {
     agent: IceAgent,
+
+    /// Per-connection epoch counter used for generational ICE candidates.
+    ///
+    /// Starts at 0 for each freshly created connection (so a post-teardown
+    /// rebuild has no "history" to outrank), and bumps any time this
+    /// connection acquires candidates that supersede previous ones — such as
+    /// when roaming or replacing the selected TURN relay.
+    candidate_epoch: CandidateEpoch,
 
     index: Index,
     #[debug(skip)]
@@ -1996,6 +2007,12 @@ where
 
         self.relay.id = new_relay;
 
+        // Bump the epoch so candidates derived from the new relay strictly
+        // outrank candidates from the replaced one. This lets both sides'
+        // ICE agents migrate to the new relay's pairs without an explicit
+        // ICE restart.
+        self.candidate_epoch.inc();
+
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
@@ -2101,12 +2118,15 @@ where
     Some(transmit)
 }
 
-fn new_agent(role: IceRole) -> IceAgent {
+fn new_agent(role: IceRole) -> (IceAgent, CandidateEpoch) {
+    let candidate_epoch = CandidateEpoch::default();
+
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
     agent.set_timing_advance(Duration::ZERO);
+    agent.set_local_preference(connections::LocalPreference::new(candidate_epoch.clone()));
 
-    agent
+    (agent, candidate_epoch)
 }
 
 #[cfg(test)]
@@ -2117,7 +2137,7 @@ mod tests {
 
     #[test]
     fn client_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2128,7 +2148,7 @@ mod tests {
     // otherwise we cannot migrate an existing tunnel to a new candidate pair.
     #[test]
     fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2137,7 +2157,7 @@ mod tests {
 
     #[test]
     fn client_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
 
         IceConfig::client_idle().apply(&mut agent);
 
@@ -2146,7 +2166,7 @@ mod tests {
 
     #[test]
     fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
 
         IceConfig::server_default().apply(&mut agent);
 
@@ -2155,7 +2175,7 @@ mod tests {
 
     #[test]
     fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
 
         IceConfig::server_idle().apply(&mut agent);
 
