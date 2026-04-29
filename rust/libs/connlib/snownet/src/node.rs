@@ -1043,7 +1043,6 @@ where
             parsed_packet,
             Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
         );
-        let is_handshake_init = matches!(parsed_packet, Packet::HandshakeInit(_));
 
         if decap_ok && is_handshake && conn.first_handshake_completed_at.is_none() {
             conn.first_handshake_completed_at = Some(now);
@@ -1054,11 +1053,31 @@ where
                 .push_back(Event::ConnectionEstablished(cid))
         }
 
-        // Only `HandshakeInit` reflects the peer's choice of send-from
-        // socket; a `HandshakeResponse` just confirms wherever we sent the
-        // matching init from and would race ICE re-nominations.
-        if decap_ok && is_handshake_init {
-            conn.maybe_override_peer_socket(cid, observed_peer_socket);
+        // Iff we successfully processed a WireGuard `HandshakeInit` packet
+        // are we allowed to (temporarily) override the `PeerSocket` of this connection
+        // with what we have observed.
+        if decap_ok
+            && let Packet::HandshakeInit(_) = parsed_packet
+            && let ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+                ..
+            }
+            | ConnectionState::Idle {
+                peer_socket,
+                peer_socket_override,
+            } = &mut conn.state
+            && let effective = peer_socket_override.unwrap_or(*peer_socket)
+            && effective != observed_peer_socket
+        {
+            tracing::info!(
+                %cid,
+                current = %effective.fmt(conn.relay.id),
+                new = %observed_peer_socket.fmt(conn.relay.id),
+                "Overriding peer_socket from authenticated WG handshake init"
+            );
+
+            *peer_socket_override = Some(observed_peer_socket);
         }
 
         control_flow
@@ -2001,51 +2020,6 @@ where
 
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
-        }
-    }
-
-    /// Set or update the `peer_socket_override` on the current state based
-    /// on the source of an authenticated WG `HandshakeInit`.
-    ///
-    /// Caller must only invoke this for a `HandshakeInit`, never for a
-    /// `HandshakeResponse`: an init is the peer's choice of send-from
-    /// socket, while a response just confirms wherever we sent the matching
-    /// init from.
-    ///
-    /// The override applies only once we have an ICE-nominated socket to
-    /// deviate from; during `Connecting` ICE hasn't picked anything yet and
-    /// during `Failed` the connection is going away. If the observed socket
-    /// already matches the path we're effectively using, the override is a
-    /// no-op.
-    fn maybe_override_peer_socket<TId>(&mut self, cid: TId, observed: PeerSocket)
-    where
-        TId: fmt::Display,
-    {
-        match &mut self.state {
-            ConnectionState::Connecting { .. } | ConnectionState::Failed => {}
-            ConnectionState::Connected {
-                peer_socket,
-                peer_socket_override,
-                ..
-            }
-            | ConnectionState::Idle {
-                peer_socket,
-                peer_socket_override,
-            } => {
-                let effective = peer_socket_override.unwrap_or(*peer_socket);
-                if effective == observed {
-                    return;
-                }
-
-                tracing::info!(
-                    %cid,
-                    current = %effective.fmt(self.relay.id),
-                    new = %observed.fmt(self.relay.id),
-                    "Overriding peer_socket from authenticated WG handshake init"
-                );
-
-                *peer_socket_override = Some(observed);
-            }
         }
     }
 }

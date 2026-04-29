@@ -33,17 +33,8 @@ pub(crate) enum ConnectionState {
 
         /// A socket override applied on top of `peer_socket`.
         ///
-        /// Set when an authenticated WireGuard `HandshakeInit` arrives from
-        /// a source different from the ICE-nominated path: an init is the
-        /// peer's choice of send-from socket, so it tells us where the peer
-        /// wants future traffic to go. We deliberately ignore
-        /// `HandshakeResponse` here — a response just confirms wherever we
-        /// sent the matching init from, which would falsely look like a
-        /// peer-side path change if ICE re-nominated in between.
-        ///
-        /// Cleared once ICE re-nominates the same socket; if ICE picks a
-        /// different one the override stays in place — the WG handshake
-        /// is a fresher signal about where the peer is sending from.
+        /// Set when an authenticated WireGuard [`HandshakeInit`](boringtun::noise::HandshakeInit) arrives from a source different from the ICE-nominated path.
+        /// An init is the peer's choice of send-from socket, so it tells us where the peer wants future traffic to go.
         peer_socket_override: Option<PeerSocket>,
 
         last_activity: Instant,
