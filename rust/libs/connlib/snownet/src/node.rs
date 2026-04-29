@@ -1608,7 +1608,7 @@ where
         let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
 
         if source_relay.is_some_and(|r| self.relay.id != r) {
-            tracing::warn!("Nominated a relay different from what we set out to! Weird?");
+            tracing::warn!("Socket uses unexpected relay");
         }
 
         let dest_is_relay = self
