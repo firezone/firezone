@@ -11,6 +11,7 @@ use bin_shared::{
     signals,
 };
 use clap::Parser;
+use futures::StreamExt as _;
 use ip_network::IpNetwork;
 use opentelemetry_otlp::WithExportConfig as _;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
@@ -441,8 +442,10 @@ fn try_main() -> Result<()> {
 
         let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
 
-        let mut network_notifier =
-            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
+        let mut network_notifier = new_network_notifier()
+            .await
+            .inspect_err(|e| tracing::info!("Failed to initialize network change monitor: {e:#}"))
+            .unwrap_or_default();
         drop(tokio_handle);
 
         let tun = tun_device.make_tun()?;
@@ -458,16 +461,16 @@ fn try_main() -> Result<()> {
                     session.reset("SIGHUP".to_owned());
                     continue;
                 },
-                result = dns_notifier.notified() => {
-                    result?;
+                result = dns_notifier.next() => {
+                    result.context("DNS notifier stream ended")??;
                     // If the DNS control method is not `systemd-resolved`
                     // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
                     tracing::trace!("DNS change, notifying Session");
                     session.set_dns(dns_controller.system_resolvers());
                     continue;
                 },
-                result = network_notifier.notified() => {
-                    result?;
+                result = network_notifier.next() => {
+                    result.context("Network notifier stream ended")??;
                     session.reset("network changed".to_owned());
                     continue;
                 },

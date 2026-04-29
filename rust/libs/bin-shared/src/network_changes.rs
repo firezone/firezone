@@ -1,9 +1,5 @@
 #[cfg(target_os = "linux")]
 #[path = "network_changes/linux.rs"]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "Signatures must match other platforms"
-)]
 mod imp;
 
 #[cfg(target_os = "windows")]

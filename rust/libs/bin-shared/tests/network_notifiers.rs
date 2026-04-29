@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use bin_shared::{DnsControlMethod, new_dns_notifier, new_network_notifier};
-use futures::future::FutureExt as _;
+use futures::{StreamExt as _, future::FutureExt as _};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -21,29 +21,19 @@ async fn notifiers() {
     let mut dns = new_dns_notifier(tokio_handle.clone(), DnsControlMethod::default())
         .await
         .unwrap();
-    let mut net = new_network_notifier(tokio_handle, DnsControlMethod::default())
-        .await
-        .unwrap();
+    let mut net = new_network_notifier().await.unwrap();
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-    // The notifiers always notify once they start listening for changes, to avoid gaps during startup.
-    timeout(Duration::from_secs(1), dns.notified())
+    // The DNS notifier always notifies once it starts listening, to avoid gaps during startup.
+    timeout(Duration::from_secs(1), dns.next())
         .await
         .unwrap()
-        .unwrap();
-    timeout(Duration::from_secs(1), net.notified())
-        .await
         .unwrap()
         .unwrap();
 
-    // After that first notification, we shouldn't get any other notifications during a normal unit test.
-
-    assert!(dns.notified().now_or_never().is_none());
-    assert!(net.notified().now_or_never().is_none());
-
-    // `close` consumes the notifiers, so we can catch errors and can't call any methods on a closed notifier. If the notifier is dropped, we internally call the same code that `close` calls.
-
-    dns.close().unwrap();
-    net.close().unwrap();
+    // After that first DNS notification, we shouldn't get any further notifications during a normal unit test.
+    // The network notifier should never have fired, since nothing changed about the primary egress path.
+    assert!(dns.next().now_or_never().is_none());
+    assert!(net.next().now_or_never().is_none());
 }

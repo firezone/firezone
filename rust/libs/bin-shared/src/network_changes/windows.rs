@@ -64,6 +64,7 @@
 
 use crate::DnsControlMethod;
 use anyhow::{Context as _, Result, anyhow};
+use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::thread;
@@ -85,18 +86,17 @@ use windows::{
 pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<Worker> {
-    Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
+) -> Result<impl Stream<Item = Result<()>> + Unpin> {
+    let worker = Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
         async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
         Ok(())
-    })
+    })?;
+
+    Ok(worker_into_stream(worker))
 }
 
-pub async fn new_network_notifier(
-    _tokio_handle: tokio::runtime::Handle,
-    _method: DnsControlMethod,
-) -> Result<Worker> {
-    Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
+pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + Default + Unpin> {
+    let worker = Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
         {
             let com = ComGuard::new()?;
             let listener = Listener::new(&com, tx)?;
@@ -104,13 +104,42 @@ pub async fn new_network_notifier(
             listener.close()?;
         }
         Ok(())
+    })?;
+
+    Ok(NetworkNotifier(worker_into_stream(worker).boxed()))
+}
+
+fn worker_into_stream(worker: Worker) -> impl Stream<Item = Result<()>> + Unpin + Send + 'static {
+    stream::unfold(worker, |mut worker| async move {
+        worker.notified().await.ok();
+        Some((Ok(()), worker))
     })
+    .boxed()
+}
+
+struct NetworkNotifier(futures::stream::BoxStream<'static, Result<()>>);
+
+impl Default for NetworkNotifier {
+    fn default() -> Self {
+        NetworkNotifier(Box::pin(stream::pending()))
+    }
+}
+
+impl Stream for NetworkNotifier {
+    type Item = Result<()>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.as_mut().poll_next(cx)
+    }
 }
 
 /// Container for a worker thread that we can cooperatively stop.
 ///
 /// The worker thread emits notifications with no data in them.
-pub struct Worker {
+struct Worker {
     inner: Option<WorkerInner>,
     rx: NotifyReceiver,
     thread_name: String,
@@ -141,7 +170,7 @@ impl Worker {
     }
 
     /// Same as `drop`, but you can catch errors
-    pub fn close(&mut self) -> Result<()> {
+    fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             tracing::trace!(
                 thread_name = self.thread_name,
@@ -160,7 +189,7 @@ impl Worker {
         Ok(())
     }
 
-    pub async fn notified(&mut self) -> Result<()> {
+    async fn notified(&mut self) -> Result<()> {
         self.rx
             .notified()
             .await
@@ -299,7 +328,7 @@ impl<'a> Listener<'a> {
         };
 
         let cb = Callback {
-            tx: tx.clone(),
+            tx,
             ignored_networks: get_ignored_networks()
                 .inspect_err(|e| {
                     tracing::warn!("Failed to compute list of ignored network IDs: {e:#}")
@@ -317,14 +346,6 @@ impl<'a> Listener<'a> {
             unsafe { this.cxn_point_net.Advise(&callbacks) }
                 .context("Failed to listen for network event callbacks")?,
         );
-
-        // After we call `Advise`, notify. This should avoid a problem if this happens:
-        //
-        // 1. Caller spawns a worker thread for Listener, but the worker thread isn't scheduled
-        // 2. Caller continues setup, checks Internet is connected
-        // 3. Internet gets disconnected but caller isn't notified
-        // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
-        tx.notify()?;
 
         Ok(this)
     }
@@ -514,13 +535,9 @@ mod async_dns {
             let mut listener_4 = Listener::new(key_ipv4)?;
             let mut listener_6 = Listener::new(key_ipv6)?;
 
-            // Notify once we start listening, to be consistent with other notifiers. This is intended to cover gaps during startup, e.g.:
-            //
-            // 1. Caller records network state / DNS resolvers
-            // 2. Caller creates a notifier
-            // 3. While we're setting up the notifier, the network or DNS state changes
-            // 4. The caller is now stuck on a stale state until the first notification comes through.
-
+            // Notify once we start listening, so callers are notified of the
+            // current DNS state on startup without waiting for the first real
+            // change.
             tx.notify()?;
 
             let mut stop = pin!(stopper_rx.fuse());
