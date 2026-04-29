@@ -5,7 +5,7 @@ defmodule PortalAPI.GatewayControllerTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.SiteFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
 
   setup do
     account = account_fixture()

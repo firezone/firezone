@@ -54,6 +54,16 @@ defmodule PortalAPI.Client.Views.Resource do
     }
   end
 
+  defp render_resource(%{type: :dynamic_device_pool} = resource, _site_key) do
+    %{
+      id: resource.id,
+      type: :dynamic_device_pool,
+      name: resource.name,
+      address: resource.address,
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
+    }
+  end
+
   defp render_resource(%{} = resource, site_key) do
     %{
       id: resource.id,

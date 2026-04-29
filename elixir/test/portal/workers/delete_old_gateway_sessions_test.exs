@@ -3,7 +3,7 @@ defmodule Portal.Workers.DeleteOldGatewaySessionsTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.GatewaySessionFixtures
   import Portal.SiteFixtures
   import Portal.TokenFixtures

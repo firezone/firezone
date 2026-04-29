@@ -8,9 +8,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
   import Portal.DeviceFixtures
-  import Portal.GatewayFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
@@ -38,7 +36,7 @@ defmodule PortalAPI.Client.ChannelTest do
     session = %Portal.ClientSession{
       device_id: client.id,
       account_id: client.account_id,
-      public_key: Portal.ClientFixtures.generate_public_key(),
+      public_key: Portal.DeviceFixtures.generate_public_key(),
       user_agent: subject.context.user_agent,
       remote_ip: subject.context.remote_ip,
       remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -309,7 +307,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -553,7 +551,7 @@ defmodule PortalAPI.Client.ChannelTest do
         session: %Portal.ClientSession{
           device_id: client.id,
           account_id: client.account_id,
-          public_key: Portal.ClientFixtures.generate_public_key(),
+          public_key: Portal.DeviceFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
           remote_ip: subject.context.remote_ip,
           remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -633,7 +631,7 @@ defmodule PortalAPI.Client.ChannelTest do
         session: %Portal.ClientSession{
           device_id: client.id,
           account_id: client.account_id,
-          public_key: Portal.ClientFixtures.generate_public_key(),
+          public_key: Portal.DeviceFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
           remote_ip: subject.context.remote_ip,
           remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -679,7 +677,7 @@ defmodule PortalAPI.Client.ChannelTest do
         session: %Portal.ClientSession{
           device_id: client.id,
           account_id: client.account_id,
-          public_key: Portal.ClientFixtures.generate_public_key(),
+          public_key: Portal.DeviceFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
           remote_ip: subject.context.remote_ip,
           remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -725,7 +723,7 @@ defmodule PortalAPI.Client.ChannelTest do
     test "relay credentials are stable across reconnects", %{client: client, subject: subject} do
       connect_relay(%{lat: 37.0, lon: -120.0})
 
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       session = %Portal.ClientSession{
         device_id: client.id,
@@ -826,7 +824,7 @@ defmodule PortalAPI.Client.ChannelTest do
         session: %Portal.ClientSession{
           device_id: client.id,
           account_id: client.account_id,
-          public_key: Portal.ClientFixtures.generate_public_key(),
+          public_key: Portal.DeviceFixtures.generate_public_key(),
           user_agent: subject.context.user_agent,
           remote_ip: subject.context.remote_ip,
           remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -3347,7 +3345,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -3436,7 +3434,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -4138,7 +4136,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -4198,7 +4196,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -4528,7 +4526,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -4884,7 +4882,7 @@ defmodule PortalAPI.Client.ChannelTest do
           session: %Portal.ClientSession{
             device_id: client.id,
             account_id: client.account_id,
-            public_key: Portal.ClientFixtures.generate_public_key(),
+            public_key: Portal.DeviceFixtures.generate_public_key(),
             user_agent: subject.context.user_agent,
             remote_ip: subject.context.remote_ip,
             remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -5313,6 +5311,179 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_push "client_device_access_denied", %{reason: :invalid_address}
+    end
+  end
+
+  describe "handle_in/3 resolve_device_pool_domain" do
+    setup %{account: account, group: group, subject: subject} do
+      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
+
+      target_actor = actor_fixture(account: account)
+
+      target_client =
+        client_fixture(
+          account: account,
+          actor: target_actor,
+          hostname: "device-42.devices.example.com"
+        )
+        |> fetch_device!()
+
+      pool_resource =
+        dynamic_device_pool_resource_fixture(
+          account: account,
+          address: "*.devices.example.com"
+        )
+
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      %{subject: subject, target_client: target_client, pool_resource: pool_resource}
+    end
+
+    test "pushes device_pool_domain_resolved on hostname match", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      pool_resource: pool_resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      pool_id = pool_resource.id
+      target_ipv4 = %Postgrex.INET{address: target_client.ipv4.address, netmask: 32}
+      target_ipv6 = %Postgrex.INET{address: target_client.ipv6.address, netmask: 128}
+
+      push(socket, "resolve_device_pool_domain", %{
+        "resource_id" => pool_id,
+        "domain" => "device-42.devices.example.com"
+      })
+
+      assert_push "device_pool_domain_resolved", %{
+        resource_id: ^pool_id,
+        domain: "device-42.devices.example.com",
+        ipv4: ^target_ipv4,
+        ipv6: ^target_ipv6
+      }
+    end
+
+    test "matches case-insensitively against the device's stored hostname", %{
+      client: client,
+      subject: subject,
+      pool_resource: pool_resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      pool_id = pool_resource.id
+
+      push(socket, "resolve_device_pool_domain", %{
+        "resource_id" => pool_id,
+        "domain" => "Device-42.Devices.Example.COM"
+      })
+
+      assert_push "device_pool_domain_resolved", %{
+        resource_id: ^pool_id,
+        domain: "Device-42.Devices.Example.COM"
+      }
+    end
+
+    test "fails with :not_found when no device has the domain as its hostname", %{
+      client: client,
+      subject: subject,
+      pool_resource: pool_resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      pool_id = pool_resource.id
+
+      push(socket, "resolve_device_pool_domain", %{
+        "resource_id" => pool_id,
+        "domain" => "ghost.devices.example.com"
+      })
+
+      assert_push "device_pool_domain_resolution_failed", %{
+        resource_id: ^pool_id,
+        domain: "ghost.devices.example.com",
+        reason: :not_found
+      }
+    end
+
+    test "fails with :not_found when device hostname doesn't match the pool's pattern", %{
+      account: account,
+      client: client,
+      subject: subject,
+      pool_resource: pool_resource
+    } do
+      # Device is in the same account but its hostname falls outside the pool's
+      # `*.devices.example.com` pattern.
+      stranger_actor = actor_fixture(account: account)
+
+      _stranger =
+        client_fixture(
+          account: account,
+          actor: stranger_actor,
+          hostname: "secret.private.example.com"
+        )
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      pool_id = pool_resource.id
+
+      push(socket, "resolve_device_pool_domain", %{
+        "resource_id" => pool_id,
+        "domain" => "secret.private.example.com"
+      })
+
+      assert_push "device_pool_domain_resolution_failed", %{reason: :not_found}
+    end
+
+    test "fails with :not_found when the resource isn't a connectable dynamic pool", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      stranger_id = Ecto.UUID.generate()
+
+      push(socket, "resolve_device_pool_domain", %{
+        "resource_id" => stranger_id,
+        "domain" => "device-42.devices.example.com"
+      })
+
+      assert_push "device_pool_domain_resolution_failed", %{
+        resource_id: ^stranger_id,
+        reason: :not_found
+      }
+    end
+
+    test "fails with :not_found when the resource is a static pool, not a dynamic one", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject,
+      target_client: target_client
+    } do
+      static_pool =
+        static_device_pool_resource_fixture(account: account, clients: [target_client])
+
+      policy_fixture(account: account, group: group, resource: static_pool)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      static_id = static_pool.id
+
+      push(socket, "resolve_device_pool_domain", %{
+        "resource_id" => static_id,
+        "domain" => "device-42.devices.example.com"
+      })
+
+      assert_push "device_pool_domain_resolution_failed", %{
+        resource_id: ^static_id,
+        reason: :not_found
+      }
     end
   end
 

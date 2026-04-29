@@ -4,7 +4,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.TokenFixtures
 

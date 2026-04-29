@@ -443,6 +443,40 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
+  # Connlib intercepts DNS queries that match a registered dynamic_device_pool pattern
+  # (e.g. `*.devices.example.com`) and asks the portal to resolve the FQDN to a tunnel
+  # IP. We answer by looking the device up by hostname (case-insensitive) within the
+  # client's account, then verifying the device's hostname still matches the pool's
+  # pattern as defense in depth.
+  def handle_in(
+        "resolve_device_pool_domain",
+        %{"resource_id" => resource_id, "domain" => domain},
+        socket
+      )
+      when is_binary(resource_id) and is_binary(domain) do
+    with {:ok, %Cache.Cacheable.Resource{type: :dynamic_device_pool, address: pattern}} <-
+           fetch_connectable_dynamic_pool(socket.assigns.cache, resource_id),
+         {:ok, %Portal.Device{} = device} <-
+           Database.get_device_by_hostname(domain, socket.assigns.subject),
+         true <- Portal.Resource.matches_dns_pattern?(pattern, device.hostname) do
+      push(socket, "device_pool_domain_resolved", %{
+        resource_id: resource_id,
+        domain: domain,
+        ipv4: %Postgrex.INET{address: device.ipv4.address, netmask: 32},
+        ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128}
+      })
+    else
+      _ ->
+        push(socket, "device_pool_domain_resolution_failed", %{
+          resource_id: resource_id,
+          domain: domain,
+          reason: :not_found
+        })
+    end
+
+    {:noreply, socket}
+  end
+
   # DEPRECATED IN 1.4
   # The client sends it's message to list relays and select a gateway whenever it wants
   # to connect to a resource.
@@ -804,6 +838,17 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defp parse_target_address(_), do: {:error, :missing_address}
+
+  defp fetch_connectable_dynamic_pool(cache, resource_id) do
+    rid_bytes = Ecto.UUID.dump!(resource_id)
+
+    case Enum.find(cache.connectable_resources, &(&1.id == rid_bytes)) do
+      %Cache.Cacheable.Resource{type: :dynamic_device_pool} = resource -> {:ok, resource}
+      _ -> {:error, :not_found}
+    end
+  rescue
+    ArgumentError -> {:error, :not_found}
+  end
 
   defp client_fqdns(%Postgrex.INET{address: {a, b, c, d}}, account_key) do
     ["#{a}-#{b}-#{c}-#{d}.#{account_key}.fz.internal"]
@@ -1729,6 +1774,27 @@ defmodule PortalAPI.Client.Channel do
     def insert_policy_authorization(changeset, subject) do
       Portal.Safe.scoped(changeset, subject)
       |> Portal.Safe.insert()
+    end
+
+    @doc """
+      Fetches a client device by hostname within the subject's account. The hostname
+      column is `citext`, so equality is case-insensitive at the DB layer.
+
+      Used by the dynamic device pool DNS resolution path. Returns `{:error, :not_found}`
+      for a miss or unauthorized read; the caller is expected to also verify the device's
+      hostname matches the pool's address pattern before returning IPs to the client.
+    """
+    def get_device_by_hostname(hostname, subject) when is_binary(hostname) do
+      from(d in Portal.Device,
+        where: d.type == :client,
+        where: d.hostname == ^hostname
+      )
+      |> Portal.Safe.scoped(subject, :replica)
+      |> Portal.Safe.one()
+      |> case do
+        %Portal.Device{} = device -> {:ok, device}
+        _ -> {:error, :not_found}
+      end
     end
 
     # Filters gateways by the resource type, gateway version, and client version.

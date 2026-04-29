@@ -5,7 +5,7 @@ defmodule PortalWeb.SitesTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.SiteFixtures
 
   setup do

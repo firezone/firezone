@@ -17,7 +17,7 @@ defmodule Portal.Resource do
           address: String.t(),
           address_description: String.t() | nil,
           name: String.t(),
-          type: :cidr | :ip | :dns | :internet | :static_device_pool,
+          type: :cidr | :ip | :dns | :internet | :static_device_pool | :dynamic_device_pool,
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
           account_id: Ecto.UUID.t(),
@@ -34,7 +34,8 @@ defmodule Portal.Resource do
     field :address_description, :string
     field :name, :string
 
-    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet, :static_device_pool]
+    field :type, Ecto.Enum,
+      values: [:cidr, :ip, :dns, :internet, :static_device_pool, :dynamic_device_pool]
 
     field :ip_stack, Ecto.Enum, values: [:ipv4_only, :ipv6_only, :dual]
 
@@ -114,6 +115,7 @@ defmodule Portal.Resource do
       {_, :ip} -> validate_ip_address(changeset)
       {_, :internet} -> put_change(changeset, :address, nil)
       {_, :static_device_pool} -> put_change(changeset, :address, nil)
+      {_, :dynamic_device_pool} -> validate_dns_address(changeset)
       _ -> changeset
     end
   end
@@ -310,7 +312,7 @@ defmodule Portal.Resource do
 
   defp validate_device_pool_site_id(changeset) do
     case fetch_field(changeset, :type) do
-      {_, :static_device_pool} ->
+      {_, type} when type in [:static_device_pool, :dynamic_device_pool] ->
         put_change(changeset, :site_id, nil)
 
       _ ->
@@ -343,6 +345,23 @@ defmodule Portal.Resource do
   # Utility functions moved from Portal.Resources
 
   @doc """
+    Matches a fully-qualified domain name against a DNS-style wildcard pattern.
+
+    Supports the same wildcard tokens that `:dns` and `:dynamic_device_pool` resource
+    addresses are validated against:
+
+      * `**` — zero or more labels (with dots)
+      * `*`  — zero or more characters within a single label (no dots)
+      * `?`  — exactly one character within a single label (no dots)
+
+    Comparison is case-insensitive, mirroring DNS semantics.
+  """
+  @spec matches_dns_pattern?(String.t(), String.t()) :: boolean()
+  def matches_dns_pattern?(pattern, fqdn) when is_binary(pattern) and is_binary(fqdn) do
+    Regex.match?(pattern_to_regex(pattern), String.downcase(fqdn))
+  end
+
+  @doc """
     This does two things:
     1. Filters out resources that are not compatible with the given client or gateway version.
     2. Converts DNS resource addresses back to the pre-1.2.0 format if the client or gateway version is < 1.2.0.
@@ -355,6 +374,17 @@ defmodule Portal.Resource do
         %Portal.ClientSession{} = session
       ) do
     if Portal.Version.client_supports_static_device_pools?(session) do
+      adapt_resource_for_version(resource, session.version)
+    else
+      nil
+    end
+  end
+
+  def adapt_resource_for_version(
+        %{type: :dynamic_device_pool} = resource,
+        %Portal.ClientSession{} = session
+      ) do
+    if Portal.Version.client_supports_dynamic_device_pools?(session) do
       adapt_resource_for_version(resource, session.version)
     else
       nil
@@ -409,4 +439,18 @@ defmodule Portal.Resource do
 
   defp map_resource_address([], acc),
     do: {:cont, acc}
+
+  defp pattern_to_regex(pattern) do
+    body =
+      ~r/\*\*|\*|\?|[^*?]+/
+      |> Regex.scan(String.downcase(pattern))
+      |> Enum.map_join(fn
+        ["**"] -> ".*"
+        ["*"] -> "[^.]*"
+        ["?"] -> "[^.]"
+        [literal] -> Regex.escape(literal)
+      end)
+
+    Regex.compile!("\\A" <> body <> "\\z")
+  end
 end

@@ -3,7 +3,7 @@ defmodule Portal.GatewaySessionTest do
 
   import Portal.AccountFixtures
   import Portal.SiteFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.TokenFixtures
   import Portal.GatewaySessionFixtures
 

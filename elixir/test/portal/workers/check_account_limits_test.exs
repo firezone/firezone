@@ -390,7 +390,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       admin = admin_actor_fixture(account: account)
 
       # Create a client with recent session to count as active user
-      client = Portal.ClientFixtures.client_fixture(account: account, actor: admin)
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: admin)
       client_session_fixture(account: account, actor: admin, client: client)
 
       # Set a low monthly_active_users_count limit
@@ -418,7 +418,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       admin = admin_actor_fixture(account: account)
 
       # Create a client with recent session
-      client = Portal.ClientFixtures.client_fixture(account: account, actor: admin)
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: admin)
       client_session_fixture(account: account, actor: admin, client: client)
 
       # Set the flag as already exceeded

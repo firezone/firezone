@@ -3,8 +3,7 @@ defmodule Portal.StaticDevicePoolMemberTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.ResourceFixtures
 
   test "allows client devices as pool members" do

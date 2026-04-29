@@ -6,8 +6,7 @@ defmodule Portal.OpsTest do
   import Portal.OutboundEmailTestHelpers
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
-  import Portal.ClientFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures

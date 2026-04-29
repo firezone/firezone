@@ -46,6 +46,11 @@ defmodule PortalAPI.Schemas.Client do
           type: :string,
           description: "Firebase installation ID (Android only)"
         },
+        hostname: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
+        },
         verified_at: %Schema{
           type: :string,
           description: "Client verification timestamp"
@@ -82,6 +87,7 @@ defmodule PortalAPI.Schemas.Client do
         "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
         "identifier_for_vendor" => nil,
         "firebase_installation_id" => nil,
+        "hostname" => "johns-macbook.example.com",
         "verified_at" => "2025-01-01T00:00:00Z",
         "created_at" => "2025-01-01T00:00:00Z",
         "updated_at" => "2025-01-01T00:00:00Z"
@@ -101,11 +107,17 @@ defmodule PortalAPI.Schemas.Client do
         name: %Schema{
           type: :string,
           description: "Client Name"
+        },
+        hostname: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
         }
       },
       required: [:name],
       example: %{
-        "name" => "John's Macbook Air"
+        "name" => "John's Macbook Air",
+        "hostname" => "johns-macbook.example.com"
       }
     })
   end
@@ -125,7 +137,8 @@ defmodule PortalAPI.Schemas.Client do
       required: [:client],
       example: %{
         "client" => %{
-          "name" => "John's Macbook Air"
+          "name" => "John's Macbook Air",
+          "hostname" => "johns-macbook.example.com"
         }
       }
     })
@@ -156,6 +169,7 @@ defmodule PortalAPI.Schemas.Client do
           "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
           "identifier_for_vendor" => nil,
           "firebase_installation_id" => nil,
+          "hostname" => "johns-macbook.example.com",
           "verified_at" => "2025-01-01T00:00:00Z",
           "created_at" => "2025-01-01T00:00:00Z",
           "updated_at" => "2025-01-01T00:00:00Z"
@@ -191,6 +205,7 @@ defmodule PortalAPI.Schemas.Client do
             "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "identifier_for_vendor" => nil,
             "firebase_installation_id" => nil,
+            "hostname" => "johns-macbook.example.com",
             "verified_at" => "2025-01-01T00:00:00Z",
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
@@ -207,6 +222,7 @@ defmodule PortalAPI.Schemas.Client do
             "device_uuid" => nil,
             "identifier_for_vendor" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "firebase_installation_id" => nil,
+            "hostname" => nil,
             "verified_at" => nil,
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"

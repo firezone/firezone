@@ -5,7 +5,7 @@ defmodule PortalAPI.Client.SocketTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.TokenFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.SubjectFixtures
   alias PortalAPI.Client.Socket
 
@@ -35,7 +35,7 @@ defmodule PortalAPI.Client.SocketTest do
       attrs =
         valid_client_attrs()
         |> Map.take([:firezone_id])
-        |> Map.put(:public_key, Portal.ClientFixtures.generate_public_key())
+        |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
         |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
 
       connect_info = build_connect_info(token: encoded_token)
@@ -55,7 +55,7 @@ defmodule PortalAPI.Client.SocketTest do
         |> then(fn attrs ->
           %{
             "external_id" => attrs.firezone_id,
-            "public_key" => Portal.ClientFixtures.generate_public_key()
+            "public_key" => Portal.DeviceFixtures.generate_public_key()
           }
         end)
 
@@ -108,7 +108,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       attrs = %{
         "token" => encoded_token,
-        "public_key" => Portal.ClientFixtures.generate_public_key()
+        "public_key" => Portal.DeviceFixtures.generate_public_key()
       }
 
       connect_info = build_connect_info()
@@ -539,7 +539,7 @@ defmodule PortalAPI.Client.SocketTest do
   defp connect_attrs(attrs) do
     valid_client_attrs()
     |> then(fn attrs -> %{external_id: attrs.firezone_id} end)
-    |> Map.put(:public_key, Portal.ClientFixtures.generate_public_key())
+    |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end

@@ -5,7 +5,7 @@ defmodule Portal.ClientSessionFixtures do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.TokenFixtures
 
   def client_session_fixture(attrs \\ %{}) do

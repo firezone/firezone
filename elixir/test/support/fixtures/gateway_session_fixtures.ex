@@ -5,7 +5,7 @@ defmodule Portal.GatewaySessionFixtures do
 
   import Portal.AccountFixtures
   import Portal.SiteFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.TokenFixtures
 
   def gateway_session_fixture(attrs \\ %{}) do
@@ -47,9 +47,5 @@ defmodule Portal.GatewaySessionFixtures do
       |> Portal.Repo.insert()
 
     session
-  end
-
-  defp generate_public_key do
-    :crypto.strong_rand_bytes(32) |> Base.encode64()
   end
 end
