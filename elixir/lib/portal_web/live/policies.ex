@@ -989,7 +989,7 @@ defmodule PortalWeb.Policies do
     end
 
     def fetch_group_option(id, subject) do
-      group =
+      row =
         from(g in Group, as: :groups)
         |> where([groups: g], g.id == ^id)
         |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
@@ -1005,9 +1005,10 @@ defmodule PortalWeb.Policies do
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        |> select(
+          [groups: g, directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
           %{
+            group: g,
             directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name),
             directory_type: d.type
           }
@@ -1015,7 +1016,7 @@ defmodule PortalWeb.Policies do
         |> Safe.scoped(subject, :replica)
         |> Safe.one!(fallback_to_primary: true)
 
-      {:ok, {group.id, group.name, group}}
+      {:ok, {row.group.id, row.group.name, row}}
     end
 
     def list_group_options(search_query_or_nil, subject) do
@@ -1034,9 +1035,10 @@ defmodule PortalWeb.Policies do
           on: od.id == d.id and d.type == :okta,
           as: :okta_directory
         )
-        |> select_merge(
-          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        |> select(
+          [groups: g, directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
           %{
+            group: g,
             directory_name: fragment("COALESCE(?, ?, ?)", gd.name, ed.name, od.name),
             directory_type: d.type
           }
@@ -1048,28 +1050,28 @@ defmodule PortalWeb.Policies do
         if search_query_or_nil in ["", nil] do
           query
         else
-          from(g in query, where: fulltext_search(g.name, ^search_query_or_nil))
+          from([groups: g] in query, where: fulltext_search(g.name, ^search_query_or_nil))
         end
 
-      groups = query |> Safe.scoped(subject, :replica) |> Safe.all()
-      metadata = %{limit: 25, count: length(groups)}
+      rows = query |> Safe.scoped(subject, :replica) |> Safe.all()
+      metadata = %{limit: 25, count: length(rows)}
 
-      {:ok, grouped_select_options(groups), metadata}
+      {:ok, grouped_select_options(rows), metadata}
     end
 
-    defp grouped_select_options(groups) do
-      groups
+    defp grouped_select_options(rows) do
+      rows
       |> Enum.group_by(&option_group_label/1)
       |> Enum.sort_by(fn {{idx, _label}, _} -> idx end)
-      |> Enum.map(fn {{_idx, label}, grps} ->
-        {label, grps |> Enum.sort_by(& &1.name) |> Enum.map(&{&1.id, &1.name, &1})}
+      |> Enum.map(fn {{_idx, label}, rows} ->
+        {label, rows |> Enum.sort_by(& &1.group.name) |> Enum.map(&{&1.group.id, &1.group.name, &1})}
       end)
     end
 
-    defp option_group_label(group) do
+    defp option_group_label(row) do
       cond do
-        not is_nil(group.idp_id) -> {9, "Synced from #{directory_display_name(group)}"}
-        group.type == :managed -> {1, "Managed by Firezone"}
+        not is_nil(row.group.idp_id) -> {9, "Synced from #{directory_display_name(row)}"}
+        row.group.type == :managed -> {1, "Managed by Firezone"}
         true -> {2, "Manually managed"}
       end
     end

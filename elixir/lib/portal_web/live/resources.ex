@@ -746,7 +746,7 @@ defmodule PortalWeb.Resources do
 
   def handle_event("open_grant_form", _params, socket) do
     resource = socket.assigns.selected_resource
-    existing_ids = Enum.map(socket.assigns.selected_groups, & &1.id)
+    existing_ids = Enum.map(socket.assigns.selected_groups, & &1.group.id)
     available = Database.list_available_groups(resource, existing_ids, socket.assigns.subject)
     providers = Database.list_providers(socket.assigns.subject)
 
@@ -1370,7 +1370,8 @@ defmodule PortalWeb.Resources do
         on: d.id == g.directory_id and d.account_id == g.account_id,
         as: :directory
       )
-      |> select_merge([groups: g, directory: d, policies: p], %{
+      |> select([groups: g, directory: d, policies: p], %{
+        group: g,
         directory_type: d.type,
         policy_id: p.id,
         policy_disabled_at: p.disabled_at
@@ -1380,7 +1381,7 @@ defmodule PortalWeb.Resources do
       |> Safe.all()
       |> case do
         {:error, _} -> []
-        groups -> groups
+        rows -> rows
       end
     end
 
@@ -1391,12 +1392,12 @@ defmodule PortalWeb.Resources do
         on: d.id == g.directory_id and d.account_id == g.account_id,
         as: :directory
       )
-      |> select_merge([groups: g, directory: d], %{directory_type: d.type})
+      |> select([groups: g, directory: d], %{group: g, directory_type: d.type})
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do
         {:error, _} -> []
-        groups -> groups
+        rows -> rows
       end
     end
 

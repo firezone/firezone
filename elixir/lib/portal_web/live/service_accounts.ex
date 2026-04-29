@@ -218,7 +218,7 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event("add_pending_group", %{"group_id" => group_id}, socket) do
-    existing_group_ids = Enum.map(socket.assigns.actor_related.groups, & &1.id)
+    existing_group_ids = Enum.map(socket.assigns.actor_related.groups, & &1.group.id)
     pending_ids = Enum.map(socket.assigns.actor_group_membership.pending_group_additions, & &1.id)
     already_exists = group_id in existing_group_ids or group_id in pending_ids
 
@@ -770,34 +770,32 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   defp apply_group_membership_changes(socket, actor, subject) do
-    Enum.each(socket.assigns.actor_group_membership.pending_group_additions, fn group ->
-      Database.add_group_member(group.id, actor, subject)
-    end)
+    addition_results =
+      Enum.map(socket.assigns.actor_group_membership.pending_group_additions, fn group ->
+        Database.add_group_member(group.id, actor, subject)
+      end)
 
-    Enum.each(socket.assigns.actor_group_membership.pending_group_removals, fn group_id ->
-      Database.remove_group_member(group_id, actor, subject)
-    end)
+    removal_results =
+      Enum.map(socket.assigns.actor_group_membership.pending_group_removals, fn group_id ->
+        Database.remove_group_member(group_id, actor, subject)
+      end)
 
-    groups =
-      updated_groups(
-        socket.assigns.actor_related.groups,
-        socket.assigns.actor_group_membership.pending_group_additions,
-        socket.assigns.actor_group_membership.pending_group_removals
-      )
+    groups = Database.get_groups_for_actor(actor.id, subject)
 
-    socket
-    |> assign(actor_group_membership: actor_group_membership_state())
-    |> merge_state(:actor_related, groups: groups)
-  end
+    errors =
+      (addition_results ++ removal_results)
+      |> Enum.filter(&match?({:error, _}, &1))
 
-  defp updated_groups(current_groups, pending_additions, pending_removals) do
-    remove_ids = MapSet.new(pending_removals)
+    socket =
+      socket
+      |> assign(actor_group_membership: actor_group_membership_state())
+      |> merge_state(:actor_related, groups: groups)
 
-    current_groups
-    |> Enum.reject(&MapSet.member?(remove_ids, &1.id))
-    |> Kernel.++(pending_additions)
-    |> Enum.uniq_by(& &1.id)
-    |> Enum.sort_by(&String.downcase(&1.name || ""))
+    if Enum.empty?(errors) do
+      socket
+    else
+      put_flash(socket, :error, "Failed to update some group memberships.")
+    end
   end
 
   defp parse_date_to_datetime(date_string) do
@@ -981,6 +979,7 @@ defmodule PortalWeb.ServiceAccounts do
       )
       |> where([membership: m], m.actor_id == ^actor_id)
       |> order_by([groups: g], asc: g.name)
+      |> select([groups: g], %{group: g, directory_type: nil, directory_name: nil})
       |> Safe.scoped(subject, repo)
       |> Safe.all()
     end
