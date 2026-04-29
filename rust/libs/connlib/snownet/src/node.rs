@@ -1489,12 +1489,7 @@ where
                         } if peer_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
                                 peer_socket,
-                                peer_socket_override: resolve_override(
-                                    cid,
-                                    peer_socket_override,
-                                    remote_socket,
-                                    self.relay.id,
-                                ),
+                                peer_socket_override,
                                 last_activity,
                             };
 
