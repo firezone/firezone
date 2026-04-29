@@ -523,12 +523,11 @@ where
             Some(_) => PeerSocket::RelayToPeer { dest: from },
         };
 
-        let (id, packet) =
-            match self.connections_try_handle(from, observed_peer_socket, packet, now) {
-                ControlFlow::Continue(c) => c,
-                ControlFlow::Break(Ok(())) => return Ok(None),
-                ControlFlow::Break(Err(e)) => return Err(e),
-            };
+        let (id, packet) = match self.connections_try_handle(observed_peer_socket, packet, now) {
+            ControlFlow::Continue(c) => c,
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e),
+        };
 
         Ok(Some((id, packet)))
     }
@@ -983,7 +982,6 @@ where
 
     fn connections_try_handle(
         &mut self,
-        from: SocketAddr,
         observed_peer_socket: PeerSocket,
         packet: &[u8],
         now: Instant,
@@ -1031,7 +1029,7 @@ where
 
         let control_flow = conn.decapsulate(
             cid,
-            from.ip(),
+            observed_peer_socket.dest().ip(),
             packet,
             &mut self.allocations,
             &mut self.buffered_transmits,
