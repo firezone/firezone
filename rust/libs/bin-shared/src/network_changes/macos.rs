@@ -8,10 +8,7 @@ pub async fn new_dns_notifier(
     bail!("Not implemented")
 }
 
-pub async fn new_network_notifier(
-    _tokio_handle: tokio::runtime::Handle,
-    _method: DnsControlMethod,
-) -> Result<Worker> {
+pub async fn new_network_notifier() -> Result<Worker> {
     bail!("Not implemented")
 }
 

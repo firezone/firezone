@@ -14,6 +14,7 @@
 
 use anyhow::Result;
 use bin_shared::{DnsControlMethod, new_dns_notifier, new_network_notifier};
+use futures::StreamExt as _;
 use std::time::SystemTime;
 
 #[tokio::main]
@@ -25,15 +26,15 @@ async fn main() -> Result<()> {
 
     let handle = tokio::runtime::Handle::current();
     let mut dns = new_dns_notifier(handle.clone(), method).await?;
-    let mut net = new_network_notifier(handle, method).await?;
+    let mut net = new_network_notifier().await?;
 
     loop {
         tokio::select! {
-            result = dns.notified() => {
+            Some(result) = dns.next() => {
                 result?;
                 println!("[{}] DNS changed", timestamp());
             }
-            result = net.notified() => {
+            Some(result) = net.next() => {
                 result?;
                 println!("[{}] Network (primary connection) changed", timestamp());
             }

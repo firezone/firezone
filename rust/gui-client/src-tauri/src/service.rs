@@ -16,7 +16,7 @@ use connlib_model::{ResourceId, ResourceView};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
-    stream::{self, BoxStream},
+    stream::BoxStream,
     task::{Context, Poll},
 };
 use ip_network::IpNetwork;
@@ -332,8 +332,16 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)?;
-        let dns_notifier = new_dns_notifier().await?.boxed();
-        let network_notifier = new_network_notifier().await?.boxed();
+        let dns_notifier = bin_shared::new_dns_notifier(
+            tokio::runtime::Handle::current(),
+            DnsControlMethod::default(),
+        )
+        .await?
+        .boxed();
+        let network_notifier = bin_shared::new_network_notifier()
+            .await
+            .context("Failed to initialize network change monitor")?
+            .boxed();
 
         ipc_tx
             .send(&ServerMsg::Hello)
@@ -807,34 +815,6 @@ pub fn run_smoke_test() -> Result<()> {
 #[cfg(not(debug_assertions))]
 pub fn run_smoke_test() -> Result<()> {
     anyhow::bail!("Smoke test is not built for release binaries.");
-}
-
-async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = bin_shared::new_dns_notifier(
-        tokio::runtime::Handle::current(),
-        DnsControlMethod::default(),
-    )
-    .await?;
-
-    Ok(stream::try_unfold(worker, |mut worker| async move {
-        let () = worker.notified().await?;
-
-        Ok(Some(((), worker)))
-    }))
-}
-
-async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = bin_shared::new_network_notifier(
-        tokio::runtime::Handle::current(),
-        DnsControlMethod::default(),
-    )
-    .await?;
-
-    Ok(stream::try_unfold(worker, |mut worker| async move {
-        let () = worker.notified().await?;
-
-        Ok(Some(((), worker)))
-    }))
 }
 
 #[cfg(test)]

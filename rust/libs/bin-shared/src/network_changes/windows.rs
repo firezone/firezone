@@ -92,10 +92,7 @@ pub async fn new_dns_notifier(
     })
 }
 
-pub async fn new_network_notifier(
-    _tokio_handle: tokio::runtime::Handle,
-    _method: DnsControlMethod,
-) -> Result<Worker> {
+pub async fn new_network_notifier() -> Result<Worker> {
     Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
         {
             let com = ComGuard::new()?;

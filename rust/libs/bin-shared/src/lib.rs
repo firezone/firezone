@@ -38,5 +38,5 @@ pub const TUNNEL_NAME: &str = "Firezone";
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
 pub use dns_control::{DnsControlMethod, DnsController};
-pub use network_changes::{new_dns_notifier, new_network_notifier};
+pub use network_changes::{NetworkNotifier, new_dns_notifier, new_network_notifier};
 pub use tun_device_manager::{TunDeviceManager, TunIpStack};
