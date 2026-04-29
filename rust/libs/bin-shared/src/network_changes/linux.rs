@@ -70,9 +70,10 @@ pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + D
     .await?
     .filter(|msg| std::future::ready(primary_connection_changed(&msg.body())))
     .inspect(|_| tracing::debug!("Received DBus notification for primary interface change"))
+    .map(|_| Ok(()))
     .chain(stream::pending()); // Ensure this never ends.
 
-    Ok(NetworkNotifier(stream.map(|_| Ok(())).boxed()))
+    Ok(NetworkNotifier(stream.boxed()))
 }
 
 /// A stream of network change notifications.

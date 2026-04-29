@@ -25,20 +25,15 @@ async fn notifiers() {
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-    // The notifiers always notify once they start listening for changes, to avoid gaps during startup.
+    // The DNS notifier always notifies once it starts listening, to avoid gaps during startup.
     timeout(Duration::from_secs(1), dns.next())
         .await
         .unwrap()
         .unwrap()
         .unwrap();
-    timeout(Duration::from_secs(1), net.next())
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
 
-    // After that first notification, we shouldn't get any other notifications during a normal unit test.
-
+    // After that first DNS notification, we shouldn't get any further notifications during a normal unit test.
+    // The network notifier should never have fired, since nothing changed about the primary egress path.
     assert!(dns.next().now_or_never().is_none());
     assert!(net.next().now_or_never().is_none());
 }
