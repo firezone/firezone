@@ -17,6 +17,10 @@ use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install default crypto provider");
+
     let mut bootstrap_log_guard =
         Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 

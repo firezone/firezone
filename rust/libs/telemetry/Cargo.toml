@@ -24,6 +24,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+rustls = { workspace = true, features = ["ring"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
