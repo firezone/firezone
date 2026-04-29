@@ -1017,7 +1017,8 @@ where
 
         let control_flow = conn.decapsulate(
             cid,
-            from.ip(),
+            destination,
+            from,
             packet,
             &mut self.allocations,
             &mut self.buffered_transmits,
@@ -1037,35 +1038,6 @@ where
 
             self.pending_events
                 .push_back(Event::ConnectionEstablished(cid))
-        }
-
-        // Iff we successfully processed a WireGuard `HandshakeInit` packet
-        // are we allowed to (temporarily) override the `PeerSocket` of this connection
-        // with what we have observed.
-        if decap_ok
-            && let Packet::HandshakeInit(_) = parsed_packet
-            && let observed_peer_socket =
-                conn.peer_socket_for_tuple(&mut self.allocations, destination, from)
-            && let ConnectionState::Connected {
-                peer_socket,
-                peer_socket_override,
-                ..
-            }
-            | ConnectionState::Idle {
-                peer_socket,
-                peer_socket_override,
-            } = &mut conn.state
-            && let effective = peer_socket_override.unwrap_or(*peer_socket)
-            && effective != observed_peer_socket
-        {
-            tracing::info!(
-                %cid,
-                current = %effective.fmt(conn.relay.id),
-                new = %observed_peer_socket.fmt(conn.relay.id),
-                "Overriding peer socket from authenticated WG handshake init"
-            );
-
-            *peer_socket_override = Some(observed_peer_socket);
         }
 
         control_flow
@@ -1748,7 +1720,8 @@ where
     fn decapsulate<TId>(
         &mut self,
         cid: TId,
-        src: IpAddr,
+        destination: SocketAddr,
+        from: SocketAddr,
         packet: &[u8],
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
@@ -1759,10 +1732,12 @@ where
     {
         let mut ip_packet = IpPacketBuf::new();
 
-        let control_flow = match self
-            .tunnel
-            .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
-        {
+        let control_flow = match self.tunnel.decapsulate_at(
+            Some(from.ip()),
+            packet,
+            ip_packet.buf(),
+            now,
+        ) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) if crate::is_handshake(packet) => {
                 ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")))
@@ -1803,6 +1778,35 @@ where
             // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
             // Overall, this results in a much nicer API for our caller and should not affect performance.
             TunnResult::WriteToNetwork(bytes) => {
+                // Iff we successfully processed a WireGuard `HandshakeInit` packet
+                // are we allowed to (temporarily) override the `PeerSocket` of this connection
+                // with what we have observed.
+                if crate::is_handshake_init(packet)
+                    && crate::is_handshake_response(bytes)
+                    && let observed_peer_socket =
+                        self.peer_socket_for_tuple(allocations, destination, from)
+                    && let ConnectionState::Connected {
+                        peer_socket,
+                        peer_socket_override,
+                        ..
+                    }
+                    | ConnectionState::Idle {
+                        peer_socket,
+                        peer_socket_override,
+                    } = &mut self.state
+                    && let effective = peer_socket_override.unwrap_or(*peer_socket)
+                    && effective != observed_peer_socket
+                {
+                    tracing::info!(
+                        %cid,
+                        current = %effective.fmt(self.relay.id),
+                        new = %observed_peer_socket.fmt(self.relay.id),
+                        "Overriding peer socket from authenticated WG handshake init"
+                    );
+
+                    *peer_socket_override = Some(observed_peer_socket);
+                }
+
                 match &mut self.state {
                     ConnectionState::Connecting { wg_buffer, .. } => {
                         tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");

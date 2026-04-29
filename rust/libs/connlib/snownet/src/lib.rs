@@ -27,3 +27,17 @@ pub(crate) fn is_handshake(payload: &[u8]) -> bool {
     boringtun::noise::Tunn::parse_incoming_packet(payload)
         .is_ok_and(|p| matches!(p, Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)))
 }
+
+pub(crate) fn is_handshake_init(payload: &[u8]) -> bool {
+    use boringtun::noise::Packet;
+
+    boringtun::noise::Tunn::parse_incoming_packet(payload)
+        .is_ok_and(|p| matches!(p, Packet::HandshakeInit(_)))
+}
+
+pub(crate) fn is_handshake_response(payload: &[u8]) -> bool {
+    use boringtun::noise::Packet;
+
+    boringtun::noise::Tunn::parse_incoming_packet(payload)
+        .is_ok_and(|p| matches!(p, Packet::HandshakeResponse(_)))
+}
