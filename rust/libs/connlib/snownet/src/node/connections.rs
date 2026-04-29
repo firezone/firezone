@@ -3,6 +3,7 @@ use std::{
     fmt,
     hash::Hash,
     iter,
+    sync::{Arc, atomic::AtomicU32},
     time::{Duration, Instant},
 };
 
@@ -600,6 +601,7 @@ mod tests {
 
         Connection {
             agent: IceAgent::new(is::IceCreds::new()),
+            candidate_epoch: CandidateEpoch::default(),
             index: new_local,
             tunnel: Tunn::new_at(
                 private,
@@ -632,5 +634,199 @@ mod tests {
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),
         }
+    }
+}
+
+/// Models the current epoch of a single connection's candidates.
+///
+/// ICE selects the best candidate pair based on "priority", which for each candidate is composed of
+/// its kind (host, srflx, prflx, relayed), IP version, and a user-provided "local preference".
+/// Standard local-preference values live within a 16-bit range, but the [`is`] priority layout
+/// (type_preference << 24 | local_preference << 8 | component) permits a few more bits of headroom
+/// before the `prio < 2^31` assertion trips — enough to pack a monotonic epoch counter on top.
+///
+/// Each time this connection roams or otherwise acquires candidates that supersede older ones, we
+/// bump the epoch by [`EPOCH_BUMP`]. That shift dominates the `-2 * same_kind` penalty within
+/// [`is::default_local_preference`], so newly added candidates always rank strictly higher than
+/// candidates from prior epochs of the same kind. This lets ICE migrate to the new path without
+/// any explicit ICE restart on the remote, as long as our new pairs simply outrank the old ones.
+///
+/// The counter is owned per-connection: a brand-new connection starts at epoch 0, and a full
+/// teardown (for example after the WireGuard tunnel expires on both sides) gives us a fresh
+/// counter. The counter is cloned into the connection's [`is::IceAgent`] via an `Arc` so that
+/// [`CandidateEpoch::inc`] affects subsequent candidates added to the agent.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CandidateEpoch {
+    epoch: Arc<AtomicU32>,
+}
+
+/// How much each epoch bump adds to a candidate's local preference.
+///
+/// [`is::default_local_preference`] subtracts `2 * same_kind` per candidate, where
+/// `same_kind` is the *cumulative* count of same-kind candidates already on the agent.
+/// Both that penalty and the epoch contribution accumulate across generations, but they
+/// scale together: the strongest candidate of a new epoch outranks the strongest candidate
+/// of the prior epoch by `BUMP - 2 * G_prev`, where `G_prev` is the number of same-kind
+/// candidates added in the prior generation. So we just need `BUMP > 2 * G_max`, where
+/// `G_max` is the largest number of same-kind candidates we ever add between bumps.
+///
+/// Each bump on a real Firezone session adds at most a handful of candidates of any single
+/// kind (one per local interface, plus relay variants). `50` comfortably exceeds twice that
+/// even under pessimistic assumptions about per-roam interface count, leaving the
+/// strongest-of-new strictly above the strongest-of-prior.
+///
+/// With a ~65k base local preference and the ~2^23 ceiling before the `prio < 2^31`
+/// assertion in [`is`] trips, `50` still leaves room for ~166k epoch bumps per connection —
+/// effectively unlimited for a single session.
+///
+/// Independent of `BUMP`, [`is::default_local_preference`] underflows once cumulative
+/// `same_kind` exceeds ~32k (for host candidates: `65535 / 2`). That's a hard cap on total
+/// same-kind candidates per connection, set by [`is`] itself.
+const EPOCH_BUMP: u32 = 50;
+
+impl CandidateEpoch {
+    fn current(&self) -> u32 {
+        self.epoch.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn inc(&self) {
+        self.epoch
+            .fetch_add(EPOCH_BUMP, std::sync::atomic::Ordering::Relaxed);
+
+        tracing::debug!(current = %self.current(), "Bumping candidate epoch");
+    }
+}
+
+pub(crate) struct LocalPreference {
+    epoch: CandidateEpoch,
+}
+
+impl LocalPreference {
+    pub(crate) fn new(epoch: CandidateEpoch) -> Self {
+        Self { epoch }
+    }
+}
+
+impl is::LocalPreference for LocalPreference {
+    fn calculate(&self, c: &is::Candidate, same_kind: usize) -> u32 {
+        is::default_local_preference(c, same_kind).saturating_add(self.epoch.current())
+    }
+}
+
+#[cfg(test)]
+mod candidate_epoch_tests {
+    use super::*;
+    use is::{Candidate, IceAgent, IceCreds};
+
+    /// After one epoch bump, a newly added same-kind candidate must outrank any
+    /// prior same-kind candidate despite `default_local_preference`'s
+    /// `-2 * same_kind` penalty.
+    ///
+    /// This is the invariant that makes generational candidates work against
+    /// any ICE implementation that nominates by priority — including old
+    /// Gateways that know nothing about our epoch scheme.
+    #[test]
+    fn bumped_epoch_outranks_prior_same_kind_candidate() {
+        let epoch = CandidateEpoch::default();
+        let mut agent = IceAgent::new(IceCreds::new());
+        agent.set_local_preference(LocalPreference::new(epoch.clone()));
+
+        let first = agent
+            .add_local_candidate(host_candidate("1.1.1.1:1000"))
+            .unwrap()
+            .clone();
+
+        epoch.inc();
+
+        let second = agent
+            .add_local_candidate(host_candidate("2.2.2.2:2000"))
+            .unwrap()
+            .clone();
+
+        assert!(
+            second.prio() > first.prio(),
+            "epoch bump ({EPOCH_BUMP}) must dominate the -2*same_kind penalty: \
+             first={}, second={}",
+            first.prio(),
+            second.prio()
+        );
+    }
+
+    /// The strongest candidate of the new epoch must strictly outrank the
+    /// strongest candidate of the prior epoch. The strongest in either gen
+    /// is the FIRST one added (lowest `same_kind` penalty); after a generation
+    /// of size `G_PREV`, the new gen's first candidate is `BUMP - 2 * G_PREV`
+    /// ahead of the prior gen's first candidate.
+    ///
+    /// This is the invariant that lets ICE migrate: as long as the best new
+    /// pair beats the best old pair on local-preference, ICE picks the new
+    /// pair.
+    #[test]
+    fn strongest_of_new_epoch_outranks_strongest_of_prior() {
+        // Realistic upper bound on same-kind candidates added per generation.
+        // One per local interface, plus relay-derived variants — well below
+        // this on any real machine.
+        const G_PREV: usize = 20;
+
+        let epoch = CandidateEpoch::default();
+        let mut agent = IceAgent::new(IceCreds::new());
+        agent.set_local_preference(LocalPreference::new(epoch.clone()));
+
+        let strongest_prior = agent
+            .add_local_candidate(host_candidate("10.0.0.1:1000"))
+            .unwrap()
+            .clone();
+
+        // Pad out the prior generation.
+        for i in 1..G_PREV {
+            let addr = format!("10.0.0.1:{}", 1000 + i);
+            agent.add_local_candidate(host_candidate(&addr));
+        }
+
+        epoch.inc();
+
+        let strongest_new = agent
+            .add_local_candidate(host_candidate("2.2.2.2:2000"))
+            .unwrap()
+            .clone();
+
+        assert!(
+            strongest_new.prio() > strongest_prior.prio(),
+            "strongest of new epoch must outrank strongest of prior epoch \
+             after a generation of {G_PREV} same-kind candidates: \
+             strongest_prior={}, strongest_new={}",
+            strongest_prior.prio(),
+            strongest_new.prio()
+        );
+    }
+
+    /// Candidates added across consecutive epoch bumps must have strictly
+    /// increasing priority, across the range we actually use (well below the
+    /// `prio < 2^31` assertion inside `is`).
+    #[test]
+    fn priorities_are_monotonically_increasing_across_bumps() {
+        let epoch = CandidateEpoch::default();
+        let mut agent = IceAgent::new(IceCreds::new());
+        agent.set_local_preference(LocalPreference::new(epoch.clone()));
+
+        let mut prev = agent
+            .add_local_candidate(host_candidate("10.0.0.1:1000"))
+            .unwrap()
+            .prio();
+
+        for i in 0..10 {
+            epoch.inc();
+            let addr = format!("10.0.0.1:{}", 2000 + i);
+            let next = agent
+                .add_local_candidate(host_candidate(&addr))
+                .unwrap()
+                .prio();
+            assert!(next > prev);
+            prev = next;
+        }
+    }
+
+    fn host_candidate(addr: &str) -> Candidate {
+        Candidate::host(addr.parse().unwrap(), "udp").unwrap()
     }
 }
