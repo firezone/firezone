@@ -31,12 +31,30 @@ pub(crate) enum ConnectionState {
         /// Our nominated socket.
         peer_socket: PeerSocket,
 
+        /// A socket override applied on top of `peer_socket`.
+        ///
+        /// Set when an authenticated WireGuard `HandshakeInit` arrives from
+        /// a source different from the ICE-nominated path: an init is the
+        /// peer's choice of send-from socket, so it tells us where the peer
+        /// wants future traffic to go. We deliberately ignore
+        /// `HandshakeResponse` here — a response just confirms wherever we
+        /// sent the matching init from, which would falsely look like a
+        /// peer-side path change if ICE re-nominated in between.
+        ///
+        /// Cleared once ICE re-nominates the same socket; if ICE picks a
+        /// different one the override stays in place — the WG handshake
+        /// is a fresher signal about where the peer is sending from.
+        peer_socket_override: Option<PeerSocket>,
+
         last_activity: Instant,
     },
     /// We haven't seen application packets in a while.
     Idle {
         /// Our nominated socket.
         peer_socket: PeerSocket,
+
+        /// See [`ConnectionState::Connected::peer_socket_override`].
+        peer_socket_override: Option<PeerSocket>,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
@@ -67,6 +85,7 @@ impl ConnectionState {
         let Self::Connected {
             last_activity,
             peer_socket,
+            peer_socket_override,
         } = self
         else {
             return;
@@ -81,8 +100,9 @@ impl ConnectionState {
         }
 
         let peer_socket = *peer_socket;
+        let peer_socket_override = *peer_socket_override;
 
-        self.transition_to_idle(peer_socket, agent, idle_ice_config);
+        self.transition_to_idle(peer_socket, peer_socket_override, agent, idle_ice_config);
     }
 
     pub(crate) fn on_upsert<TId>(
@@ -94,8 +114,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (peer_socket, peer_socket_override) = match self {
+            Self::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => (*peer_socket, *peer_socket_override),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -103,7 +126,15 @@ impl ConnectionState {
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(cid, peer_socket, agent, default_ice_config, "upsert", now);
+        self.transition_to_connected(
+            cid,
+            peer_socket,
+            peer_socket_override,
+            agent,
+            default_ice_config,
+            "upsert",
+            now,
+        );
     }
 
     pub(crate) fn on_candidate<TId>(
@@ -115,8 +146,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (peer_socket, peer_socket_override) = match self {
+            Self::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => (*peer_socket, *peer_socket_override),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -127,6 +161,7 @@ impl ConnectionState {
         self.transition_to_connected(
             cid,
             peer_socket,
+            peer_socket_override,
             agent,
             default_ice_config,
             "candidates changed",
@@ -144,8 +179,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (peer_socket, peer_socket_override) = match self {
+            Self::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => (*peer_socket, *peer_socket_override),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -156,6 +194,7 @@ impl ConnectionState {
         self.transition_to_connected(
             cid,
             peer_socket,
+            peer_socket_override,
             agent,
             default_ice_config,
             tracing::field::debug(packet),
@@ -173,8 +212,11 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
+        let (peer_socket, peer_socket_override) = match self {
+            Self::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => (*peer_socket, *peer_socket_override),
             Self::Connected { last_activity, .. } => {
                 *last_activity = now;
                 return;
@@ -185,6 +227,7 @@ impl ConnectionState {
         self.transition_to_connected(
             cid,
             peer_socket,
+            peer_socket_override,
             agent,
             default_ice_config,
             tracing::field::debug(packet),
@@ -195,11 +238,15 @@ impl ConnectionState {
     fn transition_to_idle(
         &mut self,
         peer_socket: PeerSocket,
+        peer_socket_override: Option<PeerSocket>,
         agent: &mut IceAgent,
         idle_ice_config: IceConfig,
     ) {
         tracing::debug!("Connection is idle");
-        *self = Self::Idle { peer_socket };
+        *self = Self::Idle {
+            peer_socket,
+            peer_socket_override,
+        };
         idle_ice_config.apply(agent);
     }
 
@@ -207,6 +254,7 @@ impl ConnectionState {
         &mut self,
         cid: TId,
         peer_socket: PeerSocket,
+        peer_socket_override: Option<PeerSocket>,
         agent: &mut IceAgent,
         default_ice_config: IceConfig,
         trigger: impl tracing::Value,
@@ -217,6 +265,7 @@ impl ConnectionState {
         tracing::debug!(trigger, %cid, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
+            peer_socket_override,
             last_activity: now,
         };
         default_ice_config.apply(agent);
@@ -234,7 +283,7 @@ impl fmt::Display for ConnectionState {
             ConnectionState::Connected { peer_socket, .. } => {
                 write!(f, "Connected({})", peer_socket.kind())
             }
-            ConnectionState::Idle { peer_socket } => write!(f, "Idle({})", peer_socket.kind()),
+            ConnectionState::Idle { peer_socket, .. } => write!(f, "Idle({})", peer_socket.kind()),
             ConnectionState::Failed => write!(f, "Failed"),
         }
     }

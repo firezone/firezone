@@ -385,13 +385,20 @@ where
         };
 
         let peer_socket = match connection.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => peer_socket,
             ConnectionState::Connecting { .. } => {
                 tracing::info!("Connection closed during ICE");
                 return;
             }
             ConnectionState::Failed => return,
+            ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+                ..
+            }
+            | ConnectionState::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => peer_socket_override.unwrap_or(peer_socket),
         };
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
@@ -548,7 +555,6 @@ where
             return Ok(None);
         }
 
-        let override_socket = conn.peer_socket_override;
         let socket = match &mut conn.state {
             ConnectionState::Connecting { ip_buffer, .. } => {
                 ip_buffer.enqueue(packet.clone());
@@ -558,13 +564,18 @@ where
 
                 return Ok(None);
             }
-            ConnectionState::Connected { peer_socket, .. } => {
-                override_socket.unwrap_or(*peer_socket)
-            }
-            ConnectionState::Idle { peer_socket } => override_socket.unwrap_or(*peer_socket),
             ConnectionState::Failed => {
                 return Err(anyhow!("Connection {cid} failed"));
             }
+            ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+                ..
+            }
+            | ConnectionState::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => peer_socket_override.unwrap_or(*peer_socket),
         };
 
         let maybe_transmit = conn
@@ -815,7 +826,6 @@ where
                 ip_buffer: AllocRingBuffer::new(128),
             },
             disconnected_at: None,
-            peer_socket_override: None,
             buffer_pool: self.buffer_pool.clone(),
             first_handshake_completed_at: None,
             default_ice_config,
@@ -1282,16 +1292,6 @@ struct Connection<RId> {
     state: ConnectionState,
     disconnected_at: Option<Instant>,
 
-    /// Temporary override for the outbound `PeerSocket`, set when we observe
-    /// an authenticated WireGuard handshake from a source that doesn't match
-    /// our current ICE nomination. Cleared by the next `NominatedSend` event
-    /// from ICE.
-    ///
-    /// This lets outgoing WG traffic follow the peer across cross-kind
-    /// path shifts (direct↔relay) that the controlled side of ICE can't
-    /// re-nominate without `USE-CANDIDATE` from the controlling side.
-    peer_socket_override: Option<PeerSocket>,
-
     stats: ConnectionStats,
     intent_sent_at: Instant,
     candidate_timeout: Option<Instant>,
@@ -1452,17 +1452,6 @@ where
                         (Some(_), true) => PeerSocket::RelayToRelay { dest: destination },
                     };
 
-                    // ICE has made a deliberate nomination decision; hand
-                    // control back to it by dropping any WG-handshake-driven
-                    // peer_socket override. The override was only there to
-                    // bridge the window until this event arrived.
-                    if self.peer_socket_override.take().is_some() {
-                        tracing::debug!(
-                            %cid,
-                            "Clearing peer_socket override; ICE has re-nominated"
-                        );
-                    }
-
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
                             wg_buffer,
@@ -1504,16 +1493,24 @@ where
 
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
+                                peer_socket_override: None,
                                 last_activity: now,
                             };
                             None
                         }
                         ConnectionState::Connected {
                             peer_socket,
+                            peer_socket_override,
                             last_activity,
                         } if peer_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
                                 peer_socket,
+                                peer_socket_override: resolve_override(
+                                    cid,
+                                    peer_socket_override,
+                                    remote_socket,
+                                    self.relay.id,
+                                ),
                                 last_activity,
                             };
 
@@ -1521,18 +1518,34 @@ where
                         }
                         ConnectionState::Connected {
                             peer_socket,
+                            peer_socket_override,
                             last_activity,
                         } => {
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
+                                peer_socket_override: resolve_override(
+                                    cid,
+                                    peer_socket_override,
+                                    remote_socket,
+                                    self.relay.id,
+                                ),
                                 last_activity,
                             };
 
                             Some(peer_socket)
                         }
-                        ConnectionState::Idle { peer_socket } => {
+                        ConnectionState::Idle {
+                            peer_socket,
+                            peer_socket_override,
+                        } => {
                             self.state = ConnectionState::Idle {
                                 peer_socket: remote_socket,
+                                peer_socket_override: resolve_override(
+                                    cid,
+                                    peer_socket_override,
+                                    remote_socket,
+                                    self.relay.id,
+                                ),
                             };
 
                             Some(peer_socket)
@@ -1780,7 +1793,6 @@ where
             // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
             // Overall, this results in a much nicer API for our caller and should not affect performance.
             TunnResult::WriteToNetwork(bytes) => {
-                let override_socket = self.peer_socket_override;
                 match &mut self.state {
                     ConnectionState::Connecting { wg_buffer, .. } => {
                         tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
@@ -1794,9 +1806,16 @@ where
                             wg_buffer.enqueue(packet.to_owned());
                         }
                     }
-                    ConnectionState::Connected { peer_socket, .. }
-                    | ConnectionState::Idle { peer_socket } => {
-                        let peer_socket = override_socket.unwrap_or(*peer_socket);
+                    ConnectionState::Connected {
+                        peer_socket,
+                        peer_socket_override,
+                        ..
+                    }
+                    | ConnectionState::Idle {
+                        peer_socket,
+                        peer_socket_override,
+                    } => {
+                        let peer_socket = peer_socket_override.unwrap_or(*peer_socket);
                         transmits.extend(make_owned_transmit(
                             self.relay.id,
                             peer_socket,
@@ -1943,20 +1962,17 @@ where
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
-    /// The socket outgoing WireGuard traffic should use.
-    ///
-    /// If [`Connection::peer_socket_override`] is set, it takes precedence
-    /// over the ICE-nominated `peer_socket`: we've observed an authenticated
-    /// handshake from a source different from what ICE nominated, and until
-    /// ICE catches up we trust the crypto signal.
     fn socket(&self) -> Option<PeerSocket> {
-        if let Some(s) = self.peer_socket_override {
-            return Some(s);
-        }
-
         match self.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => Some(peer_socket),
+            ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+                ..
+            }
+            | ConnectionState::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => Some(peer_socket_override.unwrap_or(peer_socket)),
             ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
         }
     }
@@ -1988,8 +2004,8 @@ where
         }
     }
 
-    /// Set or update [`Connection::peer_socket_override`] based on the source
-    /// of an authenticated WG `HandshakeInit`.
+    /// Set or update the `peer_socket_override` on the current state based
+    /// on the source of an authenticated WG `HandshakeInit`.
     ///
     /// Caller must only invoke this for a `HandshakeInit`, never for a
     /// `HandshakeResponse`: an init is the peer's choice of send-from
@@ -2005,26 +2021,71 @@ where
     where
         TId: fmt::Display,
     {
-        let current = match self.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => peer_socket,
-            ConnectionState::Connecting { .. } | ConnectionState::Failed => return,
-        };
+        match &mut self.state {
+            ConnectionState::Connecting { .. } | ConnectionState::Failed => {}
+            ConnectionState::Connected {
+                peer_socket,
+                peer_socket_override,
+                ..
+            }
+            | ConnectionState::Idle {
+                peer_socket,
+                peer_socket_override,
+            } => {
+                let effective = peer_socket_override.unwrap_or(*peer_socket);
+                if effective == observed {
+                    return;
+                }
 
-        let effective = self.peer_socket_override.unwrap_or(current);
-        if effective == observed {
-            return;
+                tracing::info!(
+                    %cid,
+                    current = %effective.fmt(self.relay.id),
+                    new = %observed.fmt(self.relay.id),
+                    "Overriding peer_socket from authenticated WG handshake init"
+                );
+
+                *peer_socket_override = Some(observed);
+            }
         }
-
-        tracing::info!(
-            %cid,
-            current = %effective.fmt(self.relay.id),
-            new = %observed.fmt(self.relay.id),
-            "Overriding peer_socket from authenticated WG handshake init"
-        );
-
-        self.peer_socket_override = Some(observed);
     }
+}
+
+/// Decide what `peer_socket_override` should be after ICE has nominated `nominated`.
+///
+/// If ICE landed on the same socket the override pointed at, drop the
+/// override and hand control back to ICE — they agree, no reason to keep a
+/// parallel signal alive. If they disagree, keep the override: the WG
+/// handshake that set it is a fresher signal about where the peer is
+/// actually sending from than this nomination, and a later matching
+/// nomination will clear it.
+fn resolve_override<TId, RId>(
+    cid: TId,
+    current: Option<PeerSocket>,
+    nominated: PeerSocket,
+    relay: RId,
+) -> Option<PeerSocket>
+where
+    TId: fmt::Display,
+    RId: fmt::Display + Copy,
+{
+    let current = current?;
+
+    if current == nominated {
+        tracing::debug!(
+            %cid,
+            "Clearing peer_socket override; ICE re-nominated to the same socket"
+        );
+        return None;
+    }
+
+    tracing::debug!(
+        %cid,
+        override_socket = %current.fmt(relay),
+        nominated = %nominated.fmt(relay),
+        "Keeping peer_socket override; ICE nominated a different socket"
+    );
+
+    Some(current)
 }
 
 #[must_use]
