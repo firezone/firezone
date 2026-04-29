@@ -79,15 +79,28 @@ Hooks.ConfirmDialog = {
 
 Hooks.Popover = {
   mounted() {
+    this.setupPopover();
+  },
+
+  // The `target_id` in the Elixir component is regenerated on every render, so
+  // a LiveView patch that updates this hook's element in place would leave the
+  // Popover instance pointing at a stale (now-removed) target node. Tear down
+  // and rebuild on update so the references stay in sync with the DOM.
+  updated() {
+    this.popover?.destroy();
+    this.setupPopover();
+  },
+
+  destroyed() {
+    this.popover?.destroy();
+  },
+
+  setupPopover() {
     this.popover = new Popover(this.el, {
       target: this.el.getAttribute("data-popover-target-id"),
       placement: this.el.getAttribute("data-popover-placement") || "top",
       triggerType: this.el.getAttribute("data-popover-trigger") || "hover",
     });
-  },
-
-  destroyed() {
-    this.popover?.destroy();
   },
 };
 
