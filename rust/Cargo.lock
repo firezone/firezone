@@ -4015,6 +4015,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "futures",
+ "hex-literal",
  "socket-factory",
  "tokio",
  "tracing",

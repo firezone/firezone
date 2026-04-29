@@ -16,6 +16,7 @@ tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+hex-literal = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

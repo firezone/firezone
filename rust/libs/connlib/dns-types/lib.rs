@@ -239,6 +239,11 @@ impl Response {
         self.inner.header().tc()
     }
 
+    /// Returns whether this response carries any records in the authority section.
+    pub fn has_authority(&self) -> bool {
+        self.inner.header_counts().nscount() > 0
+    }
+
     pub fn domain(&self) -> DomainName {
         self.question().into_qname().flatten_into()
     }
@@ -534,6 +539,36 @@ mod tests {
     use http::{Method, header};
 
     use super::*;
+
+    #[test]
+    fn malformed_noerror_response_has_no_authority_records() {
+        // NOERROR response for `api.firez.one` A with all counts (an/ns/ar) zero — the
+        // exact 31-byte shape returned by a misbehaving home router we saw in the wild.
+        // Header: id=0x1234, flags=0x8180 (qr+rd+ra), qd=1, an=0, ns=0, ar=0.
+        let bytes =
+            hex_literal::hex!("1234818000010000000000000361706905666972657a036f6e650000010001");
+
+        let response = Response::parse(&bytes).unwrap();
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+        assert!(!response.has_authority());
+    }
+
+    #[test]
+    fn response_with_answer_records_still_reports_no_authority_records() {
+        let domain = DomainName::vec_from_str("example.com").unwrap();
+        let query = Query::new(domain.clone(), RecordType::A);
+        let response = ResponseBuilder::for_query(&query, ResponseCode::NOERROR)
+            .with_records([(domain, 60, records::a(Ipv4Addr::LOCALHOST))])
+            .build();
+
+        let bytes = response.into_bytes(4096);
+        let parsed = Response::parse(&bytes).unwrap();
+
+        assert_eq!(parsed.records().count(), 1);
+        assert!(!parsed.has_authority());
+    }
 
     #[test]
     fn can_truncate_response() {
