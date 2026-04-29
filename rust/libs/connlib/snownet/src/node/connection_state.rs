@@ -330,15 +330,6 @@ impl PeerSocket {
         }
     }
 
-    pub(crate) fn dest(&self) -> SocketAddr {
-        match self {
-            PeerSocket::PeerToPeer { dest, .. } => *dest,
-            PeerSocket::PeerToRelay { dest, .. } => *dest,
-            PeerSocket::RelayToPeer { dest } => *dest,
-            PeerSocket::RelayToRelay { dest } => *dest,
-        }
-    }
-
     fn kind(&self) -> &'static str {
         match self {
             PeerSocket::PeerToPeer { .. } => "PeerToPeer",

@@ -509,21 +509,8 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        // Reconstruct the `PeerSocket` that matches how we would send back
-        // to the peer given what we just observed: the same path kind (direct
-        // or via this relay) and the peer's currently-observed source as the
-        // destination. Used by `connections_try_handle` to set a temporary
-        // `peer_socket_override` if this turns out to be an authenticated
-        // handshake from a non-nominated path.
-        let observed_peer_socket = match relayed {
-            None => PeerSocket::PeerToPeer {
-                source: local,
-                dest: from,
-            },
-            Some(_) => PeerSocket::RelayToPeer { dest: from },
-        };
-
-        let (id, packet) = match self.connections_try_handle(observed_peer_socket, packet, now) {
+        // We pass `destination` in here instead of `local` so we can correctly construct the observed socket.
+        let (id, packet) = match self.connections_try_handle(destination, from, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
@@ -982,7 +969,8 @@ where
 
     fn connections_try_handle(
         &mut self,
-        observed_peer_socket: PeerSocket,
+        destination: SocketAddr,
+        from: SocketAddr,
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
@@ -1029,7 +1017,7 @@ where
 
         let control_flow = conn.decapsulate(
             cid,
-            observed_peer_socket.dest().ip(),
+            from.ip(),
             packet,
             &mut self.allocations,
             &mut self.buffered_transmits,
@@ -1055,6 +1043,8 @@ where
         // are we allowed to (temporarily) override the `PeerSocket` of this connection
         // with what we have observed.
         if decap_ok
+            && let observed_peer_socket =
+                conn.peer_socket_for_tuple(&mut self.allocations, destination, from)
             && let Packet::HandshakeInit(_) = parsed_packet
             && let ConnectionState::Connected {
                 peer_socket,
@@ -1072,7 +1062,7 @@ where
                 %cid,
                 current = %effective.fmt(conn.relay.id),
                 new = %observed_peer_socket.fmt(conn.relay.id),
-                "Overriding peer_socket from authenticated WG handshake init"
+                "Overriding peer socket from authenticated WG handshake init"
             );
 
             *peer_socket_override = Some(observed_peer_socket);
@@ -1443,31 +1433,8 @@ where
                     source,
                     ..
                 } => {
-                    let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
-
-                    if source_relay.is_some_and(|r| self.relay.id != r) {
-                        tracing::warn!(
-                            "Nominated a relay different from what we set out to! Weird?"
-                        );
-                    }
-
-                    let dest_is_relay = self
-                        .agent
-                        .remote_candidates()
-                        .any(|c| c.addr() == destination && c.kind() == CandidateKind::Relayed);
-
-                    let remote_socket = match (source_relay, dest_is_relay) {
-                        (None, false) => PeerSocket::PeerToPeer {
-                            source,
-                            dest: destination,
-                        },
-                        (None, true) => PeerSocket::PeerToRelay {
-                            source,
-                            dest: destination,
-                        },
-                        (Some(_), false) => PeerSocket::RelayToPeer { dest: destination },
-                        (Some(_), true) => PeerSocket::RelayToRelay { dest: destination },
-                    };
+                    let remote_socket =
+                        self.peer_socket_for_tuple(allocations, source, destination);
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
@@ -1634,6 +1601,37 @@ where
                 payload: self.buffer_pool.pull_initialised(&data_channel_packet),
                 ecn: Ecn::NonEct,
             });
+        }
+    }
+
+    fn peer_socket_for_tuple(
+        &self,
+        allocations: &mut Allocations<RId>,
+        source: SocketAddr,
+        destination: SocketAddr,
+    ) -> PeerSocket {
+        let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
+
+        if source_relay.is_some_and(|r| self.relay.id != r) {
+            tracing::warn!("Nominated a relay different from what we set out to! Weird?");
+        }
+
+        let dest_is_relay = self
+            .agent
+            .remote_candidates()
+            .any(|c| c.addr() == destination && c.kind() == CandidateKind::Relayed);
+
+        match (source_relay, dest_is_relay) {
+            (None, false) => PeerSocket::PeerToPeer {
+                source,
+                dest: destination,
+            },
+            (None, true) => PeerSocket::PeerToRelay {
+                source,
+                dest: destination,
+            },
+            (Some(_), false) => PeerSocket::RelayToPeer { dest: destination },
+            (Some(_), true) => PeerSocket::RelayToRelay { dest: destination },
         }
     }
 
