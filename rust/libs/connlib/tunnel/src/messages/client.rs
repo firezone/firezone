@@ -240,12 +240,13 @@ pub struct ClientDeviceAccessDenied {
     pub reason: FailReason,
 }
 
-/// Portal's response when a dynamic device pool domain is resolved to a tunnel IPv4.
+/// Portal's response when a dynamic device pool domain is resolved.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DevicePoolDomainResolved {
     pub resource_id: ResourceId,
     pub domain: String,
     pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
 }
 
 /// Portal's response when a dynamic device pool domain cannot be resolved.
@@ -818,12 +819,20 @@ mod tests {
             "payload": {
                 "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
                 "domain": "device-42.laptops.example.com",
-                "ipv4": "100.64.0.42"
+                "ipv4": "100.64.0.42",
+                "ipv6": "fd00:2021:1111::42"
             }
         });
 
         let msg: IngressMessages = serde_json::from_value(json).unwrap();
-        assert!(matches!(msg, IngressMessages::DevicePoolDomainResolved(_)));
+        let IngressMessages::DevicePoolDomainResolved(resolved) = msg else {
+            panic!("expected DevicePoolDomainResolved")
+        };
+        assert_eq!(resolved.ipv4, "100.64.0.42".parse::<Ipv4Addr>().unwrap());
+        assert_eq!(
+            resolved.ipv6,
+            "fd00:2021:1111::42".parse::<Ipv6Addr>().unwrap()
+        );
     }
 
     #[test]
