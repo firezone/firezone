@@ -106,15 +106,34 @@ pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + D
         Ok(())
     })?;
 
-    Ok(worker_into_stream(worker))
+    Ok(NetworkNotifier(worker_into_stream(worker)))
 }
 
-fn worker_into_stream(worker: Worker) -> impl Stream<Item = Result<()>> + Default + Unpin {
+fn worker_into_stream(worker: Worker) -> impl Stream<Item = Result<()>> + Unpin {
     stream::unfold(worker, |mut worker| async move {
         worker.notified().await.ok();
         Some((Ok(()), worker))
     })
     .boxed()
+}
+
+struct NetworkNotifier(futures::stream::BoxStream<'static, Result<()>>);
+
+impl Default for NetworkNotifier {
+    fn default() -> Self {
+        NetworkNotifier(Box::pin(stream::pending()))
+    }
+}
+
+impl Stream for NetworkNotifier {
+    type Item = Result<()>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.as_mut().poll_next(cx)
+    }
 }
 
 /// Container for a worker thread that we can cooperatively stop.
