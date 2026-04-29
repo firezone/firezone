@@ -77,6 +77,10 @@ defmodule PortalAPI.Client.ChannelTest do
     Presence.Gateways.connect(gateway, token_id, session_meta)
   end
 
+  defp put_user_agent(subject, user_agent) do
+    %{subject | context: %{subject.context | user_agent: user_agent}}
+  end
+
   setup do
     account =
       account_fixture(
@@ -446,6 +450,9 @@ defmodule PortalAPI.Client.ChannelTest do
       refute Enum.any?(resources, &(&1.id == nonconforming_resource.id))
       refute Enum.any?(resources, &(&1.id == offline_resource.id))
 
+      legacy_payload = Enum.find(resources, &(&1.id == dns_resource.id))
+      refute Map.has_key?(legacy_payload, :sites)
+
       assert interface == %{
                ipv4: client.ipv4,
                ipv6: client.ipv6,
@@ -462,6 +469,31 @@ defmodule PortalAPI.Client.ChannelTest do
                upstream_doh: [],
                search_domain: "example.com"
              }
+    end
+
+    test "sends sites instead of gateway_groups to clients that support renamed site payloads", %{
+      client: client,
+      subject: subject,
+      site: site,
+      dns_resource: dns_resource
+    } do
+      subject =
+        put_user_agent(subject, "Windows/10.0.22631 gui-client/1.5.10 (x86_64; 24.1.0)")
+
+      join_channel(client, subject)
+
+      assert_push "init", %{resources: resources}
+
+      payload = Enum.find(resources, &(&1.id == dns_resource.id))
+
+      assert payload.sites == [
+               %{
+                 id: site.id,
+                 name: site.name
+               }
+             ]
+
+      refute Map.has_key?(payload, :gateway_groups)
     end
 
     # TODO: re-enable after verifying this won't break older clients
@@ -3216,20 +3248,24 @@ defmodule PortalAPI.Client.ChannelTest do
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
 
-      assert_push "flow_created", %{
-        gateway_public_key: ^gateway_public_key,
-        gateway_ipv4: ^gateway_ipv4,
-        gateway_ipv6: ^gateway_ipv6,
-        resource_id: ^resource_id,
-        client_ice_credentials: %{username: client_ice_username, password: client_ice_password},
-        gateway_group_id: ^gateway_group_id,
-        gateway_id: ^gateway_id,
-        gateway_ice_credentials: %{
-          username: gateway_ice_username,
-          password: gateway_ice_password
-        },
-        preshared_key: ^preshared_key
-      }
+      assert_push "flow_created", payload
+
+      assert %{
+               gateway_public_key: ^gateway_public_key,
+               gateway_ipv4: ^gateway_ipv4,
+               gateway_ipv6: ^gateway_ipv6,
+               resource_id: ^resource_id,
+               client_ice_credentials: %{username: client_ice_username, password: client_ice_password},
+               gateway_group_id: ^gateway_group_id,
+               gateway_id: ^gateway_id,
+               gateway_ice_credentials: %{
+                 username: gateway_ice_username,
+                 password: gateway_ice_password
+               },
+               preshared_key: ^preshared_key
+             } = payload
+
+      refute Map.has_key?(payload, :site_id)
 
       assert String.length(client_ice_username) == 4
       assert String.length(client_ice_password) == 22
@@ -3237,6 +3273,55 @@ defmodule PortalAPI.Client.ChannelTest do
       assert String.length(gateway_ice_password) == 22
       assert client_ice_username != gateway_ice_username
       assert client_ice_password != gateway_ice_password
+    end
+
+    test "flow_created sends site_id to clients that support renamed site payloads", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      gateway: gateway
+    } do
+      subject =
+        put_user_agent(subject, "Windows/10.0.22631 gui-client/1.5.10 (x86_64; 24.1.0)")
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(state.assigns.pending_flows, %{resource.id => timer_ref})
+      end)
+
+      preshared_key = "PSK"
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
+         ice_credentials}
+      )
+
+      site_id = gateway.site_id
+
+      assert_push "flow_created", payload
+
+      assert %{
+               resource_id: resource_id,
+               site_id: ^site_id,
+               gateway_id: gateway_id,
+               preshared_key: ^preshared_key
+             } = payload
+
+      assert resource_id == resource.id
+      assert gateway_id == gateway.id
+      refute Map.has_key?(payload, :gateway_group_id)
+      refute_receive :pending_flow_timeout
     end
 
     test "works with service accounts", %{

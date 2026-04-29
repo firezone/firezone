@@ -28,6 +28,26 @@ defmodule Portal.Version do
     {:error, :invalid_user_agent}
   end
 
+  @site_payload_min_versions %{
+    apple: "1.5.11",
+    headless: "1.5.6",
+    android: "1.5.8",
+    gui: "1.5.10"
+  }
+
+  def client_supports_sites_payload?(%ClientSession{version: version, user_agent: user_agent})
+      when is_binary(version) and is_binary(user_agent) do
+    component = ComponentVersions.get_component_type_from_user_agent(user_agent)
+    min_version = Map.fetch!(@site_payload_min_versions, component)
+
+    case Version.parse(version) do
+      {:ok, version} -> Version.compare(version, Version.parse!(min_version)) != :lt
+      :error -> false
+    end
+  end
+
+  def client_supports_sites_payload?(_), do: false
+
   # TODO: Remove once all clients are on versions that support resources changing sites.
   # Connlib didn't support resources changing sites until https://github.com/firezone/firezone/pull/10604
   def resource_cannot_change_sites_on_client?(%ClientSession{version: nil}), do: false
