@@ -1,29 +1,14 @@
 use crate::DnsControlMethod;
 use anyhow::{Result, bail};
+use futures::{Stream, stream};
 
 pub async fn new_dns_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<Worker> {
+) -> Result<impl Stream<Item = Result<()>> + Unpin> {
     bail!("Not implemented")
 }
 
-pub async fn new_network_notifier() -> Result<Worker> {
+pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + Default + Unpin> {
     bail!("Not implemented")
-}
-
-pub struct Worker;
-
-impl Worker {
-    #[expect(
-        clippy::unused_async,
-        reason = "Signture must match other operating systems"
-    )]
-    pub async fn notified(&mut self) -> Result<()> {
-        bail!("Not implemented")
-    }
-
-    pub fn close(self) -> Result<()> {
-        bail!("Not implemented")
-    }
 }

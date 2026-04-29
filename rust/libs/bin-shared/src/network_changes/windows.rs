@@ -64,6 +64,7 @@
 
 use crate::DnsControlMethod;
 use anyhow::{Context as _, Result, anyhow};
+use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::thread;
@@ -85,15 +86,17 @@ use windows::{
 pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<Worker> {
-    Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
+) -> Result<impl Stream<Item = Result<()>> + Unpin> {
+    let worker = Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
         async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
         Ok(())
-    })
+    })?;
+
+    Ok(worker_into_stream(worker))
 }
 
-pub async fn new_network_notifier() -> Result<Worker> {
-    Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
+pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + Default + Unpin> {
+    let worker = Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
         {
             let com = ComGuard::new()?;
             let listener = Listener::new(&com, tx)?;
@@ -101,13 +104,23 @@ pub async fn new_network_notifier() -> Result<Worker> {
             listener.close()?;
         }
         Ok(())
+    })?;
+
+    Ok(worker_into_stream(worker))
+}
+
+fn worker_into_stream(worker: Worker) -> impl Stream<Item = Result<()>> + Default + Unpin {
+    stream::unfold(worker, |mut worker| async move {
+        worker.notified().await.ok();
+        Some((Ok(()), worker))
     })
+    .boxed()
 }
 
 /// Container for a worker thread that we can cooperatively stop.
 ///
 /// The worker thread emits notifications with no data in them.
-pub struct Worker {
+struct Worker {
     inner: Option<WorkerInner>,
     rx: NotifyReceiver,
     thread_name: String,
@@ -138,7 +151,7 @@ impl Worker {
     }
 
     /// Same as `drop`, but you can catch errors
-    pub fn close(&mut self) -> Result<()> {
+    fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             tracing::trace!(
                 thread_name = self.thread_name,
@@ -157,7 +170,7 @@ impl Worker {
         Ok(())
     }
 
-    pub async fn notified(&mut self) -> Result<()> {
+    async fn notified(&mut self) -> Result<()> {
         self.rx
             .notified()
             .await
