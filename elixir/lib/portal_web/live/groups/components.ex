@@ -902,28 +902,28 @@ defmodule PortalWeb.Groups.Components do
               </div>
             </.link>
             <.actions_dropdown
-              open={@resource_access_actions_open_id == resource.id}
+              open={@resource_access_actions_open_id == row.resource.id}
               close_event="close_resource_access_actions"
               button_class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
               icon_class="w-3.5 h-3.5"
               phx-click="toggle_resource_access_actions"
-              phx-value-resource_id={resource.id}
+              phx-value-resource_id={row.resource.id}
               title="More actions"
             >
               <button
-                :if={is_nil(resource.policy_disabled_at)}
+                :if={is_nil(row.policy_disabled_at)}
                 type="button"
                 phx-click="disable_resource_access"
-                phx-value-resource_id={resource.id}
+                phx-value-resource_id={row.resource.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
               >
                 <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
               </button>
               <button
-                :if={not is_nil(resource.policy_disabled_at)}
+                :if={not is_nil(row.policy_disabled_at)}
                 type="button"
                 phx-click="enable_resource_access"
-                phx-value-resource_id={resource.id}
+                phx-value-resource_id={row.resource.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
               >
                 <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
@@ -931,7 +931,7 @@ defmodule PortalWeb.Groups.Components do
               <button
                 type="button"
                 phx-click="confirm_remove_resource_access"
-                phx-value-resource_id={resource.id}
+                phx-value-resource_id={row.resource.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
               >
                 <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access

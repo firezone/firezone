@@ -80,7 +80,8 @@ defmodule PortalWeb.Settings.DirectorySync do
        verification_error: nil,
        verifying: false,
        form: to_form(changeset),
-       public_jwk: nil
+       public_jwk: nil,
+       open_directory_actions_id: nil
      )}
   end
 
@@ -115,7 +116,8 @@ defmodule PortalWeb.Settings.DirectorySync do
        type: type,
        form: to_form(changeset),
        public_jwk: public_jwk,
-       is_legacy: is_legacy
+       is_legacy: is_legacy,
+       open_directory_actions_id: nil
      )}
   end
 

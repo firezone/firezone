@@ -43,6 +43,15 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     |> render_click()
   end
 
+  defp has_provider_action_button?(html, action, provider_id) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{provider_id}']"
+    )
+    |> Enum.any?()
+  end
+
   defp confirm_action(lv, event, provider_id) do
     lv
     |> element("button[phx-click='#{event}'][phx-value-id='#{provider_id}']")
@@ -872,6 +881,34 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
       assert_patch(lv, ~p"/#{account}/settings/authentication")
+    end
+  end
+
+  describe "provider actions menu navigation" do
+    test "closes the actions menu when navigating to edit", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account, name: "Edit From Menu")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      html = open_provider_actions(lv, provider.id)
+      assert has_provider_action_button?(html, "toggle", provider.id)
+
+      lv
+      |> element("a[href='/" <> "#{account.slug}/settings/authentication/google/#{provider.id}/edit']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
+
+      html = render(lv)
+      assert html =~ "Edit Edit From Menu"
+      refute has_provider_action_button?(html, "toggle", provider.id)
     end
   end
 

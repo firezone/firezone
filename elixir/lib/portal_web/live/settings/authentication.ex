@@ -64,7 +64,7 @@ defmodule PortalWeb.Settings.Authentication do
     attrs = %{id: Ecto.UUID.generate()}
     changeset = changeset(struct, attrs, socket)
 
-    {:noreply, assign(socket, type: type, form: to_form(changeset))}
+    {:noreply, assign(socket, type: type, form: to_form(changeset), open_provider_actions_id: nil)}
   end
 
   # Edit Auth Provider
@@ -86,7 +86,8 @@ defmodule PortalWeb.Settings.Authentication do
        provider_name: provider.name,
        type: type,
        form: to_form(changeset),
-       is_legacy: is_legacy
+       is_legacy: is_legacy,
+       open_provider_actions_id: nil
      )}
   end
 

@@ -96,7 +96,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
       socket =
         socket
-        |> assign(selected_actor: nil, encoded_token: nil)
+        |> assign(selected_actor: nil, encoded_token: nil, open_actor_actions_id: nil)
         |> assign(form: to_form(changeset, as: "api_token"))
 
       {:noreply, socket}
@@ -119,7 +119,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
     socket =
       socket
-      |> assign(selected_actor: actor, encoded_token: nil)
+      |> assign(selected_actor: actor, encoded_token: nil, open_actor_actions_id: nil)
       |> assign(form: to_form(changeset, as: "actor"))
 
     {:noreply, socket}
