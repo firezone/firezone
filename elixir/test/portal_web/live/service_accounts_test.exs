@@ -380,7 +380,8 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts/#{service_account}")
 
-      assert html =~ "Token"
+      assert html =~ "Last used:"
+      refute html =~ "No tokens. Add one to authenticate this service account."
     end
 
     test "shows empty token state when no tokens", %{
@@ -454,6 +455,8 @@ defmodule PortalWeb.ServiceAccountsTest do
         })
 
       assert html =~ "Token Created"
+      assert html =~ "Save this token"
+      assert html =~ "tab-token-copy-code"
     end
 
     test "dismiss_created_token hides token value", %{
@@ -534,7 +537,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       refute Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).disabled_at
     end
 
-    test "disable sets disabled_at and shows success flash", %{
+    test "disable sets disabled_at", %{
       conn: conn,
       account: account,
       actor: actor
@@ -547,12 +550,13 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> live(~p"/#{account}/service_accounts/#{service_account}")
 
       render_click(lv, "confirm_disable_actor")
+
       render_click(lv, "disable", %{"id" => service_account.id})
 
       assert Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).disabled_at
     end
 
-    test "enable clears disabled_at and shows success flash", %{
+    test "enable clears disabled_at", %{
       conn: conn,
       account: account,
       actor: actor
@@ -754,10 +758,27 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts/#{service_account}/edit")
 
+      assert has_element?(lv, "div", "No pending removals.")
+      refute has_element?(
+               lv,
+               "button[phx-click='undo_pending_group_removal'][phx-value-group_id='#{group.id}']"
+             )
+
       render_click(lv, "add_pending_group_removal", %{"group_id" => group.id})
+
+      refute has_element?(lv, "div", "No pending removals.")
+      assert has_element?(
+               lv,
+               "button[phx-click='undo_pending_group_removal'][phx-value-group_id='#{group.id}']"
+             )
+
       render_click(lv, "undo_pending_group_removal", %{"group_id" => group.id})
 
-      # The membership should still exist after undoing
+      assert has_element?(lv, "div", "No pending removals.")
+      refute has_element?(
+               lv,
+               "button[phx-click='undo_pending_group_removal'][phx-value-group_id='#{group.id}']"
+             )
       assert Portal.Repo.get_by(Portal.Membership, actor_id: service_account.id, group_id: group.id)
     end
 
