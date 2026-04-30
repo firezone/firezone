@@ -49,10 +49,8 @@ impl PendingDeviceAccessRequests {
         tracing::debug!("Sending connection intent");
 
         pending_flow.last_intent_sent_at = now;
-        self.connection_intents.push_back(DeviceConnectionIntent {
-            resource_id,
-            ip,
-        });
+        self.connection_intents
+            .push_back(DeviceConnectionIntent { resource_id, ip });
     }
 
     pub fn remove(&mut self, client_id: &ClientId) -> Option<PendingClientAccessRequest> {

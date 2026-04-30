@@ -1123,10 +1123,7 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceConnectionIntent {
-                resource_id: _,
-                ip,
-            } => {
+            ClientEvent::DeviceConnectionIntent { resource_id: _, ip } => {
                 let src_client = self.clients.get(&src).expect("unknown source client");
 
                 let src_key = src_client.inner().sut.public_key();
