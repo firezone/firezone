@@ -1457,20 +1457,8 @@ where
                                 session_socket,
                                 last_activity: now,
                             };
-                            None
-                        }
-                        ConnectionState::Connected {
-                            nominated_socket,
-                            session_socket,
-                            last_activity,
-                        } if nominated_socket == remote_socket => {
-                            self.state = ConnectionState::Connected {
-                                nominated_socket,
-                                session_socket,
-                                last_activity,
-                            };
 
-                            continue; // If we re-nominate the same socket, don't just continue. TODO: Should this be fixed upstream?
+                            None
                         }
                         ConnectionState::Connected {
                             nominated_socket,
@@ -1499,15 +1487,19 @@ where
                         ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     };
 
-                    let relay = self.relay.id;
+                    // Only log if the socket actually changes.
+                    if old != Some(remote_socket) {
+                        let relay = self.relay.id;
 
-                    tracing::info!(
-                        old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
-                        new = %remote_socket.fmt(relay),
-                        duration_since_intent = ?self.duration_since_intent(now),
-                        "Updating remote socket"
-                    );
+                        tracing::info!(
+                            old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
+                            new = %remote_socket.fmt(relay),
+                            duration_since_intent = ?self.duration_since_intent(now),
+                            "Updating remote socket"
+                        );
+                    }
 
+                    // Always handshake a new session.
                     if self.agent.controlling() {
                         self.initiate_wg_session(allocations, transmits, now);
                     }
@@ -1789,10 +1781,7 @@ where
                     (Some(Packet::HandshakeInit(_)), Some(Packet::PacketCookieReply(_))) => {
                         (None, observed_peer_socket)
                     }
-                    (
-                        Some(Packet::HandshakeResponse(response)),
-                        Some(Packet::PacketData(_)),
-                    ) => {
+                    (Some(Packet::HandshakeResponse(response)), Some(Packet::PacketData(_))) => {
                         let socket = match self.outbound_handshakes.get(response) {
                             Ok(socket) => socket,
                             Err(e) => return ControlFlow::Break(Err(e)),
