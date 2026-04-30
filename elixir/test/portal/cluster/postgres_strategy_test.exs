@@ -2,6 +2,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
+  import Portal.Test.Assertions
 
   alias Portal.Cluster.PostgresStrategy
 
@@ -58,34 +59,26 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       listener = start_supervised!({Postgrex.Notifications, Portal.Repo.config()})
       {:ok, _ref} = Postgrex.Notifications.listen(listener, channel_name)
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
       flush_notifications()
 
       # Simulate a heartbeat from another node by sending directly to the process
       send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-      Process.sleep(50)
 
-      # The strategy should have tried to connect (will fail since node doesn't exist)
-      # We just verify it doesn't crash
+      wait_for_connected_node(pid, :other@node)
+
       assert Process.alive?(pid)
     end
 
     test "logs error when connecting to node fails" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid =
-        start_supervised!(
-          {PostgresStrategy,
-           [build_state(channel_name: channel_name, connect_fn: :mock_connect_failing)]}
-        )
-
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name, connect_fn: :mock_connect_failing)
 
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -96,17 +89,16 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "handles goodbye notification from connected nodes" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # First connect the node via heartbeat
       send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-      Process.sleep(50)
+      wait_for_connected_node(pid, :other@node)
 
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -117,13 +109,12 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "ignores goodbye from nodes that were never connected" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:unknown@node"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -134,19 +125,18 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "only disconnects once when receiving duplicate goodbyes" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # First connect the node via heartbeat
       send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-      Process.sleep(50)
+      wait_for_connected_node(pid, :other@node)
 
       log =
         capture_log(fn ->
           # Send two goodbyes in quick succession
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
           send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:other@node"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -158,12 +148,11 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "handles unknown notifications gracefully" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # Send unknown notification
       send(pid, {:notification, self(), make_ref(), channel_name, "unknown:payload"})
-      Process.sleep(50)
+      sync(pid)
 
       assert Process.alive?(pid)
     end
@@ -171,11 +160,10 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "handles unknown messages gracefully" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       send(pid, :some_random_message)
-      Process.sleep(50)
+      sync(pid)
 
       assert Process.alive?(pid)
     end
@@ -183,8 +171,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "reconnects when listener dies" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # Get the listener pid from state and kill it
       state = :sys.get_state(pid)
@@ -199,7 +186,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
             {:DOWN, ^ref, :process, ^listener_pid, _} -> :ok
           end
 
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -210,8 +197,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "reconnects when notify connection dies" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       state = :sys.get_state(pid)
       notify_conn = state.notify_conn
@@ -225,7 +211,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
             {:DOWN, ^ref, :process, ^notify_conn, _} -> :ok
           end
 
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -243,8 +229,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           {PostgresStrategy,
            [build_state(channel_name: channel_name, heartbeat_interval: 50, missed_heartbeats: 1)]}
         )
-
-      Process.sleep(50)
+      wait_for_started(pid)
 
       # Manually inject a stale node into state
       state = :sys.get_state(pid)
@@ -262,7 +247,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         capture_log(fn ->
           # Trigger heartbeat which checks stale nodes
           send(pid, :heartbeat)
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -283,8 +268,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           {PostgresStrategy,
            [build_state(channel_name: channel_name, node_count: 5, heartbeat_interval: 50)]}
         )
-
-      Process.sleep(50)
+      wait_for_started(pid)
 
       # Inject a stale node
       state = :sys.get_state(pid)
@@ -303,7 +287,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -322,8 +306,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           {PostgresStrategy,
            [build_state(channel_name: channel_name, node_count: 5, heartbeat_interval: 50)]}
         )
-
-      Process.sleep(50)
+      wait_for_started(pid)
 
       # Inject a stale node with below_threshold? already pending from the past
       state = :sys.get_state(pid)
@@ -342,7 +325,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -359,8 +342,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         start_supervised!(
           {PostgresStrategy, [build_state(channel_name: channel_name, node_count: 1)]}
         )
-
-      Process.sleep(50)
+      wait_for_started(pid)
 
       # Set state to below threshold (sustained violation already logged)
       state = :sys.get_state(pid)
@@ -370,7 +352,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -384,8 +366,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         start_supervised!(
           {PostgresStrategy, [build_state(channel_name: channel_name, node_count: 1)]}
         )
-
-      Process.sleep(50)
+      wait_for_started(pid)
 
       # Set state to pending (error was never logged)
       state = :sys.get_state(pid)
@@ -401,7 +382,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -417,8 +398,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "does not crash when notify_conn is nil" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # Set notify_conn to nil
       state = :sys.get_state(pid)
@@ -426,7 +406,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       # This should not crash
       send(pid, :heartbeat)
-      Process.sleep(50)
+      sync(pid)
 
       assert Process.alive?(pid)
     end
@@ -434,19 +414,19 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "logs error when notify fails due to dead connection" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # Replace notify_conn with a dead pid (simulate broken connection)
       state = :sys.get_state(pid)
       dead_pid = spawn(fn -> :ok end)
-      Process.sleep(10)
+      ref = Process.monitor(dead_pid)
+      assert_receive {:DOWN, ^ref, :process, ^dead_pid, :normal}
       :sys.replace_state(pid, fn _ -> %{state | notify_conn: dead_pid} end)
 
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -456,8 +436,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "logs error when pg_notify returns SQL error" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # Inject an oversized channel name that exceeds PostgreSQL's limit
       state = :sys.get_state(pid)
@@ -467,7 +446,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, :heartbeat)
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -479,26 +458,28 @@ defmodule Portal.Cluster.PostgresStrategyTest do
     test "logs error and schedules retry on connection failure" do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
-      pid = start_supervised!({PostgresStrategy, [build_state(channel_name: channel_name)]})
-      Process.sleep(50)
+      pid = start_strategy(channel_name: channel_name)
 
       # Kill both connections to simulate failure
       state = :sys.get_state(pid)
+      listener_ref = Process.monitor(state.listener_pid)
+      notify_ref = Process.monitor(state.notify_conn)
       Process.exit(state.listener_pid, :kill)
       Process.exit(state.notify_conn, :kill)
-      Process.sleep(50)
+      assert_receive {:DOWN, ^listener_ref, :process, _, _}
+      assert_receive {:DOWN, ^notify_ref, :process, _, _}
 
       # Set connections to nil and trigger retry
       :sys.replace_state(pid, fn s -> %{s | listener_pid: nil, notify_conn: nil} end)
 
       send(pid, :retry_connect)
-      Process.sleep(100)
 
-      # Should have reconnected successfully
-      assert Process.alive?(pid)
-      new_state = :sys.get_state(pid)
-      assert new_state.listener_pid != nil
-      assert new_state.notify_conn != nil
+      wait_for(fn ->
+        assert Process.alive?(pid)
+        new_state = :sys.get_state(pid)
+        assert new_state.listener_pid != nil
+        assert new_state.notify_conn != nil
+      end)
     end
 
     test "logs error when initial connection fails" do
@@ -507,7 +488,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           # Use a repo with invalid config to trigger connection failure
           state = build_state_with_invalid_repo()
           {:ok, pid} = GenServer.start_link(PostgresStrategy, [state])
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
           GenServer.stop(pid, :normal)
         end)
@@ -525,8 +506,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
           {PostgresStrategy,
            [build_state(channel_name: channel_name, node_count: 10, heartbeat_interval: 50)]}
         )
-
-      Process.sleep(50)
+      wait_for_started(pid)
 
       # Set state with below_threshold? as false and only 1 connected node
       # When we add another node via heartbeat, we'll still be below 10 nodes
@@ -545,7 +525,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       log =
         capture_log(fn ->
           send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:node2@test"})
-          _ = :sys.get_state(pid)
+          sync(pid)
           Logger.flush()
         end)
 
@@ -597,6 +577,31 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       0 -> :ok
     end
   end
+
+  defp start_strategy(opts) do
+    pid = start_supervised!({PostgresStrategy, [build_state(opts)]})
+    wait_for_started(pid)
+    pid
+  end
+
+  defp wait_for_started(pid) do
+    wait_for(fn ->
+      state = :sys.get_state(pid)
+      assert state.listener_pid != nil
+      assert state.notify_conn != nil
+    end)
+  end
+
+  defp wait_for_connected_node(pid, node) do
+    wait_for(fn ->
+      state = :sys.get_state(pid)
+      assert node in state.connected_nodes
+    end)
+  end
+
+  # Forces a synchronous round-trip through the GenServer so prior async
+  # messages are handled before the test continues.
+  defp sync(pid), do: :sys.get_state(pid)
 
   # Mock functions for Cluster.Strategy callbacks
   def mock_connect(_node), do: true

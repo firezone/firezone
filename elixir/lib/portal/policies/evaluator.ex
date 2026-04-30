@@ -188,10 +188,14 @@ defmodule Portal.Policies.Evaluator do
         %ClientSession{},
         _auth_provider_id
       ) do
-    case find_day_of_the_week_time_range(values, DateTime.utc_now()) do
+    case find_day_of_the_week_time_range(values, current_time()) do
       nil -> :error
       expires_at -> {:ok, expires_at}
     end
+  end
+
+  defp current_time do
+    Portal.Config.get_env(:portal, :current_time_fn, &DateTime.utc_now/0).()
   end
 
   def find_day_of_the_week_time_range(dow_time_ranges, datetime) do
