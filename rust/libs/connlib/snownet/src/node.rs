@@ -115,53 +115,6 @@ pub struct Node<TId, RId> {
 pub struct NoTurnServers {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct IceConfig {
-    max_retrans: usize,
-    max_rto: Duration,
-    initial_rto: Duration,
-}
-
-impl IceConfig {
-    pub fn server_default() -> Self {
-        Self {
-            max_retrans: 45,
-            max_rto: Duration::from_millis(15_000),
-            initial_rto: Duration::from_millis(250),
-        }
-    }
-
-    pub fn server_idle() -> Self {
-        IceConfig {
-            max_retrans: 40,
-            max_rto: Duration::from_secs(25),
-            initial_rto: Duration::from_secs(25),
-        }
-    }
-
-    pub fn client_default() -> Self {
-        Self {
-            max_retrans: 12,
-            max_rto: Duration::from_millis(1500),
-            initial_rto: Duration::from_millis(250),
-        }
-    }
-
-    pub fn client_idle() -> Self {
-        Self {
-            max_retrans: 4,
-            max_rto: Duration::from_secs(25),
-            initial_rto: Duration::from_secs(25),
-        }
-    }
-
-    fn apply(&self, agent: &mut IceAgent) {
-        agent.set_max_stun_retransmits(self.max_retrans);
-        agent.set_max_stun_rto(self.max_rto);
-        agent.set_initial_stun_rto(self.initial_rto)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub enum IceRole {
     Controlling,
     Controlled,
@@ -241,8 +194,6 @@ where
         local_creds: Credentials,
         remote_creds: Credentials,
         ice_role: IceRole,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
@@ -268,9 +219,6 @@ where
             && c.agent.controlling() == matches!(ice_role, IceRole::Controlling)
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
-
-            c.state
-                .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
 
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
@@ -312,7 +260,6 @@ where
         }
 
         let (mut agent, candidate_epoch) = new_agent(ice_role, self.unix_ms(now));
-        default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -335,8 +282,6 @@ where
             preshared_key,
             selected_relay,
             index,
-            default_ice_config,
-            idle_ice_config,
             now,
             now,
         );
@@ -371,9 +316,6 @@ where
 
         let nominated_socket = match connection.state {
             ConnectionState::Connected {
-                nominated_socket, ..
-            }
-            | ConnectionState::Idle {
                 nominated_socket, ..
             } => connection.wireguard_socket().unwrap_or(nominated_socket),
             ConnectionState::Connecting { .. } => {
@@ -533,9 +475,6 @@ where
             }
             ConnectionState::Connected {
                 nominated_socket, ..
-            }
-            | ConnectionState::Idle {
-                nominated_socket, ..
             } => {
                 let nominated_socket = *nominated_socket;
 
@@ -612,16 +551,11 @@ where
             );
         }
 
-        if self.connections.all_idle() {
-            // If all connections are idle, there is no point in resetting the rate limiter.
-            self.next_rate_limiter_reset = None;
-        } else {
-            let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
+        let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
-            if now >= next_reset {
-                self.rate_limiter.reset_count_at(now);
-                self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
-            }
+        if now >= next_reset {
+            self.rate_limiter.reset_count_at(now);
+            self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
         let removed_allocations = self.allocations.gc();
@@ -733,8 +667,6 @@ where
         key: x25519::StaticSecret,
         relay: RId,
         index: Index,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -787,8 +719,6 @@ where
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
             outbound_handshakes: Default::default(),
-            default_ice_config,
-            idle_ice_config,
             poll_timeout_cache: Default::default(),
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         }
@@ -1227,9 +1157,6 @@ struct Connection<RId> {
 
     buffer: Vec<u8>,
 
-    default_ice_config: IceConfig,
-    idle_ice_config: IceConfig,
-
     #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
 
@@ -1262,7 +1189,6 @@ where
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
-            .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
@@ -1287,8 +1213,6 @@ where
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
         self.agent.handle_timeout(now);
-        self.state
-            .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
         if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
             tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
@@ -1368,7 +1292,6 @@ where
                             self.state = ConnectionState::Connected {
                                 nominated_socket: remote_socket,
                                 session_socket,
-                                last_activity: now,
                             };
 
                             None
@@ -1376,21 +1299,8 @@ where
                         ConnectionState::Connected {
                             nominated_socket,
                             session_socket,
-                            last_activity,
                         } => {
                             self.state = ConnectionState::Connected {
-                                nominated_socket: remote_socket,
-                                session_socket,
-                                last_activity,
-                            };
-
-                            Some(nominated_socket)
-                        }
-                        ConnectionState::Idle {
-                            nominated_socket,
-                            session_socket,
-                        } => {
-                            self.state = ConnectionState::Idle {
                                 nominated_socket: remote_socket,
                                 session_socket,
                             };
@@ -1556,8 +1466,7 @@ where
     where
         TId: fmt::Display,
     {
-        self.state
-            .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
+        let _ = cid;
 
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
@@ -1638,7 +1547,7 @@ where
     {
         let mut ip_packet = IpPacketBuf::new();
 
-        let control_flow = match self
+        match self
             .tunnel
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
@@ -1749,14 +1658,7 @@ where
 
                 ControlFlow::Break(Ok(()))
             }
-        };
-
-        if let ControlFlow::Continue(packet) = &control_flow {
-            self.state
-                .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
         }
-
-        control_flow
     }
 
     fn initiate_wg_session(
@@ -1814,19 +1716,16 @@ where
         cid: TId,
         candidate: &Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
-        now: Instant,
+        _now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
         if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
             pending_events.push_back(new_ice_candidate_event(cid, candidate));
         }
-
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
-    fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
+    fn add_remote_candidate<TId>(&mut self, _cid: TId, candidate: Candidate, _now: Instant)
     where
         TId: fmt::Display,
     {
@@ -1834,21 +1733,14 @@ where
         self.candidate_timeout = None;
 
         generate_optimistic_candidates(&mut self.agent);
-
-        // Make sure we move out of idle mode when we add new candidates.
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
-    fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
+    fn remove_remote_candidate<TId>(&mut self, _cid: TId, candidate: Candidate, now: Instant)
     where
         TId: fmt::Display,
     {
         self.agent.invalidate_candidate(&candidate);
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
-
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
     fn nominated_socket(&self) -> Option<PeerSocket> {
@@ -1864,10 +1756,6 @@ where
 
     fn is_failed(&self) -> bool {
         matches!(self.state, ConnectionState::Failed)
-    }
-
-    fn is_idle(&self) -> bool {
-        matches!(self.state, ConnectionState::Idle { .. })
     }
 
     fn migrate_relay<TId>(
@@ -1942,7 +1830,6 @@ where
         let remote_candidates: Vec<_> = self.agent.remote_candidates().collect();
 
         let (mut agent, candidate_epoch) = new_agent(IceRole::Controlling, unix_ms);
-        self.default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         if let Some(rc) = remote_creds {
             agent.set_remote_credentials(rc);
@@ -2034,6 +1921,10 @@ fn new_agent(role: IceRole, unix_ms: u64) -> (IceAgent, CandidateEpoch) {
     // comparisons (RFC 8445 §7.3.1.1) between peers are over a comparable
     // monotonic range.
     agent.set_control_tie_breaker(unix_ms);
+    // 25s keeps NAT bindings open with consistent STUN traffic regardless
+    // of whether the connection is currently carrying app data, and is
+    // large enough that retries don't burn battery.
+    agent.set_max_stun_rto(Duration::from_secs(25));
     agent.set_timing_advance(Duration::ZERO);
     agent.set_local_preference(connections::LocalPreference::new(candidate_epoch.clone()));
 
@@ -2045,53 +1936,6 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
     use super::*;
-
-    #[test]
-    fn client_default_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
-
-        IceConfig::client_default().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(16500))
-    }
-
-    // Our WireGuard rekey attempt time must be greater than the ICE timeout,
-    // otherwise we cannot migrate an existing tunnel to a new candidate pair.
-    #[test]
-    fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
-
-        IceConfig::client_default().apply(&mut agent);
-
-        assert!(agent.ice_timeout() < WG_REKEY_ATTEMPT_TIME)
-    }
-
-    #[test]
-    fn client_idle_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
-
-        IceConfig::client_idle().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
-    }
-
-    #[test]
-    fn server_default_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
-
-        IceConfig::server_default().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(615_500))
-    }
-
-    #[test]
-    fn server_idle_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
-
-        IceConfig::server_idle().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
-    }
 
     #[test]
     fn generates_correct_optimistic_candidates() {
