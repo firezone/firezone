@@ -619,7 +619,7 @@ impl ReferenceState {
                 (sample::select(domains), btree_set(dns_record(), 1..6))
                     .prop_map(|(domain, records)| Transition::UpdateDnsRecords { domain, records })
             })
-            .with_if_not_empty(5, state.other_client_tun_ips(), |ips| {
+            .with_if_not_empty(5, state.pool_routed_other_client_tun_ips(), |ips| {
                 let clients = state.clients.clone();
 
                 (
@@ -1195,9 +1195,9 @@ impl ReferenceState {
 
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && state
-                        .clients
+                        .pool_routed_other_client_tun_ips()
                         .iter()
-                        .any(|(_, c)| c.inner().tunnel_ip4 == *dst)
+                        .any(|(src, ip)| src == client_id && ip == dst)
             }
         }
     }
@@ -1734,19 +1734,40 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Generates a list of Client ID <> TUN IPv4 tuples without the entries of each ID's own IP.
-    fn other_client_tun_ips(&self) -> Vec<(ClientId, Ipv4Addr)> {
-        self.clients
-            .keys()
-            .flat_map(|outer_id| {
-                self.clients
-                    .iter()
-                    .filter_map(move |(inner_id, c)| {
-                        (outer_id != inner_id).then_some(c.inner().tunnel_ip4)
-                    })
-                    .map(|tun_ipv4| (*outer_id, tun_ipv4))
-            })
-            .collect()
+    /// Generates a list of `(src_client_id, dst_ipv4)` tuples where `dst_ipv4` is the tunnel
+    /// IPv4 of an online client reachable from `src_client_id` via a static device pool whose
+    /// filters allow ICMP.
+    ///
+    /// Static device pools are the only routing path between clients now, so this is the
+    /// only sampling that produces an ICMP handshake we can predict.
+    fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, Ipv4Addr)> {
+        let online_ips_by_id: BTreeMap<ClientId, Ipv4Addr> = self
+            .clients
+            .iter()
+            .map(|(id, c)| (*id, c.inner().tunnel_ip4))
+            .collect();
+
+        let mut result = Vec::new();
+        for (src_id, src_client) in &self.clients {
+            for resource in src_client.inner().all_resources() {
+                let client::Resource::StaticDevicePool(pool) = resource else {
+                    continue;
+                };
+                if !pool_filters_allow_icmp(&pool.filters) {
+                    continue;
+                }
+                for device in &pool.devices {
+                    if device.id == *src_id {
+                        continue;
+                    }
+                    let Some(dst_ipv4) = online_ips_by_id.get(&device.id) else {
+                        continue;
+                    };
+                    result.push((*src_id, *dst_ipv4));
+                }
+            }
+        }
+        result
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
@@ -1782,4 +1803,8 @@ impl fmt::Debug for PrivateKey {
             .field(&hex::encode(self.0))
             .finish()
     }
+}
+
+fn pool_filters_allow_icmp(filters: &[Filter]) -> bool {
+    filters.is_empty() || filters.iter().any(|f| matches!(f, Filter::Icmp))
 }

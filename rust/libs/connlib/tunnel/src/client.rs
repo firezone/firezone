@@ -647,6 +647,11 @@ impl ClientState {
 
         let maybe_packet = if let Some((gid, _)) = self.gateways.peer_by_ip(dst) {
             Some((ClientOrGatewayId::Gateway(gid), packet))
+        } else if let Some((cid, _)) = self.clients.peer_by_ip(dst) {
+            // Fast-path for an already-established client-to-client connection (e.g. on the
+            // controlled side of a static device pool flow, where the remote IP isn't in
+            // *our* `client_routing_table` but `self.clients` knows about the connection).
+            Some((ClientOrGatewayId::Client(cid), packet))
         } else if let Some(entry) = self
             .client_routing_table
             .matches(dst, Ok(dst_proto))
