@@ -628,7 +628,6 @@ mod tests {
                 ip_buffer: AllocRingBuffer::new(1),
                 session_socket: None,
             },
-            disconnected_at: None,
             outbound_handshakes: Default::default(),
             stats: Default::default(),
             intent_sent_at: Instant::now(),

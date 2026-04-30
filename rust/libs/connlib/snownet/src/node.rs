@@ -28,7 +28,7 @@ use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use is::stun::{StunMessage, StunPacket};
-use is::{Candidate, CandidateKind, IceConnectionState};
+use is::{Candidate, CandidateKind};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use rand::rngs::StdRng;
@@ -49,9 +49,6 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Grace-period for when we will act on an ICE disconnect.
-const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
@@ -798,7 +795,6 @@ where
                 ip_buffer: AllocRingBuffer::new(128),
                 session_socket: None,
             },
-            disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
@@ -1257,7 +1253,6 @@ struct Connection<RId> {
     relay: SelectedRelay<RId>,
 
     state: ConnectionState,
-    disconnected_at: Option<Instant>,
 
     outbound_handshakes: OutboundHandshakes,
 
@@ -1304,20 +1299,10 @@ where
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
-            .chain(
-                self.disconnect_timeout()
-                    .map(|instant| (instant, "disconnect timeout")),
-            )
             .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
-    }
-
-    fn disconnect_timeout(&self) -> Option<Instant> {
-        let disconnected_at = self.disconnected_at?;
-
-        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     fn handle_timeout<TId>(
@@ -1348,15 +1333,6 @@ where
             return;
         }
 
-        if self
-            .disconnect_timeout()
-            .is_some_and(|timeout| now >= timeout)
-        {
-            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
-            self.state = ConnectionState::Failed;
-            return;
-        }
-
         self.handle_tunnel_timeout(now, allocations, transmits);
 
         // If this was a scheduled update, hop to the next interval.
@@ -1373,23 +1349,6 @@ where
 
         while let Some(event) = self.agent.poll_event() {
             match event {
-                IceAgentEvent::DiscoveredRecv { .. } => {}
-                IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
-
-                    self.disconnected_at = Some(now);
-                }
-                IceAgentEvent::IceConnectionStateChange(
-                    IceConnectionState::Checking | IceConnectionState::Connected,
-                ) => {
-                    let existing = self.disconnected_at.take();
-
-                    if let Some(disconnected_at) = existing {
-                        let offline = now.duration_since(disconnected_at);
-
-                        tracing::debug!(?offline, "ICE agent reconnected");
-                    }
-                }
                 IceAgentEvent::NominatedSend {
                     destination,
                     source,
@@ -1495,7 +1454,9 @@ where
                         self.initiate_wg_session(allocations, transmits, now);
                     }
                 }
-                IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
+                IceAgentEvent::IceRestart(_)
+                | IceAgentEvent::DiscoveredRecv { .. }
+                | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
         }
 
@@ -2059,7 +2020,6 @@ where
         self.candidate_epoch = candidate_epoch;
 
         self.first_handshake_completed_at = None;
-        self.disconnected_at = None;
         self.poll_timeout_cache = TimeoutCache::default();
     }
 }
