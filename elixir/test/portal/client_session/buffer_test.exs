@@ -3,7 +3,7 @@ defmodule Portal.ClientSession.BufferTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.TokenFixtures
 
   alias Portal.ClientSession

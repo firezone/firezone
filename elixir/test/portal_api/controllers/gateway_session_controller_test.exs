@@ -4,7 +4,7 @@ defmodule PortalAPI.GatewaySessionControllerTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.SiteFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.GatewaySessionFixtures
 
   setup do

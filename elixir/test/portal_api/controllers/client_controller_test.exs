@@ -4,7 +4,7 @@ defmodule PortalAPI.ClientControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.SubjectFixtures
 
   setup do
@@ -137,6 +137,20 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["actor_id"] == client.actor_id
       assert data["firezone_id"] == client.firezone_id
       assert data["online"] == false
+      assert Map.has_key?(data, "hostname")
+    end
+
+    test "renders hostname when set", %{conn: conn, actor: actor, account: account} do
+      client = client_fixture(account: account, actor: actor, hostname: "host.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["hostname"] == "host.example.com"
     end
   end
 
@@ -170,6 +184,50 @@ defmodule PortalAPI.ClientControllerTest do
 
       assert resp["data"]["id"] == client.id
       assert resp["data"]["name"] == attrs["name"]
+    end
+
+    test "sets, updates, and clears hostname", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => "host-1.example.com"})
+
+      assert json_response(conn, 200)["data"]["hostname"] == "host-1.example.com"
+
+      conn =
+        recycle(conn)
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => "host-2.example.com"})
+
+      assert json_response(conn, 200)["data"]["hostname"] == "host-2.example.com"
+
+      conn =
+        recycle(conn)
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => nil})
+
+      assert json_response(conn, 200)["data"]["hostname"] == nil
+    end
+
+    test "PUT without hostname does not wipe an existing hostname", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      client = client_fixture(account: account, actor: actor, hostname: "host.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => "Renamed"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == "Renamed"
+      assert resp["data"]["hostname"] == "host.example.com"
     end
   end
 

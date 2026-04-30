@@ -769,9 +769,8 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{
-         type: :static_device_pool
-       }),
+  defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{type: type})
+       when type in [:static_device_pool, :dynamic_device_pool],
        do: true
 
   defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{}), do: false

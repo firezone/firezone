@@ -2,7 +2,6 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
-  import Portal.ClientFixtures
   import Portal.DeviceFixtures
 
   alias PortalAPI.Client.Views.Interface

@@ -4,9 +4,8 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
-  import Portal.GatewayFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.SiteFixtures
 

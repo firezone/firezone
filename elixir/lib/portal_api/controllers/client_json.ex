@@ -32,6 +32,7 @@ defmodule PortalAPI.ClientJSON do
       device_uuid: device.device_uuid,
       identifier_for_vendor: device.identifier_for_vendor,
       firebase_installation_id: device.firebase_installation_id,
+      hostname: device.hostname,
       verified_at: device.verified_at,
       created_at: device.inserted_at,
       updated_at: device.updated_at

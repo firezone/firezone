@@ -6,7 +6,7 @@ defmodule Portal.Cache.ClientTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyFixtures

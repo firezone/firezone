@@ -101,7 +101,7 @@ defmodule PortalAPI.ClientController do
 
   defp update_changeset(device, attrs) do
     import Ecto.Changeset
-    update_fields = ~w[name]a
+    update_fields = ~w[name hostname]a
     required_fields = ~w[firezone_id name]a
 
     device

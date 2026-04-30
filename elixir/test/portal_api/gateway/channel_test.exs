@@ -9,9 +9,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
   import Portal.DeviceFixtures
-  import Portal.GatewayFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -472,7 +470,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       ice_credentials = %{
         initiator: %{username: "A", password: "B"},
@@ -562,7 +560,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       ice_credentials = %{
         initiator: %{username: "A", password: "B"},
@@ -2026,7 +2024,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       client_payload = "RTC_SD"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       :ok = Portal.Presence.Relays.connect(relay)
 
@@ -2116,7 +2114,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       send(
         socket.channel_pid,
@@ -2159,7 +2157,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       policy_authorization =
         policy_authorization_fixture(
@@ -2237,7 +2235,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       ice_credentials = %{
         initiator: %{username: "A", password: "B"},
@@ -2326,7 +2324,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       ice_credentials = %{
         initiator: %{username: "A", password: "B"},
@@ -2477,7 +2475,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
       site_id = gateway.site_id
       gateway_id = gateway.id
       gateway_public_key = gateway.latest_session.public_key
@@ -2573,7 +2571,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
       gateway_public_key = gateway.latest_session.public_key
       payload = "RTC_SD"
 

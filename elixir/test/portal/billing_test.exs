@@ -5,7 +5,7 @@ defmodule Portal.BillingTest do
   import Portal.Billing
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.SiteFixtures
   import Portal.TokenFixtures

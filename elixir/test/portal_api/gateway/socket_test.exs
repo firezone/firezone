@@ -3,7 +3,7 @@ defmodule PortalAPI.Gateway.SocketTest do
   import PortalAPI.Gateway.Socket, except: [connect: 3]
   import Portal.AccountFixtures
   import Portal.SiteFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
   alias PortalAPI.Gateway.Socket

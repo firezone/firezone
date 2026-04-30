@@ -4,7 +4,7 @@ defmodule PortalWeb.ActorsTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures

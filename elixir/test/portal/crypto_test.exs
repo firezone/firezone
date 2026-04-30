@@ -2,14 +2,13 @@ defmodule Portal.CryptoTest do
   use Portal.DataCase, async: true
   import Portal.Crypto
   import Portal.AccountFixtures
-  import Portal.ClientFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
 
   describe "psk/4" do
     setup do
       account = account_fixture()
       client = client_fixture(account: account)
-      client_public_key = Portal.ClientFixtures.generate_public_key()
+      client_public_key = Portal.DeviceFixtures.generate_public_key()
       gateway = gateway_fixture(account: account)
       gateway_public_key = gateway.latest_session.public_key
 
@@ -55,7 +54,7 @@ defmodule Portal.CryptoTest do
       psk1 = psk(client, client_public_key, gateway, gateway_public_key)
 
       other_client = client_fixture(account: account)
-      other_public_key = Portal.ClientFixtures.generate_public_key()
+      other_public_key = Portal.DeviceFixtures.generate_public_key()
 
       other_psk =
         psk(other_client, other_public_key, gateway, gateway_public_key)
@@ -114,7 +113,7 @@ defmodule Portal.CryptoTest do
     } do
       client1 = client_fixture(account: account)
       client2 = client_fixture(account: account)
-      public_key = Portal.ClientFixtures.generate_public_key()
+      public_key = Portal.DeviceFixtures.generate_public_key()
 
       psk1 = psk(client1, public_key, gateway, gateway_public_key)
       psk2 = psk(client2, public_key, gateway, gateway_public_key)
@@ -126,7 +125,7 @@ defmodule Portal.CryptoTest do
       account: account,
       client: client
     } do
-      client_public_key = Portal.ClientFixtures.generate_public_key()
+      client_public_key = Portal.DeviceFixtures.generate_public_key()
       gateway1 = gateway_fixture(account: account)
       gateway2 = gateway_fixture(account: account)
 

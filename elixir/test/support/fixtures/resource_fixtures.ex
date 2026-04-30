@@ -229,6 +229,25 @@ defmodule Portal.ResourceFixtures do
   end
 
   @doc """
+  Generate a dynamic device pool resource. The pattern (`:address`) defaults to
+  `*.devices.example.com` if not provided.
+  """
+  def dynamic_device_pool_resource_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    account = Map.get(attrs, :account) || account_fixture()
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_fixture(
+      attrs
+      |> Map.put(:account, account)
+      |> Map.put(:type, :dynamic_device_pool)
+      |> Map.put_new(:name, "Dynamic Device Pool #{unique_num}")
+      |> Map.put_new(:address, "*.devices.example.com")
+      |> Map.delete(:site)
+    )
+  end
+
+  @doc """
   Update a resource with the given attributes.
   """
   def update_resource(resource, attrs) do

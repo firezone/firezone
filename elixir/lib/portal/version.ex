@@ -112,4 +112,11 @@ defmodule Portal.Version do
         latest_session: session
       }),
       do: client_supports_static_device_pools?(session)
+
+  # Dynamic device pool resources require the same minimum versions as static device
+  # pools: connlib's `DynamicDevicePool` resource type and `resolve_device_pool_domain`
+  # message support shipped together with the device-pool ingress wire format.
+  def client_supports_dynamic_device_pools?(session_or_device) do
+    client_supports_static_device_pools?(session_or_device)
+  end
 end

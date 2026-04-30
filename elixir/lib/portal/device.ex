@@ -31,6 +31,7 @@ defmodule Portal.Device do
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
           firebase_installation_id: String.t() | nil,
+          hostname: String.t() | nil,
           verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -55,6 +56,7 @@ defmodule Portal.Device do
     field :device_uuid, :string
     field :identifier_for_vendor, :string
     field :firebase_installation_id, :string
+    field :hostname, :string
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only
@@ -80,11 +82,13 @@ defmodule Portal.Device do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> trim_change(~w[name firezone_id]a)
+    |> trim_change(~w[name firezone_id hostname]a)
+    |> normalize_hostname()
     |> validate_required([:type, :name, :firezone_id])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:firezone_id, max: 255)
+    |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
     |> assoc_constraint(:site)
@@ -95,6 +99,8 @@ defmodule Portal.Device do
     |> unique_firezone_id_constraint()
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
+    |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
+    |> check_constraint(:hostname, name: :devices_hostname_length)
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
@@ -126,6 +132,17 @@ defmodule Portal.Device do
     else
       add_error(changeset, :verified_at, "can only be set for client devices")
     end
+  end
+
+  # Empty / whitespace-only inputs collapse to nil so users can clear the field by
+  # sending "" rather than having to send `null`. Casing is preserved — the underlying
+  # column is `citext`, so equality/uniqueness already fold case at the DB layer.
+  defp normalize_hostname(changeset) do
+    update_change(changeset, :hostname, fn
+      nil -> nil
+      "" -> nil
+      hostname -> hostname
+    end)
   end
 
   defp unique_firezone_id_constraint(changeset) do

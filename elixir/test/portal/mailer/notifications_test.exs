@@ -2,7 +2,7 @@ defmodule Portal.Mailer.NotificationsTest do
   use Portal.DataCase, async: true
   import Portal.Mailer.Notifications
   import Portal.AccountFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   alias Portal.ComponentVersions
 
   setup do

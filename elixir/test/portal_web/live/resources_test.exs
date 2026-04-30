@@ -5,7 +5,7 @@ defmodule PortalWeb.ResourcesTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.ClientFixtures
+  import Portal.DeviceFixtures
   import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.PolicyFixtures

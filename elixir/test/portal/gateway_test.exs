@@ -2,7 +2,7 @@ defmodule Portal.GatewayTest do
   use Portal.DataCase, async: true
 
   import Ecto.Changeset
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
 
   alias Portal.Device
 

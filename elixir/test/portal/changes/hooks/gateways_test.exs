@@ -2,7 +2,7 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
-  import Portal.GatewayFixtures
+  import Portal.DeviceFixtures
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
