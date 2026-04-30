@@ -1873,8 +1873,10 @@ where
             .tunnel
             .format_handshake_initiation_at(&mut buf, true, now)
         else {
-            tracing::debug!("Another handshake is already in progress");
-
+            debug_assert!(
+                false,
+                "`force_resend = true` means we should always get a handshake"
+            );
             return;
         };
 
