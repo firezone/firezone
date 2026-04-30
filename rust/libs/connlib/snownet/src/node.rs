@@ -198,6 +198,13 @@ where
         }
     }
 
+    /// Returns the current Unix time in milliseconds, derived from the
+    /// `unix_ts`/`unix_now` anchors captured at `Node::new` plus the elapsed
+    /// `Instant` delta — pure with respect to wall-clock time.
+    fn unix_ms(&self, now: Instant) -> u64 {
+        (self.unix_ts + now.saturating_duration_since(self.unix_now)).as_millis() as u64
+    }
+
     /// Resets this [`Node`].
     ///
     /// # Implementation note
@@ -327,7 +334,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let (mut agent, candidate_epoch) = new_agent(ice_role);
+        let (mut agent, candidate_epoch) = new_agent(ice_role, self.unix_ms(now));
         default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
@@ -2118,11 +2125,15 @@ where
     Some(transmit)
 }
 
-fn new_agent(role: IceRole) -> (IceAgent, CandidateEpoch) {
+fn new_agent(role: IceRole, unix_ms: u64) -> (IceAgent, CandidateEpoch) {
     let candidate_epoch = CandidateEpoch::default();
 
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
+    // Seed the tiebreaker from a Unix-ms timestamp so role-conflict
+    // comparisons (RFC 8445 §7.3.1.1) between peers are over a comparable
+    // monotonic range.
+    agent.set_control_tie_breaker(unix_ms);
     agent.set_timing_advance(Duration::ZERO);
     agent.set_local_preference(connections::LocalPreference::new(candidate_epoch.clone()));
 
@@ -2137,7 +2148,7 @@ mod tests {
 
     #[test]
     fn client_default_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2148,7 +2159,7 @@ mod tests {
     // otherwise we cannot migrate an existing tunnel to a new candidate pair.
     #[test]
     fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
 
         IceConfig::client_default().apply(&mut agent);
 
@@ -2157,7 +2168,7 @@ mod tests {
 
     #[test]
     fn client_idle_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
 
         IceConfig::client_idle().apply(&mut agent);
 
@@ -2166,7 +2177,7 @@ mod tests {
 
     #[test]
     fn server_default_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
 
         IceConfig::server_default().apply(&mut agent);
 
@@ -2175,7 +2186,7 @@ mod tests {
 
     #[test]
     fn server_idle_ice_timeout() {
-        let (mut agent, _epoch) = new_agent(IceRole::Controlling);
+        let (mut agent, _epoch) = new_agent(IceRole::Controlling, 0);
 
         IceConfig::server_idle().apply(&mut agent);
 
