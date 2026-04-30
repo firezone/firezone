@@ -647,7 +647,10 @@ impl ClientState {
 
         let maybe_packet = if let Some((gid, _)) = self.gateways.peer_by_ip(dst) {
             Some((ClientOrGatewayId::Gateway(gid), packet))
-        } else if let Some(entry) = self.client_routing_table.matches(dst, Ok(dst_proto)).cloned()
+        } else if let Some(entry) = self
+            .client_routing_table
+            .matches(dst, Ok(dst_proto))
+            .cloned()
         {
             self.route_packet_to_client(entry, dst, dst_proto, packet, now)?
         } else {
@@ -1971,9 +1974,7 @@ impl ClientState {
                     any_inserted |= self
                         .client_routing_table
                         .upsert(device.ipv4.into(), entry.clone());
-                    any_inserted |= self
-                        .client_routing_table
-                        .upsert(device.ipv6.into(), entry);
+                    any_inserted |= self.client_routing_table.upsert(device.ipv6.into(), entry);
                 }
 
                 is_new || any_inserted
@@ -2090,8 +2091,13 @@ impl ClientState {
         trigger: IpPacket,
         now: Instant,
     ) {
-        self.pending_device_access
-            .on_not_connected_device(client_id, resource_id, ip, trigger, now);
+        self.pending_device_access.on_not_connected_device(
+            client_id,
+            resource_id,
+            ip,
+            trigger,
+            now,
+        );
     }
 }
 

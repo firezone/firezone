@@ -8,17 +8,12 @@ use super::{
 use crate::{
     client,
     client::{DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource},
-    messages::{
-        UpstreamDo53, UpstreamDoH,
-        client::DevicePoolMember,
-        gateway,
-    },
+    messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
     proptest::*,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
     collection,
@@ -158,8 +153,12 @@ impl StubPortal {
             })
             .collect();
 
-        let static_device_pool_resources =
-            realize_static_device_pool_plans(static_device_pool_plans, &clients, &mut tunnel_ip4s, &mut tunnel_ip6s);
+        let static_device_pool_resources = realize_static_device_pool_plans(
+            static_device_pool_plans,
+            &clients,
+            &mut tunnel_ip4s,
+            &mut tunnel_ip6s,
+        );
 
         Self {
             clients,
@@ -533,14 +532,15 @@ fn realize_static_device_pool_plans(
                 offline_members,
             } = plan;
 
-            let online_devices = online_pool
-                .iter()
-                .take(n_online_members)
-                .map(|(cid, c)| DevicePoolMember {
-                    id: **cid,
-                    ipv4: Ipv4Network::new(c.ipv4, 32).unwrap(),
-                    ipv6: Ipv6Network::new(c.ipv6, 128).unwrap(),
-                });
+            let online_devices =
+                online_pool
+                    .iter()
+                    .take(n_online_members)
+                    .map(|(cid, c)| DevicePoolMember {
+                        id: **cid,
+                        ipv4: Ipv4Network::new(c.ipv4, 32).unwrap(),
+                        ipv6: Ipv6Network::new(c.ipv6, 128).unwrap(),
+                    });
 
             let offline_devices = offline_members.into_iter().map(|cid| DevicePoolMember {
                 id: cid,

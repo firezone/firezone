@@ -123,15 +123,15 @@ pub fn static_device_pool_resource_plan() -> impl Strategy<Value = StaticDeviceP
         0usize..=2,
         collection::vec(client_id(), 0..=2),
     )
-        .prop_map(
-            |(id, name, filters, n_online_members, offline_members)| StaticDevicePoolPlan {
+        .prop_map(|(id, name, filters, n_online_members, offline_members)| {
+            StaticDevicePoolPlan {
                 id,
                 name,
                 filters,
                 n_online_members,
                 offline_members,
-            },
-        )
+            }
+        })
 }
 
 pub fn filters() -> impl Strategy<Value = Vec<Filter>> {
