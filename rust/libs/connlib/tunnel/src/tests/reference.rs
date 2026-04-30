@@ -667,7 +667,9 @@ impl ReferenceState {
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
-                        client::Resource::StaticDevicePool(_) => {}
+                        client::Resource::StaticDevicePool(r) => {
+                            client.add_static_device_pool_resource(r.clone());
+                        }
                         client::Resource::DynamicDevicePool(r) => {
                             client.add_dynamic_device_pool_resource(r.clone());
                         }

@@ -609,7 +609,8 @@ pub enum ClientEvent {
         preferred_gateways: Vec<GatewayId>,
     },
     DeviceConnectionIntent {
-        ipv4: Ipv4Addr,
+        resource_id: ResourceId,
+        ip: IpAddr,
     },
     DevicePoolDomainQueried {
         resource_id: ResourceId,
