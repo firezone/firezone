@@ -32,7 +32,7 @@ use crate::peer_store::PeerStore;
 use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
-use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
+use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result, bail};
 use boringtun::x25519;
 use connlib_model::{
@@ -134,6 +134,8 @@ pub struct ClientState {
     cidr_routing_table: RoutingTable<CidrEntry>,
     /// Routes packets destined for DNS resource proxy IPs to a [`ResourceId`] and its domain.
     dns_routing_table: RoutingTable<DnsEntry>,
+    /// Routes packets destined for static device pool members to a [`ClientId`] and the static device pool [`ResourceId`].
+    client_routing_table: RoutingTable<ClientEntry>,
     is_internet_resource_active: bool,
     /// All resources indexed by their ID.
     resources_by_id: BTreeMap<ResourceId, Resource>,
@@ -178,6 +180,7 @@ impl ClientState {
             authorized_resources: Default::default(),
             cidr_routing_table: RoutingTable::default(),
             dns_routing_table: RoutingTable::default(),
+            client_routing_table: RoutingTable::default(),
             resources_by_id: Default::default(),
             gateways: Default::default(),
             clients: Default::default(),
@@ -272,21 +275,43 @@ impl ClientState {
     /// 2. When access is revoked after it has been established.
     pub fn handle_client_device_access_denied(
         &mut self,
-        ipv4: Ipv4Addr,
+        ipv4: Option<Ipv4Addr>,
+        ipv6: Option<Ipv6Addr>,
         reason: FailReason,
         now: Instant,
     ) {
-        tracing::debug!(%ipv4, "Device access denied: {reason:?}");
+        tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
-        self.pending_device_access.remove(&ipv4);
-        // TODO: Update resource list with offline client.
+        let dst = match (ipv4, ipv6) {
+            (Some(v4), _) => IpAddr::V4(v4),
+            (None, Some(v6)) => IpAddr::V6(v6),
+            (None, None) => {
+                tracing::debug!("Ignoring device-access-denied without an address");
+                return;
+            }
+        };
 
-        let Some((id, _)) = self.clients.peer_by_ip(ipv4) else {
+        // The protocol is irrelevant: each member device has exactly one routing-table entry
+        // per address, so the lookup always resolves to that entry regardless of the dummy.
+        let Some(entry) = self
+            .client_routing_table
+            .matches(dst, Ok(Protocol::Tcp(0)))
+            .cloned()
+        else {
             return;
         };
-        self.clients.remove(&id);
-        self.node
-            .close_connection(ClientOrGatewayId::Client(id), p2p_control::goodbye(), now);
+
+        self.pending_device_access.remove(&entry.client_id);
+        // TODO: Update resource list with offline client.
+
+        if self.clients.peer_by_id(&entry.client_id).is_some() {
+            self.clients.remove(&entry.client_id);
+            self.node.close_connection(
+                ClientOrGatewayId::Client(entry.client_id),
+                p2p_control::goodbye(),
+                now,
+            );
+        }
     }
 
     pub fn handle_device_pool_domain_resolved(
@@ -618,8 +643,11 @@ impl ClientState {
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;
 
-        let maybe_packet = if is_peer(dst) {
-            self.route_packet_to_peer(packet, now)?
+        let maybe_packet = if let Some((gid, _)) = self.gateways.peer_by_ip(dst) {
+            Some((ClientOrGatewayId::Gateway(gid), packet))
+        } else if let Some(entry) = self.client_routing_table.matches(dst, Ok(dst_proto)).cloned()
+        {
+            self.route_packet_to_client(entry, dst, dst_proto, packet, now)?
         } else {
             self.route_packet_to_resource(packet, now)?
         };
@@ -655,27 +683,23 @@ impl ClientState {
         Ok(Some(transmit))
     }
 
-    fn route_packet_to_peer(
+    fn route_packet_to_client(
         &mut self,
+        entry: ClientEntry,
+        dst: IpAddr,
+        dst_proto: Protocol,
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<(ClientOrGatewayId, IpPacket)>> {
-        let dst = packet.destination();
-
-        if let Some((id, _)) = self.gateways.peer_by_ip(dst) {
-            return Ok(Some((ClientOrGatewayId::Gateway(id), packet)));
+        if entry.filter.apply(Ok(dst_proto)).is_err() {
+            bail!(UnroutablePacket::not_allowed(&packet))
         }
 
-        if let Some((id, _)) = self.clients.peer_by_ip(dst) {
-            return Ok(Some((ClientOrGatewayId::Client(id), packet)));
+        if self.clients.peer_by_id(&entry.client_id).is_some() {
+            return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
         }
 
-        let ipv4_addr = match dst {
-            IpAddr::V4(ipv4_addr) => ipv4_addr,
-            IpAddr::V6(_) => bail!("Connecting to devices over IPv6 is not supported."),
-        };
-
-        self.on_not_connected_device(ipv4_addr, packet, now);
+        self.on_not_connected_device(entry.client_id, entry.resource_id, dst, packet, now);
 
         Ok(None)
     }
@@ -836,7 +860,7 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
 
-        let pending_device_access = self.pending_device_access.remove(&client_tun.v4);
+        let pending_device_access = self.pending_device_access.remove(&cid);
 
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
@@ -1811,8 +1835,11 @@ impl ClientState {
             });
         }
 
-        if let Some(client) = self.pending_device_access.poll_connection_intents() {
-            return Some(ClientEvent::DeviceConnectionIntent { ipv4: client });
+        if let Some(intent) = self.pending_device_access.poll_connection_intents() {
+            return Some(ClientEvent::DeviceConnectionIntent {
+                resource_id: intent.resource_id,
+                ip: intent.ip,
+            });
         }
 
         self.buffered_events.pop_front()
@@ -1928,7 +1955,27 @@ impl ClientState {
                 },
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
-            Resource::StaticDevicePool(_) => is_new,
+            Resource::StaticDevicePool(pool) => {
+                let filter = FilterEngine::new(&pool.filters);
+                let mut any_inserted = false;
+
+                for device in &pool.devices {
+                    let entry = ClientEntry {
+                        filter: filter.clone(),
+                        resource_id: pool.id,
+                        client_id: device.id,
+                    };
+
+                    any_inserted |= self
+                        .client_routing_table
+                        .upsert(device.ipv4.into(), entry.clone());
+                    any_inserted |= self
+                        .client_routing_table
+                        .upsert(device.ipv6.into(), entry);
+                }
+
+                is_new || any_inserted
+            }
             Resource::DynamicDevicePool(pool) => self
                 .device_stub_resolver
                 .add_resource(pool.id, pool.address.clone()),
@@ -1959,6 +2006,7 @@ impl ClientState {
         self.resources_by_id.remove(&id);
         self.cidr_routing_table.remove_by_id(id);
         self.dns_routing_table.remove_by_id(id);
+        self.client_routing_table.remove_by_id(id);
 
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
@@ -2032,9 +2080,16 @@ impl ClientState {
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
 
-    fn on_not_connected_device(&mut self, device: Ipv4Addr, trigger: IpPacket, now: Instant) {
+    fn on_not_connected_device(
+        &mut self,
+        client_id: ClientId,
+        resource_id: ResourceId,
+        ip: IpAddr,
+        trigger: IpPacket,
+        now: Instant,
+    ) {
         self.pending_device_access
-            .on_not_connected_device(device, trigger, now);
+            .on_not_connected_device(client_id, resource_id, ip, trigger, now);
     }
 }
 
@@ -2045,6 +2100,23 @@ struct CidrEntry {
 }
 
 impl RouteEntry for CidrEntry {
+    fn filter(&self) -> &FilterEngine {
+        &self.filter
+    }
+
+    fn resource_id(&self) -> ResourceId {
+        self.resource_id
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ClientEntry {
+    filter: FilterEngine,
+    resource_id: ResourceId,
+    client_id: ClientId,
+}
+
+impl RouteEntry for ClientEntry {
     fn filter(&self) -> &FilterEngine {
         &self.filter
     }

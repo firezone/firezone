@@ -1123,7 +1123,10 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceConnectionIntent { ipv4 } => {
+            ClientEvent::DeviceConnectionIntent {
+                resource_id: _,
+                ip,
+            } => {
                 let src_client = self.clients.get(&src).expect("unknown source client");
 
                 let src_key = src_client.inner().sut.public_key();
@@ -1134,7 +1137,10 @@ impl TunnelTest {
                         .inner()
                         .sut
                         .tunnel_ip_config()
-                        .is_some_and(|tun| tun.v4 == ipv4)
+                        .is_some_and(|tun| match ip {
+                            std::net::IpAddr::V4(v4) => tun.v4 == v4,
+                            std::net::IpAddr::V6(v6) => tun.v6 == v6,
+                        })
                 });
 
                 match maybe_remote_client {
@@ -1186,17 +1192,24 @@ impl TunnelTest {
                             Ok(())
                         })?;
                     }
-                    None => self
-                        .clients
-                        .get_mut(&src)
-                        .expect("unknown source client")
-                        .exec_mut(|c| {
-                            c.sut.handle_client_device_access_denied(
-                                ipv4,
-                                FailReason::NotFound,
-                                now,
-                            )
-                        }),
+                    None => {
+                        let (denied_v4, denied_v6) = match ip {
+                            std::net::IpAddr::V4(v4) => (Some(v4), None),
+                            std::net::IpAddr::V6(v6) => (None, Some(v6)),
+                        };
+
+                        self.clients
+                            .get_mut(&src)
+                            .expect("unknown source client")
+                            .exec_mut(|c| {
+                                c.sut.handle_client_device_access_denied(
+                                    denied_v4,
+                                    denied_v6,
+                                    FailReason::NotFound,
+                                    now,
+                                )
+                            })
+                    }
                 }
 
                 Ok(())
