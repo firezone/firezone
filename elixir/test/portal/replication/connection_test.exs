@@ -99,8 +99,9 @@ defmodule Portal.Replication.ConnectionTest do
       initial_state = %TestReplicationConnection{flush_interval: 10}
       {:ok, _state} = TestReplicationConnection.init(initial_state)
 
-      # Should receive flush message after interval
-      assert_receive :flush, 50
+      # Should receive flush message after interval. Generous timeout to absorb
+      # contended CI runners — the message normally arrives in ~10ms.
+      assert_receive :flush, 500
     end
 
     test "init/1 does not schedule flush when flush_interval is 0" do
