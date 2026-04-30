@@ -1003,20 +1003,6 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::RemovedIceCandidates {
-                candidates,
-                conn_id: ClientOrGatewayId::Gateway(conn_id),
-            } => {
-                let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
-
-                gateway.exec_mut(|g| {
-                    for candidate in candidates {
-                        g.sut.remove_ice_candidate(src, candidate, now)
-                    }
-                });
-
-                Ok(())
-            }
             ClientEvent::AddedIceCandidates {
                 conn_id: ClientOrGatewayId::Client(conn_id),
                 candidates,
@@ -1026,20 +1012,6 @@ impl TunnelTest {
                 client.exec_mut(|c| {
                     for candidate in candidates {
                         c.sut.add_ice_candidate(src, candidate, now);
-                    }
-                });
-
-                Ok(())
-            }
-            ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(conn_id),
-                candidates,
-            } => {
-                let client = self.clients.get_mut(&conn_id).expect("unknown client");
-
-                client.exec_mut(|c| {
-                    for candidate in candidates {
-                        c.sut.remove_ice_candidate(src, candidate, now);
                     }
                 });
 
@@ -1391,17 +1363,6 @@ fn on_gateway_event(
             client.exec_mut(|c| {
                 for candidate in candidates {
                     c.sut.add_ice_candidate(src, candidate, now)
-                }
-            })
-        }
-        GatewayEvent::RemovedIceCandidates {
-            conn_id,
-            candidates,
-        } => {
-            let client = clients.get_mut(&conn_id).unwrap();
-            client.exec_mut(|c| {
-                for candidate in candidates {
-                    c.sut.remove_ice_candidate(src, candidate, now)
                 }
             })
         }

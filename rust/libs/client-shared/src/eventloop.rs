@@ -269,22 +269,6 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Gateway(gid),
-                candidates,
-            } => {
-                tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
-
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
-                            gateway_id: gid,
-                            candidates: Vec::from_iter(candidates),
-                        }),
-                    ))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
             ClientEvent::AddedIceCandidates {
                 conn_id: ClientOrGatewayId::Client(cid),
                 candidates,
@@ -298,22 +282,6 @@ impl Eventloop {
                             candidates: Vec::from_iter(candidates),
                         },
                     )))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(cid),
-                candidates,
-            } => {
-                tracing::debug!(%cid, ?candidates, "Sending invalidated ICE candidates to client");
-
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
-                            client_id: cid,
-                            candidates: Vec::from_iter(candidates),
-                        }),
-                    ))
                     .await
                     .context("Failed to send message to portal")?;
             }

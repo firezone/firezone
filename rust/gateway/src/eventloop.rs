@@ -215,19 +215,6 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            tunnel::GatewayEvent::RemovedIceCandidates {
-                conn_id: client,
-                candidates,
-            } => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
-                            client_ids: vec![client],
-                            candidates,
-                        }),
-                    ))
-                    .await?;
-            }
             tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks

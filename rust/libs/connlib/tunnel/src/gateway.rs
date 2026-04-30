@@ -546,7 +546,6 @@ impl GatewayState {
 
     fn drain_node_events(&mut self) {
         let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
-        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -564,15 +563,6 @@ impl GatewayState {
                         .or_default()
                         .insert(candidate.into());
                 }
-                snownet::Event::InvalidateIceCandidate {
-                    connection,
-                    candidate,
-                } => {
-                    removed_ice_candidates
-                        .entry(connection)
-                        .or_default()
-                        .insert(candidate.into());
-                }
                 snownet::Event::ConnectionEstablished(_) => {}
             }
         }
@@ -580,14 +570,6 @@ impl GatewayState {
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(GatewayEvent::AddedIceCandidates {
-                    conn_id,
-                    candidates,
-                })
-        }
-
-        for (conn_id, candidates) in removed_ice_candidates.into_iter() {
-            self.buffered_events
-                .push_back(GatewayEvent::RemovedIceCandidates {
                     conn_id,
                     candidates,
                 })

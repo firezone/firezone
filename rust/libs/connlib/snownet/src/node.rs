@@ -669,12 +669,6 @@ where
                 continue;
             };
 
-            invalidate_allocation_candidates(
-                &mut self.connections,
-                &allocation,
-                &mut self.pending_events,
-            );
-
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
@@ -699,13 +693,7 @@ where
                 allocations::UpsertResult::Skipped => {
                     tracing::info!(%rid, address = ?server, "Skipping known TURN server")
                 }
-                allocations::UpsertResult::Replaced(previous) => {
-                    invalidate_allocation_candidates(
-                        &mut self.connections,
-                        &previous,
-                        &mut self.pending_events,
-                    );
-
+                allocations::UpsertResult::Replaced(_previous) => {
                     tracing::info!(%rid, address = ?server, "Replaced TURN server")
                 }
             }
@@ -1034,11 +1022,7 @@ where
                         c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
-                allocation::Event::Invalid(candidate) => {
-                    for (cid, c) in self.connections.iter_mut() {
-                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events);
-                    }
-                }
+                allocation::Event::Invalid(_) => {}
             }
         }
     }
@@ -1139,21 +1123,6 @@ fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Event<TId> {
     }
 }
 
-fn invalidate_allocation_candidates<TId, RId>(
-    connections: &mut Connections<TId, RId>,
-    allocation: &Allocation,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: Eq + Hash + Copy + Ord + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-{
-    for (cid, c) in connections.iter_mut() {
-        for candidate in allocation.current_relay_candidates() {
-            c.remove_local_candidate(cid, &candidate, pending_events);
-        }
-    }
-}
-
 pub struct Credentials {
     /// The ICE username (ufrag).
     pub username: String,
@@ -1185,12 +1154,6 @@ impl From<is::IceCreds> for Credentials {
 pub enum Event<TId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
     NewIceCandidate {
-        connection: TId,
-        candidate: Candidate,
-    },
-
-    /// We invalidated a candidate for this connection and ask to signal that to the remote party.
-    InvalidateIceCandidate {
         connection: TId,
         candidate: Candidate,
     },
@@ -1861,33 +1824,6 @@ where
 
         self.state
             .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
-    }
-
-    fn remove_local_candidate<TId>(
-        &mut self,
-        id: TId,
-        candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
-    ) where
-        TId: fmt::Display,
-    {
-        if candidate.kind() != CandidateKind::Relayed {
-            debug_assert_eq!(
-                candidate.kind(),
-                CandidateKind::Relayed,
-                "we should only ever invalidate relay candidates"
-            );
-            return;
-        }
-
-        let was_present = self.agent.invalidate_candidate(candidate);
-
-        if was_present {
-            pending_events.push_back(Event::InvalidateIceCandidate {
-                connection: id,
-                candidate: candidate.clone(),
-            })
-        }
     }
 
     fn add_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)

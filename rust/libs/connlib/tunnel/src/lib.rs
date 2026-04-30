@@ -600,10 +600,6 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    RemovedIceCandidates {
-        conn_id: ClientOrGatewayId,
-        candidates: BTreeSet<IceCandidate>,
-    },
     ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
@@ -660,10 +656,6 @@ impl IpConfig {
 #[derive(Debug)]
 pub enum GatewayEvent {
     AddedIceCandidates {
-        conn_id: ClientId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    RemovedIceCandidates {
         conn_id: ClientId,
         candidates: BTreeSet<IceCandidate>,
     },
