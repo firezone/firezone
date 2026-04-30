@@ -19,8 +19,8 @@ sudo apt-get install build-essential pkg-config libgtk-3-dev libsoup-3.0-dev lib
 Install the eBPF toolchain and linker (required by the relay crate):
 
 ```bash
-rustup toolchain install nightly-2025-05-30-x86_64-unknown-linux-gnu
-rustup component add rust-src --toolchain nightly-2025-05-30-x86_64-unknown-linux-gnu
+rustup toolchain install nightly-2025-05-30
+rustup component add rust-src --toolchain nightly-2025-05-30
 cargo install bpf-linker
 ```
 
