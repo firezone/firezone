@@ -3,6 +3,8 @@ defmodule PortalWeb.HomeControllerTest do
 
   import Portal.AccountFixtures
 
+  @client_sign_in_types ["client", "gui-client", "headless-client"]
+
   describe "home/2" do
     test "redirects to /getting_started when no cookie present", %{conn: conn} do
       conn = get(conn, ~p"/")
@@ -25,6 +27,22 @@ defmodule PortalWeb.HomeControllerTest do
         |> get(~p"/")
 
       assert redirected_to(conn) == ~p"/sign_in"
+    end
+
+    test "redirects client sign-in without slug to /sign_in and preserves all sign-in params", %{
+      conn: conn
+    } do
+      for client <- @client_sign_in_types do
+        params = %{
+          "as" => client,
+          "state" => "abc",
+          "nonce" => "xyz",
+          "redirect_to" => "/sites"
+        }
+
+        conn = get(conn, ~p"/?#{params}")
+        assert redirected_to(conn) == ~p"/sign_in?#{params}"
+      end
     end
   end
 
@@ -95,19 +113,56 @@ defmodule PortalWeb.HomeControllerTest do
         assert html =~ ~p"/#{account.slug}/sign_in"
       end
     end
+
+    test "hides portal-only links for client sign-in", %{conn: conn} do
+      for client <- @client_sign_in_types do
+        conn = get(conn, ~p"/sign_in?#{%{"as" => client}}")
+        html = response(conn, 200)
+
+        refute html =~ "Want to setup a new Organization?"
+        refute html =~ "Not sure where to start?"
+      end
+    end
   end
 
   describe "redirect_to_sign_in/2" do
-    test "redirects to the sign in page via POST /sign_in", %{conn: conn} do
+    test "redirects to the account sign-in page via POST /sign_in and preserves all sign-in params",
+         %{conn: conn} do
       id = Ecto.UUID.generate()
-      conn = post(conn, ~p"/sign_in", %{"account_id_or_slug" => id, "as" => "client"})
-      assert redirected_to(conn) == ~p"/#{id}/sign_in?as=client"
+
+      for client <- @client_sign_in_types do
+        params = %{
+          "account_id_or_slug" => id,
+          "as" => client,
+          "state" => "abc",
+          "nonce" => "xyz",
+          "redirect_to" => "/sites"
+        }
+
+        conn = post(conn, ~p"/sign_in", params)
+        expected_params = Map.drop(params, ["account_id_or_slug"])
+        assert redirected_to(conn) == ~p"/#{id}/sign_in?#{expected_params}"
+      end
     end
 
-    test "redirects to the sign in page via POST /", %{conn: conn} do
+    test "redirects to the account sign-in page via POST / and preserves all sign-in params", %{
+      conn: conn
+    } do
       id = Ecto.UUID.generate()
-      conn = post(conn, ~p"/", %{"account_id_or_slug" => id, "as" => "client"})
-      assert redirected_to(conn) == ~p"/#{id}/sign_in?as=client"
+
+      for client <- @client_sign_in_types do
+        params = %{
+          "account_id_or_slug" => id,
+          "as" => client,
+          "state" => "abc",
+          "nonce" => "xyz",
+          "redirect_to" => "/sites"
+        }
+
+        conn = post(conn, ~p"/", params)
+        expected_params = Map.drop(params, ["account_id_or_slug"])
+        assert redirected_to(conn) == ~p"/#{id}/sign_in?#{expected_params}"
+      end
     end
 
     test "downcases account slug on redirect", %{conn: conn} do

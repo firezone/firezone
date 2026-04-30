@@ -3,15 +3,19 @@ defmodule PortalWeb.HomeController do
   alias __MODULE__.Database
 
   @spec home(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def home(conn, _params) do
+  def home(conn, params) do
     %PortalWeb.Cookie.RecentAccounts{account_ids: recent_account_ids} =
       PortalWeb.Cookie.RecentAccounts.fetch(conn)
 
-    if recent_account_ids != [] do
-      redirect(conn, to: ~p"/sign_in")
+    sign_in_params = PortalWeb.Authentication.take_sign_in_params(params)
+
+    redirect_url = if recent_account_ids != [] || PortalWeb.Authentication.client_sign_in?(sign_in_params) do
+      ~p"/sign_in?#{sign_in_params}"
     else
-      redirect(conn, to: ~p"/getting_started")
+      ~p"/getting_started?#{sign_in_params}"
     end
+
+    redirect(conn, to: redirect_url)
   end
 
   @spec getting_started(Plug.Conn.t(), map()) :: Plug.Conn.t()
