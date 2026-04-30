@@ -251,11 +251,19 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "authorize_device_access/2" do
-    test "allows access when target client belongs to an authorized static device pool" do
+  describe "authorize_device_access/3" do
+    test "allows access when target client belongs to the given static device pool by ipv4" do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
-      subject = subject_fixture(account: account, actor: actor, type: :client)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
       client = client_fixture(account: account, actor: actor)
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor)
@@ -269,20 +277,69 @@ defmodule Portal.Cache.ClientTest do
         device_id: client.id,
         account_id: client.account_id,
         user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip
+        remote_ip: subject.context.remote_ip,
+        version: "1.5.16"
       }
 
       cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
 
       target_ipv4 = target_client.ipv4.address
+      target_id = target_client.id
 
-      assert :ok = Cache.authorize_device_access(cache, target_ipv4)
+      assert {:ok, ^target_id} =
+               Cache.authorize_device_access(cache, resource.id, {:ipv4, target_ipv4})
     end
 
-    test "rejects access when target client is not in an authorized static device pool" do
+    test "allows access by ipv6" do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
-      subject = subject_fixture(account: account, actor: actor, type: :client)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      client = client_fixture(account: account, actor: actor)
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      policy_fixture(account: account, group: group, resource: resource)
+
+      session = %Portal.ClientSession{
+        device_id: client.id,
+        account_id: client.account_id,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip,
+        version: "1.5.16"
+      }
+
+      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+
+      target_ipv6 = target_client.ipv6.address
+      target_id = target_client.id
+
+      assert {:ok, ^target_id} =
+               Cache.authorize_device_access(cache, resource.id, {:ipv6, target_ipv6})
+    end
+
+    test "rejects access when target client is not in the given pool" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
       client = client_fixture(account: account, actor: actor)
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor)
@@ -291,14 +348,105 @@ defmodule Portal.Cache.ClientTest do
         device_id: client.id,
         account_id: client.account_id,
         user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip
+        remote_ip: subject.context.remote_ip,
+        version: "1.5.16"
       }
 
       cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
 
       target_ipv4 = target_client.ipv4.address
 
-      assert {:error, :forbidden} = Cache.authorize_device_access(cache, target_ipv4)
+      assert {:error, :forbidden} =
+               Cache.authorize_device_access(cache, Ecto.UUID.generate(), {:ipv4, target_ipv4})
+    end
+  end
+
+  describe "static_device_pool resource rendering" do
+    test "populates addresses on connectable pool resources" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      client = client_fixture(account: account, actor: actor)
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      policy_fixture(account: account, group: group, resource: resource)
+
+      session = %Portal.ClientSession{
+        device_id: client.id,
+        account_id: client.account_id,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip,
+        version: "1.5.16"
+      }
+
+      {:ok, _added, _removed, cache} =
+        Cache.recompute_connectable_resources(nil, client, session, subject)
+
+      pool =
+        Enum.find(cache.connectable_resources, &(&1.type == :static_device_pool))
+
+      assert pool != nil
+
+      target_id = target_client.id
+
+      assert [
+               %{
+                 id: ^target_id,
+                 ipv4: %Postgrex.INET{address: ipv4_address, netmask: 32},
+                 ipv6: %Postgrex.INET{address: ipv6_address, netmask: 128}
+               }
+             ] = pool.devices
+
+      assert ipv4_address == target_client.ipv4.address
+      assert ipv6_address == target_client.ipv6.address
+    end
+
+    test "older clients do not see static_device_pool resources" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.0"
+        )
+
+      client = client_fixture(account: account, actor: actor)
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      policy_fixture(account: account, group: group, resource: resource)
+
+      session = %Portal.ClientSession{
+        device_id: client.id,
+        account_id: client.account_id,
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip,
+        version: "1.5.0"
+      }
+
+      {:ok, _added, _removed, cache} =
+        Cache.recompute_connectable_resources(nil, client, session, subject)
+
+      assert Enum.all?(cache.connectable_resources, &(&1.type != :static_device_pool))
+      refute Map.has_key?(cache.pool_members, Ecto.UUID.dump!(resource.id))
     end
   end
 end

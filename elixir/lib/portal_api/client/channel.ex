@@ -120,13 +120,16 @@ defmodule PortalAPI.Client.Channel do
         socket.assigns.subject
       )
 
-    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
     end
 
-    for resource <- added_resources, resource.type != :static_device_pool do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource, socket.assigns.session))
+    for resource <- added_resources do
+      push(
+        socket,
+        "resource_created_or_updated",
+        Views.Resource.render(resource, socket.assigns.session)
+      )
     end
 
     {:noreply, assign(socket, cache: cache)}
@@ -385,110 +388,42 @@ defmodule PortalAPI.Client.Channel do
   ##### Client-initiated actions #####
   ####################################
 
-  # This message is sent to the client to request a network flow with a gateway that can serve given resource.
+  # This message is sent to the client to request a network flow with a gateway (or, for
+  # static_device_pool resources, a peer client) that can serve the given resource.
   #
-  # `connected_gateway_ids` is used to indicate that the client is already connected to some of the gateways,
-  # so the gateway can be reused by multiplexing the connection.
+  # For gateway-backed resources, `connected_gateway_ids` indicates that the client is already
+  # connected to some of the gateways, so the gateway can be reused by multiplexing the connection.
+  #
+  # For static_device_pool resources, the payload also carries `ipv4` or `ipv6` of the target
+  # member device.
   def handle_in(
         "create_flow",
-        %{
-          "resource_id" => resource_id,
-          "connected_gateway_ids" => connected_gateway_ids
-        },
+        %{"resource_id" => resource_id} = payload,
         socket
       ) do
-    with {:ok, resource, membership_id, policy_id, expires_at} <-
-           Cache.Client.authorize_resource(
-             socket.assigns.cache,
-             socket.assigns.client,
-             socket.assigns.session,
-             resource_id,
-             socket.assigns.subject
-           ),
-         {:ok, gateways} when gateways != [] <-
-           Database.all_compatible_gateways_for_client_and_resource(
-             socket.assigns.client_version,
-             resource,
-             socket.assigns.subject.account.id
-           ) do
-      location = {
-        socket.assigns.subject.context.remote_ip_location_lat,
-        socket.assigns.subject.context.remote_ip_location_lon
-      }
+    case Cache.Client.authorize_resource(
+           socket.assigns.cache,
+           socket.assigns.client,
+           socket.assigns.session,
+           resource_id,
+           socket.assigns.subject
+         ) do
+      {:ok, %Cache.Cacheable.Resource{type: :static_device_pool} = resource, _, _, _} ->
+        handle_create_pool_flow(resource_id, resource, payload, socket)
 
-      gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
-      gateway_public_key = gateway.latest_session.public_key
+      {:ok, resource, membership_id, policy_id, expires_at} ->
+        connected_gateway_ids = Map.get(payload, "connected_gateway_ids", [])
 
-      policy_authorization_id = Ecto.UUID.generate()
-
-      preshared_key =
-        generate_preshared_key(
-          socket.assigns.client,
-          socket.assigns.session.public_key,
-          gateway,
-          gateway_public_key
+        handle_create_gateway_flow(
+          resource_id,
+          resource,
+          membership_id,
+          policy_id,
+          expires_at,
+          connected_gateway_ids,
+          socket
         )
 
-      ice_credentials =
-        generate_ice_credentials(
-          socket.assigns.session.public_key,
-          socket.assigns.client,
-          gateway,
-          gateway_public_key
-        )
-
-      message =
-        {:authorize_policy, {self(), socket_ref(socket)},
-         %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               socket.assigns.client,
-               socket.assigns.session.public_key,
-               preshared_key,
-               socket.assigns.subject.context.user_agent
-             ),
-           subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(resource),
-           policy_authorization_id: policy_authorization_id,
-           authorization_expires_at: expires_at,
-           ice_credentials: ice_credentials,
-           preshared_key: preshared_key
-         }}
-
-      async_create_policy_authorization(
-        policy_authorization_id,
-        socket.assigns.client,
-        gateway,
-        resource_id,
-        policy_id,
-        membership_id,
-        socket.assigns.subject,
-        expires_at
-      )
-
-      case PG.deliver(gateway.id, message) do
-        :ok ->
-          timer_ref =
-            Process.send_after(
-              self(),
-              {:flow_creation_timeout, resource_id},
-              flow_creation_timeout()
-            )
-
-          socket =
-            assign(
-              socket,
-              :pending_flows,
-              Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
-            )
-
-          {:noreply, socket}
-
-        {:error, :not_found} ->
-          push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
-          {:noreply, socket}
-      end
-    else
       {:error, :not_found} ->
         push(socket, "flow_creation_failed", %{
           resource_id: resource_id,
@@ -502,22 +437,6 @@ defmodule PortalAPI.Client.Channel do
           resource_id: resource_id,
           reason: :forbidden,
           violated_properties: violated_properties
-        })
-
-        {:noreply, socket}
-
-      {:ok, []} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :offline
-        })
-
-        {:noreply, socket}
-
-      {:error, :version_mismatch} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :version_mismatch
         })
 
         {:noreply, socket}
@@ -728,103 +647,6 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
-    account_id = socket.assigns.client.account_id
-
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         {:ok, ipv4_tuple} <- parse_ipv4(ipv4_string),
-         :ok <- Cache.Client.authorize_device_access(socket.assigns.cache, ipv4_tuple),
-         {:ok, target_client_id, target_meta} <-
-           find_online_client_by_ipv4(account_id, ipv4_tuple) do
-      client = socket.assigns.client
-      client_public_key = socket.assigns.session.public_key
-
-      target_client = %Portal.Device{
-        id: target_client_id,
-        psk_base: target_meta.psk_base,
-        type: :client
-      }
-
-      preshared_key =
-        Portal.Crypto.psk(
-          client,
-          client_public_key,
-          target_client,
-          target_meta.public_key
-        )
-
-      ice_credentials =
-        generate_ice_credentials(
-          client_public_key,
-          client,
-          target_client,
-          target_meta.public_key
-        )
-
-      account_key = socket.assigns.subject.account.key
-
-      PG.deliver(
-        target_client_id,
-        {:client_device_access_authorized,
-         %{
-           client_id: client.id,
-           client_name: client.name,
-           client_fqdns: client_fqdns(client.ipv4, account_key),
-           client_public_key: client_public_key,
-           client_ipv4: client.ipv4,
-           client_ipv6: client.ipv6,
-           preshared_key: preshared_key,
-           local_ice_credentials: ice_credentials.receiver,
-           remote_ice_credentials: ice_credentials.initiator,
-           ice_role: :controlled
-         }}
-      )
-
-      target_ipv4 = target_meta.ipv4 && %Postgrex.INET{address: target_meta.ipv4}
-
-      push(socket, "client_device_access_authorized", %{
-        client_id: target_client_id,
-        client_name: target_meta.name,
-        client_fqdns: client_fqdns(target_ipv4, account_key),
-        client_public_key: target_meta.public_key,
-        client_ipv4: target_ipv4,
-        client_ipv6: target_meta.ipv6 && %Postgrex.INET{address: target_meta.ipv6},
-        preshared_key: preshared_key,
-        local_ice_credentials: ice_credentials.initiator,
-        remote_ice_credentials: ice_credentials.receiver,
-        ice_role: :controlling
-      })
-
-      {:noreply, socket}
-    else
-      false ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: ipv4_string,
-          reason: :disabled
-        })
-
-        {:noreply, socket}
-
-      {:error, :invalid_ipv4} ->
-        Logger.warning("Invalid IPv4 address provided for device access request",
-          client_id: socket.assigns.client.id,
-          account_id: socket.assigns.client.account_id,
-          account_slug: socket.assigns.subject.account.slug,
-          ipv4: ipv4_string
-        )
-
-        {:noreply, socket}
-
-      :offline ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :offline})
-        {:noreply, socket}
-
-      {:error, :forbidden} ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :forbidden})
-        {:noreply, socket}
-    end
-  end
-
   def handle_in(
         "new_gateway_ice_candidates",
         %{"candidates" => candidates, "gateway_id" => gateway_id},
@@ -963,24 +785,291 @@ defmodule PortalAPI.Client.Channel do
 
   defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
 
-  defp parse_ipv4(ipv4_string) when is_binary(ipv4_string) do
+  defp parse_target_address(%{"ipv4" => ipv4, "ipv6" => ipv6})
+       when is_binary(ipv4) and is_binary(ipv6),
+       do: {:error, :ambiguous_address}
+
+  defp parse_target_address(%{"ipv4" => ipv4_string}) when is_binary(ipv4_string) do
     case :inet.parse_address(String.to_charlist(ipv4_string)) do
-      {:ok, {_, _, _, _} = tuple} -> {:ok, tuple}
-      _ -> {:error, :invalid_ipv4}
+      {:ok, {_, _, _, _} = tuple} -> {:ok, {:ipv4, tuple}}
+      _ -> {:error, :invalid_address}
     end
   end
+
+  defp parse_target_address(%{"ipv6" => ipv6_string}) when is_binary(ipv6_string) do
+    case :inet.parse_address(String.to_charlist(ipv6_string)) do
+      {:ok, {_, _, _, _, _, _, _, _} = tuple} -> {:ok, {:ipv6, tuple}}
+      _ -> {:error, :invalid_address}
+    end
+  end
+
+  defp parse_target_address(_), do: {:error, :missing_address}
 
   defp client_fqdns(%Postgrex.INET{address: {a, b, c, d}}, account_key) do
     ["#{a}-#{b}-#{c}-#{d}.#{account_key}.fz.internal"]
   end
 
-  defp client_fqdns(_, _), do: []
-
-  defp find_online_client_by_ipv4(account_id, ipv4_tuple) do
+  defp find_online_client_by_address(account_id, {:ipv4, ipv4_tuple}) do
     case Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) do
       {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
       nil -> :offline
     end
+  end
+
+  defp find_online_client_by_address(account_id, {:ipv6, ipv6_tuple}) do
+    case Presence.Clients.Account.find_by_ipv6(account_id, ipv6_tuple) do
+      {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
+      nil -> :offline
+    end
+  end
+
+  defp handle_create_gateway_flow(
+         resource_id,
+         resource,
+         membership_id,
+         policy_id,
+         expires_at,
+         connected_gateway_ids,
+         socket
+       ) do
+    case Database.all_compatible_gateways_for_client_and_resource(
+           socket.assigns.client_version,
+           resource,
+           socket.assigns.subject.account.id
+         ) do
+      {:ok, [_ | _] = gateways} ->
+        location = {
+          socket.assigns.subject.context.remote_ip_location_lat,
+          socket.assigns.subject.context.remote_ip_location_lon
+        }
+
+        gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
+        gateway_public_key = gateway.latest_session.public_key
+
+        policy_authorization_id = Ecto.UUID.generate()
+
+        preshared_key =
+          generate_preshared_key(
+            socket.assigns.client,
+            socket.assigns.session.public_key,
+            gateway,
+            gateway_public_key
+          )
+
+        ice_credentials =
+          generate_ice_credentials(
+            socket.assigns.session.public_key,
+            socket.assigns.client,
+            gateway,
+            gateway_public_key
+          )
+
+        message =
+          {:authorize_policy, {self(), socket_ref(socket)},
+           %{
+             client:
+               PortalAPI.Gateway.Views.Client.render(
+                 socket.assigns.client,
+                 socket.assigns.session.public_key,
+                 preshared_key,
+                 socket.assigns.subject.context.user_agent
+               ),
+             subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
+             resource: PortalAPI.Gateway.Views.Resource.render(resource),
+             policy_authorization_id: policy_authorization_id,
+             authorization_expires_at: expires_at,
+             ice_credentials: ice_credentials,
+             preshared_key: preshared_key
+           }}
+
+        async_create_policy_authorization(
+          policy_authorization_id,
+          socket.assigns.client,
+          gateway,
+          resource_id,
+          policy_id,
+          membership_id,
+          socket.assigns.subject,
+          expires_at
+        )
+
+        case PG.deliver(gateway.id, message) do
+          :ok ->
+            timer_ref =
+              Process.send_after(
+                self(),
+                {:flow_creation_timeout, resource_id},
+                flow_creation_timeout()
+              )
+
+            socket =
+              assign(
+                socket,
+                :pending_flows,
+                Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
+              )
+
+            {:noreply, socket}
+
+          {:error, :not_found} ->
+            push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+            {:noreply, socket}
+        end
+
+      {:ok, []} ->
+        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+        {:noreply, socket}
+
+      {:error, :version_mismatch} ->
+        push(socket, "flow_creation_failed", %{
+          resource_id: resource_id,
+          reason: :version_mismatch
+        })
+
+        {:noreply, socket}
+    end
+  end
+
+  defp handle_create_pool_flow(resource_id, _resource, payload, socket) do
+    account_id = socket.assigns.client.account_id
+
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
+         {:ok, target} <- parse_target_address(payload),
+         {:ok, _device_id} <-
+           Cache.Client.authorize_device_access(socket.assigns.cache, resource_id, target),
+         {:ok, target_client_id, target_meta} <-
+           find_online_client_by_address(account_id, target) do
+      send_client_device_access_authorized(target_client_id, target_meta, socket)
+      {:noreply, socket}
+    else
+      false ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: :disabled
+        })
+
+        {:noreply, socket}
+
+      {:error, :ambiguous_address} ->
+        Logger.warning("create_flow for pool included both ipv4 and ipv6",
+          client_id: socket.assigns.client.id,
+          resource_id: resource_id
+        )
+
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: :ambiguous_address
+        })
+
+        {:noreply, socket}
+
+      {:error, :missing_address} ->
+        push(socket, "client_device_access_denied", %{
+          resource_id: resource_id,
+          reason: :missing_address
+        })
+
+        {:noreply, socket}
+
+      {:error, :invalid_address} ->
+        Logger.warning("Invalid IP address provided for pool device access request",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"]
+        )
+
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: :invalid_address
+        })
+
+        {:noreply, socket}
+
+      :offline ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: :offline
+        })
+
+        {:noreply, socket}
+
+      {:error, :forbidden} ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: :forbidden
+        })
+
+        {:noreply, socket}
+    end
+  end
+
+  defp send_client_device_access_authorized(target_client_id, target_meta, socket) do
+    client = socket.assigns.client
+    client_public_key = socket.assigns.session.public_key
+
+    target_client = %Portal.Device{
+      id: target_client_id,
+      psk_base: target_meta.psk_base,
+      type: :client
+    }
+
+    preshared_key =
+      Portal.Crypto.psk(
+        client,
+        client_public_key,
+        target_client,
+        target_meta.public_key
+      )
+
+    ice_credentials =
+      generate_ice_credentials(
+        client_public_key,
+        client,
+        target_client,
+        target_meta.public_key
+      )
+
+    account_key = socket.assigns.subject.account.key
+
+    PG.deliver(
+      target_client_id,
+      {:client_device_access_authorized,
+       %{
+         client_id: client.id,
+         client_name: client.name,
+         client_fqdns: client_fqdns(client.ipv4, account_key),
+         client_public_key: client_public_key,
+         client_ipv4: client.ipv4,
+         client_ipv6: client.ipv6,
+         preshared_key: preshared_key,
+         local_ice_credentials: ice_credentials.receiver,
+         remote_ice_credentials: ice_credentials.initiator,
+         ice_role: :controlled
+       }}
+    )
+
+    target_ipv4 = %Postgrex.INET{address: target_meta.ipv4}
+    target_ipv6 = %Postgrex.INET{address: target_meta.ipv6}
+
+    push(socket, "client_device_access_authorized", %{
+      client_id: target_client_id,
+      client_name: target_meta.name,
+      client_fqdns: client_fqdns(target_ipv4, account_key),
+      client_public_key: target_meta.public_key,
+      client_ipv4: target_ipv4,
+      client_ipv6: target_ipv6,
+      preshared_key: preshared_key,
+      local_ice_credentials: ice_credentials.initiator,
+      remote_ice_credentials: ice_credentials.receiver,
+      ice_role: :controlling
+    })
   end
 
   # TODO: Re-enable after verifying compatibility with older clients
@@ -1011,11 +1100,7 @@ defmodule PortalAPI.Client.Channel do
 
   defp init(socket, resources, relays) do
     push(socket, "init", %{
-      # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
-      resources:
-        resources
-        |> Enum.reject(&(&1.type == :static_device_pool))
-        |> Views.Resource.render_many(socket.assigns.session),
+      resources: Views.Resource.render_many(resources, socket.assigns.session),
       # TODO: Re-enable after verifying compatibility with older clients
       # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
@@ -1321,34 +1406,67 @@ defmodule PortalAPI.Client.Channel do
          %Change{op: :insert, struct: %Portal.StaticDevicePoolMember{} = member},
          socket
        ) do
-    {:ok, cache} =
-      Cache.Client.add_static_device_pool_member(
-        socket.assigns.cache,
-        member,
-        socket.assigns.subject
-      )
-
-    {:noreply, assign(socket, cache: cache)}
+    Cache.Client.add_static_device_pool_member(
+      socket.assigns.cache,
+      member,
+      socket.assigns.subject
+    )
+    |> push_resource_updates(socket)
   end
 
   defp handle_change(
          %Change{op: :delete, old_struct: %Portal.StaticDevicePoolMember{} = member},
          socket
        ) do
-    {:ok, ipv4, cache} =
+    {:ok, denied, added, removed_ids, cache} =
       Cache.Client.delete_static_device_pool_member(socket.assigns.cache, member)
 
-    if ipv4 do
-      push(socket, "client_device_access_denied", %{
-        ipv4: to_string(:inet.ntoa(ipv4)),
-        reason: :forbidden
-      })
-    end
+    push_device_access_denied(socket, denied)
+    push_resource_updates({:ok, added, removed_ids, cache}, socket)
+  end
 
-    {:noreply, assign(socket, cache: cache)}
+  # NON-SELF CLIENT DEVICES (members of a pool we have access to)
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.Device{type: :client},
+           struct: %Portal.Device{type: :client} = device
+         },
+         socket
+       ) do
+    Cache.Client.handle_member_device_update(
+      socket.assigns.cache,
+      device,
+      socket.assigns.subject
+    )
+    |> push_resource_updates(socket)
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Device{type: :client} = device},
+         socket
+       ) do
+    {:ok, denied, added, removed_ids, cache} =
+      Cache.Client.handle_member_device_delete(socket.assigns.cache, device)
+
+    push_device_access_denied(socket, denied)
+    push_resource_updates({:ok, added, removed_ids, cache}, socket)
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defp push_device_access_denied(_socket, nil), do: :ok
+
+  defp push_device_access_denied(socket, {ipv4_tuple, ipv6_tuple}) do
+    push(socket, "client_device_access_denied", %{
+      ipv4: to_string(:inet.ntoa(ipv4_tuple)),
+      ipv6: to_string(:inet.ntoa(ipv6_tuple)),
+      reason: :forbidden
+    })
+
+    :ok
+  end
 
   defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
     # Currently, connlib doesn't handle resources changing sites, so we need to delete then create.
@@ -1359,9 +1477,12 @@ defmodule PortalAPI.Client.Channel do
       push(socket, "resource_deleted", resource_id)
     end
 
-    # TODO: Re-enable static_device_pool resources after verifying compatibility with older clients
-    for resource <- added_resources, resource.type != :static_device_pool do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource, socket.assigns.session))
+    for resource <- added_resources do
+      push(
+        socket,
+        "resource_created_or_updated",
+        Views.Resource.render(resource, socket.assigns.session)
+      )
     end
 
     {:noreply, assign(socket, cache: cache)}
@@ -1539,8 +1660,8 @@ defmodule PortalAPI.Client.Channel do
 
       sup_pid ->
         session_meta = %{
-          ipv4: socket.assigns.client.ipv4 && socket.assigns.client.ipv4.address,
-          ipv6: socket.assigns.client.ipv6 && socket.assigns.client.ipv6.address,
+          ipv4: socket.assigns.client.ipv4.address,
+          ipv6: socket.assigns.client.ipv6.address,
           name: socket.assigns.client.name,
           public_key: socket.assigns.session.public_key,
           psk_base: socket.assigns.client.psk_base

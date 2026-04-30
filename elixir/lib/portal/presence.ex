@@ -88,6 +88,14 @@ defmodule Portal.Presence do
         end)
       end
 
+      def find_by_ipv6(account_id, ipv6_tuple) when is_tuple(ipv6_tuple) do
+        account_id
+        |> list()
+        |> Enum.find_value(fn {client_id, %{metas: [meta | _]}} ->
+          if meta.ipv6 == ipv6_tuple, do: {client_id, meta}
+        end)
+      end
+
       defp topic(account_id) do
         "presences:account_clients:" <> account_id
       end

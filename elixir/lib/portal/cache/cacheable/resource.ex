@@ -7,12 +7,19 @@ defmodule Portal.Cache.Cacheable.Resource do
     :address_description,
     :ip_stack,
     :filters,
+    :devices,
     :site
   ]
 
   @type filter :: %{
           protocol: :tcp | :udp | :icmp,
           ports: [String.t()]
+        }
+
+  @type pool_device :: %{
+          id: Ecto.UUID.t(),
+          ipv4: Postgrex.INET.t(),
+          ipv6: Postgrex.INET.t()
         }
 
   @type t :: %__MODULE__{
@@ -23,6 +30,7 @@ defmodule Portal.Cache.Cacheable.Resource do
           address_description: String.t(),
           ip_stack: atom(),
           filters: [filter()],
+          devices: [pool_device()] | nil,
           site: Portal.Cache.Cacheable.Site.t() | nil
         }
 end
