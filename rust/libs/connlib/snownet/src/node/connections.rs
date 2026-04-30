@@ -171,7 +171,7 @@ where
     ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
         self.established
             .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay.id == id).then_some((*cid, c)))
+            .filter_map(move |(cid, c)| (c.relay == id).then_some((*cid, c)))
     }
 
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
@@ -434,7 +434,7 @@ mod tests {
 
     use crate::{
         RelaySocket,
-        node::{ConnectionState, SelectedRelay, allocations::Allocations},
+        node::{ConnectionState, allocations::Allocations},
     };
     use stun_codec::rfc5389::attributes::{Realm, Username};
 
@@ -517,7 +517,7 @@ mod tests {
         );
 
         // The connection still uses relay 1 because no new relay was available.
-        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 1);
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay, 1);
 
         allocations.upsert(
             2,
@@ -542,7 +542,7 @@ mod tests {
         );
 
         // The connection should now be using the new relay (id 2).
-        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay, 2);
     }
 
     fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
@@ -615,7 +615,7 @@ mod tests {
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
             next_wg_timer_update: Instant::now(),
             last_proactive_handshake_sent_at: None,
-            relay: SelectedRelay { id: relay_id },
+            relay: relay_id,
             state: crate::node::ConnectionState::Connecting {
                 ip_buffer: AllocRingBuffer::new(1),
                 session_socket: None,

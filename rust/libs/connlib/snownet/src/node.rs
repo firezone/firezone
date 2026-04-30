@@ -225,7 +225,7 @@ where
 
             // Re-seed connection with all candidates.
             let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
+                seed_agent_with_local_candidates(c.relay, &mut c.agent, &self.allocations);
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -282,7 +282,6 @@ where
             preshared_key,
             selected_relay,
             index,
-            now,
             now,
         );
 
@@ -385,8 +384,8 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut_by_id(&c.relay.id) else {
-            tracing::debug!(rid = %c.relay.id, "Unknown relay");
+        let Some(allocation) = self.allocations.get_mut_by_id(&c.relay) else {
+            tracing::debug!(rid = %c.relay, "Unknown relay");
             return;
         };
 
@@ -667,7 +666,6 @@ where
         key: x25519::StaticSecret,
         relay: RId,
         index: Index,
-        intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
         agent.handle_timeout(now);
@@ -708,9 +706,9 @@ where
             next_wg_timer_update: now,
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
-            intent_sent_at,
+            intent_sent_at: now,
             remote_pub_key: remote,
-            relay: SelectedRelay { id: relay },
+            relay,
             state: ConnectionState::Connecting {
                 ip_buffer: AllocRingBuffer::new(128),
                 session_socket: None,
@@ -1143,7 +1141,7 @@ struct Connection<RId> {
     last_proactive_handshake_sent_at: Option<Instant>,
 
     /// The relay we have selected for this connection.
-    relay: SelectedRelay<RId>,
+    relay: RId,
 
     state: ConnectionState,
 
@@ -1161,11 +1159,6 @@ struct Connection<RId> {
     buffer_pool: BufferPool<Vec<u8>>,
 
     poll_timeout_cache: TimeoutCache,
-}
-
-#[derive(Debug)]
-struct SelectedRelay<RId> {
-    id: RId,
 }
 
 impl<RId> Connection<RId>
@@ -1243,7 +1236,7 @@ where
                 } => {
                     let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
 
-                    if source_relay.is_some_and(|r| self.relay.id != r) {
+                    if source_relay.is_some_and(|r| self.relay != r) {
                         tracing::warn!(
                             "Nominated a relay different from what we set out to! Weird?"
                         );
@@ -1312,7 +1305,7 @@ where
 
                     // Only log if the socket actually changes.
                     if old != Some(remote_socket) {
-                        let relay = self.relay.id;
+                        let relay = self.relay;
 
                         tracing::info!(
                             old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
@@ -1417,7 +1410,7 @@ where
                 if let Some(socket) = pick_outbound_wg_socket(b, session, nominated) {
                     self.outbound_handshakes.record(b, socket);
                     transmits.extend(make_owned_transmit(
-                        self.relay.id,
+                        self.relay,
                         socket,
                         b,
                         &self.buffer_pool,
@@ -1445,7 +1438,7 @@ where
             self.outbound_handshakes.record(packet, socket);
 
             transmits.extend(make_owned_transmit(
-                self.relay.id,
+                self.relay,
                 socket,
                 packet,
                 &self.buffer_pool,
@@ -1504,8 +1497,8 @@ where
                 ecn: packet.ecn(),
             })),
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-                let Some(allocation) = allocations.get_mut_by_id(&self.relay.id) else {
-                    tracing::warn!(relay = %self.relay.id, "No allocation");
+                let Some(allocation) = allocations.get_mut_by_id(&self.relay) else {
+                    tracing::warn!(relay = %self.relay, "No allocation");
                     return Ok(None);
                 };
                 let Some(encode_ok) =
@@ -1618,7 +1611,7 @@ where
                 {
                     tracing::debug!(
                         %cid,
-                        socket = %socket.fmt(self.relay.id),
+                        socket = %socket.fmt(self.relay),
                         "Pinning WG data socket to write path of completed handshake"
                     );
                     self.state.set_session_socket(socket);
@@ -1642,7 +1635,7 @@ where
                 // exclusively via `HandshakeResponse.receiver_idx`,
                 // which matches an outbound *init*'s `sender_idx`.
                 transmits.extend(make_owned_transmit(
-                    self.relay.id,
+                    self.relay,
                     send_socket,
                     bytes,
                     &self.buffer_pool,
@@ -1696,7 +1689,7 @@ where
         self.outbound_handshakes.record(bytes, socket);
 
         transmits.extend(make_owned_transmit(
-            self.relay.id,
+            self.relay,
             socket,
             bytes,
             &self.buffer_pool,
@@ -1754,9 +1747,9 @@ where
     ) where
         TId: fmt::Display + Copy,
     {
-        tracing::info!(%cid, old = %self.relay.id, new = %new_relay, "Attempting to migrate connection to new relay");
+        tracing::info!(%cid, old = %self.relay, new = %new_relay, "Attempting to migrate connection to new relay");
 
-        self.relay.id = new_relay;
+        self.relay = new_relay;
 
         self.candidate_epoch.inc();
 
