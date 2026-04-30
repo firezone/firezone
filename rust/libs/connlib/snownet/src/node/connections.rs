@@ -274,9 +274,14 @@ where
         self.established.len()
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+    /// Replace each established connection's [`is::IceAgent`] with a fresh
+    /// one, preserving the WireGuard session and routing identity.
+    ///
+    /// See [`Connection::recreate_agent`] for the per-connection details.
+    pub(crate) fn recreate_agents(&mut self, unix_ms: u64) {
+        for connection in self.established.values_mut() {
+            connection.recreate_agent(unix_ms);
+        }
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
