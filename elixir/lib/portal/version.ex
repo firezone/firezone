@@ -71,4 +71,45 @@ defmodule Portal.Version do
         latest_session: session
       }),
       do: resource_cannot_change_sites_on_client?(session)
+
+  # Static device pool resources require:
+  #   apple    >= 1.5.16
+  #   gui      >= 1.5.13 (windows / linux gui)
+  #   headless >= 1.5.9  (windows / linux headless)
+  #   android  -- not yet supported
+  def client_supports_static_device_pools?(%ClientSession{version: nil}), do: false
+
+  def client_supports_static_device_pools?(%ClientSession{user_agent: nil}), do: false
+
+  def client_supports_static_device_pools?(%ClientSession{} = session) do
+    if String.contains?(session.user_agent, "headless-client/") do
+      Version.compare(session.version, "1.5.9") != :lt
+    else
+      case ComponentVersions.get_component_type_from_user_agent(session.user_agent) do
+        :apple -> Version.compare(session.version, "1.5.16") != :lt
+        :gui -> Version.compare(session.version, "1.5.13") != :lt
+        :android -> false
+      end
+    end
+  end
+
+  def client_supports_static_device_pools?(%Device{
+        type: :client,
+        latest_session: nil
+      }),
+      do: false
+
+  def client_supports_static_device_pools?(%Device{
+        type: :client,
+        actor: %Portal.Actor{type: :service_account},
+        latest_session: %ClientSession{version: version}
+      })
+      when not is_nil(version),
+      do: Version.compare(version, "1.5.9") != :lt
+
+  def client_supports_static_device_pools?(%Device{
+        type: :client,
+        latest_session: session
+      }),
+      do: client_supports_static_device_pools?(session)
 end

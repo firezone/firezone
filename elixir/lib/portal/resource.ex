@@ -350,6 +350,21 @@ defmodule Portal.Resource do
   # Version can be nil when derive_version/1 fails to parse the user agent
   def adapt_resource_for_version(resource, nil), do: resource
 
+  def adapt_resource_for_version(
+        %{type: :static_device_pool} = resource,
+        %Portal.ClientSession{} = session
+      ) do
+    if Portal.Version.client_supports_static_device_pools?(session) do
+      adapt_resource_for_version(resource, session.version)
+    else
+      nil
+    end
+  end
+
+  def adapt_resource_for_version(resource, %Portal.ClientSession{version: version}) do
+    adapt_resource_for_version(resource, version)
+  end
+
   def adapt_resource_for_version(resource, client_or_gateway_version) do
     cond do
       # internet resources require client and gateway >= 1.3.0

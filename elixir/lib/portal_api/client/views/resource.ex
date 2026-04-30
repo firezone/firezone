@@ -44,14 +44,14 @@ defmodule PortalAPI.Client.Views.Resource do
     |> put_sites([Views.Site.render(resource.site)], site_key)
   end
 
-  defp render_resource(%{type: :static_device_pool} = resource, site_key) do
+  defp render_resource(%{type: :static_device_pool} = resource, _site_key) do
     %{
       id: resource.id,
       type: :static_device_pool,
       name: resource.name,
+      devices: render_devices(resource.devices),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
-    |> put_sites([], site_key)
   end
 
   defp render_resource(%{} = resource, site_key) do
@@ -122,5 +122,13 @@ defmodule PortalAPI.Client.Views.Resource do
 
   defp put_sites(attrs, sites, site_key) do
     Map.put(attrs, site_key, sites)
+  end
+
+  defp render_devices(nil), do: []
+
+  defp render_devices(devices) do
+    Enum.map(devices, fn %{id: id, ipv4: ipv4, ipv6: ipv6} ->
+      %{client_id: id, ipv4: ipv4, ipv6: ipv6}
+    end)
   end
 end

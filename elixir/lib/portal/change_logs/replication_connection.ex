@@ -33,6 +33,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     "portal_sessions" => Portal.PortalSession,
     "resources" => Portal.Resource,
     "sites" => Portal.Site,
+    "static_device_pool_members" => Portal.StaticDevicePoolMember,
     "client_tokens" => Portal.ClientToken,
     "outbound_emails" => Portal.OutboundEmail,
     "outbound_email_deliveries" => Portal.OutboundEmailDelivery,
