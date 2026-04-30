@@ -12,9 +12,7 @@ mod stats;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use node::{
-    Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, Transmit, UnknownConnection,
-};
+pub use node::{Credentials, Event, IceRole, NoTurnServers, Node, Transmit, UnknownConnection};
 pub use stats::{ConnectionStats, NodeStats};
 
 pub fn is_wireguard(payload: &[u8]) -> bool {
