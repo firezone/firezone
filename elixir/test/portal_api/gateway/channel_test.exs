@@ -226,10 +226,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Start a fresh scope under the same name so the retry succeeds
       start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
 
-      # Wait for the 50ms retry + re-registration
-      Process.sleep(200)
-
-      assert :ok = PG.deliver(gateway.id, :ping)
+      wait_for(fn ->
+        assert :ok = PG.deliver(gateway.id, :ping)
+      end)
     end
 
     test "ignores :register when already registered to the current scope", %{
@@ -269,10 +268,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Start a fresh scope so the scheduled retry can succeed
       start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
 
-      # Wait for the 50ms retry + re-registration
-      Process.sleep(200)
-
-      assert :ok = PG.deliver(gateway.id, :ping)
+      wait_for(fn ->
+        assert :ok = PG.deliver(gateway.id, :ping)
+      end)
     end
   end
 
@@ -338,12 +336,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Re-register before the 50ms retry fires
       Process.register(presence_pid, Portal.Presence)
 
-      # Wait for the retry to fire and succeed
-      Process.sleep(100)
-      :sys.get_state(socket.channel_pid)
+      wait_for(fn ->
+        :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
-             |> Map.has_key?(gateway.id)
+        assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+               |> Map.has_key?(gateway.id)
+      end)
     end
 
     test "re-tracks presence when already tracked (idempotent)", %{

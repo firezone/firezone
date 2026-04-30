@@ -924,10 +924,9 @@ defmodule PortalAPI.Client.ChannelTest do
       # Start a fresh scope under the same name so the retry succeeds
       start_supervised!(%{id: scope, start: {:pg, :start_link, [scope]}})
 
-      # Wait for the 50ms retry + re-registration
-      Process.sleep(200)
-
-      assert :ok = PG.deliver(client.id, :ping)
+      wait_for(fn ->
+        assert :ok = PG.deliver(client.id, :ping)
+      end)
     end
 
     test "ignores :register when already registered to the current scope", %{
@@ -983,11 +982,10 @@ defmodule PortalAPI.Client.ChannelTest do
       # Re-register before the 50ms retry fires
       Process.register(presence_pid, Portal.Presence)
 
-      # Wait for the retry to fire and succeed
-      Process.sleep(100)
-      :sys.get_state(socket.channel_pid)
-
-      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+      wait_for(fn ->
+        :sys.get_state(socket.channel_pid)
+        assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+      end)
     end
 
     test "re-tracks presence when already tracked (idempotent)", %{
@@ -1087,11 +1085,9 @@ defmodule PortalAPI.Client.ChannelTest do
           site: site
         )
 
-      # Create a policy that becomes valid in 3 seconds.
-      # Using a larger buffer than 1s to avoid flakes when fixture
-      # creation + PubSub delivery takes longer than expected.
       now = DateTime.utc_now()
       shortly_later = DateTime.add(now, 3, :second)
+      Portal.Config.put_env_override(:portal, :current_time_fn, fn -> now end)
 
       day_letter =
         case Date.day_of_week(shortly_later) do
@@ -1147,7 +1143,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "resource_created_or_updated", _payload
       refute_push "resource_deleted", _payload
 
-      Process.sleep(3050)
+      Portal.Config.put_env_override(:portal, :current_time_fn, fn -> shortly_later end)
 
       send(socket.channel_pid, :recompute_authorized_resources)
 
@@ -3216,13 +3212,13 @@ defmodule PortalAPI.Client.ChannelTest do
                preshared_key: preshared_key
              } = payload
 
-      Process.sleep(100)
-
-      assert policy_authorization =
-               Repo.get_by(Portal.PolicyAuthorization,
-                 initiating_device_id: client.id,
-                 resource_id: resource.id
-               )
+      policy_authorization =
+        wait_for(fn ->
+          assert Repo.get_by(Portal.PolicyAuthorization,
+                   initiating_device_id: client.id,
+                   resource_id: resource.id
+                 )
+        end)
 
       assert policy_authorization.initiating_device_id == client.id
       assert policy_authorization.resource_id == resource_id
@@ -3547,13 +3543,14 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
-      Process.sleep(100)
 
-      assert Repo.get_by(Portal.PolicyAuthorization,
-               resource_id: resource.id,
-               receiving_device_id: gateway2.id,
-               account_id: account.id
-             )
+      wait_for(fn ->
+        assert Repo.get_by(Portal.PolicyAuthorization,
+                 resource_id: resource.id,
+                 receiving_device_id: gateway2.id,
+                 account_id: account.id
+               )
+      end)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -3561,13 +3558,14 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
-      Process.sleep(100)
 
-      assert Repo.get_by(Portal.PolicyAuthorization,
-               resource_id: resource.id,
-               receiving_device_id: gateway1.id,
-               account_id: account.id
-             )
+      wait_for(fn ->
+        assert Repo.get_by(Portal.PolicyAuthorization,
+                 resource_id: resource.id,
+                 receiving_device_id: gateway1.id,
+                 account_id: account.id
+               )
+      end)
     end
   end
 

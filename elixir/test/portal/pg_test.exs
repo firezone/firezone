@@ -1,5 +1,6 @@
 defmodule Portal.PGTest do
   use ExUnit.Case, async: true
+  import Portal.Test.Assertions
   alias Portal.PG
 
   setup do
@@ -123,10 +124,9 @@ defmodule Portal.PGTest do
       send(pid, :stop)
       assert_receive {:DOWN, _, :process, ^pid, :normal}
 
-      # :pg cleanup is async; give it a moment
-      Process.sleep(50)
-
-      assert {:error, :not_found} = PG.deliver(client_id, :ping)
+      wait_for(fn ->
+        assert {:error, :not_found} = PG.deliver(client_id, :ping)
+      end)
     end
   end
 
