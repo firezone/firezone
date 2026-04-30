@@ -155,7 +155,7 @@ defmodule PortalWeb.HomeHTML do
 
     <div class="mt-6 text-xs text-[var(--text-tertiary)] space-y-1.5 text-center">
       <p :if={!PortalWeb.Authentication.client_sign_in?(@params)}>
-        Want to setup a new Organization?
+        Want to set up a new Organization?
         <a href={~p"/sign_up"} class={[link_style()]}>Sign up here.</a>
       </p>
       <p :if={!PortalWeb.Authentication.client_sign_in?(@params)}>

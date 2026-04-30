@@ -119,7 +119,7 @@ defmodule PortalWeb.HomeControllerTest do
         conn = get(conn, ~p"/sign_in?#{%{"as" => client}}")
         html = response(conn, 200)
 
-        refute html =~ "Want to setup a new Organization?"
+        refute html =~ "Want to set up a new Organization?"
         refute html =~ "Not sure where to start?"
       end
     end
