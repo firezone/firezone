@@ -113,7 +113,7 @@ hyper-util = "0.1.20"
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
-is = "0.8.0"
+is = { git = "https://github.com/algesten/str0m", branch = "main" }
 itertools = "0.14.0"
 jni = "0.21.1"
 keyring-core = "0.7.3"
