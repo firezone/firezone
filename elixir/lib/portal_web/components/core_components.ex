@@ -983,6 +983,7 @@ defmodule PortalWeb.CoreComponents do
       assigns
       |> assign(:target_id, target_id)
       |> assign_new(:trigger, fn -> "hover" end)
+      |> assign(:menu?, assigns[:trigger] == "click")
 
     ~H"""
     <span
@@ -991,16 +992,23 @@ defmodule PortalWeb.CoreComponents do
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
       data-popover-trigger={@trigger}
+      aria-describedby={if not @menu?, do: @target_id}
+      tabindex={if not @menu?, do: "0"}
     >
       {render_slot(@target)}
     </span>
 
-    <div data-popover id={@target_id} role="tooltip" class={~w[
-      absolute z-10 invisible inline-block
-      text-xs text-neutral-500 transition-opacity
-      duration-50 bg-white border border-neutral-200
-      rounded-md shadow-xs opacity-0
-      ]}>
+    <div
+      data-popover
+      id={@target_id}
+      role={if @menu?, do: "menu", else: "tooltip"}
+      class={~w[
+        fixed z-10 invisible inline-block
+        text-xs text-neutral-500 transition-opacity
+        duration-50 bg-white border border-neutral-200
+        rounded-md shadow-xs opacity-0
+      ]}
+    >
       <div class="px-3 py-2">
         {render_slot(@content)}
       </div>

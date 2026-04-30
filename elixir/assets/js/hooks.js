@@ -1,4 +1,4 @@
-import { Popover } from "flowbite";
+import { Popover } from "./popover";
 
 let Hooks = {};
 
@@ -79,80 +79,28 @@ Hooks.ConfirmDialog = {
 
 Hooks.Popover = {
   mounted() {
-    const $triggerEl = this.el;
-    const $targetEl = document.getElementById(
-      $triggerEl.getAttribute("data-popover-target-id")
-    );
-
-    const placement =
-      $triggerEl.getAttribute("data-popover-placement") || "top";
-    const triggerType =
-      $triggerEl.getAttribute("data-popover-trigger") || "hover";
-
-    const options = {
-      placement: placement,
-      triggerType: triggerType,
-      offset: 5,
-    };
-
-    // Store the popover instance so it can be cleaned up later
-    this.popover = new Popover($targetEl, $triggerEl, options);
-
-    // For click trigger type, manually handle toggle to ensure it works properly
-    if (triggerType === "click") {
-      this.clickHandler = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.popover.toggle();
-      };
-
-      // Find the actual button element inside the trigger
-      const button = $triggerEl.querySelector("button");
-      if (button) {
-        button.addEventListener("click", this.clickHandler);
-      }
-    }
+    this.setupPopover();
   },
 
+  // The `target_id` in the Elixir component is regenerated on every render, so
+  // a LiveView patch that updates this hook's element in place would leave the
+  // Popover instance pointing at a stale (now-removed) target node. Tear down
+  // and rebuild on update so the references stay in sync with the DOM.
   updated() {
-    // Clean up old event listeners and popover
-    if (this.popover) {
-      const $triggerEl = this.el;
-      const triggerType =
-        $triggerEl.getAttribute("data-popover-trigger") || "hover";
-
-      if (triggerType === "click" && this.clickHandler) {
-        const button = $triggerEl.querySelector("button");
-        if (button) {
-          button.removeEventListener("click", this.clickHandler);
-        }
-      }
-
-      this.popover.hide();
-      this.popover.destroyAndRemoveInstance();
-    }
-
-    // Recreate the popover with updated DOM
-    this.mounted();
+    this.popover?.destroy();
+    this.setupPopover();
   },
 
   destroyed() {
-    // Clean up event listeners and popover instance
-    if (this.popover) {
-      const $triggerEl = this.el;
-      const triggerType =
-        $triggerEl.getAttribute("data-popover-trigger") || "hover";
+    this.popover?.destroy();
+  },
 
-      if (triggerType === "click" && this.clickHandler) {
-        const button = $triggerEl.querySelector("button");
-        if (button) {
-          button.removeEventListener("click", this.clickHandler);
-        }
-      }
-
-      this.popover.hide();
-      this.popover.destroyAndRemoveInstance();
-    }
+  setupPopover() {
+    this.popover = new Popover(this.el, {
+      target: this.el.getAttribute("data-popover-target-id"),
+      placement: this.el.getAttribute("data-popover-placement") || "top",
+      triggerType: this.el.getAttribute("data-popover-trigger") || "hover",
+    });
   },
 };
 

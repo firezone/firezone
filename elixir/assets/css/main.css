@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 @plugin "@tailwindcss/forms";
-@plugin "flowbite/plugin";
 @import "./scrollbar.css";
 
 /* Start: This may not be needed after UI refactor */
