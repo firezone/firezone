@@ -32,16 +32,119 @@
     >
     </script>
   </head>
-  <body class="bg-neutral-50">
-    <div class="flex items-center h-screen p-16 bg-gray-50">
-      <div class="container mx-auto flex flex-col items-center">
-        <div class="flex flex-col gap-6 max-w-md text-center">
-          <img src={~p"/images/logo.svg"} class="mr-5 h-32" alt="Firezone Logo" />
-          <h2 class="font-extrabold text-9xl text-primary-600">
-            <span class="sr-only">Error</span>404
-          </h2>
-          <p class="text-2xl md:text-3xl">Sorry, we couldn't find this page.</p>
+  <body class="bg-[var(--canvas)]">
+    <div class="relative flex items-center justify-center h-screen overflow-hidden">
+      <div class="absolute inset-0 dot-grid opacity-60 pointer-events-none"></div>
+      <div class="absolute inset-0 pointer-events-none error-radial-fade"></div>
+      <div class="relative flex flex-col items-center text-center max-w-md px-6">
+        <div class="mb-10">
+          <img src={~p"/images/logo-text.svg"} alt="Firezone" class="h-8" />
         </div>
+        <div class="relative flex items-center justify-center mb-8">
+          <span class="text-[220px] font-black leading-none tracking-tighter select-none opacity-[0.05] text-[var(--text-primary)]">
+            404
+          </span>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <svg
+              width="220"
+              height="110"
+              viewBox="0 0 220 110"
+              fill="none"
+              class="overflow-visible"
+            >
+              <line
+                x1="30"
+                y1="55"
+                x2="80"
+                y2="30"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <line
+                x1="30"
+                y1="55"
+                x2="80"
+                y2="80"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <line
+                x1="80"
+                y1="30"
+                x2="110"
+                y2="55"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <line
+                x1="80"
+                y1="80"
+                x2="110"
+                y2="55"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <line
+                x1="110"
+                y1="55"
+                x2="155"
+                y2="55"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+                stroke-dasharray="5 4"
+              />
+              <circle
+                cx="30"
+                cy="55"
+                r="8"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="30" cy="55" r="3" fill="var(--text-secondary)" />
+              <circle
+                cx="80"
+                cy="30"
+                r="8"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="80" cy="30" r="3" fill="var(--text-secondary)" />
+              <circle
+                cx="80"
+                cy="80"
+                r="8"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="80" cy="80" r="3" fill="var(--text-secondary)" />
+              <circle
+                cx="110"
+                cy="55"
+                r="10"
+                fill="var(--surface-raised)"
+                stroke="var(--brand)"
+                stroke-width="2"
+              />
+              <circle cx="110" cy="55" r="4" fill="var(--brand)" />
+              <circle
+                cx="175"
+                cy="55"
+                r="10"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+                stroke-dasharray="3 3"
+              />
+            </svg>
+          </div>
+        </div>
+        <h1 class="text-lg font-semibold text-[var(--text-primary)] mb-2">Page not found</h1>
+        <p class="text-sm text-[var(--text-secondary)] leading-relaxed mb-8">
+          This route doesn't exist or has been moved. Double-check the URL or head back somewhere familiar.
+        </p>
       </div>
     </div>
   </body>

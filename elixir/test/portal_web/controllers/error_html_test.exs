@@ -7,7 +7,7 @@ defmodule PortalWeb.ErrorHTMLTest do
         get(conn, ~p"/error/404")
       end
 
-    assert body =~ "Sorry, we couldn't find this page"
+    assert body =~ "Page not found"
   end
 
   test "renders 500.html", %{conn: conn} do
@@ -17,12 +17,12 @@ defmodule PortalWeb.ErrorHTMLTest do
       end
 
     assert body =~ "Something went wrong"
-    assert body =~ "We've already been notified and will get it fixed as soon as possible"
+    assert body =~ "An unexpected error occurred on our end"
   end
 
   test "renders 404.html without csp_nonce", %{conn: conn} do
     html = Phoenix.Template.render_to_string(PortalWeb.ErrorHTML, "404", "html", conn: conn)
-    assert html =~ "Sorry, we couldn't find this page"
+    assert html =~ "Page not found"
   end
 
   test "renders 500.html without csp_nonce", %{conn: conn} do

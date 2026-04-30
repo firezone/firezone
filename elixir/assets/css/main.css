@@ -43,6 +43,30 @@ html {
   background-size: 24px 24px;
 }
 
+.error-radial-fade {
+  background: radial-gradient(ellipse 60% 60% at 50% 50%, transparent 40%, var(--canvas) 100%);
+}
+
+@keyframes pulse-ring {
+  0% { opacity: 0.6; transform: scale(0.8); }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+
+@keyframes pulse-ring-inner {
+  0% { opacity: 0.5; transform: scale(0.85); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s ease-out infinite;
+  transform-origin: 110px 55px;
+}
+
+.pulse-ring-inner {
+  animation: pulse-ring-inner 2s ease-out 0.4s infinite;
+  transform-origin: 110px 55px;
+}
+
 :root {
   /* Surfaces */
   --canvas: #eef1f6;
