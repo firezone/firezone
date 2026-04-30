@@ -13,6 +13,19 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     %{account: account, actor: actor}
   end
 
+  defp open_directory_actions(lv, directory_id) do
+    lv
+    |> element("button[phx-click='toggle_directory_actions'][phx-value-id='#{directory_id}']")
+    |> render_click()
+  end
+
+  defp has_directory_action_button?(html, event, directory_id) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find("button[phx-click='#{event}'][phx-value-id='#{directory_id}']")
+    |> Enum.any?()
+  end
+
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
       path = ~p"/#{account}/settings/directory_sync"
@@ -119,6 +132,32 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       html = render_click(lv, "delete_directory", %{"id" => directory.id})
       assert html =~ "Directory deleted successfully."
       refute html =~ "Ops Google"
+    end
+
+    test "closes the actions menu when navigating to edit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = google_directory_fixture(account: account, name: "Edit From Menu")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = open_directory_actions(lv, directory.id)
+      assert has_directory_action_button?(html, "sync_directory", directory.id)
+
+      lv
+      |> element("a[href='/" <> "#{account.slug}/settings/directory_sync/google/#{directory.id}/edit']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      html = render(lv)
+      assert html =~ "Edit Edit From Menu"
+      refute has_directory_action_button?(html, "sync_directory", directory.id)
     end
   end
 

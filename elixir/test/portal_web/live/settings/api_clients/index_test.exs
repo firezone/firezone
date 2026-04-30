@@ -15,10 +15,29 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
 
   defp request_confirm(lv, action, actor_id) do
     lv
+    |> element("button[phx-click='toggle_actor_actions'][phx-value-id='#{actor_id}']")
+    |> render_click()
+
+    lv
     |> element(
       "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{actor_id}']"
     )
     |> render_click()
+  end
+
+  defp open_actor_actions(lv, actor_id) do
+    lv
+    |> element("button[phx-click='toggle_actor_actions'][phx-value-id='#{actor_id}']")
+    |> render_click()
+  end
+
+  defp has_actor_action_button?(html, action, actor_id) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find(
+      "button[phx-click='request_confirm'][phx-value-action='#{action}'][phx-value-id='#{actor_id}']"
+    )
+    |> Enum.any?()
   end
 
   describe "unauthorized" do
@@ -210,6 +229,33 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
 
       render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
       assert_patch(lv, ~p"/#{account}/settings/api_clients")
+    end
+
+    test "closes the actions menu when navigating to edit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      api_client = api_client_fixture(account: account, name: "Edit From Menu")
+      api_token_fixture(account: account, actor: api_client)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients")
+
+      html = open_actor_actions(lv, api_client.id)
+      assert has_actor_action_button?(html, "toggle", api_client.id)
+
+      lv
+      |> element("a[href='/" <> "#{account.slug}/settings/api_clients/#{api_client.id}/edit']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/settings/api_clients/#{api_client}/edit")
+
+      html = render(lv)
+      assert html =~ "Edit API Token"
+      refute has_actor_action_button?(html, "toggle", api_client.id)
     end
 
     test "opens and cancels disable confirmation", %{conn: conn, account: account, actor: actor} do

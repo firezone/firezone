@@ -1101,6 +1101,35 @@ defmodule PortalWeb.CoreComponents do
   end
 
   @doc """
+  Renders an actions dropdown shell with a standard overflow trigger.
+  """
+  attr :open, :boolean, required: true
+  attr :close_event, :string, required: true
+  attr :button_class, :any,
+    default:
+      "flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+  attr :menu_class, :any,
+    default:
+      "absolute right-0 top-full mt-1 w-44 rounded-md border border-[var(--border)] bg-[var(--surface-overlay)] shadow-lg z-10 py-1"
+  attr :icon_class, :string, default: "w-4 h-4"
+  attr :trigger_icon, :string, default: "ri-more-2-line"
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def actions_dropdown(assigns) do
+    ~H"""
+    <div class="relative shrink-0">
+      <button type="button" class={@button_class} {@rest}>
+        <.icon name={@trigger_icon} class={@icon_class} />
+      </button>
+      <div :if={@open} phx-click-away={@close_event} class={@menu_class}>
+        {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Renders online or offline status using an `online?` field of the schema.
   """
   attr :schema, :any, required: true
