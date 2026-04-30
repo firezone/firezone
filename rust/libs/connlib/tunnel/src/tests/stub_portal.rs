@@ -8,7 +8,11 @@ use super::{
 use crate::{
     client,
     client::{DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource},
-    messages::{DevicePoolMember, UpstreamDo53, UpstreamDoH, gateway},
+    messages::{
+        UpstreamDo53, UpstreamDoH,
+        client::DevicePoolMember,
+        gateway,
+    },
     proptest::*,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -526,10 +530,10 @@ fn realize_static_device_pool_plans(
                 name,
                 filters,
                 n_online_members,
-                n_offline_members,
+                offline_members,
             } = plan;
 
-            let online_members = online_pool
+            let online_devices = online_pool
                 .iter()
                 .take(n_online_members)
                 .map(|(cid, c)| DevicePoolMember {
@@ -538,14 +542,13 @@ fn realize_static_device_pool_plans(
                     ipv6: Ipv6Network::new(c.ipv6, 128).unwrap(),
                 });
 
-            let offline_members = (0..n_offline_members).map(|i| DevicePoolMember {
-                // Synthetic client IDs: derive deterministically from the resource id and offset.
-                id: ClientId::from_u128(u128::from_le_bytes(*id.as_bytes()) ^ (i as u128 + 1)),
+            let offline_devices = offline_members.into_iter().map(|cid| DevicePoolMember {
+                id: cid,
                 ipv4: Ipv4Network::new(tunnel_ip4s.next().unwrap(), 32).unwrap(),
                 ipv6: Ipv6Network::new(tunnel_ip6s.next().unwrap(), 128).unwrap(),
             });
 
-            let devices = online_members.chain(offline_members).collect();
+            let devices = online_devices.chain(offline_devices).collect();
 
             let resource = StaticDevicePoolResource {
                 id,

@@ -12,7 +12,9 @@ mod tracked_state;
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 #[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
+pub(crate) use resource::{
+    CidrResource, DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource,
+};
 pub(crate) use resource::{InternetResource, Resource};
 
 use crate::client::dns_cache::DnsCache;
