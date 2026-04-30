@@ -2,6 +2,7 @@ mod allocations;
 mod connection_state;
 mod connections;
 mod inflight_stun_requests;
+mod outbound_handshakes;
 mod timeout_cache;
 
 pub use connections::UnknownConnection;
@@ -12,6 +13,7 @@ use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
+use crate::node::outbound_handshakes::OutboundHandshakes;
 use crate::node::timeout_cache::TimeoutCache;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
@@ -33,7 +35,7 @@ use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
@@ -812,7 +814,7 @@ where
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
-            outbound_handshakes: BTreeMap::new(),
+            outbound_handshakes: Default::default(),
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
@@ -1266,21 +1268,7 @@ struct Connection<RId> {
     state: ConnectionState,
     disconnected_at: Option<Instant>,
 
-    /// Sockets used for outbound WireGuard handshakes,
-    /// keyed by the session component of our local sender
-    /// index — see [`boringtun::noise::Index`].
-    ///
-    /// Populated on every [`HandshakeInit`](boringtun::noise::HandshakeInit) we emit,
-    /// with the outbound socket that frame rode on.
-    /// When the [`HandshakeResponse`] lands and authenticates, we look up the
-    /// *write* path of that handshake — independent of where the
-    /// reply happened to arrive on, which makes us tolerant of
-    /// reorderings between concurrent handshakes on different paths.
-    ///
-    /// Keyed by the 8-bit rotating session component (the global
-    /// part is constant per [`Tunn`]), so the map is bounded to 256
-    /// entries.
-    outbound_handshakes: BTreeMap<u8, PeerSocket>,
+    outbound_handshakes: OutboundHandshakes,
 
     stats: ConnectionStats,
     intent_sent_at: Instant,
@@ -1584,14 +1572,13 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
     ) {
-        // We need somewhere to send to, otherwise nothing in here can
-        // actually go on the wire. The session socket (set on the first
-        // authenticated handshake) lets us flush queued packets even
-        // before ICE has nominated, so prefer it over the nominated
-        // socket.
-        let Some(data_socket) = self.wireguard_socket().or_else(|| self.nominated_socket()) else {
+        let session = self.wireguard_socket();
+        let nominated = self.nominated_socket();
+
+        // Nothing can go on the wire without at least one of these.
+        if session.is_none() && nominated.is_none() {
             return;
-        };
+        }
 
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
@@ -1610,15 +1597,17 @@ where
                 tracing::warn!("boringtun error: {e}");
             }
             TunnResult::WriteToNetwork(b) => {
-                self.record_outbound_handshake(b, data_socket);
-                transmits.extend(make_owned_transmit(
-                    self.relay.id,
-                    data_socket,
-                    b,
-                    &self.buffer_pool,
-                    allocations,
-                    now,
-                ));
+                if let Some(socket) = pick_outbound_wg_socket(b, session, nominated) {
+                    self.outbound_handshakes.record(b, socket);
+                    transmits.extend(make_owned_transmit(
+                        self.relay.id,
+                        socket,
+                        b,
+                        &self.buffer_pool,
+                        allocations,
+                        now,
+                    ));
+                }
             }
             TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
                 panic!("Unexpected result from update_timers")
@@ -1627,16 +1616,20 @@ where
 
         // Drain any packets boringtun has queued internally (typically
         // application data the app sent before a session was usable, or
-        // immediately after a session was rotated). These ride
-        // `data_socket` — the path of the most recently completed
-        // handshake.
+        // immediately after a session was rotated).
         while let TunnResult::WriteToNetwork(packet) =
             self.tunnel
                 .decapsulate_at(None, &[], self.buffer.as_mut(), now)
         {
+            let Some(socket) = pick_outbound_wg_socket(packet, session, nominated) else {
+                continue;
+            };
+
+            self.outbound_handshakes.record(packet, socket);
+
             transmits.extend(make_owned_transmit(
                 self.relay.id,
-                data_socket,
+                socket,
                 packet,
                 &self.buffer_pool,
                 allocations,
@@ -1683,7 +1676,8 @@ where
         // Hot path: the type byte check fast-skips for `PacketData`.
         // Only when boringtun emits a fresh `HandshakeInit` here (e.g.
         // session expired) do we record it.
-        self.record_outbound_handshake(&buffer[packet_start..packet_end], socket);
+        self.outbound_handshakes
+            .record(&buffer[packet_start..packet_end], socket);
 
         match socket {
             PeerSocket::PeerToPeer {
@@ -1796,14 +1790,12 @@ where
                         (None, observed_peer_socket)
                     }
                     (
-                        Some(Packet::HandshakeResponse(HandshakeResponse { receiver_idx, .. })),
+                        Some(Packet::HandshakeResponse(response)),
                         Some(Packet::PacketData(_)),
                     ) => {
-                        let session = Index::from_peer(*receiver_idx).session() as u8;
-                        let Some(socket) = self.outbound_handshakes.get(&session).copied() else {
-                            return ControlFlow::Break(Err(anyhow!(
-                                "No socket for session index of HandshakeResponse (receiver_idx={receiver_idx})"
-                            )));
+                        let socket = match self.outbound_handshakes.get(response) {
+                            Ok(socket) => socket,
+                            Err(e) => return ControlFlow::Break(Err(e)),
                         };
                         (Some(socket), socket)
                     }
@@ -1836,13 +1828,12 @@ where
                     );
                 }
 
-                // No `record_outbound_handshake` here: the only
-                // outbound type emitted in this branch that would be
-                // recorded is a `HandshakeResponse`, and its
-                // `sender_idx` is never the target of an
-                // `outbound_handshakes` lookup (the map is consulted
+                // No `outbound_handshakes.record` here: the only
+                // outbound type emitted in this branch is a
+                // `HandshakeResponse`, and its `sender_idx` is never
+                // the target of a lookup — the map is consulted
                 // exclusively via `HandshakeResponse.receiver_idx`,
-                // which matches an outbound *init*'s `sender_idx`).
+                // which matches an outbound *init*'s `sender_idx`.
                 transmits.extend(make_owned_transmit(
                     self.relay.id,
                     send_socket,
@@ -1900,7 +1891,7 @@ where
 
         self.last_proactive_handshake_sent_at = Some(now);
 
-        self.record_outbound_handshake(bytes, socket);
+        self.outbound_handshakes.record(bytes, socket);
 
         transmits.extend(make_owned_transmit(
             self.relay.id,
@@ -2052,29 +2043,26 @@ where
             (Some(_), true) => PeerSocket::RelayToRelay { dest: from },
         }
     }
+}
 
-    /// Record an outbound handshake init so that when
-    /// the peer's matching reply lands we can look up which write
-    /// path that handshake rode on.
-    ///
-    /// Cheap and safe to call on any outbound WG byte slice:
-    /// non-handshake frames are ignored. Keyed by the 8-bit rotating
-    /// session index, so the map is bounded to 256 entries per
-    /// [`Connection`].
-    fn record_outbound_handshake(&mut self, packet: &[u8], socket: PeerSocket) {
-        let Ok(Packet::HandshakeInit(_)) = Tunn::parse_incoming_packet(packet) else {
-            return;
-        };
-
-        // `sender_idx` is private on both struct variants, so we read
-        // it directly from the well-known wire layout (LE u32 at
-        // offset 4..8). The parser above already validated the packet
-        // is long enough for either variant.
-        let bytes: [u8; 4] = packet[4..8]
-            .try_into()
-            .expect("validated packet has at least 8 bytes");
-        let session = Index::from_peer(u32::from_le_bytes(bytes)).session() as u8;
-        self.outbound_handshakes.insert(session, socket);
+/// Pick the outbound socket for a WireGuard packet boringtun is about
+/// to put on the wire.
+///
+/// `PacketData` rides the current session's path so data follows the
+/// path of its session's handshake. Everything else (handshake init,
+/// cookie reply) prefers the ICE-nominated path, so fresh handshakes
+/// reach the peer on the *current* best path — even after a relay
+/// migration has invalidated the previous session's path.
+///
+/// Each falls back to the other if its preferred socket is `None`.
+fn pick_outbound_wg_socket(
+    packet: &[u8],
+    session: Option<PeerSocket>,
+    nominated: Option<PeerSocket>,
+) -> Option<PeerSocket> {
+    match Tunn::parse_incoming_packet(packet) {
+        Ok(Packet::PacketData(_)) => session.or(nominated),
+        _ => nominated.or(session),
     }
 }
 
