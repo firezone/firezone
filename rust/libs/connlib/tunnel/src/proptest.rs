@@ -97,7 +97,8 @@ pub fn dynamic_device_pool_resource() -> impl Strategy<Value = DynamicDevicePool
     })
 }
 
-/// Number of online and offline members for a sampled static device pool.
+/// Number of online members and synthetic ClientIds for offline members in a sampled
+/// static device pool.
 ///
 /// This is a "plan" rather than a fully-realized resource because at sample-time we don't
 /// yet know the IPs of the test clients. The plan gets materialized into a real
@@ -109,7 +110,9 @@ pub struct StaticDevicePoolPlan {
     pub name: String,
     pub filters: Vec<Filter>,
     pub n_online_members: usize,
-    pub n_offline_members: usize,
+    /// Synthetic [`ClientId`]s for pool members that are not part of the test's
+    /// online clients — exercises the "device unknown / not connected" path.
+    pub offline_members: Vec<ClientId>,
 }
 
 pub fn static_device_pool_resource_plan() -> impl Strategy<Value = StaticDevicePoolPlan> {
@@ -118,15 +121,15 @@ pub fn static_device_pool_resource_plan() -> impl Strategy<Value = StaticDeviceP
         resource_name(),
         filters(),
         0usize..=2,
-        0usize..=2,
+        collection::vec(client_id(), 0..=2),
     )
         .prop_map(
-            |(id, name, filters, n_online_members, n_offline_members)| StaticDevicePoolPlan {
+            |(id, name, filters, n_online_members, offline_members)| StaticDevicePoolPlan {
                 id,
                 name,
                 filters,
                 n_online_members,
-                n_offline_members,
+                offline_members,
             },
         )
 }
