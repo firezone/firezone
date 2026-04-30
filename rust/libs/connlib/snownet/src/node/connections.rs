@@ -174,10 +174,6 @@ where
             .filter_map(move |(cid, c)| (c.relay.id == id).then_some((*cid, c)))
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, c)| (*id, c))
-    }
-
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
         let connection = self
             .established
