@@ -29,7 +29,7 @@ use std::{
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 /// Reference state for a particular client.
@@ -114,9 +114,6 @@ pub struct RefClient {
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
-
-    #[debug(skip)]
-    connection_resets: Vec<Instant>,
 }
 
 impl RefClient {
@@ -232,21 +229,16 @@ impl RefClient {
             )
     }
 
-    pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
+    pub(crate) fn restart(&mut self, key: PrivateKey) {
         self.routes.clear();
 
         self.key = key;
 
-        self.reset_connections(now);
-        self.readd_all_resources();
-    }
-
-    pub(crate) fn reset_connections(&mut self, now: Instant) {
-        self.connection_resets.push(now);
-
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
+
+        self.readd_all_resources();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
@@ -1031,16 +1023,6 @@ impl RefClient {
             .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
     }
 
-    /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
-    pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
-        let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?
-
-        self.connection_resets
-            .iter()
-            .copied()
-            .any(|t| (t..t + ice_timeout).contains(&at))
-    }
-
     pub(crate) fn clear_packets(&mut self) {
         self.expected_gateway_icmp_handshakes.clear();
         self.expected_client_icmp_handshakes.clear();
@@ -1229,7 +1211,6 @@ fn ref_client(
                     resources: Default::default(),
                     routes: Default::default(),
                     site_status: Default::default(),
-                    connection_resets: Default::default(),
                 }
             },
         )

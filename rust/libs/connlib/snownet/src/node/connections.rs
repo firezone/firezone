@@ -274,9 +274,17 @@ where
         self.established.len()
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+    /// Replace each established connection's [`IceAgent`](is::IceAgent) with a fresh one.
+    ///
+    /// The underlying [`boringtun::noise::Tunn`] and identity material
+    /// (WireGuard keys, ICE credentials, remote candidates) are
+    /// preserved so existing WG sessions survive the reset; only the
+    /// ICE agent's pair list, nomination state, and local candidate
+    /// list start from scratch.
+    pub(crate) fn recreate_agents(&mut self, unix_ms: u64) {
+        for c in self.established.values_mut() {
+            c.recreate_agent(unix_ms);
+        }
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {

@@ -205,46 +205,28 @@ where
         (self.unix_ts + now.saturating_duration_since(self.unix_now)).as_millis() as u64
     }
 
-    /// Resets this [`Node`].
+    /// Resets this [`Node`] in response to a network change on the local side.
     ///
-    /// # Implementation note
+    /// Unlike a full teardown, this preserves state that survives a roam:
+    /// - the WireGuard private key (so existing sessions can continue),
+    /// - established [`Connection`]s (their [`IceAgent`]s are recreated in
+    ///   place — see [`Connection::recreate_agent`]),
+    /// - the remote candidates and ICE credentials we already know.
     ///
-    /// This also clears all [`Allocation`]s.
-    /// An [`Allocation`] on a TURN server is identified by the client's 3-tuple (IP, port, protocol).
-    /// Thus, clearing the [`Allocation`]'s state here without closing it means we won't be able to make a new one until:
-    /// - it times out
-    /// - we change our IP or port
-    ///
-    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
+    /// What does get reset:
+    /// - each connection's [`IceAgent`] is replaced with a fresh one in
+    ///   the controlling role with a Unix-ms tiebreaker, so a role
+    ///   conflict resolves in favour of the just-roamed side,
+    /// - [`Allocation`]s are cleared — upper layers MUST rebind the
+    ///   sockets they use for ICE and re-register TURN servers
+    ///   afterwards.
     pub fn reset(&mut self, now: Instant) {
         self.allocations.clear();
-
         self.buffered_transmits.clear();
-
         self.pending_events.clear();
-
-        let closed_connections = self
-            .connections
-            .iter_ids()
-            .map(Event::ConnectionClosed)
-            .collect::<Vec<_>>();
-        let num_connections = closed_connections.len();
-
-        self.pending_events.extend(closed_connections);
-
-        self.connections.clear();
-        self.buffered_transmits.clear();
         self.inflight_stun_requests.clear();
 
-        self.private_key = StaticSecret::random_from_rng(&mut self.rng);
-        self.public_key = (&self.private_key).into();
-        self.rate_limiter = Arc::new(RateLimiter::new_at(
-            &self.public_key,
-            HANDSHAKE_RATE_LIMIT,
-            now,
-        ));
-
-        tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
+        self.connections.recreate_agents(self.unix_ms(now));
     }
 
     pub fn num_connections(&self) -> usize {
@@ -2040,6 +2022,41 @@ where
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
+    }
+
+    /// Replace this connection's [`IceAgent`] with a fresh one.
+    ///
+    /// Forces the controlling role with a tiebreaker seeded from the
+    /// supplied Unix-ms timestamp, so the just-roamed side will out-rank
+    /// a stable peer's tiebreaker (also seeded from Unix-ms) and win an
+    /// RFC 8445 §7.3.1.1 role conflict if one arises.
+    ///
+    /// Local credentials, remote credentials and remote candidates are
+    /// migrated onto the new agent so the peer keeps authenticating us.
+    /// The previous local candidates are dropped — upper layers MUST
+    /// rebind their sockets and re-add local candidates after this.
+    fn recreate_agent(&mut self, unix_ms: u64) {
+        let local_creds = self.agent.local_credentials().clone();
+        let remote_creds = self.agent.remote_credentials().cloned();
+        let remote_candidates: Vec<_> = self.agent.remote_candidates().collect();
+
+        let (mut agent, candidate_epoch) = new_agent(IceRole::Controlling, unix_ms);
+        self.default_ice_config.apply(&mut agent);
+        agent.set_local_credentials(local_creds);
+        if let Some(rc) = remote_creds {
+            agent.set_remote_credentials(rc);
+        }
+
+        for candidate in remote_candidates {
+            agent.add_remote_candidate(candidate);
+        }
+
+        self.agent = agent;
+        self.candidate_epoch = candidate_epoch;
+
+        self.first_handshake_completed_at = None;
+        self.disconnected_at = None;
+        self.poll_timeout_cache = TimeoutCache::default();
     }
 }
 
