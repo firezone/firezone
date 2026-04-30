@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
-use boringtun::noise::{HandshakeResponse, Index, Packet, Tunn};
+use boringtun::noise::{HandshakeInit, HandshakeResponse, Index, Packet, Tunn};
 
 use crate::node::connection_state::PeerSocket;
 
@@ -9,27 +9,28 @@ use crate::node::connection_state::PeerSocket;
 /// session component of our local sender index — see
 /// [`boringtun::noise::Index`].
 ///
-/// Populated on every [`HandshakeInit`](boringtun::noise::HandshakeInit) we emit,
+/// Populated on every [`HandshakeInit`] we emit,
 /// with the outbound socket that frame rode on.
-/// When the [`HandshakeResponse`](boringtun::noise::HandshakeResponse) lands and authenticates,
+/// When the [`HandshakeResponse`] lands and authenticates,
 /// we look up the *write* path of that handshake — independent of where the
 /// reply happened to arrive on, which makes us tolerant of
 /// reorderings between concurrent handshakes on different paths.
 ///
 /// Keyed by the 8-bit rotating session component (the global part is
 /// constant per [`Tunn`]), so the map is bounded to 256 entries per
-/// [`Connection`].
+/// [`Connection`](crate::node::Connection).
 #[derive(Debug, Default)]
 pub(crate) struct OutboundHandshakes {
     map: BTreeMap<u8, PeerSocket>,
 }
 
 impl OutboundHandshakes {
-    /// Record the outbound socket for a fresh [`HandshakeInit`](boringtun::noise::HandshakeInit). Cheap
+    /// Record the outbound socket for a fresh [`HandshakeInit`]. Cheap
     /// and safe to call on any outbound WG byte slice: non-init frames
     /// are ignored.
     pub(crate) fn record(&mut self, packet: &[u8], socket: PeerSocket) {
-        let Ok(Packet::HandshakeInit(_)) = Tunn::parse_incoming_packet(packet) else {
+        let Ok(Packet::HandshakeInit(HandshakeInit { .. })) = Tunn::parse_incoming_packet(packet)
+        else {
             return;
         };
 
