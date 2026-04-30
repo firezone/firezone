@@ -647,9 +647,10 @@ mod tests {
 /// before the `prio < 2^31` assertion trips — enough to pack a monotonic epoch counter on top.
 ///
 /// Each time this connection roams or otherwise acquires candidates that supersede older ones, we
-/// bump the epoch by [`EPOCH_BUMP`]. That shift dominates the `-2 * same_kind` penalty within
-/// [`is::default_local_preference`], so newly added candidates always rank strictly higher than
-/// candidates from prior epochs of the same kind. This lets ICE migrate to the new path without
+/// bump the epoch by [`EPOCH_BUMP`]. The bump strictly dominates every other contribution to our
+/// [`LocalPreference`] formula — the per-kind base, the IPv4/IPv6 interleave, the cumulative
+/// `-2 * same_kind` penalty — so a candidate added in a new epoch *always* outranks every
+/// candidate of the same kind added in a prior epoch. This lets ICE migrate to the new path without
 /// any explicit ICE restart on the remote, as long as our new pairs simply outrank the old ones.
 ///
 /// The counter is owned per-connection: a brand-new connection starts at epoch 0, and a full
@@ -663,27 +664,28 @@ pub(crate) struct CandidateEpoch {
 
 /// How much each epoch bump adds to a candidate's local preference.
 ///
-/// [`is::default_local_preference`] subtracts `2 * same_kind` per candidate, where
-/// `same_kind` is the *cumulative* count of same-kind candidates already on the agent.
-/// Both that penalty and the epoch contribution accumulate across generations, but they
-/// scale together: the strongest candidate of a new epoch outranks the strongest candidate
-/// of the prior epoch by `BUMP - 2 * G_prev`, where `G_prev` is the number of same-kind
-/// candidates added in the prior generation. So we just need `BUMP > 2 * G_max`, where
-/// `G_max` is the largest number of same-kind candidates we ever add between bumps.
+/// Within a single epoch, the strongest same-kind candidate scores `counter_start - 0`
+/// and the weakest scores `counter_start - 2 * (G - 1)` where `G` is the number of
+/// same-kind candidates added in that epoch. For a new-epoch candidate to strictly
+/// outrank the strongest prior-epoch candidate, we need
 ///
-/// Each bump on a real Firezone session adds at most a handful of candidates of any single
-/// kind (one per local interface, plus relay variants). `50` comfortably exceeds twice that
-/// even under pessimistic assumptions about per-roam interface count, leaving the
-/// strongest-of-new strictly above the strongest-of-prior.
+///     BUMP > 2 * G_prev
 ///
-/// With a ~65k base local preference and the ~2^23 ceiling before the `prio < 2^31`
-/// assertion in [`is`] trips, `50` still leaves room for ~166k epoch bumps per connection —
-/// effectively unlimited for a single session.
+/// where `G_prev` is the largest number of same-kind candidates ever added in a single
+/// generation. On a real Firezone session each bump adds a handful at most (one per
+/// local interface, plus relay variants), so `256` clears `2 * G_prev` for any
+/// realistic `G_prev`.
 ///
-/// Independent of `BUMP`, [`is::default_local_preference`] underflows once cumulative
-/// `same_kind` exceeds ~32k (for host candidates: `65535 / 2`). That's a hard cap on total
-/// same-kind candidates per connection, set by [`is`] itself.
-const EPOCH_BUMP: u32 = 50;
+/// `EPOCH_BUMP` also caps how many bumps a single connection can survive before the
+/// `prio < 2^31` assertion in [`is`] trips. For host candidates the available
+/// `local_preference` headroom is ~17 bits (≈131k), with `~65k` already spoken for
+/// by `counter_start`, leaving ~64k for the epoch — i.e. ~256 bumps per connection.
+/// That's effectively unlimited for any single session.
+///
+/// Cumulative `same_kind` underflow (`saturating_sub`) caps at ~32k same-kind
+/// candidates for host kinds, independent of `BUMP`. That's a hard cap set by the
+/// 16-bit width of `counter_start`.
+const EPOCH_BUMP: u32 = 256;
 
 impl CandidateEpoch {
     fn current(&self) -> u32 {
@@ -708,9 +710,169 @@ impl LocalPreference {
     }
 }
 
+/// Per-kind starting preference. Higher kinds rank above lower ones; within a
+/// kind, IPv6 ranks one above IPv4 of the same kind (interleaved odd/even).
+const COUNTER_START_HOST: u32 = 65_535;
+const COUNTER_START_PEER_REFLEXIVE: u32 = 49_151;
+const COUNTER_START_SERVER_REFLEXIVE: u32 = 32_767;
+const COUNTER_START_RELAYED: u32 = 16_383;
+
 impl is::LocalPreference for LocalPreference {
+    /// Computes a candidate's local preference.
+    ///
+    /// The formula mirrors `is::default_local_preference` but inlines it so we
+    /// own the math: per-kind `counter_start`, IPv4/IPv6 interleave, and a
+    /// `-2 * same_kind` penalty. We deliberately drop the
+    /// `relay_across_ip_version_punishment` from the upstream formula — that
+    /// constant was `1000`, large enough to overwhelm any realistic
+    /// [`EPOCH_BUMP`], which would let a punished new-epoch candidate rank
+    /// below an unpunished prior-epoch candidate of the same kind. The kind
+    /// ordering already deprioritises relayed candidates against host /
+    /// reflexive ones, and ICE connectivity checks will discover whichever
+    /// pair actually works.
+    ///
+    /// On top of the base, we add the connection's current epoch. By
+    /// construction `EPOCH_BUMP` strictly dominates the worst-case base
+    /// reduction within any one generation, so a new-epoch candidate always
+    /// outranks every prior-epoch candidate of the same kind.
     fn calculate(&self, c: &is::Candidate, same_kind: usize) -> u32 {
-        is::default_local_preference(c, same_kind).saturating_add(self.epoch.current())
+        let counter_start = match c.kind() {
+            is::CandidateKind::Host => COUNTER_START_HOST,
+            is::CandidateKind::PeerReflexive => COUNTER_START_PEER_REFLEXIVE,
+            is::CandidateKind::ServerReflexive => COUNTER_START_SERVER_REFLEXIVE,
+            is::CandidateKind::Relayed => COUNTER_START_RELAYED,
+        };
+        let ipv4_offset = u32::from(c.addr().is_ipv4());
+        let same_kind_penalty = 2 * same_kind as u32;
+
+        let base = counter_start
+            .saturating_sub(ipv4_offset)
+            .saturating_sub(same_kind_penalty);
+
+        base.saturating_add(self.epoch.current())
+    }
+}
+
+#[cfg(test)]
+mod local_preference_tests {
+    //! Direct unit tests on [`LocalPreference::calculate`].
+    //!
+    //! These cover the invariants of the formula itself, independent of any
+    //! `IceAgent` machinery. The agent-level tests in [`candidate_epoch_tests`]
+    //! exercise the same invariants end-to-end via `prio()`.
+
+    use super::*;
+    use is::{Candidate, LocalPreference as _};
+
+    fn host(addr: &str) -> Candidate {
+        Candidate::host(addr.parse().unwrap(), "udp").unwrap()
+    }
+
+    fn srflx(addr: &str, base: &str) -> Candidate {
+        Candidate::server_reflexive(addr.parse().unwrap(), base.parse().unwrap(), "udp").unwrap()
+    }
+
+    fn relay(addr: &str, base: &str) -> Candidate {
+        Candidate::relayed(addr.parse().unwrap(), base.parse().unwrap(), "udp").unwrap()
+    }
+
+    fn pref(c: &Candidate, same_kind: usize, epoch: &CandidateEpoch) -> u32 {
+        LocalPreference::new(epoch.clone()).calculate(c, same_kind)
+    }
+
+    #[test]
+    fn host_outranks_srflx_outranks_relay() {
+        let epoch = CandidateEpoch::default();
+        let h = host("1.1.1.1:1000");
+        let s = srflx("1.1.1.2:1001", "192.168.1.1:1000");
+        let r = relay("1.1.1.3:1002", "192.168.1.1:1000");
+
+        assert!(pref(&h, 0, &epoch) > pref(&s, 0, &epoch));
+        assert!(pref(&s, 0, &epoch) > pref(&r, 0, &epoch));
+    }
+
+    #[test]
+    fn ipv6_outranks_ipv4_within_same_kind() {
+        let epoch = CandidateEpoch::default();
+        let v6 = host("[2001:db8::1]:1000");
+        let v4 = host("1.1.1.1:1000");
+
+        assert_eq!(pref(&v6, 0, &epoch), pref(&v4, 0, &epoch) + 1);
+    }
+
+    #[test]
+    fn same_kind_penalty_is_two_per_step() {
+        let epoch = CandidateEpoch::default();
+        let h = host("1.1.1.1:1000");
+
+        assert_eq!(pref(&h, 0, &epoch) - pref(&h, 1, &epoch), 2);
+        assert_eq!(pref(&h, 1, &epoch) - pref(&h, 2, &epoch), 2);
+        assert_eq!(pref(&h, 5, &epoch) - pref(&h, 10, &epoch), 10);
+    }
+
+    /// Each epoch bump adds exactly [`EPOCH_BUMP`] to the result, holding
+    /// kind / IP / same_kind constant.
+    #[test]
+    fn epoch_bump_adds_exactly_bump_to_preference() {
+        let epoch = CandidateEpoch::default();
+        let h = host("1.1.1.1:1000");
+
+        let before = pref(&h, 0, &epoch);
+        epoch.inc();
+        let after = pref(&h, 0, &epoch);
+
+        assert_eq!(after - before, EPOCH_BUMP);
+    }
+
+    /// Critical invariant: for the same kind, a candidate from a new epoch
+    /// strictly outranks *every* candidate from the prior epoch — regardless
+    /// of how many same-kind candidates the prior generation contained.
+    ///
+    /// We test up to a generation size that matches `EPOCH_BUMP / 2 - 1`
+    /// (the largest `G_prev` for which the formula `BUMP > 2 * G_prev`
+    /// still holds strictly), and verify both the boundary and a comfortable
+    /// realistic value.
+    #[test]
+    fn new_epoch_outranks_prior_epoch_within_same_kind() {
+        for g_prev in [1usize, 5, 20, 100, (EPOCH_BUMP as usize) / 2 - 1] {
+            let epoch = CandidateEpoch::default();
+            let h = host("1.1.1.1:1000");
+
+            // Strongest in the prior generation: same_kind = 0.
+            let prior_strongest = pref(&h, 0, &epoch);
+
+            epoch.inc();
+
+            // First candidate in the new generation inherits cumulative
+            // same_kind = g_prev from the prior generation.
+            let new_first = pref(&h, g_prev, &epoch);
+
+            assert!(
+                new_first > prior_strongest,
+                "with G_prev = {g_prev}, EPOCH_BUMP = {EPOCH_BUMP}: \
+                 new_first ({new_first}) must outrank prior_strongest ({prior_strongest})"
+            );
+        }
+    }
+
+    /// The invariant must also hold across multiple epoch bumps: every
+    /// candidate added after `n` bumps strictly outranks every candidate
+    /// added before any of those bumps.
+    #[test]
+    fn invariant_holds_across_many_consecutive_bumps() {
+        let epoch = CandidateEpoch::default();
+        let h = host("1.1.1.1:1000");
+
+        let original = pref(&h, 0, &epoch);
+
+        for cumulative_same_kind in 1..=50 {
+            epoch.inc();
+            let next = pref(&h, cumulative_same_kind, &epoch);
+            assert!(
+                next > original,
+                "after epoch bump: next ({next}) must outrank original ({original})"
+            );
+        }
     }
 }
 
@@ -719,9 +881,8 @@ mod candidate_epoch_tests {
     use super::*;
     use is::{Candidate, IceAgent, IceCreds};
 
-    /// After one epoch bump, a newly added same-kind candidate must outrank any
-    /// prior same-kind candidate despite `default_local_preference`'s
-    /// `-2 * same_kind` penalty.
+    /// After one epoch bump, a newly added same-kind candidate must outrank
+    /// any prior same-kind candidate despite the `-2 * same_kind` penalty.
     ///
     /// This is the invariant that makes generational candidates work against
     /// any ICE implementation that nominates by priority — including old
