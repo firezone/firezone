@@ -327,7 +327,7 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(cid, nominated_socket, &goodbye, now, &mut self.allocations) {
+        match connection.encapsulate(nominated_socket, &goodbye, now, &mut self.allocations) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
 
@@ -372,7 +372,7 @@ where
             return;
         };
 
-        c.add_remote_candidate(cid, candidate.clone(), now);
+        c.add_remote_candidate(candidate.clone());
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -402,7 +402,7 @@ where
             return;
         };
 
-        c.remove_remote_candidate(cid, candidate, now);
+        c.remove_remote_candidate(candidate, now);
     }
 
     /// Decapsulate an incoming packet.
@@ -486,7 +486,7 @@ where
         };
 
         let maybe_transmit = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations)
+            .encapsulate(socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
         Ok(maybe_transmit)
@@ -539,7 +539,7 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.allocations.handle_timeout(now);
 
-        self.allocations_drain_events(now);
+        self.allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(
@@ -942,14 +942,14 @@ where
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
-    fn allocations_drain_events(&mut self, now: Instant) {
+    fn allocations_drain_events(&mut self) {
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate) => {
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
-                        c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
+                        c.add_local_candidate(cid, &candidate, &mut self.pending_events);
                     }
                 }
                 allocation::Event::Invalid(_) => {}
@@ -1278,7 +1278,7 @@ where
                             );
                             transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
                                 let transmit = self
-                                    .encapsulate(cid, remote_socket, &packet, now, allocations)
+                                    .encapsulate(remote_socket, &packet, now, allocations)
                                     .inspect_err(|e| {
                                         tracing::debug!(
                                             "Failed to encapsulate buffered IP packet: {e:#}"
@@ -1455,19 +1455,13 @@ where
         }
     }
 
-    fn encapsulate<TId>(
+    fn encapsulate(
         &mut self,
-        cid: TId,
         socket: PeerSocket,
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-    ) -> Result<Option<Transmit>>
-    where
-        TId: fmt::Display,
-    {
-        let _ = cid;
-
+    ) -> Result<Option<Transmit>> {
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
         let mut buffer = self.buffer_pool.pull();
@@ -1716,29 +1710,22 @@ where
         cid: TId,
         candidate: &Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
-        _now: Instant,
     ) where
-        TId: fmt::Display + Copy,
+        TId: Copy,
     {
         if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
             pending_events.push_back(new_ice_candidate_event(cid, candidate));
         }
     }
 
-    fn add_remote_candidate<TId>(&mut self, _cid: TId, candidate: Candidate, _now: Instant)
-    where
-        TId: fmt::Display,
-    {
+    fn add_remote_candidate(&mut self, candidate: Candidate) {
         self.agent.add_remote_candidate(candidate);
         self.candidate_timeout = None;
 
         generate_optimistic_candidates(&mut self.agent);
     }
 
-    fn remove_remote_candidate<TId>(&mut self, _cid: TId, candidate: Candidate, now: Instant)
-    where
-        TId: fmt::Display,
-    {
+    fn remove_remote_candidate(&mut self, candidate: Candidate, now: Instant) {
         self.agent.invalidate_candidate(&candidate);
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
     }
@@ -1764,7 +1751,6 @@ where
         new_relay: RId,
         new_allocation: &Allocation,
         pending_events: &mut VecDeque<Event<TId>>,
-        now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
@@ -1775,7 +1761,7 @@ where
         self.candidate_epoch.inc();
 
         for candidate in new_allocation.current_relay_candidates() {
-            self.add_local_candidate(cid, &candidate, pending_events, now);
+            self.add_local_candidate(cid, &candidate, pending_events);
         }
     }
 

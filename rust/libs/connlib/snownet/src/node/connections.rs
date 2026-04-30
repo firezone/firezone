@@ -123,7 +123,7 @@ where
                     continue;
                 };
 
-                c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+                c.migrate_relay(cid, new_relay, new_allocation, pending_events);
             }
         }
 
@@ -138,7 +138,7 @@ where
                 continue;
             };
 
-            c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+            c.migrate_relay(cid, new_relay, new_allocation, pending_events);
         }
     }
 
