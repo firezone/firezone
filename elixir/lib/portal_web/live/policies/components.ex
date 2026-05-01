@@ -157,6 +157,10 @@ defmodule PortalWeb.Policies.Components do
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
   attr :confirm_state, :map, required: true
+  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations_page, :integer, default: 1
+  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :policy_authorizations_expanded_id, :string, default: nil
 
   def policy_panel(assigns) do
     cs = assigns.conditions_state
@@ -225,8 +229,13 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        tab={@panel.panel_tab}
         confirm_disable_policy={@confirm_state.confirm_disable_policy}
         confirm_delete_policy={@confirm_state.confirm_delete_policy}
+        policy_authorizations={@policy_authorizations}
+        policy_authorizations_page={@policy_authorizations_page}
+        policy_authorizations_has_next={@policy_authorizations_has_next}
+        policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
       />
     </div>
     """
@@ -573,8 +582,13 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
+  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations_page, :integer, default: 1
+  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :policy_authorizations_expanded_id, :string, default: nil
 
   def policy_details_view(assigns) do
     ~H"""
@@ -584,8 +598,13 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        tab={@tab}
         confirm_disable_policy={@confirm_disable_policy}
         confirm_delete_policy={@confirm_delete_policy}
+        policy_authorizations={@policy_authorizations}
+        policy_authorizations_page={@policy_authorizations_page}
+        policy_authorizations_has_next={@policy_authorizations_has_next}
+        policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
       />
     </div>
     """
@@ -594,15 +613,59 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
+  attr :policy_authorizations, :list, default: []
+  attr :policy_authorizations_page, :integer, default: 1
+  attr :policy_authorizations_has_next, :boolean, default: false
+  attr :policy_authorizations_expanded_id, :string, default: nil
 
   def policy_details_layout(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
-      <div class="flex-1 flex flex-col overflow-y-auto">
-        <.policy_access_mapping account={@account} policy={@policy} />
-        <.policy_conditions_list account={@account} policy={@policy} providers={@providers} />
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+          <button
+            phx-click="switch_policy_tab"
+            phx-value-tab="overview"
+            class={[
+              "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+              if(@tab == :overview,
+                do: "border-[var(--brand)] text-[var(--brand)]",
+                else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            Overview
+          </button>
+          <button
+            phx-click="switch_policy_tab"
+            phx-value-tab="authorizations"
+            class={[
+              "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+              if(@tab == :authorizations,
+                do: "border-[var(--brand)] text-[var(--brand)]",
+                else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )
+            ]}
+          >
+            Authorizations
+          </button>
+        </div>
+        <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
+          <.policy_access_mapping account={@account} policy={@policy} />
+          <.policy_conditions_list account={@account} policy={@policy} providers={@providers} />
+        </div>
+        <.policy_authorizations_tab
+          :if={@tab == :authorizations}
+          account={@account}
+          policy={@policy}
+          policy_authorizations={@policy_authorizations}
+          page={@policy_authorizations_page}
+          has_next={@policy_authorizations_has_next}
+          expanded_id={@policy_authorizations_expanded_id}
+        />
       </div>
       <.policy_sidebar
         policy={@policy}
@@ -832,6 +895,147 @@ defmodule PortalWeb.Policies.Components do
         <% end %>
       </div>
       <p class="text-[10px] text-[var(--text-muted)] mt-1">{elem(@tod, 0)}</p>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :policy, :any, required: true
+  attr :policy_authorizations, :list, default: []
+  attr :page, :integer, default: 1
+  attr :has_next, :boolean, default: false
+  attr :expanded_id, :string, default: nil
+
+  def policy_authorizations_tab(assigns) do
+    ~H"""
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div
+        :if={@policy_authorizations == []}
+        class="flex flex-col items-center justify-center h-full gap-2 text-[var(--text-tertiary)]"
+      >
+        <.icon name="ri-shield-check-line" class="w-8 h-8" />
+        <p class="text-sm">No recent authorizations</p>
+      </div>
+      <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+          <table class="w-full text-xs">
+            <thead class="sticky top-0 bg-[var(--surface)] z-10">
+              <tr class="border-b border-[var(--border)] text-[var(--text-tertiary)]">
+                <th class="text-left px-4 py-2 font-medium">Actor</th>
+                <th class="text-left px-4 py-2 font-medium">Authorized</th>
+                <th class="text-left px-4 py-2 font-medium">Expires</th>
+                <th class="w-6"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for row <- @policy_authorizations do %>
+                <tr
+                  phx-click="toggle_policy_authorization_row"
+                  phx-value-id={row.authorization.id}
+                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer"
+                >
+                  <td class="px-4 py-2 text-[var(--text-primary)]">
+                    {if row.actor, do: row.actor.name, else: "—"}
+                  </td>
+                  <td class="px-4 py-2 text-[var(--text-tertiary)]">
+                    <.relative_datetime datetime={row.authorization.inserted_at} />
+                  </td>
+                  <td class="px-4 py-2 text-[var(--text-tertiary)]">
+                    <.relative_datetime datetime={row.authorization.expires_at} />
+                  </td>
+                  <td class="px-4 py-2 text-[var(--text-tertiary)]">
+                    <.icon
+                      name={
+                        if @expanded_id == row.authorization.id,
+                          do: "ri-arrow-up-s-line",
+                          else: "ri-arrow-down-s-line"
+                      }
+                      class="w-4 h-4"
+                    />
+                  </td>
+                </tr>
+                <tr
+                  :if={@expanded_id == row.authorization.id}
+                  class="border-b border-[var(--border)] bg-[var(--surface-raised)]"
+                >
+                  <td colspan="5" class="px-4 py-3">
+                    <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
+                      <div>
+                        <p class="text-[var(--text-tertiary)] font-medium mb-1">
+                          {case row.initiating_device && row.initiating_device.type do
+                            :gateway -> "Initiator (Gateway)"
+                            :client -> "Initiator (Client)"
+                            _ -> "Initiator"
+                          end}
+                        </p>
+                        <p class="text-[var(--text-primary)]">
+                          {if row.initiating_device, do: row.initiating_device.name, else: "—"}
+                        </p>
+                        <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
+                          {if row.authorization.client_remote_ip,
+                            do: Portal.Types.INET.to_string(row.authorization.client_remote_ip),
+                            else: "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-[var(--text-tertiary)] font-medium mb-1">
+                          {case row.receiving_device && row.receiving_device.type do
+                            :gateway -> "Receiver (Gateway)"
+                            :client -> "Receiver (Client)"
+                            _ -> "Receiver"
+                          end}
+                        </p>
+                        <p class="text-[var(--text-primary)]">
+                          {if row.receiving_device, do: row.receiving_device.name, else: "—"}
+                        </p>
+                        <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
+                          {if row.authorization.gateway_remote_ip,
+                            do: Portal.Types.INET.to_string(row.authorization.gateway_remote_ip),
+                            else: "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-[var(--text-tertiary)] font-medium mb-1">Owner</p>
+                        <p class="text-[var(--text-primary)]">
+                          {if row.actor, do: row.actor.name, else: "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-[var(--text-tertiary)] font-medium mb-1">Resource</p>
+                        <.link
+                          navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
+                          class="text-[var(--brand)] hover:underline"
+                        >
+                          {@policy.resource.name}
+                        </.link>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="flex items-center justify-between px-4 py-2 border-t border-[var(--border)] shrink-0">
+          <button
+            phx-click="change_policy_authorizations_page"
+            phx-value-page={@page - 1}
+            disabled={@page == 1}
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-[var(--text-muted)] disabled:cursor-not-allowed text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)]"
+          >
+            <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
+          </button>
+          <span class="text-xs text-[var(--text-tertiary)]">Page {@page}</span>
+          <button
+            phx-click="change_policy_authorizations_page"
+            phx-value-page={@page + 1}
+            disabled={not @has_next}
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-[var(--text-muted)] disabled:cursor-not-allowed text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)]"
+          >
+            Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
     """
   end

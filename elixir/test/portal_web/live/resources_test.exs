@@ -8,7 +8,10 @@ defmodule PortalWeb.ResourcesTest do
   import Portal.DeviceFixtures
   import Portal.FeaturesFixtures
   import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
   import Portal.PolicyFixtures
+  import Portal.TokenFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
@@ -428,7 +431,7 @@ defmodule PortalWeb.ResourcesTest do
         |> form("#grant-form")
         |> render_submit()
 
-      assert html =~ "Groups with access"
+      assert html =~ "Grant access"
       assert html =~ group.name
       assert html =~ ">1<"
       assert Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
@@ -437,7 +440,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Grant access"
 
       html = render_click(lv, "close_grant_form")
-      assert html =~ "Groups with access"
+      assert html =~ "Grant access"
     end
 
     test "grants access to multiple groups at once", %{
@@ -705,6 +708,184 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "cancel_delete_resource")
       refute html =~ "Delete this resource?"
+    end
+
+    test "defaults to Groups tab and shows tab bar", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ "Groups"
+      assert html =~ "Authorizations"
+    end
+
+    test "switching to Authorizations tab patches URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "switch_resource_tab", %{"tab" => "authorizations"})
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=authorizations")
+    end
+
+    test "switching back to Groups tab patches URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
+
+      render_click(lv, "switch_resource_tab", %{"tab" => "groups"})
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=groups")
+    end
+
+    test "Authorizations tab shows empty state when no authorizations exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
+
+      assert html =~ "No recent policy authorizations"
+    end
+
+    test "Authorizations tab renders actor name for membership-based authorization", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      named_actor = actor_fixture(account: account, name: "Alice Smith")
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+      membership = membership_fixture(account: account, actor: named_actor, group: group)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      policy_authorization_fixture(
+        account: account,
+        actor: named_actor,
+        resource: resource,
+        group: group,
+        policy: policy,
+        membership: membership
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
+
+      assert html =~ "Alice Smith"
+    end
+
+    test "Authorizations tab renders actor name from token for nil membership authorization", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site)
+      group = group_fixture(account: account)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+      client = client_fixture(account: account, actor: actor)
+      gateway = gateway_fixture(account: account, site: site)
+      token = client_token_fixture(account: account, actor: actor)
+
+      {:ok, _pa} =
+        %Portal.PolicyAuthorization{}
+        |> Ecto.Changeset.cast(
+          %{
+            policy_id: policy.id,
+            initiating_device_id: client.id,
+            receiving_device_id: gateway.id,
+            resource_id: resource.id,
+            token_id: token.id,
+            membership_id: nil,
+            client_remote_ip: {100, 64, 0, 1},
+            client_user_agent: "Test/1.0",
+            gateway_remote_ip: {100, 64, 0, 2},
+            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+          },
+          [
+            :policy_id,
+            :initiating_device_id,
+            :receiving_device_id,
+            :resource_id,
+            :token_id,
+            :membership_id,
+            :client_remote_ip,
+            :client_user_agent,
+            :gateway_remote_ip,
+            :expires_at
+          ]
+        )
+        |> Ecto.Changeset.put_assoc(:account, account)
+        |> Portal.PolicyAuthorization.changeset()
+        |> Repo.insert()
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
+
+      assert html =~ actor.name
+    end
+
+    test "Groups tab still renders correctly as default (regression)", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ "Grant access"
+      assert html =~ group.name
+    end
+
+    test "grant form opens from within Groups tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+      assert html =~ "Grant access"
     end
   end
 

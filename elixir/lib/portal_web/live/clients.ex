@@ -13,6 +13,12 @@ defmodule PortalWeb.Clients do
       socket
       |> assign(page_title: "Clients")
       |> assign(selected_client: nil)
+      |> assign(
+        policy_authorizations: [],
+        policy_authorizations_page: 1,
+        policy_authorizations_has_next: false,
+        policy_authorizations_expanded_id: nil
+      )
       |> assign(base_client_assigns())
       |> assign_live_table("clients",
         query_module: Database,
@@ -30,14 +36,32 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
+    t = Map.get(params, "tab", "overview")
+    tab = if t in ~w[overview authorizations], do: String.to_existing_atom(t), else: :overview
+
+    page =
+      case Integer.parse(Map.get(params, "page", "1")) do
+        {n, ""} when n >= 1 -> n
+        _ -> 1
+      end
+
     socket = handle_live_tables_params(socket, params, uri)
     client = Database.get_client_for_panel(id, socket.assigns.subject)
 
     if client do
+      {policy_authorizations, has_next} =
+        Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+
       {:noreply,
        socket
        |> assign(selected_client: client)
-       |> assign(show_client_assigns())}
+       |> assign(show_client_assigns(tab))
+       |> assign(
+         policy_authorizations: policy_authorizations,
+         policy_authorizations_page: page,
+         policy_authorizations_has_next: has_next,
+         policy_authorizations_expanded_id: nil
+       )}
     else
       {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients")}
     end
@@ -217,6 +241,10 @@ defmodule PortalWeb.Clients do
         panel={client_panel_state(assigns)}
         confirm_state={client_confirm_state(assigns)}
         query_params={@query_params}
+        policy_authorizations={@policy_authorizations}
+        policy_authorizations_page={@policy_authorizations_page}
+        policy_authorizations_has_next={@policy_authorizations_has_next}
+        policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
       />
     </div>
     """
@@ -225,6 +253,7 @@ defmodule PortalWeb.Clients do
   defp client_panel_state(assigns) do
     %{
       panel_view: assigns.client_panel.view,
+      panel_tab: assigns.client_panel.tab,
       client_edit_form: assigns.client_panel.edit_form
     }
   end
@@ -239,6 +268,7 @@ defmodule PortalWeb.Clients do
     [
       client_panel: %{
         view: :details,
+        tab: :overview,
         edit_form: nil
       },
       client_confirm: %{
@@ -247,12 +277,16 @@ defmodule PortalWeb.Clients do
     ]
   end
 
-  defp show_client_assigns, do: base_client_assigns()
+  defp show_client_assigns(tab) do
+    assigns = base_client_assigns()
+    Keyword.update!(assigns, :client_panel, &Map.put(&1, :tab, tab))
+  end
 
   defp edit_client_assigns(form) do
     [
       client_panel: %{
         view: :edit_client,
+        tab: :overview,
         edit_form: form
       },
       client_confirm: %{
@@ -272,6 +306,34 @@ defmodule PortalWeb.Clients do
   def handle_event("close_panel", _params, socket) do
     params = Map.drop(socket.assigns.query_params, ["tab"])
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients?#{params}")}
+  end
+
+  def handle_event("switch_client_tab", %{"tab" => tab}, socket) do
+    params =
+      socket.assigns.query_params
+      |> Map.put("tab", tab)
+      |> Map.delete("page")
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}?#{params}"
+     )}
+  end
+
+  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+    params = Map.put(socket.assigns.query_params, "page", page)
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}?#{params}"
+     )}
+  end
+
+  def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
+    expanded =
+      if socket.assigns.policy_authorizations_expanded_id == id, do: nil, else: id
+
+    {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
 
   def handle_event("open_client_edit_form", _params, socket) do
@@ -377,6 +439,10 @@ defmodule PortalWeb.Clients do
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, ClientSession, Safe}
     alias Portal.Device
+    alias Portal.Policy
+    alias Portal.PolicyAuthorization
+    alias Portal.Group
+    alias Portal.Resource
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
 
@@ -649,6 +715,58 @@ defmodule PortalWeb.Clients do
       # This is handled as a prefilter in list_clients
       # Return the queryable unchanged since actual filtering happens above
       {queryable, true}
+    end
+
+    @page_size 25
+
+    @spec list_policy_authorizations_for_client(
+            Portal.Device.t(),
+            Portal.Auth.Subject.t(),
+            non_neg_integer()
+          ) :: {[map()], boolean()}
+    def list_policy_authorizations_for_client(client, subject, page \\ 1) do
+      offset = (page - 1) * @page_size
+
+      from(pa in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.initiating_device_id == ^client.id)
+      |> join(:inner, [policy_authorizations: pa], p in Policy,
+        on: p.id == pa.policy_id,
+        as: :policies
+      )
+      |> join(:left, [policies: p], g in Group,
+        on: g.id == p.group_id,
+        as: :groups
+      )
+      |> join(:inner, [policies: p], r in Resource,
+        on: r.id == p.resource_id,
+        as: :resources
+      )
+      |> join(:left, [policy_authorizations: pa], rd in Device,
+        on: rd.id == pa.receiving_device_id,
+        as: :receiving_devices
+      )
+      |> select(
+        [policy_authorizations: pa, groups: g, resources: r, receiving_devices: rd],
+        %{
+          authorization: pa,
+          group: g,
+          resource: r,
+          receiving_device: rd
+        }
+      )
+      |> order_by([policy_authorizations: pa], desc: pa.inserted_at)
+      |> limit(^(@page_size + 1))
+      |> offset(^offset)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          {[], false}
+
+        rows ->
+          has_next = length(rows) > @page_size
+          {Enum.take(rows, @page_size), has_next}
+      end
     end
   end
 end

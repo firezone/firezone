@@ -37,7 +37,15 @@ defmodule PortalWeb.Resources do
       socket
       |> assign(stale: false)
       |> assign(page_title: "Resources")
-      |> assign(selected_resource: nil, selected_groups: [], internet_resource: nil)
+      |> assign(
+        selected_resource: nil,
+        selected_groups: [],
+        policy_authorizations: [],
+        policy_authorizations_page: 1,
+        policy_authorizations_has_next: false,
+        policy_authorizations_expanded_id: nil,
+        internet_resource: nil
+      )
       |> assign(resource_state_assigns(socket))
       |> assign_live_table("resources",
         query_module: Database,
@@ -52,16 +60,38 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
+    tab =
+      case Map.get(params, "tab", "groups") do
+        t when t in ~w[groups authorizations] -> String.to_existing_atom(t)
+        _ -> :groups
+      end
+
+    page =
+      case Integer.parse(Map.get(params, "page", "1")) do
+        {n, ""} when n >= 1 -> n
+        _ -> 1
+      end
+
     resource = Database.get_resource!(id, socket.assigns.subject)
     groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
-    socket = handle_live_tables_params(socket, params, uri)
 
+    {policy_authorizations, has_next_page} =
+      Database.list_policy_authorizations_for_resource(resource, socket.assigns.subject, page)
+
+    socket = handle_live_tables_params(socket, params, uri)
     filter_site = filter_site_from_params(params, socket.assigns.subject)
 
     {:noreply,
      socket
-     |> assign(filter_site: filter_site, selected_resource: resource, selected_groups: groups)
-     |> assign(show_resource_state_assigns(socket))}
+     |> assign(
+       filter_site: filter_site,
+       selected_resource: resource,
+       selected_groups: groups,
+       policy_authorizations: policy_authorizations,
+       policy_authorizations_page: page,
+       policy_authorizations_has_next: has_next_page
+     )
+     |> assign(show_resource_state_assigns(socket, tab))}
   end
 
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
@@ -112,16 +142,17 @@ defmodule PortalWeb.Resources do
      |> assign(resource_state_assigns(socket))}
   end
 
-  defp resource_state_assigns(socket) do
+  defp resource_state_assigns(socket, overrides \\ []) do
     [
-      resource_panel: base_resource_panel(socket),
+      resource_panel: base_resource_panel(socket, overrides),
       resource_form: base_resource_form(nil, []),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
   end
 
-  defp show_resource_state_assigns(socket), do: resource_state_assigns(socket)
+  defp show_resource_state_assigns(socket, tab),
+    do: resource_state_assigns(socket, tab: tab)
 
   defp new_resource_state_assigns(socket, resource_form, sites) do
     [
@@ -152,6 +183,7 @@ defmodule PortalWeb.Resources do
       overrides,
       %{
         view: :list,
+        tab: :groups,
         timezone: Map.get(connect_params, "timezone", "UTC"),
         client_to_client_enabled?: Database.client_to_client_enabled?(socket.assigns.account)
       }
@@ -518,7 +550,12 @@ defmodule PortalWeb.Resources do
             account={@account}
             resource={@selected_resource}
             groups={@selected_groups}
+            policy_authorizations={@policy_authorizations}
+            policy_authorizations_page={@policy_authorizations_page}
+            policy_authorizations_has_next={@policy_authorizations_has_next}
+            policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
             panel_view={@resource_panel.view}
+            tab={@resource_panel.tab}
             grant_state={resource_grant_panel_state(assigns)}
             ui_state={resource_panel_ui_state(assigns)}
           />
@@ -564,6 +601,34 @@ defmodule PortalWeb.Resources do
 
   def handle_event("cancel_resource_form", _params, socket) do
     {:noreply, push_patch(socket, to: cancel_resource_form_path(socket))}
+  end
+
+  def handle_event("switch_resource_tab", %{"tab" => tab}, socket) do
+    params =
+      socket.assigns.query_params
+      |> Map.put("tab", tab)
+      |> Map.delete("page")
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}?#{params}"
+     )}
+  end
+
+  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+    params = Map.put(socket.assigns.query_params, "page", page)
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}?#{params}"
+     )}
+  end
+
+  def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
+    expanded =
+      if socket.assigns.policy_authorizations_expanded_id == id, do: nil, else: id
+
+    {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
 
   def handle_event("change_resource_form", %{"resource" => attrs} = payload, socket) do
@@ -1184,6 +1249,10 @@ defmodule PortalWeb.Resources do
     alias Portal.Resource
     alias Portal.StaticDevicePoolMember
     alias Portal.Policy
+    alias Portal.PolicyAuthorization
+    alias Portal.ClientToken
+    alias Portal.Actor
+    alias Portal.Device
     alias Portal.Site
     alias Portal.Group
     alias Portal.Directory
@@ -1382,6 +1451,67 @@ defmodule PortalWeb.Resources do
       |> case do
         {:error, _} -> []
         rows -> rows
+      end
+    end
+
+    @page_size 25
+
+    @spec list_policy_authorizations_for_resource(
+            Portal.Resource.t(),
+            Portal.Auth.Subject.t(),
+            non_neg_integer()
+          ) :: {[map()], boolean()}
+    def list_policy_authorizations_for_resource(resource, subject, page \\ 1) do
+      offset = (page - 1) * @page_size
+
+      from(pa in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.resource_id == ^resource.id)
+      |> join(:inner, [policy_authorizations: pa], p in Policy,
+        on: p.id == pa.policy_id,
+        as: :policies
+      )
+      |> join(:left, [policies: p], g in Group,
+        on: g.id == p.group_id,
+        as: :groups
+      )
+      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+        on: t.id == pa.token_id,
+        as: :tokens
+      )
+      |> join(:left, [tokens: t], a in Actor,
+        on: a.id == t.actor_id,
+        as: :actors
+      )
+      |> join(:left, [policy_authorizations: pa], id in Device,
+        on: id.id == pa.initiating_device_id,
+        as: :initiating_devices
+      )
+      |> join(:left, [policy_authorizations: pa], rd in Device,
+        on: rd.id == pa.receiving_device_id,
+        as: :receiving_devices
+      )
+      |> select(
+        [policy_authorizations: pa, groups: g, actors: a, initiating_devices: id, receiving_devices: rd],
+        %{
+          authorization: pa,
+          group: g,
+          actor: a,
+          initiating_device: id,
+          receiving_device: rd
+        }
+      )
+      |> order_by([policy_authorizations: pa], desc: pa.inserted_at)
+      |> limit(^(@page_size + 1))
+      |> offset(^offset)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          {[], false}
+
+        rows ->
+          has_next = length(rows) > @page_size
+          {Enum.take(rows, @page_size), has_next}
       end
     end
 

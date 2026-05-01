@@ -28,6 +28,12 @@ defmodule PortalWeb.Policies do
       |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign(selected_policy: nil, policy_providers: [])
+      |> assign(
+        policy_authorizations: [],
+        policy_authorizations_page: 1,
+        policy_authorizations_has_next: false,
+        policy_authorizations_expanded_id: nil
+      )
       |> assign(base_policy_assigns(socket))
       |> assign_live_table("policies",
         query_module: Database,
@@ -46,9 +52,21 @@ defmodule PortalWeb.Policies do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
+    t = Map.get(params, "tab", "overview")
+    tab = if t in ~w[overview authorizations], do: String.to_existing_atom(t), else: :overview
+
+    page =
+      case Integer.parse(Map.get(params, "page", "1")) do
+        {n, ""} when n >= 1 -> n
+        _ -> 1
+      end
+
     socket = handle_live_tables_params(socket, params, uri)
     policy = Database.get_policy(id, socket.assigns.subject)
     providers = Database.all_active_providers(socket.assigns.account, socket.assigns.subject)
+
+    {policy_authorizations, has_next} =
+      Database.list_policy_authorizations_for_policy(policy, socket.assigns.subject, page)
 
     filter_site =
       with %{"policies_filter" => %{"site_id" => site_id}} <- params do
@@ -72,8 +90,12 @@ defmodule PortalWeb.Policies do
          filter_resource: filter_resource,
          selected_policy: policy,
          policy_providers: providers,
-         return_to: uri_path(uri)
-       ] ++ show_policy_assigns(socket)
+         return_to: uri_path(uri),
+         policy_authorizations: policy_authorizations,
+         policy_authorizations_page: page,
+         policy_authorizations_has_next: has_next,
+         policy_authorizations_expanded_id: nil
+       ] ++ show_policy_assigns(socket, tab)
      )}
   end
 
@@ -331,6 +353,10 @@ defmodule PortalWeb.Policies do
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
         confirm_state={policy_confirm_state(assigns)}
+        policy_authorizations={@policy_authorizations}
+        policy_authorizations_page={@policy_authorizations_page}
+        policy_authorizations_has_next={@policy_authorizations_has_next}
+        policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
       />
     </div>
     """
@@ -340,7 +366,8 @@ defmodule PortalWeb.Policies do
     %{
       panel_view: assigns.policy_panel.view,
       panel_form: assigns.policy_panel.form,
-      panel_selected_resource: assigns.policy_panel.selected_resource
+      panel_selected_resource: assigns.policy_panel.selected_resource,
+      panel_tab: assigns.policy_panel.tab
     }
   end
 
@@ -376,7 +403,8 @@ defmodule PortalWeb.Policies do
       policy_panel: %{
         view: :list,
         form: nil,
-        selected_resource: nil
+        selected_resource: nil,
+        tab: :overview
       },
       policy_conditions: %{
         timezone: Map.get(socket.private[:connect_params] || %{}, "timezone", "UTC"),
@@ -404,13 +432,17 @@ defmodule PortalWeb.Policies do
 
   defp default_policy_assigns(socket), do: base_policy_assigns(socket)
 
-  defp show_policy_assigns(socket), do: base_policy_assigns(socket)
+  defp show_policy_assigns(socket, tab) do
+    assigns = base_policy_assigns(socket)
+    Keyword.update!(assigns, :policy_panel, &Map.put(&1, :tab, tab))
+  end
 
   defp new_policy_assigns(socket, form) do
     Keyword.put(base_policy_assigns(socket), :policy_panel, %{
       view: :new_form,
       form: form,
-      selected_resource: nil
+      selected_resource: nil,
+      tab: :overview
     })
   end
 
@@ -418,7 +450,8 @@ defmodule PortalWeb.Policies do
     Keyword.put(base_policy_assigns(socket), :policy_panel, %{
       view: :edit_form,
       form: form,
-      selected_resource: policy.resource
+      selected_resource: policy.resource,
+      tab: :overview
     }) ++ init_condition_assigns(policy, socket)
   end
 
@@ -440,6 +473,34 @@ defmodule PortalWeb.Policies do
   def handle_event("close_panel", _params, socket) do
     params = Map.drop(socket.assigns.query_params, ["tab"])
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies?#{params}")}
+  end
+
+  def handle_event("switch_policy_tab", %{"tab" => tab}, socket) do
+    params =
+      socket.assigns.query_params
+      |> Map.put("tab", tab)
+      |> Map.delete("page")
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}?#{params}"
+     )}
+  end
+
+  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+    params = Map.put(socket.assigns.query_params, "page", page)
+
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}?#{params}"
+     )}
+  end
+
+  def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
+    expanded =
+      if socket.assigns.policy_authorizations_expanded_id == id, do: nil, else: id
+
+    {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
@@ -922,6 +983,10 @@ defmodule PortalWeb.Policies do
     import Ecto.Query
     import Portal.Repo.Query
     alias Portal.{Safe, Policy, Site, Resource, Group}
+    alias Portal.PolicyAuthorization
+    alias Portal.ClientToken
+    alias Portal.Actor
+    alias Portal.Device
     alias Portal.Authentication
 
     def get_site(id, subject) do
@@ -1220,6 +1285,58 @@ defmodule PortalWeb.Policies do
         queryable
       else
         join(queryable, :inner, [policies: p], r in assoc(p, :resource), as: :resource)
+      end
+    end
+
+    @page_size 25
+
+    @spec list_policy_authorizations_for_policy(
+            Portal.Policy.t(),
+            Portal.Auth.Subject.t(),
+            non_neg_integer()
+          ) :: {[map()], boolean()}
+    def list_policy_authorizations_for_policy(policy, subject, page \\ 1) do
+      offset = (page - 1) * @page_size
+
+      from(pa in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.policy_id == ^policy.id)
+      |> join(:inner, [policy_authorizations: pa], t in ClientToken,
+        on: t.id == pa.token_id,
+        as: :tokens
+      )
+      |> join(:left, [tokens: t], a in Actor,
+        on: a.id == t.actor_id,
+        as: :actors
+      )
+      |> join(:left, [policy_authorizations: pa], id in Device,
+        on: id.id == pa.initiating_device_id,
+        as: :initiating_devices
+      )
+      |> join(:left, [policy_authorizations: pa], rd in Device,
+        on: rd.id == pa.receiving_device_id,
+        as: :receiving_devices
+      )
+      |> select(
+        [policy_authorizations: pa, actors: a, initiating_devices: id, receiving_devices: rd],
+        %{
+          authorization: pa,
+          actor: a,
+          initiating_device: id,
+          receiving_device: rd
+        }
+      )
+      |> order_by([policy_authorizations: pa], desc: pa.inserted_at)
+      |> limit(^(@page_size + 1))
+      |> offset(^offset)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          {[], false}
+
+        rows ->
+          has_next = length(rows) > @page_size
+          {Enum.take(rows, @page_size), has_next}
       end
     end
   end

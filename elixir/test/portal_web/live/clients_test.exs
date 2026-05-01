@@ -7,6 +7,13 @@ defmodule PortalWeb.ClientsTest do
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
+  import Portal.PolicyFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -264,6 +271,134 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Updated Client Name"
       assert updated_client.name == "Updated Client Name"
       assert_patch(lv, ~p"/#{account}/clients/#{client.id}")
+    end
+  end
+
+  describe ":show action authorizations tab" do
+    test "tab bar shows Overview and Authorizations tabs", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      assert html =~ "Overview"
+      assert html =~ "Authorizations"
+    end
+
+    test "switching to Authorizations tab patches URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      lv
+      |> element("button[phx-click='switch_client_tab'][phx-value-tab='authorizations']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/clients/#{client.id}?tab=authorizations")
+    end
+
+    test "switching back to Overview tab patches URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
+
+      lv
+      |> element("button[phx-click='switch_client_tab'][phx-value-tab='overview']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/clients/#{client.id}?tab=overview")
+    end
+
+    test "Authorizations tab shows empty state when no authorizations exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
+
+      assert html =~ "No recent authorizations"
+    end
+
+    test "Authorizations tab renders resource and group name", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      resource = resource_fixture(account: account, site: site)
+      group = group_fixture(account: account)
+      _membership = membership_fixture(account: account, actor: actor, group: group)
+      token = client_token_fixture(account: account, actor: actor)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      _authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          gateway: gateway,
+          resource: resource,
+          group: group,
+          policy: policy,
+          token: token
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
+
+      assert html =~ resource.name
+      assert html =~ group.name
+    end
+
+    test "Overview tab still renders correctly as default (regression)", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client =
+        verified_client_fixture(%{
+          account: account,
+          actor: actor,
+          name: "Regression Laptop"
+        })
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      assert html =~ "Regression Laptop"
+      assert html =~ "Tunnel IPv4"
+      assert html =~ "Tunnel IPv6"
     end
   end
 end
