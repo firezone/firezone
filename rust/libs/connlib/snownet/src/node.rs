@@ -113,53 +113,6 @@ pub struct Node<TId, RId> {
 pub struct NoTurnServers {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct IceConfig {
-    max_retrans: usize,
-    max_rto: Duration,
-    initial_rto: Duration,
-}
-
-impl IceConfig {
-    pub fn server_default() -> Self {
-        Self {
-            max_retrans: 45,
-            max_rto: Duration::from_millis(15_000),
-            initial_rto: Duration::from_millis(250),
-        }
-    }
-
-    pub fn server_idle() -> Self {
-        IceConfig {
-            max_retrans: 40,
-            max_rto: Duration::from_secs(25),
-            initial_rto: Duration::from_secs(25),
-        }
-    }
-
-    pub fn client_default() -> Self {
-        Self {
-            max_retrans: 12,
-            max_rto: Duration::from_millis(1500),
-            initial_rto: Duration::from_millis(250),
-        }
-    }
-
-    pub fn client_idle() -> Self {
-        Self {
-            max_retrans: 4,
-            max_rto: Duration::from_secs(25),
-            initial_rto: Duration::from_secs(25),
-        }
-    }
-
-    fn apply(&self, agent: &mut IceAgent) {
-        agent.set_max_stun_retransmits(self.max_retrans);
-        agent.set_max_stun_rto(self.max_rto);
-        agent.set_initial_stun_rto(self.initial_rto)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub enum IceRole {
     Controlling,
     Controlled,
@@ -270,8 +223,6 @@ where
         local_creds: Credentials,
         remote_creds: Credentials,
         ice_role: IceRole,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
@@ -308,7 +259,6 @@ where
         }
 
         let mut agent = new_agent(ice_role);
-        default_ice_config.apply(&mut agent);
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -330,8 +280,6 @@ where
             preshared_key,
             selected_relay,
             index,
-            default_ice_config,
-            idle_ice_config,
             now,
             now,
         );
@@ -757,8 +705,6 @@ where
         key: x25519::StaticSecret,
         relay: RId,
         index: Index,
-        default_ice_config: IceConfig,
-        idle_ice_config: IceConfig,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -809,8 +755,6 @@ where
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
-            default_ice_config,
-            idle_ice_config,
             poll_timeout_cache: Default::default(),
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         }
@@ -1267,9 +1211,6 @@ struct Connection<RId> {
     first_handshake_completed_at: Option<Instant>,
 
     buffer: Vec<u8>,
-
-    default_ice_config: IceConfig,
-    idle_ice_config: IceConfig,
 
     #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
@@ -1933,6 +1874,10 @@ where
 fn new_agent(role: IceRole) -> IceAgent {
     let mut agent = IceAgent::new(is::IceCreds::new());
     agent.set_controlling(matches!(role, IceRole::Controlling));
+    // 25s keeps NAT bindings open with consistent STUN traffic regardless of
+    // whether the connection is currently carrying app data, and is large
+    // enough that retries do not burn battery.
+    agent.set_max_stun_rto(Duration::from_secs(25));
     agent.set_timing_advance(Duration::ZERO);
 
     agent
@@ -1943,53 +1888,6 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
     use super::*;
-
-    #[test]
-    fn client_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::client_default().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(16500))
-    }
-
-    // Our WireGuard rekey attempt time must be greater than the ICE timeout,
-    // otherwise we cannot migrate an existing tunnel to a new candidate pair.
-    #[test]
-    fn client_default_ice_timeout_less_than_wg_rekey_attempt_time() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::client_default().apply(&mut agent);
-
-        assert!(agent.ice_timeout() < WG_REKEY_ATTEMPT_TIME)
-    }
-
-    #[test]
-    fn client_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::client_idle().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
-    }
-
-    #[test]
-    fn server_default_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::server_default().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(615_500))
-    }
-
-    #[test]
-    fn server_idle_ice_timeout() {
-        let mut agent = new_agent(IceRole::Controlling);
-
-        IceConfig::server_idle().apply(&mut agent);
-
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
-    }
 
     #[test]
     fn generates_correct_optimistic_candidates() {
