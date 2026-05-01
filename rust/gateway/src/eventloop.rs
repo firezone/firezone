@@ -18,7 +18,8 @@ use std::{io, iter, mem};
 use tokio::sync::mpsc;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
+    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientIceCredentials,
+    ClientsIceCandidates,
     EgressMessages, IngressMessages, InitGateway, RejectAccess,
 };
 use tunnel::{
@@ -327,6 +328,16 @@ impl Eventloop {
                         .state_mut()
                         .remove_ice_candidate(client_id, candidate, Instant::now());
                 }
+            }
+            IngressMessages::IceCredentials(ClientIceCredentials {
+                client_id,
+                credentials,
+            }) => {
+                tunnel.state_mut().set_remote_ice_credentials(
+                    client_id,
+                    credentials,
+                    Instant::now(),
+                );
             }
             IngressMessages::RejectAccess(RejectAccess {
                 client_id,

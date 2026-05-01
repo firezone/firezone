@@ -256,6 +256,16 @@ impl GatewayState {
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
     }
 
+    pub fn set_remote_ice_credentials(
+        &mut self,
+        conn_id: ClientId,
+        credentials: IceCredentials,
+        now: Instant,
+    ) {
+        self.node
+            .set_remote_ice_credentials(conn_id, credentials.into(), now);
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
     pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId, now: Instant) {
         let Some(peer) = self.peers.peer_by_id_mut(cid) else {

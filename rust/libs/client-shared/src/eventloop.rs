@@ -21,8 +21,9 @@ use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
     ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
-    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
-    FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ClientIceCredentials, DevicePoolDomainResolutionFailed, DevicePoolDomainResolved,
+    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
+    GatewayIceCredentials, IngressMessages, InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -474,6 +475,26 @@ impl Eventloop {
                         .state_mut()
                         .remove_ice_candidate(client_id, candidate, Instant::now())
                 }
+            }
+            IngressMessages::GatewayIceCredentials(GatewayIceCredentials {
+                gateway_id,
+                credentials,
+            }) => {
+                tunnel.state_mut().set_remote_ice_credentials(
+                    gateway_id,
+                    credentials,
+                    Instant::now(),
+                );
+            }
+            IngressMessages::ClientIceCredentials(ClientIceCredentials {
+                client_id,
+                credentials,
+            }) => {
+                tunnel.state_mut().set_remote_ice_credentials(
+                    client_id,
+                    credentials,
+                    Instant::now(),
+                );
             }
             IngressMessages::FlowCreated(FlowCreated {
                 resource_id,

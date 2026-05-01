@@ -211,6 +211,9 @@ pub enum IngressMessages {
     ClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
 
+    GatewayIceCredentials(GatewayIceCredentials),
+    ClientIceCredentials(ClientIceCredentials),
+
     ConfigChanged(ConfigUpdate),
 
     RelaysPresence(RelaysPresence),
@@ -245,6 +248,22 @@ pub struct ClientIceCandidates {
     pub candidates: Vec<IceCandidate>,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct GatewayIceCredentials {
+    /// Gateway's id the ICE credentials are sent to / received from.
+    pub gateway_id: GatewayId,
+    /// New ICE credentials for the connection.
+    pub credentials: IceCredentials,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct ClientIceCredentials {
+    /// Client's id the ICE credentials are sent to / received from.
+    pub client_id: ClientId,
+    /// New ICE credentials for the connection.
+    pub credentials: IceCredentials,
+}
+
 // These messages can be sent from a client to a control pane
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
@@ -267,6 +286,8 @@ pub enum EgressMessages {
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
+    NewGatewayIceCredentials(GatewayIceCredentials),
+    NewClientIceCredentials(ClientIceCredentials),
 }
 
 #[cfg(test)]
@@ -363,6 +384,87 @@ mod tests {
             message,
             IngressMessages::InvalidateGatewayIceCandidates(_)
         ));
+    }
+
+    #[test]
+    fn can_deserialize_gateway_ice_credentials_message() {
+        let json = r#"{"event":"gateway_ice_credentials","ref":null,"topic":"client","payload":{"gateway_id":"b3d34a15-55ab-40df-994b-a838e75d65d7","credentials":{"username":"abcd","password":"01234567890123456789ab"}}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::GatewayIceCredentials(GatewayIceCredentials {
+            gateway_id,
+            credentials,
+        }) = message
+        else {
+            panic!("expected GatewayIceCredentials, got {message:?}");
+        };
+        assert_eq!(
+            gateway_id.to_string(),
+            "b3d34a15-55ab-40df-994b-a838e75d65d7"
+        );
+        assert_eq!(credentials.username, "abcd");
+        assert_eq!(credentials.password, "01234567890123456789ab");
+    }
+
+    #[test]
+    fn can_deserialize_client_ice_credentials_message() {
+        let json = r#"{"event":"client_ice_credentials","ref":null,"topic":"client","payload":{"client_id":"a1f3a82e-3219-4b6e-9b1a-92e9a89e2222","credentials":{"username":"wxyz","password":"abcdefghijklmnopqrstuv"}}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::ClientIceCredentials(ClientIceCredentials {
+            client_id,
+            credentials,
+        }) = message
+        else {
+            panic!("expected ClientIceCredentials, got {message:?}");
+        };
+        assert_eq!(client_id.to_string(), "a1f3a82e-3219-4b6e-9b1a-92e9a89e2222");
+        assert_eq!(credentials.username, "wxyz");
+        assert_eq!(credentials.password, "abcdefghijklmnopqrstuv");
+    }
+
+    #[test]
+    fn can_serialize_new_gateway_ice_credentials_message() {
+        let msg = EgressMessages::NewGatewayIceCredentials(GatewayIceCredentials {
+            gateway_id: "b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap(),
+            credentials: IceCredentials {
+                username: "abcd".to_owned(),
+                password: "01234567890123456789ab".to_owned(),
+            },
+        });
+
+        let expected = serde_json::json!({
+            "event": "new_gateway_ice_credentials",
+            "payload": {
+                "gateway_id": "b3d34a15-55ab-40df-994b-a838e75d65d7",
+                "credentials": {"username": "abcd", "password": "01234567890123456789ab"}
+            }
+        });
+
+        assert_eq!(serde_json::to_value(&msg).unwrap(), expected);
+    }
+
+    #[test]
+    fn can_serialize_new_client_ice_credentials_message() {
+        let msg = EgressMessages::NewClientIceCredentials(ClientIceCredentials {
+            client_id: "a1f3a82e-3219-4b6e-9b1a-92e9a89e2222".parse().unwrap(),
+            credentials: IceCredentials {
+                username: "wxyz".to_owned(),
+                password: "abcdefghijklmnopqrstuv".to_owned(),
+            },
+        });
+
+        let expected = serde_json::json!({
+            "event": "new_client_ice_credentials",
+            "payload": {
+                "client_id": "a1f3a82e-3219-4b6e-9b1a-92e9a89e2222",
+                "credentials": {"username": "wxyz", "password": "abcdefghijklmnopqrstuv"}
+            }
+        });
+
+        assert_eq!(serde_json::to_value(&msg).unwrap(), expected);
     }
 
     #[test]

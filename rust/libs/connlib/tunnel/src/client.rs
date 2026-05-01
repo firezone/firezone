@@ -722,6 +722,16 @@ impl ClientState {
             .remove_remote_candidate(conn_id.into(), ice_candidate.into(), now);
     }
 
+    pub fn set_remote_ice_credentials(
+        &mut self,
+        conn_id: impl Into<ClientOrGatewayId>,
+        credentials: IceCredentials,
+        now: Instant,
+    ) {
+        self.node
+            .set_remote_ice_credentials(conn_id.into(), credentials.into(), now);
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
     pub fn handle_resource_access_authorized(
         &mut self,
