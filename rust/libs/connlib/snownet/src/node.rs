@@ -427,9 +427,16 @@ where
             return;
         };
 
+        let new_remote_creds = remote_creds.into();
+
+        if c.agent.remote_credentials() == Some(&new_remote_creds) {
+            tracing::debug!("Remote ICE credentials unchanged; ignoring");
+            return;
+        }
+
         let local_creds = c.agent.local_credentials().clone();
         c.agent.ice_restart(local_creds, true);
-        c.agent.set_remote_credentials(remote_creds.into());
+        c.agent.set_remote_credentials(new_remote_creds);
         c.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
 
         tracing::info!("Adopted new remote ICE credentials");
