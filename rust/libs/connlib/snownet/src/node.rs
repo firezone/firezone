@@ -1821,6 +1821,42 @@ where
 
         self.relay.id = new_relay;
 
+        // Cache the peer's ICE state so we can restore it after the restart;
+        // only our local credentials roll, the peer's remain valid.
+        let prev_remote_creds = self.agent.remote_credentials().cloned();
+        let prev_remote_candidates: Vec<_> = self.agent.remote_candidates().collect();
+
+        // Rotate local ICE credentials. STUN traffic that the peer may still
+        // be sending to the old relay path is no longer valid under the new
+        // credentials, so we need to signal the new ones.
+        let new_local = is::IceCreds::new();
+        self.agent.ice_restart(new_local.clone(), false);
+
+        if let Some(rc) = prev_remote_creds {
+            self.agent.set_remote_credentials(rc);
+        }
+        for cand in prev_remote_candidates {
+            self.agent.add_remote_candidate(cand);
+        }
+
+        self.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
+
+        pending_events.push_back(Event::NewLocalIceCredentials {
+            connection: cid,
+            credentials: Credentials {
+                username: new_local.ufrag,
+                password: new_local.pass,
+            },
+        });
+
+        // ICE restart wiped local candidates. Host and server-reflexive
+        // candidates are independent of which relay is in use — re-add them
+        // immediately (and signal them) so we don't have to wait on STUN
+        // re-discovery before connectivity checks can proceed.
+        for candidate in new_allocation.host_and_server_reflexive_candidates() {
+            self.add_local_candidate(cid, &candidate, pending_events, now);
+        }
+
         for candidate in new_allocation.current_relay_candidates() {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
