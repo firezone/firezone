@@ -365,8 +365,7 @@ where
         };
 
         let peer_socket = match connection.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Connected { peer_socket } => peer_socket,
             ConnectionState::Connecting { .. } => {
                 tracing::info!("Connection closed during ICE");
                 return;
@@ -559,8 +558,7 @@ where
 
                 return Ok(None);
             }
-            ConnectionState::Connected { peer_socket, .. } => *peer_socket,
-            ConnectionState::Idle { peer_socket } => *peer_socket,
+            ConnectionState::Connected { peer_socket } => *peer_socket,
             ConnectionState::Failed => {
                 return Err(anyhow!("Connection {cid} failed"));
             }
@@ -632,16 +630,11 @@ where
             );
         }
 
-        if self.connections.all_idle() {
-            // If all connections are idle, there is no point in resetting the rate limiter.
-            self.next_rate_limiter_reset = None;
-        } else {
-            let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
+        let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
-            if now >= next_reset {
-                self.rate_limiter.reset_count_at(now);
-                self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
-            }
+        if now >= next_reset {
+            self.rate_limiter.reset_count_at(now);
+            self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
         let removed_allocations = self.allocations.gc();
@@ -1310,7 +1303,6 @@ where
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
-            .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
@@ -1335,8 +1327,6 @@ where
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
 
         self.agent.handle_timeout(now);
-        self.state
-            .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
         // ICE disconnects no longer drive connection teardown — recovery is
         // handled out-of-band by upper layers via credentialed ICE restart.
@@ -1438,34 +1428,18 @@ where
 
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                last_activity: now,
                             };
                             None
                         }
-                        ConnectionState::Connected {
-                            peer_socket,
-                            last_activity,
-                        } if peer_socket == remote_socket => {
-                            self.state = ConnectionState::Connected {
-                                peer_socket,
-                                last_activity,
-                            };
+                        ConnectionState::Connected { peer_socket }
+                            if peer_socket == remote_socket =>
+                        {
+                            self.state = ConnectionState::Connected { peer_socket };
 
                             continue; // If we re-nominate the same socket, don't just continue. TODO: Should this be fixed upstream?
                         }
-                        ConnectionState::Connected {
-                            peer_socket,
-                            last_activity,
-                        } => {
+                        ConnectionState::Connected { peer_socket } => {
                             self.state = ConnectionState::Connected {
-                                peer_socket: remote_socket,
-                                last_activity,
-                            };
-
-                            Some(peer_socket)
-                        }
-                        ConnectionState::Idle { peer_socket } => {
-                            self.state = ConnectionState::Idle {
                                 peer_socket: remote_socket,
                             };
 
@@ -1595,8 +1569,7 @@ where
     where
         TId: fmt::Display,
     {
-        self.state
-            .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
+        let _ = (cid, now, packet);
 
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
@@ -1727,8 +1700,7 @@ where
                             wg_buffer.enqueue(packet.to_owned());
                         }
                     }
-                    ConnectionState::Connected { peer_socket, .. }
-                    | ConnectionState::Idle { peer_socket } => {
+                    ConnectionState::Connected { peer_socket } => {
                         transmits.extend(make_owned_transmit(
                             self.relay.id,
                             *peer_socket,
@@ -1759,10 +1731,7 @@ where
             }
         };
 
-        if let ControlFlow::Continue(packet) = &control_flow {
-            self.state
-                .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
-        }
+        let _ = (cid, now);
 
         control_flow
     }
@@ -1830,12 +1799,11 @@ where
     ) where
         TId: fmt::Display + Copy,
     {
+        let _ = now;
+
         if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
             pending_events.push_back(new_ice_candidate_event(cid, candidate));
         }
-
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
     fn remove_local_candidate<TId>(
@@ -1869,41 +1837,33 @@ where
     where
         TId: fmt::Display,
     {
+        let _ = (cid, now);
+
         self.agent.add_remote_candidate(candidate);
         self.candidate_timeout = None;
 
         generate_optimistic_candidates(&mut self.agent);
-
-        // Make sure we move out of idle mode when we add new candidates.
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now);
     }
 
     fn remove_remote_candidate<TId>(&mut self, cid: TId, candidate: Candidate, now: Instant)
     where
         TId: fmt::Display,
     {
+        let _ = cid;
+
         self.agent.invalidate_candidate(&candidate);
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
-
-        self.state
-            .on_candidate(cid, &mut self.agent, self.default_ice_config, now)
     }
 
     fn socket(&self) -> Option<PeerSocket> {
         match self.state {
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => Some(peer_socket),
+            ConnectionState::Connected { peer_socket } => Some(peer_socket),
             ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
         }
     }
 
     fn is_failed(&self) -> bool {
         matches!(self.state, ConnectionState::Failed)
-    }
-
-    fn is_idle(&self) -> bool {
-        matches!(self.state, ConnectionState::Idle { .. })
     }
 
     fn migrate_relay<TId>(

@@ -277,10 +277,6 @@ where
         self.established.keys().copied()
     }
 
-    pub(crate) fn all_idle(&self) -> bool {
-        self.established.values().all(|c| c.is_idle())
-    }
-
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
