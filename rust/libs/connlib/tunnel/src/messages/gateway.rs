@@ -224,7 +224,7 @@ pub struct ClientIceCredentials {
 pub enum EgressMessages {
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
-    BroadcastIceCredentials(ClientIceCredentials),
+    NewIceCredentialsForClient(ClientIceCredentials),
     FlowAuthorized {
         #[serde(rename = "ref")]
         reference: String,
@@ -361,8 +361,8 @@ mod tests {
     }
 
     #[test]
-    fn can_serialize_broadcast_ice_credentials_message() {
-        let msg = EgressMessages::BroadcastIceCredentials(ClientIceCredentials {
+    fn can_serialize_new_ice_credentials_for_client_message() {
+        let msg = EgressMessages::NewIceCredentialsForClient(ClientIceCredentials {
             client_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
             credentials: IceCredentials {
                 username: "abcd".to_owned(),
@@ -371,7 +371,7 @@ mod tests {
         });
 
         let expected = serde_json::json!({
-            "event": "broadcast_ice_credentials",
+            "event": "new_ice_credentials_for_client",
             "payload": {
                 "client_id": "2b1524e6-239e-4570-bc73-70a188e12101",
                 "credentials": {"username": "abcd", "password": "01234567890123456789ab"}

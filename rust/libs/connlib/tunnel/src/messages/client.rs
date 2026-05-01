@@ -286,8 +286,8 @@ pub enum EgressMessages {
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
-    NewGatewayIceCredentials(GatewayIceCredentials),
-    NewClientIceCredentials(ClientIceCredentials),
+    NewIceCredentialsForGateway(GatewayIceCredentials),
+    NewIceCredentialsForClient(ClientIceCredentials),
 }
 
 #[cfg(test)]
@@ -426,8 +426,8 @@ mod tests {
     }
 
     #[test]
-    fn can_serialize_new_gateway_ice_credentials_message() {
-        let msg = EgressMessages::NewGatewayIceCredentials(GatewayIceCredentials {
+    fn can_serialize_new_ice_credentials_for_gateway_message() {
+        let msg = EgressMessages::NewIceCredentialsForGateway(GatewayIceCredentials {
             gateway_id: "b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap(),
             credentials: IceCredentials {
                 username: "abcd".to_owned(),
@@ -436,7 +436,7 @@ mod tests {
         });
 
         let expected = serde_json::json!({
-            "event": "new_gateway_ice_credentials",
+            "event": "new_ice_credentials_for_gateway",
             "payload": {
                 "gateway_id": "b3d34a15-55ab-40df-994b-a838e75d65d7",
                 "credentials": {"username": "abcd", "password": "01234567890123456789ab"}
@@ -447,8 +447,8 @@ mod tests {
     }
 
     #[test]
-    fn can_serialize_new_client_ice_credentials_message() {
-        let msg = EgressMessages::NewClientIceCredentials(ClientIceCredentials {
+    fn can_serialize_new_ice_credentials_for_client_message() {
+        let msg = EgressMessages::NewIceCredentialsForClient(ClientIceCredentials {
             client_id: "a1f3a82e-3219-4b6e-9b1a-92e9a89e2222".parse().unwrap(),
             credentials: IceCredentials {
                 username: "wxyz".to_owned(),
@@ -457,7 +457,7 @@ mod tests {
         });
 
         let expected = serde_json::json!({
-            "event": "new_client_ice_credentials",
+            "event": "new_ice_credentials_for_client",
             "payload": {
                 "client_id": "a1f3a82e-3219-4b6e-9b1a-92e9a89e2222",
                 "credentials": {"username": "wxyz", "password": "abcdefghijklmnopqrstuv"}

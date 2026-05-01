@@ -234,7 +234,7 @@ impl Eventloop {
                 credentials,
             } => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::BroadcastIceCredentials(
+                    .send(PortalCommand::Send(EgressMessages::NewIceCredentialsForClient(
                         ClientIceCredentials {
                             client_id: client,
                             credentials,

@@ -326,7 +326,7 @@ impl Eventloop {
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
-                        EgressMessages::NewGatewayIceCredentials(GatewayIceCredentials {
+                        EgressMessages::NewIceCredentialsForGateway(GatewayIceCredentials {
                             gateway_id: gid,
                             credentials,
                         }),
@@ -342,7 +342,7 @@ impl Eventloop {
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
-                        EgressMessages::NewClientIceCredentials(ClientIceCredentials {
+                        EgressMessages::NewIceCredentialsForClient(ClientIceCredentials {
                             client_id: cid,
                             credentials,
                         }),
