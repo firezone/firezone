@@ -257,6 +257,15 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  def handle_info({:gateway_ice_credentials, gateway_id, credentials}, socket) do
+    push(socket, "gateway_ice_credentials", %{
+      gateway_id: gateway_id,
+      credentials: credentials
+    })
+
+    {:noreply, socket}
+  end
+
   # DEPRECATED IN 1.4
   # This message is sent by the gateway when it is ready to accept the connection from the client
   def handle_info(
@@ -329,6 +338,11 @@ defmodule PortalAPI.Client.Channel do
 
   def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
     push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
+    {:noreply, socket}
+  end
+
+  def handle_info({:client_ice_credentials, client_id, credentials}, socket) do
+    push(socket, "client_ice_credentials", %{client_id: client_id, credentials: credentials})
     {:noreply, socket}
   end
 
@@ -691,6 +705,15 @@ defmodule PortalAPI.Client.Channel do
   end
 
   def handle_in(
+        "new_gateway_ice_credentials",
+        %{"credentials" => credentials, "gateway_id" => gateway_id},
+        socket
+      ) do
+    PG.deliver(gateway_id, {:ice_credentials, socket.assigns.client.id, credentials})
+    {:noreply, socket}
+  end
+
+  def handle_in(
         "invalidate_gateway_ice_candidates",
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
@@ -758,6 +781,35 @@ defmodule PortalAPI.Client.Channel do
           reason: :offline
         })
 
+        {:noreply, socket}
+    end
+  end
+
+  def handle_in(
+        "new_client_ice_credentials",
+        %{"credentials" => credentials, "client_id" => target_client_id},
+        socket
+      ) do
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
+         :ok <-
+           PG.deliver(
+             target_client_id,
+             {:client_ice_credentials, socket.assigns.client.id, credentials}
+           ) do
+      {:noreply, socket}
+    else
+      false ->
+        Logger.warning(
+          "Client-to-client communication is disabled, cannot send ICE credentials",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          target_client_id: target_client_id
+        )
+
+        {:noreply, socket}
+
+      {:error, :not_found} ->
         {:noreply, socket}
     end
   end

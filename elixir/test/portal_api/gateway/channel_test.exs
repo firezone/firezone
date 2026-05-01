@@ -2729,6 +2729,45 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert gateway.id == gateway_id
     end
+
+    test "broadcasts :gateway_ice_credentials to the target client", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      credentials = %{"username" => "abcd", "password" => "01234567890123456789ab"}
+
+      :ok = PG.register(client.id)
+
+      push(socket, "broadcast_ice_credentials", %{
+        "client_id" => client.id,
+        "credentials" => credentials
+      })
+
+      assert_receive {:gateway_ice_credentials, gateway_id, ^credentials}, 200
+      assert gateway.id == gateway_id
+    end
+
+    test "handle_info :ice_credentials pushes ice_credentials event to the websocket", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      client_id = Ecto.UUID.generate()
+      credentials = %{"username" => "abcd", "password" => "01234567890123456789ab"}
+
+      send(socket.channel_pid, {:ice_credentials, client_id, credentials})
+
+      assert_push "ice_credentials", payload, 200
+      assert payload == %{client_id: client_id, credentials: credentials}
+    end
   end
 
   # Relay presence tests (CRDT-based, no debouncing)

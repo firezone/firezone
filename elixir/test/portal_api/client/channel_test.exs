@@ -2810,6 +2810,134 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_in/3 new_gateway_ice_credentials" do
+    test "forwards ice credentials to the gateway via PG", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      credentials = %{"username" => "abcd", "password" => "01234567890123456789ab"}
+
+      gateway = Repo.preload(gateway, :site)
+      gateway_token = gateway_token_fixture(account: account, site: gateway.site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      :ok = PG.register(gateway.id)
+
+      push(socket, "new_gateway_ice_credentials", %{
+        "credentials" => credentials,
+        "gateway_id" => gateway.id
+      })
+
+      assert_receive {:ice_credentials, client_id, ^credentials}, 200
+      assert client_id == client.id
+    end
+  end
+
+  describe "handle_in/3 new_client_ice_credentials" do
+    test "forwards ice credentials to target client when c2c is enabled", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      credentials = %{"username" => "wxyz", "password" => "abcdefghijklmnopqrstuv"}
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
+
+      :ok = PG.register(target_client.id)
+
+      push(socket, "new_client_ice_credentials", %{
+        "credentials" => credentials,
+        "client_id" => target_client.id
+      })
+
+      assert_receive {:client_ice_credentials, sending_client_id, ^credentials}, 200
+      assert sending_client_id == client.id
+    end
+
+    test "does nothing when c2c is globally disabled", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      credentials = %{"username" => "wxyz", "password" => "abcdefghijklmnopqrstuv"}
+      target_client_id = Ecto.UUID.generate()
+
+      push(socket, "new_client_ice_credentials", %{
+        "credentials" => credentials,
+        "client_id" => target_client_id
+      })
+
+      refute_receive {:client_ice_credentials, _, _}
+    end
+
+    test "does nothing when target client is offline", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      enable_feature(:client_to_client)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      credentials = %{"username" => "wxyz", "password" => "abcdefghijklmnopqrstuv"}
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
+
+      push(socket, "new_client_ice_credentials", %{
+        "credentials" => credentials,
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_credentials, _, _}
+    end
+  end
+
+  describe "handle_info gateway_ice_credentials" do
+    test "pushes gateway_ice_credentials event to the websocket", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      gateway_id = Ecto.UUID.generate()
+      credentials = %{"username" => "abcd", "password" => "01234567890123456789ab"}
+
+      send(socket.channel_pid, {:gateway_ice_credentials, gateway_id, credentials})
+
+      assert_push "gateway_ice_credentials", payload, 200
+      assert payload == %{gateway_id: gateway_id, credentials: credentials}
+    end
+  end
+
+  describe "handle_info client_ice_credentials" do
+    test "pushes client_ice_credentials event to the websocket", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      source_client_id = Ecto.UUID.generate()
+      credentials = %{"username" => "wxyz", "password" => "abcdefghijklmnopqrstuv"}
+
+      send(socket.channel_pid, {:client_ice_credentials, source_client_id, credentials})
+
+      assert_push "client_ice_credentials", payload, 200
+      assert payload == %{client_id: source_client_id, credentials: credentials}
+    end
+  end
+
   describe "handle_in/3 invalidate_client_ice_candidates" do
     test "forwards invalidations to target client when c2c is enabled", %{
       account: account,

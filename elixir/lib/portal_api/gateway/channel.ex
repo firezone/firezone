@@ -221,6 +221,15 @@ defmodule PortalAPI.Gateway.Channel do
     {:noreply, socket}
   end
 
+  def handle_info({:ice_credentials, client_id, credentials}, socket) do
+    push(socket, "ice_credentials", %{
+      client_id: client_id,
+      credentials: credentials
+    })
+
+    {:noreply, socket}
+  end
+
   def handle_info({:authorize_policy, {channel_pid, socket_ref}, payload}, socket) do
     %{
       client: client,
@@ -478,6 +487,19 @@ defmodule PortalAPI.Gateway.Channel do
         {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates}
       )
     end)
+
+    {:noreply, socket}
+  end
+
+  def handle_in(
+        "broadcast_ice_credentials",
+        %{"client_id" => client_id, "credentials" => credentials},
+        socket
+      ) do
+    PG.deliver(
+      client_id,
+      {:gateway_ice_credentials, socket.assigns.gateway.id, credentials}
+    )
 
     {:noreply, socket}
   end
