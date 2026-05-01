@@ -134,6 +134,11 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         await signInHandler()
       }
     }
+
+    @MainActor
+    public func showDisconnectedAlertMacOS(_ message: String?) async {
+      await MacOSAlert.showDisconnectedAlert(message)
+    }
   #endif
 }
 

@@ -324,6 +324,17 @@
       let response = await show(alert)
       return response == .alertFirstButtonReturn
     }
+
+    /// Shows a disconnected alert explaining why Firezone disconnected.
+    public static func showDisconnectedAlert(_ message: String?) async {
+      let alert = NSAlert()
+      alert.messageText = "Firezone disconnected"
+      alert.informativeText = message ?? "Firezone has been disconnected."
+      alert.addButton(withTitle: "OK")
+      NSApp.activate(ignoringOtherApps: true)
+
+      _ = await show(alert)
+    }
   }
 
 #endif

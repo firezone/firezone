@@ -6,8 +6,8 @@ import Foundation
 /// All cases and associated values are Sendable, enabling compiler-verified
 /// thread-safe communication without @unchecked Sendable.
 enum ProviderCommand: Sendable {
-  /// Cancel the tunnel with an optional error.
-  case cancelWithError(SendableError?)
+  /// Cancel the tunnel with an error.
+  case cancelWithError(SendableError)
 
   /// Set the reasserting state (network transition indicator).
   case setReasserting(Bool)

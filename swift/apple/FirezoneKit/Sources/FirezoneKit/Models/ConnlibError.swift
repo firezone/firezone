@@ -8,6 +8,21 @@ import Foundation
 
 public enum ConnlibError: Swift.Error {
   case sessionExpired(String, id: String = UUID().uuidString)
+  case disconnected(String, id: String = UUID().uuidString)
+
+  public enum Code: Int {
+    case sessionExpired = 0
+    case disconnected = 1
+  }
+
+  public var code: Code {
+    switch self {
+    case .sessionExpired:
+      return .sessionExpired
+    case .disconnected:
+      return .disconnected
+    }
+  }
 }
 
 extension ConnlibError: CustomNSError {
@@ -15,16 +30,11 @@ extension ConnlibError: CustomNSError {
     return "FirezoneKit.ConnlibError"
   }
 
-  public var errorCode: Int {
-    switch self {
-    case .sessionExpired:
-      return 0
-    }
-  }
+  public var errorCode: Int { code.rawValue }
 
   public var errorUserInfo: [String: Any] {
     switch self {
-    case .sessionExpired(let reason, let id):
+    case .sessionExpired(let reason, let id), .disconnected(let reason, let id):
       return [
         "reason": reason,
         "id": id,
