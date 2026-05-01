@@ -1,30 +1,33 @@
-lockfileVersion: '9.0'
+lockfileVersion: "9.0"
 
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
 importers:
-
   .:
     dependencies:
-      '@fontsource-variable/roboto':
+      "@fontsource-variable/roboto":
         specifier: ^5.2.8
         version: 5.2.10
-      '@fontsource-variable/roboto-mono':
+      "@fontsource-variable/roboto-mono":
         specifier: ^5.2.8
         version: 5.2.8
 
 packages:
+  "@fontsource-variable/roboto-mono@5.2.8":
+    resolution:
+      {
+        integrity: sha512-6M2U3wGIUxYNKRrUoKls8BRRIPDA57T8J0agqwyDkiEHrLEEAqptsxcUl3eTm6tnRNEn6yEm4pCefvtnujebDA==,
+      }
 
-  '@fontsource-variable/roboto-mono@5.2.8':
-    resolution: {integrity: sha512-6M2U3wGIUxYNKRrUoKls8BRRIPDA57T8J0agqwyDkiEHrLEEAqptsxcUl3eTm6tnRNEn6yEm4pCefvtnujebDA==}
-
-  '@fontsource-variable/roboto@5.2.10':
-    resolution: {integrity: sha512-LJ0iLg6aHbLzN515gyHzmdTqJzd9NlI95cCg1DW0F5G7KkFqRLBBKBbqEJx4nSu4aby3IKmw3ZH6Fe928IfaSQ==}
+  "@fontsource-variable/roboto@5.2.10":
+    resolution:
+      {
+        integrity: sha512-LJ0iLg6aHbLzN515gyHzmdTqJzd9NlI95cCg1DW0F5G7KkFqRLBBKBbqEJx4nSu4aby3IKmw3ZH6Fe928IfaSQ==,
+      }
 
 snapshots:
+  "@fontsource-variable/roboto-mono@5.2.8": {}
 
-  '@fontsource-variable/roboto-mono@5.2.8': {}
-
-  '@fontsource-variable/roboto@5.2.10': {}
+  "@fontsource-variable/roboto@5.2.10": {}
