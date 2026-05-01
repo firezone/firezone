@@ -1747,27 +1747,28 @@ impl ReferenceState {
             .map(|(id, c)| (*id, c.inner().tunnel_ip4))
             .collect();
 
-        let mut result = Vec::new();
-        for (src_id, src_client) in &self.clients {
-            for resource in src_client.inner().all_resources() {
-                let client::Resource::StaticDevicePool(pool) = resource else {
-                    continue;
-                };
-                if !pool_filters_allow_icmp(&pool.filters) {
-                    continue;
-                }
-                for device in &pool.devices {
-                    if device.id == *src_id {
-                        continue;
-                    }
-                    let Some(dst_ipv4) = online_ips_by_id.get(&device.id) else {
-                        continue;
-                    };
-                    result.push((*src_id, *dst_ipv4));
-                }
-            }
-        }
-        result
+        self.clients
+            .iter()
+            .flat_map(|(src_id, src_client)| {
+                let online_ips_by_id = online_ips_by_id.clone();
+                let src_id = *src_id;
+
+                src_client
+                    .inner()
+                    .all_resources()
+                    .into_iter()
+                    .filter_map(|r| match r {
+                        client::Resource::StaticDevicePool(p) => Some(p),
+                        _ => None,
+                    })
+                    .filter(|pool| pool_filters_allow_icmp(&pool.filters))
+                    .flat_map(|pool| pool.devices)
+                    .filter(move |device| device.id != src_id)
+                    .filter_map(move |device| {
+                        online_ips_by_id.get(&device.id).map(|ip| (src_id, *ip))
+                    })
+            })
+            .collect()
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {

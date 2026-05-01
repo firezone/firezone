@@ -158,10 +158,8 @@ pub struct ClientDeviceAccessAuthorized {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessDenied {
-    #[serde(default)]
-    pub ipv4: Option<Ipv4Addr>,
-    #[serde(default)]
-    pub ipv6: Option<Ipv6Addr>,
+    pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
     pub reason: FailReason,
 }
 

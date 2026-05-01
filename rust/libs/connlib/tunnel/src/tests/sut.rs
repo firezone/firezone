@@ -10,7 +10,6 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
-use crate::messages::client::FailReason;
 use crate::messages::gateway::{Client, Subject};
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
@@ -1123,7 +1122,7 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceConnectionIntent { resource_id: _, ip } => {
+            ClientEvent::DeviceConnectionIntent { resource_id, ip } => {
                 let src_client = self.clients.get(&src).expect("unknown source client");
 
                 let src_key = src_client.inner().sut.public_key();
@@ -1190,22 +1189,12 @@ impl TunnelTest {
                         })?;
                     }
                     None => {
-                        let (denied_v4, denied_v6) = match ip {
-                            std::net::IpAddr::V4(v4) => (Some(v4), None),
-                            std::net::IpAddr::V6(v6) => (None, Some(v6)),
-                        };
-
-                        self.clients
-                            .get_mut(&src)
-                            .expect("unknown source client")
-                            .exec_mut(|c| {
-                                c.sut.handle_client_device_access_denied(
-                                    denied_v4,
-                                    denied_v6,
-                                    FailReason::NotFound,
-                                    now,
-                                )
-                            })
+                        // The proptest only samples `SendIcmpPacketToDevice` for destinations
+                        // that are online clients (see `pool_routed_other_client_tun_ips`),
+                        // so this branch shouldn't fire.
+                        unreachable!(
+                            "device-connection intent for offline destination ip={ip} resource_id={resource_id}"
+                        )
                     }
                 }
 
