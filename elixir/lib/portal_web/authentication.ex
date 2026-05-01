@@ -27,4 +27,12 @@ defmodule PortalWeb.Authentication do
     |> Map.take(["as", "state", "nonce", "redirect_to"])
     |> Map.reject(fn {_key, value} -> value in ["", nil] end)
   end
+
+  @doc """
+  Returns true when the params represent a client sign-in flow.
+  """
+  def client_sign_in?(%{"as" => as}) when as in ["client", "gui-client", "headless-client"],
+    do: true
+
+  def client_sign_in?(_params), do: false
 end
