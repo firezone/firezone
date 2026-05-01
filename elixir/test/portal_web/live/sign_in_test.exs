@@ -4,6 +4,8 @@ defmodule PortalWeb.SignInTest do
   import Portal.AccountFixtures
   import Portal.AuthProviderFixtures
 
+  @client_sign_in_types ["client", "gui-client", "headless-client"]
+
   setup do
     account = account_fixture()
     %{account: account}
@@ -30,6 +32,20 @@ defmodule PortalWeb.SignInTest do
       {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
 
       refute html =~ "Send code"
+    end
+
+    test "redirects missing client account slug to root /sign_in with params preserved", %{conn: conn} do
+      for client <- @client_sign_in_types do
+        params = %{
+          "as" => client,
+          "state" => "abc",
+          "nonce" => "xyz",
+          "redirect_to" => "/sites"
+        }
+
+        conn = get(conn, ~p"/nonexistent-account/sign_in?#{params}")
+        assert redirected_to(conn) == ~p"/sign_in?#{params}"
+      end
     end
   end
 end
