@@ -277,29 +277,25 @@ impl ClientState {
     /// 2. When access is revoked after it has been established.
     pub fn handle_client_device_access_denied(
         &mut self,
-        ipv4: Option<Ipv4Addr>,
-        ipv6: Option<Ipv6Addr>,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
         reason: FailReason,
         now: Instant,
     ) {
-        tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
-
-        let dst = match (ipv4, ipv6) {
-            (Some(v4), _) => IpAddr::V4(v4),
-            (None, Some(v6)) => IpAddr::V6(v6),
-            (None, None) => {
-                tracing::debug!("Ignoring device-access-denied without an address");
-                return;
-            }
-        };
+        tracing::debug!(%ipv4, %ipv6, "Device access denied: {reason:?}");
 
         // The protocol is irrelevant: each member device has exactly one routing-table entry
         // per address, so the lookup always resolves to that entry regardless of the dummy.
-        let Some(entry) = self
+        let entry = self
             .client_routing_table
-            .matches(dst, Ok(Protocol::Tcp(0)))
-            .cloned()
-        else {
+            .matches(IpAddr::V4(ipv4), Ok(Protocol::Tcp(0)))
+            .cloned();
+        let entry = entry.or_else(|| {
+            self.client_routing_table
+                .matches(IpAddr::V6(ipv6), Ok(Protocol::Tcp(0)))
+                .cloned()
+        });
+        let Some(entry) = entry else {
             return;
         };
 
@@ -645,24 +641,7 @@ impl ClientState {
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;
 
-        let maybe_packet = if let Some((gid, _)) = self.gateways.peer_by_ip(dst) {
-            Some((ClientOrGatewayId::Gateway(gid), packet))
-        } else if let Some((cid, _)) = self.clients.peer_by_ip(dst) {
-            // Fast-path for an already-established client-to-client connection (e.g. on the
-            // controlled side of a static device pool flow, where the remote IP isn't in
-            // *our* `client_routing_table` but `self.clients` knows about the connection).
-            Some((ClientOrGatewayId::Client(cid), packet))
-        } else if let Some(entry) = self
-            .client_routing_table
-            .matches(dst, Ok(dst_proto))
-            .cloned()
-        {
-            self.route_packet_to_client(entry, dst, dst_proto, packet, now)?
-        } else {
-            self.route_packet_to_resource(packet, now)?
-        };
-
-        let Some((pid, mut packet)) = maybe_packet else {
+        let Some((pid, mut packet)) = self.route_packet(packet, dst, dst_proto, now)? else {
             return Ok(None);
         };
 
@@ -693,35 +672,54 @@ impl ClientState {
         Ok(Some(transmit))
     }
 
-    fn route_packet_to_client(
+    /// Decide which connection a packet should be encapsulated through.
+    ///
+    /// Returns `Ok(Some(...))` if we have a destination ready, `Ok(None)` if we've buffered the
+    /// packet pending flow setup, and `Err(...)` if the packet is unroutable.
+    fn route_packet(
         &mut self,
-        entry: ClientEntry,
+        packet: IpPacket,
         dst: IpAddr,
         dst_proto: Protocol,
-        packet: IpPacket,
         now: Instant,
     ) -> Result<Option<(ClientOrGatewayId, IpPacket)>> {
-        if entry.filter.apply(Ok(dst_proto)).is_err() {
-            bail!(UnroutablePacket::not_allowed(&packet))
+        // Fast-path: gateway TUN IPs (e.g. DNS resource NAT control packets).
+        if let Some((gid, _)) = self.gateways.peer_by_ip(dst) {
+            return Ok(Some((ClientOrGatewayId::Gateway(gid), packet)));
         }
 
-        if self.clients.peer_by_id(&entry.client_id).is_some() {
-            return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
+        // Fast-path: an already-established client-to-client connection. This covers the
+        // controlled side of a static device pool flow, where the remote IP isn't in
+        // *our* `client_routing_table` but `self.clients` knows about the connection.
+        if let Some((cid, _)) = self.clients.peer_by_ip(dst) {
+            return Ok(Some((ClientOrGatewayId::Client(cid), packet)));
         }
 
-        self.on_not_connected_device(entry.client_id, entry.resource_id, dst, packet, now);
+        // Static device pool routing.
+        if let Some(entry) = self
+            .client_routing_table
+            .matches(dst, Ok(dst_proto))
+            .cloned()
+        {
+            if entry.filter.apply(Ok(dst_proto)).is_err() {
+                bail!(UnroutablePacket::not_allowed(&packet))
+            }
 
-        Ok(None)
-    }
+            if self.clients.peer_by_id(&entry.client_id).is_some() {
+                return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
+            }
 
-    fn route_packet_to_resource(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Result<Option<(ClientOrGatewayId, IpPacket)>> {
-        let dst = packet.destination();
-        let dst_proto = packet.destination_protocol()?;
+            self.pending_device_access.on_not_connected_device(
+                entry.client_id,
+                entry.resource_id,
+                dst,
+                packet,
+                now,
+            );
+            return Ok(None);
+        }
 
+        // Resource (CIDR / DNS / Internet) routing via a gateway.
         let resource = self
             .get_resource_by_destination(dst, dst_proto)
             .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
@@ -2086,23 +2084,6 @@ impl ClientState {
     ) {
         self.pending_flows
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
-    }
-
-    fn on_not_connected_device(
-        &mut self,
-        client_id: ClientId,
-        resource_id: ResourceId,
-        ip: IpAddr,
-        trigger: IpPacket,
-        now: Instant,
-    ) {
-        self.pending_device_access.on_not_connected_device(
-            client_id,
-            resource_id,
-            ip,
-            trigger,
-            now,
-        );
     }
 }
 
