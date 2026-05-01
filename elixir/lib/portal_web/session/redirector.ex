@@ -15,15 +15,14 @@ defmodule PortalWeb.Session.Redirector do
   @doc """
   Sanitizes and validates a redirect_to parameter.
 
-  Returns the redirect_to if it's valid (starts with account ID or slug),
+  Returns the redirect_to if it's valid (the first path segment is the account ID or slug),
   otherwise returns the default portal path.
   """
   def sanitize_redirect_to(account, redirect_to, actor \\ nil)
 
   def sanitize_redirect_to(%Portal.Account{} = account, redirect_to, actor)
       when is_binary(redirect_to) do
-    if String.starts_with?(redirect_to, "/#{account.id}") or
-         String.starts_with?(redirect_to, "/#{account.slug}") do
+    if account_scoped_path?(redirect_to, account) do
       redirect_to
     else
       default_portal_path(account, actor)
@@ -32,6 +31,21 @@ defmodule PortalWeb.Session.Redirector do
 
   def sanitize_redirect_to(%Portal.Account{} = account, _redirect_to, actor) do
     default_portal_path(account, actor)
+  end
+
+  defp account_scoped_path?(redirect_to, account) do
+    case URI.parse(redirect_to) do
+      %URI{scheme: nil, host: nil, path: "/" <> rest} ->
+        first_segment =
+          rest
+          |> String.split("/", parts: 2)
+          |> hd()
+
+        first_segment in [account.id, account.slug]
+
+      _ ->
+        false
+    end
   end
 
   @doc """
