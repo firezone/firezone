@@ -246,8 +246,14 @@ where
 
     /// Upserts a connection to the given remote.
     ///
-    /// If we already have a connection with the same ICE credentials, this does nothing.
+    /// If we already have a connection with the same remote public key, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
+    ///
+    /// ICE credentials, candidates, preshared key and role are all considered
+    /// per-connection state that is allowed to evolve over the lifetime of a
+    /// connection (e.g. via credentialed ICE restart). Re-running upsert with
+    /// changed ICE credentials does **not** disturb the existing connection;
+    /// to update credentials use [`Self::set_remote_ice_credentials`].
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn upsert_connection(
         &mut self,
@@ -264,53 +270,10 @@ where
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
 
-        // Check if we already have a connection with the exact same parameters.
-        // In order for the connection to be same, we need to compare:
-        // - Local ICE credentials
-        // - Remote ICE credentials
-        // - Remote public key
-        // - Preshared key
-        //
-        // Only if all of those things are the same, will:
-        // - ICE be able to establish a connection
-        // - boringtun be able to handshake a session
         if let Ok(c) = self.connections.get_mut(&cid, now)
-            && c.agent.local_credentials() == &local_creds
-            && c.agent
-                .remote_credentials()
-                .is_some_and(|c| c == &remote_creds)
             && c.tunnel.remote_static_public() == remote
-            && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
-            && c.agent.controlling() == matches!(ice_role, IceRole::Controlling)
         {
-            tracing::info!(local = ?local_creds, "Reusing existing connection");
-
-            c.state
-                .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
-
-            // Take all current candidates.
-            let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
-
-            // Re-seed connection with all candidates.
-            let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
-
-            // Tell the remote about all of them.
-            self.pending_events.extend(
-                std::iter::empty()
-                    .chain(current_candidates)
-                    .chain(new_candidates)
-                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
-            );
-
-            // Initiate a new WG session.
-            //
-            // We can have up to 8 concurrent WireGuard sessions in boringtun before the oldest one gets overwritten.
-            // Also, whilst we are handshaking a new session, we won't send another handshake.
-            // Thus, even rapid successive connection upserts should be handled just fine.
-            if c.agent.controlling() {
-                c.initiate_wg_session(&mut self.allocations, &mut self.buffered_transmits, now);
-            }
+            tracing::info!("Reusing existing connection");
 
             return Ok(());
         }
@@ -1089,20 +1052,6 @@ where
 
         Ok(rid)
     }
-}
-
-/// Seeds the agent with all local candidates, returning an iterator of all candidates that should be signalled to the remote.
-fn seed_agent_with_local_candidates<'a, RId>(
-    selected_relay: RId,
-    agent: &'a mut IceAgent,
-    allocations: &Allocations<RId>,
-) -> impl Iterator<Item = Candidate> + use<'a, RId>
-where
-    RId: Ord + fmt::Display + Copy,
-{
-    allocations
-        .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| agent.add_local_candidate(c).cloned())
 }
 
 /// Generate optimistic candidates based on the ones we have already received.

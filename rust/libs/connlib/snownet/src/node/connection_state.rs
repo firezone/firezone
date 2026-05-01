@@ -85,27 +85,6 @@ impl ConnectionState {
         self.transition_to_idle(peer_socket, agent, idle_ice_config);
     }
 
-    pub(crate) fn on_upsert<TId>(
-        &mut self,
-        cid: TId,
-        agent: &mut IceAgent,
-        default_ice_config: IceConfig,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-    {
-        let peer_socket = match self {
-            Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_activity, .. } => {
-                *last_activity = now;
-                return;
-            }
-            Self::Failed | Self::Connecting { .. } => return,
-        };
-
-        self.transition_to_connected(cid, peer_socket, agent, default_ice_config, "upsert", now);
-    }
-
     pub(crate) fn on_candidate<TId>(
         &mut self,
         cid: TId,
