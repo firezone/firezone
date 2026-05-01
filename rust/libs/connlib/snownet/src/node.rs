@@ -1317,19 +1317,25 @@ where
         self.state
             .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
-        if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
-            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
-            self.state = ConnectionState::Failed;
-            return;
-        }
+        // Only the controlling side ever drives connection teardown on an
+        // ICE timeout. The controlled side keeps the connection alive and
+        // waits for the controller to either re-establish ICE (e.g. via a
+        // credentialed restart) or close the connection explicitly.
+        if self.agent.controlling() {
+            if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
+                tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
+                self.state = ConnectionState::Failed;
+                return;
+            }
 
-        if self
-            .disconnect_timeout()
-            .is_some_and(|timeout| now >= timeout)
-        {
-            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
-            self.state = ConnectionState::Failed;
-            return;
+            if self
+                .disconnect_timeout()
+                .is_some_and(|timeout| now >= timeout)
+            {
+                tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
+                self.state = ConnectionState::Failed;
+                return;
+            }
         }
 
         self.handle_tunnel_timeout(now, allocations, transmits);
