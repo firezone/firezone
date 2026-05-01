@@ -432,6 +432,36 @@ where
         (self.stats, self.connections.stats())
     }
 
+    /// Adopt new remote ICE credentials for an existing connection.
+    ///
+    /// Used when the peer signals a credentialed ICE restart (RFC 8445 §9):
+    /// they have changed network and rolled their local credentials, so we
+    /// flush their previous candidates and pair state and prepare to accept
+    /// new candidates under the new credentials. Our own local credentials
+    /// and candidates are kept — only the peer's ICE state turns over.
+    ///
+    /// The WireGuard session is preserved across this operation; only the
+    /// ICE-level peer authentication material rotates.
+    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    pub fn set_remote_ice_credentials(
+        &mut self,
+        cid: TId,
+        remote_creds: Credentials,
+        now: Instant,
+    ) {
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
+            tracing::debug!("Unknown connection");
+            return;
+        };
+
+        let local_creds = c.agent.local_credentials().clone();
+        c.agent.ice_restart(local_creds, true);
+        c.agent.set_remote_credentials(remote_creds.into());
+        c.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
+
+        tracing::info!("Adopted new remote ICE credentials");
+    }
+
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
         tracing::debug!(?candidate, "Received candidate from remote");
