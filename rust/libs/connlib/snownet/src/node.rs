@@ -1138,6 +1138,7 @@ fn invalidate_allocation_candidates<TId, RId>(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Credentials {
     /// The ICE username (ufrag).
     pub username: String,
@@ -1177,6 +1178,14 @@ pub enum Event<TId> {
     InvalidateIceCandidate {
         connection: TId,
         candidate: Candidate,
+    },
+
+    /// Our local ICE credentials for this connection rotated and must be
+    /// signalled to the remote party so it can adopt them via a credentialed
+    /// ICE restart (RFC 8445 §9).
+    NewLocalIceCredentials {
+        connection: TId,
+        credentials: Credentials,
     },
 
     ConnectionEstablished(TId),

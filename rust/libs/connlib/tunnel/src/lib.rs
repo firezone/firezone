@@ -604,6 +604,10 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
+    NewLocalIceCredentials {
+        conn_id: ClientOrGatewayId,
+        credentials: messages::IceCredentials,
+    },
     ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
@@ -666,6 +670,10 @@ pub enum GatewayEvent {
     RemovedIceCandidates {
         conn_id: ClientId,
         candidates: BTreeSet<IceCandidate>,
+    },
+    NewLocalIceCredentials {
+        conn_id: ClientId,
+        credentials: messages::IceCredentials,
     },
     ResolveDns(ResolveDnsRequest),
     Error(TunnelError),

@@ -1049,6 +1049,22 @@ impl TunnelTest {
 
                 Ok(())
             }
+            ClientEvent::NewLocalIceCredentials {
+                conn_id: ClientOrGatewayId::Gateway(conn_id),
+                credentials,
+            } => {
+                let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
+                gateway.exec_mut(|g| g.sut.set_remote_ice_credentials(src, credentials, now));
+                Ok(())
+            }
+            ClientEvent::NewLocalIceCredentials {
+                conn_id: ClientOrGatewayId::Client(conn_id),
+                credentials,
+            } => {
+                let client = self.clients.get_mut(&conn_id).expect("unknown client");
+                client.exec_mut(|c| c.sut.set_remote_ice_credentials(src, credentials, now));
+                Ok(())
+            }
             ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
@@ -1408,6 +1424,13 @@ fn on_gateway_event(
                     c.sut.remove_ice_candidate(src, candidate, now)
                 }
             })
+        }
+        GatewayEvent::NewLocalIceCredentials {
+            conn_id,
+            credentials,
+        } => {
+            let client = clients.get_mut(&conn_id).unwrap();
+            client.exec_mut(|c| c.sut.set_remote_ice_credentials(src, credentials, now))
         }
         GatewayEvent::ResolveDns(r) => {
             let resolved_ips = global_dns_records

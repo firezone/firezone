@@ -229,6 +229,19 @@ impl Eventloop {
                     ))
                     .await?;
             }
+            tunnel::GatewayEvent::NewLocalIceCredentials {
+                conn_id: client,
+                credentials,
+            } => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::BroadcastIceCredentials(
+                        ClientIceCredentials {
+                            client_id: client,
+                            credentials,
+                        },
+                    )))
+                    .await?;
+            }
             tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks

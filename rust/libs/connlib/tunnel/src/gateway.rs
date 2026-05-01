@@ -584,6 +584,19 @@ impl GatewayState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
+                snownet::Event::NewLocalIceCredentials {
+                    connection,
+                    credentials,
+                } => {
+                    self.buffered_events
+                        .push_back(GatewayEvent::NewLocalIceCredentials {
+                            conn_id: connection,
+                            credentials: IceCredentials {
+                                username: credentials.username,
+                                password: credentials.password,
+                            },
+                        });
+                }
             }
         }
 

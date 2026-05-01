@@ -318,6 +318,38 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            ClientEvent::NewLocalIceCredentials {
+                conn_id: ClientOrGatewayId::Gateway(gid),
+                credentials,
+            } => {
+                tracing::debug!(%gid, "Sending new local ICE credentials to gateway");
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(
+                        EgressMessages::NewGatewayIceCredentials(GatewayIceCredentials {
+                            gateway_id: gid,
+                            credentials,
+                        }),
+                    ))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            ClientEvent::NewLocalIceCredentials {
+                conn_id: ClientOrGatewayId::Client(cid),
+                credentials,
+            } => {
+                tracing::debug!(%cid, "Sending new local ICE credentials to client");
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(
+                        EgressMessages::NewClientIceCredentials(ClientIceCredentials {
+                            client_id: cid,
+                            credentials,
+                        }),
+                    ))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,

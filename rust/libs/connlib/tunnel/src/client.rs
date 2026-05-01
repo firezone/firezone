@@ -1707,6 +1707,19 @@ impl ClientState {
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(_)) => {
                     // TODO: Update resource list with online client.
                 }
+                snownet::Event::NewLocalIceCredentials {
+                    connection,
+                    credentials,
+                } => {
+                    self.buffered_events
+                        .push_back(ClientEvent::NewLocalIceCredentials {
+                            conn_id: connection,
+                            credentials: IceCredentials {
+                                username: credentials.username,
+                                password: credentials.password,
+                            },
+                        });
+                }
             }
         }
 
