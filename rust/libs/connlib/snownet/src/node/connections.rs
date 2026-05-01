@@ -616,7 +616,6 @@ mod tests {
                 wg_buffer: AllocRingBuffer::new(1),
                 ip_buffer: AllocRingBuffer::new(1),
             },
-            disconnected_at: None,
             stats: Default::default(),
             intent_sent_at: Instant::now(),
             candidate_timeout: None,

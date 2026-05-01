@@ -26,7 +26,7 @@ use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use is::stun::{StunMessage, StunPacket};
-use is::{Candidate, CandidateKind, IceConnectionState};
+use is::{Candidate, CandidateKind};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use rand::rngs::StdRng;
@@ -47,9 +47,6 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Grace-period for when we will act on an ICE disconnect.
-const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
@@ -238,7 +235,6 @@ where
 
             c.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
             c.first_handshake_completed_at = None;
-            c.disconnected_at = None;
             c.poll_timeout_cache = TimeoutCache::default();
 
             self.pending_events.push_back(Event::NewLocalIceCredentials {
@@ -817,7 +813,6 @@ where
                 wg_buffer: AllocRingBuffer::new(128),
                 ip_buffer: AllocRingBuffer::new(128),
             },
-            disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
@@ -1271,7 +1266,6 @@ struct Connection<RId> {
     relay: SelectedRelay<RId>,
 
     state: ConnectionState,
-    disconnected_at: Option<Instant>,
 
     stats: ConnectionStats,
     intent_sent_at: Instant,
@@ -1316,20 +1310,10 @@ where
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
             )
-            .chain(
-                self.disconnect_timeout()
-                    .map(|instant| (instant, "disconnect timeout")),
-            )
             .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
-    }
-
-    fn disconnect_timeout(&self) -> Option<Instant> {
-        let disconnected_at = self.disconnected_at?;
-
-        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     fn handle_timeout<TId>(
@@ -1354,25 +1338,13 @@ where
         self.state
             .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
-        // The "no candidates received" failure fires on both sides: if the
-        // peer never sends us a candidate within `CANDIDATE_TIMEOUT` we have
-        // no chance of establishing the connection regardless of role.
+        // ICE disconnects no longer drive connection teardown — recovery is
+        // handled out-of-band by upper layers via credentialed ICE restart.
+        // The only remaining failure path here is the "no candidates received"
+        // timeout, which fires on both sides: without ever receiving a
+        // candidate from the peer, neither role can make progress.
         if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
             tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
-            self.state = ConnectionState::Failed;
-            return;
-        }
-
-        // The ICE disconnect timeout, on the other hand, is controlling-only.
-        // The controlled side keeps the connection alive and waits for the
-        // controller to either re-establish ICE (e.g. via a credentialed
-        // restart) or close the connection explicitly.
-        if self.agent.controlling()
-            && self
-                .disconnect_timeout()
-                .is_some_and(|timeout| now >= timeout)
-        {
-            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1394,22 +1366,6 @@ where
         while let Some(event) = self.agent.poll_event() {
             match event {
                 IceAgentEvent::DiscoveredRecv { .. } => {}
-                IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
-
-                    self.disconnected_at = Some(now);
-                }
-                IceAgentEvent::IceConnectionStateChange(
-                    IceConnectionState::Checking | IceConnectionState::Connected,
-                ) => {
-                    let existing = self.disconnected_at.take();
-
-                    if let Some(disconnected_at) = existing {
-                        let offline = now.duration_since(disconnected_at);
-
-                        tracing::debug!(?offline, "ICE agent reconnected");
-                    }
-                }
                 IceAgentEvent::NominatedSend {
                     destination,
                     source,
