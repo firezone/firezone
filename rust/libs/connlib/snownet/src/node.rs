@@ -275,6 +275,16 @@ where
         {
             tracing::info!("Reusing existing connection");
 
+            // Re-emit our existing local candidates so the upper layer can
+            // signal them to the (potentially new) peer state. No seeding —
+            // we don't add anything to the agent.
+            let candidates: SmallVec<[_; 16]> = c.agent.local_candidates().collect();
+            self.pending_events.extend(
+                candidates
+                    .into_iter()
+                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
+            );
+
             return Ok(());
         }
 
