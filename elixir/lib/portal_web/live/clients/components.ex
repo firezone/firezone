@@ -149,7 +149,7 @@ defmodule PortalWeb.Clients.Components do
 
   def version(assigns) do
     assigns =
-      assign(assigns, outdated?: not is_nil(assigns.latest) and assigns.current != assigns.latest)
+      assign(assigns, outdated?: outdated_version?(assigns.current, assigns.latest))
 
     ~H"""
     <.popover>
@@ -185,6 +185,17 @@ defmodule PortalWeb.Clients.Components do
     </.popover>
     """
   end
+
+  defp outdated_version?(current, latest) when is_binary(current) and is_binary(latest) do
+    with {:ok, current_version} <- Version.parse(current),
+         {:ok, latest_version} <- Version.parse(latest) do
+      Version.compare(current_version, latest_version) == :lt
+    else
+      :error -> false
+    end
+  end
+
+  defp outdated_version?(_, _), do: false
 
   attr :account, :any, required: true
   attr :client, :any, required: true

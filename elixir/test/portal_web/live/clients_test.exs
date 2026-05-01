@@ -182,6 +182,35 @@ defmodule PortalWeb.ClientsTest do
       assert_patch(lv, ~p"/#{account}/clients")
     end
 
+    test "marks only older client versions as outdated" do
+      older_html =
+        render_component(&PortalWeb.Clients.Components.version/1,
+          current: "0.9.0",
+          latest: "1.0.0"
+        )
+
+      assert older_html =~ "A newer version"
+      assert older_html =~ "1.0.0"
+
+      latest_html =
+        render_component(&PortalWeb.Clients.Components.version/1,
+          current: "1.0.0",
+          latest: "1.0.0"
+        )
+
+      assert latest_html =~ "This component is up to date."
+      refute latest_html =~ "A newer version"
+
+      newer_html =
+        render_component(&PortalWeb.Clients.Components.version/1,
+          current: "1.0.1",
+          latest: "1.0.0"
+        )
+
+      assert newer_html =~ "This component is up to date."
+      refute newer_html =~ "A newer version"
+    end
+
     test "shows delete confirmation, cancels it, then deletes client", %{
       conn: conn,
       account: account,
