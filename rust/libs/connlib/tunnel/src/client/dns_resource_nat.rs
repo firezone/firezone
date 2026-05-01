@@ -224,10 +224,6 @@ impl DnsResourceNat {
         {}
     }
 
-    pub fn clear(&mut self) {
-        self.inner.clear();
-    }
-
     pub(crate) fn on_domain_status(
         &mut self,
         gid: GatewayId,
