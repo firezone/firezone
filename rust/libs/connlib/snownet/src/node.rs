@@ -198,46 +198,57 @@ where
         }
     }
 
-    /// Resets this [`Node`].
+    /// Resets this [`Node`] in place: refreshes ICE on each established
+    /// connection without tearing the connection down.
     ///
-    /// # Implementation note
+    /// We keep the WireGuard private key, sessions and identity material;
+    /// each existing connection performs a credentialed ICE restart
+    /// (RFC 8445 §9) — fresh local credentials, dropped local candidates,
+    /// preserved remote credentials and remote candidates. The new local
+    /// credentials are emitted as [`Event::NewLocalIceCredentials`] so the
+    /// upper layer can signal them to the peer.
     ///
-    /// This also clears all [`Allocation`]s.
-    /// An [`Allocation`] on a TURN server is identified by the client's 3-tuple (IP, port, protocol).
-    /// Thus, clearing the [`Allocation`]'s state here without closing it means we won't be able to make a new one until:
-    /// - it times out
-    /// - we change our IP or port
-    ///
-    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
+    /// Local candidates and allocations are dropped — upper layers MUST
+    /// rebind their sockets and re-add local candidates after this.
+    /// Compared to a full teardown this preserves the WG session across the
+    /// local network change, which is the typical reason for calling `reset`.
     pub fn reset(&mut self, now: Instant) {
         self.allocations.clear();
-
         self.buffered_transmits.clear();
-
         self.pending_events.clear();
-
-        let closed_connections = self
-            .connections
-            .iter_ids()
-            .map(Event::ConnectionClosed)
-            .collect::<Vec<_>>();
-        let num_connections = closed_connections.len();
-
-        self.pending_events.extend(closed_connections);
-
-        self.connections.clear();
-        self.buffered_transmits.clear();
         self.inflight_stun_requests.clear();
 
-        self.private_key = StaticSecret::random_from_rng(&mut self.rng);
-        self.public_key = (&self.private_key).into();
-        self.rate_limiter = Arc::new(RateLimiter::new_at(
-            &self.public_key,
-            HANDSHAKE_RATE_LIMIT,
-            now,
-        ));
+        for (cid, c) in self.connections.iter_established_mut() {
+            // ICE restart wipes the agent's remote-side state — cache it
+            // first so we can restore it. The peer's candidates and
+            // credentials remain valid from our perspective; only our
+            // local credentials roll.
+            let prev_remote_creds = c.agent.remote_credentials().cloned();
+            let prev_remote_candidates: Vec<_> = c.agent.remote_candidates().collect();
 
-        tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
+            let new_local = is::IceCreds::new();
+            c.agent.ice_restart(new_local.clone(), false);
+
+            if let Some(rc) = prev_remote_creds {
+                c.agent.set_remote_credentials(rc);
+            }
+            for cand in prev_remote_candidates {
+                c.agent.add_remote_candidate(cand);
+            }
+
+            c.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
+            c.first_handshake_completed_at = None;
+            c.disconnected_at = None;
+            c.poll_timeout_cache = TimeoutCache::default();
+
+            self.pending_events.push_back(Event::NewLocalIceCredentials {
+                connection: cid,
+                credentials: Credentials {
+                    username: new_local.ufrag,
+                    password: new_local.pass,
+                },
+            });
+        }
     }
 
     pub fn num_connections(&self) -> usize {

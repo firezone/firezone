@@ -273,11 +273,6 @@ where
         self.established.len()
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
-    }
-
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
         self.established.keys().copied()
     }
