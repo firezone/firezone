@@ -2,7 +2,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{DateTime, Utc, serde::ts_seconds};
-use connlib_model::RelayId;
+use connlib_model::{ClientId, RelayId};
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,19 @@ pub struct DomainResponse {
 pub struct IceCredentials {
     pub username: String,
     pub password: String,
+}
+
+/// New ICE credentials for the connection with a particular client.
+///
+/// Sent on a credentialed ICE restart, in either direction across the
+/// portal: client → portal egress, portal → gateway ingress, and the
+/// gateway → portal egress that mirrors it.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct ClientIceCredentials {
+    /// Client's id the ICE credentials are sent to / came from.
+    pub client_id: ClientId,
+    /// New ICE credentials for the connection.
+    pub credentials: IceCredentials,
 }
 
 impl From<IceCredentials> for snownet::Credentials {

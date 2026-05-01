@@ -1,6 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
+use crate::messages::{
+    ClientIceCredentials, Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey,
+};
 use chrono::{
     DateTime, Utc,
     serde::{ts_seconds, ts_seconds_option},
@@ -206,15 +208,6 @@ pub struct ClientIceCandidates {
     /// Actual RTC ice candidates
     #[serde_as(as = "serde_with::VecSkipError<_>")]
     pub candidates: Vec<IceCandidate>,
-}
-
-/// A client's new ICE credentials, sent on a credentialed ICE restart.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ClientIceCredentials {
-    /// Client's id the credentials are sent to / came from.
-    pub client_id: ClientId,
-    /// New ICE credentials for the connection.
-    pub credentials: IceCredentials,
 }
 
 // These messages can be sent from a gateway

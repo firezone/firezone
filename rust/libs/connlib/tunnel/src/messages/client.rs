@@ -1,7 +1,8 @@
 //! Client related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey,
+    ClientIceCredentials, Filter, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence,
+    SecretKey,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
@@ -252,14 +253,6 @@ pub struct ClientIceCandidates {
 pub struct GatewayIceCredentials {
     /// Gateway's id the ICE credentials are sent to / received from.
     pub gateway_id: GatewayId,
-    /// New ICE credentials for the connection.
-    pub credentials: IceCredentials,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct ClientIceCredentials {
-    /// Client's id the ICE credentials are sent to / received from.
-    pub client_id: ClientId,
     /// New ICE credentials for the connection.
     pub credentials: IceCredentials,
 }

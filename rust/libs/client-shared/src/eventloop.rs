@@ -18,12 +18,12 @@ use std::{
 use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
-use tunnel::messages::RelaysPresence;
+use tunnel::messages::{ClientIceCredentials, RelaysPresence};
 use tunnel::messages::client::{
     ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
-    ClientIceCredentials, DevicePoolDomainResolutionFailed, DevicePoolDomainResolved,
-    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
-    GatewayIceCredentials, IngressMessages, InitClient,
+    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
+    FlowCreated, FlowCreationFailed, GatewayIceCandidates, GatewayIceCredentials, IngressMessages,
+    InitClient,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 

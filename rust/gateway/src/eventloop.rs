@@ -16,10 +16,9 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, iter, mem};
 use tokio::sync::mpsc;
-use tunnel::messages::RelaysPresence;
+use tunnel::messages::{ClientIceCredentials, RelaysPresence};
 use tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientIceCredentials,
-    ClientsIceCandidates,
+    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
     EgressMessages, IngressMessages, InitGateway, RejectAccess,
 };
 use tunnel::{
