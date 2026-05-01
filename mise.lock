@@ -32,6 +32,28 @@ url = "https://github.com/rhysd/actionlint/releases/download/v1.7.9/actionlint_1
 checksum = "sha256:7c8b10a93723838bc3533f6e1886d868fdbb109b81606ebe6d1a533d11d8e978"
 url = "https://github.com/rhysd/actionlint/releases/download/v1.7.9/actionlint_1.7.9_windows_amd64.zip"
 
+[[tools.bats]]
+version = "1.13.0"
+backend = "aqua:bats-core/bats-core"
+
+[tools.bats."platforms.linux-arm64"]
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+
+[tools.bats."platforms.linux-arm64-musl"]
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+
+[tools.bats."platforms.linux-x64"]
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+
+[tools.bats."platforms.linux-x64-musl"]
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+
+[tools.bats."platforms.macos-arm64"]
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+
+[tools.bats."platforms.macos-x64"]
+url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.13.0.tar.gz"
+
 [[tools.prettier]]
 version = "3.6.2"
 backend = "npm:prettier"
