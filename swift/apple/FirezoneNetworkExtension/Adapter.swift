@@ -438,19 +438,19 @@ actor Adapter {
 
     case .disconnected(let error):
       let errorMessage = error.message()
+      let isAuthenticationError = error.isAuthenticationError()
       Log.info("Received Disconnected event: \(errorMessage)")
 
-      if error.isAuthenticationError() {
-        #if os(iOS)
-          // iOS notifications should be shown from the tunnel process
+      // iOS shows the notification from the tunnel process because the UI
+      // process isn't guaranteed to be alive; macOS handles it from the UI.
+      #if os(iOS)
+        if isAuthenticationError {
           SessionNotification.showSignedOutNotificationiOS()
-        #endif
+        }
+      #endif
 
-        let sendableError = SendableError(errorMessage, isAuthenticationError: true)
-        providerCommandSender.send(.cancelWithError(sendableError))
-      } else {
-        providerCommandSender.send(.cancelWithError(nil))
-      }
+      let sendableError = SendableError(errorMessage, isAuthenticationError: isAuthenticationError)
+      providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):
       self.unreachableResources.append(

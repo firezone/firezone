@@ -24,7 +24,13 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull={13038}>
+          Surfaces non-authentication disconnect errors (e.g. failure to reach
+          the portal) to the user via a modal alert instead of silently
+          cancelling the tunnel.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.15" date={new Date("2026-04-27")}>
         <ChangeItem pull={12849}>
           Fixes an issue on macOS where the app could be silently terminated by

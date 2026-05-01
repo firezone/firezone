@@ -267,6 +267,9 @@ public final class Store: ObservableObject {
     if newVPNStatus == .connected {
       beginUpdatingState()
       fetchAndCacheFirezoneId()
+      // Reset disconnect-alert dedup so failures during the next disconnect cycle aren't suppressed
+      shownAlertIds.removeAll()
+      userDefaults.removeObject(forKey: "shownAlertIds")
     } else {
       endUpdatingState()
     }
@@ -279,16 +282,20 @@ public final class Store: ObservableObject {
           try manager().session()?.fetchLastDisconnectError { error in
             if let nsError = error as NSError?,
               nsError.domain == ConnlibError.errorDomain,
-              nsError.code == 0,  // sessionExpired error code
+              let code = ConnlibError.Code(rawValue: nsError.code),
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
             {
               // Only show the alert if we haven't shown this specific error before
               Task { @MainActor in
-                if !self.shownAlertIds.contains(id) {
+                guard !self.shownAlertIds.contains(id) else { return }
+                switch code {
+                case .sessionExpired:
                   await self.sessionNotification.showSignedOutAlertMacOS(reason)
-                  self.markAlertAsShown(id)
+                case .disconnected:
+                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
                 }
+                self.markAlertAsShown(id)
               }
             }
           }

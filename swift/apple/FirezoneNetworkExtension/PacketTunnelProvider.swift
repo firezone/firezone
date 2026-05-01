@@ -447,17 +447,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   fileprivate func handleProviderCommand(_ command: ProviderCommand) {
     switch command {
     case .cancelWithError(let sendableError):
-      if let sendableError {
-        let error: Error =
-          sendableError.isAuthenticationError
-          ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
-          : NSError(
-            domain: "Firezone", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: sendableError.message])
-        cancelTunnelWithError(error)
-      } else {
-        cancelTunnelWithError(nil)
-      }
+      let error: Error =
+        sendableError.isAuthenticationError
+        ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
+        : FirezoneKit.ConnlibError.disconnected(sendableError.message)
+      cancelTunnelWithError(error)
 
     case .setReasserting(let value):
       reasserting = value
