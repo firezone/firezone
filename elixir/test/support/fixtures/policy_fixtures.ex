@@ -132,7 +132,7 @@ defmodule Portal.PolicyFixtures do
   def policy_with_provider_condition_fixture(provider_ids \\ [], attrs \\ %{}) do
     conditions = [
       %{
-        property: :provider_id,
+        property: :auth_provider_id,
         operator: :is_in,
         values: provider_ids
       }
