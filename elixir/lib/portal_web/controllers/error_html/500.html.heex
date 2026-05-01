@@ -32,28 +32,150 @@
     >
     </script>
   </head>
-  <body class="bg-neutral-50">
-    <div class="flex items-center h-screen p-16 bg-gray-50">
-      <div class="container mx-auto flex flex-col items-center">
-        <div class="flex flex-col gap-6 max-w-md text-center">
-          <img src={~p"/images/logo.svg"} class="mr-5 h-32" alt="Firezone Logo" />
-          <h2 class="font-extrabold text-9xl text-primary-600">
-            <span class="sr-only">Error</span>500
-          </h2>
-
-          <p class="text-2xl md:text-3xl">
-            Something went wrong. We've already been notified and will get it fixed as soon as possible.
-          </p>
-          <p class="mt-8 text-base">
-            <a
-              target="_blank"
-              href="https://firezone.statuspage.io"
-              class="text-accent-500 hover:underline"
-            >
-              Firezone platform status
-            </a>
-          </p>
+  <body class="bg-[var(--canvas)]">
+    <div class="relative flex items-center justify-center h-screen overflow-hidden">
+      <div class="absolute inset-0 dot-grid opacity-60 pointer-events-none"></div>
+      <div class="absolute inset-0 pointer-events-none error-radial-fade"></div>
+      <div class="relative flex flex-col items-center text-center max-w-md px-6">
+        <div class="mb-10">
+          <img src={~p"/images/logo-text.svg"} alt="Firezone" class="h-8" />
         </div>
+        <div class="relative flex items-center justify-center mb-8">
+          <span class="text-[220px] font-black leading-none tracking-tighter select-none opacity-[0.05] text-[var(--text-primary)]">
+            500
+          </span>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <svg
+              width="220"
+              height="110"
+              viewBox="0 0 220 110"
+              fill="none"
+              class="overflow-visible"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <line
+                x1="110"
+                y1="55"
+                x2="55"
+                y2="25"
+                stroke="var(--status-error)"
+                stroke-width="1.5"
+                stroke-dasharray="4 3"
+              />
+              <line
+                x1="110"
+                y1="55"
+                x2="165"
+                y2="25"
+                stroke="var(--status-error)"
+                stroke-width="1.5"
+                stroke-dasharray="4 3"
+              />
+              <line
+                x1="110"
+                y1="55"
+                x2="55"
+                y2="85"
+                stroke="var(--status-error)"
+                stroke-width="1.5"
+                stroke-dasharray="4 3"
+              />
+              <line
+                x1="110"
+                y1="55"
+                x2="165"
+                y2="85"
+                stroke="var(--status-error)"
+                stroke-width="1.5"
+                stroke-dasharray="4 3"
+              />
+              <circle
+                cx="55"
+                cy="25"
+                r="7"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="55" cy="25" r="2.5" fill="var(--text-secondary)" />
+              <circle
+                cx="165"
+                cy="25"
+                r="7"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="165" cy="25" r="2.5" fill="var(--text-secondary)" />
+              <circle
+                cx="55"
+                cy="85"
+                r="7"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="55" cy="85" r="2.5" fill="var(--text-secondary)" />
+              <circle
+                cx="165"
+                cy="85"
+                r="7"
+                fill="var(--surface-raised)"
+                stroke="var(--text-tertiary)"
+                stroke-width="1.5"
+              />
+              <circle cx="165" cy="85" r="2.5" fill="var(--text-secondary)" />
+              <circle
+                cx="110"
+                cy="55"
+                r="28"
+                stroke="var(--status-error)"
+                stroke-width="1"
+                fill="none"
+                class="pulse-ring"
+                opacity="0"
+              />
+              <circle
+                cx="110"
+                cy="55"
+                r="20"
+                stroke="var(--status-error)"
+                stroke-width="1"
+                fill="none"
+                class="pulse-ring-inner"
+                opacity="0"
+              />
+              <circle
+                cx="110"
+                cy="55"
+                r="14"
+                fill="var(--status-error-bg)"
+                stroke="var(--status-error)"
+                stroke-width="1.5"
+              />
+              <path
+                d="M105 50l10 10M115 50l-10 10"
+                stroke="var(--status-error)"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+          </div>
+        </div>
+        <h1 class="text-lg font-semibold text-[var(--text-primary)] mb-2">
+          Something went wrong
+        </h1>
+        <p class="text-sm text-[var(--text-secondary)] leading-relaxed mb-8">
+          An unexpected error occurred on our end. Try reloading — if the problem persists, contact support.
+        </p>
+        <a
+          href="https://firezone.statuspage.io"
+          target="_blank"
+          class="mt-6 flex items-center gap-1 text-xs text-[var(--brand)] hover:underline transition-colors"
+        >
+          Check platform status <span class="ri-external-link-line w-3 h-3" />
+        </a>
       </div>
     </div>
   </body>
