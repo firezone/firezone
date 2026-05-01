@@ -16,11 +16,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, iter, mem};
 use tokio::sync::mpsc;
-use tunnel::messages::{ClientIceCredentials, RelaysPresence};
 use tunnel::messages::gateway::{
     AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
     EgressMessages, IngressMessages, InitGateway, RejectAccess,
 };
+use tunnel::messages::{ClientIceCredentials, RelaysPresence};
 use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
@@ -233,12 +233,12 @@ impl Eventloop {
                 credentials,
             } => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NewIceCredentialsForClient(
-                        ClientIceCredentials {
+                    .send(PortalCommand::Send(
+                        EgressMessages::NewIceCredentialsForClient(ClientIceCredentials {
                             client_id: client,
                             credentials,
-                        },
-                    )))
+                        }),
+                    ))
                     .await?;
             }
             tunnel::GatewayEvent::ResolveDns(setup_nat) => {

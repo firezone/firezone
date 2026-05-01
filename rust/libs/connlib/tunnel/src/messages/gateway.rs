@@ -348,7 +348,10 @@ mod tests {
         else {
             panic!("expected IceCredentials, got {message:?}");
         };
-        assert_eq!(client_id.to_string(), "2b1524e6-239e-4570-bc73-70a188e12101");
+        assert_eq!(
+            client_id.to_string(),
+            "2b1524e6-239e-4570-bc73-70a188e12101"
+        );
         assert_eq!(credentials.username, "abcd");
         assert_eq!(credentials.password, "01234567890123456789ab");
     }
