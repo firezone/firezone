@@ -10,7 +10,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
     io,
     net::IpAddr,
     task::{Context, Poll},
@@ -724,6 +724,10 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
+    // Messages flagged as `is_guaranteed_delivery` that we tried to send
+    // while disconnected; replayed in order on the next `Connected` event.
+    let mut pending_guaranteed: VecDeque<EgressMessages> = VecDeque::new();
+
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
         // This allows `Hiccup` events to use the updated `UdpDnsClient` to resolve the domain.
@@ -732,7 +736,12 @@ async fn phoenix_channel_event_loop(
                 match portal.send(PHOENIX_TOPIC, msg) {
                     Ok(()) => {}
                     Err(phoenix_channel::NotConnected(msg)) => {
-                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
+                        if msg.is_guaranteed_delivery() {
+                            tracing::debug!(?msg, "Queuing message for redelivery on reconnect");
+                            pending_guaranteed.push_back(msg);
+                        } else {
+                            tracing::debug!(?msg, "Failed to send message to portal: Not connected")
+                        }
                     }
                 }
             }
@@ -777,7 +786,19 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
+                while let Some(msg) = pending_guaranteed.pop_front() {
+                    match portal.send(PHOENIX_TOPIC, msg) {
+                        Ok(()) => {}
+                        Err(phoenix_channel::NotConnected(msg)) => {
+                            // Connected fired but we're disconnected again
+                            // already; preserve order and bail.
+                            pending_guaranteed.push_front(msg);
+                            break;
+                        }
+                    }
+                }
+            }
             Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

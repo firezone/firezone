@@ -6,7 +6,7 @@ use telemetry::{Telemetry, analytics};
 use futures::TryFutureExt;
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::future::{self, Future, poll_fn};
 use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
@@ -536,6 +536,10 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
+    // Messages flagged as `is_guaranteed_delivery` that we tried to send
+    // while disconnected; replayed in order on the next `Connected` event.
+    let mut pending_guaranteed: VecDeque<EgressMessages> = VecDeque::new();
+
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
@@ -565,7 +569,19 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
+                while let Some(msg) = pending_guaranteed.pop_front() {
+                    match portal.send(PHOENIX_TOPIC, msg) {
+                        Ok(()) => {}
+                        Err(phoenix_channel::NotConnected(msg)) => {
+                            // Connected fired but we're disconnected again
+                            // already; preserve order and bail.
+                            pending_guaranteed.push_front(msg);
+                            break;
+                        }
+                    }
+                }
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
@@ -575,7 +591,12 @@ async fn phoenix_channel_event_loop(
                 match portal.send(PHOENIX_TOPIC, msg) {
                     Ok(()) => {}
                     Err(phoenix_channel::NotConnected(msg)) => {
-                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
+                        if msg.is_guaranteed_delivery() {
+                            tracing::debug!(?msg, "Queuing message for redelivery on reconnect");
+                            pending_guaranteed.push_back(msg);
+                        } else {
+                            tracing::debug!(?msg, "Failed to send message to portal: Not connected")
+                        }
                     }
                 }
             }

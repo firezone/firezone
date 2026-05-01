@@ -225,6 +225,19 @@ pub enum EgressMessages {
     NoRelays {},
 }
 
+impl EgressMessages {
+    /// Whether this message must be delivered to the portal.
+    ///
+    /// ICE credential messages are required for credentialed ICE restart to
+    /// recover: if dropped while disconnected, the peer will never observe
+    /// the new credentials and ICE will not converge until something else
+    /// triggers another rotation. The phoenix-channel event-loop queues
+    /// these and replays them on reconnect.
+    pub fn is_guaranteed_delivery(&self) -> bool {
+        matches!(self, Self::NewIceCredentialsForClient(_))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::messages::PortRange;
