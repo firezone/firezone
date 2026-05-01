@@ -190,13 +190,14 @@ where
             c.first_handshake_completed_at = None;
             c.poll_timeout_cache = TimeoutCache::default();
 
-            self.pending_events.push_back(Event::NewLocalIceCredentials {
-                connection: cid,
-                credentials: Credentials {
-                    username: new_local.ufrag,
-                    password: new_local.pass,
-                },
-            });
+            self.pending_events
+                .push_back(Event::NewLocalIceCredentials {
+                    connection: cid,
+                    credentials: Credentials {
+                        username: new_local.ufrag,
+                        password: new_local.pass,
+                    },
+                });
         }
     }
 
