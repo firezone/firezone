@@ -434,6 +434,267 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "toggle_location_value", %{"code" => "US"})
       refute html =~ ">US<"
     end
+
+    test "saves location condition to DB", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "remote_ip_location_region"})
+
+      lv
+      |> element("input[name='_location_search']")
+      |> render_change(%{"_location_search" => "United"})
+
+      render_click(lv, "toggle_location_value", %{"code" => "US"})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            description: "With location condition"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+
+      assert Enum.any?(
+               policy.conditions,
+               &(&1.property == :remote_ip_location_region and "US" in &1.values)
+             )
+    end
+
+    test "renders location condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["US"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "United States"
+    end
+
+    test "saves auth_provider condition to DB", %{conn: conn, account: account, actor: actor} do
+      auth_provider = email_otp_provider_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn_with_provider(actor, auth_provider)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "auth_provider_id"})
+      render_click(lv, "toggle_auth_provider_value", %{"id" => auth_provider.id})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            description: "With auth provider condition"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+
+      assert Enum.any?(
+               policy.conditions,
+               &(&1.property == :auth_provider_id and auth_provider.id in &1.values)
+             )
+    end
+
+    test "renders auth_provider condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      auth_provider = email_otp_provider_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :auth_provider_id,
+              operator: :is_in,
+              values: [auth_provider.id]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn_with_provider(actor, auth_provider)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ auth_provider.name
+    end
+
+    test "renders ip_range condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :remote_ip,
+              operator: :is_in_cidr,
+              values: ["192.168.0.0/24"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "192.168.0.0/24"
+    end
+
+    test "changes ip_range operator", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "remote_ip"})
+
+      refute html =~ ~s(value="is_not_in_cidr")
+
+      html = render_click(lv, "change_ip_range_operator", %{"operator" => "is_not_in_cidr"})
+      assert html =~ ~s(value="is_not_in_cidr")
+    end
+
+    test "manages client_verified condition", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      html = render_click(lv, "add_condition", %{"type" => "client_verified"})
+      assert html =~ "Require Verified Client"
+    end
+
+    test "saves client_verified condition to DB", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "client_verified"})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            description: "With client verified condition"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+
+      assert Enum.any?(
+               policy.conditions,
+               &(&1.property == :client_verified and &1.values == ["true"])
+             )
+    end
+
+    test "renders client_verified condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :client_verified,
+              operator: :is,
+              values: ["true"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "Require Verified Client"
+    end
   end
 
   describe ":show action authorizations tab" do

@@ -228,6 +228,109 @@ defmodule Portal.Policies.EvaluatorTest do
   #  end
   # end
 
+  describe "fetch_conformation_expiration/4 with auth_provider_id" do
+    test "is_in returns ok when auth_provider_id matches" do
+      client = %Portal.Device{type: :client}
+      session = %Portal.ClientSession{}
+      provider_id = Ecto.UUID.generate()
+
+      condition = %{
+        property: :auth_provider_id,
+        operator: :is_in,
+        values: [provider_id]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, provider_id) == {:ok, nil}
+    end
+
+    test "is_in returns error when auth_provider_id does not match" do
+      client = %Portal.Device{type: :client}
+      session = %Portal.ClientSession{}
+      provider_id = Ecto.UUID.generate()
+      other_id = Ecto.UUID.generate()
+
+      condition = %{
+        property: :auth_provider_id,
+        operator: :is_in,
+        values: [other_id]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, provider_id) == :error
+    end
+
+    test "is_not_in returns error when auth_provider_id matches" do
+      client = %Portal.Device{type: :client}
+      session = %Portal.ClientSession{}
+      provider_id = Ecto.UUID.generate()
+
+      condition = %{
+        property: :auth_provider_id,
+        operator: :is_not_in,
+        values: [provider_id]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, provider_id) == :error
+    end
+
+    test "is_not_in returns ok when auth_provider_id does not match" do
+      client = %Portal.Device{type: :client}
+      session = %Portal.ClientSession{}
+      provider_id = Ecto.UUID.generate()
+      other_id = Ecto.UUID.generate()
+
+      condition = %{
+        property: :auth_provider_id,
+        operator: :is_not_in,
+        values: [other_id]
+      }
+
+      assert fetch_conformation_expiration(condition, client, session, provider_id) == {:ok, nil}
+    end
+  end
+
+  describe "fetch_conformation_expiration/4 with client_verified" do
+    test "is with values [\"true\"] returns ok when device is verified" do
+      verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}
+      session = %Portal.ClientSession{}
+
+      condition = %{
+        property: :client_verified,
+        operator: :is,
+        values: ["true"]
+      }
+
+      assert fetch_conformation_expiration(condition, verified_client, session, nil) == {:ok, nil}
+    end
+
+    test "is with values [\"true\"] returns error when device is not verified" do
+      unverified_client = %Portal.Device{type: :client, verified_at: nil}
+      session = %Portal.ClientSession{}
+
+      condition = %{
+        property: :client_verified,
+        operator: :is,
+        values: ["true"]
+      }
+
+      assert fetch_conformation_expiration(condition, unverified_client, session, nil) == :error
+    end
+
+    test "is with values other than [\"true\"] always returns ok" do
+      verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}
+      unverified_client = %Portal.Device{type: :client, verified_at: nil}
+      session = %Portal.ClientSession{}
+
+      condition = %{
+        property: :client_verified,
+        operator: :is,
+        values: ["false"]
+      }
+
+      assert fetch_conformation_expiration(condition, verified_client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, unverified_client, session, nil) == {:ok, nil}
+    end
+  end
+
   describe "fetch_conformation_expiration/4 with remote_ip_location_region" do
     test "returns error when region is nil regardless of operator" do
       client = %Portal.Device{type: :client}
