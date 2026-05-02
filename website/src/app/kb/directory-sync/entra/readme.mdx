@@ -70,15 +70,13 @@ if:
 
 <Alert color="info">
   <div>
-    <p>
-      With **All groups**, every group in your directory will appear in
-      Firezone. For large directories, consider using **Assigned groups only**
-      to limit which groups are synced.
-    </p>
-    <p>
-      Users originally created from this directory may also be removed if they
-      no longer belong to any synced groups.
-    </p>
+    With **All groups**, every group in your directory will appear in Firezone.
+    For large directories, consider using **Assigned groups only** to limit
+    which groups are synced.
+
+    Users originally created from this directory may also be removed if they no
+    longer belong to any synced groups.
+
   </div>
 </Alert>
 
@@ -103,14 +101,13 @@ click the **Sync Now** button on the directory card in
 
 ## Disabled and deleted users
 
-Firezone removes deleted Entra users on the next sync. It also filters out
-users where Microsoft Entra marks `accountEnabled` as `false`.
+Firezone removes deleted Entra users on the next sync. It also filters out users
+where Microsoft Entra marks `accountEnabled` as `false`.
 
 - **API-side filtering:** When Firezone streams group members from Microsoft
   Graph, it requests only users where `accountEnabled eq true`.
-- **Defense in depth:** Firezone also re-checks `accountEnabled` after
-  receiving user payloads, including batched lookups for directly assigned
-  users.
+- **Defense in depth:** Firezone also re-checks `accountEnabled` after receiving
+  user payloads, including batched lookups for directly assigned users.
 - **Defensive handling:** If Microsoft Graph omits `accountEnabled`
   unexpectedly, Firezone logs the event and skips that user instead of treating
   them as active.

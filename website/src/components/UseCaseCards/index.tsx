@@ -5,7 +5,7 @@ import { Route } from "next";
 
 function CardHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h4 className="font-semibold tracking-tight leading-none text-xl mb-3 inline-block">
+    <h4 className="font-semibold leading-none text-xl mb-3 inline-block">
       {children}
     </h4>
   );
