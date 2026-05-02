@@ -67,18 +67,17 @@ accessing the Admin SDK.
 
 <Alert color="info">
   <div>
-    <p>**Why is an impersonation email required?**</p>
-    <p>
-      Google's Admin SDK API can only be accessed by users, not service accounts
-      directly. Domain-wide delegation allows Firezone's service account to
-      impersonate a user (the impersonation email) when making API calls. The
-      impersonated user must have admin privileges to read directory data.
-    </p>
-    <p>
-      See [Google's documentation on domain-wide
-      delegation](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority)
-      for more details.
-    </p>
+    **Why is an impersonation email required?**
+
+    Google's Admin SDK API can only be accessed by users, not service accounts
+    directly. Domain-wide delegation allows Firezone's service account to
+    impersonate a user (the impersonation email) when making API calls. The
+    impersonated user must have admin privileges to read directory data.
+
+    See [Google's documentation on domain-wide
+    delegation](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority)
+    for more details.
+
   </div>
 </Alert>
 
@@ -106,20 +105,17 @@ sync.
 
 <Alert color="info">
   <div>
-    <p>
-      When using **Filtered groups** or **Disabled**, groups that were
-      previously synced but are no longer selected by the current mode are
-      removed from Firezone on the next sync.
-    </p>
-    <p>
-      If **Sync Organization Units** is disabled, previously synced org units
-      are also removed from Firezone on the next sync.
-    </p>
-    <p>
-      Users originally created from this directory may also be removed if they
-      are no longer included by your current sync settings (synced groups and/or
-      synced org units).
-    </p>
+    When using **Filtered groups** or **Disabled**, groups that were previously
+    synced but are no longer selected by the current mode are removed from
+    Firezone on the next sync.
+
+    If **Sync Organization Units** is disabled, previously synced org units are
+    also removed from Firezone on the next sync.
+
+    Users originally created from this directory may also be removed if they
+    are no longer included by your current sync settings (synced groups and/or
+    synced org units).
+
   </div>
 </Alert>
 
@@ -145,8 +141,8 @@ filters out users marked as **suspended** or **archived**.
 - **API-side filtering:** Firezone requests active users with
   `isSuspended=false isArchived=false`.
 - **Defense in depth:** Firezone also re-checks the `suspended` and `archived`
-  flags after receiving user payloads, including batch lookups used when
-  syncing group memberships.
+  flags after receiving user payloads, including batch lookups used when syncing
+  group memberships.
 - **Defensive handling:** If Google omits either flag unexpectedly, Firezone
   logs the event and skips that user instead of treating them as active.
 

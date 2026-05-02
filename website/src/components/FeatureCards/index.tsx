@@ -42,7 +42,7 @@ export default function FeatureCards() {
           <div className="h-12 w-12 md:h-14 md:w-14 flex rounded-xl bg-[#FFE9EB] justify-center items-center mb-5">
             <HiCloud color="#EF7E88" className="w-6 h-6 lg:w-7 lg:h-7" />
           </div>
-          <h4 className="text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1">
+          <h4 className="text-md md:text-lg text-neutral-900 font-semibold mb-1">
             Flexible
           </h4>
           <p className={`text-sm md:text-base semi-bold text-neutral-800`}>
@@ -59,7 +59,7 @@ export default function FeatureCards() {
           <div className="h-12 w-12 md:h-14 md:w-14 flex rounded-xl bg-[#E3F5FF] justify-center items-center mb-5">
             <HiLockClosed color="#719CF1" className="w-6 h-6 lg:w-7 lg:h-7" />
           </div>
-          <h4 className="text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1">
+          <h4 className="text-md md:text-lg text-neutral-900 font-semibold mb-1">
             Secure
           </h4>
           <p className={`text-sm md:text-base semi-bold text-neutral-800`}>
@@ -79,7 +79,7 @@ export default function FeatureCards() {
               className="w-6 h-6 lg:w-7 lg:h-7"
             />
           </div>
-          <h4 className="text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1">
+          <h4 className="text-md md:text-lg text-neutral-900 font-semibold mb-1">
             Granular
           </h4>
           <p className="text-sm md:text-base semi-bold text-neutral-800">

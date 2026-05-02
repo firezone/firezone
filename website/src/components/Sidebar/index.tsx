@@ -14,41 +14,41 @@ import { useDrawer } from "@/components/Providers/DrawerProvider";
 
 const ItemGroupLabelTheme: CustomFlowbiteTheme["sidebar"] = {
   item: {
-    base: "flex items-center justify-center rounded-sm p-2 text-sm font-semibold uppercase text-primary-450",
+    base: "flex items-center justify-center rounded-sm px-2 py-1 text-sm font-semibold uppercase text-primary-450",
   },
 };
 
 const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
   root: {
-    base: "h-[calc(100vh)] left-0 top-0 z-40 sticky bg-white transition-transform pt-16 pb-8",
+    base: "h-[calc(100vh)] left-0 top-0 z-40 sticky bg-neutral-50 transition-transform pt-16 pb-8",
     collapsed: {
       on: "w-16",
       off: "w-64",
     },
     inner:
-      "h-full overflow-y-auto overflow-x-hidden bg-white rounded-sm px-3 py-4 dark:bg-neutral-800",
+      "h-full overflow-y-auto overflow-x-hidden bg-neutral-50 px-2 py-2 dark:bg-neutral-800",
   },
   collapse: {
     button:
-      "group flex w-full items-center rounded-sm p-2 text-base font-normal text-neutral-900 transition duration-75 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
+      "group flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm font-normal text-neutral-900 transition duration-75 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     icon: {
-      base: "h-6 w-6 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
+      base: "h-5 w-5 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
       open: {
         off: "",
         on: "text-neutral-900 dark:text-white",
       },
     },
     label: {
-      base: "ml-3 flex-1 whitespace-nowrap text-left",
+      base: "ml-2 flex-1 whitespace-nowrap text-left",
       icon: {
-        base: "h-6 w-6 transition delay-0 ease-in-out",
+        base: "h-5 w-5 transition delay-0 ease-in-out",
         open: {
           on: "rotate-180",
           off: "",
         },
       },
     },
-    list: "space-y-2 py-2",
+    list: "space-y-0.5 py-1",
   },
   cta: {
     base: "mt-6 rounded-lg bg-neutral-100 p-4 dark:bg-neutral-700",
@@ -67,17 +67,17 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
     },
   },
   item: {
-    base: "flex items-center justify-center rounded-sm p-2 text-base font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
+    base: "flex items-center justify-center rounded-sm px-2 py-1.5 text-sm font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     active: "bg-neutral-200 dark:bg-neutral-700",
     collapsed: {
-      insideCollapse: "group w-full pl-8 transition duration-75",
+      insideCollapse: "group w-full pl-6 transition duration-75",
       noIcon: "font-bold",
     },
     content: {
-      base: "flex-1 whitespace-nowrap px-3",
+      base: "flex-1 whitespace-nowrap px-2",
     },
     icon: {
-      base: "h-6 w-6 shrink-0 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
+      base: "h-5 w-5 shrink-0 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
       active: "text-neutral-700 dark:text-neutral-100",
     },
     label: "",
@@ -87,7 +87,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
     base: "",
   },
   itemGroup: {
-    base: "mt-4 space-y-2 border-t border-neutral-200 pt-4 first:mt-0 first:border-t-0 first:pt-0 dark:border-neutral-700",
+    base: "mt-2 space-y-0.5 border-t border-neutral-200 pt-2 first:mt-0 first:border-t-0 first:pt-0 dark:border-neutral-700",
   },
   logo: {
     base: "mb-5 flex items-center pl-2.5",
@@ -180,6 +180,9 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
       id="sidebar"
       theme={applyTheme(isShown)}
       aria-label="FlowbiteSidebar"
+      // Inline style: Flowbite drops border utilities applied via className/theme
+      // on the root <nav>; only inline `style` survives.
+      style={{ borderRight: "1px solid #ebebea" }}
     >
       {children}
     </FlowbiteSidebar>

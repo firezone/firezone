@@ -17,11 +17,9 @@ export function KbCard({
       href={href}
       className="flex flex-col p-6 hover:shadow-sm rounded-sm border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
     >
-      <h3 className="text-neutral-800 text-xl font-semibold tracking-tight mb-12">
-        {title}
-      </h3>
+      <h3 className="text-neutral-800 text-xl font-semibold mb-12">{title}</h3>
       {logo}
-      <div className="mt-auto tracking-tight">{children}</div>
+      <div className="mt-auto">{children}</div>
     </Link>
   );
 }

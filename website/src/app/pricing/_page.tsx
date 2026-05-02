@@ -135,7 +135,7 @@ export default function Page() {
               )}
               {!annual && <span>$5</span>}
               <span className="h-full">
-                <span className="font-medium text-sm text-neutral-700 inline-block align-bottom tracking-tight ml-1 mb-1">
+                <span className="font-medium text-sm text-neutral-700 inline-block align-bottom ml-1 mb-1">
                   {" "}
                   per user/month
                 </span>

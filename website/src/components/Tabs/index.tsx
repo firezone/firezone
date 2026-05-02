@@ -14,7 +14,7 @@ const customTheme: CustomFlowbiteTheme["tabs"] = {
         "w-full text-sm font-medium divide-x divide-neutral-200 shadow-sm grid grid-flow-colrounded-none",
     },
     tabitem: {
-      base: "flex items-center justify-center p-4 rounded-t-lg text-sm font-medium first:ml-0 disabled:cursor-not-allowed disabled:text-neutral-400",
+      base: "flex cursor-pointer items-center justify-center p-4 rounded-t-lg text-sm font-medium first:ml-0 disabled:cursor-not-allowed disabled:text-neutral-400",
       variant: {
         default: {
           base: "rounded-t-lg",
