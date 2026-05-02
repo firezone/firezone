@@ -74,6 +74,75 @@ defmodule PortalWeb.UserpassControllerTest do
       assert redirected_to(conn) =~ "/sites"
     end
 
+    test "redirects to portal redirect_to when it is scoped to the signed-in account", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      redirect_to = ~p"/#{account}/resources"
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "redirect_to" => redirect_to
+        })
+
+      assert redirected_to(conn) == redirect_to
+    end
+
+    test "falls back when portal redirect_to is scoped to another account", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      other_account = account_fixture()
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "redirect_to" => ~p"/#{other_account}/sites"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account}/sites"
+    end
+
+    test "falls back when portal redirect_to only prefixes the signed-in account slug", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      prefix_account = account_fixture(slug: "#{account.slug}_other")
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "redirect_to" => ~p"/#{prefix_account}/sites"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account}/sites"
+    end
+
     test "rejects account_user in portal context", %{
       conn: conn,
       account: account,
