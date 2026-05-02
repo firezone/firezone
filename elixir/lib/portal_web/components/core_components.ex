@@ -1718,7 +1718,7 @@ defmodule PortalWeb.CoreComponents do
   """
   attr :status, :atom,
     required: true,
-    values: [:online, :offline, :active, :disabled, :healthy, :degraded]
+    values: [:online, :offline, :active, :disabled, :healthy, :degraded, :expired]
 
   def status_badge(assigns) do
     assigns = assign(assigns, :cfg, status_badge_config(assigns.status))
@@ -1779,6 +1779,14 @@ defmodule PortalWeb.CoreComponents do
       label: "Disabled",
       pill_class: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
       dot_class: "bg-red-500"
+    }
+  end
+
+  defp status_badge_config(:expired) do
+    %{
+      label: "Expired",
+      pill_class: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+      dot_class: "bg-gray-400"
     }
   end
 end

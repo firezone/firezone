@@ -7,8 +7,11 @@ defmodule PortalWeb.PoliciesTest do
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
   import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
+  import Portal.SiteFixtures
 
   setup do
     account = account_fixture()
@@ -430,6 +433,126 @@ defmodule PortalWeb.PoliciesTest do
 
       html = render_click(lv, "toggle_location_value", %{"code" => "US"})
       refute html =~ ">US<"
+    end
+  end
+
+  describe ":show action authorizations tab" do
+    test "tab bar shows Overview and Authorizations tabs", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      assert html =~ "Overview"
+      assert html =~ "Authorizations"
+    end
+
+    test "switching to Authorizations tab patches URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      render_click(lv, "switch_policy_tab", %{"tab" => "authorizations"})
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+    end
+
+    test "switching back to Overview tab patches URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+
+      render_click(lv, "switch_policy_tab", %{"tab" => "overview"})
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?tab=overview")
+    end
+
+    test "Authorizations tab shows empty state when no authorizations exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+
+      assert html =~ "No recent authorizations"
+    end
+
+    test "Authorizations tab renders actor name", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      named_actor = actor_fixture(account: account, name: "Bob Jones")
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, site: site)
+      membership = membership_fixture(account: account, actor: named_actor, group: group)
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      policy_authorization_fixture(
+        account: account,
+        actor: named_actor,
+        resource: resource,
+        group: group,
+        policy: policy,
+        membership: membership
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+
+      assert html =~ "Bob Jones"
+    end
+
+    test "Overview tab still renders correctly as default (regression)", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      assert html =~ group.name
+      assert html =~ resource.name
     end
   end
 
