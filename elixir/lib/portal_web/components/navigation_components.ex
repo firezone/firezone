@@ -31,11 +31,12 @@ defmodule PortalWeb.NavigationComponents do
           <button
             type="button"
             id="theme-toggle-button"
-            data-dropdown-toggle="theme-dropdown"
-            data-dropdown-placement="bottom-end"
+            phx-hook="Popover"
+            data-popover-target-id="theme-dropdown"
+            data-popover-trigger="click"
+            data-popover-placement="bottom"
             class="p-2 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
             aria-label="Change theme"
-            aria-haspopup="true"
           >
             <.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
             <.icon name="ri-moon-line" class="theme-icon-dark w-4 h-4" />
@@ -43,7 +44,7 @@ defmodule PortalWeb.NavigationComponents do
           </button>
           <div
             id="theme-dropdown"
-            class="hidden z-50 w-36 text-sm bg-[var(--surface-overlay)] rounded shadow-sm border border-[var(--border)]"
+            class="invisible opacity-0 fixed z-50 w-36 text-sm bg-[var(--surface-overlay)] rounded shadow-sm border border-[var(--border)]"
           >
             <ul class="py-1" role="listbox" aria-label="Theme">
               <li>
@@ -520,13 +521,15 @@ defmodule PortalWeb.NavigationComponents do
       type="button"
       class="flex mx-3 text-sm bg-neutral-800 rounded-full md:mr-0"
       id={"#{@id}-button"}
-      aria-expanded="false"
-      data-dropdown-toggle={"#{@id}-dropdown"}
+      phx-hook="Popover"
+      data-popover-target-id={"#{@id}-dropdown"}
+      data-popover-trigger="click"
+      data-popover-placement="bottom"
     >
       {render_slot(@button)}
     </button>
     <div
-      class="hidden z-50 my-4 w-56 text-base list-none bg-[var(--surface-overlay)] rounded-sm divide-y divide-[var(--border)] shadow-sm"
+      class="invisible opacity-0 fixed z-50 my-4 w-56 text-base list-none bg-[var(--surface-overlay)] rounded-sm divide-y divide-[var(--border)] shadow-sm"
       id={"#{@id}-dropdown"}
     >
       {render_slot(@dropdown)}
