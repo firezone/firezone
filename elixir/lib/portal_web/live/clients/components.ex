@@ -333,8 +333,13 @@ defmodule PortalWeb.Clients.Components do
       <.client_details_header client={@client} />
       <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
         <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+          <div
+            role="tablist"
+            class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0"
+          >
             <button
+              role="tab"
+              aria-selected={@tab == :overview}
               phx-click="switch_client_tab"
               phx-value-tab="overview"
               class={[
@@ -348,6 +353,8 @@ defmodule PortalWeb.Clients.Components do
               Overview
             </button>
             <button
+              role="tab"
+              aria-selected={@tab == :authorizations}
               phx-click="switch_client_tab"
               phx-value-tab="authorizations"
               class={[
@@ -415,8 +422,11 @@ defmodule PortalWeb.Clients.Components do
               <%= for row <- @policy_authorizations do %>
                 <tr
                   phx-click="toggle_policy_authorization_row"
+                  phx-keydown="toggle_policy_authorization_row"
+                  phx-key="Enter"
                   phx-value-id={row.authorization.id}
-                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer"
+                  tabindex="0"
+                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer focus:outline-none focus:bg-[var(--surface-raised)]"
                 >
                   <td class="px-4 py-2 text-[var(--text-primary)]">
                     {row.resource.name}
@@ -448,8 +458,16 @@ defmodule PortalWeb.Clients.Components do
                   <td colspan="5" class="px-4 py-3">
                     <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
                       <div>
-                        <p class="text-[var(--text-tertiary)] font-medium mb-1">Initiator (Client)</p>
-                        <p class="text-[var(--text-primary)]">{@client.name}</p>
+                        <p class="text-[var(--text-tertiary)] font-medium mb-1">
+                          {case row.initiating_device && row.initiating_device.type do
+                            :gateway -> "Initiator (Gateway)"
+                            :client -> "Initiator (Client)"
+                            _ -> "Initiator"
+                          end}
+                        </p>
+                        <p class="text-[var(--text-primary)]">
+                          {if row.initiating_device, do: row.initiating_device.name, else: "—"}
+                        </p>
                         <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
                           {if row.authorization.client_remote_ip,
                             do: Portal.Types.INET.to_string(row.authorization.client_remote_ip),

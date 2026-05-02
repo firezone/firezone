@@ -625,8 +625,13 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
       <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+        <div
+          role="tablist"
+          class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0"
+        >
           <button
+            role="tab"
+            aria-selected={@tab == :overview}
             phx-click="switch_policy_tab"
             phx-value-tab="overview"
             class={[
@@ -640,6 +645,8 @@ defmodule PortalWeb.Policies.Components do
             Overview
           </button>
           <button
+            role="tab"
+            aria-selected={@tab == :authorizations}
             phx-click="switch_policy_tab"
             phx-value-tab="authorizations"
             class={[
@@ -931,8 +938,11 @@ defmodule PortalWeb.Policies.Components do
               <%= for row <- @policy_authorizations do %>
                 <tr
                   phx-click="toggle_policy_authorization_row"
+                  phx-keydown="toggle_policy_authorization_row"
+                  phx-key="Enter"
                   phx-value-id={row.authorization.id}
-                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer"
+                  tabindex="0"
+                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer focus:outline-none focus:bg-[var(--surface-raised)]"
                 >
                   <td class="px-4 py-2 text-[var(--text-primary)]">
                     {if row.actor, do: row.actor.name, else: "—"}
@@ -958,7 +968,7 @@ defmodule PortalWeb.Policies.Components do
                   :if={@expanded_id == row.authorization.id}
                   class="border-b border-[var(--border)] bg-[var(--surface-raised)]"
                 >
-                  <td colspan="5" class="px-4 py-3">
+                  <td colspan="4" class="px-4 py-3">
                     <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
                       <div>
                         <p class="text-[var(--text-tertiary)] font-medium mb-1">

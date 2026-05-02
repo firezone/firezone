@@ -1458,7 +1458,7 @@ defmodule PortalWeb.Resources do
 
     @spec list_policy_authorizations_for_resource(
             Portal.Resource.t(),
-            Portal.Auth.Subject.t(),
+            Portal.Authentication.Subject.t(),
             non_neg_integer()
           ) :: {[map()], boolean()}
     def list_policy_authorizations_for_resource(resource, subject, page \\ 1) do
@@ -1500,7 +1500,7 @@ defmodule PortalWeb.Resources do
           receiving_device: rd
         }
       )
-      |> order_by([policy_authorizations: pa], desc: pa.inserted_at)
+      |> order_by([policy_authorizations: pa], desc: pa.inserted_at, desc: pa.id)
       |> limit(^(@page_size + 1))
       |> offset(^offset)
       |> Safe.scoped(subject, :replica)

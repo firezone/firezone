@@ -1112,8 +1112,13 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_tabs(assigns) do
     ~H"""
-    <div class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+    <div
+      role="tablist"
+      class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0"
+    >
       <button
+        role="tab"
+        aria-selected={@tab == :groups}
         phx-click="switch_resource_tab"
         phx-value-tab="groups"
         class={[
@@ -1136,6 +1141,8 @@ defmodule PortalWeb.Resources.Components do
         </span>
       </button>
       <button
+        role="tab"
+        aria-selected={@tab == :authorizations}
         phx-click="switch_resource_tab"
         phx-value-tab="authorizations"
         class={[
@@ -1573,8 +1580,11 @@ defmodule PortalWeb.Resources.Components do
               <%= for row <- @policy_authorizations do %>
                 <tr
                   phx-click="toggle_policy_authorization_row"
+                  phx-keydown="toggle_policy_authorization_row"
+                  phx-key="Enter"
                   phx-value-id={row.authorization.id}
-                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer"
+                  tabindex="0"
+                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer focus:outline-none focus:bg-[var(--surface-raised)]"
                 >
                   <td class="px-4 py-2 text-[var(--text-primary)]">
                     {if row.actor, do: row.actor.name, else: "—"}

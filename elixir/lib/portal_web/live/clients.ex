@@ -721,14 +721,17 @@ defmodule PortalWeb.Clients do
 
     @spec list_policy_authorizations_for_client(
             Portal.Device.t(),
-            Portal.Auth.Subject.t(),
+            Portal.Authentication.Subject.t(),
             non_neg_integer()
           ) :: {[map()], boolean()}
     def list_policy_authorizations_for_client(client, subject, page \\ 1) do
       offset = (page - 1) * @page_size
 
       from(pa in PolicyAuthorization, as: :policy_authorizations)
-      |> where([policy_authorizations: pa], pa.initiating_device_id == ^client.id)
+      |> where(
+        [policy_authorizations: pa],
+        pa.initiating_device_id == ^client.id or pa.receiving_device_id == ^client.id
+      )
       |> join(:inner, [policy_authorizations: pa], p in Policy,
         on: p.id == pa.policy_id,
         as: :policies
@@ -741,20 +744,31 @@ defmodule PortalWeb.Clients do
         on: r.id == p.resource_id,
         as: :resources
       )
+      |> join(:left, [policy_authorizations: pa], id in Device,
+        on: id.id == pa.initiating_device_id,
+        as: :initiating_devices
+      )
       |> join(:left, [policy_authorizations: pa], rd in Device,
         on: rd.id == pa.receiving_device_id,
         as: :receiving_devices
       )
       |> select(
-        [policy_authorizations: pa, groups: g, resources: r, receiving_devices: rd],
+        [
+          policy_authorizations: pa,
+          groups: g,
+          resources: r,
+          initiating_devices: id,
+          receiving_devices: rd
+        ],
         %{
           authorization: pa,
           group: g,
           resource: r,
+          initiating_device: id,
           receiving_device: rd
         }
       )
-      |> order_by([policy_authorizations: pa], desc: pa.inserted_at)
+      |> order_by([policy_authorizations: pa], desc: pa.inserted_at, desc: pa.id)
       |> limit(^(@page_size + 1))
       |> offset(^offset)
       |> Safe.scoped(subject, :replica)
