@@ -16,9 +16,9 @@ defmodule Portal.PolicyAuthorization do
           # nil for "Everyone" group policies which have no explicit membership
           membership_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
-          client_remote_ip: Portal.Types.IP.t(),
-          client_user_agent: String.t(),
-          gateway_remote_ip: Portal.Types.IP.t() | nil,
+          initiator_remote_ip: Portal.Types.IP.t(),
+          initiator_user_agent: String.t(),
+          receiver_remote_ip: Portal.Types.IP.t(),
           expires_at: DateTime.t(),
           inserted_at: DateTime.t()
         }
@@ -44,9 +44,9 @@ defmodule Portal.PolicyAuthorization do
     belongs_to :membership, Portal.Membership
 
     # TODO: These can be removed since we don't use them
-    field :client_remote_ip, Portal.Types.IP
-    field :client_user_agent, :string
-    field :gateway_remote_ip, Portal.Types.IP
+    field :initiator_remote_ip, Portal.Types.IP
+    field :initiator_user_agent, :string
+    field :receiver_remote_ip, Portal.Types.IP
 
     field :expires_at, :utc_datetime_usec
 

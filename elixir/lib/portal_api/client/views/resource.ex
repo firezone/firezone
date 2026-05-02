@@ -12,6 +12,18 @@ defmodule PortalAPI.Client.Views.Resource do
     render_cacheable(resource, site_key(client_session))
   end
 
+  @doc """
+    Renders the minimal `{id, filters}` view used in `client_device_access_authorized` and
+    `resource_filters_updated` payloads, where the receiving client only needs to know
+    which resource was authorized and what its filters look like.
+  """
+  def render_authorization(%Cacheable.Resource{} = resource) do
+    %{
+      id: Ecto.UUID.load!(resource.id),
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
+    }
+  end
+
   defp render_cacheable(%Cacheable.Resource{} = resource, site_key) do
     resource
     |> Map.from_struct()

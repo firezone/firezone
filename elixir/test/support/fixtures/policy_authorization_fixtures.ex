@@ -19,9 +19,9 @@ defmodule Portal.PolicyAuthorizationFixtures do
   def valid_policy_authorization_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
-      client_remote_ip: {100, 64, 0, 1},
-      client_user_agent: "Mozilla/5.0",
-      gateway_remote_ip: {100, 64, 0, 2}
+      initiator_remote_ip: {100, 64, 0, 1},
+      initiator_user_agent: "Mozilla/5.0",
+      receiver_remote_ip: {100, 64, 0, 2}
     })
   end
 
@@ -160,9 +160,9 @@ defmodule Portal.PolicyAuthorizationFixtures do
         :token_id,
         :membership_id,
         :expires_at,
-        :client_remote_ip,
-        :client_user_agent,
-        :gateway_remote_ip
+        :initiator_remote_ip,
+        :initiator_user_agent,
+        :receiver_remote_ip
       ])
       |> Portal.PolicyAuthorization.changeset()
       |> Portal.Repo.insert()

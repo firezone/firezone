@@ -133,7 +133,8 @@ defmodule Portal.Cache.Client do
           Ecto.UUID.t(),
           Authentication.Subject.t()
         ) ::
-          {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t(), Ecto.UUID.t(), non_neg_integer()}
+          {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t() | nil, Ecto.UUID.t(),
+           DateTime.t() | nil}
           | {:error, :not_found}
           | {:error, {:forbidden, violated_properties: [atom()]}}
 
@@ -220,12 +221,6 @@ defmodule Portal.Cache.Client do
   @spec track_authorized_device_ipv4(t(), Postgrex.INET.t()) :: t()
   def track_authorized_device_ipv4(cache, %Postgrex.INET{address: ipv4_tuple}) do
     %{cache | authorized_device_ipv4s: MapSet.put(cache.authorized_device_ipv4s, ipv4_tuple)}
-  end
-
-  @spec device_ipv4_relevant?(t(), ipv4_tuple()) :: boolean()
-  def device_ipv4_relevant?(cache, {_, _, _, _} = ipv4) do
-    MapSet.member?(cache.authorized_device_ipv4s, ipv4) or
-      Enum.any?(cache.device_addresses, fn {_, {v4, _v6}} -> v4 == ipv4 end)
   end
 
   @doc """
@@ -1061,16 +1056,6 @@ defmodule Portal.Cache.Client do
 
     def preload_site(resource) do
       Safe.preload(resource, :site, :replica)
-    end
-
-    def get_site(nil, _subject), do: nil
-
-    def get_site(%Portal.Cache.Cacheable.Site{} = site, subject) do
-      id = Ecto.UUID.load!(site.id)
-
-      from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one()
     end
 
     def get_site_by_id(site_id, subject) when is_binary(site_id) do

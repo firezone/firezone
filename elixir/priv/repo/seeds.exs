@@ -41,7 +41,7 @@ defmodule Portal.Repo.Seeds do
   @ua_ubuntu "Ubuntu/22.04 connlib/1.4.1"
   @ua_macos "Mac OS/14.1.0 apple-client/1.4.1 (arm64; 23.1.0)"
 
-  @client_user_agents [@ua_ios, @ua_android, @ua_windows, @ua_ubuntu, @ua_macos]
+  @initiator_user_agents [@ua_ios, @ua_android, @ua_windows, @ua_ubuntu, @ua_macos]
 
   # {region, city, lat, lon} tuples for seeded sessions.
   @locations [
@@ -584,7 +584,7 @@ defmodule Portal.Repo.Seeds do
 
       for i <- 0..count do
         user_agent =
-          Enum.random(@client_user_agents)
+          Enum.random(@initiator_user_agents)
 
         client_name = String.split(user_agent, "/") |> List.first()
 
@@ -1505,9 +1505,9 @@ defmodule Portal.Repo.Seeds do
         membership_id: membership.id,
         account_id: unprivileged_subject.account.id,
         token_id: unprivileged_subject.credential.id,
-        client_remote_ip: {127, 0, 0, 1},
-        client_user_agent: @ua_ios,
-        gateway_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
+        initiator_remote_ip: {127, 0, 0, 1},
+        initiator_user_agent: @ua_ios,
+        receiver_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
         expires_at: unprivileged_subject.expires_at || DateTime.utc_now() |> DateTime.add(3600)
       }
       |> Repo.insert!()

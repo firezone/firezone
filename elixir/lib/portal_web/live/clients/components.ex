@@ -42,15 +42,15 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
-  defp client_user_agent(client) do
-    case client.latest_session do
+  defp device_user_agent(device) do
+    case device.latest_session do
       %{user_agent: ua} -> ua
       _ -> nil
     end
   end
 
   def client_os(assigns) do
-    assigns = assign(assigns, :user_agent, client_user_agent(assigns.client))
+    assigns = assign(assigns, :user_agent, device_user_agent(assigns.client))
 
     ~H"""
     <div class="flex items-center">
@@ -61,7 +61,7 @@ defmodule PortalWeb.Clients.Components do
   end
 
   def client_os_icon(assigns) do
-    assigns = assign(assigns, :user_agent, client_user_agent(assigns.client))
+    assigns = assign(assigns, :user_agent, device_user_agent(assigns.client))
 
     ~H"""
     <.icon
@@ -73,7 +73,7 @@ defmodule PortalWeb.Clients.Components do
   end
 
   def client_os_name_and_version(assigns) do
-    assigns = assign(assigns, :user_agent, client_user_agent(assigns.client))
+    assigns = assign(assigns, :user_agent, device_user_agent(assigns.client))
 
     ~H"""
     <span>
@@ -480,8 +480,8 @@ defmodule PortalWeb.Clients.Components do
                           {if row.initiating_device, do: row.initiating_device.name, else: "—"}
                         </p>
                         <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
-                          {if row.authorization.client_remote_ip,
-                            do: Portal.Types.INET.to_string(row.authorization.client_remote_ip),
+                          {if row.authorization.initiator_remote_ip,
+                            do: Portal.Types.INET.to_string(row.authorization.initiator_remote_ip),
                             else: "—"}
                         </p>
                       </div>
@@ -497,8 +497,8 @@ defmodule PortalWeb.Clients.Components do
                           {if row.receiving_device, do: row.receiving_device.name, else: "—"}
                         </p>
                         <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
-                          {if row.authorization.gateway_remote_ip,
-                            do: Portal.Types.INET.to_string(row.authorization.gateway_remote_ip),
+                          {if row.authorization.receiver_remote_ip,
+                            do: Portal.Types.INET.to_string(row.authorization.receiver_remote_ip),
                             else: "—"}
                         </p>
                       </div>

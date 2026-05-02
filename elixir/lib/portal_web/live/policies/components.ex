@@ -982,8 +982,8 @@ defmodule PortalWeb.Policies.Components do
                           {if row.initiating_device, do: row.initiating_device.name, else: "—"}
                         </p>
                         <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
-                          {if row.authorization.client_remote_ip,
-                            do: Portal.Types.INET.to_string(row.authorization.client_remote_ip),
+                          {if row.authorization.initiator_remote_ip,
+                            do: Portal.Types.INET.to_string(row.authorization.initiator_remote_ip),
                             else: "—"}
                         </p>
                       </div>
@@ -999,8 +999,8 @@ defmodule PortalWeb.Policies.Components do
                           {if row.receiving_device, do: row.receiving_device.name, else: "—"}
                         </p>
                         <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
-                          {if row.authorization.gateway_remote_ip,
-                            do: Portal.Types.INET.to_string(row.authorization.gateway_remote_ip),
+                          {if row.authorization.receiver_remote_ip,
+                            do: Portal.Types.INET.to_string(row.authorization.receiver_remote_ip),
                             else: "—"}
                         </p>
                       </div>
