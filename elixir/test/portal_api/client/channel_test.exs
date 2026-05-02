@@ -5312,6 +5312,131 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  # !!! TODO: REMOVE ONCE THE FULL DEVICE POOLS FEATURE HAS SHIPPED !!!
+  # Covers the legacy `request_device_access` handler kept around for a PoC
+  # customer. Delete this whole describe block alongside the handler.
+  describe "handle_in/3 request_device_access (legacy)" do
+    setup %{account: account, group: group, subject: subject} do
+      enable_feature(:client_to_client)
+
+      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
+
+      target_actor = actor_fixture(account: account)
+      target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
+
+      target_subject =
+        subject_fixture(
+          account: account,
+          actor: target_actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      pool_resource =
+        static_device_pool_resource_fixture(account: account, clients: [target_client])
+
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      %{
+        subject: subject,
+        target_client: target_client,
+        target_subject: target_subject
+      }
+    end
+
+    test "sends authorized to both clients when target ipv4 is found in presence", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      target_client_id = target_client.id
+      initiating_client_id = client.id
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^target_client_id,
+        ice_role: :controlling
+      }
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^initiating_client_id,
+        ice_role: :controlled
+      }
+    end
+
+    test "sends denied with :offline when target is in pool but not online", %{
+      client: client,
+      subject: subject,
+      target_client: target_client
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :offline}
+    end
+
+    test "sends denied with :forbidden when target ipv4 is not in any pool", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      other_actor = actor_fixture(account: account)
+      other_client = client_fixture(account: account, actor: other_actor) |> fetch_device!()
+
+      other_subject =
+        subject_fixture(
+          account: account,
+          actor: other_actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      join_channel(other_client, other_subject)
+      assert_push "init", _
+
+      other_ip = Portal.Types.INET.to_string(other_client.ipv4)
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => other_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^other_ip, reason: :forbidden}
+    end
+
+    test "sends denied with :disabled when account feature is off", %{
+      account: account,
+      client: client,
+      subject: subject,
+      target_client: target_client
+    } do
+      account = update_account(account, %{features: %{client_to_client: false}})
+      subject = %{subject | account: account}
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :disabled}
+    end
+  end
+
   describe "handle_in/3 resolve_device_pool_domain" do
     setup %{account: account, group: group, subject: subject} do
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")

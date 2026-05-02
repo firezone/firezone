@@ -762,6 +762,50 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
+  # !!! TODO: REMOVE ONCE THE FULL DEVICE POOLS FEATURE HAS SHIPPED !!!
+  # Restored to keep a PoC customer working until clients migrate to the
+  # `create_flow` path for static_device_pool resources. Delete this handler
+  # and `legacy_authorize_device_access/2` below as part of that cleanup.
+  def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
+    account_id = socket.assigns.client.account_id
+
+    with true <- client_to_client_enabled?(socket.assigns.subject.account),
+         {:ok, {:ipv4, ipv4_tuple} = target} <-
+           parse_target_address(%{"ipv4" => ipv4_string}),
+         :ok <- legacy_authorize_device_access(socket.assigns.cache, ipv4_tuple),
+         {:ok, target_client_id, target_meta} <-
+           find_online_client_by_address(account_id, target) do
+      send_client_device_access_authorized(target_client_id, target_meta, socket)
+      {:noreply, socket}
+    else
+      false ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: ipv4_string,
+          reason: :disabled
+        })
+
+        {:noreply, socket}
+
+      {:error, :invalid_address} ->
+        Logger.warning("Invalid IPv4 address provided for device access request",
+          client_id: socket.assigns.client.id,
+          account_id: socket.assigns.client.account_id,
+          account_slug: socket.assigns.subject.account.slug,
+          ipv4: ipv4_string
+        )
+
+        {:noreply, socket}
+
+      :offline ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :offline})
+        {:noreply, socket}
+
+      {:error, :forbidden} ->
+        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :forbidden})
+        {:noreply, socket}
+    end
+  end
+
   # The client pushes it's ICE candidates list and the list of gateways that need to receive it
   def handle_in(
         "broadcast_ice_candidates",
@@ -818,6 +862,14 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
+
+  # !!! TODO: REMOVE ONCE THE FULL DEVICE POOLS FEATURE HAS SHIPPED !!!
+  # Used only by the legacy `request_device_access` handler. Delete alongside it.
+  defp legacy_authorize_device_access(cache, {_, _, _, _} = ipv4_tuple) do
+    if Enum.any?(cache.device_addresses, fn {_, {v4, _v6}} -> v4 == ipv4_tuple end),
+      do: :ok,
+      else: {:error, :forbidden}
+  end
 
   defp parse_target_address(%{"ipv4" => ipv4, "ipv6" => ipv6})
        when is_binary(ipv4) and is_binary(ipv6),
