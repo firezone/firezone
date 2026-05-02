@@ -840,7 +840,8 @@ defmodule PortalAPI.Client.Channel do
            parse_target_address(%{"ipv4" => ipv4_string}),
          :ok <- legacy_authorize_device_access(socket.assigns.cache, ipv4_tuple),
          {:ok, target_client_id, target_meta} <-
-           find_online_client_by_address(account_id, target) do
+           find_online_client_by_address(account_id, target),
+         :ok <- check_peer_compatibility(target_meta, socket) do
       case send_client_device_access_authorized(
              target_client_id,
              target_meta,
@@ -866,6 +867,14 @@ defmodule PortalAPI.Client.Channel do
         push(socket, "client_device_access_denied", %{
           ipv4: ipv4_string,
           reason: :disabled
+        })
+
+        {:noreply, socket}
+
+      {:error, :version_mismatch} ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: ipv4_string,
+          reason: :version_mismatch
         })
 
         {:noreply, socket}
@@ -946,6 +955,25 @@ defmodule PortalAPI.Client.Channel do
   end
 
   defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
+
+  # Reject peer connections when:
+  #   - the target client predates `client_device_access_authorized` / `_denied`
+  #     handling (older clients silently drop the message, leaving the initiator
+  #     stuck waiting), or
+  #   - initiator and target are on different minor versions — snownet's wire
+  #     format may change on a minor cadence, so cross-minor pairs are unsafe.
+  defp check_peer_compatibility(target_meta, socket) do
+    target_user_agent = Map.get(target_meta, :user_agent)
+    target_version = Map.get(target_meta, :version)
+    initiator_version = socket.assigns.session.version
+
+    if Portal.Version.supports_device_access?(target_user_agent, target_version) and
+         Portal.Version.same_minor_version?(initiator_version, target_version) do
+      :ok
+    else
+      {:error, :version_mismatch}
+    end
+  end
 
   # !!! TODO: REMOVE BEFORE GA — used only by the legacy `request_device_access` !!!
   # The check is "the IPv4 belongs to *some* device in a connectable pool we have
@@ -1249,6 +1277,41 @@ defmodule PortalAPI.Client.Channel do
   # Target was found in presence — try delivery and persist the policy_authorization
   # only if delivery succeeds.
   defp handle_authorized_pool_target(
+         target_client_id,
+         target_meta,
+         resource,
+         membership_id,
+         policy_id,
+         expires_at,
+         payload,
+         socket
+       ) do
+    case check_peer_compatibility(target_meta, socket) do
+      :ok ->
+        deliver_pool_target_authorized(
+          target_client_id,
+          target_meta,
+          resource,
+          membership_id,
+          policy_id,
+          expires_at,
+          payload,
+          socket
+        )
+
+      {:error, :version_mismatch} ->
+        push(socket, "client_device_access_denied", %{
+          client_id: target_client_id,
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: :version_mismatch
+        })
+
+        {:noreply, socket}
+    end
+  end
+
+  defp deliver_pool_target_authorized(
          target_client_id,
          target_meta,
          resource,
@@ -2064,7 +2127,9 @@ defmodule PortalAPI.Client.Channel do
           name: socket.assigns.client.name,
           public_key: socket.assigns.session.public_key,
           psk_base: socket.assigns.client.psk_base,
-          remote_ip: socket.assigns.session.remote_ip
+          remote_ip: socket.assigns.session.remote_ip,
+          version: socket.assigns.session.version,
+          user_agent: socket.assigns.session.user_agent
         }
 
         :ok =

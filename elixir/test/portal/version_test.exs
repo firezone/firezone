@@ -142,4 +142,58 @@ defmodule Portal.VersionTest do
       assert Portal.Version.resource_cannot_change_sites_on_client?(client)
     end
   end
+
+  describe "supports_device_access?/1" do
+    test "uses component-specific minimum versions" do
+      cases = [
+        {"Mac OS/15.1.1 apple-client/1.5.14 (arm64; 24.1.0)", "1.5.13", "1.5.14"},
+        {"Fedora/42.0.0 headless-client/1.5.7 (arm64; 24.1.0)", "1.5.6", "1.5.7"},
+        {"Android/14 android-client/1.5.9 (arm64; 24.1.0)", "1.5.8", "1.5.9"},
+        {"Windows/10.0.22631 gui-client/1.5.11 (arm64; 24.1.0)", "1.5.10", "1.5.11"}
+      ]
+
+      for {user_agent, unsupported_version, supported_version} <- cases do
+        refute Portal.Version.supports_device_access?(%Portal.ClientSession{
+                 version: unsupported_version,
+                 user_agent: user_agent
+               })
+
+        assert Portal.Version.supports_device_access?(%Portal.ClientSession{
+                 version: supported_version,
+                 user_agent: user_agent
+               })
+      end
+    end
+
+    test "returns false for nil version or user_agent" do
+      refute Portal.Version.supports_device_access?(%Portal.ClientSession{
+               version: nil,
+               user_agent: "Mac OS/14 apple-client/1.5.14"
+             })
+
+      refute Portal.Version.supports_device_access?(%Portal.ClientSession{
+               version: "1.5.14",
+               user_agent: nil
+             })
+    end
+  end
+
+  describe "supports_device_access?/2" do
+    test "accepts user_agent and version directly" do
+      assert Portal.Version.supports_device_access?(
+               "Mac OS/14 apple-client/1.5.14",
+               "1.5.14"
+             )
+
+      refute Portal.Version.supports_device_access?(
+               "Mac OS/14 apple-client/1.5.13",
+               "1.5.13"
+             )
+    end
+
+    test "returns false when either argument is nil" do
+      refute Portal.Version.supports_device_access?(nil, "1.5.14")
+      refute Portal.Version.supports_device_access?("apple-client/1.5.14", nil)
+    end
+  end
 end
