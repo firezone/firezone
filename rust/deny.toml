@@ -266,13 +266,23 @@ skip = [
     "bitflags",
     "cargo-platform",
     "cargo_metadata",
+    # boringtun pulls chacha20 0.9 via chacha20poly1305 0.10.1; hickory 0.26 pulls 0.10 via rand 0.10.
+    "chacha20",
     "convert_case",
+    # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
+    "core-foundation",
+    # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
+    "cpufeatures",
     "derive_more",
     "foldhash",
     "getrandom",
     "hashbrown",
     "heck",
     "indexmap",
+    # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21.
+    # not a problem as they land in different binaries (Android client vs gateway)
+    "jni",
+    "jni-sys",
     "libloading",
     "linux-raw-sys",
     "nom",
