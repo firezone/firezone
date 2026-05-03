@@ -88,7 +88,7 @@ dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1.15.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
-etherparse = { version = "0.19.0", default-features = false }
+etherparse = { version = "0.20.1", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 filetime = "0.2.27"
