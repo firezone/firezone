@@ -286,30 +286,29 @@ impl ClientState {
 
         // The protocol is irrelevant: each member device has exactly one routing-table entry
         // per address, so the lookup always resolves to that entry regardless of the dummy.
-        let entry = ipv4
+        let client_id = ipv4
             .and_then(|ip| {
                 self.client_routing_table
                     .matches(IpAddr::V4(ip), Ok(Protocol::Tcp(0)))
-                    .cloned()
+                    .map(|e| e.client_id)
             })
             .or_else(|| {
                 ipv6.and_then(|ip| {
                     self.client_routing_table
                         .matches(IpAddr::V6(ip), Ok(Protocol::Tcp(0)))
-                        .cloned()
+                        .map(|e| e.client_id)
                 })
             });
-        let Some(entry) = entry else {
+        let Some(client_id) = client_id else {
             return;
         };
 
-        self.pending_device_access.remove(&entry.client_id);
+        self.pending_device_access.remove(&client_id);
         // TODO: Update resource list with offline client.
 
-        if self.clients.peer_by_id(&entry.client_id).is_some() {
-            self.clients.remove(&entry.client_id);
+        if self.clients.remove(&client_id).is_some() {
             self.node.close_connection(
-                ClientOrGatewayId::Client(entry.client_id),
+                ClientOrGatewayId::Client(client_id),
                 p2p_control::goodbye(),
                 now,
             );
@@ -700,22 +699,28 @@ impl ClientState {
         }
 
         // Static device pool routing.
-        if let Some(entry) = self
+        if let Some((client_id, resource_id, allowed)) = self
             .client_routing_table
             .matches(dst, Ok(dst_proto))
-            .cloned()
+            .map(|e| {
+                (
+                    e.client_id,
+                    e.resource_id,
+                    e.filter.apply(Ok(dst_proto)).is_ok(),
+                )
+            })
         {
-            if entry.filter.apply(Ok(dst_proto)).is_err() {
+            if !allowed {
                 bail!(UnroutablePacket::not_allowed(&packet))
             }
 
-            if self.clients.peer_by_id(&entry.client_id).is_some() {
-                return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
+            if self.clients.peer_by_id(&client_id).is_some() {
+                return Ok(Some((ClientOrGatewayId::Client(client_id), packet)));
             }
 
             self.pending_device_access.on_not_connected_device(
-                entry.client_id,
-                entry.resource_id,
+                client_id,
+                resource_id,
                 dst,
                 packet,
                 now,
