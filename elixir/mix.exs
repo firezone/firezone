@@ -157,7 +157,7 @@ defmodule Portal.MixProject do
       {:remixicons,
        github: "Remix-Design/RemixIcon",
        sparse: "icons",
-       tag: "v4.6.0",
+       tag: "v4.9.1",
        app: false,
        compile: false,
        depth: 1},
