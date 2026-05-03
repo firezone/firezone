@@ -16,7 +16,8 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 use telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
+    MaybePushMetricsExporter, NoopPushMetricsExporter, SentryMetricExporter, Telemetry,
+    feature_flags, otel,
 };
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
@@ -174,7 +175,14 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
                         NoopPushMetricsExporter
                     },
-                    should_export: feature_flags::export_metrics,
+                    should_export: feature_flags::stream_metrics,
+                })
+                .with_resource(resource)
+                .build(),
+            (MetricsExporter::Sentry, _) => SdkMeterProvider::builder()
+                .with_periodic_exporter(MaybePushMetricsExporter {
+                    inner: SentryMetricExporter,
+                    should_export: feature_flags::stream_metrics,
                 })
                 .with_resource(resource)
                 .build(),
@@ -391,6 +399,7 @@ impl fmt::Display for LogFormat {
 enum MetricsExporter {
     Stdout,
     OtelCollector,
+    Sentry,
 }
 
 impl Cli {

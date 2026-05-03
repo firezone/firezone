@@ -52,8 +52,8 @@ pub fn icmp_error_unreachable_prohibited_create_new_flow() -> bool {
     FEATURE_FLAGS.icmp_error_unreachable_prohibited_create_new_flow()
 }
 
-pub fn export_metrics() -> bool {
-    false // Placeholder until we actually deploy an OTEL collector.
+pub fn stream_metrics() -> bool {
+    FEATURE_FLAGS.stream_metrics()
 }
 
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
@@ -170,6 +170,8 @@ struct FeatureFlagsResponse {
     stream_logs: bool,
     #[serde(default)]
     icmp_error_unreachable_prohibited_create_new_flow: bool,
+    #[serde(default)]
+    stream_metrics: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -185,6 +187,7 @@ struct FeatureFlags {
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
+    stream_metrics: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -201,6 +204,7 @@ impl FeatureFlags {
             drop_llmnr_nxdomain_responses,
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
+            stream_metrics,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -213,6 +217,7 @@ impl FeatureFlags {
                 icmp_error_unreachable_prohibited_create_new_flow,
                 Ordering::Relaxed,
             );
+        self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -240,6 +245,10 @@ impl FeatureFlags {
         self.icmp_error_unreachable_prohibited_create_new_flow
             .load(Ordering::Relaxed)
     }
+
+    fn stream_metrics(&self) -> bool {
+        self.stream_metrics.load(Ordering::Relaxed)
+    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -257,6 +266,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             "FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW",
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
+        stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
     }
 }
 
@@ -275,6 +285,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         DropLlmnrNxdomainResponses { result: bool },
         StreamLogs { result: bool },
         IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
+        StreamMetrics { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -283,6 +294,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         drop_llmnr_nxdomain_responses,
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
+        stream_metrics,
     } = flags;
 
     let value = serde_json::json!({
@@ -293,6 +305,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
             SentryFlag::StreamLogs { result: stream_logs },
             SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
+            SentryFlag::StreamMetrics { result: stream_metrics },
         ]
     });
 

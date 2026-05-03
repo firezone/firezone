@@ -31,7 +31,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use telemetry::{Telemetry, analytics};
+use telemetry::{Telemetry, analytics, otel};
 use tokio::time::Instant;
 use tracing::Instrument as _;
 use url::Url;
@@ -636,6 +636,12 @@ impl<'a> Handler<'a> {
                             self.device_id.id.clone(),
                         )
                         .await;
+
+                    otel::install_sentry_meter_provider(
+                        env!("CARGO_PKG_NAME"),
+                        env!("CARGO_PKG_VERSION"),
+                        self.device_id.id.clone(),
+                    );
 
                     if let Some(account_slug) = account_slug {
                         Telemetry::set_account_slug(account_slug.clone());
