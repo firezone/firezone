@@ -172,12 +172,12 @@ wipe_token_label() {
             fi
             if ! delete_with_gui_auth "${label}" "${keychain_path}"; then
                 printf '  failed to remove %s from %s (cancelled or denied?)\n' "${label}" "${keychain_path}" >&2
-                return
+                return 1
             fi
         else
             if ! security delete-generic-password -l "${label}" "${keychain_path}" >/dev/null 2>&1; then
                 printf '  failed to remove %s from %s\n' "${label}" "${keychain_path}" >&2
-                return
+                return 1
             fi
         fi
         removed=$((removed + 1))
@@ -293,6 +293,10 @@ flip_bool() {
 cmd_interactive() {
     if [[ ! -t 0 ]]; then
         echo "interactive mode requires a terminal" >&2
+        exit 2
+    fi
+    if ((${#BOOL_KEYS[@]} > 9)); then
+        echo "interactive mode supports up to 9 bool keys; single-digit hotkeys would mask the rest" >&2
         exit 2
     fi
 
