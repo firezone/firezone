@@ -156,10 +156,15 @@ pub struct ClientDeviceAccessAuthorized {
     pub ice_role: IceRole,
 }
 
+/// Portal's denial of a `create_flow` toward a static device pool peer.
+///
+/// Either or both of `ipv4` / `ipv6` may be absent depending on the denial reason.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessDenied {
-    pub ipv4: Ipv4Addr,
-    pub ipv6: Ipv6Addr,
+    #[serde(default)]
+    pub ipv4: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub ipv6: Option<Ipv6Addr>,
     pub reason: FailReason,
 }
 
@@ -186,6 +191,10 @@ pub enum FailReason {
     Offline,
     VersionMismatch,
     Forbidden,
+    Disabled,
+    AmbiguousAddress,
+    MissingAddress,
+    InvalidAddress,
     #[serde(other)]
     Unknown,
 }
@@ -723,6 +732,68 @@ mod tests {
             msg,
             IngressMessages::DevicePoolDomainResolutionFailed(_)
         ));
+    }
+
+    #[test]
+    fn can_deserialize_client_device_access_denied_with_only_ipv4() {
+        let json = r#"{"event":"client_device_access_denied","ref":null,"topic":"client","payload":{"ipv4":"100.65.0.1","reason":"forbidden"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::ClientDeviceAccessDenied(denied) = message else {
+            panic!("expected ClientDeviceAccessDenied");
+        };
+        assert_eq!(denied.ipv4, Some("100.65.0.1".parse::<Ipv4Addr>().unwrap()));
+        assert_eq!(denied.ipv6, None);
+        assert!(matches!(denied.reason, FailReason::Forbidden));
+    }
+
+    #[test]
+    fn can_deserialize_client_device_access_denied_with_only_ipv6() {
+        let json = r#"{"event":"client_device_access_denied","ref":null,"topic":"client","payload":{"ipv6":"fd00:2021:1111::1","reason":"offline"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::ClientDeviceAccessDenied(denied) = message else {
+            panic!("expected ClientDeviceAccessDenied");
+        };
+        assert_eq!(denied.ipv4, None);
+        assert_eq!(
+            denied.ipv6,
+            Some("fd00:2021:1111::1".parse::<Ipv6Addr>().unwrap())
+        );
+        assert!(matches!(denied.reason, FailReason::Offline));
+    }
+
+    #[test]
+    fn can_deserialize_client_device_access_denied_missing_address() {
+        let json = r#"{"event":"client_device_access_denied","ref":null,"topic":"client","payload":{"reason":"missing_address"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::ClientDeviceAccessDenied(denied) = message else {
+            panic!("expected ClientDeviceAccessDenied");
+        };
+        assert_eq!(denied.ipv4, None);
+        assert_eq!(denied.ipv6, None);
+        assert!(matches!(denied.reason, FailReason::MissingAddress));
+    }
+
+    #[test]
+    fn can_deserialize_client_device_access_denied_ambiguous_address() {
+        let json = r#"{"event":"client_device_access_denied","ref":null,"topic":"client","payload":{"ipv4":"100.65.0.1","ipv6":"fd00:2021:1111::1","reason":"ambiguous_address"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::ClientDeviceAccessDenied(denied) = message else {
+            panic!("expected ClientDeviceAccessDenied");
+        };
+        assert_eq!(denied.ipv4, Some("100.65.0.1".parse::<Ipv4Addr>().unwrap()));
+        assert_eq!(
+            denied.ipv6,
+            Some("fd00:2021:1111::1".parse::<Ipv6Addr>().unwrap())
+        );
+        assert!(matches!(denied.reason, FailReason::AmbiguousAddress));
     }
 
     #[test]
