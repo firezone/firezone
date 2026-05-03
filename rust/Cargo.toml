@@ -157,7 +157,7 @@ quote = "1.0.45"
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.7.1"
-reqwest = { version = "0.13.2", default-features = false }
+reqwest = { version = "0.13.3", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
