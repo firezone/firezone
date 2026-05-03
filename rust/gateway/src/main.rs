@@ -243,7 +243,9 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     resolver_builder.options_mut().cache_size = 512;
     resolver_builder.options_mut().use_hosts_file = ResolveHosts::Always;
 
-    let resolver = resolver_builder.build()?;
+    let resolver = resolver_builder
+        .build()
+        .context("Failed to build DNS resolver")?;
 
     Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
         .run()

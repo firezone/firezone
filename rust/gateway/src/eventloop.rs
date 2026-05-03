@@ -14,7 +14,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use std::{io, iter, mem};
+use std::{io, mem};
 use tokio::sync::mpsc;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
@@ -469,11 +469,18 @@ impl Eventloop {
         let resolver = self.resolver.clone();
 
         async move {
-            let ipv4_lookup = resolver.ipv4_lookup(domain.to_string()).map_ok(lookup_to_ips);
-            let ipv6_lookup = resolver.ipv6_lookup(domain.to_string()).map_ok(lookup_to_ips);
+            let ipv4_lookup = resolver
+                .ipv4_lookup(domain.to_string())
+                .map_ok(lookup_to_ips);
+            let ipv6_lookup = resolver
+                .ipv6_lookup(domain.to_string())
+                .map_ok(lookup_to_ips);
 
             let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                (Ok(ipv4), Ok(ipv6)) => iter::empty().chain(ipv4).chain(ipv6).collect(),
+                (Ok(mut ipv4), Ok(ipv6)) => {
+                    ipv4.extend(ipv6);
+                    ipv4
+                }
                 (Ok(ipv4), Err(e)) => {
                     tracing::debug!(%domain, "AAAA lookup failed: {e}");
 
