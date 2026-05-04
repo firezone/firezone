@@ -301,14 +301,15 @@ impl ClientState {
         self.pending_device_access.remove(&entry.client_id);
         // TODO: Update resource list with offline client.
 
-        if self.clients.peer_by_id(&entry.client_id).is_some() {
-            self.clients.remove(&entry.client_id);
-            self.node.close_connection(
-                ClientOrGatewayId::Client(entry.client_id),
-                p2p_control::goodbye(),
-                now,
-            );
-        }
+        let Some(_) = self.clients.remove(&entry.client_id) else {
+            return;
+        };
+
+        self.node.close_connection(
+            ClientOrGatewayId::Client(entry.client_id),
+            p2p_control::goodbye(),
+            now,
+        );
     }
 
     pub fn handle_device_pool_domain_resolved(
