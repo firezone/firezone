@@ -18,6 +18,7 @@
 //! (None on the Ice variant). Path-specific transmits land in a later commit
 //! when ICMPv6 probing is implemented.
 
+use std::ops::ControlFlow;
 use std::time::Instant;
 
 use is::stun::StunPacket;
@@ -252,6 +253,25 @@ impl Agent {
         }
     }
 
+    /// Hand off an inbound WG packet to the path-agent.
+    /// `ControlFlow::Break(())` means the path-agent took ownership
+    /// (handshake — possibly deduped, possibly to be forwarded to boringtun
+    /// via [`path_agent::Event::ForwardInbound`]); the caller stops
+    /// processing this packet.
+    /// `ControlFlow::Continue(())` means non-handshake or ICE connection;
+    /// the caller passes the bytes to `Tunn::decapsulate_at` directly.
+    pub(crate) fn handle_inbound(
+        &mut self,
+        bytes: &[u8],
+        path: (std::net::SocketAddr, std::net::SocketAddr),
+        now: Instant,
+    ) -> ControlFlow<()> {
+        match self {
+            Self::Ice(_) => ControlFlow::Continue(()),
+            Self::Path { path: agent, .. } => agent.handle_inbound(bytes, path, now),
+        }
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         match self {
             Self::Ice(a) => a.handle_timeout(now),
@@ -265,7 +285,7 @@ impl Agent {
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         match self {
             Self::Ice(a) => a.poll_timeout(),
-            Self::Path { .. } => None,
+            Self::Path { path, .. } => path.poll_timeout(),
         }
     }
 

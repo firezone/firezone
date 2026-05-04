@@ -523,7 +523,7 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, packet, now) {
+        let (id, packet) = match self.connections_try_handle(from, destination, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
@@ -979,6 +979,7 @@ where
     fn connections_try_handle(
         &mut self,
         from: SocketAddr,
+        destination: SocketAddr,
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
@@ -1025,7 +1026,8 @@ where
 
         let control_flow = conn.decapsulate(
             cid,
-            from.ip(),
+            from,
+            destination,
             packet,
             &mut self.allocations,
             &mut self.buffered_transmits,
@@ -1537,10 +1539,54 @@ where
             }
         }
 
-        while let Some(_event) = self.agent.poll_path_event() {
-            // Path-agent events become actionable in subsequent commits
-            // (PrimarySelected drives the same connection-state transitions
-            // IceAgentEvent::NominatedSend currently does, etc.).
+        // Drain path-agent events the agent queued in earlier `handle_inbound`
+        // calls: forward any handshake bytes through boringtun's state
+        // machine, hand the response back to the agent for outbound
+        // dispatch, then drain the agent's transmit queue.
+        //
+        // 148 bytes covers the largest WG handshake message; responses are
+        // smaller. Forwarded inbound bytes never produce data packets, so
+        // we don't need an `IpPacketBuf`-sized buffer.
+        //
+        // We pass `None` to `decapsulate_at` (no source IP). Source-tracking
+        // is for replay protection, and the responder dedup cache (later
+        // commit) prevents duplicate inits from reaching this point in the
+        // first place — so the loss of source tracking is benign.
+        const MAX_HANDSHAKE_SCRATCH: usize = 148;
+        let mut buf = [0u8; MAX_HANDSHAKE_SCRATCH];
+
+        while let Some(event) = self.agent.poll_path_event() {
+            let path_agent::Event::ForwardInbound { bytes } = event else {
+                continue; // Other events become actionable in subsequent commits.
+            };
+            match self.tunnel.decapsulate_at(None, &bytes, &mut buf, now) {
+                TunnResult::WriteToNetwork(response) => {
+                    self.agent.handle_outbound(response.to_vec(), now);
+                }
+                TunnResult::Done => {}
+                TunnResult::Err(e) => {
+                    tracing::debug!(error = ?e, "Forwarded handshake rejected by boringtun");
+                }
+                TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                    tracing::warn!("Unexpected data packet from forwarded handshake");
+                }
+            }
+        }
+
+        // Drain path-agent transmits the agent queued from forwarded
+        // handshakes above (replay responses, future retransmit ticks).
+        while let Some(pt) = self.agent.poll_path_transmit() {
+            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
+            if let Some(transmit) = make_owned_transmit(
+                self.relay.id,
+                peer_socket,
+                &pt.payload,
+                &self.buffer_pool,
+                allocations,
+                now,
+            ) {
+                transmits.push_back(transmit);
+            }
         }
 
         while let Some(transmit) = self.agent.poll_ice_transmit() {
@@ -1711,7 +1757,8 @@ where
     fn decapsulate<TId>(
         &mut self,
         cid: TId,
-        src: IpAddr,
+        from: SocketAddr,
+        destination: SocketAddr,
         packet: &[u8],
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
@@ -1719,13 +1766,32 @@ where
     ) -> ControlFlow<Result<()>, IpPacket>
     where
         TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
     {
+        // For iceless connections, give the path-agent a chance to dedup
+        // duplicate handshakes / replay cached responses before letting
+        // boringtun's state machine see the bytes. The agent merely takes
+        // ownership and queues any work (`ForwardInbound` events, replay
+        // transmits); `Connection::handle_timeout` is what actually drives
+        // boringtun and drains the resulting transmits. The path-agent's
+        // `poll_timeout` returns "fire ASAP" while events are queued so
+        // the next `handle_timeout` runs without delay.
+        if self
+            .agent
+            .handle_inbound(packet, (destination, from), now)
+            .is_break()
+        {
+            return ControlFlow::Break(Ok(()));
+        }
+
         let mut ip_packet = IpPacketBuf::new();
 
-        let control_flow = match self
-            .tunnel
-            .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
-        {
+        let control_flow = match self.tunnel.decapsulate_at(
+            Some(from.ip()),
+            packet,
+            ip_packet.buf(),
+            now,
+        ) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) if crate::is_handshake(packet) => {
                 ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")))
@@ -1882,7 +1948,7 @@ where
 
         self.agent.handle_outbound(bytes.to_vec(), now);
 
-        let mut count = 0;
+        // Drain the per-pair fanout transmits the path-agent just queued.
         while let Some(pt) = self.agent.poll_path_transmit() {
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             if let Some(transmit) = make_owned_transmit(
@@ -1894,11 +1960,8 @@ where
                 now,
             ) {
                 transmits.push_back(transmit);
-                count += 1;
             }
         }
-
-        tracing::debug!(num_pairs = %count, "Fanned out WG HandshakeInit via path-agent");
     }
 
     fn initiate_wg_session(
