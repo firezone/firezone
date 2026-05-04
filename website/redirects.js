@@ -76,6 +76,34 @@ module.exports = [
     permanent: false,
   },
   {
+    source: "/dl/firezone-client-gui-linux/latest/x86_64/deb",
+    destination:
+      // mark:current-gui-version
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-linux_1.5.10_x86_64.deb",
+    permanent: false,
+  },
+  {
+    source: "/dl/firezone-client-gui-linux/latest/aarch64/deb",
+    destination:
+      // mark:current-gui-version
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-linux_1.5.10_aarch64.deb",
+    permanent: false,
+  },
+  {
+    source: "/dl/firezone-client-gui-linux/latest/x86_64/rpm",
+    destination:
+      // mark:current-gui-version
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-linux_1.5.10_x86_64.rpm",
+    permanent: false,
+  },
+  {
+    source: "/dl/firezone-client-gui-linux/latest/aarch64/rpm",
+    destination:
+      // mark:current-gui-version
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.10/firezone-client-gui-linux_1.5.10_aarch64.rpm",
+    permanent: false,
+  },
+  {
     source: "/dl/firezone-client-headless-linux/latest/x86_64",
     destination:
       // mark:current-headless-version
