@@ -1021,10 +1021,7 @@ impl ReferenceState {
                         .values()
                         .any(|c| c.inner().has_resource(resource.id()))
             }
-            Transition::UpdateStaticDevicePool {
-                pool_id,
-                new_devices,
-            } => {
+            Transition::UpdateStaticDevicePool { pool_id, .. } => {
                 // Pool must already exist on at least one client.
                 state.portal.all_resources().iter().any(|r| {
                     let client::Resource::StaticDevicePool(existing) = r else {
