@@ -414,6 +414,11 @@ impl PathAgent {
                         response_bytes: bytes,
                         cached_at: now,
                     });
+                    // Acting as responder counts as bootstrap done — any
+                    // later init from boringtun is a re-key on this
+                    // working session and should ride `primary`, not
+                    // re-fan out across every relay pair.
+                    self.established = true;
                 }
             }
             _ => {

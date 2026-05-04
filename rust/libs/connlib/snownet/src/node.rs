@@ -367,8 +367,13 @@ where
             now,
         );
 
-        // No nomination step in iceless mode — fan out the WG init now.
-        if connection.agent.is_iceless() {
+        // No nomination step in iceless mode — fan out the WG init now,
+        // but only on the Controlling side. The other side becomes the
+        // responder when our init arrives, so we don't burn bandwidth
+        // (and TURN channel bindings) on a duplicate fanout from each
+        // peer. `PathAgent` itself stays role-agnostic; the choice is
+        // made here based on the role the portal already assigned.
+        if connection.agent.is_iceless() && matches!(ice_role, IceRole::Controlling) {
             connection.initiate_wg_session_for_path(now);
         }
 

@@ -868,6 +868,31 @@ fn first_inbound_handshake_adopts_bootstrap_primary_so_outbound_data_flows() {
 }
 
 #[test]
+fn responder_rekey_init_rides_primary_after_initial_response_sent() {
+    // The Controlled side never fans out a bootstrap init — it only
+    // responds to the Controlling side's. When it later acts as the
+    // re-key initiator (boringtun's per-session timer can fire from
+    // either side), the resulting `HandshakeInit` should ride `primary`,
+    // not re-fan out across every relay pair. Setting `established` on
+    // the first sent response is what guarantees that.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let recv_path = (addr(2), addr(4));
+
+    // Receive an init, send a response.
+    let _ = a.handle_inbound(&handshake_init_bytes(), recv_path, now);
+    while a.poll_event().is_some() {}
+    a.handle_outbound(handshake_response_bytes(), now);
+    while a.poll_transmit().is_some() {}
+
+    // Re-key init from boringtun: single transmit on primary only.
+    a.handle_outbound(handshake_init_bytes(), now + Duration::from_secs(120));
+    let rekey: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert_eq!(rekey.len(), 1, "re-key rides the primary: {rekey:?}");
+    assert_eq!((rekey[0].local, rekey[0].remote), recv_path);
+}
+
+#[test]
 fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
     // After the first bootstrap fanout, `established` flips so any later
     // `HandshakeInit` boringtun emits (re-keys, every ~120 s) goes via
