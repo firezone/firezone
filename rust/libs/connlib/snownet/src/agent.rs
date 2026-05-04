@@ -293,4 +293,22 @@ impl Agent {
             Self::Path { path, .. } => path.poll_event(),
         }
     }
+
+    /// Hand off an outbound WG packet from boringtun to the path-agent.
+    /// No-op for ICE connections, which use the existing single-socket
+    /// `peer_socket`-based send path.
+    pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
+        if let Self::Path { path, .. } = self {
+            path.handle_outbound(bytes, now);
+        }
+    }
+
+    /// Drain the next outbound transmit produced by the path-agent (fanout,
+    /// retransmit, replay, etc.). `None` for ICE connections.
+    pub(crate) fn poll_path_transmit(&mut self) -> Option<path_agent::Transmit> {
+        match self {
+            Self::Ice(_) => None,
+            Self::Path { path, .. } => path.poll_transmit(),
+        }
+    }
 }

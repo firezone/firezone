@@ -354,7 +354,7 @@ where
                 }),
         );
 
-        let connection = self.init_connection(
+        let mut connection = self.init_connection(
             cid,
             agent,
             remote,
@@ -366,6 +366,16 @@ where
             now,
             now,
         );
+
+        // Iceless connections don't wait for ICE nomination — drive the
+        // path-agent to fan out the initial WG `HandshakeInit` immediately.
+        if connection.agent.is_iceless() {
+            connection.initiate_wg_session_for_path(
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+                now,
+            );
+        }
 
         self.connections.insert_established(cid, index, connection);
 
@@ -1422,28 +1432,16 @@ where
                     source,
                     ..
                 } => {
-                    let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
-
-                    if source_relay.is_some_and(|r| self.relay.id != r) {
+                    if let Some((r, _)) = allocations.get_mut_by_allocation(source)
+                        && self.relay.id != r
+                    {
                         tracing::warn!(
                             "Nominated a relay different from what we set out to! Weird?"
                         );
                     }
 
-                    let dest_is_relay = self.agent.remote_candidate_is_relayed(destination);
-
-                    let remote_socket = match (source_relay, dest_is_relay) {
-                        (None, false) => PeerSocket::PeerToPeer {
-                            source,
-                            dest: destination,
-                        },
-                        (None, true) => PeerSocket::PeerToRelay {
-                            source,
-                            dest: destination,
-                        },
-                        (Some(_), false) => PeerSocket::RelayToPeer { dest: destination },
-                        (Some(_), true) => PeerSocket::RelayToRelay { dest: destination },
-                    };
+                    let remote_socket =
+                        self.peer_socket_for_tuple(allocations, source, destination);
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
@@ -1819,6 +1817,88 @@ where
         }
 
         control_flow
+    }
+
+    /// Classify an outbound `(local, from)` socket pair into the
+    /// corresponding `PeerSocket` variant by looking up `local` in the
+    /// allocation table (relay vs. host bind) and asking the agent
+    /// whether `from` is a relayed remote candidate.
+    fn peer_socket_for_tuple(
+        &self,
+        allocations: &mut Allocations<RId>,
+        local: SocketAddr,
+        from: SocketAddr,
+    ) -> PeerSocket
+    where
+        RId: Ord + fmt::Display + Copy,
+    {
+        let source_relay = allocations.get_mut_by_allocation(local).map(|(r, _)| r);
+        let dest_is_relay = self.agent.remote_candidate_is_relayed(from);
+
+        match (source_relay, dest_is_relay) {
+            (None, false) => PeerSocket::PeerToPeer {
+                source: local,
+                dest: from,
+            },
+            (None, true) => PeerSocket::PeerToRelay {
+                source: local,
+                dest: from,
+            },
+            (Some(_), false) => PeerSocket::RelayToPeer { dest: from },
+            (Some(_), true) => PeerSocket::RelayToRelay { dest: from },
+        }
+    }
+
+    /// Iceless equivalent of [`Self::initiate_wg_session`]: hands the
+    /// `HandshakeInit` bytes from boringtun to the path-agent, which
+    /// fans them out across all relay-involved pairs internally. Each
+    /// emitted [`path_agent::Transmit`] is classified into the
+    /// appropriate [`PeerSocket`] variant and pushed onto `transmits`.
+    fn initiate_wg_session_for_path(
+        &mut self,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut VecDeque<Transmit>,
+        now: Instant,
+    ) where
+        RId: Ord + fmt::Display + Copy,
+    {
+        // No `last_proactive_handshake_sent_at` suppression here:
+        // that's an ICE-only concern (rapid successive `upsert_connection`
+        // calls in the reuse path can trigger redundant boringtun
+        // handshakes). Iceless connections call this exactly once at
+        // construction time; subsequent re-keys flow through the standard
+        // boringtun timer + `agent.handle_outbound` path on the primary
+        // pair, not back through here.
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+        let TunnResult::WriteToNetwork(bytes) = self
+            .tunnel
+            .format_handshake_initiation_at(&mut buf, false, now)
+        else {
+            tracing::debug!("Another handshake is already in progress");
+            return;
+        };
+
+        self.agent.handle_outbound(bytes.to_vec(), now);
+
+        let mut count = 0;
+        while let Some(pt) = self.agent.poll_path_transmit() {
+            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
+            if let Some(transmit) = make_owned_transmit(
+                self.relay.id,
+                peer_socket,
+                &pt.payload,
+                &self.buffer_pool,
+                allocations,
+                now,
+            ) {
+                transmits.push_back(transmit);
+                count += 1;
+            }
+        }
+
+        tracing::debug!(num_pairs = %count, "Fanned out WG HandshakeInit via path-agent");
     }
 
     fn initiate_wg_session(
