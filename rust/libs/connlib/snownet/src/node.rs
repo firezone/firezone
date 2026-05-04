@@ -1589,9 +1589,13 @@ where
                     );
                     self.state = ConnectionState::Failed;
                 }
-                path_agent::Event::PrimarySelected { .. }
-                | path_agent::Event::PrimaryChanged { .. } => {
-                    // Outer scoring/event reporting lands in a follow-up commit.
+                path_agent::Event::PrimarySelected { local, remote }
+                | path_agent::Event::PrimaryChanged {
+                    to: (local, remote),
+                    ..
+                } => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, local, remote);
+                    self.adopt_iceless_peer_socket(peer_socket, allocations, transmits, cid, now);
                 }
             }
         }
@@ -1712,6 +1716,69 @@ where
                 panic!("Unexpected result from update_timers")
             }
         };
+    }
+
+    /// Adopt a freshly-selected (or changed) iceless `peer_socket`. Mirrors
+    /// the [`IceAgentEvent::NominatedSend`] flow: transitions
+    /// `Connecting → Connected` (flushing buffered WG/IP packets) on the
+    /// first call, and just rebinds `peer_socket` on later changes.
+    fn adopt_iceless_peer_socket<TId>(
+        &mut self,
+        peer_socket: PeerSocket,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut VecDeque<Transmit>,
+        cid: TId,
+        now: Instant,
+    ) where
+        TId: Copy + fmt::Display,
+    {
+        match mem::replace(&mut self.state, ConnectionState::Failed) {
+            ConnectionState::Connecting {
+                wg_buffer,
+                ip_buffer,
+            } => {
+                tracing::debug!(
+                    %cid,
+                    num_wg = wg_buffer.len(),
+                    num_ip = ip_buffer.len(),
+                    "Iceless primary selected; flushing buffered packets",
+                );
+                transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
+                    make_owned_transmit(
+                        self.relay.id,
+                        peer_socket,
+                        &packet,
+                        &self.buffer_pool,
+                        allocations,
+                        now,
+                    )
+                }));
+                transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
+                    self.encapsulate(cid, peer_socket, &packet, now, allocations)
+                        .inspect_err(|e| {
+                            tracing::debug!("Failed to encapsulate buffered IP packet: {e:#}")
+                        })
+                        .ok()
+                        .flatten()
+                }));
+                self.state = ConnectionState::Connected {
+                    peer_socket,
+                    last_activity: now,
+                };
+            }
+            ConnectionState::Connected { last_activity, .. } => {
+                self.state = ConnectionState::Connected {
+                    peer_socket,
+                    last_activity,
+                };
+            }
+            ConnectionState::Idle { .. } => {
+                self.state = ConnectionState::Idle { peer_socket };
+            }
+            ConnectionState::Failed => {
+                self.state = ConnectionState::Failed;
+            }
+        }
     }
 
     /// Encrypt a path-probe (plaintext IPv6+ICMPv6) via `Tunn::encapsulate_at`
