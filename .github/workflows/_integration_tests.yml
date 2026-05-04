@@ -110,7 +110,7 @@ jobs:
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
             client_masquerade: random
             gateway_masquerade: random
-            rust_log: debug,flow_logs=trace,snownet=trace,path_agent=trace
+            rust_log: debug,flow_logs=trace,path_agent=trace
             single_relay: true # Force single relay
             iceless: true
             min_gateway_version: 1.4.18
@@ -122,7 +122,7 @@ jobs:
             rust_log: debug
           - name: download-packet-loss-iceless
             script: download-packet-loss
-            rust_log: debug,snownet=trace,path_agent=trace
+            rust_log: debug,path_agent=trace
             iceless: true
           - script: download-roaming-network
             min_gateway_version: 1.4.18
@@ -131,7 +131,7 @@ jobs:
             script: download-roaming-network
             min_gateway_version: 1.4.18
             iceless: true
-            rust_log: debug,snownet=trace,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
+            rust_log: debug,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/ghcr-docker-login
