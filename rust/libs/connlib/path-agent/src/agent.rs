@@ -63,6 +63,16 @@ pub struct PathAgent {
     /// `poll_timeout` so the owning connection's `handle_timeout` runs
     /// promptly to drain.
     events_queued_at: Option<Instant>,
+    /// Deadline by which the bootstrap probe window closes. After this
+    /// instant, probes stop on every pair (primary included); WireGuard's
+    /// persistent keepalive takes over liveness on the locked-in primary.
+    /// Set on the first inbound handshake; `None` until then, and again
+    /// `None` after `maybe_settle` runs (so we don't re-fire forever).
+    bootstrap_until: Option<Instant>,
+    /// Sticky flag: `true` once the bootstrap deadline has elapsed and we've
+    /// settled. Prevents re-opening the probe window on later events
+    /// (e.g. a peer rekey driving `seed_probe_schedule` again).
+    bootstrap_settled: bool,
 }
 
 struct PairState {
@@ -117,6 +127,12 @@ const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 /// Tight enough to gather several RTT samples within the 10s bootstrap,
 /// loose enough to keep bandwidth use modest.
 const PROBE_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Length of the bootstrap probe window measured from the first observed
+/// inbound handshake. Probes flow on every pair until this expires; after
+/// that the primary is locked in and ongoing liveness is delegated to
+/// WireGuard's persistent keepalive.
+const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 
 /// Echo `id` baked into every probe. We discriminate replies by `(pair, seq)`
 /// rather than by `id`, so a fixed value is fine.
@@ -225,6 +241,8 @@ impl PathAgent {
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
             events_queued_at: None,
+            bootstrap_until: None,
+            bootstrap_settled: false,
         }
     }
 
@@ -531,15 +549,40 @@ impl PathAgent {
         // by the first `handle_outbound`, so we don't include them here.
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
 
-        [self.events_queued_at, next_retransmit, next_probe]
-            .into_iter()
-            .flatten()
-            .min()
+        [
+            self.events_queued_at,
+            next_retransmit,
+            next_probe,
+            self.bootstrap_until,
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.drive_handshake_retransmits(now);
         self.drive_probes(now);
+        self.maybe_settle(now);
+    }
+
+    /// At the bootstrap deadline, clear per-pair probe schedules so
+    /// `poll_timeout` stops surfacing stale probe deadlines. The locked-in
+    /// `primary` is unchanged; ongoing liveness on it is WireGuard's job
+    /// (persistent keepalive).
+    fn maybe_settle(&mut self, now: Instant) {
+        let Some(deadline) = self.bootstrap_until else {
+            return;
+        };
+        if now < deadline {
+            return;
+        }
+        for state in self.pairs.values_mut() {
+            state.next_probe_at = None;
+            state.inflight_probe = None;
+        }
+        self.bootstrap_until = None;
+        self.bootstrap_settled = true;
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
@@ -562,6 +605,15 @@ impl PathAgent {
     }
 
     fn seed_probe_schedule(&mut self, now: Instant) {
+        // Once we've settled, leave the schedule alone — a peer's later
+        // rekey shouldn't re-open the probe window.
+        if self.bootstrap_settled {
+            return;
+        }
+        // First-call wins: subsequent calls don't reset the deadline.
+        if self.bootstrap_until.is_none() {
+            self.bootstrap_until = Some(now + BOOTSTRAP_WINDOW);
+        }
         for state in self.pairs.values_mut() {
             if state.next_probe_at.is_none() {
                 state.next_probe_at = Some(now);
@@ -570,6 +622,12 @@ impl PathAgent {
     }
 
     fn drive_probes(&mut self, now: Instant) {
+        // Bootstrap window closed → stop probing entirely. WireGuard's
+        // persistent keepalive on the locked-in primary handles liveness.
+        if self.bootstrap_until.is_some_and(|t| now >= t) {
+            return;
+        }
+
         let pending = &mut self.pending_transmits;
         for ((local, remote), state) in self.pairs.iter_mut() {
             // Pairs whose `next_probe_at` is `None` haven't been seeded
@@ -1286,6 +1344,74 @@ mod tests {
 
         // No primary was set since no matching inflight probe was cleared.
         assert_eq!(a.primary(), None);
+    }
+
+    #[test]
+    fn drive_probes_stops_emitting_after_bootstrap_window() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        // Inside window — probes fire.
+        a.handle_timeout(now);
+        let inside: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        assert!(!inside.is_empty(), "expected probes inside window");
+
+        // After the window, drive_probes is a no-op even on previously-due pairs.
+        a.handle_timeout(now + BOOTSTRAP_WINDOW);
+        let after: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        assert!(
+            after.is_empty(),
+            "expected no probes after window: {after:?}"
+        );
+    }
+
+    #[test]
+    fn settle_clears_next_probe_at_and_poll_timeout() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+
+        // Pump bootstrap-due work.
+        a.handle_timeout(now);
+        while a.poll_transmit().is_some() {}
+
+        // Settle.
+        a.handle_timeout(now + BOOTSTRAP_WINDOW);
+
+        // No probe deadlines, no bootstrap deadline → no further wake-ups
+        // unless other state (events, retransmits) demands one.
+        assert_eq!(a.poll_timeout(), None);
+    }
+
+    #[test]
+    fn settle_is_sticky_across_later_handshakes() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        a.handle_timeout(now + BOOTSTRAP_WINDOW); // settle
+
+        // A later inbound handshake (e.g. peer rekey) must not re-open the
+        // probe window.
+        let _ = a.handle_inbound(
+            &handshake_response_bytes(),
+            (addr(2), addr(4)),
+            now + BOOTSTRAP_WINDOW + Duration::from_secs(60),
+        );
+        while a.poll_event().is_some() {}
+
+        a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(60));
+        let post: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        assert!(post.is_empty(), "expected no probes post-settle: {post:?}");
     }
 
     #[test]
