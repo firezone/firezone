@@ -36,6 +36,11 @@ pub struct PathAgent {
     last_forwarded_init: Option<Vec<u8>>,
     last_forwarded_init_path: Option<(SocketAddr, SocketAddr)>,
 
+    /// The outbound `HandshakeInit` we're currently retransmitting per
+    /// pair. `None` once the matching `HandshakeResponse` arrives, or
+    /// when boringtun emits a fresh init (which replaces this slot).
+    outbound_init: Option<OutboundInit>,
+
     pending_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
     /// Timestamp at which the oldest currently-queued event was pushed.
@@ -52,6 +57,41 @@ struct PairState {
     last_handshake_at: Option<Instant>,
     /// Smoothed RTT, populated from probe round-trips.
     smoothed_rtt: Option<Duration>,
+}
+
+/// State associated with the currently-outbound `HandshakeInit` bytes
+/// that we're retransmitting per pair until the matching response arrives.
+struct OutboundInit {
+    bytes: Vec<u8>,
+    /// Per-pair retransmit deadlines + backoff step.
+    retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
+}
+
+struct PairRetransmit {
+    next_fire_at: Instant,
+    /// Current backoff step (0..=MAX_STEP). Each fire produces
+    /// `100ms << step` to the next deadline, saturating at `MAX_STEP`.
+    step: u32,
+}
+
+impl PairRetransmit {
+    /// First retransmit fires 100ms after the original send.
+    const INITIAL: Duration = Duration::from_millis(100);
+    /// `100ms << 4 = 1.6s` is the per-pair retransmit cap.
+    const MAX_STEP: u32 = 4;
+
+    fn new(now: Instant) -> Self {
+        Self {
+            next_fire_at: now + Self::INITIAL,
+            step: 0,
+        }
+    }
+
+    fn advance(&mut self, now: Instant) {
+        self.step = (self.step + 1).min(Self::MAX_STEP);
+        let backoff = Duration::from_millis(100u64 << self.step);
+        self.next_fire_at = now + backoff;
+    }
 }
 
 impl PairState {
@@ -114,6 +154,7 @@ impl PathAgent {
             established: false,
             last_forwarded_init: None,
             last_forwarded_init_path: None,
+            outbound_init: None,
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
             events_queued_at: None,
@@ -208,19 +249,25 @@ impl PathAgent {
     /// pair against the most-recent inbound init (`HandshakeResponse`),
     /// or single-send on `primary` (everything else).
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        let _ = now;
         let parsed = Tunn::parse_incoming_packet(&bytes);
 
         match parsed {
             Ok(Packet::HandshakeInit(_)) if !self.established => {
                 // Bootstrap fanout: same bytes on every relay-involved pair.
-                for (local, remote) in self.relay_pairs().collect::<Vec<_>>() {
+                // Each pair gets its own retransmit ladder; the cached
+                // bytes are what `handle_timeout` re-emits per pair until
+                // the matching `HandshakeResponse` arrives.
+                let pairs: Vec<_> = self.relay_pairs().collect();
+                let mut retransmits = BTreeMap::new();
+                for &(local, remote) in &pairs {
                     self.pending_transmits.push_back(Transmit {
                         local,
                         remote,
                         payload: bytes.clone(),
                     });
+                    retransmits.insert((local, remote), PairRetransmit::new(now));
                 }
+                self.outbound_init = Some(OutboundInit { bytes, retransmits });
             }
             Ok(Packet::HandshakeResponse(_)) => {
                 // Pair this response with the most recent inbound init we
@@ -286,6 +333,11 @@ impl PathAgent {
             Packet::HandshakeResponse(_) => {
                 // Initiator-side dedup lands in a follow-up commit. For now
                 // every response is forwarded.
+                //
+                // Receipt of a response means the corresponding outbound
+                // init succeeded: clear the per-pair retransmit ladder so
+                // we stop re-emitting it.
+                self.outbound_init = None;
                 self.queue_event(
                     Event::ForwardInbound {
                         bytes: bytes.to_vec(),
@@ -311,14 +363,34 @@ impl PathAgent {
     }
 
     pub fn poll_timeout(&self) -> Option<Instant> {
-        // Retransmit timers land in a follow-up commit. For now, the only
-        // pending work is queued events, surfaced as "fire as soon as the
-        // caller next runs `handle_timeout`".
-        self.events_queued_at
+        let next_retransmit = self
+            .outbound_init
+            .as_ref()
+            .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
+
+        [self.events_queued_at, next_retransmit]
+            .into_iter()
+            .flatten()
+            .min()
     }
 
-    pub fn handle_timeout(&mut self, _now: Instant) {
-        // Retransmit driving lands in a follow-up commit.
+    pub fn handle_timeout(&mut self, now: Instant) {
+        // Disjoint-fields borrow: we mutate `outbound_init` and
+        // `pending_transmits` via different paths.
+        let pending = &mut self.pending_transmits;
+        let Some(outbound) = self.outbound_init.as_mut() else {
+            return;
+        };
+        for ((local, remote), state) in outbound.retransmits.iter_mut() {
+            if now >= state.next_fire_at {
+                pending.push_back(Transmit {
+                    local: *local,
+                    remote: *remote,
+                    payload: outbound.bytes.clone(),
+                });
+                state.advance(now);
+            }
+        }
     }
 }
 
@@ -585,5 +657,91 @@ mod tests {
         let handled = a.handle_inbound(&data_packet_bytes(), (addr(2), addr(4)), Instant::now());
         assert!(matches!(handled, ControlFlow::Continue(())));
         assert!(a.poll_event().is_none());
+    }
+
+    #[test]
+    fn outbound_handshake_init_arms_retransmits_with_initial_100ms_deadline() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        a.handle_outbound(handshake_init_bytes(), now);
+        // Drain the immediate fanout transmits so we look at the timer state.
+        while a.poll_transmit().is_some() {}
+
+        let next = a.poll_timeout().expect("retransmit deadline");
+        // Initial backoff is 100ms.
+        assert_eq!(next, now + Duration::from_millis(100));
+    }
+
+    #[test]
+    fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+        let init = handshake_init_bytes();
+
+        a.handle_outbound(init.clone(), now);
+        // Drain the original fanout (3 relay pairs).
+        let initial_count = std::iter::from_fn(|| a.poll_transmit()).count();
+        assert_eq!(initial_count, 3);
+
+        // Advance to the 100ms deadline and pump.
+        let later = now + Duration::from_millis(100);
+        a.handle_timeout(later);
+
+        let retransmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        assert_eq!(retransmits.len(), 3);
+        for t in &retransmits {
+            assert_eq!(t.payload, init);
+        }
+    }
+
+    #[test]
+    fn retransmit_backoff_doubles_per_pair_up_to_cap() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        a.handle_outbound(handshake_init_bytes(), now);
+        while a.poll_transmit().is_some() {}
+
+        // After fire #1 at +100ms, next is +200ms; after #2, +400ms; etc.
+        let mut t = now + Duration::from_millis(100);
+        let expected_step_ms: [u64; 5] = [200, 400, 800, 1600, 1600];
+        for &expected_ms in &expected_step_ms {
+            a.handle_timeout(t);
+            while a.poll_transmit().is_some() {}
+            let next = a.poll_timeout().expect("deadline");
+            assert_eq!(next, t + Duration::from_millis(expected_ms));
+            t = next;
+        }
+        // The cap holds at 1600ms (last entry doubles to 1600, not 3200).
+    }
+
+    #[test]
+    fn inbound_handshake_response_clears_retransmits() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        a.handle_outbound(handshake_init_bytes(), now);
+        while a.poll_transmit().is_some() {}
+        assert!(a.poll_timeout().is_some(), "init armed retransmits");
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+
+        // No retransmits scheduled after handshake completes.
+        assert!(a.poll_timeout().is_none());
+    }
+
+    #[test]
+    fn handle_timeout_before_deadline_does_not_emit() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        a.handle_outbound(handshake_init_bytes(), now);
+        while a.poll_transmit().is_some() {}
+
+        // Tick at +50ms — earlier than the 100ms initial deadline.
+        a.handle_timeout(now + Duration::from_millis(50));
+        assert!(a.poll_transmit().is_none());
     }
 }
