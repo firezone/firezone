@@ -44,6 +44,13 @@ pub struct PathAgent {
     /// involving boringtun.
     responder_dedup: Option<ResponderDedup>,
 
+    /// Initiator-side dedup: bytes of the most recent inbound
+    /// `HandshakeResponse` we forwarded to boringtun. Subsequent inbound
+    /// responses with byte-exact match are dropped — feeding them to
+    /// boringtun a second time would re-process the response and bump
+    /// the session index. Reset whenever we send a fresh outbound init.
+    forwarded_response: Option<Vec<u8>>,
+
     /// The outbound `HandshakeInit` we're currently retransmitting per
     /// pair. `None` once the matching `HandshakeResponse` arrives, or
     /// when boringtun emits a fresh init (which replaces this slot).
@@ -179,6 +186,7 @@ impl PathAgent {
             last_forwarded_init: None,
             last_forwarded_init_path: None,
             responder_dedup: None,
+            forwarded_response: None,
             outbound_init: None,
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
@@ -282,6 +290,13 @@ impl PathAgent {
                 // Each pair gets its own retransmit ladder; the cached
                 // bytes are what `handle_timeout` re-emits per pair until
                 // the matching `HandshakeResponse` arrives.
+                //
+                // Fresh init means a fresh response is incoming — clear the
+                // initiator-side response-dedup so it doesn't reject
+                // legitimate new responses as duplicates of the previous
+                // session's.
+                self.forwarded_response = None;
+
                 let pairs: Vec<_> = self.relay_pairs().collect();
                 let mut retransmits = BTreeMap::new();
                 for &(local, remote) in &pairs {
@@ -384,13 +399,19 @@ impl PathAgent {
                 ControlFlow::Break(())
             }
             Packet::HandshakeResponse(_) => {
-                // Initiator-side dedup lands in a follow-up commit. For now
-                // every response is forwarded.
-                //
-                // Receipt of a response means the corresponding outbound
-                // init succeeded: clear the per-pair retransmit ladder so
-                // we stop re-emitting it.
+                // Initiator-side dedup: drop byte-exact duplicates of the
+                // response we already forwarded. Feeding the same response
+                // to boringtun again would advance the session index and
+                // potentially desynchronise state.
+                if self.forwarded_response.as_deref() == Some(bytes) {
+                    return ControlFlow::Break(());
+                }
+
+                // First (or genuinely fresh) response: clear the per-pair
+                // retransmit ladder, remember the bytes for future dedup,
+                // and ask the caller to forward to boringtun.
                 self.outbound_init = None;
+                self.forwarded_response = Some(bytes.to_vec());
                 self.queue_event(
                     Event::ForwardInbound {
                         bytes: bytes.to_vec(),
@@ -853,6 +874,49 @@ mod tests {
             other => panic!("expected ForwardInbound, got {other:?}"),
         }
         assert!(a.poll_transmit().is_none());
+    }
+
+    #[test]
+    fn duplicate_inbound_response_is_dropped_after_first_forward() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        // First response: forwarded to boringtun.
+        let handled = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        assert!(matches!(handled, ControlFlow::Break(())));
+        match a.poll_event() {
+            Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
+            other => panic!("expected ForwardInbound, got {other:?}"),
+        }
+
+        // Same bytes on a different path: dropped, no event.
+        let handled = a.handle_inbound(&handshake_response_bytes(), (addr(1), addr(3)), now);
+        assert!(matches!(handled, ControlFlow::Break(())));
+        assert!(a.poll_event().is_none());
+        assert!(a.poll_transmit().is_none());
+    }
+
+    #[test]
+    fn fresh_outbound_init_resets_initiator_response_dedup() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        // Forward a response, populate dedup.
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+
+        // boringtun emits a fresh init (re-key) — should clear dedup.
+        a.handle_outbound(handshake_init_bytes(), now);
+        while a.poll_transmit().is_some() {}
+
+        // The same response bytes now forward again (new session is
+        // expecting a fresh response).
+        let handled = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        assert!(matches!(handled, ControlFlow::Break(())));
+        match a.poll_event() {
+            Some(Event::ForwardInbound { .. }) => {}
+            other => panic!("expected ForwardInbound after re-init, got {other:?}"),
+        }
     }
 
     #[test]
