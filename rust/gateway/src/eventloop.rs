@@ -3,7 +3,6 @@ use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
 use telemetry::{Telemetry, analytics};
 
-use futures::TryFutureExt;
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
@@ -469,27 +468,20 @@ impl Eventloop {
         let resolver = self.resolver.clone();
 
         async move {
-            let ipv4_lookup = resolver
-                .ipv4_lookup(domain.to_string())
-                .map_ok(lookup_to_ips);
-            let ipv6_lookup = resolver
-                .ipv6_lookup(domain.to_string())
-                .map_ok(lookup_to_ips);
+            let ipv4_lookup = resolver.ipv4_lookup(domain.to_string());
+            let ipv6_lookup = resolver.ipv6_lookup(domain.to_string());
 
             let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                (Ok(mut ipv4), Ok(ipv6)) => {
-                    ipv4.extend(ipv6);
-                    ipv4
-                }
+                (Ok(ipv4), Ok(ipv6)) => lookup_to_ips(&ipv4).chain(lookup_to_ips(&ipv6)).collect(),
                 (Ok(ipv4), Err(e)) => {
                     tracing::debug!(%domain, "AAAA lookup failed: {e}");
 
-                    ipv4
+                    lookup_to_ips(&ipv4).collect()
                 }
                 (Err(e), Ok(ipv6)) => {
                     tracing::debug!(%domain, "A lookup failed: {e}");
 
-                    ipv6
+                    lookup_to_ips(&ipv6).collect()
                 }
                 (Err(e1), Err(e2)) => {
                     tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
@@ -570,12 +562,11 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-fn lookup_to_ips(lookup: hickory_resolver::lookup::Lookup) -> Vec<IpAddr> {
+fn lookup_to_ips(lookup: &hickory_resolver::lookup::Lookup) -> impl Iterator<Item = IpAddr> + '_ {
     lookup
         .answers()
         .iter()
         .filter_map(|record| record.data.ip_addr())
-        .collect()
 }
 
 async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<IpAddr> {
