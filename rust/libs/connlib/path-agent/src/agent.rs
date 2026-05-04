@@ -127,15 +127,22 @@ struct ResponderDedup {
 /// genuine re-handshake produces a fresh entry promptly.
 const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
-/// How often to send probes on each pair while we're still measuring.
-/// Tight enough to gather several RTT samples within the 10s bootstrap,
-/// loose enough to keep bandwidth use modest.
+/// How often to send probes during the bootstrap window. Tight enough
+/// to gather several RTT samples within the 10s bootstrap, loose enough
+/// to keep bandwidth use modest.
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 
+/// Probe cadence after the bootstrap window settles. Long enough that
+/// the steady-state cost is comparable to WireGuard's persistent
+/// keepalive (25s), short enough to keep NAT bindings alive on every
+/// pair — including non-primary pairs the *remote* may be using when
+/// the two sides land on different primaries (symmetric NAT case).
+pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
+
 /// Length of the bootstrap probe window measured from the first observed
-/// inbound handshake. Probes flow on every pair until this expires; after
-/// that the primary is locked in and ongoing liveness is delegated to
-/// WireGuard's persistent keepalive.
+/// inbound handshake. Probes flow at the fast cadence on every pair
+/// until this expires; after that we fall back to `PROBE_INTERVAL_LIVE`
+/// for ongoing liveness measurement on every pair.
 pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 
 /// Echo `id` baked into every probe. We discriminate replies by `(pair, seq)`
@@ -174,6 +181,23 @@ impl PairState {
         matches!(self.kinds.0, crate::CandidateKind::Relayed)
             || matches!(self.kinds.1, crate::CandidateKind::Relayed)
     }
+}
+
+/// Sort key for `select_primary`. Smaller is better. Tuple components,
+/// in order:
+///
+/// 1. Worse-of-pair tier (`max(local, remote)`). `Host < ServerReflexive < Relayed`.
+/// 2. `0` if the local side is a relay, else `1`. Only matters at the
+///    Relayed tier — chooses our own relay over the remote's.
+/// 3. Smoothed RTT (lower is better; `None` sorts last).
+fn pair_score(state: &PairState) -> (crate::CandidateKind, u8, Option<Duration>) {
+    let tier = state.kinds.0.max(state.kinds.1);
+    let local_relay_first = if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
+        0
+    } else {
+        1
+    };
+    (tier, local_relay_first, state.smoothed_rtt)
 }
 
 /// A single outbound transmit emitted by `PathAgent`.
@@ -592,10 +616,12 @@ impl PathAgent {
         self.maybe_settle(now);
     }
 
-    /// At the bootstrap deadline, clear per-pair probe schedules so
-    /// `poll_timeout` stops surfacing stale probe deadlines. The locked-in
-    /// `primary` is unchanged; ongoing liveness on it is WireGuard's job
-    /// (persistent keepalive).
+    /// At the bootstrap deadline, mark settled and re-baseline the
+    /// per-pair probe deadlines onto the live cadence. We keep probing
+    /// every pair (not just the primary) so NAT bindings stay open in
+    /// the asymmetric-NAT case where the two sides land on different
+    /// primaries — the remote keeps using "its" pair to talk to us, so
+    /// our probe traffic on that pair has to keep its NAT alive too.
     fn maybe_settle(&mut self, now: Instant) {
         let Some(deadline) = self.bootstrap_until else {
             return;
@@ -604,14 +630,17 @@ impl PathAgent {
             return;
         }
         for state in self.pairs.values_mut() {
-            state.next_probe_at = None;
+            // Schedule the next live probe one interval out so we don't
+            // immediately re-burst at settle time.
+            state.next_probe_at = Some(now + PROBE_INTERVAL_LIVE);
             state.inflight_probe = None;
         }
         self.bootstrap_until = None;
         self.bootstrap_settled = true;
         tracing::info!(
             primary = ?self.primary,
-            "Iceless bootstrap window closed; probing settled",
+            interval = ?PROBE_INTERVAL_LIVE,
+            "Iceless bootstrap window closed; switching to steady-state probing",
         );
     }
 
@@ -670,12 +699,11 @@ impl PathAgent {
     }
 
     fn drive_probes(&mut self, now: Instant) {
-        // Bootstrap window closed → stop probing entirely. WireGuard's
-        // persistent keepalive on the locked-in primary handles liveness.
-        if self.bootstrap_until.is_some_and(|t| now >= t) {
-            return;
-        }
-
+        let interval = if self.bootstrap_settled {
+            PROBE_INTERVAL_LIVE
+        } else {
+            PROBE_INTERVAL
+        };
         let pending = &mut self.pending_transmits;
         for ((local, remote), state) in self.pairs.iter_mut() {
             // Pairs whose `next_probe_at` is `None` haven't been seeded
@@ -691,7 +719,7 @@ impl PathAgent {
             let seq = state.next_probe_seq;
             state.next_probe_seq = state.next_probe_seq.wrapping_add(1);
             state.inflight_probe = Some(InflightProbe { seq, sent_at: now });
-            state.next_probe_at = Some(now + PROBE_INTERVAL);
+            state.next_probe_at = Some(now + interval);
 
             pending.push_back(Transmit {
                 local: *local,
@@ -701,22 +729,23 @@ impl PathAgent {
         }
     }
 
-    /// Pick the best pair (lowest tier; ties broken by lowest smoothed RTT)
-    /// among pairs with at least one probe round-trip. Emits
-    /// `PrimaryChanged` if the result differs from the current `primary`.
+    /// Pick the best pair (lowest tier; tie-broken by "is local-side a
+    /// relay" preference, then lowest smoothed RTT) among pairs with at
+    /// least one probe round-trip. Emits `PrimaryChanged` if the result
+    /// differs from the current `primary`.
+    ///
+    /// The local-relay tie-break matters at the Relayed tier: when we'd
+    /// otherwise be torn between routing through our relay
+    /// `(LocalRelay, RemoteHost/SRflx)` and the remote's relay
+    /// `(LocalHost/SRflx, RemoteRelay)`, prefer ours so we control the
+    /// path used for outbound — and so its NAT bindings stay open via
+    /// our own probe traffic.
     fn select_primary(&mut self, now: Instant) {
         let best = self
             .pairs
             .iter()
             .filter(|(_, s)| s.smoothed_rtt.is_some())
-            .min_by(|(_, a), (_, b)| {
-                // Pair tier = worse of the two endpoints' kinds.
-                let a_tier = a.kinds.0.max(a.kinds.1);
-                let b_tier = b.kinds.0.max(b.kinds.1);
-                a_tier
-                    .cmp(&b_tier)
-                    .then_with(|| a.smoothed_rtt.cmp(&b.smoothed_rtt))
-            })
+            .min_by(|(_, a), (_, b)| pair_score(a).cmp(&pair_score(b)))
             .map(|(k, _)| *k);
 
         let Some(new) = best else { return };

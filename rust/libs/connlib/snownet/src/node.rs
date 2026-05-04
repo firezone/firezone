@@ -55,12 +55,6 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
-/// Persistent keepalive interval for iceless connections, in seconds. WireGuard
-/// emits a keepalive every 25 s when no other traffic is flowing — enough to
-/// keep typical NAT mappings open after the path-agent's bootstrap probe
-/// window has settled.
-const WG_PERSISTENT_KEEPALIVE_SECS: u16 = 25;
-
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -783,17 +777,11 @@ where
             tracing::warn!(%cid, "No TURN servers connected; connection may fail to establish");
         }
 
-        // Iceless connections rely on WireGuard's persistent keepalive
-        // to keep NAT mappings on the locked-in primary path open after
-        // the path-agent's bootstrap probe window settles. ICE connections
-        // don't need it: their own STUN consent traffic does the same job.
-        let persistent_keepalive = agent.is_iceless().then_some(WG_PERSISTENT_KEEPALIVE_SECS);
-
         let mut tunnel = Tunn::new_at(
             self.private_key.clone(),
             remote,
             Some(key),
-            persistent_keepalive,
+            None,
             index,
             Some(self.rate_limiter.clone()),
             self.rng.next_u64(),
