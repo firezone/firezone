@@ -19,6 +19,7 @@ is = { workspace = true }
 itertools = { workspace = true }
 logging = { workspace = true }
 once_cell = { workspace = true }
+path-agent = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }
 sha2 = { workspace = true }
