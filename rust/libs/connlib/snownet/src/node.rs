@@ -376,12 +376,7 @@ where
         // Iceless connections don't wait for ICE nomination — drive the
         // path-agent to fan out the initial WG `HandshakeInit` immediately.
         if connection.agent.is_iceless() {
-            connection.initiate_wg_session_for_path(
-                cid,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                now,
-            );
+            connection.initiate_wg_session_for_path(now);
         }
 
         self.connections.insert_established(cid, index, connection);
@@ -1225,10 +1220,6 @@ impl From<Credentials> for is::IceCreds {
 /// boundary so the rest of snownet only deals in `Capabilities`.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Capabilities {
-    /// The remote supports negotiating a WireGuard connection without
-    /// running the ICE state machine. When set *and* the local
-    /// `iceless` PostHog feature flag is on, snownet dispatches via
-    /// the path-agent variant of `Agent`.
     pub iceless: bool,
 }
 
@@ -1585,16 +1576,10 @@ where
                     }
                 }
                 path_agent::Event::BootstrapFailed => {
-                    tracing::info!(
-                        "Iceless bootstrap timed out without a handshake response; failing connection",
-                    );
+                    tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (iceless bootstrap timeout)");
                     self.state = ConnectionState::Failed;
                 }
-                path_agent::Event::PrimarySelected { local, remote }
-                | path_agent::Event::PrimaryChanged {
-                    to: (local, remote),
-                    ..
-                } => {
+                path_agent::Event::PrimaryChanged { local, remote } => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, local, remote);
                     self.adopt_iceless_peer_socket(peer_socket, allocations, transmits, cid, now);
                 }
@@ -1766,13 +1751,22 @@ where
                     last_activity: now,
                 };
             }
-            ConnectionState::Connected { last_activity, .. } => {
+            ConnectionState::Connected {
+                peer_socket: old,
+                last_activity,
+            } => {
+                if old != peer_socket {
+                    tracing::info!(%cid, ?old, new = ?peer_socket, "Updating peer socket");
+                }
                 self.state = ConnectionState::Connected {
                     peer_socket,
                     last_activity,
                 };
             }
-            ConnectionState::Idle { .. } => {
+            ConnectionState::Idle { peer_socket: old } => {
+                if old != peer_socket {
+                    tracing::info!(%cid, ?old, new = ?peer_socket, "Updating peer socket");
+                }
                 self.state = ConnectionState::Idle { peer_socket };
             }
             ConnectionState::Failed => {
@@ -2029,14 +2023,8 @@ where
     /// fans them out across all relay-involved pairs internally. Each
     /// emitted [`path_agent::Transmit`] is classified into the
     /// appropriate [`PeerSocket`] variant and pushed onto `transmits`.
-    fn initiate_wg_session_for_path<TId>(
-        &mut self,
-        cid: TId,
-        allocations: &mut Allocations<RId>,
-        transmits: &mut VecDeque<Transmit>,
-        now: Instant,
-    ) where
-        TId: Copy + fmt::Display,
+    fn initiate_wg_session_for_path(&mut self, now: Instant)
+    where
         RId: Ord + fmt::Display + Copy,
     {
         // No `last_proactive_handshake_sent_at` suppression here:
@@ -2057,29 +2045,10 @@ where
             return;
         };
 
+        // Hand the bytes to the path-agent. The fanout transmits land
+        // in `agent.poll_path_transmit()` and get drained by the next
+        // `Connection::handle_timeout` pump — no need to drain inline.
         self.agent.handle_outbound(bytes.to_vec(), now);
-
-        // Drain the per-pair fanout transmits the path-agent just queued.
-        while let Some(pt) = self.agent.poll_path_transmit() {
-            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
-            let maybe = match pt.payload {
-                path_agent::Payload::Ciphertext(ref bytes) => make_owned_transmit(
-                    self.relay.id,
-                    peer_socket,
-                    bytes,
-                    &self.buffer_pool,
-                    allocations,
-                    now,
-                ),
-                path_agent::Payload::Plaintext(ref ip) => self
-                    .encapsulate(cid, peer_socket, ip, now, allocations)
-                    .ok()
-                    .flatten(),
-            };
-            if let Some(transmit) = maybe {
-                transmits.push_back(transmit);
-            }
-        }
     }
 
     fn initiate_wg_session(

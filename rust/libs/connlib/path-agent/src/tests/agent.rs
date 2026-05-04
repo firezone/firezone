@@ -546,10 +546,10 @@ fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
     // host×host pair has best tier — picked as primary on first RTT.
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     match a.poll_event() {
-        Some(Event::PrimarySelected { local, remote }) => {
+        Some(Event::PrimaryChanged { local, remote }) => {
             assert_eq!((local, remote), (addr(1), addr(3)));
         }
-        other => panic!("expected PrimarySelected, got {other:?}"),
+        other => panic!("expected PrimaryChanged, got {other:?}"),
     }
 }
 
@@ -622,9 +622,8 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
     );
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     match a.poll_event() {
-        Some(Event::PrimaryChanged { from, to }) => {
-            assert_eq!(from, (addr(2), addr(4)));
-            assert_eq!(to, (addr(1), addr(3)));
+        Some(Event::PrimaryChanged { local, remote }) => {
+            assert_eq!((local, remote), (addr(1), addr(3)));
         }
         other => panic!("expected PrimaryChanged, got {other:?}"),
     }

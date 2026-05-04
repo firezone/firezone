@@ -205,15 +205,13 @@ pub enum Payload {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    /// First time we have a primary path.
-    PrimarySelected {
+    /// Primary path was set or changed. Fires the first time we pick a
+    /// primary and again on any subsequent re-selection. The owning
+    /// snownet connection treats both cases the same — adopt this pair
+    /// as the new `peer_socket`.
+    PrimaryChanged {
         local: SocketAddr,
         remote: SocketAddr,
-    },
-    /// Primary path changed mid-life.
-    PrimaryChanged {
-        from: (SocketAddr, SocketAddr),
-        to: (SocketAddr, SocketAddr),
     },
     /// Bytes from a previous `handle_inbound` call that need to flow
     /// through boringtun's state machine. The caller pipes these bytes
@@ -550,7 +548,7 @@ impl PathAgent {
                     tracing::trace!(
                         local = %pair.0,
                         remote = %pair.1,
-                        rtt_ms = rtt.as_millis() as u64,
+                        ?rtt,
                         "Probe reply received",
                     );
                     self.select_primary(now);
@@ -623,15 +621,11 @@ impl PathAgent {
     fn drive_handshake_retransmits(&mut self, now: Instant) {
         // Bootstrap deadline check: if the inbound response never arrived,
         // give up on this connection entirely. Done before retransmitting
-        // so we don't emit a final useless burst.
+        // so we don't emit a final useless burst. The owning snownet
+        // connection logs the failure when it processes our event.
         if let Some(outbound) = self.outbound_init.as_ref()
             && now.saturating_duration_since(outbound.started_at) >= BOOTSTRAP_WINDOW
         {
-            tracing::warn!(
-                pairs = outbound.retransmits.len(),
-                window_secs = BOOTSTRAP_WINDOW.as_secs(),
-                "Iceless bootstrap timed out without a handshake response",
-            );
             self.outbound_init = None;
             self.queue_event(Event::BootstrapFailed, now);
             return;
@@ -667,7 +661,7 @@ impl PathAgent {
             self.bootstrap_until = Some(now + BOOTSTRAP_WINDOW);
             tracing::info!(
                 pairs = self.pairs.len(),
-                window_secs = BOOTSTRAP_WINDOW.as_secs(),
+                window = ?BOOTSTRAP_WINDOW,
                 "Iceless bootstrap window opened",
             );
         }
@@ -712,8 +706,7 @@ impl PathAgent {
 
     /// Pick the best pair (lowest tier; ties broken by lowest smoothed RTT)
     /// among pairs with at least one probe round-trip. Emits
-    /// `PrimarySelected` / `PrimaryChanged` if the result differs from the
-    /// current `primary`.
+    /// `PrimaryChanged` if the result differs from the current `primary`.
     fn select_primary(&mut self, now: Instant) {
         let best = self
             .pairs
@@ -735,36 +728,23 @@ impl PathAgent {
             .get(&new)
             .and_then(|s| s.smoothed_rtt)
             .unwrap_or_default();
-        match self.primary {
-            None => {
-                self.primary = Some(new);
-                tracing::info!(
-                    local = %new.0,
-                    remote = %new.1,
-                    rtt_ms = new_rtt.as_millis() as u64,
-                    "Iceless primary selected",
-                );
-                self.queue_event(
-                    Event::PrimarySelected {
-                        local: new.0,
-                        remote: new.1,
-                    },
-                    now,
-                );
-            }
-            Some(old) if old != new => {
-                self.primary = Some(new);
-                tracing::info!(
-                    from_local = %old.0,
-                    from_remote = %old.1,
-                    to_local = %new.0,
-                    to_remote = %new.1,
-                    rtt_ms = new_rtt.as_millis() as u64,
-                    "Iceless primary changed",
-                );
-                self.queue_event(Event::PrimaryChanged { from: old, to: new }, now);
-            }
-            Some(_) => {}
+        if self.primary != Some(new) {
+            let from = self.primary;
+            self.primary = Some(new);
+            tracing::info!(
+                ?from,
+                local = %new.0,
+                remote = %new.1,
+                rtt = ?new_rtt,
+                "Iceless primary changed",
+            );
+            self.queue_event(
+                Event::PrimaryChanged {
+                    local: new.0,
+                    remote: new.1,
+                },
+                now,
+            );
         }
     }
 }
