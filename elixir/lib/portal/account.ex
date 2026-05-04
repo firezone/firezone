@@ -41,6 +41,7 @@ defmodule Portal.Account do
     has_many :devices, Portal.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
+    has_many :device_trust_anchors, Portal.DeviceTrustAnchor
     has_many :sites, Portal.Site
 
     has_many :client_tokens, Portal.ClientToken

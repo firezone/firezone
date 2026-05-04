@@ -15,6 +15,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     "api_tokens" => Portal.APIToken,
     "auth_providers" => Portal.AuthProvider,
     "devices" => Portal.Device,
+    "device_trust_anchors" => Portal.DeviceTrustAnchor,
     "directories" => Portal.Directory,
     "email_otp_auth_providers" => Portal.EmailOTP.AuthProvider,
     "entra_auth_providers" => Portal.Entra.AuthProvider,

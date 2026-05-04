@@ -8,7 +8,18 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
   setup do
     account = account_fixture()
-    %{account: account}
+
+    tables =
+      Application.fetch_env!(:portal, Portal.ChangeLogs.ReplicationConnection)
+      |> Keyword.fetch!(:table_subscriptions)
+
+    %{account: account, tables: tables}
+  end
+
+  describe "configuration" do
+    test "subscribes to device trust anchor changes", %{tables: tables} do
+      assert "device_trust_anchors" in tables
+    end
   end
 
   describe "on_write/6 for inserts" do
@@ -206,6 +217,40 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.table == "accounts"
       assert attrs.op == :update
       assert attrs.account_id == account.id
+    end
+
+    test "preserves device trust anchor certificate bundles", %{account: account} do
+      old_data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "Old CA",
+        "certs" => ["old DER bytes"]
+      }
+
+      data = %{
+        "id" => old_data["id"],
+        "account_id" => account.id,
+        "name" => "New CA",
+        "certs" => ["new DER bytes"]
+      }
+
+      result_state =
+        ReplicationConnection.on_write(
+          %{flush_buffer: %{}},
+          201,
+          :update,
+          "device_trust_anchors",
+          old_data,
+          data
+        )
+
+      attrs = result_state.flush_buffer[201]
+
+      assert attrs.table == "device_trust_anchors"
+      assert attrs.old_data["certs"] == ["old DER bytes"]
+      assert attrs.data["certs"] == ["new DER bytes"]
+      assert attrs.old_data["name"] == "Old CA"
+      assert attrs.data["name"] == "New CA"
     end
   end
 
