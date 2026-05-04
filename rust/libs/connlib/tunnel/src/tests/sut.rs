@@ -228,26 +228,28 @@ impl TunnelTest {
                 pool_id,
                 new_devices,
             } => {
-                let Some(existing) = ref_state
-                    .portal
-                    .all_resources()
-                    .into_iter()
-                    .find_map(|r| match r {
-                        client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
-                        client::Resource::Dns(_)
-                        | client::Resource::Cidr(_)
-                        | client::Resource::Internet(_)
-                        | client::Resource::DynamicDevicePool(_)
-                        | client::Resource::StaticDevicePool(_) => None,
-                    })
+                let Some(existing) =
+                    ref_state
+                        .portal
+                        .all_resources()
+                        .into_iter()
+                        .find_map(|r| match r {
+                            client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
+                            client::Resource::Dns(_)
+                            | client::Resource::Cidr(_)
+                            | client::Resource::Internet(_)
+                            | client::Resource::DynamicDevicePool(_)
+                            | client::Resource::StaticDevicePool(_) => None,
+                        })
                 else {
                     panic!("UpdateStaticDevicePool for unknown pool {pool_id}");
                 };
 
-                let resource = client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
-                    devices: new_devices,
-                    ..existing
-                });
+                let resource =
+                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
+                        devices: new_devices,
+                        ..existing
+                    });
 
                 for client in state.clients.values_mut() {
                     client.exec_mut(|c| c.sut.add_resource(resource.clone(), now));

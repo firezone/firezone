@@ -2027,12 +2027,14 @@ impl ClientState {
 
             // Scope removal to this pool's entries — a client can be a member of
             // multiple pools, and we must not touch entries owned by other pools.
-            self.client_routing_table.remove(old_member.ipv4.into(), |e| {
-                e.client_id == *cid && e.resource_id == pool_id
-            });
-            self.client_routing_table.remove(old_member.ipv6.into(), |e| {
-                e.client_id == *cid && e.resource_id == pool_id
-            });
+            self.client_routing_table
+                .remove(old_member.ipv4.into(), |e| {
+                    e.client_id == *cid && e.resource_id == pool_id
+                });
+            self.client_routing_table
+                .remove(old_member.ipv6.into(), |e| {
+                    e.client_id == *cid && e.resource_id == pool_id
+                });
 
             // If the member is no longer in the pool, drop any active
             // connection so traffic doesn't keep flowing to a revoked device —
