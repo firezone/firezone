@@ -3758,9 +3758,9 @@ dependencies = [
 
 [[package]]
 name = "is"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40cf23944e1280f3b2959321a1ef776c14503af8e1e5efca32147a9136a5f8dc"
+checksum = "e3b80bc4cf63564aa2f64c0bb16e03ddd67d7325007aa90d96520bd1eefc8dab"
 dependencies = [
  "crc",
  "hmac",

@@ -309,6 +309,36 @@ fn handle_timeout_before_deadline_does_not_emit() {
 }
 
 #[test]
+fn srflx_local_uses_base_as_send_from_address() {
+    // Server-reflexive's `addr` is the NAT-mapped public face;
+    // `local` is the actual base socket we send from. The bootstrap
+    // fanout must use `local` as `Transmit.local`, not `addr`, or the
+    // outbound packet would target a socket we don't own.
+    let mut a = PathAgent::new();
+    let now = Instant::now();
+
+    let mapped = addr(10);
+    let base = addr(11);
+    a.add_local_candidate(Candidate::server_reflexive(mapped, base));
+    a.add_local_candidate(Candidate::relayed(addr(20)));
+    a.add_remote_candidate(Candidate::relayed(addr(30)));
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+
+    let mut emitted: Vec<_> = std::iter::from_fn(|| a.poll_transmit())
+        .map(|t| (t.local, t.remote))
+        .collect();
+    emitted.sort();
+    // srflx-local pair uses `base`, not `mapped`. Relay-local uses
+    // its own addr.
+    let expected = vec![(base, addr(30)), (addr(20), addr(30))];
+    let mut expected = expected;
+    expected.sort();
+    assert_eq!(emitted, expected);
+}
+
+#[test]
 fn outbound_handshake_init_fans_out_on_every_relay_pair() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();

@@ -282,13 +282,20 @@ impl PathAgent {
     }
 
     fn add_pair(&mut self, local: Candidate, remote: Candidate) {
+        // The pair's local side is keyed by the *send-from* address
+        // (`local.local()` — different from `local.addr()` for
+        // server-reflexive candidates, where we send from the underlying
+        // base socket, not the NAT-mapped public address). The remote
+        // side is keyed by `remote.addr()` — the destination we send to.
+        let pair = (local.local(), remote.addr());
+
         // Skip cross-family pairs: a v4 socket can't send to a v6 dest
         // (and vice versa), and TURN allocations are per-family — so a
         // cross-family pair is unusable in any role (fanout, probe,
         // primary). The bootstrap fanout in particular would try to
         // route a v6 destination through a v4 relay channel binding,
         // which the relay can't do.
-        if local.addr.is_ipv4() != remote.addr.is_ipv4() {
+        if pair.0.is_ipv4() != pair.1.is_ipv4() {
             return;
         }
         // `next_probe_at: None` here is "not yet seeded";
@@ -296,9 +303,9 @@ impl PathAgent {
         // inbound handshake. Late fanout of a buffered bootstrap init
         // onto this pair (if relay-involved) happens in `handle_timeout`.
         self.pairs.insert(
-            (local.addr, remote.addr),
+            pair,
             PairState {
-                kinds: (local.kind, remote.kind),
+                kinds: (local.kind(), remote.kind()),
                 smoothed_rtt: None,
                 inflight_probe: None,
                 next_probe_at: None,
@@ -314,9 +321,10 @@ impl PathAgent {
             return false;
         };
         let removed = self.locals.remove(i);
-        self.pairs.retain(|(local, _), _| *local != removed.addr);
+        let removed_local = removed.local();
+        self.pairs.retain(|(local, _), _| *local != removed_local);
         if let Some((local, _)) = self.primary
-            && local == removed.addr
+            && local == removed_local
         {
             self.primary = None;
         }
@@ -330,9 +338,10 @@ impl PathAgent {
             return false;
         };
         let removed = self.remotes.remove(i);
-        self.pairs.retain(|(_, remote), _| *remote != removed.addr);
+        let removed_addr = removed.addr();
+        self.pairs.retain(|(_, remote), _| *remote != removed_addr);
         if let Some((_, remote)) = self.primary
-            && remote == removed.addr
+            && remote == removed_addr
         {
             self.primary = None;
         }
@@ -364,7 +373,7 @@ impl PathAgent {
     pub fn remote_is_relayed(&self, addr: SocketAddr) -> bool {
         self.remotes
             .iter()
-            .any(|c| c.addr == addr && c.is_relayed())
+            .any(|c| c.addr() == addr && c.is_relayed())
     }
 
     /// Route a WG packet boringtun just produced.
