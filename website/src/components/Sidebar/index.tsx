@@ -70,7 +70,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
     base: "flex items-center justify-center rounded-sm px-2 py-1.5 text-sm font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     active: "bg-neutral-200 dark:bg-neutral-700",
     collapsed: {
-      insideCollapse: "group w-full pl-6 transition duration-75",
+      insideCollapse: "group w-full pl-7 transition duration-75",
       noIcon: "font-bold",
     },
     content: {
