@@ -374,6 +374,11 @@ impl PathAgent {
                 self.forwarded_response = None;
 
                 let pairs: Vec<_> = self.relay_pairs().collect();
+                tracing::debug!(
+                    relay_pairs = pairs.len(),
+                    bytes = bytes.len(),
+                    "Fanning out bootstrap HandshakeInit",
+                );
                 let mut retransmits = BTreeMap::new();
                 for &(local, remote) in &pairs {
                     self.pending_transmits.push_back(Transmit {
@@ -395,6 +400,11 @@ impl PathAgent {
                     self.last_forwarded_init.take(),
                     self.last_forwarded_init_path.take(),
                 ) {
+                    tracing::debug!(
+                        local = %path.0,
+                        remote = %path.1,
+                        "Sending HandshakeResponse on init's recv path",
+                    );
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
@@ -464,6 +474,7 @@ impl PathAgent {
                     && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
                     && d.init_bytes == bytes
                 {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
@@ -472,6 +483,7 @@ impl PathAgent {
                     return ControlFlow::Break(());
                 }
 
+                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit, forwarding to boringtun");
                 self.last_forwarded_init = Some(bytes.to_vec());
                 self.last_forwarded_init_path = Some(path);
                 self.queue_event(
@@ -486,9 +498,11 @@ impl PathAgent {
                 // Re-feeding the same response to boringtun would advance
                 // the session index and desync state.
                 if self.forwarded_response.as_deref() == Some(bytes) {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
                     return ControlFlow::Break(());
                 }
 
+                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse, forwarding to boringtun");
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
                 self.queue_event(
@@ -530,6 +544,7 @@ impl PathAgent {
 
         match probe.kind {
             crate::icmpv6::Echo::Request => {
+                tracing::trace!(local = %pair.0, remote = %pair.1, seq = probe.seq, "Probe request received");
                 self.pending_transmits.push_back(Transmit {
                     local: pair.0,
                     remote: pair.1,
@@ -701,6 +716,7 @@ impl PathAgent {
             state.inflight_probe = Some(InflightProbe { seq, sent_at: now });
             state.next_probe_at = Some(now + interval);
 
+            tracing::trace!(%local, %remote, seq, "Probe send");
             pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
