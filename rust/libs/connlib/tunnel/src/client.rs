@@ -2017,9 +2017,8 @@ impl ClientState {
         // If the filter changed, every old entry must be replaced too.
         for (cid, old_member) in &old_members {
             let new_member = new_members.get(cid);
-            let ip_changed = new_member.is_some_and(|m| {
-                m.ipv4 != old_member.ipv4 || m.ipv6 != old_member.ipv6
-            });
+            let ip_changed =
+                new_member.is_some_and(|m| m.ipv4 != old_member.ipv4 || m.ipv6 != old_member.ipv6);
 
             if !filter_changed && new_member.is_some() && !ip_changed {
                 continue;
