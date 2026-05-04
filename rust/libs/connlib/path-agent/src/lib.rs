@@ -1,9 +1,12 @@
 //! Path-selection state machine for ICE-less snownet connections.
 //!
-//! Pure path bookkeeping: it does not know about WireGuard, TURN, or any
-//! particular transport. The owning `snownet` connection drives it by
-//! reporting evidence (a handshake or probe round-tripped on this pair) and
-//! asks back which pair to send from.
+//! `PathAgent` mediates between boringtun's WireGuard state machine and the
+//! IO layer. snownet hands every encapsulated outbound byte slice to
+//! [`PathAgent::handle_outbound`] and every inbound byte slice (with the
+//! `(local, remote)` path it arrived on) to [`PathAgent::handle_inbound`].
+//! `PathAgent` parses the bytes with boringtun, decides what to do (fanout,
+//! dedup, replay, etc.), and emits work via [`PathAgent::poll_transmit`]
+//! and [`PathAgent::poll_event`].
 //!
 //! Public API works exclusively in `(local, remote)` `SocketAddr` pairs so
 //! callers don't need to maintain a parallel mapping of opaque pair IDs to
@@ -15,12 +18,11 @@
 //! - handshake observation (we received a WG init or response on this pair)
 //! - probe RTT (smoothed, populated by ICMPv6 echo round-trips)
 //!
-//! The scoring weights and the probe schedule live in later commits;
-//! this crate currently exposes the data types and a `PathAgent`
-//! skeleton driven by `add_*_candidate` and `observe_*`.
+//! Scoring weights, probe scheduling, retransmit ladders, and the
+//! handshake-dedup caches are filled in by subsequent commits.
 
 mod agent;
 mod candidate;
 
-pub use agent::{PathAgent, PathEvent};
+pub use agent::{Event, PathAgent, PathEvent, Transmit};
 pub use candidate::{Candidate, CandidateKind};
