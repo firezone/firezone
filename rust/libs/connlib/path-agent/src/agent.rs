@@ -438,9 +438,10 @@ impl PathAgent {
         // `primary` later if a better-tier pair becomes alive.
         self.seed_probe_schedule(now);
 
-        let bootstrap_primary =
-            matches!(parsed, Packet::HandshakeInit(_) | Packet::HandshakeResponse(_))
-                && self.primary.is_none();
+        let bootstrap_primary = matches!(
+            parsed,
+            Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
+        ) && self.primary.is_none();
 
         match parsed {
             Packet::HandshakeInit(_) => {
@@ -585,18 +586,17 @@ impl PathAgent {
         // Wake at the initiator give-up deadline so `BootstrapFailed`
         // fires promptly. Skipped while retransmits is empty — we
         // haven't fanned out yet, so the deadline is meaningless.
-        let init_deadline = self.outbound_init.as_ref().and_then(|i| {
-            (!i.retransmits.is_empty()).then_some(i.started_at + BOOTSTRAP_WINDOW)
-        });
+        let init_deadline = self
+            .outbound_init
+            .as_ref()
+            .and_then(|i| (!i.retransmits.is_empty()).then_some(i.started_at + BOOTSTRAP_WINDOW));
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
         // Wake immediately if there's a buffered init waiting on relay
         // pairs that arrived after the initial fanout.
         let pending_fanout = self.outbound_init.as_ref().and_then(|i| {
             self.pairs
                 .iter()
-                .any(|(addrs, state)| {
-                    state.involves_relay() && !i.retransmits.contains_key(addrs)
-                })
+                .any(|(addrs, state)| state.involves_relay() && !i.retransmits.contains_key(addrs))
                 .then_some(i.started_at)
         });
 

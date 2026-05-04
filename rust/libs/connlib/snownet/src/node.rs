@@ -1553,9 +1553,9 @@ where
                     {
                         TunnResult::WriteToNetwork(response) => {
                             self.agent.handle_outbound(response.to_vec(), now);
-                            while let TunnResult::WriteToNetwork(more) = self
-                                .tunnel
-                                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
+                            while let TunnResult::WriteToNetwork(more) =
+                                self.tunnel
+                                    .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                             {
                                 self.agent.handle_outbound(more.to_vec(), now);
                             }
