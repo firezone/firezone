@@ -6,3 +6,4 @@ license = { workspace = true }
 
 [dependencies]
 boringtun = { workspace = true }
+ip-packet = { workspace = true }

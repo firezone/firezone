@@ -5196,6 +5196,7 @@ name = "path-agent"
 version = "0.1.0"
 dependencies = [
  "boringtun",
+ "ip-packet",
 ]
 
 [[package]]
