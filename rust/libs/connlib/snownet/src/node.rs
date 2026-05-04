@@ -1576,11 +1576,16 @@ where
         // Drain path-agent transmits the agent queued from forwarded
         // handshakes above (replay responses, future retransmit ticks).
         while let Some(pt) = self.agent.poll_path_transmit() {
+            let path_agent::Payload::Ciphertext(ref bytes) = pt.payload else {
+                // Plaintext payloads (path probes) need `Tunn::encapsulate`
+                // first; that wiring lands in a follow-up commit.
+                continue;
+            };
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             if let Some(transmit) = make_owned_transmit(
                 self.relay.id,
                 peer_socket,
-                &pt.payload,
+                bytes,
                 &self.buffer_pool,
                 allocations,
                 now,
@@ -1950,11 +1955,16 @@ where
 
         // Drain the per-pair fanout transmits the path-agent just queued.
         while let Some(pt) = self.agent.poll_path_transmit() {
+            let path_agent::Payload::Ciphertext(ref bytes) = pt.payload else {
+                // Plaintext payloads (path probes) need `Tunn::encapsulate`
+                // first; that wiring lands in a follow-up commit.
+                continue;
+            };
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             if let Some(transmit) = make_owned_transmit(
                 self.relay.id,
                 peer_socket,
-                &pt.payload,
+                bytes,
                 &self.buffer_pool,
                 allocations,
                 now,

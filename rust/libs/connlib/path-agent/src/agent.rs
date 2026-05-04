@@ -72,6 +72,21 @@ struct PairState {
     last_handshake_at: Option<Instant>,
     /// Smoothed RTT, populated from probe round-trips.
     smoothed_rtt: Option<Duration>,
+    /// The most recent probe we sent on this pair and are waiting on.
+    /// Cleared when the matching reply arrives. Replies whose seq doesn't
+    /// match this slot are ignored as stale.
+    inflight_probe: Option<InflightProbe>,
+    /// When the next outbound probe is due. `None` means "send as soon as
+    /// the timer next fires" (used for the very first probe on a new pair).
+    next_probe_at: Option<Instant>,
+    /// Per-pair monotonic seq counter for the next outbound probe.
+    next_probe_seq: u16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InflightProbe {
+    seq: u16,
+    sent_at: Instant,
 }
 
 /// State associated with the currently-outbound `HandshakeInit` bytes
@@ -97,6 +112,15 @@ struct ResponderDedup {
 /// (capped at 1.6s per pair, ~10s of total ladder), short enough that any
 /// genuine re-handshake produces a fresh entry promptly.
 const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
+
+/// How often to send probes on each pair while we're still measuring.
+/// Tight enough to gather several RTT samples within the 10s bootstrap,
+/// loose enough to keep bandwidth use modest.
+const PROBE_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Echo `id` baked into every probe. We discriminate replies by `(pair, seq)`
+/// rather than by `id`, so a fixed value is fine.
+const PROBE_ID: u16 = 0;
 
 struct PairRetransmit {
     next_fire_at: Instant,
@@ -142,7 +166,17 @@ impl PairState {
 pub struct Transmit {
     pub local: SocketAddr,
     pub remote: SocketAddr,
-    pub payload: Vec<u8>,
+    pub payload: Payload,
+}
+
+/// Whether the transmit's payload is already-encrypted WG bytes (handshake
+/// fanout, retransmits, dedup replays) or a plaintext IP packet that the
+/// owning snownet connection must run through `Tunn::encapsulate` first.
+/// Path probes are the only `Plaintext` source today.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Payload {
+    Ciphertext(Vec<u8>),
+    Plaintext(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,6 +260,12 @@ impl PathAgent {
                 kinds: (local.kind, remote.kind),
                 last_handshake_at: None,
                 smoothed_rtt: None,
+                inflight_probe: None,
+                // `None` means "send the very first probe as soon as
+                // `handle_timeout` next runs" — we don't have an `Instant`
+                // here to compute a deadline against.
+                next_probe_at: None,
+                next_probe_seq: 0,
             },
         );
     }
@@ -235,17 +275,6 @@ impl PathAgent {
     pub fn observe_handshake(&mut self, local: SocketAddr, remote: SocketAddr, now: Instant) {
         if let Some(state) = self.pairs.get_mut(&(local, remote)) {
             state.last_handshake_at = Some(now);
-        }
-    }
-
-    /// Note an observed RTT for this pair (one ICMPv6 echo round-trip).
-    pub fn observe_probe(&mut self, local: SocketAddr, remote: SocketAddr, rtt: Duration) {
-        if let Some(state) = self.pairs.get_mut(&(local, remote)) {
-            // Placeholder smoothing — proper EMA arrives with the probe loop.
-            state.smoothed_rtt = Some(match state.smoothed_rtt {
-                None => rtt,
-                Some(prev) => (prev + rtt) / 2,
-            });
         }
     }
 
@@ -303,7 +332,7 @@ impl PathAgent {
                     self.pending_transmits.push_back(Transmit {
                         local,
                         remote,
-                        payload: bytes.clone(),
+                        payload: Payload::Ciphertext(bytes.clone()),
                     });
                     retransmits.insert((local, remote), PairRetransmit::new(now));
                 }
@@ -322,7 +351,7 @@ impl PathAgent {
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
-                        payload: bytes.clone(),
+                        payload: Payload::Ciphertext(bytes.clone()),
                     });
                     // The original `path` is consumed as the routing target
                     // for *this* response. Future duplicate inbound inits
@@ -342,7 +371,7 @@ impl PathAgent {
                     self.pending_transmits.push_back(Transmit {
                         local,
                         remote,
-                        payload: bytes,
+                        payload: Payload::Ciphertext(bytes),
                     });
                 }
             }
@@ -367,6 +396,11 @@ impl PathAgent {
             return ControlFlow::Continue(());
         };
 
+        // Receiving a handshake (in either direction) is our cue that the
+        // network works on at least one pair: time to start probing for a
+        // better one. Idempotent — only seeds previously-`None` deadlines.
+        self.seed_probe_schedule(now);
+
         match parsed {
             Packet::HandshakeInit(_) => {
                 // Bytes-exact match against the most recently cached
@@ -381,7 +415,7 @@ impl PathAgent {
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
-                        payload: d.response_bytes.clone(),
+                        payload: Payload::Ciphertext(d.response_bytes.clone()),
                     });
                     return ControlFlow::Break(());
                 }
@@ -436,19 +470,79 @@ impl PathAgent {
         event
     }
 
+    /// Hand off a decrypted inner-IP packet that came out of `Tunn::decapsulate`.
+    /// Returns `Break(())` if the packet was a path probe and was absorbed
+    /// (caller drops it). Returns `Continue(())` for ordinary user traffic
+    /// that the caller should forward to the tun device.
+    ///
+    /// `pair` is the `(local, remote)` `(SocketAddr, SocketAddr)` the
+    /// encrypted bytes arrived on, used to attribute the probe to the right
+    /// pair for RTT bookkeeping and reply routing.
+    pub fn handle_inbound_decrypted(
+        &mut self,
+        bytes: &[u8],
+        pair: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> ControlFlow<()> {
+        let Some(probe) = crate::icmpv6::try_parse(bytes) else {
+            return ControlFlow::Continue(());
+        };
+
+        match probe.kind {
+            crate::icmpv6::Echo::Request => {
+                // Mirror back on the same pair. snownet encrypts + sends.
+                self.pending_transmits.push_back(Transmit {
+                    local: pair.0,
+                    remote: pair.1,
+                    payload: Payload::Plaintext(crate::icmpv6::build_echo_reply(
+                        probe.id, probe.seq,
+                    )),
+                });
+            }
+            crate::icmpv6::Echo::Reply => {
+                if let Some(state) = self.pairs.get_mut(&pair)
+                    && let Some(inflight) = state.inflight_probe
+                    && inflight.seq == probe.seq
+                {
+                    let rtt = now.saturating_duration_since(inflight.sent_at);
+                    state.inflight_probe = None;
+                    state.smoothed_rtt = Some(match state.smoothed_rtt {
+                        None => rtt,
+                        // Light EMA — the proper Karn/Partridge or Jacobson smoothing
+                        // can land later; for path selection over a 10s window the
+                        // signal here is fine.
+                        Some(prev) => (prev + rtt) / 2,
+                    });
+                    self.select_primary(now);
+                }
+            }
+        }
+        ControlFlow::Break(())
+    }
+
     pub fn poll_timeout(&self) -> Option<Instant> {
         let next_retransmit = self
             .outbound_init
             .as_ref()
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
 
-        [self.events_queued_at, next_retransmit]
+        // Pairs whose `next_probe_at` is `None` haven't been seeded yet
+        // (no `Instant` was available at `add_pair` time). They get seeded
+        // by the first `handle_outbound`, so we don't include them here.
+        let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
+
+        [self.events_queued_at, next_retransmit, next_probe]
             .into_iter()
             .flatten()
             .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.drive_handshake_retransmits(now);
+        self.drive_probes(now);
+    }
+
+    fn drive_handshake_retransmits(&mut self, now: Instant) {
         // Disjoint-fields borrow: we mutate `outbound_init` and
         // `pending_transmits` via different paths.
         let pending = &mut self.pending_transmits;
@@ -460,10 +554,83 @@ impl PathAgent {
                 pending.push_back(Transmit {
                     local: *local,
                     remote: *remote,
-                    payload: outbound.bytes.clone(),
+                    payload: Payload::Ciphertext(outbound.bytes.clone()),
                 });
                 state.advance(now);
             }
+        }
+    }
+
+    fn seed_probe_schedule(&mut self, now: Instant) {
+        for state in self.pairs.values_mut() {
+            if state.next_probe_at.is_none() {
+                state.next_probe_at = Some(now);
+            }
+        }
+    }
+
+    fn drive_probes(&mut self, now: Instant) {
+        let pending = &mut self.pending_transmits;
+        for ((local, remote), state) in self.pairs.iter_mut() {
+            // Pairs whose `next_probe_at` is `None` haven't been seeded
+            // yet — `seed_probe_schedule` runs on the first inbound
+            // handshake. Skip them here.
+            let Some(deadline) = state.next_probe_at else {
+                continue;
+            };
+            if now < deadline {
+                continue;
+            }
+
+            let seq = state.next_probe_seq;
+            state.next_probe_seq = state.next_probe_seq.wrapping_add(1);
+            state.inflight_probe = Some(InflightProbe { seq, sent_at: now });
+            state.next_probe_at = Some(now + PROBE_INTERVAL);
+
+            pending.push_back(Transmit {
+                local: *local,
+                remote: *remote,
+                payload: Payload::Plaintext(crate::icmpv6::build_echo_request(PROBE_ID, seq)),
+            });
+        }
+    }
+
+    /// Pick the best pair (lowest tier; ties broken by lowest smoothed RTT)
+    /// among pairs with at least one probe round-trip. Emits
+    /// `PrimarySelected` / `PrimaryChanged` if the result differs from the
+    /// current `primary`.
+    fn select_primary(&mut self, now: Instant) {
+        let best = self
+            .pairs
+            .iter()
+            .filter(|(_, s)| s.smoothed_rtt.is_some())
+            .min_by(|(_, a), (_, b)| {
+                // Pair tier = worse of the two endpoints' kinds.
+                let a_tier = a.kinds.0.max(a.kinds.1);
+                let b_tier = b.kinds.0.max(b.kinds.1);
+                a_tier
+                    .cmp(&b_tier)
+                    .then_with(|| a.smoothed_rtt.cmp(&b.smoothed_rtt))
+            })
+            .map(|(k, _)| *k);
+
+        let Some(new) = best else { return };
+        match self.primary {
+            None => {
+                self.primary = Some(new);
+                self.queue_event(
+                    Event::PrimarySelected {
+                        local: new.0,
+                        remote: new.1,
+                    },
+                    now,
+                );
+            }
+            Some(old) if old != new => {
+                self.primary = Some(new);
+                self.queue_event(Event::PrimaryChanged { from: old, to: new }, now);
+            }
+            Some(_) => {}
         }
     }
 }
@@ -564,16 +731,22 @@ mod tests {
         a.pending_transmits.push_back(Transmit {
             local: addr(1),
             remote: addr(2),
-            payload: vec![1],
+            payload: Payload::Ciphertext(vec![1]),
         });
         a.pending_transmits.push_back(Transmit {
             local: addr(3),
             remote: addr(4),
-            payload: vec![2],
+            payload: Payload::Ciphertext(vec![2]),
         });
 
-        assert_eq!(a.poll_transmit().unwrap().payload, vec![1]);
-        assert_eq!(a.poll_transmit().unwrap().payload, vec![2]);
+        assert_eq!(
+            a.poll_transmit().unwrap().payload,
+            Payload::Ciphertext(vec![1])
+        );
+        assert_eq!(
+            a.poll_transmit().unwrap().payload,
+            Payload::Ciphertext(vec![2])
+        );
         assert!(a.poll_transmit().is_none());
     }
 
@@ -617,7 +790,7 @@ mod tests {
         assert_eq!(transmits.len(), 3);
         // Every fan-out copy carries identical bytes — that's what lets the
         // responder's dedup cache replay a single cached response.
-        let payload = handshake_init_bytes();
+        let payload = Payload::Ciphertext(handshake_init_bytes());
         for t in &transmits {
             assert_eq!(t.payload, payload);
         }
@@ -691,7 +864,7 @@ mod tests {
         let t = a.poll_transmit().expect("response transmit");
         assert_eq!(t.local, recv_path.0);
         assert_eq!(t.remote, recv_path.1);
-        assert_eq!(t.payload, handshake_response_bytes());
+        assert_eq!(t.payload, Payload::Ciphertext(handshake_response_bytes()));
     }
 
     #[test]
@@ -765,7 +938,7 @@ mod tests {
         let retransmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
         assert_eq!(retransmits.len(), 3);
         for t in &retransmits {
-            assert_eq!(t.payload, init);
+            assert_eq!(t.payload, Payload::Ciphertext(init.clone()));
         }
     }
 
@@ -797,13 +970,19 @@ mod tests {
 
         a.handle_outbound(handshake_init_bytes(), now);
         while a.poll_transmit().is_some() {}
-        assert!(a.poll_timeout().is_some(), "init armed retransmits");
+        let init_deadline = a.poll_timeout().expect("init armed retransmits");
 
         let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
         while a.poll_event().is_some() {}
 
-        // No retransmits scheduled after handshake completes.
-        assert!(a.poll_timeout().is_none());
+        // After handshake completes, the retransmit ladder is gone; the
+        // remaining `poll_timeout` value (if any) comes from probe scheduling
+        // seeded by the inbound handshake, not from the cleared retransmit.
+        let post_deadline = a.poll_timeout();
+        assert!(
+            post_deadline.is_none_or(|t| t != init_deadline),
+            "retransmit deadline should have cleared",
+        );
     }
 
     #[test]
@@ -851,7 +1030,7 @@ mod tests {
         let t = a.poll_transmit().expect("replay transmit");
         assert_eq!(t.local, new_path.0);
         assert_eq!(t.remote, new_path.1);
-        assert_eq!(t.payload, handshake_response_bytes());
+        assert_eq!(t.payload, Payload::Ciphertext(handshake_response_bytes()));
         assert!(a.poll_event().is_none());
     }
 
@@ -917,6 +1096,196 @@ mod tests {
             Some(Event::ForwardInbound { .. }) => {}
             other => panic!("expected ForwardInbound after re-init, got {other:?}"),
         }
+    }
+
+    /// Match an outbound `Transmit` against an `(local, remote)` pair, returning
+    /// the parsed probe payload. Helper for probe-loop tests.
+    fn extract_probe_for(
+        transmits: &[Transmit],
+        pair: (SocketAddr, SocketAddr),
+    ) -> crate::icmpv6::Probe {
+        let t = transmits
+            .iter()
+            .find(|t| (t.local, t.remote) == pair)
+            .unwrap_or_else(|| panic!("no transmit for {pair:?}"));
+        let Payload::Plaintext(ref bytes) = t.payload else {
+            panic!("expected Plaintext probe, got {:?}", t.payload);
+        };
+        crate::icmpv6::try_parse(bytes).expect("parses as probe")
+    }
+
+    #[test]
+    fn inbound_handshake_seeds_probe_schedule_for_all_pairs() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        // After seeding, the next deadline is the immediate probe (now).
+        assert_eq!(a.poll_timeout(), Some(now));
+    }
+
+    #[test]
+    fn handle_timeout_emits_one_probe_per_pair() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        a.handle_timeout(now);
+        let transmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+        // 4 pairs (2 locals × 2 remotes), each gets one probe.
+        assert_eq!(transmits.len(), 4);
+        for t in &transmits {
+            assert!(matches!(t.payload, Payload::Plaintext(_)));
+        }
+    }
+
+    #[test]
+    fn probe_seq_advances_per_pair_per_fire() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        // Fire 1.
+        a.handle_timeout(now);
+        let first: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        let first_seq = extract_probe_for(&first, (addr(1), addr(3))).seq;
+
+        // Fire 2 — advance past the per-pair PROBE_INTERVAL.
+        a.handle_timeout(now + PROBE_INTERVAL);
+        let second: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        let second_seq = extract_probe_for(&second, (addr(1), addr(3))).seq;
+
+        assert_eq!(second_seq, first_seq.wrapping_add(1));
+    }
+
+    #[test]
+    fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        // Send a probe so we have an inflight slot to match against.
+        a.handle_timeout(now);
+        let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+        let probe_on_host_pair = extract_probe_for(&outbound, (addr(1), addr(3)));
+
+        // Reply arrives 50ms later on the same pair.
+        let reply = crate::icmpv6::build_echo_reply(probe_on_host_pair.id, probe_on_host_pair.seq);
+        let later = now + Duration::from_millis(50);
+        let handled = a.handle_inbound_decrypted(&reply, (addr(1), addr(3)), later);
+        assert!(matches!(handled, ControlFlow::Break(())));
+
+        // host×host pair has best tier — picked as primary on first RTT.
+        assert_eq!(a.primary(), Some((addr(1), addr(3))));
+        match a.poll_event() {
+            Some(Event::PrimarySelected { local, remote }) => {
+                assert_eq!((local, remote), (addr(1), addr(3)));
+            }
+            other => panic!("expected PrimarySelected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inbound_echo_request_queues_reply_on_same_pair() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let request = crate::icmpv6::build_echo_request(0, 42);
+        let handled = a.handle_inbound_decrypted(&request, (addr(2), addr(4)), now);
+        assert!(matches!(handled, ControlFlow::Break(())));
+
+        let reply_transmit = a.poll_transmit().expect("queued reply");
+        assert_eq!(reply_transmit.local, addr(2));
+        assert_eq!(reply_transmit.remote, addr(4));
+        let Payload::Plaintext(bytes) = reply_transmit.payload else {
+            panic!("expected Plaintext reply");
+        };
+        let probe = crate::icmpv6::try_parse(&bytes).expect("parses");
+        assert_eq!(probe.kind, crate::icmpv6::Echo::Reply);
+        assert_eq!(probe.seq, 42);
+    }
+
+    #[test]
+    fn inbound_decrypted_non_probe_returns_continue() {
+        let mut a = agent_with_relay_pairs();
+        let bytes = vec![0xff; 64];
+        let handled = a.handle_inbound_decrypted(&bytes, (addr(2), addr(4)), Instant::now());
+        assert!(matches!(handled, ControlFlow::Continue(())));
+        assert!(a.poll_transmit().is_none());
+    }
+
+    #[test]
+    fn primary_changes_when_lower_tier_pair_becomes_alive() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        // Fire probes to populate inflight slots.
+        a.handle_timeout(now);
+        let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+        // Reply on relay pair first (relay×relay has worst tier).
+        let relay_probe = extract_probe_for(&outbound, (addr(2), addr(4)));
+        let _ = a.handle_inbound_decrypted(
+            &crate::icmpv6::build_echo_reply(relay_probe.id, relay_probe.seq),
+            (addr(2), addr(4)),
+            now + Duration::from_millis(100),
+        );
+        assert_eq!(a.primary(), Some((addr(2), addr(4))));
+
+        // Now reply on host×host pair (best tier) — should switch.
+        let host_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
+        while a.poll_event().is_some() {}
+        let _ = a.handle_inbound_decrypted(
+            &crate::icmpv6::build_echo_reply(host_probe.id, host_probe.seq),
+            (addr(1), addr(3)),
+            now + Duration::from_millis(150),
+        );
+        assert_eq!(a.primary(), Some((addr(1), addr(3))));
+        match a.poll_event() {
+            Some(Event::PrimaryChanged { from, to }) => {
+                assert_eq!(from, (addr(2), addr(4)));
+                assert_eq!(to, (addr(1), addr(3)));
+            }
+            other => panic!("expected PrimaryChanged, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stale_echo_reply_is_ignored() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+        while a.poll_event().is_some() {}
+        while a.poll_transmit().is_some() {}
+
+        a.handle_timeout(now);
+        while a.poll_transmit().is_some() {}
+
+        // Reply with a seq that doesn't match the inflight probe (we've only
+        // sent seq=0 so far; pretend a much earlier seq replies late).
+        let stale_reply = crate::icmpv6::build_echo_reply(0, 0xdead);
+        let _ = a.handle_inbound_decrypted(&stale_reply, (addr(1), addr(3)), now);
+
+        // No primary was set since no matching inflight probe was cleared.
+        assert_eq!(a.primary(), None);
     }
 
     #[test]

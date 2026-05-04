@@ -25,5 +25,5 @@ mod agent;
 mod candidate;
 mod icmpv6;
 
-pub use agent::{Event, PathAgent, PathEvent, Transmit};
+pub use agent::{Event, PathAgent, PathEvent, Payload, Transmit};
 pub use candidate::{Candidate, CandidateKind};
