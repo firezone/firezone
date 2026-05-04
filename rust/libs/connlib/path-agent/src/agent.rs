@@ -78,8 +78,6 @@ pub struct PathAgent {
 struct PairState {
     /// Kinds of the local + remote candidate, captured at insertion time.
     kinds: (crate::CandidateKind, crate::CandidateKind),
-    /// Last observed handshake on this pair.
-    last_handshake_at: Option<Instant>,
     /// Smoothed RTT, populated from probe round-trips.
     smoothed_rtt: Option<Duration>,
     /// The most recent probe we sent on this pair and are waiting on.
@@ -131,6 +129,13 @@ const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 /// to gather several RTT samples within the 10s bootstrap, loose enough
 /// to keep bandwidth use modest.
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(500);
+
+/// How long to wait for an inflight probe's reply before considering it
+/// lost. Lets us cope with paths whose RTT exceeds [`PROBE_INTERVAL`] —
+/// without this, the next-tick fire would overwrite the inflight slot
+/// and the late reply would be ignored as stale, so high-latency paths
+/// would never produce a successful round-trip measurement.
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Probe cadence after the bootstrap window settles. Long enough that
 /// the steady-state cost is comparable to WireGuard's persistent
@@ -244,12 +249,6 @@ pub enum Event {
     BootstrapFailed,
 }
 
-/// Legacy alias: kept for an existing snownet call site that drains
-/// path-specific events separately from the main `Event` channel. Will
-/// fold into `Event` in a follow-up commit once the cross-cutting refactor
-/// is unblocked.
-pub type PathEvent = Event;
-
 impl Default for PathAgent {
     fn default() -> Self {
         Self::new()
@@ -307,7 +306,6 @@ impl PathAgent {
             (local.addr, remote.addr),
             PairState {
                 kinds: (local.kind, remote.kind),
-                last_handshake_at: None,
                 smoothed_rtt: None,
                 inflight_probe: None,
                 // `None` means "send the very first probe as soon as
@@ -317,14 +315,6 @@ impl PathAgent {
                 next_probe_seq: 0,
             },
         );
-    }
-
-    /// Note that a WG handshake message (init or response) was received on
-    /// this pair. Used to seed initial scoring before probes have data.
-    pub fn observe_handshake(&mut self, local: SocketAddr, remote: SocketAddr, now: Instant) {
-        if let Some(state) = self.pairs.get_mut(&(local, remote)) {
-            state.last_handshake_at = Some(now);
-        }
     }
 
     /// Currently-best send pair, if any.
@@ -341,7 +331,10 @@ impl PathAgent {
             .map(|(addrs, _)| *addrs)
     }
 
-    /// Iterate every known pair as `(local, remote)`.
+    /// Iterate every known pair as `(local, remote)`. Exposed for
+    /// integration tests; production code paths use `relay_pairs` or the
+    /// internal `pairs` map directly.
+    #[doc(hidden)]
     pub fn pairs(&self) -> impl Iterator<Item = (SocketAddr, SocketAddr)> + '_ {
         self.pairs.keys().copied()
     }
@@ -390,6 +383,11 @@ impl PathAgent {
                     retransmits,
                     started_at: now,
                 });
+                // We've fanned out exactly once per connection. From here
+                // on, any further `HandshakeInit` from boringtun is a
+                // re-key on a working session and should ride `primary`,
+                // not re-burst across every relay pair.
+                self.established = true;
             }
             Ok(Packet::HandshakeResponse(_)) => {
                 // Pair this response with the most recent inbound init we
@@ -444,7 +442,6 @@ impl PathAgent {
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<()> {
-        let _ = now;
         let Ok(parsed) = Tunn::parse_incoming_packet(bytes) else {
             return ControlFlow::Continue(());
         };
@@ -453,6 +450,28 @@ impl PathAgent {
         // network works on at least one pair: time to start probing for a
         // better one. Idempotent — only seeds previously-`None` deadlines.
         self.seed_probe_schedule(now);
+
+        // Adopt the path the handshake landed on as the bootstrap primary
+        // immediately, rather than waiting for the first probe round-trip.
+        // boringtun has just produced (or is about to produce) data on
+        // this WG session; without a primary set, `handle_outbound` would
+        // silently drop user packets in the gap until probes complete.
+        // Probes can still upgrade `primary` later if a better-tier pair
+        // becomes alive.
+        if matches!(
+            parsed,
+            Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
+        ) && self.primary.is_none()
+        {
+            self.primary = Some(path);
+            self.queue_event(
+                Event::PrimaryChanged {
+                    local: path.0,
+                    remote: path.1,
+                },
+                now,
+            );
+        }
 
         match parsed {
             Packet::HandshakeInit(_) => {
@@ -728,6 +747,21 @@ impl PathAgent {
             };
             if now < deadline {
                 continue;
+            }
+
+            // If a probe is still inflight and hasn't aged out, hold off
+            // until either its reply lands (which clears `inflight_probe`)
+            // or `PROBE_TIMEOUT` elapses. Without this, a path whose RTT
+            // exceeds `interval` would have every reply land against a
+            // stale seq slot and be discarded.
+            if let Some(inflight) = state.inflight_probe {
+                if now.saturating_duration_since(inflight.sent_at) < PROBE_TIMEOUT {
+                    state.next_probe_at = Some(inflight.sent_at + PROBE_TIMEOUT);
+                    continue;
+                }
+                // Probe was lost — clear the slot so the new fire can
+                // claim it.
+                state.inflight_probe = None;
             }
 
             let seq = state.next_probe_seq;

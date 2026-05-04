@@ -81,9 +81,11 @@ impl Agent {
     /// `upsert_connection` call so the existing connection can be reused.
     ///
     /// Iceless connections always report a match: ICE credentials and role
-    /// are irrelevant in iceless mode, and the dimensions that actually
-    /// matter for reuse (peer public key, preshared key) are verified by
-    /// the caller before this method is consulted.
+    /// are **silently ignored** in iceless mode, and the dimensions that
+    /// actually matter for reuse (peer public key, preshared key) are
+    /// verified by the caller before this method is consulted. If a future
+    /// change to `upsert_connection` starts depending on creds/role being
+    /// honoured here, the iceless arm will need to participate.
     pub(crate) fn matches_existing_connection(
         &self,
         local_creds: &IceCreds,
@@ -322,9 +324,8 @@ impl Agent {
         }
     }
 
-    /// Next path-agent event; `None` for ICE connections. Future commits
-    /// emit `PrimarySelected` / `PrimaryChanged` here.
-    pub(crate) fn poll_path_event(&mut self) -> Option<path_agent::PathEvent> {
+    /// Next path-agent event; `None` for ICE connections.
+    pub(crate) fn poll_path_event(&mut self) -> Option<path_agent::Event> {
         match self {
             Self::Ice(_) => None,
             Self::Path { path, .. } => path.poll_event(),

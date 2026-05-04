@@ -49,5 +49,23 @@ defmodule Portal.Snownet.CapabilitiesTest do
       result = Capabilities.intersect(%{}, %{})
       assert Map.has_key?(result, "iceless")
     end
+
+    test "non-boolean values are treated as false instead of crashing" do
+      # The `set_snownet_capabilities` channel handler accepts arbitrary
+      # untrusted payloads. Using `and` directly on a string would raise
+      # `ArgumentError: argument error: argument is not a boolean` and
+      # crash the channel; we coerce non-`true` values to `false` instead.
+      assert Capabilities.intersect(%{"iceless" => "yes"}, %{"iceless" => true}) == %{
+               "iceless" => false
+             }
+
+      assert Capabilities.intersect(%{"iceless" => 1}, %{"iceless" => true}) == %{
+               "iceless" => false
+             }
+
+      assert Capabilities.intersect(%{"iceless" => nil}, %{"iceless" => true}) == %{
+               "iceless" => false
+             }
+    end
   end
 end

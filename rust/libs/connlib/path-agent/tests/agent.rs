@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
     BOOTSTRAP_WINDOW, Candidate, Event, PROBE_DST, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_SRC,
-    PathAgent, Payload, Transmit,
+    PROBE_TIMEOUT, PathAgent, Payload, Transmit,
 };
 
 fn addr(p: u16) -> SocketAddr {
@@ -65,12 +65,6 @@ fn duplicate_candidates_are_ignored() {
     a.add_local_candidate(c);
     a.add_remote_candidate(Candidate::host(addr(2)));
     assert_eq!(a.pairs().count(), 1);
-}
-
-#[test]
-fn observe_handshake_on_unknown_pair_is_noop() {
-    let mut a = PathAgent::new();
-    a.observe_handshake(addr(1), addr(2), Instant::now()); // does not panic
 }
 
 #[test]
@@ -153,6 +147,15 @@ fn inbound_handshake_init_returns_true_and_emits_forward_event() {
     let mut a = agent_with_relay_pairs();
     let handled = a.handle_inbound(&handshake_init_bytes(), (addr(2), addr(4)), Instant::now());
     assert!(matches!(handled, ControlFlow::Break(())));
+
+    // First inbound handshake sets the bootstrap primary, then forwards
+    // the bytes to boringtun.
+    match a.poll_event() {
+        Some(Event::PrimaryChanged { local, remote }) => {
+            assert_eq!((local, remote), (addr(2), addr(4)));
+        }
+        other => panic!("expected PrimaryChanged, got {other:?}"),
+    }
     match a.poll_event() {
         Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
         other => panic!("expected ForwardInbound, got {other:?}"),
@@ -168,6 +171,14 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
         Instant::now(),
     );
     assert!(matches!(handled, ControlFlow::Break(())));
+
+    // Same shape as the init case: bootstrap primary first, then forward.
+    match a.poll_event() {
+        Some(Event::PrimaryChanged { local, remote }) => {
+            assert_eq!((local, remote), (addr(2), addr(4)));
+        }
+        other => panic!("expected PrimaryChanged, got {other:?}"),
+    }
     match a.poll_event() {
         Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
         other => panic!("expected ForwardInbound, got {other:?}"),
@@ -328,10 +339,9 @@ fn duplicate_inbound_response_is_dropped_after_first_forward() {
 
     let handled = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
     assert!(matches!(handled, ControlFlow::Break(())));
-    match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
-        other => panic!("expected ForwardInbound, got {other:?}"),
-    }
+    // Drain the bootstrap-primary event the first response produces so we
+    // can assert "no further events" on the second.
+    while a.poll_event().is_some() {}
 
     let handled = a.handle_inbound(&handshake_response_bytes(), (addr(1), addr(3)), now);
     assert!(matches!(handled, ControlFlow::Break(())));
@@ -399,7 +409,17 @@ fn probe_seq_advances_per_pair_per_fire() {
 
     a.handle_timeout(now);
     let first: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    let first_seq = extract_probe_for(&first, (addr(1), addr(3))).seq;
+    let first_probe = extract_probe_for(&first, (addr(1), addr(3)));
+    let first_seq = first_probe.seq;
+
+    // Reply lands on the same pair, clearing the inflight slot. Without
+    // this, `drive_probes` would skip the next fire while a probe is
+    // still inflight (until `PROBE_TIMEOUT`).
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(first_probe.id, first_probe.seq),
+        (addr(1), addr(3)),
+        now + Duration::from_millis(50),
+    );
 
     a.handle_timeout(now + PROBE_INTERVAL);
     let second: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -566,7 +586,10 @@ fn stale_echo_reply_is_ignored() {
     let stale_reply = build_echo_reply(0, 0xdead);
     let _ = a.handle_inbound_decrypted(&stale_reply, (addr(1), addr(3)), now);
 
-    assert_eq!(a.primary(), None);
+    // The bootstrap-primary already adopted the relay-relay path the
+    // handshake landed on; a stale reply doesn't unseat it (no RTT
+    // sample landed, so `select_primary` has nothing new to consider).
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
 }
 
 #[test]
@@ -680,28 +703,6 @@ fn settle_keeps_poll_timeout_armed_for_primary_probes() {
 }
 
 #[test]
-fn settle_with_no_primary_arms_no_probe_deadline() {
-    // Edge case: bootstrap window closes without any probe RTT having
-    // landed, so `primary` is `None`. We don't crash and we don't emit
-    // probes — the connection is already as failed as it gets without
-    // an explicit transition (the initiator-side `BootstrapFailed`
-    // event covers that path separately).
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
-    while a.poll_event().is_some() {}
-    while a.poll_transmit().is_some() {}
-
-    a.handle_timeout(now + BOOTSTRAP_WINDOW);
-    while a.poll_transmit().is_some() {}
-
-    assert_eq!(a.primary(), None);
-    a.handle_timeout(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE);
-    assert!(a.poll_transmit().is_none(), "no primary → no probes");
-}
-
-#[test]
 fn settle_is_sticky_across_later_handshakes() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
@@ -753,6 +754,99 @@ fn different_inbound_init_bytes_skip_dedup_cache() {
         other => panic!("expected ForwardInbound, got {other:?}"),
     }
     assert!(a.poll_transmit().is_none());
+}
+
+#[test]
+fn first_inbound_handshake_adopts_bootstrap_primary_so_outbound_data_flows() {
+    // Closes the user-data drop window between handshake completion and
+    // the first probe RTT: the relay path the WG handshake landed on is
+    // adopted as the primary immediately.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let recv_path = (addr(2), addr(4));
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), recv_path, now);
+    assert_eq!(a.primary(), Some(recv_path));
+
+    // Outbound user data routes through the bootstrap primary.
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+    a.handle_outbound(data_packet_bytes(), now);
+    let t = a.poll_transmit().expect("primary transmit");
+    assert_eq!((t.local, t.remote), recv_path);
+}
+
+#[test]
+fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
+    // After the first bootstrap fanout, `established` flips so any later
+    // `HandshakeInit` boringtun emits (re-keys, every ~120 s) goes via
+    // primary on a single pair instead of bursting across all relays.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let recv_path = (addr(2), addr(4));
+
+    // Bootstrap fanout.
+    a.handle_outbound(handshake_init_bytes(), now);
+    let initial: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert_eq!(initial.len(), 3, "bootstrap fans out on every relay pair");
+
+    // Inbound response → primary is set, retransmit ladder is cleared.
+    let _ = a.handle_inbound(&handshake_response_bytes(), recv_path, now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    // Re-key init from boringtun should NOT re-fan out — single transmit
+    // on the primary pair only.
+    a.handle_outbound(handshake_init_bytes(), now + Duration::from_secs(120));
+    let rekey: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert_eq!(rekey.len(), 1, "re-key rides the primary: {rekey:?}");
+    assert_eq!((rekey[0].local, rekey[0].remote), recv_path);
+}
+
+#[test]
+fn probe_skips_while_inflight_until_probe_timeout_lapses() {
+    // Paths whose RTT exceeds `PROBE_INTERVAL` rely on the skip-while-pending
+    // semantics: the next probe doesn't fire (and overwrite the inflight
+    // seq slot) while the previous one is still in flight, so a late reply
+    // can still match. After `PROBE_TIMEOUT` we give up on the inflight
+    // probe and a fresh one fires.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    a.handle_timeout(now);
+    let first: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let pair = (addr(1), addr(3));
+    let first_seq = extract_probe_for(&first, pair).seq;
+
+    // Tick at next_probe_at = now + PROBE_INTERVAL but no reply yet —
+    // the inflight slot is still occupied. We hold off rather than
+    // overwriting it.
+    a.handle_timeout(now + PROBE_INTERVAL);
+    let mid: Vec<_> = std::iter::from_fn(|| a.poll_transmit())
+        .filter(|t| (t.local, t.remote) == pair)
+        .collect();
+    assert!(
+        mid.is_empty(),
+        "expected no probe re-fire while previous is inflight: {mid:?}"
+    );
+
+    // Once `PROBE_TIMEOUT` elapses, the lost probe is dropped and the
+    // next fire claims the slot with the next seq.
+    a.handle_timeout(now + PROBE_TIMEOUT);
+    let after: Vec<_> = std::iter::from_fn(|| a.poll_transmit())
+        .filter(|t| (t.local, t.remote) == pair)
+        .collect();
+    assert_eq!(
+        after.len(),
+        1,
+        "expected fresh probe after timeout: {after:?}"
+    );
+    let next_seq = extract_probe_for(&after, pair).seq;
+    assert_eq!(next_seq, first_seq.wrapping_add(1));
 }
 
 // --- shared fixtures ---
