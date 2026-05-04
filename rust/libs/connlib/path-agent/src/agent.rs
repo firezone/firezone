@@ -36,6 +36,14 @@ pub struct PathAgent {
     last_forwarded_init: Option<Vec<u8>>,
     last_forwarded_init_path: Option<(SocketAddr, SocketAddr)>,
 
+    /// Responder-side dedup cache: the most recent
+    /// `(init_bytes → response_bytes)` pair we processed, plus the path
+    /// we sent the response on. When subsequent inbound inits arrive
+    /// with byte-identical contents within `RESPONDER_DEDUP_TTL`, we
+    /// replay the cached response on the receiving path without
+    /// involving boringtun.
+    responder_dedup: Option<ResponderDedup>,
+
     /// The outbound `HandshakeInit` we're currently retransmitting per
     /// pair. `None` once the matching `HandshakeResponse` arrives, or
     /// when boringtun emits a fresh init (which replaces this slot).
@@ -66,6 +74,22 @@ struct OutboundInit {
     /// Per-pair retransmit deadlines + backoff step.
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
 }
+
+/// Responder-side dedup cache for the most recent inbound
+/// `HandshakeInit`/`HandshakeResponse` pair we processed. The cached
+/// response is replayed on whichever path a duplicate init arrives
+/// from (not necessarily the original recv path).
+struct ResponderDedup {
+    init_bytes: Vec<u8>,
+    response_bytes: Vec<u8>,
+    cached_at: Instant,
+}
+
+/// How long a cached `(init, response)` pair is considered fresh enough
+/// to replay. Long enough to cover the initiator's full retransmit burst
+/// (capped at 1.6s per pair, ~10s of total ladder), short enough that any
+/// genuine re-handshake produces a fresh entry promptly.
+const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
 struct PairRetransmit {
     next_fire_at: Instant,
@@ -154,6 +178,7 @@ impl PathAgent {
             established: false,
             last_forwarded_init: None,
             last_forwarded_init_path: None,
+            responder_dedup: None,
             outbound_init: None,
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
@@ -271,15 +296,27 @@ impl PathAgent {
             }
             Ok(Packet::HandshakeResponse(_)) => {
                 // Pair this response with the most recent inbound init we
-                // forwarded; send back on the same path. The dedup cache
-                // (next commit) will also store the (init -> response, path)
-                // tuple here.
-                if let Some(path) = self.last_forwarded_init_path.take() {
-                    self.last_forwarded_init = None;
+                // forwarded; send back on the same path AND cache the
+                // (init bytes, response bytes, path) tuple so duplicate
+                // inbound inits within `RESPONDER_DEDUP_TTL` get the same
+                // response replayed without re-driving boringtun.
+                if let (Some(init_bytes), Some(path)) = (
+                    self.last_forwarded_init.take(),
+                    self.last_forwarded_init_path.take(),
+                ) {
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
-                        payload: bytes,
+                        payload: bytes.clone(),
+                    });
+                    // The original `path` is consumed as the routing target
+                    // for *this* response. Future duplicate inbound inits
+                    // replay on whichever path they arrive on, so the cache
+                    // entry doesn't need to remember the original.
+                    self.responder_dedup = Some(ResponderDedup {
+                        init_bytes,
+                        response_bytes: bytes,
+                        cached_at: now,
                     });
                 }
             }
@@ -317,8 +354,24 @@ impl PathAgent {
 
         match parsed {
             Packet::HandshakeInit(_) => {
-                // Dedup-cache lookup lands in a follow-up commit. For now
-                // every init is treated as new: stash for outbound-response
+                // Bytes-exact match against the most recently cached
+                // (init, response) pair (within TTL) → replay the cached
+                // response on the path this init came from. This avoids
+                // re-driving boringtun with a duplicate init that
+                // anti-replay would reject.
+                if let Some(d) = self.responder_dedup.as_ref()
+                    && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
+                    && d.init_bytes == bytes
+                {
+                    self.pending_transmits.push_back(Transmit {
+                        local: path.0,
+                        remote: path.1,
+                        payload: d.response_bytes.clone(),
+                    });
+                    return ControlFlow::Break(());
+                }
+
+                // Genuinely new init bytes: stash for outbound-response
                 // correlation and ask the caller to forward to boringtun.
                 self.last_forwarded_init = Some(bytes.to_vec());
                 self.last_forwarded_init_path = Some(path);
@@ -742,6 +795,85 @@ mod tests {
 
         // Tick at +50ms — earlier than the 100ms initial deadline.
         a.handle_timeout(now + Duration::from_millis(50));
+        assert!(a.poll_transmit().is_none());
+    }
+
+    /// Drive the responder side through a full inbound init → outbound
+    /// response cycle so the dedup cache is populated.
+    fn populate_responder_cache(
+        a: &mut PathAgent,
+        recv_path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) {
+        let _ = a.handle_inbound(&handshake_init_bytes(), recv_path, now);
+        // Drain ForwardInbound — the test simulates boringtun acting on it.
+        while a.poll_event().is_some() {}
+        a.handle_outbound(handshake_response_bytes(), now);
+        // Drain the response transmit on the recv path.
+        while a.poll_transmit().is_some() {}
+    }
+
+    #[test]
+    fn duplicate_inbound_init_replays_cached_response_on_new_path() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        populate_responder_cache(&mut a, (addr(2), addr(4)), now);
+
+        // Same init bytes, different recv path (relay×relay vs. host×host).
+        let new_path = (addr(1), addr(3));
+        let handled = a.handle_inbound(&handshake_init_bytes(), new_path, now);
+        assert!(matches!(handled, ControlFlow::Break(())));
+
+        // Cached response replayed on the new path; no ForwardInbound event
+        // (we did not re-drive boringtun).
+        let t = a.poll_transmit().expect("replay transmit");
+        assert_eq!(t.local, new_path.0);
+        assert_eq!(t.remote, new_path.1);
+        assert_eq!(t.payload, handshake_response_bytes());
+        assert!(a.poll_event().is_none());
+    }
+
+    #[test]
+    fn duplicate_inbound_init_after_ttl_falls_back_to_forward() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        populate_responder_cache(&mut a, (addr(2), addr(4)), now);
+
+        // Past the 10s TTL.
+        let later = now + Duration::from_secs(11);
+        let handled = a.handle_inbound(&handshake_init_bytes(), (addr(1), addr(3)), later);
+        assert!(matches!(handled, ControlFlow::Break(())));
+
+        // Falls through to the normal forward path: emits a ForwardInbound
+        // event and does NOT replay the cached response.
+        match a.poll_event() {
+            Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
+            other => panic!("expected ForwardInbound, got {other:?}"),
+        }
+        assert!(a.poll_transmit().is_none());
+    }
+
+    #[test]
+    fn different_inbound_init_bytes_skip_dedup_cache() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        populate_responder_cache(&mut a, (addr(2), addr(4)), now);
+
+        // Bytes differ from the cached entry by one byte (e.g. fresh TAI64N).
+        let mut different_init = handshake_init_bytes();
+        different_init[100] = 0x42;
+
+        let handled = a.handle_inbound(&different_init, (addr(2), addr(4)), now);
+        assert!(matches!(handled, ControlFlow::Break(())));
+
+        // No cache replay; falls through to forward-to-boringtun.
+        match a.poll_event() {
+            Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, different_init),
+            other => panic!("expected ForwardInbound, got {other:?}"),
+        }
         assert!(a.poll_transmit().is_none());
     }
 }
