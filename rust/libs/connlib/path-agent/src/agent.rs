@@ -282,6 +282,15 @@ impl PathAgent {
     }
 
     fn add_pair(&mut self, local: Candidate, remote: Candidate) {
+        // Skip cross-family pairs: a v4 socket can't send to a v6 dest
+        // (and vice versa), and TURN allocations are per-family — so a
+        // cross-family pair is unusable in any role (fanout, probe,
+        // primary). The bootstrap fanout in particular would try to
+        // route a v6 destination through a v4 relay channel binding,
+        // which the relay can't do.
+        if local.addr.is_ipv4() != remote.addr.is_ipv4() {
+            return;
+        }
         // `next_probe_at: None` here is "not yet seeded";
         // `seed_probe_schedule` flips it to `Some(now)` on the first
         // inbound handshake. Late fanout of a buffered bootstrap init

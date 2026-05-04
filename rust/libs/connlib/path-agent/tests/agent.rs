@@ -14,6 +14,10 @@ fn addr(p: u16) -> SocketAddr {
     format!("127.0.0.1:{p}").parse().unwrap()
 }
 
+fn addr_v6(p: u16) -> SocketAddr {
+    format!("[::1]:{p}").parse().unwrap()
+}
+
 #[test]
 fn new_agent_has_no_pairs_or_primary() {
     let a = PathAgent::new();
@@ -65,6 +69,24 @@ fn duplicate_candidates_are_ignored() {
     a.add_local_candidate(c);
     a.add_remote_candidate(Candidate::host(addr(2)));
     assert_eq!(a.pairs().count(), 1);
+}
+
+#[test]
+fn cross_family_pairs_are_skipped() {
+    // A v4 socket can't send to a v6 destination (and vice versa), so
+    // pairs that mix families never produce a working path. The
+    // bootstrap fanout would try to route a v6 destination through a
+    // v4 relay channel binding, which TURN cannot do.
+    let mut a = PathAgent::new();
+    a.add_local_candidate(Candidate::relayed(addr(1)));
+    a.add_local_candidate(Candidate::relayed(addr_v6(2)));
+    a.add_remote_candidate(Candidate::relayed(addr(3)));
+    a.add_remote_candidate(Candidate::relayed(addr_v6(4)));
+
+    let pairs: Vec<_> = a.pairs().collect();
+    assert_eq!(pairs.len(), 2, "only same-family pairs are kept: {pairs:?}");
+    assert!(pairs.contains(&(addr(1), addr(3))));
+    assert!(pairs.contains(&(addr_v6(2), addr_v6(4))));
 }
 
 #[test]
