@@ -19,14 +19,14 @@ use crate::candidate::Candidate;
 /// # Lifecycle
 ///
 /// 1. **Bootstrap.** First outbound `HandshakeInit` fans out across every
-///    relay-involved pair with a per-pair retransmit ladder
-///    ([`PairRetransmit::LADDER_MS`]). The first inbound handshake
-///    (init or response) seeds [`PROBE_INTERVAL`]-cadence probing on
-///    every pair and adopts the receive path as the bootstrap primary
-///    so user data flows immediately.
+///    relay-involved pair with a per-pair retransmit ladder. The first
+///    inbound handshake (init or response) seeds [`PROBE_INTERVAL`]-
+///    cadence probing on every pair and adopts the receive path as the
+///    bootstrap primary so user data flows immediately.
 /// 2. **Probing.** ICMPv6 echo round-trips populate per-pair smoothed
-///    RTTs; [`pair_score`] picks the primary, preferring direct over
-///    relayed and our relay over the peer's.
+///    RTTs; the primary is selected by (worse-of-pair tier, local-relay
+///    first, smoothed RTT) — direct beats relayed, our relay beats the
+///    peer's.
 /// 3. **Settle.** At [`BOOTSTRAP_WINDOW`], probing winds down to
 ///    [`PROBE_INTERVAL_LIVE`] on the primary only — enough to keep its
 ///    NAT binding alive without blanket-probing every pair.
@@ -362,8 +362,7 @@ impl PathAgent {
     /// - First `HandshakeInit`: fan out across every relay pair and arm
     ///   per-pair retransmit ladders.
     /// - `HandshakeResponse`: pair with the most recently forwarded
-    ///   inbound init, send on its receive path, populate
-    ///   [`ResponderDedup`].
+    ///   inbound init, send on its receive path, cache for replay.
     /// - Anything else (re-key, data, cookie): single-send on `primary`.
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
         let parsed = Tunn::parse_incoming_packet(&bytes);
