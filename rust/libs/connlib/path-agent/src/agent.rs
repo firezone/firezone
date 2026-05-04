@@ -156,27 +156,36 @@ const PROBE_ID: u16 = 0;
 
 struct PairRetransmit {
     next_fire_at: Instant,
-    /// Current backoff step (0..=MAX_STEP). Each fire produces
-    /// `100ms << step` to the next deadline, saturating at `MAX_STEP`.
-    step: u32,
+    /// Current step into [`PairRetransmit::LADDER_MS`]. Saturates at the
+    /// last entry, so once we've reached the cap each subsequent fire
+    /// stays at the same interval.
+    step: usize,
 }
 
 impl PairRetransmit {
-    /// First retransmit fires 100ms after the original send.
-    const INITIAL: Duration = Duration::from_millis(100);
-    /// `100ms << 4 = 1.6s` is the per-pair retransmit cap.
-    const MAX_STEP: u32 = 4;
+    /// Per-pair retransmit cadence for the bootstrap WG `HandshakeInit`
+    /// fanout, in milliseconds.
+    ///
+    /// The first three retries fire ~50 ms apart. We're trying to cover
+    /// the race where our `HandshakeInit` reaches a relay before that
+    /// relay has registered the *peer's* channel-bind: the first init
+    /// gets dropped silently, but a quick succession of follow-ups
+    /// catches the channel as soon as it appears. Past that window the
+    /// ladder eases off into standard exponential doubling capped at
+    /// 1.6 s, so a stuck connection isn't paying for relentless
+    /// retransmits.
+    const LADDER_MS: &'static [u64] = &[50, 50, 50, 100, 200, 400, 800, 1600];
 
     fn new(now: Instant) -> Self {
         Self {
-            next_fire_at: now + Self::INITIAL,
+            next_fire_at: now + Duration::from_millis(Self::LADDER_MS[0]),
             step: 0,
         }
     }
 
     fn advance(&mut self, now: Instant) {
-        self.step = (self.step + 1).min(Self::MAX_STEP);
-        let backoff = Duration::from_millis(100u64 << self.step);
+        self.step = (self.step + 1).min(Self::LADDER_MS.len() - 1);
+        let backoff = Duration::from_millis(Self::LADDER_MS[self.step]);
         self.next_fire_at = now + backoff;
     }
 }

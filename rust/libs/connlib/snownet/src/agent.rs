@@ -294,10 +294,7 @@ impl Agent {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         match self {
             Self::Ice(a) => a.handle_timeout(now),
-            Self::Path { .. } => {
-                // Iceless timer-driving lands in subsequent commits.
-                let _ = now;
-            }
+            Self::Path { path, .. } => path.handle_timeout(now),
         }
     }
 

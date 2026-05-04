@@ -194,13 +194,15 @@ fn inbound_data_packet_returns_false_and_emits_no_event() {
 }
 
 #[test]
-fn outbound_handshake_init_arms_retransmits_with_initial_100ms_deadline() {
+fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     a.handle_outbound(handshake_init_bytes(), now);
     while a.poll_transmit().is_some() {}
     let next = a.poll_timeout().expect("retransmit deadline");
-    assert_eq!(next, now + Duration::from_millis(100));
+    // First retransmit lives at the head of the ladder — 50 ms — to
+    // cover the channel-bind race on the relay.
+    assert_eq!(next, now + Duration::from_millis(50));
 }
 
 #[test]
@@ -213,7 +215,8 @@ fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
     let initial_count = std::iter::from_fn(|| a.poll_transmit()).count();
     assert_eq!(initial_count, 3);
 
-    let later = now + Duration::from_millis(100);
+    // First retransmit deadline lands at +50 ms (the head of the burst).
+    let later = now + Duration::from_millis(50);
     a.handle_timeout(later);
 
     let retransmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -224,15 +227,19 @@ fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
 }
 
 #[test]
-fn retransmit_backoff_doubles_per_pair_up_to_cap() {
+fn retransmit_ladder_bursts_then_doubles_to_cap() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
     a.handle_outbound(handshake_init_bytes(), now);
     while a.poll_transmit().is_some() {}
 
-    let mut t = now + Duration::from_millis(100);
-    let expected_step_ms: [u64; 5] = [200, 400, 800, 1600, 1600];
+    // Cumulative deadlines after the initial fire: 50ms, 50ms, 50ms
+    // (the burst), then 100, 200, 400, 800, 1600 (cap), 1600, ...
+    // Walk each step and check both the deadline gap and that the
+    // expected number of transmits actually fire.
+    let mut t = now + Duration::from_millis(50);
+    let expected_step_ms: [u64; 8] = [50, 50, 100, 200, 400, 800, 1600, 1600];
     for &expected_ms in &expected_step_ms {
         a.handle_timeout(t);
         while a.poll_transmit().is_some() {}
@@ -267,7 +274,8 @@ fn handle_timeout_before_deadline_does_not_emit() {
     let now = Instant::now();
     a.handle_outbound(handshake_init_bytes(), now);
     while a.poll_transmit().is_some() {}
-    a.handle_timeout(now + Duration::from_millis(50));
+    // Tick clearly before the +50 ms head of the retransmit ladder.
+    a.handle_timeout(now + Duration::from_millis(25));
     assert!(a.poll_transmit().is_none());
 }
 
