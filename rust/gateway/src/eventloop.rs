@@ -289,6 +289,7 @@ impl Eventloop {
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
+                    msg.snownet_capabilities,
                     Instant::now(),
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");

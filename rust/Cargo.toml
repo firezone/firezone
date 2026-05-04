@@ -187,6 +187,7 @@ socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.3" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
+str0m-proto = "0.4"
 strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
 subprocess = "1.0.3"

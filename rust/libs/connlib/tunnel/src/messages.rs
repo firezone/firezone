@@ -109,6 +109,14 @@ impl SnownetCapabilities {
     pub const LOCAL: Self = Self { iceless: true };
 }
 
+impl From<SnownetCapabilities> for snownet::Capabilities {
+    fn from(value: SnownetCapabilities) -> Self {
+        Self {
+            iceless: value.iceless,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum DnsServer {

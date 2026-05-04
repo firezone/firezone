@@ -26,7 +26,7 @@ use crate::dns::{
 };
 use crate::filter_engine::FilterEngine;
 use crate::messages::{
-    IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
+    IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, SnownetCapabilities,
     client::{DevicePoolMember, FailReason},
 };
 use crate::peer_store::PeerStore;
@@ -755,6 +755,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
+    #[allow(clippy::too_many_arguments)]
     pub fn handle_resource_access_authorized(
         &mut self,
         rid: ResourceId,
@@ -765,6 +766,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        capabilities: SnownetCapabilities,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -786,6 +788,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
+            capabilities.into(),
             now,
         ) {
             Ok(()) => {}
@@ -855,6 +858,7 @@ impl ClientState {
         Ok(Ok(()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn handle_client_device_access_authorized(
         &mut self,
         cid: ClientId,
@@ -864,6 +868,7 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
+        capabilities: SnownetCapabilities,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
@@ -879,6 +884,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
+            capabilities.into(),
             now,
         )?;
 

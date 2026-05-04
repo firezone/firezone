@@ -3,6 +3,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod agent;
 mod allocation;
 mod backoff;
 mod candidate;
@@ -14,7 +15,8 @@ mod utils;
 
 pub use allocation::RelaySocket;
 pub use node::{
-    Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, Transmit, UnknownConnection,
+    Capabilities, Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, Transmit,
+    UnknownConnection,
 };
 pub use stats::{ConnectionStats, NodeStats};
 

@@ -1791,6 +1791,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dimpl"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ffb781459bc33976be951aa31815deadcd74fb63781da5a4dc48f7001e567d3"
+dependencies = [
+ "arrayvec",
+ "log",
+ "nom 8.0.0",
+ "once_cell",
+ "rand 0.9.4",
+ "subtle",
+ "time",
+]
+
+[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6940,6 +6955,7 @@ dependencies = [
  "ringbuffer",
  "sha2",
  "smallvec",
+ "str0m-proto",
  "stun_codec",
  "telemetry",
  "thiserror 2.0.18",
@@ -7096,6 +7112,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "222a6a5a946631a167c1b0282846bfa33b0f8098b8dd565237809735656ed63f"
 dependencies = [
  "base64ct",
+ "dimpl",
  "fastrand",
  "serde",
  "subtle",

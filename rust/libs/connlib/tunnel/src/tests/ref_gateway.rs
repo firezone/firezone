@@ -5,7 +5,7 @@ use super::{
     sim_net::{ExecMutScope, Host, dual_ip_stack, host},
     strategies::latency,
 };
-use crate::{GatewayState, IpConfig};
+use crate::{GatewayState, IpConfig, messages::SnownetCapabilities};
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
 use proptest::prelude::*;
@@ -23,6 +23,11 @@ pub struct RefGateway {
     pub(crate) tunnel_ip6: Ipv6Addr,
 
     site_specific_dns_records: DnsRecords,
+
+    /// Capabilities this gateway advertises during portal handshake. The
+    /// negotiated set passed to connlib at flow time is the boolean
+    /// intersection of this and the client's value.
+    pub(crate) snownet_capabilities: SnownetCapabilities,
 }
 
 impl RefGateway {
@@ -94,13 +99,21 @@ fn ref_gateway(
         tunnel_ip4s,
         tunnel_ip6s,
         site_specific_dns_records,
+        any::<bool>().prop_map(|iceless| SnownetCapabilities { iceless }),
     )
         .prop_map(
-            move |(key, tunnel_ip4, tunnel_ip6, site_specific_dns_records)| RefGateway {
+            move |(
                 key,
                 tunnel_ip4,
                 tunnel_ip6,
                 site_specific_dns_records,
+                snownet_capabilities,
+            )| RefGateway {
+                key,
+                tunnel_ip4,
+                tunnel_ip6,
+                site_specific_dns_records,
+                snownet_capabilities,
             },
         )
 }
