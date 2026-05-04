@@ -1574,22 +1574,26 @@ where
         }
 
         // Drain path-agent transmits the agent queued from forwarded
-        // handshakes above (replay responses, future retransmit ticks).
+        // handshakes above (replay responses, future retransmit ticks)
+        // or from the probe loop.
         while let Some(pt) = self.agent.poll_path_transmit() {
-            let path_agent::Payload::Ciphertext(ref bytes) = pt.payload else {
-                // Plaintext payloads (path probes) need `Tunn::encapsulate`
-                // first; that wiring lands in a follow-up commit.
-                continue;
+            let maybe = match pt.payload {
+                path_agent::Payload::Ciphertext(ref bytes) => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
+                    make_owned_transmit(
+                        self.relay.id,
+                        peer_socket,
+                        bytes,
+                        &self.buffer_pool,
+                        allocations,
+                        now,
+                    )
+                }
+                path_agent::Payload::Plaintext(ref bytes) => {
+                    self.encapsulate_probe(pt.local, pt.remote, bytes, now, allocations)
+                }
             };
-            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
-            if let Some(transmit) = make_owned_transmit(
-                self.relay.id,
-                peer_socket,
-                bytes,
-                &self.buffer_pool,
-                allocations,
-                now,
-            ) {
+            if let Some(transmit) = maybe {
                 transmits.push_back(transmit);
             }
         }
@@ -1685,6 +1689,61 @@ where
                 panic!("Unexpected result from update_timers")
             }
         };
+    }
+
+    /// Encrypt a path-probe (plaintext IPv6+ICMPv6) via `Tunn::encapsulate_at`
+    /// and wrap the result for transit on `(local, remote)`. Returns `None`
+    /// if the encryption produced no bytes (e.g. tunnel not yet ready) or
+    /// the relay allocation isn't available for a relayed leg.
+    fn encapsulate_probe(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        plaintext: &[u8],
+        now: Instant,
+        allocations: &mut Allocations<RId>,
+    ) -> Option<Transmit> {
+        let socket = self.peer_socket_for_tuple(allocations, local, remote);
+        let packet_start = if socket.send_from_relay() { 4 } else { 0 };
+
+        let mut buffer = self.buffer_pool.pull();
+        buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
+
+        let len = match self
+            .tunnel
+            .encapsulate_at(plaintext, &mut buffer[packet_start..], now)
+        {
+            TunnResult::WriteToNetwork(b) => b.len(),
+            TunnResult::Done | TunnResult::Err(_) => return None,
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                unreachable!("never returned from encapsulate")
+            }
+        };
+        let packet_end = packet_start + len;
+        buffer.truncate(packet_end);
+
+        match socket {
+            PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
+                Some(Transmit {
+                    src: Some(source),
+                    dst: dest,
+                    payload: buffer,
+                    ecn: Ecn::NonEct,
+                })
+            }
+            PeerSocket::RelayToPeer { dest } | PeerSocket::RelayToRelay { dest } => {
+                let allocation = allocations.get_mut_by_id(&self.relay.id)?;
+                let encode_ok =
+                    allocation.encode_channel_data_header(dest, &mut buffer[..packet_end], now)?;
+                buffer.truncate(packet_end);
+                Some(Transmit {
+                    src: None,
+                    dst: encode_ok.socket,
+                    payload: buffer,
+                    ecn: Ecn::NonEct,
+                })
+            }
+        }
     }
 
     fn encapsulate<TId>(
@@ -1809,6 +1868,15 @@ where
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
                 let packet_len = packet.len();
+                let plaintext = packet.to_vec();
+
+                if self
+                    .agent
+                    .handle_inbound_decrypted(&plaintext, (destination, from), now)
+                    .is_break()
+                {
+                    return ControlFlow::Break(Ok(()));
+                }
 
                 match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
                     Ok(p) => {
@@ -1821,6 +1889,15 @@ where
             }
             TunnResult::WriteToTunnelV6(packet, ip) => {
                 let packet_len = packet.len();
+                let plaintext = packet.to_vec();
+
+                if self
+                    .agent
+                    .handle_inbound_decrypted(&plaintext, (destination, from), now)
+                    .is_break()
+                {
+                    return ControlFlow::Break(Ok(()));
+                }
 
                 match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
                     Ok(p) => {
@@ -1955,20 +2032,23 @@ where
 
         // Drain the per-pair fanout transmits the path-agent just queued.
         while let Some(pt) = self.agent.poll_path_transmit() {
-            let path_agent::Payload::Ciphertext(ref bytes) = pt.payload else {
-                // Plaintext payloads (path probes) need `Tunn::encapsulate`
-                // first; that wiring lands in a follow-up commit.
-                continue;
+            let maybe = match pt.payload {
+                path_agent::Payload::Ciphertext(ref bytes) => {
+                    let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
+                    make_owned_transmit(
+                        self.relay.id,
+                        peer_socket,
+                        bytes,
+                        &self.buffer_pool,
+                        allocations,
+                        now,
+                    )
+                }
+                path_agent::Payload::Plaintext(ref bytes) => {
+                    self.encapsulate_probe(pt.local, pt.remote, bytes, now, allocations)
+                }
             };
-            let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
-            if let Some(transmit) = make_owned_transmit(
-                self.relay.id,
-                peer_socket,
-                bytes,
-                &self.buffer_pool,
-                allocations,
-                now,
-            ) {
+            if let Some(transmit) = maybe {
                 transmits.push_back(transmit);
             }
         }

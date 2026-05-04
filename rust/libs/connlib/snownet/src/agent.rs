@@ -272,6 +272,23 @@ impl Agent {
         }
     }
 
+    /// Hand off a decrypted inner-IP packet (output of `Tunn::decapsulate_at`)
+    /// to the path-agent. `ControlFlow::Break(())` means it was a path probe
+    /// and was absorbed; the caller drops it instead of forwarding to the
+    /// tun device. `ControlFlow::Continue(())` means ordinary user traffic
+    /// (or ICE connection) — caller forwards to tun as usual.
+    pub(crate) fn handle_inbound_decrypted(
+        &mut self,
+        bytes: &[u8],
+        path: (std::net::SocketAddr, std::net::SocketAddr),
+        now: Instant,
+    ) -> ControlFlow<()> {
+        match self {
+            Self::Ice(_) => ControlFlow::Continue(()),
+            Self::Path { path: agent, .. } => agent.handle_inbound_decrypted(bytes, path, now),
+        }
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         match self {
             Self::Ice(a) => a.handle_timeout(now),
