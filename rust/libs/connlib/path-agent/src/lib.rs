@@ -25,8 +25,6 @@ mod agent;
 mod candidate;
 mod icmpv6;
 
-#[cfg(test)]
-mod tests;
-
-pub use agent::{Event, PathAgent, PathEvent, Payload, Transmit};
+pub use agent::{BOOTSTRAP_WINDOW, Event, PROBE_INTERVAL, PathAgent, PathEvent, Payload, Transmit};
 pub use candidate::{Candidate, CandidateKind};
+pub use icmpv6::{PROBE_DST, PROBE_SRC};

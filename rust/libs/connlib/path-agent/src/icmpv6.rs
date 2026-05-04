@@ -22,11 +22,14 @@ use std::net::{IpAddr, Ipv6Addr};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 
-/// Source address of every probe packet PathAgent emits.
-pub(crate) const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0001);
+/// Source address of every probe packet PathAgent emits. Public so
+/// integration tests (and any consumer that wants to filter probes from
+/// other traffic) can identify them on the wire.
+pub const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0001);
 
-/// Destination address of every probe packet PathAgent emits.
-pub(crate) const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0002);
+/// Destination address of every probe packet PathAgent emits. Public for
+/// the same reason as [`PROBE_SRC`].
+pub const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0002);
 
 /// Whether a packet is an Echo Request or an Echo Reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

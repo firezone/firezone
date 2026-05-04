@@ -22,10 +22,7 @@ pub struct PathAgent {
     locals: Vec<Candidate>,
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
-    /// Crate-visible so unit tests in `crate::tests::agent` can prime the
-    /// agent into a "primary already selected" state without driving a
-    /// full probe round-trip.
-    pub(crate) primary: Option<(SocketAddr, SocketAddr)>,
+    primary: Option<(SocketAddr, SocketAddr)>,
 
     /// Whether we've left the bootstrap fanout window. `false` until the
     /// first probe round-trip lands a primary; `true` after, at which
@@ -133,13 +130,13 @@ const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 /// How often to send probes on each pair while we're still measuring.
 /// Tight enough to gather several RTT samples within the 10s bootstrap,
 /// loose enough to keep bandwidth use modest.
-pub(crate) const PROBE_INTERVAL: Duration = Duration::from_millis(500);
+pub const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Length of the bootstrap probe window measured from the first observed
 /// inbound handshake. Probes flow on every pair until this expires; after
 /// that the primary is locked in and ongoing liveness is delegated to
 /// WireGuard's persistent keepalive.
-pub(crate) const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
+pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 
 /// Echo `id` baked into every probe. We discriminate replies by `(pair, seq)`
 /// rather than by `id`, so a fixed value is fine.
