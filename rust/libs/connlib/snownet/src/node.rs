@@ -1568,19 +1568,30 @@ where
         let mut buf = [0u8; MAX_HANDSHAKE_SCRATCH];
 
         while let Some(event) = self.agent.poll_path_event() {
-            let path_agent::Event::ForwardInbound { bytes } = event else {
-                continue; // Other events become actionable in subsequent commits.
-            };
-            match self.tunnel.decapsulate_at(None, &bytes, &mut buf, now) {
-                TunnResult::WriteToNetwork(response) => {
-                    self.agent.handle_outbound(response.to_vec(), now);
+            match event {
+                path_agent::Event::ForwardInbound { bytes } => {
+                    match self.tunnel.decapsulate_at(None, &bytes, &mut buf, now) {
+                        TunnResult::WriteToNetwork(response) => {
+                            self.agent.handle_outbound(response.to_vec(), now);
+                        }
+                        TunnResult::Done => {}
+                        TunnResult::Err(e) => {
+                            tracing::debug!(error = ?e, "Forwarded handshake rejected by boringtun");
+                        }
+                        TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                            tracing::warn!("Unexpected data packet from forwarded handshake");
+                        }
+                    }
                 }
-                TunnResult::Done => {}
-                TunnResult::Err(e) => {
-                    tracing::debug!(error = ?e, "Forwarded handshake rejected by boringtun");
+                path_agent::Event::BootstrapFailed => {
+                    tracing::info!(
+                        "Iceless bootstrap timed out without a handshake response; failing connection",
+                    );
+                    self.state = ConnectionState::Failed;
                 }
-                TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                    tracing::warn!("Unexpected data packet from forwarded handshake");
+                path_agent::Event::PrimarySelected { .. }
+                | path_agent::Event::PrimaryChanged { .. } => {
+                    // Outer scoring/event reporting lands in a follow-up commit.
                 }
             }
         }

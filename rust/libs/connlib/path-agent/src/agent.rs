@@ -105,6 +105,10 @@ struct OutboundInit {
     bytes: Vec<u8>,
     /// Per-pair retransmit deadlines + backoff step.
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
+    /// When this init was first emitted. Used to enforce the overall
+    /// `BOOTSTRAP_WINDOW`: if no response lands within that window the
+    /// connection is given up on as `BootstrapFailed`.
+    started_at: Instant,
 }
 
 /// Responder-side dedup cache for the most recent inbound
@@ -211,6 +215,10 @@ pub enum Event {
     /// through boringtun's state machine. The caller pipes these bytes
     /// into `Tunn::decapsulate_at`.
     ForwardInbound { bytes: Vec<u8> },
+    /// Bootstrap timed out before any handshake response landed. The
+    /// owning snownet connection should transition to `Failed` and let
+    /// the higher-level cleanup take it from there.
+    BootstrapFailed,
 }
 
 /// Legacy alias: kept for an existing snownet call site that drains
@@ -354,7 +362,11 @@ impl PathAgent {
                     });
                     retransmits.insert((local, remote), PairRetransmit::new(now));
                 }
-                self.outbound_init = Some(OutboundInit { bytes, retransmits });
+                self.outbound_init = Some(OutboundInit {
+                    bytes,
+                    retransmits,
+                    started_at: now,
+                });
             }
             Ok(Packet::HandshakeResponse(_)) => {
                 // Pair this response with the most recent inbound init we
@@ -544,6 +556,14 @@ impl PathAgent {
             .as_ref()
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
 
+        // Outbound-init bootstrap deadline (initiator give-up). We always
+        // wake exactly at `started_at + BOOTSTRAP_WINDOW` so the failure
+        // event fires promptly.
+        let init_deadline = self
+            .outbound_init
+            .as_ref()
+            .map(|i| i.started_at + BOOTSTRAP_WINDOW);
+
         // Pairs whose `next_probe_at` is `None` haven't been seeded yet
         // (no `Instant` was available at `add_pair` time). They get seeded
         // by the first `handle_outbound`, so we don't include them here.
@@ -554,6 +574,7 @@ impl PathAgent {
             next_retransmit,
             next_probe,
             self.bootstrap_until,
+            init_deadline,
         ]
         .into_iter()
         .flatten()
@@ -586,6 +607,17 @@ impl PathAgent {
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
+        // Bootstrap deadline check: if the inbound response never arrived,
+        // give up on this connection entirely. Done before retransmitting
+        // so we don't emit a final useless burst.
+        if let Some(outbound) = self.outbound_init.as_ref()
+            && now.saturating_duration_since(outbound.started_at) >= BOOTSTRAP_WINDOW
+        {
+            self.outbound_init = None;
+            self.queue_event(Event::BootstrapFailed, now);
+            return;
+        }
+
         // Disjoint-fields borrow: we mutate `outbound_init` and
         // `pending_transmits` via different paths.
         let pending = &mut self.pending_transmits;
@@ -1344,6 +1376,51 @@ mod tests {
 
         // No primary was set since no matching inflight probe was cleared.
         assert_eq!(a.primary(), None);
+    }
+
+    #[test]
+    fn outbound_init_emits_bootstrap_failed_after_window_without_response() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        a.handle_outbound(handshake_init_bytes(), now);
+        while a.poll_transmit().is_some() {}
+
+        // No inbound response arrives — pump past the deadline.
+        a.handle_timeout(now + BOOTSTRAP_WINDOW);
+
+        let event = a.poll_event().expect("BootstrapFailed event");
+        assert!(matches!(event, Event::BootstrapFailed));
+
+        // Subsequent ticks do not re-emit (outbound_init is cleared).
+        a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
+        assert!(a.poll_event().is_none());
+    }
+
+    #[test]
+    fn outbound_init_does_not_fail_if_response_arrives_in_time() {
+        let mut a = agent_with_relay_pairs();
+        let now = Instant::now();
+
+        a.handle_outbound(handshake_init_bytes(), now);
+        while a.poll_transmit().is_some() {}
+
+        // Response arrives near the deadline.
+        let _ = a.handle_inbound(
+            &handshake_response_bytes(),
+            (addr(2), addr(4)),
+            now + BOOTSTRAP_WINDOW - Duration::from_millis(1),
+        );
+        while a.poll_event().is_some() {}
+
+        // Pump past the deadline; no BootstrapFailed since outbound_init
+        // was cleared by the response.
+        a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
+        let event = a.poll_event();
+        assert!(
+            !matches!(event, Some(Event::BootstrapFailed)),
+            "got unexpected BootstrapFailed: {event:?}",
+        );
     }
 
     #[test]
