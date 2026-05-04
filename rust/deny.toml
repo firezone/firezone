@@ -266,8 +266,7 @@ skip = [
     "bitflags",
     "cargo-platform",
     "cargo_metadata",
-    # boringtun pulls chacha20 0.9 via chacha20poly1305 0.10.1; hickory 0.26 pulls 0.10 via rand 0.10.
-    "chacha20",
+    "chacha20", # boringtun pulls chacha20 0.9 via chacha20poly1305 0.10.1; hickory 0.26 pulls 0.10 via rand 0.10.
     "convert_case",
     # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
     "core-foundation",
