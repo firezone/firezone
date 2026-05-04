@@ -486,6 +486,7 @@ impl Eventloop {
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
+                snownet_capabilities: _,
             }) => {
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
@@ -551,6 +552,7 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
+                snownet_capabilities: _,
             }) => {
                 match tunnel.state_mut().handle_client_device_access_authorized(
                     client_id,

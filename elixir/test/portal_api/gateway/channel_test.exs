@@ -2586,7 +2586,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ^gateway_ipv4,
         ^gateway_ipv6,
         ^preshared_key,
-        ^ice_credentials
+        ^ice_credentials,
+        _snownet_capabilities
       }
     end
 

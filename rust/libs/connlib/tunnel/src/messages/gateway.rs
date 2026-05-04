@@ -179,6 +179,9 @@ pub struct AuthorizeFlow {
 
     #[serde(with = "ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
+
+    #[serde(default)]
+    pub snownet_capabilities: SnownetCapabilities,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -389,7 +392,11 @@ mod tests {
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(message, IngressMessages::AuthorizeFlow(_)));
+        let IngressMessages::AuthorizeFlow(flow) = message else {
+            panic!("expected AuthorizeFlow");
+        };
+        // Old portals don't send capabilities; we default to "feature not supported".
+        assert_eq!(flow.snownet_capabilities, SnownetCapabilities::default());
     }
 
     #[test]
