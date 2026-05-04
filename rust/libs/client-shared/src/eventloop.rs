@@ -18,12 +18,12 @@ use std::{
 use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
-use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
     ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
     DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
     FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
 };
+use tunnel::messages::{RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -727,7 +727,14 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
+                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                ) {
+                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
+                }
+            }
             Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

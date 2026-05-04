@@ -39,7 +39,11 @@ defmodule PortalAPI.Gateway.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     # Initialize the cache
-    socket = assign(socket, cache: Cache.Gateway.hydrate(socket.assigns.gateway))
+    socket =
+      assign(socket,
+        cache: Cache.Gateway.hydrate(socket.assigns.gateway),
+        snownet_capabilities: %{}
+      )
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
@@ -480,6 +484,10 @@ defmodule PortalAPI.Gateway.Channel do
     end)
 
     {:noreply, socket}
+  end
+
+  def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
+    {:noreply, assign(socket, snownet_capabilities: payload)}
   end
 
   def handle_in("no_relays", _payload, socket) do

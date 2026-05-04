@@ -82,7 +82,8 @@ defmodule PortalAPI.Client.Channel do
       |> assign(
         cache: cache,
         authorizations_cache: authorizations_cache,
-        pending_flows: %{}
+        pending_flows: %{},
+        snownet_capabilities: %{}
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -951,6 +952,10 @@ defmodule PortalAPI.Client.Channel do
     end)
 
     {:noreply, socket}
+  end
+
+  def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
+    {:noreply, assign(socket, snownet_capabilities: payload)}
   end
 
   def handle_in("no_relays", _payload, socket) do

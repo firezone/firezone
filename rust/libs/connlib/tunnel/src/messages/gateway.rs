@@ -1,6 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
+use crate::messages::{
+    Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey, SnownetCapabilities,
+};
 use chrono::{
     DateTime, Utc,
     serde::{ts_seconds, ts_seconds_option},
@@ -219,6 +221,7 @@ pub enum EgressMessages {
         reference: String,
     },
     NoRelays {},
+    SetSnownetCapabilities(SnownetCapabilities),
 }
 
 #[cfg(test)]
@@ -393,6 +396,15 @@ mod tests {
     fn serialize_no_relays_message() {
         let message = EgressMessages::NoRelays {};
         let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_set_snownet_capabilities_message() {
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
+        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

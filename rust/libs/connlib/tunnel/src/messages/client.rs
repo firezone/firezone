@@ -2,6 +2,7 @@
 
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey,
+    SnownetCapabilities,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -280,6 +281,7 @@ pub enum EgressMessages {
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
+    SetSnownetCapabilities(SnownetCapabilities),
 }
 
 #[cfg(test)]
@@ -618,6 +620,15 @@ mod tests {
     fn serialize_no_relays_message() {
         let message = EgressMessages::NoRelays {};
         let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_set_snownet_capabilities_message() {
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
+        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
