@@ -8,16 +8,28 @@ import PlanBadge from "@/components/PlanBadge";
 
 </PlanBadge>
 
-Service accounts are non-user actors used with
-[headless clients](/kb/deploy/clients#headless-mode-operation) where no user is
-physically present to perform a standard identity provider authentication flow.
-They are commonly used for managing access from servers, machines, IoT devices,
-or other non-user machines to your Resources.
+Service accounts are non-user actors that authenticate to Firezone with
+**long-lived tokens**. They are intended for
+[headless clients](/kb/deploy/clients#headless-mode-operation) running on
+servers, IoT devices, or other unattended systems where no user is present to
+perform an identity provider authentication flow.
 
 Service accounts behave like any other actor in Firezone -- they can be added to
 Groups and Policies to gain access to Resources. Unlike users, however, service
 accounts must be managed manually and are never synced from your identity
 provider.
+
+<Alert color="info">
+  If you want to authenticate a headless Client as a normal user instead, you
+  don't need a service account. The Linux and Windows headless Clients support
+  browser-based sign-in via the `sign-in` subcommand, which issues a normal
+  client token whose expiry is governed by the client session lifetime
+  configured for your auth provider in the admin portal. See the [Linux Headless
+  Client](/kb/client-apps/linux-headless-client#browser-based-authentication) or
+  [Windows Headless
+  Client](/kb/client-apps/windows-headless-client#browser-based-authentication)
+  guides for details.
+</Alert>
 
 ## Creating a service account
 

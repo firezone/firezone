@@ -163,10 +163,14 @@ To set a policy via Microsoft Intune, follow these steps:
 ## Headless mode operation
 
 The Firezone Client can run in headless mode on Windows, Linux, Android, and
-ChromeOS platforms using a [Service Account](/kb/authenticate/service-accounts)
-token. This mode is useful for deploying the Client on servers, IoT devices, and
-other headless devices where a user may not be present to keep the Client
-authenticated.
+ChromeOS platforms. Headless Clients support two ways to authenticate:
+
+- A long-lived [Service Account](/kb/authenticate/service-accounts) token --
+  best for deploying the Client on servers, IoT devices, and other unattended
+  systems.
+- A short-lived user token obtained via browser-based sign-in -- available on
+  the Linux and Windows headless Clients via the `sign-in` subcommand, suitable
+  when a human user wants to authenticate the Client without using a GUI.
 
 See the table below for achieving headless mode operation on each platform:
 

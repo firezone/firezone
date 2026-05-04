@@ -356,12 +356,12 @@ their Okta `status`.
   `SUSPENDED` and `DEPROVISIONED`.
 - **Defense in depth:** Firezone re-checks `status` after receiving both app
   user and group member payloads.
-- **Defensive handling:** If Okta omits `status` unexpectedly, Firezone logs
-  the event and skips that user instead of treating them as active.
+- **Defensive handling:** If Okta omits `status` unexpectedly, Firezone logs the
+  event and skips that user instead of treating them as active.
 
-Once a synced Okta user is deleted or transitions to a filtered-out state,
-their Firezone identity is removed on the next sync. This signs them out of
-Firezone and prevents new sign-ins through the synced Okta identity.
+Once a synced Okta user is deleted or transitions to a filtered-out state, their
+Firezone identity is removed on the next sync. This signs them out of Firezone
+and prevents new sign-ins through the synced Okta identity.
 
 ## Troubleshooting
 

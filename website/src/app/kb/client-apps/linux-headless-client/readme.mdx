@@ -3,14 +3,21 @@ import SupportOptions from "@/components/SupportOptions";
 
 # Linux Headless Client
 
-Headless Clients are designed to authenticate with long-lived
-[service account](/kb/authenticate/service-accounts) tokens to enable
-system-to-system connectivity where a user isn't present to authenticate with
-your identity provider interactively.
+The Linux Headless Client is intended for environments without a graphical
+desktop session. It supports two authentication modes:
+
+- **Service account tokens** -- long-lived, multi-owner tokens generated in the
+  admin portal. Best for system-to-system connectivity where no user is present
+  to authenticate. See [Service Accounts](/kb/authenticate/service-accounts).
+- **User tokens via browser-based sign-in** -- short-lived tokens obtained by
+  signing the running user into the portal in a browser. Useful when you want a
+  human user to authenticate the Client on a server they manage without
+  installing a GUI. See
+  [Browser-based authentication](#browser-based-authentication).
 
 <Alert color="info">
   If you're looking for a desktop Client that authenticates with your identity
-  provider instead, see the [Linux GUI
+  provider through a graphical interface, see the [Linux GUI
   Client](/kb/client-apps/linux-gui-client).
 </Alert>
 
@@ -18,8 +25,8 @@ your identity provider interactively.
 
 - Any Linux-based OS with kernel 3.10 or higher
 - ARM64, ARMv7l, or x86_64 CPU
-- Administrator access to your Firezone account in order to create a service
-  account and generate a token
+- A Firezone account, plus admin access to create a service account if you
+  intend to authenticate with a service account token
 - Root access or `sudo` for Split DNS
 
 ## Installation
@@ -34,21 +41,26 @@ one of the direct links below:
 Mark the binary as executable:
 
 ```bash
-chmod +x firezone-client-headless-linux_1.0.0_x86_64
+chmod +x firezone-client-headless-linux_1.5.8_x86_64
 ```
 
 ## Usage
 
 ### Signing in
 
-Headless Clients require a service account token to authenticate to Firezone.
-You can generate a token using the instructions in the
-[service account](/kb/authenticate/service-accounts) documentation.
+The Client must be authenticated before it can connect. Pick one of the two
+flows below depending on whether you want to authenticate as a service account
+or as a user.
 
-Once you have a token, you can start the Client using the following command:
+#### With a service account token
+
+Service account tokens are long-lived and ideal for unattended systems. Generate
+one using the instructions in the
+[service account](/kb/authenticate/service-accounts) documentation, then start
+the Client with the token in the environment:
 
 ```bash
-sudo FIREZONE_TOKEN=<TOKEN> ./firezone-client-headless-linux_1.0.0_x86_64
+sudo FIREZONE_TOKEN=<TOKEN> ./firezone-client-headless-linux_1.5.8_x86_64
 ```
 
 <Alert color="info">`sudo` is required to control the system's DNS.</Alert>
@@ -60,11 +72,48 @@ export FIREZONE_NAME="Development API test client"
 export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)
 export FIREZONE_TOKEN=<TOKEN>
 export LOG_DIR="./"
-sudo -E ./firezone-client-headless-linux_1.0.0_x86_64
+sudo -E ./firezone-client-headless-linux_1.5.8_x86_64
 ```
 
 See [below](#environment-variable-reference) for a full list of environment
 variables.
+
+#### Browser-based authentication
+
+If you want to authenticate the Client as a normal user with your identity
+provider, use the `sign-in` subcommand. The Client prints a URL for you to open
+in any browser; after signing in, the portal displays a token that you paste
+back into the terminal. The token is then stored on disk at
+`/etc/dev.firezone.client/token` (configurable with `--token-path` or
+`FIREZONE_TOKEN_PATH`) and reused on subsequent runs.
+
+```bash
+sudo ./firezone-client-headless-linux_1.5.8_x86_64 sign-in \
+    --account-slug <YOUR_ACCOUNT_SLUG>
+```
+
+The `--account-slug` flag is optional; if omitted, the URL takes you to the
+generic sign-in page where you can pick your account.
+
+Once a token is saved you can start the Client without setting `FIREZONE_TOKEN`:
+
+```bash
+sudo ./firezone-client-headless-linux_1.5.8_x86_64
+```
+
+To remove a saved token, run `sign-out`:
+
+```bash
+sudo ./firezone-client-headless-linux_1.5.8_x86_64 sign-out
+```
+
+<Alert color="info">
+  User tokens expire based on the **client session lifetime** configured for
+  your auth provider in the Firezone admin portal (not your identity provider's
+  own session lifetime). When the token expires the Client will fail to
+  authenticate, and you'll need to run `sign-in` again. For long-running
+  unattended deployments, prefer a service account token.
+</Alert>
 
 ### Accessing a Resource
 
@@ -136,51 +185,90 @@ sudo mv /etc/resolv.conf.before-firezone /etc/resolv.conf
 
 ### Environment variable reference
 
-| Variable Name                         | Default Value       | Description                                                                                                                                                                                                                                                                                                           |
-| ------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FIREZONE_TOKEN`                      |                     | Service account token generated by the portal to authenticate this Client.                                                                                                                                                                                                                                            |
-| `FIREZONE_ACTIVATE_INTERNET_RESOURCE` |                     | Whether to activate the Internet Resource for this Client. Default is blank, which is disabled. Set to `1` or `true` to enable.                                                                                                                                                                                       |
-| `FIREZONE_NAME`                       | `<system hostname>` | Friendly name for this client to display in the UI.                                                                                                                                                                                                                                                                   |
-| `FIREZONE_ID`                         |                     | Identifier used by the portal to identify this client for metadata and display purposes.                                                                                                                                                                                                                              |
-| `FIREZONE_DNS_CONTROL`                | (blank)             | The DNS control method to use. The default is `systemd-resolved`. Set this to `disabled` to disable DNS control, or `etc-resolv-conf` to use the `/etc/resolv.conf` file. Do not use `etc-resolv-conf` if `/etc/resolv.conf` is not a regular file, e.g. if it's a symlink to `/run/systemd/resolve/stub-resolv.conf` |
-| `LOG_DIR`                             |                     | File logging directory. Should be a path that's writeable by the current user. If unset, logs will be written to `stdout` only.                                                                                                                                                                                       |
-| `RUST_LOG`                            | `error`             | Log level for the client. Set to `debug` for verbose logging. Read more about configuring Rust log levels [here](https://docs.rs/env_logger/latest/env_logger/).                                                                                                                                                      |
+| Variable Name                         | Default Value                    | Description                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FIREZONE_TOKEN`                      |                                  | Token used to authenticate the Client. Either a service account token from the admin portal or a user token obtained via `sign-in`. If unset, the Client reads the token from `FIREZONE_TOKEN_PATH`.                                                                                                                  |
+| `FIREZONE_TOKEN_PATH`                 | `/etc/dev.firezone.client/token` | Filesystem path the Client reads the token from when `FIREZONE_TOKEN` is unset, and the path the `sign-in` subcommand writes to.                                                                                                                                                                                      |
+| `FIREZONE_ACTIVATE_INTERNET_RESOURCE` |                                  | Whether to activate the Internet Resource for this Client. Default is blank, which is disabled. Set to `1` or `true` to enable.                                                                                                                                                                                       |
+| `FIREZONE_NAME`                       | `<system hostname>`              | Friendly name for this client to display in the UI.                                                                                                                                                                                                                                                                   |
+| `FIREZONE_ID`                         |                                  | Identifier used by the portal to identify this client for metadata and display purposes.                                                                                                                                                                                                                              |
+| `FIREZONE_DNS_CONTROL`                | (blank)                          | The DNS control method to use. The default is `systemd-resolved`. Set this to `disabled` to disable DNS control, or `etc-resolv-conf` to use the `/etc/resolv.conf` file. Do not use `etc-resolv-conf` if `/etc/resolv.conf` is not a regular file, e.g. if it's a symlink to `/run/systemd/resolve/stub-resolv.conf` |
+| `LOG_DIR`                             |                                  | File logging directory. Should be a path that's writeable by the current user. If unset, logs will be written to `stdout` only.                                                                                                                                                                                       |
+| `RUST_LOG`                            | `info`                           | Log level for the client. Set to `debug` for verbose logging. Read more about configuring Rust log levels [here](https://docs.rs/env_logger/latest/env_logger/).                                                                                                                                                      |
 
 ### Help output
 
 ```text
-> sudo ./firezone-client-headless-linux_1.0.0_x86_64 -h
+> sudo ./firezone-client-headless-linux_1.5.8_x86_64 --help
 
 Command-line args for the headless Client
 
-Usage: firezone-headless-client [OPTIONS] [COMMAND]
+Usage: firezone-client-headless-linux_1.5.8_x86_64 [OPTIONS] [COMMAND]
 
 Commands:
-  standalone
-  help        Print this message or the help of the given subcommand(s)
+  sign-in   Sign in via browser-based authentication
+  sign-out  Sign out by removing the stored token
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
       --dns-control <DNS_CONTROL>
-          [env: FIREZONE_DNS_CONTROL=etc-resolv-conf] [default: systemd-resolved] [possible values: disabled, etc-resolv-conf, systemd-resolved]
+          Possible values:
+          - disabled:         Explicitly disable DNS control
+          - etc-resolv-conf:  Back up `/etc/resolv.conf` and replace it with our own
+          - systemd-resolved: Cooperate with `systemd-resolved`
+
+          [env: FIREZONE_DNS_CONTROL=]
+          [default: systemd-resolved]
+
   -l, --log-dir <LOG_DIR>
-          File logging directory. Should be a path that's writeable by the current user [env: LOG_DIR=]
+          File logging directory. Should be a path that's writeable by the current user
+
+          [env: LOG_DIR=]
+
   -m, --max-partition-time <MAX_PARTITION_TIME>
-          Maximum length of time to retry connecting to the portal if we're having internet issues or it's down. Accepts human times. e.g. "5m" or "1h" or "30d" [env: MAX_PARTITION_TIME=]
+          Maximum length of time to retry connecting to the portal if we're having internet issues or it's down. Accepts human times. e.g. "5m" or "1h" or "30d"
+
+          [env: MAX_PARTITION_TIME=]
+
       --firezone-name <FIREZONE_NAME>
-          Friendly name for this client to display in the UI [env: FIREZONE_NAME=]
+          Friendly name for this client to display in the UI
+
+          [env: FIREZONE_NAME=]
+
   -i, --firezone-id <FIREZONE_ID>
-          Identifier used by the portal to identify and display the device [env: FIREZONE_ID=]
+          Identifier used by the portal to identify and display the device
+
+          [env: FIREZONE_ID=]
+
       --activate-internet-resource
-          Activate the Internet Resource [env: FIREZONE_ACTIVATE_INTERNET_RESOURCE=]
+          Activate the Internet Resource.
+
+          To actually use the Internet Resource, the user must also have a policy granting access to the Internet Resource.
+
+          [env: FIREZONE_ACTIVATE_INTERNET_RESOURCE=]
+
       --no-telemetry
-          Disable sentry.io crash-reporting agent [env: FIREZONE_NO_TELEMETRY=]
+          Disable sentry.io crash-reporting agent
+
+          [env: FIREZONE_NO_TELEMETRY=]
+
       --token-path <TOKEN_PATH>
-          A filesystem path where the token can be found [env: FIREZONE_TOKEN_PATH=] [default: /etc/dev.firezone.client/token]
+          A filesystem path where the token can be found
+
+          [env: FIREZONE_TOKEN_PATH=]
+          [default: /etc/dev.firezone.client/token]
+
   -h, --help
-          Print help (see more with '--help')
+          Print help (see a summary with '-h')
+
   -V, --version
           Print version
 ```
+
+The `sign-in` subcommand accepts `--auth-base-url` (`FIREZONE_AUTH_BASE_URL`,
+default `https://app.firezone.dev`) and `--account-slug`
+(`FIREZONE_ACCOUNT_SLUG`). The `sign-out` subcommand accepts `-f, --force` to
+skip the confirmation prompt.
 
 ## Upgrading
 
