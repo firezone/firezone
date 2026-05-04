@@ -279,13 +279,13 @@ impl Agent {
     /// (or ICE connection) — caller forwards to tun as usual.
     pub(crate) fn handle_inbound_decrypted(
         &mut self,
-        bytes: &[u8],
+        packet: &ip_packet::IpPacket,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
     ) -> ControlFlow<()> {
         match self {
             Self::Ice(_) => ControlFlow::Continue(()),
-            Self::Path { path: agent, .. } => agent.handle_inbound_decrypted(bytes, path, now),
+            Self::Path { path: agent, .. } => agent.handle_inbound_decrypted(packet, path, now),
         }
     }
 

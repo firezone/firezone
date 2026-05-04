@@ -565,10 +565,10 @@ fn inbound_echo_request_queues_reply_on_same_pair() {
     let reply_transmit = a.poll_transmit().expect("queued reply");
     assert_eq!(reply_transmit.local, addr(2));
     assert_eq!(reply_transmit.remote, addr(4));
-    let Payload::Plaintext(bytes) = reply_transmit.payload else {
+    let Payload::Plaintext(packet) = reply_transmit.payload else {
         panic!("expected Plaintext reply");
     };
-    let probe = crate::icmpv6::try_parse(&bytes).expect("parses");
+    let probe = crate::icmpv6::try_parse(&packet).expect("parses");
     assert_eq!(probe.kind, crate::icmpv6::Echo::Reply);
     assert_eq!(probe.seq, 42);
 }
@@ -576,8 +576,16 @@ fn inbound_echo_request_queues_reply_on_same_pair() {
 #[test]
 fn inbound_decrypted_non_probe_returns_continue() {
     let mut a = agent_with_relay_pairs();
-    let bytes = vec![0xff; 64];
-    let handled = a.handle_inbound_decrypted(&bytes, (addr(2), addr(4)), Instant::now());
+    // Plain UDP packet on non-probe IPs — must fall through to the tun device.
+    let packet = ip_packet::make::udp_packet(
+        std::net::Ipv4Addr::LOCALHOST,
+        std::net::Ipv4Addr::LOCALHOST,
+        1,
+        2,
+        b"hello",
+    )
+    .unwrap();
+    let handled = a.handle_inbound_decrypted(&packet, (addr(2), addr(4)), Instant::now());
     assert!(matches!(handled, ControlFlow::Continue(())));
     assert!(a.poll_transmit().is_none());
 }

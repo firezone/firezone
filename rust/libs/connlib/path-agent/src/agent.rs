@@ -185,7 +185,7 @@ impl PairState {
 /// address); `remote` is the destination. The owning snownet code wraps
 /// the payload into the appropriate transport (host send vs. TURN
 /// channel-data) based on `local`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Transmit {
     pub local: SocketAddr,
     pub remote: SocketAddr,
@@ -195,11 +195,12 @@ pub struct Transmit {
 /// Whether the transmit's payload is already-encrypted WG bytes (handshake
 /// fanout, retransmits, dedup replays) or a plaintext IP packet that the
 /// owning snownet connection must run through `Tunn::encapsulate` first.
-/// Path probes are the only `Plaintext` source today.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Path probes are the only `Plaintext` source today. Not `Eq` because
+/// `IpPacket` doesn't implement it.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     Ciphertext(Vec<u8>),
-    Plaintext(Vec<u8>),
+    Plaintext(ip_packet::IpPacket),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -513,11 +514,11 @@ impl PathAgent {
     /// pair for RTT bookkeeping and reply routing.
     pub fn handle_inbound_decrypted(
         &mut self,
-        bytes: &[u8],
+        packet: &ip_packet::IpPacket,
         pair: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<()> {
-        let Some(probe) = crate::icmpv6::try_parse(bytes) else {
+        let Some(probe) = crate::icmpv6::try_parse(packet) else {
             return ControlFlow::Continue(());
         };
 
