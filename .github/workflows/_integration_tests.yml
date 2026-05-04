@@ -120,13 +120,15 @@ jobs:
             min_gateway_version: 1.4.19
           - script: download-packet-loss
             rust_log: debug
-          - script: download-packet-loss-iceless
+          - name: download-packet-loss-iceless
+            script: download-packet-loss
             rust_log: debug,snownet=trace,path_agent=trace
             iceless: true
           - script: download-roaming-network
             min_gateway_version: 1.4.18
             rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
-          - script: download-roaming-network-iceless
+          - name: download-roaming-network-iceless
+            script: download-roaming-network
             min_gateway_version: 1.4.18
             iceless: true
             rust_log: debug,snownet=trace,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
