@@ -1759,7 +1759,10 @@ impl ReferenceState {
                     .into_iter()
                     .filter_map(|r| match r {
                         client::Resource::StaticDevicePool(p) => Some(p),
-                        _ => None,
+                        client::Resource::Dns(_)
+                        | client::Resource::Cidr(_)
+                        | client::Resource::Internet(_)
+                        | client::Resource::DynamicDevicePool(_) => None,
                     })
                     .filter(|pool| pool_filters_allow_icmp(&pool.filters))
                     .flat_map(|pool| pool.devices)

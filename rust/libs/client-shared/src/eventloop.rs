@@ -320,27 +320,18 @@ impl Eventloop {
             ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
+                ip,
             } => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::CreateFlow {
-                        resource_id: resource,
-                        preferred_gateways,
-                        ipv4: None,
-                        ipv6: None,
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            ClientEvent::DeviceConnectionIntent { resource_id, ip } => {
                 let (ipv4, ipv6) = match ip {
-                    IpAddr::V4(v4) => (Some(v4), None),
-                    IpAddr::V6(v6) => (None, Some(v6)),
+                    None => (None, None),
+                    Some(IpAddr::V4(v4)) => (Some(v4), None),
+                    Some(IpAddr::V6(v6)) => (None, Some(v6)),
                 };
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
-                        resource_id,
-                        preferred_gateways: Vec::new(),
+                        resource_id: resource,
+                        preferred_gateways,
                         ipv4,
                         ipv6,
                     }))

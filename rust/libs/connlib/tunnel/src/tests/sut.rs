@@ -1051,6 +1051,7 @@ impl TunnelTest {
             ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
+                ip: None,
             } => {
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
@@ -1122,7 +1123,11 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceConnectionIntent { resource_id, ip } => {
+            ClientEvent::ResourceConnectionIntent {
+                resource: resource_id,
+                ip: Some(ip),
+                ..
+            } => {
                 let src_client = self.clients.get(&src).expect("unknown source client");
 
                 let src_key = src_client.inner().sut.public_key();

@@ -12,10 +12,8 @@ mod tracked_state;
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 #[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource,
-};
-pub(crate) use resource::{InternetResource, Resource};
+pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
+pub(crate) use resource::{InternetResource, Resource, StaticDevicePoolResource};
 
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
@@ -28,7 +26,8 @@ use crate::dns::{
 };
 use crate::filter_engine::FilterEngine;
 use crate::messages::{
-    IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
+    IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
+    client::{DevicePoolMember, FailReason},
 };
 use crate::peer_store::PeerStore;
 use crate::routing_table::{RouteEntry, RoutingTable};
@@ -1840,13 +1839,15 @@ impl ClientState {
             return Some(ClientEvent::ResourceConnectionIntent {
                 resource,
                 preferred_gateways: self.preferred_gateways(resource),
+                ip: None,
             });
         }
 
         if let Some(intent) = self.pending_device_access.poll_connection_intents() {
-            return Some(ClientEvent::DeviceConnectionIntent {
-                resource_id: intent.resource_id,
-                ip: intent.ip,
+            return Some(ClientEvent::ResourceConnectionIntent {
+                resource: intent.resource_id,
+                preferred_gateways: Vec::new(),
+                ip: Some(intent.ip),
             });
         }
 
@@ -1932,6 +1933,13 @@ impl ClientState {
             }
         };
 
+        // Static device pools are diffed in-place: a single member changing
+        // shouldn't churn the entire pool's routing table entries.
+        if let Resource::StaticDevicePool(new_pool) = new_resource {
+            self.upsert_static_device_pool(new_pool, now);
+            return;
+        }
+
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             let resource_addressability_changed = resource.has_different_address(&new_resource)
                 || resource.has_different_ip_stack(&new_resource)
@@ -1945,10 +1953,8 @@ impl ClientState {
             }
         }
 
-        let is_new = self
-            .resources_by_id
-            .insert(new_resource.id(), new_resource.clone())
-            .is_none();
+        self.resources_by_id
+            .insert(new_resource.id(), new_resource.clone());
 
         let activated = match &new_resource {
             Resource::Dns(dns) => {
@@ -1963,25 +1969,7 @@ impl ClientState {
                 },
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
-            Resource::StaticDevicePool(pool) => {
-                let filter = FilterEngine::new(&pool.filters);
-                let mut any_inserted = false;
-
-                for device in &pool.devices {
-                    let entry = ClientEntry {
-                        filter: filter.clone(),
-                        resource_id: pool.id,
-                        client_id: device.id,
-                    };
-
-                    any_inserted |= self
-                        .client_routing_table
-                        .upsert(device.ipv4.into(), entry.clone());
-                    any_inserted |= self.client_routing_table.upsert(device.ipv6.into(), entry);
-                }
-
-                is_new || any_inserted
-            }
+            Resource::StaticDevicePool(_) => unreachable!("handled above"),
             Resource::DynamicDevicePool(pool) => self
                 .device_stub_resolver
                 .add_resource(pool.id, pool.address.clone()),
@@ -1992,6 +1980,98 @@ impl ClientState {
         }
 
         self.drain_resource_stub_resolver_events();
+        self.maybe_update_tun_routes();
+        self.resource_list.update(self.resources());
+        self.dns_cache.flush("Resource added");
+    }
+
+    /// Inserts or updates a static device pool, diffing the member list against
+    /// any existing pool with the same id.
+    ///
+    /// Existing routing table entries for unchanged members are preserved; only
+    /// removed and updated members touch the table. When a member is dropped
+    /// from the pool, any active connection to that client is closed.
+    fn upsert_static_device_pool(&mut self, new_pool: StaticDevicePoolResource, now: Instant) {
+        let pool_id = new_pool.id;
+
+        let old_pool = self.resources_by_id.get(&pool_id).and_then(|r| match r {
+            Resource::StaticDevicePool(p) => Some(p.clone()),
+            Resource::Dns(_)
+            | Resource::Cidr(_)
+            | Resource::Internet(_)
+            | Resource::DynamicDevicePool(_) => None,
+        });
+
+        let old_members: HashMap<ClientId, &DevicePoolMember> = old_pool
+            .as_ref()
+            .map(|p| p.devices.iter().map(|d| (d.id, d)).collect())
+            .unwrap_or_default();
+        let new_members: HashMap<ClientId, &DevicePoolMember> =
+            new_pool.devices.iter().map(|d| (d.id, d)).collect();
+
+        let filter_changed = old_pool
+            .as_ref()
+            .is_some_and(|p| p.filters != new_pool.filters);
+
+        // Drop entries for members that are gone or whose IPs changed.
+        // If the filter changed, every old entry must be replaced too.
+        for (cid, old_member) in &old_members {
+            let new_member = new_members.get(cid);
+            let ip_changed = new_member.is_some_and(|m| {
+                m.ipv4 != old_member.ipv4 || m.ipv6 != old_member.ipv6
+            });
+
+            if !filter_changed && new_member.is_some() && !ip_changed {
+                continue;
+            }
+
+            self.client_routing_table
+                .remove(old_member.ipv4.into(), |e| e.client_id == *cid);
+            self.client_routing_table
+                .remove(old_member.ipv6.into(), |e| e.client_id == *cid);
+
+            // If the member is no longer in the pool, drop any active
+            // connection so traffic doesn't keep flowing to a revoked device.
+            if new_member.is_none() {
+                self.pending_device_access.remove(cid);
+                if self.clients.peer_by_id(cid).is_some() {
+                    self.clients.remove(cid);
+                    self.node.close_connection(
+                        ClientOrGatewayId::Client(*cid),
+                        p2p_control::goodbye(),
+                        now,
+                    );
+                }
+            }
+        }
+
+        // Insert entries for new and updated members.
+        let filter = FilterEngine::new(&new_pool.filters);
+        let mut any_inserted = false;
+
+        for new_member in &new_pool.devices {
+            let entry = ClientEntry {
+                filter: filter.clone(),
+                resource_id: pool_id,
+                client_id: new_member.id,
+            };
+
+            any_inserted |= self
+                .client_routing_table
+                .upsert(new_member.ipv4.into(), entry.clone());
+            any_inserted |= self
+                .client_routing_table
+                .upsert(new_member.ipv6.into(), entry);
+        }
+
+        let is_new = old_pool.is_none();
+        let resource = Resource::StaticDevicePool(new_pool);
+        self.resources_by_id.insert(pool_id, resource.clone());
+
+        if is_new || any_inserted {
+            self.log_activating_resource(&resource);
+        }
+
         self.maybe_update_tun_routes();
         self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
@@ -2434,7 +2514,10 @@ mod tests {
     fn assert_no_device_connection_intent(state: &mut ClientState) {
         while let Some(event) = state.poll_event() {
             assert!(
-                !matches!(event, ClientEvent::DeviceConnectionIntent { .. }),
+                !matches!(
+                    event,
+                    ClientEvent::ResourceConnectionIntent { ip: Some(_), .. }
+                ),
                 "unexpected device connection intent"
             );
         }

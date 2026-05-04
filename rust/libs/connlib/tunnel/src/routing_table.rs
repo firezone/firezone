@@ -80,6 +80,25 @@ where
         self.inner.retain(|_, entries| !entries.is_empty());
     }
 
+    /// Removes entries for `network` for which `predicate` returns true.
+    ///
+    /// Drops the network from the table if no entries remain.
+    pub(crate) fn remove(&mut self, network: IpNetwork, predicate: impl Fn(&T) -> bool) {
+        self.match_cache.clear();
+
+        let Some(entries) = self.inner.exact_match_mut(network) else {
+            return;
+        };
+
+        for ele in entries.extract_if(.., |e| predicate(e)) {
+            drop(ele);
+        }
+
+        if entries.is_empty() {
+            self.inner.remove(network);
+        }
+    }
+
     /// Returns the single "best" entry whose network covers `ip` for the given `protocol`.
     ///
     /// Most importantly, this will always return an entry if the IP is present in the
@@ -232,6 +251,27 @@ mod tests {
 
         t.remove_by_id(R2);
         assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+    }
+
+    #[test]
+    fn remove() {
+        let mut t = RoutingTable::new();
+        let n = net("10.0.0.0/8");
+
+        t.upsert(n, entry(1, R1, permit_all()));
+        t.upsert(n, entry(1, R2, permit_all()));
+
+        // Predicate-based removal keeps non-matching entries.
+        t.remove(n, |e| e.id == R1);
+        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
+
+        // Removing the last entry drops the network from the table.
+        t.remove(n, |e| e.id == R2);
+        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+        assert_eq!(t.networks().count(), 0);
+
+        // Calling on an unknown network is a no-op.
+        t.remove(net("192.168.0.0/16"), |_| true);
     }
 
     #[test]
