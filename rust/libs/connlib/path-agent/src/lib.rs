@@ -25,5 +25,8 @@ mod agent;
 mod candidate;
 mod icmpv6;
 
+#[cfg(test)]
+mod tests;
+
 pub use agent::{Event, PathAgent, PathEvent, Payload, Transmit};
 pub use candidate::{Candidate, CandidateKind};
