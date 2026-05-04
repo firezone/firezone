@@ -78,7 +78,7 @@ impl Agent {
     }
 
     /// Whether this agent matches the parameters of an incoming
-    /// `upsert_connection` call so the existing connection can be re-used.
+    /// `upsert_connection` call so the existing connection can be reused.
     ///
     /// Iceless connections always report a match: ICE credentials and role
     /// are irrelevant in iceless mode, and the dimensions that actually
