@@ -609,10 +609,12 @@ fn outbound_init_does_not_fail_if_response_arrives_in_time() {
 }
 
 #[test]
-fn drive_probes_switches_to_live_cadence_after_bootstrap_window() {
+fn drive_probes_only_emits_on_primary_after_settle() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
+    let primary = (addr(1), addr(3)); // host×host wins on best tier
 
+    // Bootstrap with a probe round-trip that promotes host×host to primary.
     let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
@@ -621,10 +623,18 @@ fn drive_probes_switches_to_live_cadence_after_bootstrap_window() {
     let inside: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert!(!inside.is_empty(), "expected probes inside window");
 
-    // Settle. `drive_probes` and `maybe_settle` both run inside this
-    // call: the per-pair deadlines were `now + 500ms` (set on the first
-    // fire above), so a final bootstrap-cadence burst fires here, then
-    // settle re-baselines the deadlines onto `PROBE_INTERVAL_LIVE`.
+    let host_probe = extract_probe_for(&inside, primary);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(host_probe.id, host_probe.seq),
+        primary,
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some(primary));
+    while a.poll_event().is_some() {}
+
+    // Settle. Bootstrap-cadence burst fires here for due pairs, then
+    // settle re-baselines only the primary onto `PROBE_INTERVAL_LIVE`
+    // and clears the rest.
     a.handle_timeout(now + BOOTSTRAP_WINDOW);
     while a.poll_transmit().is_some() {}
 
@@ -632,31 +642,37 @@ fn drive_probes_switches_to_live_cadence_after_bootstrap_window() {
     a.handle_timeout(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE - Duration::from_millis(1));
     assert!(a.poll_transmit().is_none(), "before live deadline");
 
-    // At the live deadline — every pair fires again, on every pair (to
-    // keep NAT bindings alive even on non-primary pairs).
+    // At the live deadline — only the primary fires.
     a.handle_timeout(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE);
     let live: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    assert_eq!(
-        live.len(),
-        4,
-        "expected one probe per pair on live tick: {live:?}"
-    );
+    assert_eq!(live.len(), 1, "expected primary-only probe: {live:?}");
+    assert_eq!((live[0].local, live[0].remote), primary);
 }
 
 #[test]
-fn settle_keeps_poll_timeout_armed_for_live_probes() {
+fn settle_keeps_poll_timeout_armed_for_primary_probes() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
+    let primary = (addr(1), addr(3));
 
     let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
 
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let host_probe = extract_probe_for(&outbound, primary);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(host_probe.id, host_probe.seq),
+        primary,
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some(primary));
+    while a.poll_event().is_some() {} // drain PrimaryChanged
 
     a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    while a.poll_transmit().is_some() {}
 
-    // After settle, the next deadline is one live-cadence tick out.
+    // After settle, the only armed deadline is the primary's next live tick.
     assert_eq!(
         a.poll_timeout(),
         Some(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE),
@@ -664,7 +680,12 @@ fn settle_keeps_poll_timeout_armed_for_live_probes() {
 }
 
 #[test]
-fn settle_is_sticky_across_later_handshakes() {
+fn settle_with_no_primary_arms_no_probe_deadline() {
+    // Edge case: bootstrap window closes without any probe RTT having
+    // landed, so `primary` is `None`. We don't crash and we don't emit
+    // probes — the connection is already as failed as it gets without
+    // an explicit transition (the initiator-side `BootstrapFailed`
+    // event covers that path separately).
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
@@ -672,11 +693,36 @@ fn settle_is_sticky_across_later_handshakes() {
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
+    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    while a.poll_transmit().is_some() {}
+
+    assert_eq!(a.primary(), None);
+    a.handle_timeout(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE);
+    assert!(a.poll_transmit().is_none(), "no primary → no probes");
+}
+
+#[test]
+fn settle_is_sticky_across_later_handshakes() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let primary = (addr(1), addr(3));
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let host_probe = extract_probe_for(&outbound, primary);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(host_probe.id, host_probe.seq),
+        primary,
+        now + Duration::from_millis(50),
+    );
+    while a.poll_event().is_some() {}
+
     a.handle_timeout(now + BOOTSTRAP_WINDOW); // settle
     while a.poll_transmit().is_some() {}
 
-    // Capture the live deadline; a peer rekey should not push us back
-    // into the fast bootstrap cadence.
     let live_deadline = a.poll_timeout().expect("live cadence");
 
     let _ = a.handle_inbound(
@@ -686,7 +732,6 @@ fn settle_is_sticky_across_later_handshakes() {
     );
     while a.poll_event().is_some() {}
 
-    // Same deadline — handshake observation didn't reset the cadence.
     assert_eq!(a.poll_timeout(), Some(live_deadline));
 }
 

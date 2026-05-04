@@ -616,12 +616,13 @@ impl PathAgent {
         self.maybe_settle(now);
     }
 
-    /// At the bootstrap deadline, mark settled and re-baseline the
-    /// per-pair probe deadlines onto the live cadence. We keep probing
-    /// every pair (not just the primary) so NAT bindings stay open in
-    /// the asymmetric-NAT case where the two sides land on different
-    /// primaries — the remote keeps using "its" pair to talk to us, so
-    /// our probe traffic on that pair has to keep its NAT alive too.
+    /// At the bootstrap deadline, mark settled. The locked-in `primary`
+    /// pair gets re-baselined onto `PROBE_INTERVAL_LIVE` to keep its
+    /// RTT current and its NAT binding open; every other pair stops
+    /// probing. The remote does the same on its own primary, so even
+    /// in asymmetric-NAT cases (where the two ends land on different
+    /// primaries) both directions stay alive without us having to
+    /// blanket-probe every pair.
     fn maybe_settle(&mut self, now: Instant) {
         let Some(deadline) = self.bootstrap_until else {
             return;
@@ -629,18 +630,22 @@ impl PathAgent {
         if now < deadline {
             return;
         }
-        for state in self.pairs.values_mut() {
-            // Schedule the next live probe one interval out so we don't
-            // immediately re-burst at settle time.
-            state.next_probe_at = Some(now + PROBE_INTERVAL_LIVE);
+        for (pair, state) in self.pairs.iter_mut() {
             state.inflight_probe = None;
+            state.next_probe_at = if Some(*pair) == self.primary {
+                // Schedule one live interval out so we don't immediately
+                // re-burst at settle time.
+                Some(now + PROBE_INTERVAL_LIVE)
+            } else {
+                None
+            };
         }
         self.bootstrap_until = None;
         self.bootstrap_settled = true;
         tracing::info!(
             primary = ?self.primary,
             interval = ?PROBE_INTERVAL_LIVE,
-            "Iceless bootstrap window closed; switching to steady-state probing",
+            "Iceless bootstrap window closed; settling on primary",
         );
     }
 
@@ -699,13 +704,22 @@ impl PathAgent {
     }
 
     fn drive_probes(&mut self, now: Instant) {
-        let interval = if self.bootstrap_settled {
-            PROBE_INTERVAL_LIVE
+        let (interval, only_primary) = if self.bootstrap_settled {
+            (PROBE_INTERVAL_LIVE, true)
         } else {
-            PROBE_INTERVAL
+            (PROBE_INTERVAL, false)
         };
+        let primary = self.primary;
         let pending = &mut self.pending_transmits;
         for ((local, remote), state) in self.pairs.iter_mut() {
+            // After settle, the only pair we probe is the locked-in
+            // primary — that's enough to keep RTT current and the NAT
+            // binding open. The remote does the same for its primary,
+            // so even in asymmetric-NAT cases both directions stay live.
+            if only_primary && primary != Some((*local, *remote)) {
+                continue;
+            }
+
             // Pairs whose `next_probe_at` is `None` haven't been seeded
             // yet — `seed_probe_schedule` runs on the first inbound
             // handshake. Skip them here.
