@@ -543,6 +543,12 @@ impl PathAgent {
                         // signal here is fine.
                         Some(prev) => (prev + rtt) / 2,
                     });
+                    tracing::trace!(
+                        local = %pair.0,
+                        remote = %pair.1,
+                        rtt_ms = rtt.as_millis() as u64,
+                        "Probe reply received",
+                    );
                     self.select_primary(now);
                 }
             }
@@ -604,6 +610,10 @@ impl PathAgent {
         }
         self.bootstrap_until = None;
         self.bootstrap_settled = true;
+        tracing::info!(
+            primary = ?self.primary,
+            "Iceless bootstrap window closed; probing settled",
+        );
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
@@ -613,6 +623,11 @@ impl PathAgent {
         if let Some(outbound) = self.outbound_init.as_ref()
             && now.saturating_duration_since(outbound.started_at) >= BOOTSTRAP_WINDOW
         {
+            tracing::warn!(
+                pairs = outbound.retransmits.len(),
+                window_secs = BOOTSTRAP_WINDOW.as_secs(),
+                "Iceless bootstrap timed out without a handshake response",
+            );
             self.outbound_init = None;
             self.queue_event(Event::BootstrapFailed, now);
             return;
@@ -626,6 +641,7 @@ impl PathAgent {
         };
         for ((local, remote), state) in outbound.retransmits.iter_mut() {
             if now >= state.next_fire_at {
+                tracing::trace!(%local, %remote, step = state.step, "WG init retransmit");
                 pending.push_back(Transmit {
                     local: *local,
                     remote: *remote,
@@ -645,6 +661,11 @@ impl PathAgent {
         // First-call wins: subsequent calls don't reset the deadline.
         if self.bootstrap_until.is_none() {
             self.bootstrap_until = Some(now + BOOTSTRAP_WINDOW);
+            tracing::info!(
+                pairs = self.pairs.len(),
+                window_secs = BOOTSTRAP_WINDOW.as_secs(),
+                "Iceless bootstrap window opened",
+            );
         }
         for state in self.pairs.values_mut() {
             if state.next_probe_at.is_none() {
@@ -705,9 +726,20 @@ impl PathAgent {
             .map(|(k, _)| *k);
 
         let Some(new) = best else { return };
+        let new_rtt = self
+            .pairs
+            .get(&new)
+            .and_then(|s| s.smoothed_rtt)
+            .unwrap_or_default();
         match self.primary {
             None => {
                 self.primary = Some(new);
+                tracing::info!(
+                    local = %new.0,
+                    remote = %new.1,
+                    rtt_ms = new_rtt.as_millis() as u64,
+                    "Iceless primary selected",
+                );
                 self.queue_event(
                     Event::PrimarySelected {
                         local: new.0,
@@ -718,6 +750,14 @@ impl PathAgent {
             }
             Some(old) if old != new => {
                 self.primary = Some(new);
+                tracing::info!(
+                    from_local = %old.0,
+                    from_remote = %old.1,
+                    to_local = %new.0,
+                    to_remote = %new.1,
+                    rtt_ms = new_rtt.as_millis() as u64,
+                    "Iceless primary changed",
+                );
                 self.queue_event(Event::PrimaryChanged { from: old, to: new }, now);
             }
             Some(_) => {}

@@ -5197,6 +5197,7 @@ version = "0.1.0"
 dependencies = [
  "boringtun",
  "ip-packet",
+ "tracing",
 ]
 
 [[package]]
