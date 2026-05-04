@@ -193,14 +193,14 @@ supports-color = "3.0.2"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
 syn = "2.0.117"
-tauri = "2.9.5"
-tauri-build = "2.4.0"
-tauri-plugin-dialog = "2.6.0"
-tauri-plugin-opener = "2.5.3"
+tauri = "2.10.3"
+tauri-build = { version = "2.6.0", default-features = false }
+tauri-plugin-dialog = "2.7.1"
+tauri-plugin-opener = "2.5.4"
 tauri-plugin-shell = "2.3.5"
-tauri-runtime = "2.9.2"
+tauri-runtime = "2.11.0"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
-tauri-utils = "2.8.0"
+tauri-utils = { version = "2.9.0", default-features = false }
 telemetry = { path = "libs/telemetry" }
 tempfile = "3.26.0"
 test-case = "3.3.1"
