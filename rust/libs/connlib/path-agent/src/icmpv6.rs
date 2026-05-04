@@ -1,34 +1,24 @@
-//! Borrowed packet shape for path probes.
+//! Path-probe packet shape.
 //!
-//! Iceless connections measure round-trip time and confirm path
-//! reachability with packets shaped as ICMPv6 Echo Request/Reply, but
-//! these never touch any IP stack — they live entirely inside snownet,
-//! travelling through `Tunn::encapsulate` like ordinary user traffic and
-//! being intercepted on the receive side before they reach the tun
-//! device. The ICMPv6 envelope is just a packet shape we're reusing so
-//! we don't have to design our own (its `id`/`seq` fields are convenient
-//! for matching probes to replies).
-//!
-//! Source and destination addresses come from the IPv6 discard prefix
-//! `100::/64` (RFC 6666) so they cannot collide with anything a user
-//! might route. Inbound packets only count as path probes when *both*
-//! addresses match — the chance of ordinary user traffic accidentally
-//! tripping that check is negligible.
+//! Probes ride the WG envelope as ordinary IPv6+ICMPv6 echo packets and
+//! never touch any IP stack — snownet intercepts them after
+//! `Tunn::decapsulate_at` (see [`crate::PathAgent::handle_inbound_decrypted`]).
+//! ICMPv6 echo is just a convenient carrier for `(id, seq)` so we can
+//! match replies to requests. Source and destination live in the IPv6
+//! discard prefix `100::/64` (RFC 6666) so they can't collide with
+//! anything a user might route.
 
-// The probe loop in subsequent commits is the first user of these helpers.
 #![allow(dead_code)]
 
 use std::net::{IpAddr, Ipv6Addr};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 
-/// Source address of every probe packet PathAgent emits. Public so
-/// integration tests (and any consumer that wants to filter probes from
-/// other traffic) can identify them on the wire.
+/// Source address of every probe. Public so consumers can filter
+/// probes off the wire by address match.
 pub const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0001);
 
-/// Destination address of every probe packet PathAgent emits. Public for
-/// the same reason as [`PROBE_SRC`].
+/// Destination address of every probe. See [`PROBE_SRC`].
 pub const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0002);
 
 /// Whether a packet is an Echo Request or an Echo Reply.
@@ -38,7 +28,6 @@ pub(crate) enum Echo {
     Reply,
 }
 
-/// Parsed view of a probe packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Probe {
     pub kind: Echo,
@@ -46,24 +35,17 @@ pub(crate) struct Probe {
     pub seq: u16,
 }
 
-/// Build an outbound IPv6+ICMPv6 Echo Request between the magic
-/// addresses, with the given `id` / `seq`. The result is fed straight
-/// into `Tunn::encapsulate` like an ordinary user IP packet.
 pub(crate) fn build_echo_request(id: u16, seq: u16) -> IpPacket {
     ip_packet::make::icmp_request_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
         .expect("magic addresses and empty payload always fit")
 }
 
-/// Build an outbound IPv6+ICMPv6 Echo Reply matching a previously
-/// received Request.
 pub(crate) fn build_echo_reply(id: u16, seq: u16) -> IpPacket {
     ip_packet::make::icmp_reply_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
         .expect("magic addresses and empty payload always fit")
 }
 
-/// Try to interpret `packet` as one of our path probes. Returns `Some`
-/// only when the IP source / destination match the magic discard-prefix
-/// addresses and the ICMPv6 type is Echo Request or Reply.
+/// `Some` iff `packet` is an ICMPv6 echo between the magic addresses.
 pub(crate) fn try_parse(packet: &IpPacket) -> Option<Probe> {
     if packet.source() != IpAddr::V6(PROBE_SRC) || packet.destination() != IpAddr::V6(PROBE_DST) {
         return None;

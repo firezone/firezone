@@ -7,87 +7,90 @@ use boringtun::noise::{Packet, Tunn};
 
 use crate::candidate::Candidate;
 
-/// Path-selection state machine.
+/// Path-selection state machine for ICE-less snownet connections.
 ///
-/// Mediates between boringtun's WireGuard state machine and the IO layer:
-/// snownet hands every encapsulated outbound byte slice to
-/// [`PathAgent::handle_outbound`] and every inbound byte slice to
-/// [`PathAgent::handle_inbound`]. `PathAgent` parses the bytes and decides
-/// what to do (fanout, dedup, replay), emitting work via
-/// [`PathAgent::poll_transmit`] / [`PathAgent::poll_event`].
+/// snownet feeds every WG-encapsulated byte slice through
+/// [`PathAgent::handle_outbound`] and every inbound slice through
+/// [`PathAgent::handle_inbound`]. Decisions (fanout, dedup, replay,
+/// probing) flow back out via [`PathAgent::poll_transmit`] /
+/// [`PathAgent::poll_event`]. All pair identifiers are
+/// `(local, remote)` `SocketAddr` tuples.
 ///
-/// All public APIs identify pairs by `(local, remote)` `SocketAddr` tuples
-/// so callers don't need to maintain a parallel mapping.
+/// # Lifecycle
+///
+/// 1. **Bootstrap.** First outbound `HandshakeInit` fans out across every
+///    relay-involved pair with a per-pair retransmit ladder
+///    ([`PairRetransmit::LADDER_MS`]). The first inbound handshake
+///    (init or response) seeds [`PROBE_INTERVAL`]-cadence probing on
+///    every pair and adopts the receive path as the bootstrap primary
+///    so user data flows immediately.
+/// 2. **Probing.** ICMPv6 echo round-trips populate per-pair smoothed
+///    RTTs; [`pair_score`] picks the primary, preferring direct over
+///    relayed and our relay over the peer's.
+/// 3. **Settle.** At [`BOOTSTRAP_WINDOW`], probing winds down to
+///    [`PROBE_INTERVAL_LIVE`] on the primary only — enough to keep its
+///    NAT binding alive without blanket-probing every pair.
+/// 4. **Failure.** If no `HandshakeResponse` arrives inside
+///    [`BOOTSTRAP_WINDOW`], `Event::BootstrapFailed` fires.
 pub struct PathAgent {
     locals: Vec<Candidate>,
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
 
-    /// Whether we've left the bootstrap fanout window. `false` until the
-    /// first probe round-trip lands a primary; `true` after, at which
-    /// point outbound `HandshakeInit` (re-key) goes via primary instead
-    /// of fanning out.
+    /// `true` once we've fanned out the bootstrap `HandshakeInit`.
+    /// Subsequent inits from boringtun are re-keys on a working session
+    /// and ride `primary` instead of re-fanning out.
     established: bool,
 
-    /// Path the most recently `Forward`ed inbound `HandshakeInit` arrived
-    /// on. The next outbound `HandshakeResponse` will be sent back on
-    /// this path and cached against the init bytes for replay.
+    /// Most recently forwarded inbound `HandshakeInit` and the path it
+    /// arrived on. The next outbound `HandshakeResponse` is paired
+    /// against these and the bytes go into [`ResponderDedup`].
     last_forwarded_init: Option<Vec<u8>>,
     last_forwarded_init_path: Option<(SocketAddr, SocketAddr)>,
 
-    /// Responder-side dedup cache: the most recent
-    /// `(init_bytes → response_bytes)` pair we processed, plus the path
-    /// we sent the response on. When subsequent inbound inits arrive
-    /// with byte-identical contents within `RESPONDER_DEDUP_TTL`, we
-    /// replay the cached response on the receiving path without
-    /// involving boringtun.
+    /// Responder-side dedup. Bytes-exact replay of a cached response
+    /// against duplicate inits avoids re-driving boringtun (whose
+    /// anti-replay would reject them anyway).
     responder_dedup: Option<ResponderDedup>,
 
-    /// Initiator-side dedup: bytes of the most recent inbound
-    /// `HandshakeResponse` we forwarded to boringtun. Subsequent inbound
-    /// responses with byte-exact match are dropped — feeding them to
-    /// boringtun a second time would re-process the response and bump
-    /// the session index. Reset whenever we send a fresh outbound init.
+    /// Initiator-side dedup: bytes of the most recently forwarded
+    /// `HandshakeResponse`. Re-feeding the same response to boringtun
+    /// would advance the session index and desynchronise state. Reset
+    /// when boringtun emits a fresh init.
     forwarded_response: Option<Vec<u8>>,
 
-    /// The outbound `HandshakeInit` we're currently retransmitting per
-    /// pair. `None` once the matching `HandshakeResponse` arrives, or
-    /// when boringtun emits a fresh init (which replaces this slot).
+    /// In-flight outbound `HandshakeInit` and its per-pair retransmit
+    /// ladder. Cleared on the first matching response, or replaced when
+    /// boringtun emits a fresh init.
     outbound_init: Option<OutboundInit>,
 
     pending_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
-    /// Timestamp at which the oldest currently-queued event was pushed.
-    /// `None` once `poll_event` drains everything. Surfaced through
-    /// `poll_timeout` so the owning connection's `handle_timeout` runs
-    /// promptly to drain.
+    /// Pushed-at timestamp of the oldest queued event. Surfaced through
+    /// `poll_timeout` so the next `handle_timeout` tick drains promptly.
     events_queued_at: Option<Instant>,
-    /// Deadline by which the bootstrap probe window closes. After this
-    /// instant, probes stop on every pair (primary included); WireGuard's
-    /// persistent keepalive takes over liveness on the locked-in primary.
-    /// Set on the first inbound handshake; `None` until then, and again
-    /// `None` after `maybe_settle` runs (so we don't re-fire forever).
+    /// Bootstrap-window deadline. `Some` between the first inbound
+    /// handshake and `maybe_settle`; cleared after settling so we don't
+    /// re-fire forever.
     bootstrap_until: Option<Instant>,
-    /// Sticky flag: `true` once the bootstrap deadline has elapsed and we've
-    /// settled. Prevents re-opening the probe window on later events
-    /// (e.g. a peer rekey driving `seed_probe_schedule` again).
+    /// Sticky: `true` once the bootstrap deadline has elapsed. Prevents
+    /// later events from re-opening the window.
     bootstrap_settled: bool,
 }
 
 struct PairState {
-    /// Kinds of the local + remote candidate, captured at insertion time.
+    /// `(local, remote)` candidate kinds, captured at insertion.
     kinds: (crate::CandidateKind, crate::CandidateKind),
-    /// Smoothed RTT, populated from probe round-trips.
+    /// Smoothed RTT from probe round-trips.
     smoothed_rtt: Option<Duration>,
-    /// The most recent probe we sent on this pair and are waiting on.
-    /// Cleared when the matching reply arrives. Replies whose seq doesn't
-    /// match this slot are ignored as stale.
+    /// In-flight probe we're awaiting a reply for. Replies whose seq
+    /// doesn't match are ignored as stale.
     inflight_probe: Option<InflightProbe>,
-    /// When the next outbound probe is due. `None` means "send as soon as
-    /// the timer next fires" (used for the very first probe on a new pair).
+    /// Next probe deadline. `None` until [`PathAgent::seed_probe_schedule`]
+    /// runs (on the first inbound handshake).
     next_probe_at: Option<Instant>,
-    /// Per-pair monotonic seq counter for the next outbound probe.
+    /// Monotonic per-pair seq counter for the next outbound probe.
     next_probe_seq: u16,
 }
 
@@ -97,83 +100,58 @@ struct InflightProbe {
     sent_at: Instant,
 }
 
-/// State associated with the currently-outbound `HandshakeInit` bytes
-/// that we're retransmitting per pair until the matching response arrives.
 struct OutboundInit {
     bytes: Vec<u8>,
-    /// Per-pair retransmit deadlines + backoff step.
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
-    /// When this init was first emitted. Used to enforce the overall
-    /// `BOOTSTRAP_WINDOW`: if no response lands within that window the
-    /// connection is given up on as `BootstrapFailed`.
+    /// First emission timestamp; used for the `BOOTSTRAP_WINDOW` give-up.
     started_at: Instant,
 }
 
-/// Responder-side dedup cache for the most recent inbound
-/// `HandshakeInit`/`HandshakeResponse` pair we processed. The cached
-/// response is replayed on whichever path a duplicate init arrives
-/// from (not necessarily the original recv path).
 struct ResponderDedup {
     init_bytes: Vec<u8>,
     response_bytes: Vec<u8>,
     cached_at: Instant,
 }
 
-/// How long a cached `(init, response)` pair is considered fresh enough
-/// to replay. Long enough to cover the initiator's full retransmit burst
-/// (capped at 1.6s per pair, ~10s of total ladder), short enough that any
-/// genuine re-handshake produces a fresh entry promptly.
+/// Freshness window for the responder-side `(init, response)` cache.
+/// Comfortably covers the initiator's full retransmit ladder.
 const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
-/// How often to send probes during the bootstrap window. Tight enough
-/// to gather several RTT samples within the 10s bootstrap, loose enough
-/// to keep bandwidth use modest.
+/// Probe cadence inside the bootstrap window.
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 
-/// How long to wait for an inflight probe's reply before considering it
-/// lost. Lets us cope with paths whose RTT exceeds [`PROBE_INTERVAL`] —
-/// without this, the next-tick fire would overwrite the inflight slot
-/// and the late reply would be ignored as stale, so high-latency paths
-/// would never produce a successful round-trip measurement.
+/// Treat an in-flight probe as lost once its reply fails to arrive
+/// within this window. Without it, paths whose RTT exceeds
+/// [`PROBE_INTERVAL`] would have every reply land on a stale seq slot.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Probe cadence after the bootstrap window settles. Long enough that
-/// the steady-state cost is comparable to WireGuard's persistent
-/// keepalive (25s), short enough to keep NAT bindings alive on every
-/// pair — including non-primary pairs the *remote* may be using when
-/// the two sides land on different primaries (symmetric NAT case).
+/// Steady-state probe cadence on the primary, post-settle. Sized to
+/// match WireGuard's persistent-keepalive default so the on-wire cost
+/// is comparable.
 pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
 
-/// Length of the bootstrap probe window measured from the first observed
-/// inbound handshake. Probes flow at the fast cadence on every pair
-/// until this expires; after that we fall back to `PROBE_INTERVAL_LIVE`
-/// for ongoing liveness measurement on every pair.
+/// Length of the bootstrap window measured from the first observed
+/// inbound handshake.
 pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 
-/// Echo `id` baked into every probe. We discriminate replies by `(pair, seq)`
-/// rather than by `id`, so a fixed value is fine.
+/// Echo `id` baked into every probe. We discriminate replies by
+/// `(pair, seq)`, so a fixed value is fine.
 const PROBE_ID: u16 = 0;
 
 struct PairRetransmit {
     next_fire_at: Instant,
-    /// Current step into [`PairRetransmit::LADDER_MS`]. Saturates at the
-    /// last entry, so once we've reached the cap each subsequent fire
-    /// stays at the same interval.
+    /// Step into [`PairRetransmit::LADDER_MS`], saturating at the last
+    /// entry.
     step: usize,
 }
 
 impl PairRetransmit {
     /// Per-pair retransmit cadence for the bootstrap WG `HandshakeInit`
-    /// fanout, in milliseconds.
-    ///
-    /// The first three retries fire ~50 ms apart. We're trying to cover
-    /// the race where our `HandshakeInit` reaches a relay before that
-    /// relay has registered the *peer's* channel-bind: the first init
-    /// gets dropped silently, but a quick succession of follow-ups
-    /// catches the channel as soon as it appears. Past that window the
-    /// ladder eases off into standard exponential doubling capped at
-    /// 1.6 s, so a stuck connection isn't paying for relentless
-    /// retransmits.
+    /// fanout. The 50 ms / 50 ms / 50 ms head covers the race where our
+    /// init lands on a relay before that relay has the *peer's*
+    /// channel-bind registered (the first init gets dropped silently;
+    /// a quick burst catches the channel as soon as it appears). Past
+    /// that we ease off via exponential doubling capped at 1.6 s.
     const LADDER_MS: &'static [u64] = &[50, 50, 50, 100, 200, 400, 800, 1600];
 
     fn new(now: Instant) -> Self {
@@ -197,13 +175,13 @@ impl PairState {
     }
 }
 
-/// Sort key for `select_primary`. Smaller is better. Tuple components,
-/// in order:
+/// Sort key for primary selection — smaller is better. Ranks by
+/// (worse-of-pair tier, local-relay-first, smoothed RTT).
 ///
-/// 1. Worse-of-pair tier (`max(local, remote)`). `Host < ServerReflexive < Relayed`.
-/// 2. `0` if the local side is a relay, else `1`. Only matters at the
-///    Relayed tier — chooses our own relay over the remote's.
-/// 3. Smoothed RTT (lower is better; `None` sorts last).
+/// The local-relay-first axis only matters at the Relayed tier and
+/// breaks ties between routing through *our* relay vs. the peer's. We
+/// prefer ours because then our own probe traffic keeps the binding
+/// alive.
 fn pair_score(state: &PairState) -> (crate::CandidateKind, u8, Option<Duration>) {
     let tier = state.kinds.0.max(state.kinds.1);
     let local_relay_first = if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
@@ -214,12 +192,10 @@ fn pair_score(state: &PairState) -> (crate::CandidateKind, u8, Option<Duration>)
     (tier, local_relay_first, state.smoothed_rtt)
 }
 
-/// A single outbound transmit emitted by `PathAgent`.
+/// Outbound transmit emitted by `PathAgent`.
 ///
-/// `local` is the source side (host bind address or relay-allocation
-/// address); `remote` is the destination. The owning snownet code wraps
-/// the payload into the appropriate transport (host send vs. TURN
-/// channel-data) based on `local`.
+/// snownet picks the wire transport (host send vs. TURN channel-data)
+/// from `local`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transmit {
     pub local: SocketAddr,
@@ -227,11 +203,10 @@ pub struct Transmit {
     pub payload: Payload,
 }
 
-/// Whether the transmit's payload is already-encrypted WG bytes (handshake
-/// fanout, retransmits, dedup replays) or a plaintext IP packet that the
-/// owning snownet connection must run through `Tunn::encapsulate` first.
-/// Path probes are the only `Plaintext` source today. Not `Eq` because
-/// `IpPacket` doesn't implement it.
+/// Distinguishes already-encrypted WG bytes (handshake fanout,
+/// retransmits, dedup replays) from a plaintext IP packet snownet must
+/// run through `Tunn::encapsulate` first. Probes are the only current
+/// `Plaintext` source.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     Ciphertext(Vec<u8>),
@@ -240,21 +215,17 @@ pub enum Payload {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    /// Primary path was set or changed. Fires the first time we pick a
-    /// primary and again on any subsequent re-selection. The owning
-    /// snownet connection treats both cases the same — adopt this pair
-    /// as the new `peer_socket`.
+    /// Primary path set or re-selected. snownet adopts the pair as its
+    /// `peer_socket`.
     PrimaryChanged {
         local: SocketAddr,
         remote: SocketAddr,
     },
-    /// Bytes from a previous `handle_inbound` call that need to flow
-    /// through boringtun's state machine. The caller pipes these bytes
-    /// into `Tunn::decapsulate_at`.
+    /// Inbound handshake bytes the caller must feed to
+    /// `Tunn::decapsulate_at`.
     ForwardInbound { bytes: Vec<u8> },
-    /// Bootstrap timed out before any handshake response landed. The
-    /// owning snownet connection should transition to `Failed` and let
-    /// the higher-level cleanup take it from there.
+    /// Bootstrap window elapsed without a handshake response. snownet
+    /// transitions the connection to `Failed`.
     BootstrapFailed,
 }
 
@@ -311,28 +282,59 @@ impl PathAgent {
     }
 
     fn add_pair(&mut self, local: Candidate, remote: Candidate) {
+        // `next_probe_at: None` here is "not yet seeded";
+        // `seed_probe_schedule` flips it to `Some(now)` on the first
+        // inbound handshake.
         self.pairs.insert(
             (local.addr, remote.addr),
             PairState {
                 kinds: (local.kind, remote.kind),
                 smoothed_rtt: None,
                 inflight_probe: None,
-                // `None` means "send the very first probe as soon as
-                // `handle_timeout` next runs" — we don't have an `Instant`
-                // here to compute a deadline against.
                 next_probe_at: None,
                 next_probe_seq: 0,
             },
         );
     }
 
-    /// Currently-best send pair, if any.
+    /// Drop a previously-added local candidate and every pair that used
+    /// it. Clears `primary` if it pointed at one of the removed pairs.
+    pub fn remove_local_candidate(&mut self, c: &Candidate) -> bool {
+        let Some(i) = self.locals.iter().position(|x| x == c) else {
+            return false;
+        };
+        let removed = self.locals.remove(i);
+        self.pairs.retain(|(local, _), _| *local != removed.addr);
+        if let Some((local, _)) = self.primary
+            && local == removed.addr
+        {
+            self.primary = None;
+        }
+        true
+    }
+
+    /// Drop a previously-added remote candidate and every pair that used
+    /// it. Clears `primary` if it pointed at one of the removed pairs.
+    pub fn remove_remote_candidate(&mut self, c: &Candidate) -> bool {
+        let Some(i) = self.remotes.iter().position(|x| x == c) else {
+            return false;
+        };
+        let removed = self.remotes.remove(i);
+        self.pairs.retain(|(_, remote), _| *remote != removed.addr);
+        if let Some((_, remote)) = self.primary
+            && remote == removed.addr
+        {
+            self.primary = None;
+        }
+        true
+    }
+
     pub fn primary(&self) -> Option<(SocketAddr, SocketAddr)> {
         self.primary
     }
 
-    /// Iterate every relay-involved pair. The initial WG handshake fans out
-    /// across this set.
+    /// Iterate every relay-involved pair — the set the bootstrap
+    /// `HandshakeInit` fans out across.
     pub fn relay_pairs(&self) -> impl Iterator<Item = (SocketAddr, SocketAddr)> + '_ {
         self.pairs
             .iter()
@@ -340,41 +342,36 @@ impl PathAgent {
             .map(|(addrs, _)| *addrs)
     }
 
-    /// Iterate every known pair as `(local, remote)`. Exposed for
-    /// integration tests; production code paths use `relay_pairs` or the
-    /// internal `pairs` map directly.
+    /// Iterate every known pair. Test-only.
     #[doc(hidden)]
     pub fn pairs(&self) -> impl Iterator<Item = (SocketAddr, SocketAddr)> + '_ {
         self.pairs.keys().copied()
     }
 
-    /// Whether `addr` matches a known remote candidate of relay kind. Used by
-    /// the snownet-side dispatch to classify the destination of a freshly
-    /// emitted send pair.
+    /// `true` iff `addr` is a known remote relay candidate. snownet
+    /// uses this to classify the destination of a freshly emitted
+    /// pair into the right `PeerSocket` variant.
     pub fn remote_is_relayed(&self, addr: SocketAddr) -> bool {
         self.remotes
             .iter()
             .any(|c| c.addr == addr && c.is_relayed())
     }
 
-    /// Hand off an outbound WG packet emitted by boringtun. `PathAgent`
-    /// decides how to send it: fanout (`HandshakeInit` while bootstrapping),
-    /// pair against the most-recent inbound init (`HandshakeResponse`),
-    /// or single-send on `primary` (everything else).
+    /// Route a WG packet boringtun just produced.
+    ///
+    /// - First `HandshakeInit`: fan out across every relay pair and arm
+    ///   per-pair retransmit ladders.
+    /// - `HandshakeResponse`: pair with the most recently forwarded
+    ///   inbound init, send on its receive path, populate
+    ///   [`ResponderDedup`].
+    /// - Anything else (re-key, data, cookie): single-send on `primary`.
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
         let parsed = Tunn::parse_incoming_packet(&bytes);
 
         match parsed {
             Ok(Packet::HandshakeInit(_)) if !self.established => {
-                // Bootstrap fanout: same bytes on every relay-involved pair.
-                // Each pair gets its own retransmit ladder; the cached
-                // bytes are what `handle_timeout` re-emits per pair until
-                // the matching `HandshakeResponse` arrives.
-                //
-                // Fresh init means a fresh response is incoming — clear the
-                // initiator-side response-dedup so it doesn't reject
-                // legitimate new responses as duplicates of the previous
-                // session's.
+                // Fresh init starts a fresh session — drop the dedup of
+                // the *previous* session's response.
                 self.forwarded_response = None;
 
                 let pairs: Vec<_> = self.relay_pairs().collect();
@@ -392,18 +389,9 @@ impl PathAgent {
                     retransmits,
                     started_at: now,
                 });
-                // We've fanned out exactly once per connection. From here
-                // on, any further `HandshakeInit` from boringtun is a
-                // re-key on a working session and should ride `primary`,
-                // not re-burst across every relay pair.
                 self.established = true;
             }
             Ok(Packet::HandshakeResponse(_)) => {
-                // Pair this response with the most recent inbound init we
-                // forwarded; send back on the same path AND cache the
-                // (init bytes, response bytes, path) tuple so duplicate
-                // inbound inits within `RESPONDER_DEDUP_TTL` get the same
-                // response replayed without re-driving boringtun.
                 if let (Some(init_bytes), Some(path)) = (
                     self.last_forwarded_init.take(),
                     self.last_forwarded_init_path.take(),
@@ -413,10 +401,6 @@ impl PathAgent {
                         remote: path.1,
                         payload: Payload::Ciphertext(bytes.clone()),
                     });
-                    // The original `path` is consumed as the routing target
-                    // for *this* response. Future duplicate inbound inits
-                    // replay on whichever path they arrive on, so the cache
-                    // entry doesn't need to remember the original.
                     self.responder_dedup = Some(ResponderDedup {
                         init_bytes,
                         response_bytes: bytes,
@@ -425,8 +409,6 @@ impl PathAgent {
                 }
             }
             _ => {
-                // HandshakeInit during established phase (re-key), data, cookie:
-                // send on primary if we have one.
                 if let Some((local, remote)) = self.primary {
                     self.pending_transmits.push_back(Transmit {
                         local,
@@ -438,13 +420,10 @@ impl PathAgent {
         }
     }
 
-    /// Hand off an inbound WG packet that arrived on `path`.
-    /// `ControlFlow::Break(())` means `PathAgent` took ownership of the
-    /// packet (it was a handshake — possibly deduped, possibly to be
-    /// forwarded via [`Event::ForwardInbound`]); the caller stops
-    /// processing this packet.
-    /// `ControlFlow::Continue(())` means it's a non-handshake packet;
-    /// the caller passes the bytes to `Tunn::decapsulate_at` directly.
+    /// Inspect an inbound WG packet on `path`. Returns `Break(())` if
+    /// `PathAgent` has taken ownership (handshake — deduped or
+    /// forwarded via [`Event::ForwardInbound`]) and `Continue(())` for
+    /// non-handshake bytes the caller should feed to `Tunn::decapsulate_at`.
     pub fn handle_inbound(
         &mut self,
         bytes: &[u8],
@@ -455,18 +434,13 @@ impl PathAgent {
             return ControlFlow::Continue(());
         };
 
-        // Receiving a handshake (in either direction) is our cue that the
-        // network works on at least one pair: time to start probing for a
-        // better one. Idempotent — only seeds previously-`None` deadlines.
+        // First inbound handshake = the network works on this pair.
+        // Seed probing across every pair and adopt this one as the
+        // bootstrap primary right away, so user packets flow through
+        // `handle_outbound`'s primary branch instead of being dropped
+        // in the gap before probes complete. Probes can upgrade
+        // `primary` later if a better-tier pair becomes alive.
         self.seed_probe_schedule(now);
-
-        // Adopt the path the handshake landed on as the bootstrap primary
-        // immediately, rather than waiting for the first probe round-trip.
-        // boringtun has just produced (or is about to produce) data on
-        // this WG session; without a primary set, `handle_outbound` would
-        // silently drop user packets in the gap until probes complete.
-        // Probes can still upgrade `primary` later if a better-tier pair
-        // becomes alive.
         if matches!(
             parsed,
             Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
@@ -484,11 +458,9 @@ impl PathAgent {
 
         match parsed {
             Packet::HandshakeInit(_) => {
-                // Bytes-exact match against the most recently cached
-                // (init, response) pair (within TTL) → replay the cached
-                // response on the path this init came from. This avoids
-                // re-driving boringtun with a duplicate init that
-                // anti-replay would reject.
+                // Bytes-exact replay against the cached `(init, response)`
+                // avoids re-driving boringtun with a dup init that
+                // anti-replay would reject anyway.
                 if let Some(d) = self.responder_dedup.as_ref()
                     && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
                     && d.init_bytes == bytes
@@ -501,8 +473,6 @@ impl PathAgent {
                     return ControlFlow::Break(());
                 }
 
-                // Genuinely new init bytes: stash for outbound-response
-                // correlation and ask the caller to forward to boringtun.
                 self.last_forwarded_init = Some(bytes.to_vec());
                 self.last_forwarded_init_path = Some(path);
                 self.queue_event(
@@ -514,17 +484,12 @@ impl PathAgent {
                 ControlFlow::Break(())
             }
             Packet::HandshakeResponse(_) => {
-                // Initiator-side dedup: drop byte-exact duplicates of the
-                // response we already forwarded. Feeding the same response
-                // to boringtun again would advance the session index and
-                // potentially desynchronise state.
+                // Re-feeding the same response to boringtun would advance
+                // the session index and desync state.
                 if self.forwarded_response.as_deref() == Some(bytes) {
                     return ControlFlow::Break(());
                 }
 
-                // First (or genuinely fresh) response: clear the per-pair
-                // retransmit ladder, remember the bytes for future dedup,
-                // and ask the caller to forward to boringtun.
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
                 self.queue_event(
@@ -551,14 +516,9 @@ impl PathAgent {
         event
     }
 
-    /// Hand off a decrypted inner-IP packet that came out of `Tunn::decapsulate`.
-    /// Returns `Break(())` if the packet was a path probe and was absorbed
-    /// (caller drops it). Returns `Continue(())` for ordinary user traffic
-    /// that the caller should forward to the tun device.
-    ///
-    /// `pair` is the `(local, remote)` `(SocketAddr, SocketAddr)` the
-    /// encrypted bytes arrived on, used to attribute the probe to the right
-    /// pair for RTT bookkeeping and reply routing.
+    /// Inspect a decrypted inner-IP packet (output of `Tunn::decapsulate`).
+    /// Returns `Break(())` if it was a path probe (caller drops it),
+    /// `Continue(())` for ordinary user traffic.
     pub fn handle_inbound_decrypted(
         &mut self,
         packet: &ip_packet::IpPacket,
@@ -571,7 +531,6 @@ impl PathAgent {
 
         match probe.kind {
             crate::icmpv6::Echo::Request => {
-                // Mirror back on the same pair. snownet encrypts + sends.
                 self.pending_transmits.push_back(Transmit {
                     local: pair.0,
                     remote: pair.1,
@@ -587,19 +546,13 @@ impl PathAgent {
                 {
                     let rtt = now.saturating_duration_since(inflight.sent_at);
                     state.inflight_probe = None;
+                    // Light EMA. Karn/Partridge or Jacobson can land later;
+                    // for path selection inside the 10 s window this is enough.
                     state.smoothed_rtt = Some(match state.smoothed_rtt {
                         None => rtt,
-                        // Light EMA — the proper Karn/Partridge or Jacobson smoothing
-                        // can land later; for path selection over a 10s window the
-                        // signal here is fine.
                         Some(prev) => (prev + rtt) / 2,
                     });
-                    tracing::trace!(
-                        local = %pair.0,
-                        remote = %pair.1,
-                        ?rtt,
-                        "Probe reply received",
-                    );
+                    tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
                     self.select_primary(now);
                 }
             }
@@ -612,18 +565,12 @@ impl PathAgent {
             .outbound_init
             .as_ref()
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
-
-        // Outbound-init bootstrap deadline (initiator give-up). We always
-        // wake exactly at `started_at + BOOTSTRAP_WINDOW` so the failure
-        // event fires promptly.
+        // Wake at the initiator give-up deadline so `BootstrapFailed`
+        // fires promptly.
         let init_deadline = self
             .outbound_init
             .as_ref()
             .map(|i| i.started_at + BOOTSTRAP_WINDOW);
-
-        // Pairs whose `next_probe_at` is `None` haven't been seeded yet
-        // (no `Instant` was available at `add_pair` time). They get seeded
-        // by the first `handle_outbound`, so we don't include them here.
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
 
         [
@@ -644,13 +591,11 @@ impl PathAgent {
         self.maybe_settle(now);
     }
 
-    /// At the bootstrap deadline, mark settled. The locked-in `primary`
-    /// pair gets re-baselined onto `PROBE_INTERVAL_LIVE` to keep its
-    /// RTT current and its NAT binding open; every other pair stops
-    /// probing. The remote does the same on its own primary, so even
-    /// in asymmetric-NAT cases (where the two ends land on different
-    /// primaries) both directions stay alive without us having to
-    /// blanket-probe every pair.
+    /// At the bootstrap deadline: lock the primary in, scale probing
+    /// down to [`PROBE_INTERVAL_LIVE`] on it, and stop probing every
+    /// other pair. Each side does this independently on its own primary,
+    /// so asymmetric-NAT cases (different primaries on each end) keep
+    /// both directions' NAT bindings alive.
     fn maybe_settle(&mut self, now: Instant) {
         let Some(deadline) = self.bootstrap_until else {
             return;
@@ -660,13 +605,8 @@ impl PathAgent {
         }
         for (pair, state) in self.pairs.iter_mut() {
             state.inflight_probe = None;
-            state.next_probe_at = if Some(*pair) == self.primary {
-                // Schedule one live interval out so we don't immediately
-                // re-burst at settle time.
-                Some(now + PROBE_INTERVAL_LIVE)
-            } else {
-                None
-            };
+            state.next_probe_at =
+                (Some(*pair) == self.primary).then_some(now + PROBE_INTERVAL_LIVE);
         }
         self.bootstrap_until = None;
         self.bootstrap_settled = true;
@@ -678,10 +618,9 @@ impl PathAgent {
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
-        // Bootstrap deadline check: if the inbound response never arrived,
-        // give up on this connection entirely. Done before retransmitting
-        // so we don't emit a final useless burst. The owning snownet
-        // connection logs the failure when it processes our event.
+        // Inbound response never arrived — surface the failure once and
+        // tear down the ladder. Snownet logs the actual `Connection
+        // failed` line when it drains the event.
         if let Some(outbound) = self.outbound_init.as_ref()
             && now.saturating_duration_since(outbound.started_at) >= BOOTSTRAP_WINDOW
         {
@@ -690,8 +629,8 @@ impl PathAgent {
             return;
         }
 
-        // Disjoint-fields borrow: we mutate `outbound_init` and
-        // `pending_transmits` via different paths.
+        // Disjoint-fields borrow: `outbound_init` and `pending_transmits`
+        // share `&mut self` but never alias each other.
         let pending = &mut self.pending_transmits;
         let Some(outbound) = self.outbound_init.as_mut() else {
             return;
@@ -710,12 +649,9 @@ impl PathAgent {
     }
 
     fn seed_probe_schedule(&mut self, now: Instant) {
-        // Once we've settled, leave the schedule alone — a peer's later
-        // rekey shouldn't re-open the probe window.
         if self.bootstrap_settled {
             return;
         }
-        // First-call wins: subsequent calls don't reset the deadline.
         if self.bootstrap_until.is_none() {
             self.bootstrap_until = Some(now + BOOTSTRAP_WINDOW);
             tracing::info!(
@@ -740,17 +676,9 @@ impl PathAgent {
         let primary = self.primary;
         let pending = &mut self.pending_transmits;
         for ((local, remote), state) in self.pairs.iter_mut() {
-            // After settle, the only pair we probe is the locked-in
-            // primary — that's enough to keep RTT current and the NAT
-            // binding open. The remote does the same for its primary,
-            // so even in asymmetric-NAT cases both directions stay live.
             if only_primary && primary != Some((*local, *remote)) {
                 continue;
             }
-
-            // Pairs whose `next_probe_at` is `None` haven't been seeded
-            // yet — `seed_probe_schedule` runs on the first inbound
-            // handshake. Skip them here.
             let Some(deadline) = state.next_probe_at else {
                 continue;
             };
@@ -758,18 +686,14 @@ impl PathAgent {
                 continue;
             }
 
-            // If a probe is still inflight and hasn't aged out, hold off
-            // until either its reply lands (which clears `inflight_probe`)
-            // or `PROBE_TIMEOUT` elapses. Without this, a path whose RTT
-            // exceeds `interval` would have every reply land against a
-            // stale seq slot and be discarded.
+            // Skip-while-pending: don't overwrite the inflight seq slot
+            // until the previous probe times out, otherwise late replies
+            // on high-RTT paths would never produce a measurement.
             if let Some(inflight) = state.inflight_probe {
                 if now.saturating_duration_since(inflight.sent_at) < PROBE_TIMEOUT {
                     state.next_probe_at = Some(inflight.sent_at + PROBE_TIMEOUT);
                     continue;
                 }
-                // Probe was lost — clear the slot so the new fire can
-                // claim it.
                 state.inflight_probe = None;
             }
 
@@ -786,17 +710,8 @@ impl PathAgent {
         }
     }
 
-    /// Pick the best pair (lowest tier; tie-broken by "is local-side a
-    /// relay" preference, then lowest smoothed RTT) among pairs with at
-    /// least one probe round-trip. Emits `PrimaryChanged` if the result
-    /// differs from the current `primary`.
-    ///
-    /// The local-relay tie-break matters at the Relayed tier: when we'd
-    /// otherwise be torn between routing through our relay
-    /// `(LocalRelay, RemoteHost/SRflx)` and the remote's relay
-    /// `(LocalHost/SRflx, RemoteRelay)`, prefer ours so we control the
-    /// path used for outbound — and so its NAT bindings stay open via
-    /// our own probe traffic.
+    /// Run [`pair_score`] across the alive pairs and update `primary`.
+    /// Emits `PrimaryChanged` if the result differs.
     fn select_primary(&mut self, now: Instant) {
         let best = self
             .pairs

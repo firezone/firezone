@@ -367,8 +367,7 @@ where
             now,
         );
 
-        // Iceless connections don't wait for ICE nomination — drive the
-        // path-agent to fan out the initial WG `HandshakeInit` immediately.
+        // No nomination step in iceless mode — fan out the WG init now.
         if connection.agent.is_iceless() {
             connection.initiate_wg_session_for_path(now);
         }
@@ -1531,10 +1530,10 @@ where
             }
         }
 
-        // Drain path-agent events the agent queued in earlier `handle_inbound`
-        // calls: forward any handshake bytes through boringtun's state
-        // machine, hand the response back to the agent for outbound
-        // dispatch, then drain the agent's transmit queue.
+        // Drain path-agent events: feed forwarded handshake bytes
+        // through boringtun, hand the response back to the agent for
+        // outbound routing, transition state on `PrimaryChanged`, fail
+        // the connection on `BootstrapFailed`.
         //
         // 148 bytes covers the largest WG handshake message; responses are
         // smaller. Forwarded inbound bytes never produce data packets, so
@@ -1574,9 +1573,9 @@ where
             }
         }
 
-        // Drain path-agent transmits the agent queued from forwarded
-        // handshakes above (replay responses, future retransmit ticks)
-        // or from the probe loop.
+        // Drain path-agent transmits (handshake replays / retransmits,
+        // probes). Plaintext payloads go through `Tunn::encapsulate`
+        // first; ciphertext goes straight to the wire.
         while let Some(pt) = self.agent.poll_path_transmit() {
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             let maybe = match pt.payload {
@@ -1691,10 +1690,9 @@ where
         };
     }
 
-    /// Adopt a freshly-selected (or changed) iceless `peer_socket`. Mirrors
-    /// the [`IceAgentEvent::NominatedSend`] flow: transitions
-    /// `Connecting → Connected` (flushing buffered WG/IP packets) on the
-    /// first call, and just rebinds `peer_socket` on later changes.
+    /// Iceless equivalent of [`IceAgentEvent::NominatedSend`]: on the
+    /// first call, flush WG/IP buffers and transition `Connecting →
+    /// Connected`; on later calls, just rebind `peer_socket`.
     fn adopt_iceless_peer_socket<TId>(
         &mut self,
         peer_socket: PeerSocket,
@@ -1849,14 +1847,9 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        // For iceless connections, give the path-agent a chance to dedup
-        // duplicate handshakes / replay cached responses before letting
-        // boringtun's state machine see the bytes. The agent merely takes
-        // ownership and queues any work (`ForwardInbound` events, replay
-        // transmits); `Connection::handle_timeout` is what actually drives
-        // boringtun and drains the resulting transmits. The path-agent's
-        // `poll_timeout` returns "fire ASAP" while events are queued so
-        // the next `handle_timeout` runs without delay.
+        // Path-agent gets first crack at handshake bytes (dedup, replay).
+        // It only queues work — `Connection::handle_timeout` is what
+        // actually drives boringtun and drains transmits.
         if self
             .agent
             .handle_inbound(packet, (destination, from), now)
@@ -1962,8 +1955,7 @@ where
             self.state
                 .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
 
-            // For iceless connections, probes flow inside the WG envelope
-            // and need to be absorbed before they reach the tun device.
+            // Iceless probes ride the WG envelope; absorb before tun.
             if self
                 .agent
                 .handle_inbound_decrypted(packet, (destination, from), now)
@@ -2006,22 +1998,18 @@ where
         }
     }
 
-    /// Iceless equivalent of [`Self::initiate_wg_session`]: hands the
-    /// `HandshakeInit` bytes from boringtun to the path-agent, which
-    /// fans them out across all relay-involved pairs internally. Each
-    /// emitted [`path_agent::Transmit`] is classified into the
-    /// appropriate [`PeerSocket`] variant and pushed onto `transmits`.
+    /// Iceless equivalent of [`Self::initiate_wg_session`]: hand the
+    /// `HandshakeInit` bytes from boringtun to the path-agent. The
+    /// per-pair fanout lands in `poll_path_transmit` and gets drained
+    /// by the next `handle_timeout` pump.
+    ///
+    /// No `last_proactive_handshake_sent_at` suppression: that's an
+    /// ICE reuse-path concern. Iceless calls this once at construction;
+    /// re-keys flow through the regular `agent.handle_outbound` path.
     fn initiate_wg_session_for_path(&mut self, now: Instant)
     where
         RId: Ord + fmt::Display + Copy,
     {
-        // No `last_proactive_handshake_sent_at` suppression here:
-        // that's an ICE-only concern (rapid successive `upsert_connection`
-        // calls in the reuse path can trigger redundant boringtun
-        // handshakes). Iceless connections call this exactly once at
-        // construction time; subsequent re-keys flow through the standard
-        // boringtun timer + `agent.handle_outbound` path on the primary
-        // pair, not back through here.
         const MAX_SCRATCH_SPACE: usize = 148;
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
@@ -2032,10 +2020,6 @@ where
             tracing::debug!("Another handshake is already in progress");
             return;
         };
-
-        // Hand the bytes to the path-agent. The fanout transmits land
-        // in `agent.poll_path_transmit()` and get drained by the next
-        // `Connection::handle_timeout` pump — no need to drain inline.
         self.agent.handle_outbound(bytes.to_vec(), now);
     }
 

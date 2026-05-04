@@ -1,22 +1,16 @@
 //! Connection-level agent dispatch.
 //!
-//! `Agent::Ice` holds the legacy str0m IceAgent. `Agent::Path` holds a
-//! `path_agent::PathAgent` plus the candidate lists snownet still needs to
-//! query — no credentials, no role.
+//! `Agent::Ice` wraps the legacy str0m `IceAgent`. `Agent::Path` wraps a
+//! `path_agent::PathAgent` plus the candidate lists snownet still needs
+//! to query (no credentials, no role).
 //!
-//! Snownet call sites stay agent-agnostic: they call decision methods named
-//! for what they decide (`send_wg_handshake_after_nomination`), not generic
-//! state queries (`controlling`). The variant-specific behaviour is hidden
-//! inside this module.
-//!
-//! ICE-specific operations on the `Path` variant are no-ops by design:
-//! - STUN inbound (`handle_stun_packet`) returns `false`.
-//! - The various `set_*_credentials` calls drop the credentials on the floor.
-//! - `poll_ice_event` and `poll_ice_transmit` always return `None`.
-//!
-//! Path-specific events arrive via the parallel `poll_path_event` method
-//! (None on the Ice variant). Path-specific transmits land in a later commit
-//! when ICMPv6 probing is implemented.
+//! Call sites stay agent-agnostic by going through named decision
+//! methods (`send_wg_handshake_after_nomination`,
+//! `wait_for_nomination_before_wg_handshake`, etc.) rather than poking
+//! at variant-specific state. ICE-only operations on `Path` are no-ops:
+//! `handle_stun_packet` returns `false`, `set_*_credentials` drop the
+//! creds, `poll_ice_event` / `poll_ice_transmit` return `None`. Path-
+//! agent-only operations on `Ice` mirror that.
 
 use std::ops::ControlFlow;
 use std::time::Instant;
@@ -33,8 +27,6 @@ pub(crate) enum Agent {
         local_candidates: Vec<Candidate>,
         remote_candidates: Vec<Candidate>,
         #[debug(skip)]
-        // Used in subsequent commits when iceless dispatch starts driving its own state.
-        #[allow(dead_code)]
         path: path_agent::PathAgent,
     },
 }
@@ -52,8 +44,6 @@ impl Agent {
         }
     }
 
-    // Used in subsequent commits when call sites need to branch on the agent variant.
-    #[allow(dead_code)]
     pub(crate) fn is_iceless(&self) -> bool {
         matches!(self, Self::Path { .. })
     }
@@ -77,15 +67,11 @@ impl Agent {
         }
     }
 
-    /// Whether this agent matches the parameters of an incoming
-    /// `upsert_connection` call so the existing connection can be reused.
-    ///
-    /// Iceless connections always report a match: ICE credentials and role
-    /// are **silently ignored** in iceless mode, and the dimensions that
-    /// actually matter for reuse (peer public key, preshared key) are
-    /// verified by the caller before this method is consulted. If a future
-    /// change to `upsert_connection` starts depending on creds/role being
-    /// honoured here, the iceless arm will need to participate.
+    /// Whether `upsert_connection` may reuse this existing agent.
+    /// Iceless mode silently ignores `local_creds` / `remote_creds` /
+    /// `ice_role` — the reuse-relevant dimensions (pubkey, PSK) live on
+    /// the caller. If `upsert_connection` ever needs creds/role honoured
+    /// here, the `Path` arm has to participate.
     pub(crate) fn matches_existing_connection(
         &self,
         local_creds: &IceCreds,
@@ -102,11 +88,10 @@ impl Agent {
         }
     }
 
-    /// Whether this side should send a WireGuard `HandshakeInit` after
-    /// nominating a peer socket. ICE's controlling agent does this; the
-    /// controlled agent waits for the remote to initiate. Iceless mode
-    /// has no nomination — it fans out the handshake on relay pairs in
-    /// `upsert_connection` directly — so this returns `false`.
+    /// Whether to send a WG `HandshakeInit` after nominating a peer
+    /// socket. ICE controlling: yes. ICE controlled: no. Iceless: no
+    /// (fans out the init in `upsert_connection` directly, no nomination
+    /// step).
     pub(crate) fn send_wg_handshake_after_nomination(&self) -> bool {
         match self {
             Self::Ice(a) => a.controlling(),
@@ -114,9 +99,8 @@ impl Agent {
         }
     }
 
-    /// Whether this side must wait for nomination before being allowed to
-    /// originate WireGuard traffic. The ICE controlled agent does; the
-    /// controlling agent doesn't. Iceless mode never waits.
+    /// Whether to hold WG traffic until nomination lands. ICE controlled:
+    /// yes. ICE controlling: no. Iceless: no.
     pub(crate) fn wait_for_nomination_before_wg_handshake(&self) -> bool {
         match self {
             Self::Ice(a) => !a.controlling(),
@@ -124,9 +108,8 @@ impl Agent {
         }
     }
 
-    /// Local ICE ufrag, if applicable. Used to track recent disconnects so
-    /// stale credential-keyed lookups can be answered. Iceless connections
-    /// don't have an ufrag and skip this tracking.
+    /// Local ICE ufrag, used by the recent-disconnect cache. `None` for
+    /// iceless (no creds means no cache key).
     pub(crate) fn local_ufrag(&self) -> Option<&str> {
         match self {
             Self::Ice(a) => Some(&a.local_credentials().ufrag),
@@ -189,8 +172,9 @@ impl Agent {
             Self::Path {
                 local_candidates,
                 remote_candidates,
-                ..
+                path,
             } => {
+                let pa_c = crate::candidate::to_path_agent(c);
                 let removed_local = local_candidates
                     .iter()
                     .position(|x| x == c)
@@ -201,6 +185,12 @@ impl Agent {
                     .position(|x| x == c)
                     .map(|i| remote_candidates.remove(i))
                     .is_some();
+                if removed_local {
+                    path.remove_local_candidate(&pa_c);
+                }
+                if removed_remote {
+                    path.remove_remote_candidate(&pa_c);
+                }
                 removed_local || removed_remote
             }
         }
@@ -233,10 +223,8 @@ impl Agent {
         }
     }
 
-    /// Whether the destination of a freshly-nominated send pair is a relay
-    /// candidate on the remote side. Used to classify the resulting
-    /// `PeerSocket`. Iceless mode doesn't reach this code path (no
-    /// nomination).
+    /// `true` iff `addr` is a remote relay candidate. Used to classify
+    /// the resulting `PeerSocket` for a freshly-nominated send pair.
     pub(crate) fn remote_candidate_is_relayed(&self, addr: std::net::SocketAddr) -> bool {
         match self {
             Self::Ice(a) => a
@@ -246,8 +234,8 @@ impl Agent {
         }
     }
 
-    /// Process an inbound STUN packet. Iceless mode doesn't speak STUN, so
-    /// the `Path` variant returns `false` (caller treats packet as non-STUN).
+    /// Inbound STUN. `false` on the `Path` arm — iceless doesn't speak
+    /// STUN, so the caller treats the packet as non-STUN.
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),
@@ -255,13 +243,8 @@ impl Agent {
         }
     }
 
-    /// Hand off an inbound WG packet to the path-agent.
-    /// `ControlFlow::Break(())` means the path-agent took ownership
-    /// (handshake — possibly deduped, possibly to be forwarded to boringtun
-    /// via [`path_agent::Event::ForwardInbound`]); the caller stops
-    /// processing this packet.
-    /// `ControlFlow::Continue(())` means non-handshake or ICE connection;
-    /// the caller passes the bytes to `Tunn::decapsulate_at` directly.
+    /// Inbound WG bytes. See [`path_agent::PathAgent::handle_inbound`].
+    /// Always `Continue(())` on the `Ice` arm.
     pub(crate) fn handle_inbound(
         &mut self,
         bytes: &[u8],
@@ -274,11 +257,9 @@ impl Agent {
         }
     }
 
-    /// Hand off a decrypted inner-IP packet (output of `Tunn::decapsulate_at`)
-    /// to the path-agent. `ControlFlow::Break(())` means it was a path probe
-    /// and was absorbed; the caller drops it instead of forwarding to the
-    /// tun device. `ControlFlow::Continue(())` means ordinary user traffic
-    /// (or ICE connection) — caller forwards to tun as usual.
+    /// Decrypted inner-IP packet. See
+    /// [`path_agent::PathAgent::handle_inbound_decrypted`]. Always
+    /// `Continue(())` on the `Ice` arm.
     pub(crate) fn handle_inbound_decrypted(
         &mut self,
         packet: &ip_packet::IpPacket,
@@ -305,7 +286,6 @@ impl Agent {
         }
     }
 
-    /// Next ICE-agent event; `None` for iceless connections.
     pub(crate) fn poll_ice_event(&mut self) -> Option<IceAgentEvent> {
         match self {
             Self::Ice(a) => a.poll_event(),
@@ -313,7 +293,6 @@ impl Agent {
         }
     }
 
-    /// Next ICE-agent transmit (STUN traffic); `None` for iceless connections.
     pub(crate) fn poll_ice_transmit(&mut self) -> Option<str0m_proto::Transmit> {
         match self {
             Self::Ice(a) => a.poll_transmit(),
@@ -321,7 +300,6 @@ impl Agent {
         }
     }
 
-    /// Next path-agent event; `None` for ICE connections.
     pub(crate) fn poll_path_event(&mut self) -> Option<path_agent::Event> {
         match self {
             Self::Ice(_) => None,
@@ -329,17 +307,14 @@ impl Agent {
         }
     }
 
-    /// Hand off an outbound WG packet from boringtun to the path-agent.
-    /// No-op for ICE connections, which use the existing single-socket
-    /// `peer_socket`-based send path.
+    /// Outbound WG bytes from boringtun. No-op on the `Ice` arm — ICE
+    /// uses the existing `peer_socket`-based single-send path.
     pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
         if let Self::Path { path, .. } = self {
             path.handle_outbound(bytes, now);
         }
     }
 
-    /// Drain the next outbound transmit produced by the path-agent (fanout,
-    /// retransmit, replay, etc.). `None` for ICE connections.
     pub(crate) fn poll_path_transmit(&mut self) -> Option<path_agent::Transmit> {
         match self {
             Self::Ice(_) => None,
