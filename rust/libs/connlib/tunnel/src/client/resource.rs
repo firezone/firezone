@@ -331,9 +331,10 @@ impl Resource {
         match self {
             Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
             Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => self,
+            Resource::StaticDevicePool(r) => {
+                Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
+            }
+            Resource::Internet(_) | Resource::DynamicDevicePool(_) => self,
         }
     }
 }

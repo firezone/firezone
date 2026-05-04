@@ -365,7 +365,25 @@ impl StubPortal {
             return;
         }
 
+        if let Some(resource) = self.static_device_pool_resources.get_mut(&rid) {
+            resource.filters = new_filters;
+            return;
+        }
+
         tracing::error!(%rid, "Unknown resource");
+    }
+
+    /// Replaces the member list of an existing static device pool.
+    ///
+    /// Returns the updated pool, or `None` if no pool with `pool_id` exists.
+    pub(crate) fn update_static_device_pool_members(
+        &mut self,
+        pool_id: ResourceId,
+        new_devices: Vec<DevicePoolMember>,
+    ) -> Option<StaticDevicePoolResource> {
+        let pool = self.static_device_pool_resources.get_mut(&pool_id)?;
+        pool.devices = new_devices;
+        Some(pool.clone())
     }
 
     pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {

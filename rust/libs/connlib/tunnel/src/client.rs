@@ -2025,17 +2025,21 @@ impl ClientState {
                 continue;
             }
 
-            self.client_routing_table
-                .remove(old_member.ipv4.into(), |e| e.client_id == *cid);
-            self.client_routing_table
-                .remove(old_member.ipv6.into(), |e| e.client_id == *cid);
+            // Scope removal to this pool's entries — a client can be a member of
+            // multiple pools, and we must not touch entries owned by other pools.
+            self.client_routing_table.remove(old_member.ipv4.into(), |e| {
+                e.client_id == *cid && e.resource_id == pool_id
+            });
+            self.client_routing_table.remove(old_member.ipv6.into(), |e| {
+                e.client_id == *cid && e.resource_id == pool_id
+            });
 
             // If the member is no longer in the pool, drop any active
-            // connection so traffic doesn't keep flowing to a revoked device.
-            if new_member.is_none() {
+            // connection so traffic doesn't keep flowing to a revoked device —
+            // but only if no other pool still authorises it.
+            if new_member.is_none() && !self.is_client_in_other_static_device_pool(*cid, pool_id) {
                 self.pending_device_access.remove(cid);
-                if self.clients.peer_by_id(cid).is_some() {
-                    self.clients.remove(cid);
+                if self.clients.remove(cid).is_some() {
                     self.node.close_connection(
                         ClientOrGatewayId::Client(*cid),
                         p2p_control::goodbye(),
@@ -2083,6 +2087,24 @@ impl ClientState {
         let sites = resource.sites_string().map(tracing::field::display);
 
         tracing::info!(%name, address, sites, "Activating resource");
+    }
+
+    /// Whether `cid` is a member of any static device pool other than `excluded`.
+    ///
+    /// Used during a pool update to decide whether dropping a member also
+    /// requires tearing down its connection: a client that's still authorised
+    /// via another pool must keep its connection.
+    fn is_client_in_other_static_device_pool(&self, cid: ClientId, excluded: ResourceId) -> bool {
+        self.resources_by_id.values().any(|r| match r {
+            Resource::StaticDevicePool(p) if p.id != excluded => {
+                p.devices.iter().any(|d| d.id == cid)
+            }
+            Resource::StaticDevicePool(_)
+            | Resource::Dns(_)
+            | Resource::Cidr(_)
+            | Resource::Internet(_)
+            | Resource::DynamicDevicePool(_) => false,
+        })
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
