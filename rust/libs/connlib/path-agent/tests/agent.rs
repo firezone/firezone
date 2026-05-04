@@ -148,17 +148,18 @@ fn inbound_handshake_init_returns_true_and_emits_forward_event() {
     let handled = a.handle_inbound(&handshake_init_bytes(), (addr(2), addr(4)), Instant::now());
     assert!(matches!(handled, ControlFlow::Break(())));
 
-    // First inbound handshake sets the bootstrap primary, then forwards
-    // the bytes to boringtun.
+    // `ForwardInbound` is queued before `PrimaryChanged` so the consumer
+    // hands the handshake to boringtun (creating the WG session) before
+    // any user-data flush triggered by the primary update.
+    match a.poll_event() {
+        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
+        other => panic!("expected ForwardInbound, got {other:?}"),
+    }
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
             assert_eq!((local, remote), (addr(2), addr(4)));
         }
         other => panic!("expected PrimaryChanged, got {other:?}"),
-    }
-    match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
-        other => panic!("expected ForwardInbound, got {other:?}"),
     }
 }
 
@@ -172,16 +173,17 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
     );
     assert!(matches!(handled, ControlFlow::Break(())));
 
-    // Same shape as the init case: bootstrap primary first, then forward.
+    // Same shape as the init case: forward to boringtun first, then
+    // adopt the bootstrap primary.
+    match a.poll_event() {
+        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
+        other => panic!("expected ForwardInbound, got {other:?}"),
+    }
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
             assert_eq!((local, remote), (addr(2), addr(4)));
         }
         other => panic!("expected PrimaryChanged, got {other:?}"),
-    }
-    match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
-        other => panic!("expected ForwardInbound, got {other:?}"),
     }
 }
 
@@ -198,6 +200,7 @@ fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
     let next = a.poll_timeout().expect("retransmit deadline");
     // First retransmit lives at the head of the ladder — 50 ms — to
@@ -212,6 +215,7 @@ fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
     let init = handshake_init_bytes();
 
     a.handle_outbound(init.clone(), now);
+    a.handle_timeout(now);
     let initial_count = std::iter::from_fn(|| a.poll_transmit()).count();
     assert_eq!(initial_count, 3);
 
@@ -232,6 +236,7 @@ fn retransmit_ladder_bursts_then_doubles_to_cap() {
     let now = Instant::now();
 
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
 
     // Cumulative deadlines after the initial fire: 50ms, 50ms, 50ms
@@ -255,6 +260,7 @@ fn inbound_handshake_response_clears_retransmits() {
     let now = Instant::now();
 
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
     let init_deadline = a.poll_timeout().expect("init armed retransmits");
 
@@ -273,6 +279,7 @@ fn handle_timeout_before_deadline_does_not_emit() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
     // Tick clearly before the +50 ms head of the retransmit ladder.
     a.handle_timeout(now + Duration::from_millis(25));
@@ -282,7 +289,9 @@ fn handle_timeout_before_deadline_does_not_emit() {
 #[test]
 fn outbound_handshake_init_fans_out_on_every_relay_pair() {
     let mut a = agent_with_relay_pairs();
-    a.handle_outbound(handshake_init_bytes(), Instant::now());
+    let now = Instant::now();
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
 
     let transmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert_eq!(transmits.len(), 3);
@@ -293,9 +302,59 @@ fn outbound_handshake_init_fans_out_on_every_relay_pair() {
 }
 
 #[test]
+fn outbound_handshake_init_before_relay_pair_buffers_then_fans_out_on_handle_timeout() {
+    // snownet emits the bootstrap WG init from `upsert_connection`,
+    // before any remote candidates have arrived over signaling. The
+    // path-agent buffers the bytes; `handle_timeout` fans them out
+    // once a relay-involved pair shows up.
+    let mut a = PathAgent::new();
+    let now = Instant::now();
+
+    a.add_local_candidate(Candidate::relayed(addr(1)));
+    a.handle_outbound(handshake_init_bytes(), now);
+    assert!(
+        a.poll_transmit().is_none(),
+        "no transmit should fire without a remote relay candidate"
+    );
+
+    // `poll_timeout` should ask to be re-polled immediately so the
+    // fanout drains as soon as a relay pair becomes available.
+    a.add_remote_candidate(Candidate::relayed(addr(2)));
+    let next = a.poll_timeout().expect("pending fanout deadline");
+    assert!(next <= now, "pending fanout should wake immediately");
+
+    a.handle_timeout(next);
+    let transmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert_eq!(transmits.len(), 1);
+    assert_eq!(transmits[0].local, addr(1));
+    assert_eq!(transmits[0].remote, addr(2));
+    assert_eq!(
+        transmits[0].payload,
+        Payload::Ciphertext(handshake_init_bytes())
+    );
+}
+
+#[test]
+fn buffered_handshake_init_does_not_fail_bootstrap_while_awaiting_relay_pairs() {
+    // Without a relay pair, `started_at` shouldn't trip
+    // `BootstrapFailed` — we haven't actually sent anything yet.
+    let mut a = PathAgent::new();
+    let now = Instant::now();
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
+    assert!(
+        a.poll_event().is_none(),
+        "bootstrap should not fail while still waiting for a relay pair"
+    );
+}
+
+#[test]
 fn outbound_handshake_init_fanout_targets_match_relay_pairs() {
     let mut a = agent_with_relay_pairs();
-    a.handle_outbound(handshake_init_bytes(), Instant::now());
+    let now = Instant::now();
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
 
     let mut emitted: Vec<_> = std::iter::from_fn(|| a.poll_transmit())
         .map(|t| (t.local, t.remote))
@@ -606,6 +665,7 @@ fn outbound_init_emits_bootstrap_failed_after_window_without_response() {
     let now = Instant::now();
 
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
 
     a.handle_timeout(now + BOOTSTRAP_WINDOW);
@@ -622,6 +682,7 @@ fn outbound_init_does_not_fail_if_response_arrives_in_time() {
     let now = Instant::now();
 
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
 
     let _ = a.handle_inbound(
@@ -795,6 +856,7 @@ fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
 
     // Bootstrap fanout.
     a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
     let initial: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert_eq!(initial.len(), 3, "bootstrap fans out on every relay pair");
 

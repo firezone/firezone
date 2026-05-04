@@ -1535,23 +1535,30 @@ where
         // outbound routing, transition state on `PrimaryChanged`, fail
         // the connection on `BootstrapFailed`.
         //
-        // 148 bytes covers the largest WG handshake message; responses are
-        // smaller. Forwarded inbound bytes never produce data packets, so
-        // we don't need an `IpPacketBuf`-sized buffer.
+        // After a successful HandshakeResponse decapsulation, boringtun
+        // may have queued packets (from earlier `encapsulate_at` calls
+        // that ran before a session was current). The drain loop below
+        // catches them — same pattern as the regular decapsulate path.
         //
         // We pass `None` to `decapsulate_at` (no source IP). Source-tracking
-        // is for replay protection, and the responder dedup cache (later
-        // commit) prevents duplicate inits from reaching this point in the
+        // is for replay protection, and the responder dedup cache
+        // prevents duplicate inits from reaching this point in the
         // first place — so the loss of source tracking is benign.
-        const MAX_HANDSHAKE_SCRATCH: usize = 148;
-        let mut buf = [0u8; MAX_HANDSHAKE_SCRATCH];
-
         while let Some(event) = self.agent.poll_path_event() {
             match event {
                 path_agent::Event::ForwardInbound { bytes } => {
-                    match self.tunnel.decapsulate_at(None, &bytes, &mut buf, now) {
+                    match self
+                        .tunnel
+                        .decapsulate_at(None, &bytes, self.buffer.as_mut(), now)
+                    {
                         TunnResult::WriteToNetwork(response) => {
                             self.agent.handle_outbound(response.to_vec(), now);
+                            while let TunnResult::WriteToNetwork(more) = self
+                                .tunnel
+                                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
+                            {
+                                self.agent.handle_outbound(more.to_vec(), now);
+                            }
                         }
                         TunnResult::Done => {}
                         TunnResult::Err(e) => {

@@ -284,7 +284,8 @@ impl PathAgent {
     fn add_pair(&mut self, local: Candidate, remote: Candidate) {
         // `next_probe_at: None` here is "not yet seeded";
         // `seed_probe_schedule` flips it to `Some(now)` on the first
-        // inbound handshake.
+        // inbound handshake. Late fanout of a buffered bootstrap init
+        // onto this pair (if relay-involved) happens in `handle_timeout`.
         self.pairs.insert(
             (local.addr, remote.addr),
             PairState {
@@ -359,8 +360,9 @@ impl PathAgent {
 
     /// Route a WG packet boringtun just produced.
     ///
-    /// - First `HandshakeInit`: fan out across every relay pair and arm
-    ///   per-pair retransmit ladders.
+    /// - First `HandshakeInit`: stash the bytes; `handle_timeout` fans
+    ///   them out across every relay pair and arms per-pair retransmit
+    ///   ladders on the next tick (also when relay pairs arrive late).
     /// - `HandshakeResponse`: pair with the most recently forwarded
     ///   inbound init, send on its receive path, cache for replay.
     /// - Anything else (re-key, data, cookie): single-send on `primary`.
@@ -372,25 +374,13 @@ impl PathAgent {
                 // Fresh init starts a fresh session — drop the dedup of
                 // the *previous* session's response.
                 self.forwarded_response = None;
-
-                let pairs: Vec<_> = self.relay_pairs().collect();
-                tracing::debug!(
-                    relay_pairs = pairs.len(),
-                    bytes = bytes.len(),
-                    "Fanning out bootstrap HandshakeInit",
-                );
-                let mut retransmits = BTreeMap::new();
-                for &(local, remote) in &pairs {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes.clone()),
-                    });
-                    retransmits.insert((local, remote), PairRetransmit::new(now));
-                }
+                tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
                 self.outbound_init = Some(OutboundInit {
                     bytes,
-                    retransmits,
+                    retransmits: BTreeMap::new(),
+                    // Overwritten on the first actual fanout so the
+                    // `BOOTSTRAP_WINDOW` countdown starts from when we
+                    // first put bytes on the wire.
                     started_at: now,
                 });
                 self.established = true;
@@ -444,26 +434,13 @@ impl PathAgent {
         };
 
         // First inbound handshake = the network works on this pair.
-        // Seed probing across every pair and adopt this one as the
-        // bootstrap primary right away, so user packets flow through
-        // `handle_outbound`'s primary branch instead of being dropped
-        // in the gap before probes complete. Probes can upgrade
+        // Seed probing across every pair so probes can upgrade
         // `primary` later if a better-tier pair becomes alive.
         self.seed_probe_schedule(now);
-        if matches!(
-            parsed,
-            Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
-        ) && self.primary.is_none()
-        {
-            self.primary = Some(path);
-            self.queue_event(
-                Event::PrimaryChanged {
-                    local: path.0,
-                    remote: path.1,
-                },
-                now,
-            );
-        }
+
+        let bootstrap_primary =
+            matches!(parsed, Packet::HandshakeInit(_) | Packet::HandshakeResponse(_))
+                && self.primary.is_none();
 
         match parsed {
             Packet::HandshakeInit(_) => {
@@ -492,6 +469,7 @@ impl PathAgent {
                     },
                     now,
                 );
+                self.maybe_set_bootstrap_primary(bootstrap_primary, path, now);
                 ControlFlow::Break(())
             }
             Packet::HandshakeResponse(_) => {
@@ -511,10 +489,35 @@ impl PathAgent {
                     },
                     now,
                 );
+                self.maybe_set_bootstrap_primary(bootstrap_primary, path, now);
                 ControlFlow::Break(())
             }
             Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(()),
         }
+    }
+
+    /// Adopt `path` as the bootstrap primary so user packets flow
+    /// through `handle_outbound`'s primary branch. Must run *after*
+    /// `Event::ForwardInbound` is queued so the consumer drains the
+    /// handshake (and creates the WG session) before flushing buffered
+    /// data on `Event::PrimaryChanged`.
+    fn maybe_set_bootstrap_primary(
+        &mut self,
+        should_set: bool,
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) {
+        if !should_set {
+            return;
+        }
+        self.primary = Some(path);
+        self.queue_event(
+            Event::PrimaryChanged {
+                local: path.0,
+                remote: path.1,
+            },
+            now,
+        );
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
@@ -580,12 +583,22 @@ impl PathAgent {
             .as_ref()
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
         // Wake at the initiator give-up deadline so `BootstrapFailed`
-        // fires promptly.
-        let init_deadline = self
-            .outbound_init
-            .as_ref()
-            .map(|i| i.started_at + BOOTSTRAP_WINDOW);
+        // fires promptly. Skipped while retransmits is empty — we
+        // haven't fanned out yet, so the deadline is meaningless.
+        let init_deadline = self.outbound_init.as_ref().and_then(|i| {
+            (!i.retransmits.is_empty()).then_some(i.started_at + BOOTSTRAP_WINDOW)
+        });
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
+        // Wake immediately if there's a buffered init waiting on relay
+        // pairs that arrived after the initial fanout.
+        let pending_fanout = self.outbound_init.as_ref().and_then(|i| {
+            self.pairs
+                .iter()
+                .any(|(addrs, state)| {
+                    state.involves_relay() && !i.retransmits.contains_key(addrs)
+                })
+                .then_some(i.started_at)
+        });
 
         [
             self.events_queued_at,
@@ -593,6 +606,7 @@ impl PathAgent {
             next_probe,
             self.bootstrap_until,
             init_deadline,
+            pending_fanout,
         ]
         .into_iter()
         .flatten()
@@ -633,9 +647,12 @@ impl PathAgent {
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
         // Inbound response never arrived — surface the failure once and
-        // tear down the ladder. Snownet logs the actual `Connection
-        // failed` line when it drains the event.
+        // tear down the ladder. Skip while retransmits is empty (we
+        // haven't fanned out to any pair yet, so there's nothing to
+        // give up on). Snownet logs the actual `Connection failed`
+        // line when it drains the event.
         if let Some(outbound) = self.outbound_init.as_ref()
+            && !outbound.retransmits.is_empty()
             && now.saturating_duration_since(outbound.started_at) >= BOOTSTRAP_WINDOW
         {
             self.outbound_init = None;
@@ -649,6 +666,35 @@ impl PathAgent {
         let Some(outbound) = self.outbound_init.as_mut() else {
             return;
         };
+
+        // Fan out to relay pairs that arrived after the initial fanout
+        // (or to all relay pairs, if the bootstrap init landed before
+        // any remote candidates were known). First fan-out resets
+        // `started_at` so the `BOOTSTRAP_WINDOW` timer doesn't count
+        // waiting-for-candidates time against the responder.
+        let new_relay_pairs: Vec<_> = self
+            .pairs
+            .iter()
+            .filter(|(addrs, state)| {
+                state.involves_relay() && !outbound.retransmits.contains_key(*addrs)
+            })
+            .map(|(addrs, _)| *addrs)
+            .collect();
+        if !new_relay_pairs.is_empty() && outbound.retransmits.is_empty() {
+            outbound.started_at = now;
+        }
+        for (local, remote) in new_relay_pairs {
+            tracing::debug!(%local, %remote, "Fanning out HandshakeInit on relay pair");
+            pending.push_back(Transmit {
+                local,
+                remote,
+                payload: Payload::Ciphertext(outbound.bytes.clone()),
+            });
+            outbound
+                .retransmits
+                .insert((local, remote), PairRetransmit::new(now));
+        }
+
         for ((local, remote), state) in outbound.retransmits.iter_mut() {
             if now >= state.next_fire_at {
                 tracing::trace!(%local, %remote, step = state.step, "WG init retransmit");
