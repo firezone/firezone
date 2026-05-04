@@ -1,0 +1,96 @@
+February brought faster sign-ins from distant regions, automatic tunnel-service recovery on Windows and Linux, connection-failure notifications on clients, and browser-based authentication for headless clients.
+
+## Faster Sign-Ins From Distant Regions
+
+January introduced regional Postgres read replicas; February made the application actually use them.
+Sign-in flows now hit the local replica in the happy path,[^1] the REST API serves all reads from replicas,[^2] and every LiveView that doesn't strictly need the primary now does the same.[^3]
+Customers signing in from East Asia, Europe, or Australia should notice the change most—those queries now run against a replica meters away rather than a primary that may be on the other side of an ocean.
+
+The REST API's Swagger docs were updated to advertise eventual consistency for reads.[^2]
+Practically, this means a write followed immediately by a read against the API may not see the write for a few hundred milliseconds; account for it if you're scripting against the API.
+
+## No More Manual Tunnel-Service Restarts
+
+If the Windows or Linux tunnel service crashed, recovery used to require manually restarting the service or rebooting.
+Both platforms now auto-restart the tunnel service on crash—up to three retries—while still respecting explicit user-initiated stops.[^4][^5]
+For most users this turns a "Firezone is broken until I figure out what to do" moment into something that's invisible.
+
+## Connection Failure Notifications
+
+When a client couldn't reach a resource—because of a misconfigured policy, an offline gateway, or a routing issue—it would silently fail and leave the user guessing.
+Clients now surface an OS-native notification explaining why the connection didn't establish.[^6]
+Notifications are sent once per site per session, so signing out and back in resets the rate-limit if you want to see one again.
+
+For Android, this depends on notification permissions, which we never asked for.
+A new splash screen on Android now requests them at install time;[^7] users can skip it, but they won't see Firezone notifications if they do.
+
+## Browser Auth for Headless Clients
+
+Headless clients (the Linux daemon and similar) can now authenticate through a browser instead of requiring a pre-provisioned token.[^8]
+Run `firezone-headless-client sign-in`, complete the IdP flow in your browser, and the client picks up the resulting token automatically.
+This makes the headless client much easier to use in scenarios where pre-provisioned tokens aren't a good fit—developer laptops running Linux, occasional CI workflows, etc.
+
+## Less Disruption During Deploys
+
+When we roll the portal, every connected client and gateway has to reconnect.
+A few changes this month make those reconnect storms much less noticeable.
+
+Sign-in for clients and gateways used to do roughly ten DB queries per reconnect, which would saturate the connection pool in higher-latency regions during deploy storms.
+The hot path now hits the read replica only, with session writes pushed to a background queue.[^9][^10]
+The portal also drains WebSocket connections cleanly during shutdown,[^11] sends an explicit Close frame so clients don't try to interpret it as a regular message,[^12] and detects dead nodes more aggressively so traffic redirects to healthy ones faster.[^13]
+A spurious heartbeat-disconnect bug in the channel client was fixed as well, which had been triggering false-positive disconnects when a socket was temporarily unwriteable.[^14]
+
+## Apple Client
+
+The macOS menu bar was rewritten on top of SwiftUI's `MenuBarExtra`.[^15]
+The only user-visible UX change is that menu items no longer have hover behavior (an unconventional pattern that few people relied on).
+
+DNS resolver order on macOS is now correct.
+Previously, if your system had multiple resolvers configured, the order Firezone used could differ from what `scutil --dns` showed (and what macOS actually uses).
+Firezone now picks up resolvers in the same order as the system,[^16] so DNS resolution behaves the way you'd expect when you have, say, an IPv6 resolver prioritized.
+
+macOS startup also now retries on transient cancellation errors with a clean fallback UI instead of leaving the user stuck on a spinner.[^17]
+
+## Log Size Caps Everywhere
+
+January added a configurable log size cap to Apple clients.
+February extended this to Windows, Linux, the Linux headless client, and Android.[^18]
+All platforms now enforce the same limit (configurable; default 100 MB) with background cleanup of the oldest log files, so runaway logs can't fill up the disk.
+
+---
+
+[^1]: [fix(portal): use replica for sign-in flow reads](https://github.com/firezone/firezone/pull/12080)
+
+[^2]: [feat(portal): use replica for REST API reads](https://github.com/firezone/firezone/pull/12102)
+
+[^3]: [feat(portal): read from replicas in all views](https://github.com/firezone/firezone/pull/12101)
+
+[^4]: [fix(gui-client): restart Windows tunnel service on crash](https://github.com/firezone/firezone/pull/12025)
+
+[^5]: [fix(gui-client): restart Linux tunnel service on crash](https://github.com/firezone/firezone/pull/12023)
+
+[^6]: [feat(clients): notify user if we cannot connect to a resource](https://github.com/firezone/firezone/pull/11779)
+
+[^7]: [feat(android): ask for notification permissions](https://github.com/firezone/firezone/pull/12013)
+
+[^8]: [feat: add browser sign-in for headless clients](https://github.com/firezone/firezone/pull/11882)
+
+[^9]: [refactor(portal): add dedicated client_sessions table](https://github.com/firezone/firezone/pull/12125)
+
+[^10]: [refactor(portal): add gateway_sessions](https://github.com/firezone/firezone/pull/12130)
+
+[^11]: [fix(portal): drain websocket connections](https://github.com/firezone/firezone/pull/12250)
+
+[^12]: [fix(phoenix-channel): handle websocket close frame](https://github.com/firezone/firezone/pull/12251)
+
+[^13]: [fix(portal): faster dead node detection](https://github.com/firezone/firezone/pull/11992)
+
+[^14]: [fix(phoenix-channel): count heartbeats after write](https://github.com/firezone/firezone/pull/12314)
+
+[^15]: [refactor(apple): New menu bar with no UX change](https://github.com/firezone/firezone/pull/11515)
+
+[^16]: [refactor(apple): use scoped resolvers on macOS](https://github.com/firezone/firezone/pull/12016)
+
+[^17]: [fix(apple): retry startup on CancellationError](https://github.com/firezone/firezone/pull/12236)
+
+[^18]: [fix: cap log size on all platforms](https://github.com/firezone/firezone/pull/12111)
