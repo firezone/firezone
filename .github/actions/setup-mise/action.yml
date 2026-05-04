@@ -14,6 +14,9 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - shell: bash
+      run: echo "MISE_LOCKED=1" >> "$GITHUB_ENV"
+
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
       id: mise-1
       continue-on-error: true

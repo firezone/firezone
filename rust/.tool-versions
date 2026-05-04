@@ -1,6 +1,6 @@
-pnpm               10.18.3
-nodejs             24.13.0
-cargo:cargo-binstall 1.17.4
-cargo:cargo-sort   2.0.2
-cargo:cargo-deny   0.19.0
-cargo:cargo-udeps  0.1.60
+pnpm                             10.18.3
+nodejs                           24.13.0
+github:cargo-bins/cargo-binstall 1.18.1
+github:DevinR528/cargo-sort      2.1.4
+github:EmbarkStudios/cargo-deny  0.19.4
+github:est31/cargo-udeps         0.1.61
