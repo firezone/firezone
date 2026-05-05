@@ -3,7 +3,6 @@ use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
 use telemetry::{Telemetry, analytics};
 
-use futures::TryFutureExt;
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
@@ -14,7 +13,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use std::{io, iter, mem};
+use std::{io, mem};
 use tokio::sync::mpsc;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
@@ -469,24 +468,20 @@ impl Eventloop {
         let resolver = self.resolver.clone();
 
         async move {
-            let ipv4_lookup = resolver
-                .ipv4_lookup(domain.to_string())
-                .map_ok(|ipv4| ipv4.into_iter().map(|r| IpAddr::V4(r.0)));
-            let ipv6_lookup = resolver
-                .ipv6_lookup(domain.to_string())
-                .map_ok(|ipv6| ipv6.into_iter().map(|r| IpAddr::V6(r.0)));
+            let ipv4_lookup = resolver.ipv4_lookup(domain.to_string());
+            let ipv6_lookup = resolver.ipv6_lookup(domain.to_string());
 
             let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                (Ok(ipv4), Ok(ipv6)) => iter::empty().chain(ipv4).chain(ipv6).collect(),
+                (Ok(ipv4), Ok(ipv6)) => lookup_to_ips(&ipv4).chain(lookup_to_ips(&ipv6)).collect(),
                 (Ok(ipv4), Err(e)) => {
                     tracing::debug!(%domain, "AAAA lookup failed: {e}");
 
-                    ipv4.collect()
+                    lookup_to_ips(&ipv4).collect()
                 }
                 (Err(e), Ok(ipv6)) => {
                     tracing::debug!(%domain, "A lookup failed: {e}");
 
-                    ipv6.collect()
+                    lookup_to_ips(&ipv6).collect()
                 }
                 (Err(e1), Err(e2)) => {
                     tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
@@ -567,12 +562,19 @@ async fn phoenix_channel_event_loop(
     }
 }
 
+fn lookup_to_ips(lookup: &hickory_resolver::lookup::Lookup) -> impl Iterator<Item = IpAddr> + '_ {
+    lookup
+        .answers()
+        .iter()
+        .filter_map(|record| record.data.ip_addr())
+}
+
 async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<IpAddr> {
     resolver
         .lookup_ip(host.clone())
         .await
         .context("Failed to lookup portal host")
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
-        .map(|ips| ips.into_iter().collect())
+        .map(|ips| ips.iter().collect())
         .unwrap_or_default()
 }
