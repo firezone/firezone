@@ -392,14 +392,7 @@ impl PathAgent {
     /// resulting bytes back in, but keeps the boringtun-side details
     /// (scratch buffer size, `TunnResult::Done` no-op, force-resend
     /// flag) inside path-agent.
-    ///
-    /// Returns `true` iff a fresh init was produced and queued.
-    pub fn initiate_handshake(
-        &mut self,
-        tunnel: &mut Tunn,
-        force_resend: bool,
-        now: Instant,
-    ) -> bool {
+    pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, force_resend: bool, now: Instant) {
         // Largest WG handshake message; responses are smaller.
         const MAX_SCRATCH_SPACE: usize = 148;
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
@@ -407,10 +400,9 @@ impl PathAgent {
             tunnel.format_handshake_initiation_at(&mut buf, force_resend, now)
         else {
             tracing::debug!("boringtun declined to emit a HandshakeInit");
-            return false;
+            return;
         };
         self.handle_outbound(bytes.to_vec(), now);
-        true
     }
 
     /// Route a WG packet boringtun just produced.
