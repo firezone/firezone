@@ -9,8 +9,8 @@ export default function _Page() {
       authorName="Jamil Bou Kheir"
       authorTitle="Founder"
       authorAvatarSrc={gravatar("jamil@firezone.dev")}
-      title="January 2026 Devlog"
-      date="2026-01-31"
+      title="March 2026 Devlog"
+      date="2026-03-31"
     >
       <Content />
     </Post>

@@ -1,0 +1,48 @@
+March brought a 25% drop in client and gateway CPU usage, Google Workspace group filtering, and a handful of smaller fixes for DNS forwarding and relay reliability.
+
+## ~25% Less CPU on Clients and Gateways
+
+A series of profiling-driven optimizations in connlib dropped CPU usage by roughly 25% and pushed sustained throughput up by about 10%.[^1]
+On laptops this means longer battery life and less fan noise; on the gateways you run in your network, it means more headroom before any single instance becomes a bottleneck.
+
+The biggest wins came from rewriting how connlib handles time and dispatches STUN messages.
+Previously the event loop recomputed timeouts on every tick and called into each connection after every state change—correct, but expensive once you had hundreds of active connections.
+Connlib now batches that work and uses an O(1) lookup for STUN messages instead of scanning every connection.[^1][^2]
+A handful of smaller changes filled in around it: GSO packet queues are flushed earlier so they can leave the box while the next batch is being decrypted,[^3] UDP packets are read from kernel queues in larger batches,[^4] and packet construction was reworked to avoid redundant header parsing on the hot path.[^5]
+
+## Google Workspace Group Filtering
+
+Google Workspace doesn't have a real "assignments" concept like Okta or Entra do, so directory sync until now imported every group in the workspace.
+For organizations with hundreds or thousands of groups that's a lot of noise and a lot of irrelevant memberships.
+
+You can now flag specific groups for sync by giving them a name starting with `[firezone-sync]` or an email starting with `firezone-sync`.[^6]
+Set group sync mode to `filtered` in the directory configuration, and only those groups (and their members) will be pulled.
+Org-unit syncing remains independent and on by default.
+
+## Other Notable Changes
+
+A few smaller items worth flagging:
+
+- TURN keep-alives now reset on channel-data traffic,[^7] preventing false-positive relay disconnects when STUN binding requests get lost under high load.
+- DNS forwarding through the tunnel now correctly handles ICMP errors, so unreachable upstream resolvers return SERVFAIL instead of hanging.[^8]
+- A regression after January's Tailwind v4 upgrade was fixed—buttons in the portal had reverted to a default cursor instead of a pointer.[^9]
+
+---
+
+[^1]: [fix(connlib): optimize timeout handling](https://github.com/firezone/firezone/pull/12515)
+
+[^2]: [feat(snownet): fast-dispatch STUN message to ICE agent](https://github.com/firezone/firezone/pull/12516)
+
+[^3]: [feat(connlib): eagerly flush GSO queue after encrypting](https://github.com/firezone/firezone/pull/12649)
+
+[^4]: [feat(connlib): read multiple UDP packet batches at once](https://github.com/firezone/firezone/pull/12355)
+
+[^5]: [feat(connlib): reduce allocations when building packets](https://github.com/firezone/firezone/pull/12357)
+
+[^6]: [feat(portal): google group filtering](https://github.com/firezone/firezone/pull/12315)
+
+[^7]: [fix(snownet): reset TURN keep-alive on channel-data traffic](https://github.com/firezone/firezone/pull/12506)
+
+[^8]: [fix(connlib): handle ICMP errors in UDP & TCP DNS client](https://github.com/firezone/firezone/pull/12588)
+
+[^9]: [fix(portal): restore pointer cursor](https://github.com/firezone/firezone/pull/12436)

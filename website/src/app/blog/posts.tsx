@@ -26,8 +26,56 @@ export default function Posts() {
       ),
     },
     {
+      title: "April 2026 Devlog",
+      date: "April 30, 2026",
+      href: "/blog/devlog/2026-04",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          Filter-aware routing on clients fixes a long-standing
+          overlapping-resource bug, the macOS menu bar app stays running under
+          memory pressure, smarter RTT-aware relay selection, and improved Linux
+          network-change detection.
+        </p>
+      ),
+    },
+    {
+      title: "March 2026 Devlog",
+      date: "March 31, 2026",
+      href: "/blog/devlog/2026-03",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          A 25% reduction in client and gateway CPU usage from connlib
+          performance optimizations, Google Workspace group filtering for
+          directory sync, and smaller fixes for DNS forwarding and relay
+          reliability.
+        </p>
+      ),
+    },
+    {
+      title: "February 2026 Devlog",
+      date: "February 28, 2026",
+      href: "/blog/devlog/2026-02",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          Faster sign-ins from distant regions via regional read replicas,
+          automatic tunnel-service recovery on Windows and Linux, OS-native
+          connection-failure notifications on clients, and browser-based
+          authentication for headless clients.
+        </p>
+      ),
+    },
+    {
       title: "January 2026 Devlog",
-      date: "February 1, 2026",
+      date: "January 31, 2026",
       href: "/blog/devlog/2026-01",
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
