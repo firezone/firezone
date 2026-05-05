@@ -120,6 +120,7 @@ defmodule PortalWeb.PoliciesTest do
       account =
         starter_account_fixture(
           features: %{
+            internet_resource: false,
             policy_conditions: false,
             traffic_filters: true,
             idp_sync: true,
@@ -143,6 +144,74 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "ri-loop-left-line"
       refute html =~ "Add condition"
       refute html =~ ~s(phx-click="remove_condition")
+    end
+
+    test "does not list Internet Resource in policy creation for starter accounts", %{conn: conn} do
+      account =
+        starter_account_fixture(
+          features: %{
+            internet_resource: false,
+            policy_conditions: true,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      _internet_resource = internet_resource_fixture(account: account, name: "Starter Internet")
+      _resource = resource_fixture(account: account, name: "Starter DNS")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Starter DNS"
+      refute html =~ "Starter Internet"
+    end
+
+    test "rejects manual Internet Resource submission for starter accounts", %{conn: conn} do
+      account =
+        starter_account_fixture(
+          features: %{
+            internet_resource: false,
+            policy_conditions: true,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      internet_resource = internet_resource_fixture(account: account, name: "Blocked Internet")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: internet_resource.id,
+            description: "Blocked by plan"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Internet Resource is not available on your plan"
+
+      refute Repo.get_by(Policy,
+               group_id: group.id,
+               resource_id: internet_resource.id,
+               description: "Blocked by plan"
+             )
     end
   end
 
@@ -267,6 +336,33 @@ defmodule PortalWeb.PoliciesTest do
 
       refute html =~ "10.10.0.0/16"
       refute html =~ ~s(phx-click="remove_condition")
+    end
+
+    test "renders existing Internet Resource policy on edit after feature loss", %{conn: conn} do
+      account =
+        starter_account_fixture(
+          features: %{
+            internet_resource: false,
+            policy_conditions: true,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = internet_resource_fixture(account: account, name: "Existing Internet Resource")
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "Edit Policy"
+      assert html =~ "Existing Internet Resource"
     end
 
     test "updates policy description and condition state", %{

@@ -635,7 +635,7 @@ defmodule PortalWeb.Policies do
       end
     else
       policy = socket.assigns.selected_policy
-      changeset = change_policy(policy, params)
+      changeset = change_policy(policy, params, socket.assigns.subject)
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -839,6 +839,7 @@ defmodule PortalWeb.Policies do
     %Policy{}
     |> cast(attrs, ~w[description group_id resource_id]a)
     |> validate_required(~w[group_id resource_id]a)
+    |> validate_internet_resource_allowed(subject)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
     |> put_change(:account_id, subject.account.id)
@@ -856,6 +857,36 @@ defmodule PortalWeb.Policies do
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
+  end
+
+  defp change_policy(%Policy{} = policy, attrs, %Authentication.Subject{} = subject) do
+    policy
+    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> validate_required(~w[group_id resource_id]a)
+    |> validate_internet_resource_allowed(subject)
+    |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
+    |> Policy.changeset()
+  end
+
+  defp validate_internet_resource_allowed(changeset, %Authentication.Subject{} = subject) do
+    resource_id = get_field(changeset, :resource_id)
+
+    cond do
+      Portal.Account.internet_resource_enabled?(subject.account) ->
+        changeset
+
+      is_nil(resource_id) ->
+        changeset
+
+      true ->
+        case Database.get_resource(resource_id, subject) do
+          %{type: :internet} ->
+            add_error(changeset, :resource_id, "Internet Resource is not available on your plan")
+
+          _resource ->
+            changeset
+        end
+    end
   end
 
   defp disable_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do

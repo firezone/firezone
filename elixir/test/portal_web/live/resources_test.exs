@@ -127,6 +127,32 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "#resources-type-static_device_pool")
       assert has_element?(lv, "#resources-type-dns")
     end
+
+    test "hides Internet Resource row for starter accounts without the feature", %{conn: conn} do
+      account =
+        starter_account_fixture(
+          features: %{
+            internet_resource: false,
+            policy_conditions: true,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      _internet_resource =
+        internet_resource_fixture(account: account, name: "Starter Hidden Internet Resource")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      refute html =~ "Starter Hidden Internet Resource"
+      refute html =~ "Network traffic outside defined resources"
+    end
   end
 
   describe ":new action" do
