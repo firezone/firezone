@@ -873,7 +873,7 @@ impl PathAgent {
         if self.primary != Some(new) {
             let from = self.primary;
             self.primary = Some(new);
-            tracing::info!(
+            tracing::debug!(
                 ?from,
                 local = %new.0,
                 remote = %new.1,
