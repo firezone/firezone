@@ -456,15 +456,31 @@ impl PathAgent {
             return ControlFlow::Continue(());
         };
 
+        let is_handshake = matches!(
+            parsed,
+            Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
+        );
+        // Inbound handshake on a path not already in `self.pairs`
+        // means the peer's candidate set changed (most commonly: it
+        // roamed). Reopen the probing window so we re-discover the
+        // best path on the new topology. Steady-state re-keys land
+        // on a known pair and skip this branch.
+        if is_handshake && !self.pairs.contains_key(&path) {
+            tracing::info!(
+                local = %path.0,
+                remote = %path.1,
+                "Inbound handshake on unknown path; reopening probing window",
+            );
+            self.bootstrap_settled = false;
+            self.bootstrap_until = None;
+        }
+
         // First inbound handshake = the network works on this pair.
         // Seed probing across every pair so probes can upgrade
         // `primary` later if a better-tier pair becomes alive.
         self.seed_probe_schedule(now);
 
-        let bootstrap_primary = matches!(
-            parsed,
-            Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
-        ) && self.primary.is_none();
+        let bootstrap_primary = is_handshake && self.primary.is_none();
 
         match parsed {
             Packet::HandshakeInit(_) => {

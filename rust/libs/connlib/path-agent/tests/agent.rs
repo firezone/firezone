@@ -891,6 +891,57 @@ fn settle_is_sticky_across_later_handshakes() {
 }
 
 #[test]
+fn inbound_handshake_on_unknown_path_reopens_bootstrap_window() {
+    // After settle, an inbound handshake landing on a path we don't
+    // already know means the peer's candidate set changed (most
+    // commonly: it roamed to a new network). Re-open the probing
+    // window so we re-discover the best path on the new topology;
+    // the previous "settle is sticky" semantics only apply to known
+    // pairs (steady-state re-keys).
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let primary = (addr(1), addr(3));
+
+    // Drive a real bootstrap, settle on the host×host primary.
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let host_probe = extract_probe_for(&outbound, primary);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(host_probe.id, host_probe.seq),
+        primary,
+        now + Duration::from_millis(50),
+    );
+    while a.poll_event().is_some() {}
+    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    while a.poll_transmit().is_some() {}
+
+    // Sanity: post-settle, only the primary probes.
+    let live_tick = now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE;
+    a.handle_timeout(live_tick);
+    let live_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert_eq!(
+        live_probes.len(),
+        1,
+        "post-settle only primary probes, got {live_probes:?}"
+    );
+
+    // Inbound handshake on an unknown path → reopen bootstrap. Now
+    // probes fire on every pair again, not just the primary.
+    let unknown_path = (addr(99), addr(98));
+    let reopen_at = live_tick + Duration::from_secs(1);
+    let _ = a.handle_inbound(&handshake_response_bytes(), unknown_path, reopen_at);
+    while a.poll_event().is_some() {}
+    a.handle_timeout(reopen_at);
+    let reopened_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert!(
+        reopened_probes.len() > 1,
+        "all pairs should probe after reopen, got {reopened_probes:?}"
+    );
+}
+
+#[test]
 fn different_inbound_init_bytes_skip_dedup_cache() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
