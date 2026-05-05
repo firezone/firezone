@@ -6,6 +6,7 @@ defmodule PortalWeb.SitesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
   setup do
@@ -108,6 +109,32 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Site Chicago POP created successfully."
       assert html =~ "Chicago POP"
       assert_patch(lv, ~p"/#{account}/sites/#{site.id}")
+    end
+
+    test "hides Internet Site on the index for starter accounts without the feature", %{conn: conn} do
+      account =
+        starter_account_fixture(
+          features: %{
+            internet_resource: false,
+            policy_conditions: true,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      _internet_resource =
+        internet_resource_fixture(account: account, name: "Starter Hidden Internet Resource")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      refute html =~ "Internet Site"
+      refute html =~ "Starter Hidden Internet Resource"
     end
   end
 

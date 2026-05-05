@@ -401,8 +401,8 @@ defmodule PortalWeb.Policies.Components do
       label="Resource"
       placeholder="Select Resource"
       field={@panel_form[:resource_id]}
-      fetch_option_callback={&PortalWeb.Resources.Components.fetch_resource_option(&1, @subject)}
-      list_options_callback={&PortalWeb.Resources.Components.list_resource_options(&1, @subject)}
+      fetch_option_callback={&fetch_policy_resource_option(&1, @subject)}
+      list_options_callback={&list_policy_resource_options(&1, @subject)}
       on_change={&PortalWeb.Policies.on_panel_resource_change/1}
       value={@panel_form[:resource_id].value}
       required
@@ -425,6 +425,40 @@ defmodule PortalWeb.Policies.Components do
     </.live_component>
     """
   end
+
+  defp fetch_policy_resource_option(id, subject) do
+    PortalWeb.Resources.Components.fetch_resource_option(id, subject)
+  end
+
+  defp list_policy_resource_options(search_query_or_nil, subject) do
+    {:ok, grouped_options, metadata} =
+      PortalWeb.Resources.Components.list_resource_options(search_query_or_nil, subject)
+
+    grouped_options = maybe_filter_internet_resource_options(grouped_options, subject.account)
+
+    {:ok, grouped_options, metadata}
+  end
+
+  defp maybe_filter_internet_resource_options(grouped_options, account) do
+    if Portal.Account.internet_resource_enabled?(account) do
+      grouped_options
+    else
+      grouped_options
+      |> Enum.map(&filter_internet_resource_option_group/1)
+      |> Enum.reject(&empty_resource_option_group?/1)
+    end
+  end
+
+  defp filter_internet_resource_option_group({group, options}) do
+    filtered =
+      Enum.reject(options, fn {_id, _name, resource} ->
+        resource.type == :internet
+      end)
+
+    {group, filtered}
+  end
+
+  defp empty_resource_option_group?({_group, options}), do: options == []
 
   attr :panel_form, :any, default: nil
 

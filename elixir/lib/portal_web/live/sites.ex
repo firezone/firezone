@@ -963,7 +963,11 @@ defmodule PortalWeb.Sites do
   end
 
   defp load_sites_index_data(socket) do
-    internet_resource = Database.get_internet_resource(socket.assigns.subject)
+    internet_resource =
+      if Portal.Account.internet_resource_enabled?(socket.assigns.account) do
+        Database.get_internet_resource(socket.assigns.subject)
+      end
+
     sites = Database.list_all_sites(socket.assigns.subject)
     site_ids = Enum.map(sites, & &1.id)
 

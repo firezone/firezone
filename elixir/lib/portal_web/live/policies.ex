@@ -635,7 +635,10 @@ defmodule PortalWeb.Policies do
       end
     else
       policy = socket.assigns.selected_policy
-      changeset = change_policy(policy, params)
+
+      changeset =
+        change_policy(policy, params)
+        |> validate_internet_resource_allowed(socket.assigns.subject)
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -847,6 +850,7 @@ defmodule PortalWeb.Policies do
   defp create_policy(attrs, %Authentication.Subject{} = subject) do
     attrs
     |> new_policy(subject)
+    |> validate_internet_resource_allowed(subject)
     |> Database.insert_policy(subject)
   end
 
@@ -856,6 +860,27 @@ defmodule PortalWeb.Policies do
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
+  end
+
+  defp validate_internet_resource_allowed(changeset, %Authentication.Subject{} = subject) do
+    resource_id = get_field(changeset, :resource_id)
+
+    cond do
+      Portal.Account.internet_resource_enabled?(subject.account) ->
+        changeset
+
+      is_nil(resource_id) ->
+        changeset
+
+      true ->
+        case Database.get_resource(resource_id, subject) do
+          %{type: :internet} ->
+            add_error(changeset, :resource_id, "Internet Resource is not available on your plan")
+
+          _resource ->
+            changeset
+        end
+    end
   end
 
   defp disable_policy(%Policy{} = policy, %Authentication.Subject{} = subject) do
