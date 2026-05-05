@@ -102,6 +102,31 @@ defmodule PortalWeb.ResourcesTest do
       assert count_occurrences(html, "No Site Needed") == 1
       refute html =~ "No Site Associated"
     end
+
+    test "hides device pool option from the type filter when client_to_client is disabled",
+         %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      refute has_element?(lv, "#resources-type-static_device_pool")
+      assert has_element?(lv, "#resources-type-dns")
+    end
+
+    test "shows device pool option in the type filter when client_to_client is enabled",
+         %{conn: conn, account: account, actor: actor} do
+      enable_feature(:client_to_client)
+      account = update_account(account, features: %{client_to_client: true})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert has_element?(lv, "#resources-type-static_device_pool")
+      assert has_element?(lv, "#resources-type-dns")
+    end
   end
 
   describe ":new action" do

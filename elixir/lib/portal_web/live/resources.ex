@@ -55,6 +55,7 @@ defmodule PortalWeb.Resources do
         ],
         callback: &handle_resources_update!/2
       )
+      |> maybe_hide_static_device_pool_filter_value()
 
     {:ok, socket}
   end
@@ -1240,6 +1241,32 @@ defmodule PortalWeb.Resources do
   defp resource_panel_ui_state(assigns) do
     assigns.resource_ui
   end
+
+  defp maybe_hide_static_device_pool_filter_value(socket) do
+    if socket.assigns.resource_panel.client_to_client_enabled? do
+      socket
+    else
+      filters =
+        Enum.map(socket.assigns.filters_by_table_id["resources"], &drop_static_device_pool/1)
+
+      assign(socket,
+        filters_by_table_id:
+          Map.put(socket.assigns.filters_by_table_id, "resources", filters)
+      )
+    end
+  end
+
+  defp drop_static_device_pool(%Portal.Repo.Filter{name: :type} = filter) do
+    values =
+      Enum.reject(filter.values, fn
+        {_label, "static_device_pool"} -> true
+        _ -> false
+      end)
+
+    %{filter | values: values}
+  end
+
+  defp drop_static_device_pool(filter), do: filter
 
   defmodule Database do
     import Ecto.Query
