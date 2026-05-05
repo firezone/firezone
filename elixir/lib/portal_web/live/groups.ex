@@ -76,7 +76,7 @@ defmodule PortalWeb.Groups do
   # Show Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    tab = String.to_existing_atom(Map.get(params, "tab", "members"))
+    tab = parse_group_tab(Map.get(params, "tab", "members"))
 
     if selected_group_matches?(socket, id) do
       socket =
@@ -736,9 +736,13 @@ defmodule PortalWeb.Groups do
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> close_panel()}
+      |> close_panel()}
     end
   end
+
+  defp parse_group_tab("resources"), do: :resources
+  defp parse_group_tab("members"), do: :members
+  defp parse_group_tab(_), do: :members
 
   def handle_groups_update!(socket, list_opts) do
     filter = Keyword.get(list_opts, :filter, [])
