@@ -393,6 +393,29 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  # Sent by the initiating client's channel when a policy_authorization fails to persist
+  # after the receiver was already told it could accept the connection. Mirrors the
+  # gateway's reject_access handler — connlib tears down the inbound peer connection.
+  def handle_info({:reject_access, client_id, resource_id}, socket) do
+    push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
+    {:noreply, socket}
+  end
+
+  # Sent by the persistence Task back to this channel when policy_authorization creation
+  # fails. We re-deliver as :reject_access from the channel pid so the receiver sees it
+  # ordered after the original authorize message that was also sent by this pid.
+  def handle_info(
+        {:revoke_receiver_access, receiving_device_id, initiating_device_id, resource_id},
+        socket
+      ) do
+    PG.deliver(
+      receiving_device_id,
+      {:reject_access, initiating_device_id, resource_id}
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_info(:disconnect, socket) do
     # Important: We push disconnect before closing the socket to prevent the client from
     # attempting to immediately reconnect
@@ -2016,11 +2039,12 @@ defmodule PortalAPI.Client.Channel do
       expires_at: expires_at
     }
 
-    Task.start(fn -> do_create_policy_authorization(attrs, subject) end)
+    channel_pid = self()
+    Task.start(fn -> do_create_policy_authorization(attrs, subject, channel_pid) end)
   end
 
   @doc false
-  def do_create_policy_authorization(attrs, subject) do
+  def do_create_policy_authorization(attrs, subject, channel_pid \\ nil) do
     changeset = create_policy_authorization_changeset(attrs)
 
     Database.insert_policy_authorization(changeset, subject)
@@ -2040,6 +2064,8 @@ defmodule PortalAPI.Client.Channel do
           membership_id: attrs.membership_id
         )
 
+        notify_revoke_receiver_access(channel_pid, attrs)
+
       {:error, reason} ->
         Logger.error("Failed to create policy authorization",
           policy_authorization_id: attrs.id,
@@ -2050,6 +2076,8 @@ defmodule PortalAPI.Client.Channel do
           resource_id: attrs.resource_id,
           membership_id: attrs.membership_id
         )
+
+        notify_revoke_receiver_access(channel_pid, attrs)
     end
   rescue
     exception ->
@@ -2063,6 +2091,24 @@ defmodule PortalAPI.Client.Channel do
         resource_id: attrs.resource_id,
         membership_id: attrs.membership_id
       )
+
+      notify_revoke_receiver_access(channel_pid, attrs)
+  end
+
+  # The persistence Task runs in its own process. If it sent reject_access directly,
+  # Erlang's per-pid ordering guarantee wouldn't apply: the original authorize message
+  # was sent by the channel pid, so a reject_access from the Task pid could race ahead of
+  # it and leave the receiver in the dangling state we're trying to prevent. Notify the
+  # channel pid instead and let it issue the PG.deliver from the same pid that sent the
+  # original authorize message.
+  defp notify_revoke_receiver_access(nil, _attrs), do: :ok
+
+  defp notify_revoke_receiver_access(channel_pid, attrs) do
+    send(
+      channel_pid,
+      {:revoke_receiver_access, attrs.receiving_device_id, attrs.initiating_device_id,
+       attrs.resource_id}
+    )
   end
 
   defp create_policy_authorization_changeset(attrs) do

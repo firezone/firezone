@@ -6647,6 +6647,146 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert log =~ "Failed to create policy authorization"
     end
+
+    test "notifies channel pid to revoke receiver access on changeset error", %{
+      subject: subject
+    } do
+      initiating_device_id = Ecto.UUID.generate()
+      receiving_device_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+
+      attrs = %{
+        id: Ecto.UUID.generate(),
+        token_id: subject.credential.id,
+        policy_id: Ecto.UUID.generate(),
+        initiating_device_id: initiating_device_id,
+        receiving_device_id: receiving_device_id,
+        resource_id: resource_id,
+        membership_id: nil,
+        account_id: subject.account.id,
+        initiator_remote_ip: {100, 64, 0, 1},
+        initiator_user_agent: "test-agent",
+        receiver_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      capture_log(fn ->
+        Channel.do_create_policy_authorization(attrs, subject, self())
+      end)
+
+      assert_receive {:revoke_receiver_access, ^receiving_device_id, ^initiating_device_id,
+                      ^resource_id}
+    end
+
+    test "notifies channel pid to revoke receiver access on rescued exception", %{
+      subject: subject
+    } do
+      initiating_device_id = Ecto.UUID.generate()
+      receiving_device_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+
+      # nil subject raises FunctionClauseError inside Database.insert_policy_authorization
+      attrs = %{
+        id: Ecto.UUID.generate(),
+        token_id: nil,
+        policy_id: Ecto.UUID.generate(),
+        initiating_device_id: initiating_device_id,
+        receiving_device_id: receiving_device_id,
+        resource_id: resource_id,
+        membership_id: nil,
+        account_id: subject.account.id,
+        initiator_remote_ip: {100, 64, 0, 1},
+        initiator_user_agent: "test-agent",
+        receiver_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      capture_log(fn ->
+        Channel.do_create_policy_authorization(attrs, nil, self())
+      end)
+
+      assert_receive {:revoke_receiver_access, ^receiving_device_id, ^initiating_device_id,
+                      ^resource_id}
+    end
+
+    test "does not notify channel pid on success", %{
+      subject: subject,
+      client: client,
+      gateway: gateway,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership
+    } do
+      attrs = %{
+        id: Ecto.UUID.generate(),
+        token_id: subject.credential.id,
+        policy_id: policy.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        membership_id: membership.id,
+        account_id: subject.account.id,
+        initiator_remote_ip: {100, 64, 0, 1},
+        initiator_user_agent: "test-agent",
+        receiver_remote_ip: {100, 64, 0, 2},
+        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+      }
+
+      assert :ok = Channel.do_create_policy_authorization(attrs, subject, self())
+      refute_receive {:revoke_receiver_access, _, _, _}
+    end
+  end
+
+  describe "handle_info/2 :reject_access" do
+    test "pushes reject_access to the client socket", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      initiating_client_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+
+      send(socket.channel_pid, {:reject_access, initiating_client_id, resource_id})
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
+    end
+  end
+
+  describe "handle_info/2 :revoke_receiver_access" do
+    test "delivers reject_access to the receiving device via PG", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      receiving_device_id = Ecto.UUID.generate()
+      initiating_device_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+
+      :ok = PG.register(receiving_device_id)
+
+      send(
+        socket.channel_pid,
+        {:revoke_receiver_access, receiving_device_id, initiating_device_id, resource_id}
+      )
+
+      assert_receive {:reject_access, ^initiating_device_id, ^resource_id}
+    end
+
+    test "is a no-op when receiver is not registered in PG", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      send(
+        socket.channel_pid,
+        {:revoke_receiver_access, Ecto.UUID.generate(), Ecto.UUID.generate(),
+         Ecto.UUID.generate()}
+      )
+
+      # Channel survives even when the receiver has gone away.
+      assert :sys.get_state(socket.channel_pid)
+    end
   end
 
   describe "authorizations cache (inbound client-to-client)" do
