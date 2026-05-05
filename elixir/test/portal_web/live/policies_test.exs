@@ -141,7 +141,7 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ ~s(href="/#{account.slug}/settings/account")
       assert html =~ ~s(data-locked-section="policy-conditions")
       assert html =~ "blur-[2px]"
-      assert html =~ "ri-loop-left-line"
+      assert html =~ "ri-lock-2-line"
       refute html =~ "Add condition"
       refute html =~ ~s(phx-click="remove_condition")
     end

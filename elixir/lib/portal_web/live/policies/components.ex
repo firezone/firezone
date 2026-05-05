@@ -501,55 +501,24 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@panel_active_conditions}
         panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
       />
-      <%= if is_nil(@panel_selected_resource) and @policy_conditions_enabled? do %>
-        <.policy_conditions_placeholder />
-      <% else %>
-        <div class="relative">
-          <div
-            :if={@policy_conditions_enabled? == false}
-            class="absolute inset-0 z-20 flex items-center justify-center px-4 pt-8"
-          >
-            <div class="flex max-w-md flex-col items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-8 py-6 text-center text-[var(--text-tertiary)] shadow-lg">
-              <.icon name="ri-loop-left-line" class="h-8 w-8" />
-              <div class="flex flex-col items-center gap-1">
-                <p class="text-sm font-medium text-[var(--text-primary)]">
-                  Upgrade your plan to unlock policy conditions.
-                </p>
-                <p class="text-xs">
-                  Add policy restrictions like IP ranges, identity providers, and time windows.
-                </p>
-                <.button
-                  style="primary"
-                  icon="ri-sparkling-fill"
-                  navigate={~p"/#{@account}/settings/account"}
-                >
-                  Upgrade to Unlock
-                </.button>
-              </div>
-            </div>
-          </div>
-          <div
-            :if={@policy_conditions_enabled? == false}
-            class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
-          />
-          <div
+      <%= cond do %>
+        <% @policy_conditions_enabled? == false -> %>
+          <.upgrade_locked_section
+            account={@account}
+            message="Upgrade your plan to unlock policy conditions."
+            description="Add policy restrictions like IP ranges, identity providers, and time windows."
             data-locked-section="policy-conditions"
-            class={[
-              @policy_conditions_enabled? == false && "select-none blur-[2px] opacity-70",
-              "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
-            ]}
           >
-            <%= if is_nil(@panel_selected_resource) or @policy_conditions_enabled? == false do %>
-              <.policy_conditions_placeholder />
-            <% else %>
-              <.policy_conditions_cards
-                panel_active_conditions={@panel_active_conditions}
-                providers={@providers}
-                conditions_state={@conditions_state}
-              />
-            <% end %>
-          </div>
-        </div>
+            <.policy_conditions_placeholder />
+          </.upgrade_locked_section>
+        <% is_nil(@panel_selected_resource) -> %>
+          <.policy_conditions_placeholder />
+        <% true -> %>
+          <.policy_conditions_cards
+            panel_active_conditions={@panel_active_conditions}
+            providers={@providers}
+            conditions_state={@conditions_state}
+          />
       <% end %>
     </div>
     """

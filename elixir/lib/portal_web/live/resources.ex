@@ -540,6 +540,7 @@ defmodule PortalWeb.Resources do
       }>
         <%= if @resource_panel.view in [:new_form, :edit_form] do %>
           <.resource_form_panel
+            account={@account}
             resource={@selected_resource}
             panel_view={@resource_panel.view}
             form_state={resource_form_panel_state(assigns)}
