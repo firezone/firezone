@@ -8,7 +8,6 @@ cd "${SCRIPT_DIR}/.."
 # NDK_VERSION and ANDROID_CMD_TOOLS_VERSION come from kotlin/android/mise.toml [env].
 RUST_TARGETS=(
     aarch64-linux-android
-    arm-linux-androideabi
     armv7-linux-androideabi
     i686-linux-android
     x86_64-linux-android

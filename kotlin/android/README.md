@@ -72,7 +72,7 @@ If you'd rather not use `mise run setup`:
    `rust/rust-toolchain.toml`:
 
    ```
-   rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi i686-linux-android x86_64-linux-android
+   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
    ```
 
 1. Run `./gradlew assembleDebug` to verify.
