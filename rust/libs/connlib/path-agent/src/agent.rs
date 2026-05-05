@@ -497,26 +497,6 @@ impl PathAgent {
             parsed,
             Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
         );
-        // Inbound handshake on a path not already in `self.pairs`
-        // means the peer's candidate set changed (most commonly: it
-        // roamed). Reopen the probing window so we re-discover the
-        // best path on the new topology. Steady-state re-keys land
-        // on a known pair and skip this branch.
-        if is_handshake && !self.pairs.contains_key(&path) {
-            tracing::info!(
-                local = %path.0,
-                remote = %path.1,
-                "Inbound handshake on unknown path; reopening probing window",
-            );
-            self.bootstrap_settled = false;
-            self.bootstrap_until = None;
-        }
-
-        // First inbound handshake = the network works on this pair.
-        // Seed probing across every pair so probes can upgrade
-        // `primary` later if a better-tier pair becomes alive.
-        self.seed_probe_schedule(now);
-
         let bootstrap_primary = is_handshake && self.primary.is_none();
 
         match parsed {
@@ -557,6 +537,7 @@ impl PathAgent {
                     },
                     now,
                 );
+                self.reopen_bootstrap_window(now);
                 self.maybe_set_bootstrap_primary(bootstrap_primary, path, now);
                 ControlFlow::Break(())
             }
@@ -577,11 +558,27 @@ impl PathAgent {
                     },
                     now,
                 );
+                self.reopen_bootstrap_window(now);
                 self.maybe_set_bootstrap_primary(bootstrap_primary, path, now);
                 ControlFlow::Break(())
             }
             Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(()),
         }
+    }
+
+    /// Restart the [`BOOTSTRAP_WINDOW`] every time we forward a fresh
+    /// handshake to boringtun (i.e., a duplicate that hits one of the
+    /// dedup checks doesn't trigger this). Catches the roam case where
+    /// signalling delivers the peer's new candidates before the
+    /// handshake itself, so the recv path is already in `self.pairs`
+    /// — without this, "settle is sticky" would keep the stale
+    /// primary on the receiver. Steady-state re-keys also reopen,
+    /// which costs ~10 s of all-pair probing every ~120 s; that's
+    /// cheap relative to missing a roam.
+    fn reopen_bootstrap_window(&mut self, now: Instant) {
+        self.bootstrap_settled = false;
+        self.bootstrap_until = None;
+        self.seed_probe_schedule(now);
     }
 
     /// Adopt `path` as the bootstrap primary so user packets flow

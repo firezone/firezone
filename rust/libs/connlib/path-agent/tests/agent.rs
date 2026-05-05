@@ -935,13 +935,15 @@ fn settle_is_sticky_across_later_handshakes() {
 }
 
 #[test]
-fn inbound_handshake_on_unknown_path_reopens_bootstrap_window() {
-    // After settle, an inbound handshake landing on a path we don't
-    // already know means the peer's candidate set changed (most
-    // commonly: it roamed to a new network). Re-open the probing
-    // window so we re-discover the best path on the new topology;
-    // the previous "settle is sticky" semantics only apply to known
-    // pairs (steady-state re-keys).
+fn inbound_handshake_reopens_bootstrap_window_after_settle() {
+    // Every fresh inbound handshake reopens the probing window so we
+    // re-pick the best pair on the new topology. The reopen runs
+    // *after* the dedup checks in `handle_inbound`, so duplicates of
+    // an already-forwarded handshake don't trigger it. This catches
+    // the roam case where signalling delivers the peer's new
+    // candidates before the handshake itself (so the recv path is
+    // already in `self.pairs`); the path-known-or-unknown axis isn't
+    // a reliable signal on its own.
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     let primary = (addr(1), addr(3));
@@ -971,17 +973,58 @@ fn inbound_handshake_on_unknown_path_reopens_bootstrap_window() {
         "post-settle only primary probes, got {live_probes:?}"
     );
 
-    // Inbound handshake on an unknown path → reopen bootstrap. Now
-    // probes fire on every pair again, not just the primary.
-    let unknown_path = (addr(99), addr(98));
+    // A *fresh* handshake (different bytes — this is a new session,
+    // not a duplicate of the one we already forwarded) on a known
+    // pair must still reopen the window: we want to reprobe whether
+    // signalling beat the data plane (path was already in pairs) or
+    // not. Different bytes avoid the in-flight `forwarded_response`
+    // dedup.
+    let mut fresh_resp = handshake_response_bytes();
+    fresh_resp[10] = 0x42;
     let reopen_at = live_tick + Duration::from_secs(1);
-    let _ = a.handle_inbound(&handshake_response_bytes(), unknown_path, reopen_at);
+    let _ = a.handle_inbound(&fresh_resp, (addr(2), addr(4)), reopen_at);
     while a.poll_event().is_some() {}
     a.handle_timeout(reopen_at);
     let reopened_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert!(
         reopened_probes.len() > 1,
         "all pairs should probe after reopen, got {reopened_probes:?}"
+    );
+}
+
+#[test]
+fn duplicate_inbound_handshake_does_not_reopen_bootstrap_window() {
+    // Reopen is gated on actually forwarding a handshake to boringtun:
+    // dedup-hit duplicates don't count as "new session" and shouldn't
+    // disturb the steady state.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let primary = (addr(1), addr(3));
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let host_probe = extract_probe_for(&outbound, primary);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(host_probe.id, host_probe.seq),
+        primary,
+        now + Duration::from_millis(50),
+    );
+    while a.poll_event().is_some() {}
+    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    while a.poll_transmit().is_some() {}
+
+    // Same response bytes as before -> hits `forwarded_response` dedup
+    // and never triggers the reopen path.
+    let later = now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE + Duration::from_secs(1);
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), later);
+    a.handle_timeout(later);
+    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert_eq!(
+        probes.len(),
+        1,
+        "duplicate response shouldn't reopen — only primary probes: {probes:?}"
     );
 }
 
