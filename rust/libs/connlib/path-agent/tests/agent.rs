@@ -418,6 +418,39 @@ fn outbound_handshake_init_fanout_targets_match_relay_pairs() {
 }
 
 #[test]
+fn duplicate_inbound_init_in_flight_does_not_re_forward_to_boringtun() {
+    // The peer's bootstrap fanout makes the same init reach us on
+    // multiple pairs within the same tick — before our response has
+    // gone out, so `responder_dedup` isn't populated yet. The dedup
+    // here drops the duplicate so it doesn't re-trip boringtun's
+    // anti-replay (WrongTai64nTimestamp).
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    let _ = a.handle_inbound(&handshake_init_bytes(), (addr(2), addr(4)), now);
+    // First arrival: forwarded for boringtun to chew on.
+    let mut events = std::iter::from_fn(|| a.poll_event()).collect::<Vec<_>>();
+    let forwarded_count = events
+        .iter()
+        .filter(|e| matches!(e, Event::ForwardInbound { .. }))
+        .count();
+    assert_eq!(forwarded_count, 1);
+    events.clear();
+
+    // Same bytes, different path — must not re-forward.
+    let _ = a.handle_inbound(&handshake_init_bytes(), (addr(1), addr(3)), now);
+    while let Some(e) = a.poll_event() {
+        events.push(e);
+    }
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Event::ForwardInbound { .. })),
+        "duplicate in-flight init must not produce another ForwardInbound: {events:?}"
+    );
+}
+
+#[test]
 fn duplicate_inbound_init_replays_cached_response_on_new_path() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();

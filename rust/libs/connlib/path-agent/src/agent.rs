@@ -484,6 +484,17 @@ impl PathAgent {
                     return ControlFlow::Break(());
                 }
 
+                // In-flight dedup: the peer's fanout makes the same init
+                // arrive on several pairs in the same tick. Once we've
+                // queued a `ForwardInbound` for these bytes, dropping
+                // dups avoids a second pass through boringtun (which
+                // would reject as `WrongTai64nTimestamp`). After the
+                // response goes out, `responder_dedup` takes over.
+                if self.last_forwarded_init.as_deref() == Some(bytes) {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
+                    return ControlFlow::Break(());
+                }
+
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit, forwarding to boringtun");
                 self.last_forwarded_init = Some(bytes.to_vec());
                 self.last_forwarded_init_path = Some(path);
