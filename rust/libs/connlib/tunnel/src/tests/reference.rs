@@ -896,23 +896,7 @@ impl ReferenceState {
                 ip4,
                 ip6,
             } => {
-                // "All iceless" mirrors `Connections::all_iceless` on the
-                // SUT side: the snownet hard-reset path closes every
-                // connection (and emits `ConnectionClosed`, which clears
-                // site status + DNS-NAT per gateway), while the iceless
-                // soft-reset path keeps everything intact. Compute it
-                // before the `&mut` on `state.clients`.
-                let ref_client = state.clients.get(client_id).unwrap().inner();
-                let all_iceless = ref_client.snownet_capabilities.iceless
-                    && ref_client
-                        .connected_resources()
-                        .filter_map(|r| state.portal.gateway_for_resource(r).copied())
-                        .all(|gid| {
-                            state
-                                .gateways
-                                .get(&gid)
-                                .is_none_or(|g| g.inner().snownet_capabilities.iceless)
-                        });
+                let all_iceless = state.all_iceless(client_id);
 
                 let client = state.clients.get_mut(client_id).unwrap();
                 state.network.remove_host(client);
@@ -944,29 +928,18 @@ impl ReferenceState {
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
-                    let all_iceless_clients: Vec<_> = state
+                    let to_reset: Vec<ClientId> = state
                         .clients
-                        .iter()
-                        .filter_map(|(cid, c)| {
-                            let inner = c.inner();
-                            let all_iceless = inner.snownet_capabilities.iceless
-                                && inner
-                                    .connected_resources()
-                                    .filter_map(|r| state.portal.gateway_for_resource(r).copied())
-                                    .all(|gid| {
-                                        state
-                                            .gateways
-                                            .get(&gid)
-                                            .is_none_or(|g| g.inner().snownet_capabilities.iceless)
-                                    });
-                            all_iceless.then_some(*cid)
-                        })
+                        .keys()
+                        .copied()
+                        .filter(|cid| !state.all_iceless(cid))
                         .collect();
-                    for (cid, client) in state.clients.iter_mut() {
-                        if all_iceless_clients.contains(cid) {
-                            continue;
-                        }
-                        client.exec_mut(|c| c.reset_connections(now));
+                    for cid in to_reset {
+                        state
+                            .clients
+                            .get_mut(&cid)
+                            .unwrap()
+                            .exec_mut(|c| c.reset_connections(now));
                     }
                 }
             }
@@ -1396,6 +1369,31 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
+    /// Mirror of `snownet::Connections::all_iceless`: a client's
+    /// connections are all iceless iff the client itself negotiates
+    /// iceless and every gateway it currently has a connected
+    /// resource on does too. Used to gate
+    /// [`RefClient::reset_connections`] in transitions where the SUT
+    /// would soft-reset (no `ConnectionClosed`, no site-status drop)
+    /// instead of hard-resetting.
+    fn all_iceless(&self, client_id: &ClientId) -> bool {
+        let Some(client) = self.clients.get(client_id) else {
+            return false;
+        };
+        let inner = client.inner();
+        if !inner.snownet_capabilities.iceless {
+            return false;
+        }
+        inner
+            .connected_resources()
+            .filter_map(|r| self.portal.gateway_for_resource(r).copied())
+            .all(|gid| {
+                self.gateways
+                    .get(&gid)
+                    .is_none_or(|g| g.inner().snownet_capabilities.iceless)
+            })
+    }
+
     fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.clients
             .values()
