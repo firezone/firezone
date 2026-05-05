@@ -15,8 +15,14 @@ RUST_TARGETS=(
 )
 
 case "$(uname -s)" in
-    Linux) CMD_TOOLS_PLATFORM="linux" ;;
-    Darwin) CMD_TOOLS_PLATFORM="mac" ;;
+    Linux)
+        CMD_TOOLS_PLATFORM="linux"
+        DEFAULT_ANDROID_HOME="$HOME/Android/Sdk"
+        ;;
+    Darwin)
+        CMD_TOOLS_PLATFORM="mac"
+        DEFAULT_ANDROID_HOME="$HOME/Library/Android/sdk"
+        ;;
     *)
         echo "Unsupported platform: $(uname -s). Install the Android command-line tools manually." >&2
         exit 1
@@ -28,7 +34,7 @@ mise install
 
 # --- Android SDK ---
 if [ -z "${ANDROID_HOME:-}" ]; then
-    export ANDROID_HOME="$HOME/Android/Sdk"
+    export ANDROID_HOME="${ANDROID_SDK_ROOT:-$DEFAULT_ANDROID_HOME}"
 fi
 
 if ! command -v sdkmanager &>/dev/null; then
@@ -42,7 +48,7 @@ if ! command -v sdkmanager &>/dev/null; then
     rm "$TOOLS_ZIP"
 
     # sdkmanager expects the directory to be named "latest"
-    mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" 2>/dev/null || true
+    mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
 
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
@@ -54,8 +60,14 @@ if ! command -v sdkmanager &>/dev/null; then
     echo ""
 fi
 
+if ! sdkmanager --version >/dev/null 2>&1; then
+    echo "sdkmanager is not runnable; check JAVA_HOME and the SDK install." >&2
+    exit 1
+fi
+
 echo "==> Accepting Android SDK licenses..."
-yes 2>/dev/null | sdkmanager --licenses >/dev/null || true
+# `yes | sdkmanager` exits non-zero via SIGPIPE once sdkmanager closes stdin.
+yes 2>/dev/null | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 
 echo "==> Installing NDK ${NDK_VERSION}..."
 "${SCRIPT_DIR}/setup-ndk.sh"
