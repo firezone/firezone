@@ -4,7 +4,7 @@ import { Metadata } from "next";
 import gravatar from "@/lib/gravatar";
 
 export const metadata: Metadata = {
-  title: "Secure remote access • Firezone",
+  title: "Secure remote access",
   description: "Secure remote access makes remote work a win-win",
 };
 

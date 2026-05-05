@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import _Page from "./_page";
 
 export const metadata: Metadata = {
-  title: "June 2024 Update • Firezone Blog",
+  title: "June 2024 Update",
   description: "June 2024 Update",
 };
 

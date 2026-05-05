@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Administer • Firezone Docs",
+  title: "Administer",
   description: "Learn how to manage your Firezone deployment day-to-day.",
 };
 

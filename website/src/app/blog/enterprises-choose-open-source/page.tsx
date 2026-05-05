@@ -4,7 +4,7 @@ import { Metadata } from "next";
 import gravatar from "@/lib/gravatar";
 
 export const metadata: Metadata = {
-  title: "Enterprises choose open source • Firezone Blog",
+  title: "Enterprises choose open source",
   description: "Why enterprises choose open source software",
 };
 

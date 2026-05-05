@@ -4,7 +4,7 @@ import Content from "./readme.mdx";
 import gravatar from "@/lib/gravatar";
 
 export const metadata: Metadata = {
-  title: "Release 0.6.0 • Firezone Blog",
+  title: "Release 0.6.0",
   description: "Firezone 0.6.0 Release",
 };
 

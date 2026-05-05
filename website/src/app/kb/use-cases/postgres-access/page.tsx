@@ -2,7 +2,7 @@ import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Use Cases: Postgres Access • Firezone Docs",
+  title: "Use Cases: Postgres Access",
   description: "Use Firezone to secure access to your Postgres database.",
 };
 

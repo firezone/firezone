@@ -2,7 +2,7 @@ import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Uninstall Firezone • Firezone Docs",
+  title: "Uninstall Firezone",
   description: "How to uninstall Firezone",
 };
 

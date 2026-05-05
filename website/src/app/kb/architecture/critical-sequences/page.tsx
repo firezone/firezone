@@ -2,7 +2,7 @@ import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Architecture: Critical Sequences • Firezone Docs",
+  title: "Architecture: Critical Sequences",
   description:
     "The key sequences and interactions between components that power Firezone core functionality.",
 };
