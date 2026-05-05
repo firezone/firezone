@@ -473,6 +473,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "blur-[2px]"
       assert html =~ "ri-loop-left-line"
       refute html =~ "Add condition"
+      refute html =~ ~s(phx-click="remove_condition")
     end
 
     test "grants access to multiple groups at once", %{

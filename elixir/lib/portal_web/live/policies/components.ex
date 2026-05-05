@@ -499,14 +499,13 @@ defmodule PortalWeb.Policies.Components do
             class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
           />
           <div
-            id="policy-conditions-locked-container"
+            data-locked-section="policy-conditions"
             class={[
-              @policy_conditions_enabled? == false &&
-                "pointer-events-none select-none blur-[2px] opacity-70",
+              @policy_conditions_enabled? == false && "select-none blur-[2px] opacity-70",
               "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
             ]}
           >
-            <%= if is_nil(@panel_selected_resource) do %>
+            <%= if is_nil(@panel_selected_resource) or @policy_conditions_enabled? == false do %>
               <.policy_conditions_placeholder />
             <% else %>
               <.policy_conditions_cards

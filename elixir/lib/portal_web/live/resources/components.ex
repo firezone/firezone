@@ -1557,7 +1557,7 @@ defmodule PortalWeb.Resources.Components do
                 >
                   No conditions — access is unrestricted
                 </p>
-                <div class="space-y-2">
+                <div :if={@policy_conditions_enabled? and @active_conditions != []} class="space-y-2">
                   <.grant_condition_card
                     :for={type <- @active_conditions}
                     type={type}
