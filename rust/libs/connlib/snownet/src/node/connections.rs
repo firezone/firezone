@@ -291,12 +291,12 @@ where
         self.established.values().all(|c| c.is_idle())
     }
 
-    /// `true` iff every established connection runs in iceless mode
-    /// (i.e., uses [`Agent::Path`]). Empty -> `true`. Used by
-    /// [`crate::Node::reset`] to decide between soft (path-agent
-    /// reset, key kept) and hard reset on roam — ICE-based connections
-    /// rely on the key rotation to detect roaming, so we only soft
-    /// reset when the entire node is iceless.
+    /// `true` iff every established connection runs in iceless mode.
+    /// Empty -> `true`. Used by [`crate::Node::reset`] to decide
+    /// between soft (path-agent reset, key kept) and hard reset on
+    /// roam — ICE-based connections rely on the key rotation to
+    /// detect roaming, so we only soft reset when the entire node
+    /// is iceless.
     pub(crate) fn all_iceless(&self) -> bool {
         self.established.values().all(|c| c.agent.is_iceless())
     }

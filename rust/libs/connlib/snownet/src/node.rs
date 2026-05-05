@@ -217,7 +217,7 @@ where
     /// When every established connection runs in iceless mode, the
     /// reset takes a soft path: the WG private key and the connection
     /// records (boringtun sessions, `peer_socket`, etc.) stay put,
-    /// and each connection just resets its [`PathAgent`] + force-sends
+    /// and each connection just resets its path-agent + force-sends
     /// a fresh handshake. ICE-based connections rely on the key
     /// rotation + close-and-reopen cycle to detect roaming, so the
     /// hard path runs whenever any ICE connection is present.
@@ -2055,7 +2055,7 @@ where
         self.agent.handle_outbound(bytes.to_vec(), now);
     }
 
-    /// Soft reset for a roam: reset the [`PathAgent`], re-seed remote
+    /// Soft reset for a roam: reset the path-agent, re-seed remote
     /// candidates, and force a fresh boringtun handshake init so the
     /// peer learns about the new local candidates as soon as they
     /// arrive. Connection state (peer_socket, WG session keys) stays

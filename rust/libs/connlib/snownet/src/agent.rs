@@ -48,7 +48,7 @@ impl Agent {
         matches!(self, Self::Path { .. })
     }
 
-    /// Reset the iceless [`PathAgent`] for a network change (roam).
+    /// Reset the iceless `PathAgent` for a network change (roam).
     ///
     /// Replaces `path` with a fresh `PathAgent::new()` (so any new
     /// internal field added later is reset by construction), drops
