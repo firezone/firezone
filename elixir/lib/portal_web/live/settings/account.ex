@@ -3,6 +3,8 @@ defmodule PortalWeb.Settings.Account do
   import Ecto.Changeset
   alias Portal.Account
   alias Portal.Billing
+  alias Portal.Mailer
+  alias Portal.Mailer.Notifications
   alias __MODULE__.Database
   require Logger
 
@@ -543,7 +545,7 @@ defmodule PortalWeb.Settings.Account do
     if Account.locked?(account) do
       {:noreply, assign(socket, error: "This account is locked and cannot be modified.")}
     else
-      case Database.cancel_account_deletion(account, socket.assigns.subject) do
+        case cancel_account_deletion(account, socket.assigns.subject) do
         {:ok, updated_account} ->
           {:noreply, assign(socket, account: updated_account, error: nil)}
 
@@ -578,7 +580,7 @@ defmodule PortalWeb.Settings.Account do
           scheduled_deletion_at: DateTime.add(DateTime.utc_now(), 7, :day)
         }
 
-        case Database.schedule_account_deletion(account, attrs, socket.assigns.subject) do
+        case schedule_account_deletion(account, attrs, socket.assigns.subject) do
           {:ok, updated_account} ->
             {:noreply,
              assign(socket,
@@ -597,6 +599,73 @@ defmodule PortalWeb.Settings.Account do
         {:noreply,
          assign(socket, slug_confirmation: "", error: "Slug does not match, please try again.")}
     end
+  end
+
+  def schedule_account_deletion(%Account{} = account, attrs, subject) do
+    case Database.schedule_account_deletion(account, attrs, subject) do
+      {:transitioned, updated_account} ->
+        maybe_enqueue_account_deletion_notification(updated_account, subject, :schedule)
+
+      {:unchanged, updated_account} ->
+        {:ok, updated_account}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  def cancel_account_deletion(%Account{} = account, subject) do
+    case Database.cancel_account_deletion(account, subject) do
+      {:transitioned, updated_account} ->
+        maybe_enqueue_account_deletion_notification(updated_account, subject, :cancel)
+
+      {:unchanged, updated_account} ->
+        {:ok, updated_account}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp maybe_enqueue_account_deletion_notification(%Account{} = account, subject, action) do
+    admin_emails = Database.get_account_admin_emails(account.id, subject)
+
+    case admin_emails do
+      [] ->
+        Logger.warning("No admin actors found for account deletion notification",
+          account_id: account.id,
+          action: action
+        )
+
+        {:ok, account}
+
+      admin_emails ->
+        account
+        |> account_deletion_notification_email(admin_emails, action)
+        |> Mailer.enqueue()
+        |> case do
+          {:ok, _result} ->
+            {:ok, account}
+
+          {:error, reason} ->
+            Logger.error("Failed to enqueue account deletion notification",
+              account_id: account.id,
+              action: action,
+              recipient_count: length(admin_emails),
+              reason: inspect(reason)
+            )
+
+            {:ok, account}
+        end
+    end
+  end
+
+  defp account_deletion_notification_email(account, admin_emails, :schedule) do
+    Notifications.account_scheduled_for_deletion_email(account, admin_emails)
+  end
+
+  defp account_deletion_notification_email(account, admin_emails, :cancel) do
+    Notifications.account_deletion_aborted_email(account, admin_emails)
   end
 
   defmodule Database do
@@ -625,24 +694,73 @@ defmodule PortalWeb.Settings.Account do
     end
 
     @spec cancel_account_deletion(Account.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
+            {:transitioned, Account.t()}
+            | {:unchanged, Account.t()}
+            | {:error, :unauthorized}
     def cancel_account_deletion(%Account{} = account, subject) do
-      account
-      |> cast(%{disabled_at: nil, scheduled_deletion_at: nil}, [
-        :disabled_at,
-        :scheduled_deletion_at
-      ])
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      attrs = %{disabled_at: nil, scheduled_deletion_at: nil}
+
+      maybe_transition_account_deletion(account, attrs, subject, :cancel)
     end
 
     @spec schedule_account_deletion(Account.t(), map(), Portal.Authentication.Subject.t()) ::
-            {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
+            {:transitioned, Account.t()}
+            | {:unchanged, Account.t()}
+            | {:error, :unauthorized}
     def schedule_account_deletion(%Account{} = account, attrs, subject) do
-      account
-      |> cast(attrs, [:disabled_at, :scheduled_deletion_at])
+      maybe_transition_account_deletion(account, attrs, subject, :schedule)
+    end
+
+    defp maybe_transition_account_deletion(%Account{} = account, attrs, subject, action) do
+      now = DateTime.utc_now()
+
+      query =
+        from(a in Account,
+          where: a.id == ^account.id,
+          select: a
+        )
+        |> restrict_to_matching_transition(action)
+
+      updates =
+        attrs
+        |> Map.take([:disabled_at, :scheduled_deletion_at])
+        |> Map.put(:updated_at, now)
+
+      case query |> Safe.scoped(subject) |> Safe.update_all(set: Map.to_list(updates)) do
+        {1, [updated_account]} ->
+          {:transitioned, updated_account}
+
+        {0, _} ->
+          {:unchanged, fetch_account!(account.id, subject)}
+
+        {:error, :unauthorized} = error ->
+          error
+      end
+    end
+
+    defp restrict_to_matching_transition(query, :schedule) do
+      where(query, [a], is_nil(a.scheduled_deletion_at))
+    end
+
+    defp restrict_to_matching_transition(query, :cancel) do
+      where(query, [a], not is_nil(a.scheduled_deletion_at))
+    end
+
+    defp fetch_account!(account_id, subject) do
+      from(a in Account, where: a.id == ^account_id)
       |> Safe.scoped(subject)
-      |> Safe.update()
+      |> Safe.one!()
+    end
+
+    def get_account_admin_emails(account_id, subject) do
+      from(a in Actor,
+        where: a.account_id == ^account_id,
+        where: a.type == :account_admin_user,
+        where: is_nil(a.disabled_at),
+        select: a.email
+      )
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
     end
 
     @spec count_account_admin_users_for_account(Portal.Authentication.Subject.t()) :: integer()

@@ -1,0 +1,15 @@
+Account Scheduled for Deletion
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has been scheduled for deletion.
+
+Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
+
+The account is disabled now and all data will be permanently deleted on the scheduled date unless an account admin cancels the deletion first.
+
+Review this account in Settings -> Account:
+<%= @settings_url %>
+
+If you did not expect this change, please contact another account admin or Firezone support immediately.
+
+Thanks,
+The Firezone Team

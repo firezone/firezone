@@ -127,6 +127,7 @@ defmodule Portal.AccountFixtures do
       :slug,
       :key,
       :disabled_at,
+      :scheduled_deletion_at,
       :disabled_reason,
       :users_limit_exceeded,
       :seats_limit_exceeded,
@@ -140,5 +141,12 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
     |> Repo.update!()
+  end
+
+  @doc """
+  Fetch an account by id.
+  """
+  def fetch_account!(account_id) do
+    Repo.get!(Portal.Account, account_id)
   end
 end

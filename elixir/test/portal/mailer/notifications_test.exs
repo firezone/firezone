@@ -10,6 +10,40 @@ defmodule Portal.Mailer.NotificationsTest do
     %{account: account}
   end
 
+  describe "account_scheduled_for_deletion_email/2" do
+    test "includes the scheduled deletion date and settings link", %{account: account} do
+      scheduled_deletion_at = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+      account = update_account(account, scheduled_deletion_at: scheduled_deletion_at)
+      formatted_date = Calendar.strftime(scheduled_deletion_at, "%B %-d, %Y")
+
+      email =
+        account_scheduled_for_deletion_email(account, "admin@example.com")
+
+      assert email.subject == "Firezone Account Scheduled for Deletion"
+      assert email.text_body =~ account.slug
+      assert email.text_body =~ account.id
+      assert email.text_body =~ formatted_date
+      assert email.text_body =~ "/#{account.id}/settings/account"
+      assert email.html_body =~ "Account Scheduled for Deletion"
+      assert email.html_body =~ formatted_date
+    end
+  end
+
+  describe "account_deletion_aborted_email/2" do
+    test "includes the cancellation message and settings link", %{account: account} do
+      email =
+        account_deletion_aborted_email(account, "admin@example.com")
+
+      assert email.subject == "Firezone Account Deletion Aborted"
+      assert email.text_body =~ "has been canceled"
+      assert email.text_body =~ account.slug
+      assert email.text_body =~ account.id
+      assert email.text_body =~ "/#{account.id}/settings/account"
+      assert email.html_body =~ "Account Deletion Aborted"
+      assert email.html_body =~ "no longer scheduled for deletion"
+    end
+  end
+
   describe "outdated_gateway_email/4" do
     test "should contain current gateway version and list of outdated gateways", %{
       account: account

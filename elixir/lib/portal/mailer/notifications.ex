@@ -44,6 +44,32 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
+  def account_scheduled_for_deletion_email(account, recipients) do
+    settings_url = url(~p"/#{account.id}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Scheduled for Deletion")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_scheduled_for_deletion,
+      account: account,
+      settings_url: settings_url
+    )
+  end
+
+  def account_deletion_aborted_email(account, recipients) do
+    settings_url = url(~p"/#{account.id}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Deletion Aborted")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_deletion_aborted,
+      account: account,
+      settings_url: settings_url
+    )
+  end
+
   defp put_recipients(email, recipients) when is_list(recipients),
     do: bcc_recipients(email, recipients)
 

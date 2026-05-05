@@ -3,6 +3,8 @@ defmodule PortalWeb.Settings.AccountTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.OutboundEmailTestHelpers
+  import Portal.SubjectFixtures
 
   setup do
     account = account_fixture()
@@ -198,6 +200,11 @@ defmodule PortalWeb.Settings.AccountTest do
       account: account,
       actor: actor
     } do
+      admin_2 = admin_actor_fixture(account: account)
+      _disabled_admin = disabled_actor_fixture(account: account, type: :account_admin_user)
+      _account_user = actor_fixture(account: account, type: :account_user)
+      _other_admin = admin_actor_fixture()
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -211,7 +218,116 @@ defmodule PortalWeb.Settings.AccountTest do
         |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
         |> render_submit()
 
+      account = fetch_account!(account.id)
+
       assert html =~ "Cancel deletion"
+      assert account.disabled_at
+      assert account.scheduled_deletion_at
+
+      queued_emails = collect_queued_emails(account.id)
+      assert length(queued_emails) == 1
+
+      [email] = queued_emails
+
+      recipients =
+        email.bcc
+        |> Enum.map(fn {_name, address} -> address end)
+
+      assert actor.email in recipients
+      assert admin_2.email in recipients
+      assert length(recipients) == 2
+      assert email.subject == "Firezone Account Scheduled for Deletion"
+      assert email.text_body =~ Calendar.strftime(account.scheduled_deletion_at, "%B %-d, %Y")
+    end
+
+    test "sends aborted deletion email when cancellation restores the account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      scheduled_deletion_at = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
+      account =
+        update_account(account,
+          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          scheduled_deletion_at: scheduled_deletion_at
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "cancel_account_deletion")
+
+      account = fetch_account!(account.id)
+
+      refute account.disabled_at
+      refute account.scheduled_deletion_at
+      refute html =~ "scheduled for deletion"
+
+      queued_emails = collect_queued_emails(account.id)
+      assert length(queued_emails) == 1
+
+      [email] = queued_emails
+      assert email.subject == "Firezone Account Deletion Aborted"
+      assert email.text_body =~ "has been canceled"
+      assert email.text_body =~ account.slug
+    end
+
+    test "scheduling is idempotent and only queues one email", %{account: account, actor: actor} do
+      subject = subject_fixture(account: account, actor: actor)
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+
+      attrs = %{
+        disabled_at: disabled_at,
+        scheduled_deletion_at: scheduled_deletion_at
+      }
+
+      assert {:ok, first_account} =
+               PortalWeb.Settings.Account.schedule_account_deletion(
+                 account,
+                 attrs,
+                 subject
+               )
+
+      assert {:ok, second_account} =
+               PortalWeb.Settings.Account.schedule_account_deletion(
+                 account,
+                 %{
+                   disabled_at: DateTime.add(disabled_at, 1, :day),
+                   scheduled_deletion_at: DateTime.add(scheduled_deletion_at, 1, :day)
+                 },
+                 subject
+               )
+
+      assert DateTime.compare(first_account.scheduled_deletion_at, scheduled_deletion_at) == :eq
+      assert DateTime.compare(second_account.scheduled_deletion_at, scheduled_deletion_at) == :eq
+      assert length(collect_queued_emails(account.id)) == 1
+    end
+
+    test "cancellation is idempotent and only queues one email", %{account: account, actor: actor} do
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+
+      account =
+        update_account(account,
+          disabled_at: disabled_at,
+          scheduled_deletion_at: scheduled_deletion_at
+        )
+
+      subject = subject_fixture(account: account, actor: actor)
+
+      assert {:ok, first_account} =
+               PortalWeb.Settings.Account.cancel_account_deletion(account, subject)
+
+      assert {:ok, second_account} =
+               PortalWeb.Settings.Account.cancel_account_deletion(account, subject)
+
+      refute first_account.scheduled_deletion_at
+      refute second_account.scheduled_deletion_at
+      assert length(collect_queued_emails(account.id)) == 1
     end
   end
 end
