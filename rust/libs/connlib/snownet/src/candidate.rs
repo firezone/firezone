@@ -19,7 +19,7 @@ pub(crate) fn to_path_agent(c: &is::Candidate) -> path_agent::Candidate {
         CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {
             path_agent::Candidate::server_reflexive(c.addr(), c.local())
         }
-        CandidateKind::Relayed => path_agent::Candidate::relayed(c.addr()),
+        CandidateKind::Relayed => path_agent::Candidate::relayed(c.addr(), c.local()),
     }
 }
 

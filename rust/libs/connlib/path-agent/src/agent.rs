@@ -82,6 +82,13 @@ pub struct PathAgent {
 struct PairState {
     /// `(local, remote)` candidate kinds, captured at insertion.
     kinds: (crate::CandidateKind, crate::CandidateKind),
+    /// Whether the local-side relay candidate (if any) has a matched
+    /// IP family between its allocation `addr` and the local
+    /// interface (`local`) used to talk TURN. `true` for non-relay
+    /// candidates (Host/Srflx have matching families by construction).
+    /// Drives a within-tier penalty in `pair_score`: a v6 allocation
+    /// reached over v4 TURN ranks below a same-family v6 alternative.
+    local_family_matched: bool,
     /// Smoothed RTT from probe round-trips.
     smoothed_rtt: Option<Duration>,
     /// In-flight probe we're awaiting a reply for. Replies whose seq
@@ -176,7 +183,8 @@ impl PairState {
 }
 
 /// Sort key for primary selection — smaller is better. Ranks by
-/// (worse-of-pair tier, local-relay-first, IPv6-first, smoothed RTT).
+/// (worse-of-pair tier, local-relay-first, IPv6-first, relay-family-
+/// matched, smoothed RTT).
 ///
 /// The local-relay-first axis only matters at the Relayed tier and
 /// breaks ties between routing through *our* relay vs. the peer's. We
@@ -185,11 +193,19 @@ impl PairState {
 ///
 /// IPv6-first is a within-tier tie-break: a v6 path is generally
 /// shorter (fewer NATs, often direct) and Firezone runs on dual-stack
-/// gear where the v6 leg tends to be the modern default.
+/// gear where the v6 leg tends to be the modern default. It outranks
+/// relay-family-matched: a mismatched v6 path (v6 allocation reached
+/// over a v4 TURN socket) still routes user data over v6 end-to-end
+/// and wins over an all-v4 alternative.
+///
+/// Relay-family-matched only matters within the same v6/v4 bucket at
+/// Relayed tier: matched (our v6 alloc reached over v6 TURN) beats
+/// mismatched (v6 alloc reached over v4 TURN). For Host/Srflx the
+/// flag is trivially `true`, so the axis is a no-op.
 fn pair_score(
     pair: (SocketAddr, SocketAddr),
     state: &PairState,
-) -> (crate::CandidateKind, u8, u8, Option<Duration>) {
+) -> (crate::CandidateKind, u8, u8, u8, Option<Duration>) {
     let tier = state.kinds.0.max(state.kinds.1);
     let local_relay_first = if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
         0
@@ -199,7 +215,14 @@ fn pair_score(
     // We filter cross-family pairs in `add_pair`, so it doesn't matter
     // which side we read the family from.
     let v6_first = if pair.0.is_ipv6() { 0 } else { 1 };
-    (tier, local_relay_first, v6_first, state.smoothed_rtt)
+    let family_match = if state.local_family_matched { 0 } else { 1 };
+    (
+        tier,
+        local_relay_first,
+        v6_first,
+        family_match,
+        state.smoothed_rtt,
+    )
 }
 
 /// Outbound transmit emitted by `PathAgent`.
@@ -316,6 +339,7 @@ impl PathAgent {
             pair,
             PairState {
                 kinds: (local.kind(), remote.kind()),
+                local_family_matched: local.is_family_matched(),
                 smoothed_rtt: None,
                 inflight_probe: None,
                 next_probe_at: None,

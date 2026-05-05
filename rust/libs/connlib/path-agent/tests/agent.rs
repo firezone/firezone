@@ -30,9 +30,9 @@ fn new_agent_has_no_pairs_or_primary() {
 fn pairs_form_cartesian_product_of_locals_and_remotes() {
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2)));
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
     a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr(4)));
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
 
     // 2 × 2 = 4 pairs
     assert_eq!(a.pairs().count(), 4);
@@ -42,9 +42,9 @@ fn pairs_form_cartesian_product_of_locals_and_remotes() {
 fn relay_pairs_filters_correctly() {
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2)));
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
     a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr(4)));
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
 
     // host×host is non-relay; the other 3 involve at least one relay.
     assert_eq!(a.relay_pairs().count(), 3);
@@ -54,7 +54,7 @@ fn relay_pairs_filters_correctly() {
 fn remote_is_relayed_matches_only_relay_kind_at_addr() {
     let mut a = PathAgent::new();
     a.add_remote_candidate(Candidate::host(addr(1)));
-    a.add_remote_candidate(Candidate::relayed(addr(2)));
+    a.add_remote_candidate(Candidate::relayed(addr(2), addr(2)));
 
     assert!(!a.remote_is_relayed(addr(1)));
     assert!(a.remote_is_relayed(addr(2)));
@@ -78,10 +78,10 @@ fn cross_family_pairs_are_skipped() {
     // bootstrap fanout would try to route a v6 destination through a
     // v4 relay channel binding, which TURN cannot do.
     let mut a = PathAgent::new();
-    a.add_local_candidate(Candidate::relayed(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr_v6(2)));
-    a.add_remote_candidate(Candidate::relayed(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr_v6(4)));
+    a.add_local_candidate(Candidate::relayed(addr(1), addr(1)));
+    a.add_local_candidate(Candidate::relayed(addr_v6(2), addr_v6(2)));
+    a.add_remote_candidate(Candidate::relayed(addr(3), addr(3)));
+    a.add_remote_candidate(Candidate::relayed(addr_v6(4), addr_v6(4)));
 
     let pairs: Vec<_> = a.pairs().collect();
     assert_eq!(pairs.len(), 2, "only same-family pairs are kept: {pairs:?}");
@@ -320,8 +320,8 @@ fn srflx_local_uses_base_as_send_from_address() {
     let mapped = addr(10);
     let base = addr(11);
     a.add_local_candidate(Candidate::server_reflexive(mapped, base));
-    a.add_local_candidate(Candidate::relayed(addr(20)));
-    a.add_remote_candidate(Candidate::relayed(addr(30)));
+    a.add_local_candidate(Candidate::relayed(addr(20), addr(20)));
+    a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)));
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
@@ -362,7 +362,7 @@ fn outbound_handshake_init_before_relay_pair_buffers_then_fans_out_on_handle_tim
     let mut a = PathAgent::new();
     let now = Instant::now();
 
-    a.add_local_candidate(Candidate::relayed(addr(1)));
+    a.add_local_candidate(Candidate::relayed(addr(1), addr(1)));
     a.handle_outbound(handshake_init_bytes(), now);
     assert!(
         a.poll_transmit().is_none(),
@@ -371,7 +371,7 @@ fn outbound_handshake_init_before_relay_pair_buffers_then_fans_out_on_handle_tim
 
     // `poll_timeout` should ask to be re-polled immediately so the
     // fanout drains as soon as a relay pair becomes available.
-    a.add_remote_candidate(Candidate::relayed(addr(2)));
+    a.add_remote_candidate(Candidate::relayed(addr(2), addr(2)));
     let next = a.poll_timeout().expect("pending fanout deadline");
     assert!(next <= now, "pending fanout should wake immediately");
 
@@ -686,9 +686,9 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     // even when both reply at identical RTT.
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2)));
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
     a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr(4)));
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
     let now = Instant::now();
 
     let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
@@ -764,6 +764,109 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
         a.primary(),
         Some((addr_v6(11), addr_v6(12))),
         "v6 pair should beat v4 pair at the same tier",
+    );
+}
+
+#[test]
+fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
+    // Two v6 relay-allocated locals that share a v6 remote: one
+    // reached over a matching-family v6 TURN socket, one over a
+    // mismatched v4 TURN socket. The matched-family pair should win
+    // even when both reply at identical RTT.
+    let mut a = PathAgent::new();
+    let matched_local_alloc = addr_v6(10);
+    let mismatched_local_alloc = addr_v6(11);
+    a.add_local_candidate(Candidate::relayed(matched_local_alloc, addr_v6(100))); // v6/v6
+    a.add_local_candidate(Candidate::relayed(mismatched_local_alloc, addr(101))); // v6/v4
+    a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)));
+    let now = Instant::now();
+
+    let _ = a.handle_inbound(
+        &handshake_response_bytes(),
+        (mismatched_local_alloc, addr_v6(20)),
+        now,
+    );
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    // Reply on the *mismatched* pair first.
+    let mismatched_pair = (mismatched_local_alloc, addr_v6(20));
+    let mismatched_probe = extract_probe_for(&outbound, mismatched_pair);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(mismatched_probe.id, mismatched_probe.seq),
+        mismatched_pair,
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some(mismatched_pair));
+    while a.poll_event().is_some() {}
+
+    // Reply on the *matched* pair at identical RTT — within the
+    // same v6 bucket the family-match tie-break should swap primary.
+    let matched_pair = (matched_local_alloc, addr_v6(20));
+    let matched_probe = extract_probe_for(&outbound, matched_pair);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(matched_probe.id, matched_probe.seq),
+        matched_pair,
+        now + Duration::from_millis(100),
+    );
+    assert_eq!(
+        a.primary(),
+        Some(matched_pair),
+        "matched-family relay pair should beat mismatched-family at same v6 tier",
+    );
+}
+
+#[test]
+fn ipv6_preference_dominates_relay_family_match() {
+    // A v6-mismatched-family pair (v6 alloc reached over v4 TURN)
+    // still routes user data over v6 end-to-end and must outrank
+    // a fully-matched v4 alternative — IPv6-first sits *above* the
+    // family-match axis in `pair_score`.
+    let mut a = PathAgent::new();
+    let v6_mismatched_local_alloc = addr_v6(10);
+    let v4_matched_local_alloc = addr(11);
+    a.add_local_candidate(Candidate::relayed(v6_mismatched_local_alloc, addr(100))); // v6/v4
+    a.add_local_candidate(Candidate::relayed(v4_matched_local_alloc, addr(101))); // v4/v4
+    a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)));
+    a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)));
+    let now = Instant::now();
+
+    let _ = a.handle_inbound(
+        &handshake_response_bytes(),
+        (v4_matched_local_alloc, addr(30)),
+        now,
+    );
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    // Reply on the v4-matched pair first.
+    let v4_pair = (v4_matched_local_alloc, addr(30));
+    let v4_probe = extract_probe_for(&outbound, v4_pair);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(v4_probe.id, v4_probe.seq),
+        v4_pair,
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some(v4_pair));
+    while a.poll_event().is_some() {}
+
+    // Reply on the v6-mismatched pair at identical RTT.
+    let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
+    let v6_probe = extract_probe_for(&outbound, v6_pair);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(v6_probe.id, v6_probe.seq),
+        v6_pair,
+        now + Duration::from_millis(100),
+    );
+    assert_eq!(
+        a.primary(),
+        Some(v6_pair),
+        "v6 pair (even mismatched-family) should outrank a fully-matched v4 pair",
     );
 }
 
@@ -1292,9 +1395,9 @@ fn probe_skips_while_inflight_until_probe_timeout_lapses() {
 fn agent_with_relay_pairs() -> PathAgent {
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2)));
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
     a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr(4)));
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
     a
 }
 
