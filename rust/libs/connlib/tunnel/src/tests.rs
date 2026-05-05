@@ -291,7 +291,7 @@ fn init_logging(
 
 fn log_file_filter() -> EnvFilter {
     let default_filter =
-        "debug,tunnel=trace,tunnel::tests=debug,tunnel_test_coverage=trace,ip_packet=trace"
+        "debug,tunnel=trace,tunnel::tests=debug,tunnel_test_coverage=trace,ip_packet=trace,path_agent=trace"
             .to_owned();
     let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
 
