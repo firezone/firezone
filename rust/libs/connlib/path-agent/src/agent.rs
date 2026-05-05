@@ -557,16 +557,25 @@ impl PathAgent {
         }
     }
 
-    /// Restart the [`BOOTSTRAP_WINDOW`] every time we forward a fresh
-    /// handshake to boringtun (i.e., a duplicate that hits one of the
-    /// dedup checks doesn't trigger this). Catches the roam case where
-    /// signalling delivers the peer's new candidates before the
-    /// handshake itself, so the recv path is already in `self.pairs`
-    /// — without this, "settle is sticky" would keep the stale
-    /// primary on the receiver. Steady-state re-keys also reopen,
-    /// which costs ~10 s of all-pair probing every ~120 s; that's
-    /// cheap relative to missing a roam.
+    /// Restart the [`BOOTSTRAP_WINDOW`] and discard every pair's
+    /// connectivity metrics every time we forward a fresh handshake
+    /// to boringtun (a dedup-hit duplicate doesn't trigger this).
+    /// Treating a fresh handshake as a topology reset is what catches
+    /// the roam case where signalling delivers the peer's new
+    /// candidates before the handshake itself; without it, a stale
+    /// probe reply arriving on the dead-but-recent old primary could
+    /// outscore the freshly-measured new one. Steady-state re-keys
+    /// also reset, which costs ~10 s of all-pair re-probing every
+    /// ~120 s — cheap relative to missing a roam.
     fn reopen_bootstrap_window(&mut self, now: Instant) {
+        for state in self.pairs.values_mut() {
+            // Wipe everything `select_primary` weighs against. A
+            // probe reply still in flight before the reset has its
+            // `inflight_probe` cleared, so when it lands the seq
+            // won't match and it'll be ignored as stale.
+            state.smoothed_rtt = None;
+            state.inflight_probe = None;
+        }
         self.bootstrap_settled = false;
         self.bootstrap_until = None;
         self.seed_probe_schedule(now);

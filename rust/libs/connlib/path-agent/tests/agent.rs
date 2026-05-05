@@ -1088,6 +1088,61 @@ fn fresh_inbound_handshake_on_new_path_adopts_it_as_primary() {
 }
 
 #[test]
+fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
+    // Roam scenario: bootstrap settles on `initial_path` with a recent
+    // RTT measurement. After a fresh handshake on `roam_path`, a stale
+    // probe reply for the *old* path can still arrive (peer's NAT
+    // hadn't dropped the old binding yet). Without the topology reset,
+    // the old pair's recent low RTT outscores the new pair's first —
+    // worse — measurement and the gateway stays glued to the dead
+    // primary. Wiping all per-pair RTT/inflight state on a fresh
+    // handshake forces probes to start over from scratch.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let initial_path = (addr(2), addr(4));
+    let roam_path = (addr(1), addr(3));
+
+    // Bootstrap and settle: get a low RTT on `initial_path`, mark it
+    // primary.
+    let _ = a.handle_inbound(&handshake_response_bytes(), initial_path, now);
+    while a.poll_event().is_some() {}
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let initial_probe = extract_probe_for(&outbound, initial_path);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(initial_probe.id, initial_probe.seq),
+        initial_path,
+        now + Duration::from_millis(40),
+    );
+    assert_eq!(a.primary(), Some(initial_path));
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    // Fresh handshake on a different path (different bytes -> not
+    // deduped). Adopt-handshake-primary moves primary to roam_path.
+    let mut roam_resp = handshake_response_bytes();
+    roam_resp[10] = 0xab;
+    let roam_at = now + Duration::from_secs(60);
+    let _ = a.handle_inbound(&roam_resp, roam_path, roam_at);
+    assert_eq!(a.primary(), Some(roam_path));
+    while a.poll_event().is_some() {}
+
+    // A late probe reply for the *old* `initial_path` lands now —
+    // its inflight slot was cleared by the topology reset, so the
+    // reply is ignored and primary doesn't swing back.
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(initial_probe.id, initial_probe.seq),
+        initial_path,
+        roam_at + Duration::from_millis(10),
+    );
+    assert_eq!(
+        a.primary(),
+        Some(roam_path),
+        "stale reply on the old path must not flip primary back"
+    );
+}
+
+#[test]
 fn duplicate_inbound_handshake_does_not_change_primary() {
     // Dedup hits (responder cache, in-flight init, in-flight response)
     // shouldn't disturb the primary — they aren't fresh sessions.
