@@ -1,32 +1,22 @@
-defmodule Portal.Cache.Gateway do
+defmodule Portal.Cache.Client.Authorizations do
   @moduledoc """
-    This cache is used in the gateway channel processes to maintain a materialized view of the gateway policy_authorization state.
-    The cache is updated via WAL messages streamed from the Portal.Changes.ReplicationConnection module.
-
-    We use basic data structures and binary representations instead of full Ecto schema structs
-    to minimize memory usage. The rough structure of the two cached data structures and some napkin math
-    on their memory usage (assuming "worst-case" usage scenarios) is described below.
+    This cache is used in the client channel processes to maintain a materialized view of inbound
+    policy_authorizations — entries where the channel's client is the `receiving_device_id` of a
+    policy_authorization. It mirrors `Portal.Cache.Gateway` for client-to-client device pool flows.
 
     Data structure:
 
-      %{{client_id:uuidv4:16, resource_id:uuidv4:16}:16 => %{policy_authorization_id:uuidv4:16 => expires_at:integer:8}:40}:(num_keys * 1.8 * 8 - large map)
+      %{{client_id:uuidv4:16, resource_id:uuidv4:16}:16 => %{policy_authorization_id:uuidv4:16 => expires_at:integer:8}:40}
 
-    For 10,000 client/resource entries, consisting of 10 policy_authorizations each:
-
-      10,000 keys, 100,000 values
-      480,000 bytes (outer map keys), 6,400,000 bytes (inner map), 144,000 bytes (outer map overhead)
-
-    = 7,024,000
-    = ~ 7 MB
+    Memory characteristics match `Portal.Cache.Gateway` since the structure is identical.
   """
 
-  alias Portal.{Cache, Device}
+  alias Portal.{Cache, Device, PolicyAuthorization}
   alias __MODULE__.Database
   import Ecto.UUID, only: [dump!: 1, load!: 1]
 
   require OpenTelemetry.Tracer
 
-  # Type definitions
   @type client_resource_key ::
           {client_id :: Cache.Cacheable.uuid_binary(),
            resource_id :: Cache.Cacheable.uuid_binary()}
@@ -40,13 +30,13 @@ defmodule Portal.Cache.Gateway do
     Fetches relevant policy_authorizations from the DB and transforms them into the cache format.
   """
   @spec hydrate(Device.t()) :: t()
-  def hydrate(gateway) do
-    OpenTelemetry.Tracer.with_span "Portal.Cache.hydrate_policy_authorizations",
+  def hydrate(client) do
+    OpenTelemetry.Tracer.with_span "Portal.Cache.Client.Authorizations.hydrate",
       attributes: %{
-        gateway_id: gateway.id,
-        account_id: gateway.account_id
+        client_id: client.id,
+        account_id: client.account_id
       } do
-      Database.all_gateway_policy_authorizations_for_cache!(gateway)
+      Database.all_client_policy_authorizations_for_cache!(client)
       |> Enum.reduce(%{}, fn {{client_id, resource_id}, {policy_authorization_id, expires_at}},
                              acc ->
         cid_bytes = dump!(client_id)
@@ -72,11 +62,9 @@ defmodule Portal.Cache.Gateway do
   def prune(cache) do
     now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
-    # 1. Remove individual policy_authorizations older than 14 days, then remove access entry if no
-    # policy_authorizations left
     for {tuple, policy_authorization_id_map} <- cache,
         filtered =
-          Map.reject(policy_authorization_id_map, fn {_fid_bytes, expires_at_unix} ->
+          Map.reject(policy_authorization_id_map, fn {_paid_bytes, expires_at_unix} ->
             expires_at_unix < now_unix
           end),
         map_size(filtered) > 0,
@@ -86,30 +74,11 @@ defmodule Portal.Cache.Gateway do
   end
 
   @doc """
-    Fetches the max expiration for a client-resource from the cache, or nil if not found.
-  """
-  @spec get(t(), Ecto.UUID.t(), Ecto.UUID.t()) :: non_neg_integer() | nil
-  def get(cache, client_id, resource_id) do
-    tuple = {dump!(client_id), dump!(resource_id)}
-
-    case Map.get(cache, tuple) do
-      nil ->
-        nil
-
-      policy_authorization_id_map ->
-        # Use longest expiration to minimize unnecessary access churn
-        policy_authorization_id_map
-        |> Map.values()
-        |> Enum.max()
-    end
-  end
-
-  @doc """
     Add a policy_authorization to the cache. Returns the updated cache.
   """
-  @spec put(t(), Ecto.UUID.t(), Cache.Cacheable.uuid_binary(), Ecto.UUID.t(), DateTime.t()) :: t()
-  def put(%{} = cache, client_id, rid_bytes, policy_authorization_id, %DateTime{} = expires_at) do
-    tuple = {dump!(client_id), rid_bytes}
+  @spec put(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: t()
+  def put(%{} = cache, client_id, resource_id, policy_authorization_id, %DateTime{} = expires_at) do
+    tuple = {dump!(client_id), dump!(resource_id)}
 
     policy_authorization_id_map =
       Map.get(cache, tuple, %{})
@@ -119,17 +88,17 @@ defmodule Portal.Cache.Gateway do
   end
 
   @doc """
-    Delete a policy_authorization from the cache. If another policy_authorization exists for the same client/resource,
-    we return the max expiration for that resource.
-    If not, we optimistically try to reauthorize access by creating a new policy_authorization. This prevents
-    removal of access on the Gateway but not the client, which would cause connectivity issues.
-    If we can't create a new authorization, we send unauthorized so that access is removed.
+    Delete a policy_authorization from the cache. If another policy_authorization exists for the same
+    {initiating_client, resource} pair, return its max expiration. Otherwise, optimistically try to
+    create a replacement policy_authorization so a transient policy churn doesn't tear down an
+    active client-to-client tunnel. If reauthorization fails, return `:unauthorized` so the channel
+    can push `client_device_access_denied`.
   """
-  @spec reauthorize_deleted_policy_authorization(t(), Portal.PolicyAuthorization.t()) ::
+  @spec reauthorize_deleted_policy_authorization(t(), PolicyAuthorization.t()) ::
           {:ok, non_neg_integer(), t()} | {:error, :unauthorized, t()} | {:error, :not_found}
   def reauthorize_deleted_policy_authorization(
         cache,
-        %Portal.PolicyAuthorization{} = policy_authorization
+        %PolicyAuthorization{} = policy_authorization
       ) do
     key = policy_authorization_key(policy_authorization)
     policy_authorization_id = dump!(policy_authorization.id)
@@ -147,7 +116,31 @@ defmodule Portal.Cache.Gateway do
     end
   end
 
-  defp policy_authorization_key(%Portal.PolicyAuthorization{
+  @doc """
+    Check if the cache has a resource entry for the given resource_id.
+  """
+  @spec has_resource?(t(), Ecto.UUID.t()) :: boolean()
+  def has_resource?(%{} = cache, resource_id) do
+    rid_bytes = dump!(resource_id)
+
+    cache
+    |> Map.keys()
+    |> Enum.any?(fn {_, rid} -> rid == rid_bytes end)
+  end
+
+  @doc """
+    Return a list of all `{client_id, resource_id}` pairs matching the given resource ID.
+  """
+  @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]
+  def all_pairs_for_resource(%{} = cache, resource_id) do
+    rid_bytes = dump!(resource_id)
+
+    cache
+    |> Enum.filter(fn {{_, rid}, _} -> rid == rid_bytes end)
+    |> Enum.map(fn {{cid, _}, _} -> {load!(cid), resource_id} end)
+  end
+
+  defp policy_authorization_key(%PolicyAuthorization{
          initiating_device_id: client_id,
          resource_id: resource_id
        }) do
@@ -192,84 +185,33 @@ defmodule Portal.Cache.Gateway do
     end
   end
 
-  @doc """
-    Check if the cache has a resource entry for the given resource_id.
-    Returns true if the resource is present, false otherwise.
-  """
-  @spec has_resource?(t(), Ecto.UUID.t()) :: boolean()
-  def has_resource?(%{} = cache, resource_id) do
-    rid_bytes = dump!(resource_id)
-
-    cache
-    |> Map.keys()
-    |> Enum.any?(fn {_, rid} ->
-      rid == rid_bytes
-    end)
-  end
-
-  @doc """
-    Return a list of all pairs matching the resource ID.
-  """
-  @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]
-  def all_pairs_for_resource(%{} = cache, resource_id) do
-    rid_bytes = dump!(resource_id)
-
-    cache
-    |> Enum.filter(fn {{_, rid}, _} -> rid == rid_bytes end)
-    |> Enum.map(fn {{cid, _}, _} -> {load!(cid), resource_id} end)
-  end
-
-  # Inline functions from Portal.PolicyAuthorizations - moved to DB module
-
   defmodule Database do
     alias Portal.Cache.Reauth
     alias Portal.Safe
     import Ecto.Query
     require Logger
 
-    def all_gateway_policy_authorizations_for_cache!(%{account_id: _, id: _} = gateway) do
+    def all_client_policy_authorizations_for_cache!(%{account_id: _, id: _} = client) do
       now = DateTime.utc_now()
 
-      from(f in Portal.PolicyAuthorization, as: :policy_authorizations)
-      |> where([policy_authorizations: f], f.account_id == ^gateway.account_id)
-      |> where([policy_authorizations: f], f.receiving_device_id == ^gateway.id)
-      |> where([policy_authorizations: f], f.expires_at > ^now)
+      from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
+      |> where([policy_authorizations: pa], pa.receiving_device_id == ^client.id)
+      |> where([policy_authorizations: pa], pa.expires_at > ^now)
       |> select(
-        [policy_authorizations: f],
-        {{f.initiating_device_id, f.resource_id}, {f.id, f.expires_at}}
+        [policy_authorizations: pa],
+        {{pa.initiating_device_id, pa.resource_id}, {pa.id, pa.expires_at}}
       )
       |> Safe.unscoped(:replica)
       |> Safe.all()
     end
 
-    def fetch_gateway_by_id(account_id, id) do
-      result =
-        from(g in Portal.Device, as: :gateways)
-        |> where([gateways: g], g.type == :gateway)
-        |> where([gateways: g], g.account_id == ^account_id and g.id == ^id)
-        |> Safe.unscoped(:replica)
-        |> Safe.one()
-
-      if result do
-        {:ok, result}
-      else
-        {:error, :not_found}
-      end
-    end
-
-    def all_policies_in_site_for_resource_id_and_actor_id!(
-          account_id,
-          site_id,
-          resource_id,
-          actor_id
-        ) do
+    def all_policies_for_resource_id_and_actor_id!(account_id, resource_id, actor_id) do
       from(p in Portal.Policy, as: :policies)
       |> where([policies: p], is_nil(p.disabled_at))
       |> where([policies: p], p.account_id == ^account_id)
       |> where([policies: p], p.resource_id == ^resource_id)
       |> join(:inner, [policies: p], ag in assoc(p, :group), as: :group)
-      |> join(:inner, [policies: p], r in assoc(p, :resource), as: :resource)
-      |> where([resource: r], r.site_id == ^site_id)
       |> join(:inner, [], actor in Portal.Actor,
         on: actor.id == ^actor_id and actor.account_id == ^account_id,
         as: :actor
@@ -283,7 +225,6 @@ defmodule Portal.Cache.Gateway do
              ag.name == "Everyone" and
              ag.account_id == a.account_id)
       )
-      |> preload(resource: :site)
       |> Safe.unscoped(:replica)
       |> Safe.all()
     end
@@ -304,17 +245,11 @@ defmodule Portal.Cache.Gateway do
                policy_authorization.account_id,
                policy_authorization.token_id
              ),
-           {:ok, gateway} <-
-             fetch_gateway_by_id(
-               policy_authorization.account_id,
-               policy_authorization.receiving_device_id
-             ),
-           # We only want to reauthorize the resource for this gateway if the resource is still connected to its
-           # site.
+           # Client-to-client flows always target static_device_pool resources, which carry
+           # no site, so we drop the gateway flow's site filter when looking for replacements.
            policies when policies != [] <-
-             all_policies_in_site_for_resource_id_and_actor_id!(
+             all_policies_for_resource_id_and_actor_id!(
                policy_authorization.account_id,
-               gateway.site_id,
                policy_authorization.resource_id,
                client.actor_id
              ),
@@ -326,7 +261,6 @@ defmodule Portal.Cache.Gateway do
                token.auth_provider_id,
                policy_authorization.expires_at
              ),
-           # Membership is optional only for "Everyone" group policies
            {:ok, membership_id} <-
              Reauth.fetch_membership_id_or_nil_for_everyone(
                policy_authorization.account_id,
@@ -349,7 +283,7 @@ defmodule Portal.Cache.Gateway do
              })
              |> Safe.unscoped()
              |> Safe.insert() do
-        Logger.info("Reauthorized policy_authorization",
+        Logger.info("Reauthorized client-to-client policy_authorization",
           old_policy_authorization: inspect(policy_authorization),
           new_policy_authorization: inspect(new_policy_authorization)
         )
@@ -357,7 +291,7 @@ defmodule Portal.Cache.Gateway do
         {:ok, new_policy_authorization}
       else
         reason ->
-          Logger.info("Failed to reauthorize policy_authorization",
+          Logger.info("Failed to reauthorize client-to-client policy_authorization",
             old_policy_authorization: inspect(policy_authorization),
             reason: inspect(reason)
           )

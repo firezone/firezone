@@ -698,6 +698,70 @@ defmodule PortalAPI.Gateway.ChannelTest do
              } = :sys.get_state(socket.channel_pid)
     end
 
+    test "updates gateway state without resending init when tunnel IPs are unchanged", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      lsn = System.unique_integer([:positive, :monotonic])
+      updated_gateway = %{gateway | name: "Renamed gateway"}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :update,
+        old_struct: gateway,
+        struct: updated_gateway
+      })
+
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "init", _
+
+      assert %{assigns: %{gateway: %{name: "Renamed gateway"}}} =
+               :sys.get_state(socket.channel_pid)
+    end
+
+    test "ignores DOWN messages from unrelated processes", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      stranger = spawn(fn -> :ok end)
+
+      send(socket.channel_pid, {:DOWN, make_ref(), :process, stranger, :normal})
+
+      # Channel should keep running and remain joined.
+      assert :sys.get_state(socket.channel_pid)
+    end
+
+    test "load-balances relays with mixed nil and non-nil locations", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      # Mix of relays with and without lat/lon to exercise the nils_last comparator
+      # in both pairwise orders during sort.
+      relay_with_loc = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay_with_loc)
+
+      relay_no_lat = relay_fixture(%{lat: nil, lon: -121.0})
+      :ok = Portal.Presence.Relays.connect(relay_no_lat)
+
+      relay_no_lon = relay_fixture(%{lat: 37.5, lon: nil})
+      :ok = Portal.Presence.Relays.connect(relay_no_lon)
+
+      _socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: relays}
+
+      assert is_list(relays)
+    end
+
     test "pushes disconnect event and closes when the token is deleted", %{
       account: account,
       gateway: gateway,

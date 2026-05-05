@@ -824,9 +824,9 @@ defmodule PortalWeb.ResourcesTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: nil,
-            client_remote_ip: {100, 64, 0, 1},
-            client_user_agent: "Test/1.0",
-            gateway_remote_ip: {100, 64, 0, 2},
+            initiator_remote_ip: {100, 64, 0, 1},
+            initiator_user_agent: "Test/1.0",
+            receiver_remote_ip: {100, 64, 0, 2},
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -836,9 +836,9 @@ defmodule PortalWeb.ResourcesTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )

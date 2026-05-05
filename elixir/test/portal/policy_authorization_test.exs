@@ -42,9 +42,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -55,9 +55,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -88,9 +88,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: Ecto.UUID.generate(),
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -100,9 +100,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -134,9 +134,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -146,9 +146,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -180,9 +180,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -192,9 +192,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -226,9 +226,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -238,9 +238,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -273,9 +273,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: Ecto.UUID.generate(),
             token_id: token.id,
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -285,9 +285,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -319,9 +319,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: Ecto.UUID.generate(),
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -331,9 +331,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -365,9 +365,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: nil,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -377,9 +377,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
@@ -412,9 +412,9 @@ defmodule Portal.PolicyAuthorizationTest do
             resource_id: resource.id,
             token_id: token.id,
             membership_id: membership.id,
-            client_remote_ip: @valid_ip,
-            client_user_agent: @valid_user_agent,
-            gateway_remote_ip: @valid_gateway_ip,
+            initiator_remote_ip: @valid_ip,
+            initiator_user_agent: @valid_user_agent,
+            receiver_remote_ip: @valid_gateway_ip,
             expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
           },
           [
@@ -424,9 +424,9 @@ defmodule Portal.PolicyAuthorizationTest do
             :resource_id,
             :token_id,
             :membership_id,
-            :client_remote_ip,
-            :client_user_agent,
-            :gateway_remote_ip,
+            :initiator_remote_ip,
+            :initiator_user_agent,
+            :receiver_remote_ip,
             :expires_at
           ]
         )
