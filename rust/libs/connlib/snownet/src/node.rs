@@ -2042,17 +2042,7 @@ where
     where
         RId: Ord + fmt::Display + Copy,
     {
-        const MAX_SCRATCH_SPACE: usize = 148;
-
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-        let TunnResult::WriteToNetwork(bytes) = self
-            .tunnel
-            .format_handshake_initiation_at(&mut buf, false, now)
-        else {
-            tracing::debug!("Another handshake is already in progress");
-            return;
-        };
-        self.agent.handle_outbound(bytes.to_vec(), now);
+        self.agent.initiate_handshake(&mut self.tunnel, false, now);
     }
 
     /// Soft reset for a roam: reset the path-agent, re-seed remote
@@ -2072,20 +2062,9 @@ where
         RId: Ord + fmt::Display + Copy,
     {
         self.agent.reset_for_roam();
-
-        // Force-resend so we get fresh init bytes even if boringtun
-        // recently sent one — the network's changed underneath, the
-        // old in-flight init is going nowhere.
-        const MAX_SCRATCH_SPACE: usize = 148;
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-        let TunnResult::WriteToNetwork(bytes) = self
-            .tunnel
-            .format_handshake_initiation_at(&mut buf, true, now)
-        else {
-            tracing::debug!("boringtun declined to emit a fresh init for roam");
-            return;
-        };
-        self.agent.handle_outbound(bytes.to_vec(), now);
+        // Force-resend: the network changed underneath, an in-flight
+        // init from before the roam is going nowhere.
+        self.agent.initiate_handshake(&mut self.tunnel, true, now);
     }
 
     fn initiate_wg_session(

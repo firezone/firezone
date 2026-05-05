@@ -15,6 +15,7 @@
 use std::ops::ControlFlow;
 use std::time::Instant;
 
+use boringtun::noise::Tunn;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
@@ -341,6 +342,21 @@ impl Agent {
     pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
         if let Self::Path { path, .. } = self {
             path.handle_outbound(bytes, now);
+        }
+    }
+
+    /// Iceless-mode helper: ask `tunnel` for a `HandshakeInit` and
+    /// route it through the inner `PathAgent`. No-op on `Self::Ice`
+    /// — ICE-based connections initiate after nomination via
+    /// `Connection::initiate_wg_session`.
+    pub(crate) fn initiate_handshake(
+        &mut self,
+        tunnel: &mut Tunn,
+        force_resend: bool,
+        now: Instant,
+    ) {
+        if let Self::Path { path, .. } = self {
+            path.initiate_handshake(tunnel, force_resend, now);
         }
     }
 
