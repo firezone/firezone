@@ -25,7 +25,8 @@ use std::{
     time::Duration,
 };
 use telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
+    MaybePushMetricsExporter, NoopPushMetricsExporter, SentryMetricExporter, Telemetry, analytics,
+    feature_flags, otel,
 };
 use tokio::time::Instant;
 
@@ -150,6 +151,7 @@ struct Cli {
 enum MetricsExporter {
     Stdout,
     OtelCollector,
+    Sentry,
 }
 
 impl Cli {
@@ -395,7 +397,14 @@ fn try_main() -> Result<()> {
 
                             NoopPushMetricsExporter
                         },
-                        should_export: feature_flags::export_metrics,
+                        should_export: feature_flags::stream_metrics,
+                    })
+                    .with_resource(resource)
+                    .build(),
+                (MetricsExporter::Sentry, _) => SdkMeterProvider::builder()
+                    .with_periodic_exporter(MaybePushMetricsExporter {
+                        inner: SentryMetricExporter,
+                        should_export: feature_flags::stream_metrics,
                     })
                     .with_resource(resource)
                     .build(),

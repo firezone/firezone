@@ -1,8 +1,11 @@
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::{
     Resource,
+    metrics::SdkMeterProvider,
     resource::{EnvResourceDetector, ResourceDetector, TelemetryResourceDetector},
 };
+
+use crate::{MaybePushMetricsExporter, SentryMetricExporter, feature_flags};
 
 pub mod attr {
     use ip_packet::{IpPacket, IpVersion};
@@ -187,6 +190,32 @@ pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resou
         .with_detector(Box::new(EnvResourceDetector::new()))
         .with_attributes(attributes)
         .build()
+}
+
+/// Installs a global meter provider that streams metrics into Sentry.
+///
+/// Export is gated on the `stream_metrics` feature flag, so it is safe to call
+/// this unconditionally when starting telemetry.
+pub fn install_sentry_meter_provider(
+    service_name: &'static str,
+    service_version: &'static str,
+    service_instance_id: String,
+) {
+    let resource = default_resource_with([
+        KeyValue::new("service.name", service_name),
+        KeyValue::new("service.version", service_version),
+        crate::otel::attr::service_instance_id(service_instance_id),
+    ]);
+
+    let provider = SdkMeterProvider::builder()
+        .with_periodic_exporter(MaybePushMetricsExporter {
+            inner: SentryMetricExporter,
+            should_export: feature_flags::stream_metrics,
+        })
+        .with_resource(resource)
+        .build();
+
+    opentelemetry::global::set_meter_provider(provider);
 }
 
 pub struct OsResourceDetector;

@@ -17,7 +17,7 @@ use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use telemetry::{Telemetry, analytics};
+use telemetry::{Telemetry, analytics, otel};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
@@ -486,6 +486,8 @@ fn connect(
     let mut telemetry = Telemetry::new();
     runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN, device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
+
+    otel::install_sentry_meter_provider(platform::COMPONENT, platform::VERSION, device_id.clone());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 

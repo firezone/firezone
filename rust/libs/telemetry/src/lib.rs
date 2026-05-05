@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
-    protocol::{Event, Log, LogAttribute},
+    protocol::{Event, Log, LogAttribute, Metric},
     transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
@@ -27,9 +27,11 @@ mod api_url;
 mod maybe_push_metrics_exporter;
 mod noop_push_metrics_exporter;
 mod posthog;
+mod sentry_metric_exporter;
 
 pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
+pub use sentry_metric_exporter::SentryMetricExporter;
 
 /// Hashes a device ID using SHA256 and returns the hex-encoded result.
 pub fn hash_device_id(id: impl AsRef<[u8]>) -> String {
@@ -220,11 +222,17 @@ impl Telemetry {
             max_breadcrumbs: 500,
             before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
             enable_logs: true,
+            enable_metrics: true,
             before_send_log: Some(Arc::new(|log| {
-                let log = insert_user_account_slug(log);
+                let log = insert_user_account_slug_into_log(log);
                 let log = append_tracing_fields_to_message(log);
 
                 Some(log)
+            })),
+            before_send_metric: Some(Arc::new(|metric| {
+                let metric = insert_user_account_slug_into_metric(metric);
+
+                Some(metric)
             })),
             ..Default::default()
         };
@@ -398,7 +406,7 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
     log
 }
 
-fn insert_user_account_slug(mut log: Log) -> Log {
+fn insert_user_account_slug_into_log(mut log: Log) -> Log {
     let Some(account_slug) = Telemetry::current_account_slug() else {
         return log;
     };
@@ -409,6 +417,18 @@ fn insert_user_account_slug(mut log: Log) -> Log {
     );
 
     log
+}
+
+fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
+    let Some(account_slug) = Telemetry::current_account_slug() else {
+        return metric;
+    };
+
+    metric
+        .attributes
+        .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+
+    metric
 }
 
 fn update_user(update: impl FnOnce(&mut sentry::User)) {
