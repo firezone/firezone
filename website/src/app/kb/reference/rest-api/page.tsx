@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import Content from "./readme.mdx";
 
 export const metadata: Metadata = {
-  title: "REST API • Firezone Docs",
+  title: "REST API",
   description:
     "Learn more about how to automate your Firezone workflows with our REST API.",
 };

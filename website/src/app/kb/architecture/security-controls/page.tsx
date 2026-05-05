@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Architecture: Security Controls • Firezone Docs",
+  title: "Architecture: Security Controls",
   description: "How we keep your data secure at rest and in transit.",
 };
 

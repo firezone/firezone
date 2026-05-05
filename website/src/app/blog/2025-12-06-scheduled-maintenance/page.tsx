@@ -2,9 +2,9 @@ import { Metadata } from "next";
 import _Page from "./_page";
 
 export const metadata: Metadata = {
-  title: "Scheduled Maintenance - December 6, 2025 • Firezone Blog",
+  title: "Maintenance Window — Dec 6, 2025",
   description:
-    "Firezone will undergo scheduled maintenance on December 6, 2025 from 8pm to 10pm Pacific Time to roll out major improvements to authentication, directory sync, and user management.",
+    "Firezone scheduled maintenance on December 6, 2025 from 8–10 PM PT to deploy authentication, directory sync, and user management updates.",
 };
 
 export default function Page() {

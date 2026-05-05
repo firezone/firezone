@@ -21,9 +21,9 @@ import Banner from "@/components/Banner";
 import { Badge } from "@/components/Badges";
 
 export const metadata: Metadata = {
-  title: "Firezone: Zero trust access that scales",
+  title: { absolute: "Zero Trust Access That Scales • Firezone" },
   description:
-    "Firezone is a fast, flexible VPN replacement built on WireGuard® that eliminates tedious configuration and integrates with your identity provider.",
+    "Replace your VPN with Firezone — open-source zero trust access built on WireGuard®. Connect users to anything, anywhere. Try free in minutes.",
 };
 
 export default function Page() {

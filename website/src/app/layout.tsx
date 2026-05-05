@@ -28,8 +28,21 @@ const robotoSerif = Roboto_Serif({
 const gtmId = "GTM-NBZ4CD98";
 
 export const metadata: Metadata = {
-  title: "WireGuard® for Enterprise • Firezone",
+  metadataBase: new URL("https://www.firezone.dev"),
+  title: {
+    default: "Zero Trust Access for the Enterprise • Firezone",
+    template: "%s • Firezone",
+  },
   description: "Open-source, zero-trust access platform built on WireGuard®",
+  openGraph: {
+    siteName: "Firezone",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@firezonehq",
+  },
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

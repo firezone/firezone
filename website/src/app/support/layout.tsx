@@ -2,8 +2,9 @@ import { Metadata } from "next";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Support • Firezone",
-  description: "Need help? Start here.",
+  title: "Get Help & Firezone Zero Trust Support",
+  description:
+    "Find answers to common questions, search the docs, contact our team, or open a GitHub issue. Get fast support for your Firezone deployment.",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

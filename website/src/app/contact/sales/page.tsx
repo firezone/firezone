@@ -2,9 +2,9 @@ import SalesLeadForm from "@/components/SalesLeadForm";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Contact Sales • Firezone",
+  title: "Get a Demo — Sales & Pricing",
   description:
-    "Request a demo, get more pricing details, and learn how Firezone can secure your organization.",
+    "Request a Firezone demo, discuss enterprise zero trust pricing, and learn how to secure your team. Book a 30-minute call with our sales team today.",
 };
 
 export default function Page() {

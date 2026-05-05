@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import _Page from "./_page";
 
 export const metadata: Metadata = {
-  title: "Deploy Firezone on GCP • Firezone Docs",
+  title: "Deploy Firezone on GCP",
   description:
     "Example Terraform configuration to deploy Firezone on Google Cloud Platform.",
 };

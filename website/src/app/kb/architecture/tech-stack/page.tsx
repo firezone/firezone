@@ -2,7 +2,7 @@ import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Architecture: Stack • Firezone Docs",
+  title: "Architecture: Stack",
   description: "Why we chose the tech we did, and how it all fits together.",
 };
 

@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import _Page from "./_page";
 
 export const metadata: Metadata = {
-  title: "Automate • Firezone Docs",
+  title: "Automate",
   description: "Automation recipes for deploying and managing Firezone.",
 };
 

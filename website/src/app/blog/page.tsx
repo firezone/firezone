@@ -2,8 +2,9 @@ import { Metadata } from "next";
 import Posts from "./posts";
 
 export const metadata: Metadata = {
-  title: "Blog • Firezone",
-  description: "Announcements, insights, and more from the Firezone team.",
+  title: { absolute: "Zero Trust Insights — Firezone Blog" },
+  description:
+    "Read announcements, technical deep dives, and security insights from the Firezone team. Posts on networking, zero trust access, and Rust.",
 };
 
 export default function Page() {

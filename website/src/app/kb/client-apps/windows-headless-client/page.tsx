@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Windows Headless Client • Firezone Docs",
+  title: "Windows Headless Client",
   description: "How to install and use the Firezone Windows headless client.",
 };
 

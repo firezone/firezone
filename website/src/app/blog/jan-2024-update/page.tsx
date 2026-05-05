@@ -4,7 +4,7 @@ import { Metadata } from "next";
 import gravatar from "@/lib/gravatar";
 
 export const metadata: Metadata = {
-  title: "Jan 2024 Update • Firezone Blog",
+  title: "Jan 2024 Update",
   description: "January 2024 Update",
 };
 

@@ -2,9 +2,9 @@ import NewsletterSignup from "@/components/NewsletterSignup";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Newsletter Signup • Firezone",
+  title: "Roadmap Updates & Product Newsletter",
   description:
-    "Sign up to receive roadmap updates, how-to guides, and product announcements from the Firezone team.",
+    "Get monthly Firezone roadmap updates, how-to guides, and product announcements straight to your inbox. Sign up free in seconds.",
 };
 
 export default function Page() {

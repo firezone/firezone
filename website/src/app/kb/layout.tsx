@@ -1,9 +1,17 @@
 import fs from "fs";
 import path from "path";
+import { Metadata } from "next";
 
 import LastUpdated from "@/components/LastUpdated";
 import DocsFeedback from "@/components/DocsFeedback";
 import KbSidebar from "@/components/KbSidebar";
+
+export const metadata: Metadata = {
+  title: {
+    default: "Documentation • Firezone Docs",
+    template: "%s • Firezone Docs",
+  },
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   // timestamps.json was generated during build

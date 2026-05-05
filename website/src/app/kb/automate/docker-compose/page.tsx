@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Docker Compose • Firezone Docs",
+  title: "Docker Compose",
   description: "Learn how to deploy Firezone Gateways with Docker Compose",
 };
 
