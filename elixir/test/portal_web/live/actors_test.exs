@@ -126,6 +126,66 @@ defmodule PortalWeb.ActorsTest do
       html = render(lv)
       assert html =~ "John Smith"
     end
+
+    test "shows flash and does not create user when users limit reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{users_count: 1}})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/new")
+
+      render_click(lv, "select_new_actor_type", %{"type" => "user"})
+
+      html =
+        lv
+        |> form("form[phx-submit='create_user']",
+          actor: %{
+            name: "Over Limit User",
+            email: "over.limit@example.com",
+            type: "account_user",
+            allow_email_otp_sign_in: "true"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "User limit reached for your account"
+      refute Portal.Repo.get_by(Portal.Actor, name: "Over Limit User", account_id: account.id)
+    end
+
+    test "shows flash and does not create admin when admins limit reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/new")
+
+      render_click(lv, "select_new_actor_type", %{"type" => "user"})
+
+      html =
+        lv
+        |> form("form[phx-submit='create_user']",
+          actor: %{
+            name: "Over Limit Admin",
+            email: "over.limit.admin@example.com",
+            type: "account_admin_user",
+            allow_email_otp_sign_in: "true"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Admin user limit reached for your account"
+      refute Portal.Repo.get_by(Portal.Actor, name: "Over Limit Admin", account_id: account.id)
+    end
   end
 
   describe "create service account panel" do
@@ -238,6 +298,32 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "A temporary error occurred"
       assert html =~ "Please try again"
+    end
+
+    test "shows flash and does not create service account when limit reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{service_accounts_count: 0}})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/new")
+
+      render_click(lv, "select_new_actor_type", %{"type" => "service_account"})
+
+      html =
+        lv
+        |> form("form[phx-submit='create_service_account']",
+          actor: %{name: "Over Limit SA"},
+          token_expiration: ""
+        )
+        |> render_submit()
+
+      assert html =~ "Service account limit reached for your account"
+      refute Portal.Repo.get_by(Portal.Actor, name: "Over Limit SA", account_id: account.id)
     end
   end
 
@@ -496,6 +582,37 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "Save Changes"
       assert html =~ other_actor.name
+    end
+
+    test "shows flash and does not promote user when admins limit reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{account_admin_users_count: 1}})
+      other_actor = actor_fixture(account: account, type: :account_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      html =
+        lv
+        |> form("form[phx-submit='save']",
+          actor: %{
+            name: other_actor.name,
+            email: other_actor.email,
+            type: "account_admin_user",
+            allow_email_otp_sign_in: "true"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Admin user limit reached for your account"
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).type ==
+               :account_user
     end
 
     test "searches groups and removes pending addition in edit form", %{

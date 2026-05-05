@@ -336,10 +336,10 @@ defmodule PortalWeb.Actors do
     # Check billing limits
     cond do
       not Portal.Billing.can_create_users?(account) ->
-        {:noreply, put_flash(socket, :error_inline, "User limit reached for your account")}
+        {:noreply, put_flash(socket, :error, "User limit reached for your account")}
 
       actor_type == :account_admin_user and not Portal.Billing.can_create_admin_users?(account) ->
-        {:noreply, put_flash(socket, :error_inline, "Admin user limit reached for your account")}
+        {:noreply, put_flash(socket, :error, "Admin user limit reached for your account")}
 
       true ->
         case Database.create(changeset, socket.assigns.subject) do
@@ -415,7 +415,7 @@ defmodule PortalWeb.Actors do
       end
     else
       {:noreply,
-       put_flash(socket, :error_inline, "Service account limit reached for your account")}
+       put_flash(socket, :error, "Service account limit reached for your account")}
     end
   end
 
@@ -778,15 +778,7 @@ defmodule PortalWeb.Actors do
           not Portal.Billing.can_create_admin_users?(
             Database.fetch_account(socket.assigns.subject)
           ) ->
-        changeset =
-          changeset
-          |> add_error(
-            :type,
-            "Admin user limit reached for your account"
-          )
-          |> Map.put(:action, :validate)
-
-        {:error, changeset}
+        {:error, "Admin user limit reached for your account"}
 
       # Role change allowed
       true ->
