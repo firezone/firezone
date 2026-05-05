@@ -687,6 +687,60 @@ defmodule PortalWeb.FormComponents do
   end
 
   @doc """
+  Renders a locked section with an upgrade banner and a blurred preview of the
+  feature content underneath, all wrapped in a single container.
+
+  ## Examples
+
+      <.upgrade_locked_section
+        account={@account}
+        message="Upgrade your plan to unlock policy conditions."
+        description="Add policy restrictions like IP ranges, identity providers, and time windows."
+      >
+        <.placeholder_or_preview />
+      </.upgrade_locked_section>
+  """
+  attr :account, :any, required: true
+  attr :message, :string, required: true
+  attr :description, :string, default: nil
+  attr :id, :string, default: nil
+  attr :class, :string, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def upgrade_locked_section(assigns) do
+    ~H"""
+    <div id={@id} class={["relative", @class]} {@rest}>
+      <div class="absolute inset-0 z-20 flex items-center justify-center p-3">
+        <div class="flex max-w-xs flex-col items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-4 py-3 text-center text-[var(--text-tertiary)] shadow-md">
+          <.icon name="ri-lock-2-line" class="h-5 w-5" />
+          <div class="flex flex-col items-center gap-0.5">
+            <p class="text-xs font-medium text-[var(--text-primary)]">
+              {@message}
+            </p>
+            <p :if={@description} class="text-[11px]">
+              {@description}
+            </p>
+          </div>
+          <.button
+            style="primary"
+            size="xs"
+            icon="ri-sparkling-fill"
+            navigate={~p"/#{@account}/settings/account"}
+          >
+            Upgrade to Unlock
+          </.button>
+        </div>
+      </div>
+      <div class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40" />
+      <div class="pointer-events-none select-none rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 blur-[2px] opacity-70">
+        {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Render a submit button.
 
   ## Examples

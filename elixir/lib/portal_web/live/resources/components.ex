@@ -633,6 +633,7 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :resource, :any, default: nil
   attr :form, :any, required: true
   attr :active_protocols, :list, default: []
@@ -640,13 +641,20 @@ defmodule PortalWeb.Resources.Components do
   attr :filter_ports, :map, default: %{}
 
   def resource_traffic_restrictions_section(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :traffic_filters_enabled?,
+        Portal.Account.traffic_filters_enabled?(assigns.account)
+      )
+
     ~H"""
     <div :if={is_nil(@resource) || @resource.type != :internet}>
       <div class="flex items-center justify-between mb-2">
         <span class="block text-xs font-medium text-[var(--text-secondary)]">
           Traffic Restrictions <span class="font-normal text-[var(--text-tertiary)]">(optional)</span>
         </span>
-        <div class="relative">
+        <div :if={@traffic_filters_enabled?} class="relative">
           <button
             type="button"
             phx-click="toggle_resource_filters_dropdown"
@@ -699,53 +707,66 @@ defmodule PortalWeb.Resources.Components do
         </div>
       </div>
 
-      <div
-        :if={@active_protocols == []}
-        class="flex items-center justify-center rounded border border-dashed border-[var(--border-strong)] px-4 py-5 text-xs text-[var(--text-tertiary)]"
-      >
-        No restrictions — All protocols/ports permitted
-      </div>
-
-      <div :if={@active_protocols != []} class="flex flex-col gap-2">
-        <div
-          :for={protocol <- @active_protocols}
-          class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+      <%= if @traffic_filters_enabled? == false do %>
+        <.upgrade_locked_section
+          id="resource-traffic-filters-locked-container"
+          account={@account}
+          message="Upgrade your plan to unlock traffic restrictions."
+          description="Restrict access to specific protocols and ports."
         >
-          <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
-          <input
-            type="hidden"
-            name={"resource[filters][#{protocol}][protocol]"}
-            value={"#{protocol}"}
-          />
-          <span class="w-10 shrink-0 text-xs font-medium text-[var(--text-primary)] uppercase">
-            {protocol}
-          </span>
-          <div :if={protocol != :icmp} class="flex-1">
-            <input
-              type="text"
-              name={"resource[filters][#{protocol}][ports]"}
-              value={Map.get(@filter_ports, protocol, "")}
-              placeholder="All ports"
-              class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors border-[var(--control-border)] focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30"
-            />
-          </div>
-          <span
-            :if={protocol == :icmp}
-            class="flex-1 text-xs text-[var(--text-tertiary)] italic"
-          >
-            echo request/reply
-          </span>
-          <button
-            type="button"
-            phx-click="remove_resource_filter"
-            phx-value-protocol={"#{protocol}"}
-            class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-            aria-label={"Remove #{protocol} filter"}
-          >
-            <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-          </button>
+          <p class="flex items-center justify-center rounded border border-dashed border-[var(--border-strong)] px-4 py-5 text-xs text-[var(--text-tertiary)]">
+            No restrictions — All protocols/ports permitted
+          </p>
+        </.upgrade_locked_section>
+      <% else %>
+        <div
+          :if={@active_protocols == []}
+          class="flex items-center justify-center rounded border border-dashed border-[var(--border-strong)] px-4 py-5 text-xs text-[var(--text-tertiary)]"
+        >
+          No restrictions — All protocols/ports permitted
         </div>
-      </div>
+
+        <div :if={@active_protocols != []} class="flex flex-col gap-2">
+          <div
+            :for={protocol <- @active_protocols}
+            class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+          >
+            <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+            <input
+              type="hidden"
+              name={"resource[filters][#{protocol}][protocol]"}
+              value={"#{protocol}"}
+            />
+            <span class="w-10 shrink-0 text-xs font-medium text-[var(--text-primary)] uppercase">
+              {protocol}
+            </span>
+            <div :if={protocol != :icmp} class="flex-1">
+              <input
+                type="text"
+                name={"resource[filters][#{protocol}][ports]"}
+                value={Map.get(@filter_ports, protocol, "")}
+                placeholder="All ports"
+                class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors border-[var(--control-border)] focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30"
+              />
+            </div>
+            <span
+              :if={protocol == :icmp}
+              class="flex-1 text-xs text-[var(--text-tertiary)] italic"
+            >
+              echo request/reply
+            </span>
+            <button
+              type="button"
+              phx-click="remove_resource_filter"
+              phx-value-protocol={"#{protocol}"}
+              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              aria-label={"Remove #{protocol} filter"}
+            >
+              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      <% end %>
     </div>
     """
   end
@@ -909,6 +930,7 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :resource, :any, default: nil
   attr :panel_view, :atom, required: true
   attr :form_state, :map, required: true
@@ -960,6 +982,7 @@ defmodule PortalWeb.Resources.Components do
           />
 
           <.resource_traffic_restrictions_section
+            account={@account}
             resource={@resource}
             form={@resource_form}
             active_protocols={@resource_form_active_protocols}
@@ -1515,58 +1538,33 @@ defmodule PortalWeb.Resources.Components do
                 </div>
               </div>
             </div>
-            <div class="relative">
-              <div
-                :if={@policy_conditions_enabled? == false}
-                class="absolute inset-0 z-20 flex items-center justify-center px-4 pt-8"
-              >
-                <div class="flex max-w-md flex-col items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-8 py-6 text-center text-[var(--text-tertiary)] shadow-lg">
-                  <.icon name="ri-loop-left-line" class="h-8 w-8" />
-                  <div class="flex flex-col items-center gap-1">
-                    <p class="text-sm font-medium text-[var(--text-primary)]">
-                      Upgrade your plan to unlock policy conditions.
-                    </p>
-                    <p class="text-xs">
-                      Add policy restrictions like IP ranges, identity providers, and time windows.
-                    </p>
-                    <.button
-                      style="primary"
-                      icon="ri-sparkling-fill"
-                      navigate={~p"/#{@account}/settings/account"}
-                    >
-                      Upgrade to Unlock
-                    </.button>
-                  </div>
-                </div>
-              </div>
-              <div
-                :if={@policy_conditions_enabled? == false}
-                class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
-              />
-              <div
+            <%= if @policy_conditions_enabled? == false do %>
+              <.upgrade_locked_section
                 id="resource-grant-conditions-locked-container"
-                class={[
-                  @policy_conditions_enabled? == false &&
-                    "pointer-events-none select-none blur-[2px] opacity-70",
-                  "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
-                ]}
+                account={@account}
+                message="Upgrade your plan to unlock policy conditions."
+                description="Add policy restrictions like IP ranges, identity providers, and time windows."
               >
-                <p
-                  :if={@active_conditions == []}
-                  class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
-                >
+                <p class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]">
                   No conditions — access is unrestricted
                 </p>
-                <div :if={@policy_conditions_enabled? and @active_conditions != []} class="space-y-2">
-                  <.grant_condition_card
-                    :for={type <- @active_conditions}
-                    type={type}
-                    providers={@providers}
-                    conditions_state={@conditions_state}
-                  />
-                </div>
+              </.upgrade_locked_section>
+            <% else %>
+              <p
+                :if={@active_conditions == []}
+                class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
+              >
+                No conditions — access is unrestricted
+              </p>
+              <div :if={@active_conditions != []} class="space-y-2">
+                <.grant_condition_card
+                  :for={type <- @active_conditions}
+                  type={type}
+                  providers={@providers}
+                  conditions_state={@conditions_state}
+                />
               </div>
-            </div>
+            <% end %>
           </div>
         </div>
       </div>
