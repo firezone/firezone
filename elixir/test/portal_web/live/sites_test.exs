@@ -277,6 +277,8 @@ defmodule PortalWeb.SitesTest do
 
       # Currently defaults to Debian/Ubuntu instructions
       assert html =~ "Add the Firezone APT repository"
+      assert html =~ "sudo firezone gateway authenticate"
+      assert html =~ "Use this token when prompted"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "systemd-instructions"})
       assert html =~ "Install via systemd"
@@ -288,7 +290,11 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Terraform guides"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "custom-instructions"})
-      assert html =~ "run the gateway binary directly"
+      assert html =~ "Download the latest binary"
+      assert html =~ "FIREZONE_TOKEN="
+      assert html =~ "sudo sysctl -w net.ipv4.ip_forward=1"
+      assert html =~ "sudo iptables -C FORWARD -i tun-firezone"
+      assert html =~ "sudo ./firezone-gateway-"
 
       html = render_click(lv, "close_deploy")
       assert html =~ "Deploy gateway"
