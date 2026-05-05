@@ -176,20 +176,30 @@ impl PairState {
 }
 
 /// Sort key for primary selection — smaller is better. Ranks by
-/// (worse-of-pair tier, local-relay-first, smoothed RTT).
+/// (worse-of-pair tier, local-relay-first, IPv6-first, smoothed RTT).
 ///
 /// The local-relay-first axis only matters at the Relayed tier and
 /// breaks ties between routing through *our* relay vs. the peer's. We
 /// prefer ours because then our own probe traffic keeps the binding
 /// alive.
-fn pair_score(state: &PairState) -> (crate::CandidateKind, u8, Option<Duration>) {
+///
+/// IPv6-first is a within-tier tie-break: a v6 path is generally
+/// shorter (fewer NATs, often direct) and Firezone runs on dual-stack
+/// gear where the v6 leg tends to be the modern default.
+fn pair_score(
+    pair: (SocketAddr, SocketAddr),
+    state: &PairState,
+) -> (crate::CandidateKind, u8, u8, Option<Duration>) {
     let tier = state.kinds.0.max(state.kinds.1);
     let local_relay_first = if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
         0
     } else {
         1
     };
-    (tier, local_relay_first, state.smoothed_rtt)
+    // We filter cross-family pairs in `add_pair`, so it doesn't matter
+    // which side we read the family from.
+    let v6_first = if pair.0.is_ipv6() { 0 } else { 1 };
+    (tier, local_relay_first, v6_first, state.smoothed_rtt)
 }
 
 /// Outbound transmit emitted by `PathAgent`.
@@ -855,7 +865,7 @@ impl PathAgent {
             .pairs
             .iter()
             .filter(|(_, s)| s.smoothed_rtt.is_some())
-            .min_by(|(_, a), (_, b)| pair_score(a).cmp(&pair_score(b)))
+            .min_by(|(ka, a), (kb, b)| pair_score(**ka, a).cmp(&pair_score(**kb, b)))
             .map(|(k, _)| *k);
 
         let Some(new) = best else { return };

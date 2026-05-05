@@ -724,6 +724,50 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
 }
 
 #[test]
+fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
+    // Two host×host pairs, one v4 and one v6, that reply at identical
+    // RTT. The v6 tie-break should put the v6 pair in `primary`.
+    let mut a = PathAgent::new();
+    a.add_local_candidate(Candidate::host(addr(1))); // v4
+    a.add_local_candidate(Candidate::host(addr_v6(11))); // v6
+    a.add_remote_candidate(Candidate::host(addr(2))); // v4
+    a.add_remote_candidate(Candidate::host(addr_v6(12))); // v6
+    let now = Instant::now();
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(1), addr(2)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    // Reply on the v4 host×host pair first.
+    let v4_probe = extract_probe_for(&outbound, (addr(1), addr(2)));
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(v4_probe.id, v4_probe.seq),
+        (addr(1), addr(2)),
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some((addr(1), addr(2))));
+
+    while a.poll_event().is_some() {}
+
+    // Reply on the v6 host×host pair at identical RTT — the v6 tie-break
+    // should swap the primary.
+    let v6_probe = extract_probe_for(&outbound, (addr_v6(11), addr_v6(12)));
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(v6_probe.id, v6_probe.seq),
+        (addr_v6(11), addr_v6(12)),
+        now + Duration::from_millis(100),
+    );
+    assert_eq!(
+        a.primary(),
+        Some((addr_v6(11), addr_v6(12))),
+        "v6 pair should beat v4 pair at the same tier",
+    );
+}
+
+#[test]
 fn stale_echo_reply_is_ignored() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
