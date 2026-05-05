@@ -896,8 +896,25 @@ impl ReferenceState {
                 ip4,
                 ip6,
             } => {
-                let client = state.clients.get_mut(client_id).unwrap();
+                // "All iceless" mirrors `Connections::all_iceless` on the
+                // SUT side: the snownet hard-reset path closes every
+                // connection (and emits `ConnectionClosed`, which clears
+                // site status + DNS-NAT per gateway), while the iceless
+                // soft-reset path keeps everything intact. Compute it
+                // before the `&mut` on `state.clients`.
+                let ref_client = state.clients.get(client_id).unwrap().inner();
+                let all_iceless = ref_client.snownet_capabilities.iceless
+                    && ref_client
+                        .connected_resources()
+                        .filter_map(|r| state.portal.gateway_for_resource(r).copied())
+                        .all(|gid| {
+                            state
+                                .gateways
+                                .get(&gid)
+                                .is_none_or(|g| g.inner().snownet_capabilities.iceless)
+                        });
 
+                let client = state.clients.get_mut(client_id).unwrap();
                 state.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
@@ -905,8 +922,10 @@ impl ReferenceState {
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
-                    client.reset_connections(now);
-                    client.readd_all_resources()
+                    if !all_iceless {
+                        client.reset_connections(now);
+                    }
+                    client.readd_all_resources();
                 });
             }
             Transition::ReconnectPortal { client_id } => {
@@ -925,7 +944,28 @@ impl ReferenceState {
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
-                    for client in state.clients.values_mut() {
+                    let all_iceless_clients: Vec<_> = state
+                        .clients
+                        .iter()
+                        .filter_map(|(cid, c)| {
+                            let inner = c.inner();
+                            let all_iceless = inner.snownet_capabilities.iceless
+                                && inner
+                                    .connected_resources()
+                                    .filter_map(|r| state.portal.gateway_for_resource(r).copied())
+                                    .all(|gid| {
+                                        state
+                                            .gateways
+                                            .get(&gid)
+                                            .is_none_or(|g| g.inner().snownet_capabilities.iceless)
+                                    });
+                            all_iceless.then_some(*cid)
+                        })
+                        .collect();
+                    for (cid, client) in state.clients.iter_mut() {
+                        if all_iceless_clients.contains(cid) {
+                            continue;
+                        }
                         client.exec_mut(|c| c.reset_connections(now));
                     }
                 }

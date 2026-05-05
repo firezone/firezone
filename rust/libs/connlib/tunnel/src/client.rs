@@ -1864,11 +1864,15 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(now); // Clear all network connections.
-        self.gateways.clear(); // Clear all state associated with Gateways.
-        self.clients.clear(); // Clear all state associated with Clients.
-
-        self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
+        // No explicit `self.gateways.clear()` / `self.clients.clear()` /
+        // `dns_resource_nat.clear()` here. The hard-reset path of
+        // `Node::reset` emits `ConnectionClosed` for every connection,
+        // and `drain_node_events` then runs `cleanup_connected_gateway`
+        // (per-gateway: remove from `self.gateways`, clear DNS-NAT, set
+        // site status to `Unknown`). The iceless soft-reset path keeps
+        // connections alive — that's exactly the state we want
+        // preserved here, including site status.
+        self.node.reset(now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
