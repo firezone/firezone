@@ -1,14 +1,18 @@
+"use client";
 import Post from "@/components/Blog/Post";
-import Content from "./readme.mdx";
+import Content, { frontmatter } from "./readme.mdx";
+import { blogAuthorAvatar } from "@/lib/blog-author-avatar";
+import { asBlogFrontmatter } from "@/types/frontmatter";
 
 export default function _Page() {
+  const fm = asBlogFrontmatter(frontmatter);
   return (
     <Post
-      authorName="Firezone Team"
-      authorTitle="Firezone"
-      authorAvatarSrc="/images/logo-main-light.svg"
-      title="Scheduled Maintenance - December 6, 2025"
-      date="December 2, 2025"
+      authorName={fm.authorName}
+      authorTitle={fm.authorTitle}
+      authorAvatarSrc={blogAuthorAvatar(fm)}
+      title={fm.postTitle ?? fm.title}
+      date={fm.date}
     >
       <Content />
     </Post>

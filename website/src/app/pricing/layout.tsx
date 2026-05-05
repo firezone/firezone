@@ -17,7 +17,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <h1
             className={`justify-center text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight`}
           >
-            Plans & Pricing
+            Firezone Pricing & Plans
           </h1>
           <p className="text-center text-md md:text-lg lg:text-xl mt-2 md:mt-4 tracking-tight">
             Pick a plan that best suits your needs. No credit card required to

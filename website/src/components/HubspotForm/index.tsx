@@ -1,8 +1,22 @@
 "use client";
 import { useEffect } from "react";
-import { useHubspotForm } from "next-hubspot";
+import { HubspotProvider, useHubspotForm } from "next-hubspot";
 
-export default function HubspotForm({
+// Self-contained wrapper that mounts its own HubspotProvider. Keeps the
+// js.hsforms.net script off pages that don't render a form.
+export default function HubspotForm(props: {
+  portalId: string;
+  formId: string;
+  title?: string;
+}) {
+  return (
+    <HubspotProvider>
+      <HubspotFormInner {...props} />
+    </HubspotProvider>
+  );
+}
+
+function HubspotFormInner({
   portalId,
   formId,
   title,

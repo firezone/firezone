@@ -1,11 +1,8 @@
-import Content from "./readme.mdx";
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Viewing Logs",
-  description:
-    "View Firezone logs for Clients, Gateways, and the Admin portal. Find log locations and learn how to export them — see the guide.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <Content />;

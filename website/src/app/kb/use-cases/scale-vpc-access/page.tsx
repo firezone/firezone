@@ -1,11 +1,9 @@
 import _Page from "./_page";
+import { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Use Cases: Scale VPC Access",
-  description:
-    "Use Firezone to scale access to your VPC across multiple Gateways.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <_Page />;

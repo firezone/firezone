@@ -1,23 +1,33 @@
 import Post from "@/components/Blog/Post";
-import Content from "./readme.mdx";
+import ArticleJsonLd from "@/components/Blog/ArticleJsonLd";
+import Content, { frontmatter } from "./readme.mdx";
+import { asBlogFrontmatter } from "@/types/frontmatter";
 import { Metadata } from "next";
-import gravatar from "@/lib/gravatar";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
+import { blogAuthorAvatar } from "@/lib/blog-author-avatar";
 
-export const metadata: Metadata = {
-  title: "Jan 2024 Update",
-  description: "January 2024 Update",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
+  const fm = asBlogFrontmatter(frontmatter);
   return (
-    <Post
-      authorName="Jamil Bou Kheir"
-      authorTitle="Founder"
-      authorAvatarSrc={gravatar("jamil@firezone.dev")}
-      title="January 2024 Update"
-      date="2024-01-01"
-    >
-      <Content />
-    </Post>
+    <>
+      <ArticleJsonLd
+        title={fm.postTitle ?? fm.title}
+        description={fm.description}
+        authorName={fm.authorName}
+        date={fm.date}
+        path="/blog/jan-2024-update"
+      />
+      <Post
+        authorName={fm.authorName}
+        authorTitle={fm.authorTitle}
+        authorAvatarSrc={blogAuthorAvatar(fm)}
+        title={fm.postTitle ?? fm.title}
+        date={fm.date}
+      >
+        <Content />
+      </Post>
+    </>
   );
 }

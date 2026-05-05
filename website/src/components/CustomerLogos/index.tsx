@@ -16,6 +16,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-corrdyn-gray.svg"
               width={125}
               height={125}
+              priority
             />
           </Link>
           <Link
@@ -27,6 +28,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-square1-gray.svg"
               width={100}
               height={100}
+              priority
             />
           </Link>
           <Link
@@ -38,6 +40,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-wolfram-gray.svg"
               width={60}
               height={75}
+              priority
             />
           </Link>
           <Link
@@ -50,6 +53,7 @@ export function CustomerLogosGrayscale() {
               width={125}
               height={125}
               className="  "
+              priority
             />
           </Link>
           <Link
@@ -61,6 +65,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-double11-gray.svg"
               width={50}
               height={50}
+              priority
             />
           </Link>
         </div>
@@ -136,6 +141,12 @@ export function CustomerLogosColored() {
       </div>
       {/* Strangely, Safari has animation bugs with the default left direction */}
       <Marquee autoFill pauseOnHover direction="right">
+        {/*
+          Prop width/height match each logo's intrinsic ratio so Next/Image's
+          aspect-ratio check is satisfied. Tailwind h-20 w-auto then scales
+          every logo down to a uniform ~80px row height while keeping its
+          natural aspect ratio (no squishing wide wordmarks into squares).
+        */}
         <Link
           href="https://caktusgroup.com"
           className="mx-12 flex items-center"
@@ -143,56 +154,63 @@ export function CustomerLogosColored() {
           <Image
             alt="caktus logo"
             src="/images/logos/cust-logo-caktus.png"
-            width={150}
-            height={150}
+            width={426}
+            height={234}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://corrdyn.com" className="mx-12 flex items-center">
           <Image
             alt="corrdyn logo"
             src="/images/logos/cust-logo-corrdyn.svg"
-            width={150}
-            height={150}
+            width={2879}
+            height={304}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://double11.co.uk" className="mx-12 flex items-center">
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11.svg"
-            width={150}
-            height={150}
+            width={1068}
+            height={1182}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://ipap.com" className="mx-12 flex items-center">
           <Image
             alt="ipap logo"
             src="/images/logos/cust-logo-ipap.png"
-            width={150}
-            height={150}
+            width={300}
+            height={146}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://mst.nl" className="mx-12 flex items-center">
           <Image
             alt="mst logo"
             src="/images/logos/cust-logo-mst.svg"
-            width={150}
-            height={150}
+            width={652}
+            height={652}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://nomobo.tv" className="mx-12 flex items-center">
           <Image
             alt="nomobo logo"
             src="/images/logos/cust-logo-nomobo.webp"
-            width={150}
-            height={150}
+            width={392}
+            height={337}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://semicat.com" className="mx-12 flex items-center">
           <Image
             alt="semicat logo"
             src="/images/logos/cust-logo-semicat.png"
-            width={150}
-            height={150}
+            width={737}
+            height={227}
+            className="h-20 w-auto"
           />
         </Link>
         <Link
@@ -202,24 +220,27 @@ export function CustomerLogosColored() {
           <Image
             alt="square1 logo"
             src="/images/logos/cust-logo-square1.svg"
-            width={150}
-            height={150}
+            width={164}
+            height={31}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://teracloud.com" className="mx-12 flex items-center">
           <Image
             alt="teracloud logo"
             src="/images/logos/cust-logo-teracloud.svg"
-            width={150}
-            height={150}
+            width={191}
+            height={22}
+            className="h-20 w-auto"
           />
         </Link>
         <Link href="https://wolfram.com" className="mx-12 flex items-center">
           <Image
             alt="wolfram logo"
             src="/images/logos/cust-logo-wolfram.svg"
-            width={150}
-            height={150}
+            width={198}
+            height={156}
+            className="h-20 w-auto"
           />
         </Link>
       </Marquee>

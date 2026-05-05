@@ -14,6 +14,7 @@ import {
   LinuxIcon,
   AndroidIcon,
 } from "@/components/Icons";
+import { validUrl } from "@/lib/url";
 
 export default function Footer() {
   return (
@@ -276,22 +277,22 @@ export default function Footer() {
           <div className="flex p-2 items-center justify-center sm:justify-end space-x-5">
             <Link
               target="_blank"
-              href={new URL("https://firezone.statuspage.io")}
+              href={validUrl("https://firezone.statuspage.io")}
               className="text-neutral-200 hover:underline hover:text-neutral-50 text-xs"
             >
               Platform status
             </Link>
             <XIcon
               className="text-neutral-200 hover:text-neutral-50"
-              url={new URL("https://x.com/firezonehq")}
+              url={validUrl("https://x.com/firezonehq")}
             />
             <GitHubIcon
               className="text-neutral-200 hover:text-neutral-50"
-              url={new URL("https://github.com/firezone")}
+              url={validUrl("https://github.com/firezone")}
             />
             <LinkedInIcon
               className="text-neutral-200 hover:text-neutral-50"
-              url={new URL("https://linkedin.com/company/firezonehq")}
+              url={validUrl("https://linkedin.com/company/firezonehq")}
             />
           </div>
         </div>

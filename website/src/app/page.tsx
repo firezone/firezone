@@ -19,16 +19,61 @@ import CustomerTestimonials from "@/components/CustomerTestimonials";
 import UseCaseCards from "@/components/UseCaseCards";
 import Banner from "@/components/Banner";
 import { Badge } from "@/components/Badges";
+import JsonLd from "@/components/JsonLd";
+import {
+  softwareApplicationSchema,
+  SITE_URL,
+} from "@/components/JsonLd/schemas";
+import { customerTestimonials } from "@/components/CustomerTestimonials/data";
 
 export const metadata: Metadata = {
-  title: { absolute: "Zero Trust Access That Scales • Firezone" },
+  title: { absolute: "Zero Trust Access That Scales | Firezone" },
   description:
-    "Replace your VPN with Firezone — open-source zero trust access built on WireGuard®. Connect users to anything, anywhere. Try free in minutes.",
+    "Replace your VPN with Firezone, an open-source zero trust access platform built on WireGuard®. Connect users to anything, anywhere. Try free today.",
 };
 
 export default function Page() {
   return (
     <>
+      <JsonLd
+        data={softwareApplicationSchema({
+          name: "Firezone",
+          description:
+            "Open-source zero trust access platform built on WireGuard®. Replace your VPN with fine-grained access control for users and resources.",
+          url: SITE_URL,
+          category: "SecurityApplication",
+          offers: [
+            {
+              name: "Starter",
+              price: "0",
+              priceCurrency: "USD",
+              url: `${SITE_URL}/pricing#starter`,
+            },
+            {
+              name: "Team",
+              price: "5",
+              priceCurrency: "USD",
+              url: `${SITE_URL}/pricing#team`,
+            },
+            // Enterprise is contact-sales — emit the offer without a
+            // placeholder price so rich results don't show "$0".
+            {
+              name: "Enterprise",
+              url: `${SITE_URL}/contact/sales`,
+            },
+          ],
+          reviews: customerTestimonials.map((t) => ({
+            authorName: t.authorName,
+            affiliation: t.companyName,
+            url: t.href,
+            // No numeric rating: testimonials are qualitative. Schema.org
+            // accepts a Review without reviewRating; we omit AggregateRating
+            // entirely until we collect star-rated reviews from a verified
+            // source.
+            reviewBody: t.desc.replace(/\s+/g, " ").trim(),
+          })),
+        })}
+      />
       <section className="bg-neutral-950">
         <div className="mx-auto max-w-screen-2xl bg-hero bg-no-repeat bg-center sm:bg-cover pt-28 mb-16">
           <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
@@ -87,6 +132,7 @@ export default function Page() {
                 width={100}
                 height={40}
                 className="mx-1 md:mx-1.5 inline-flex pb-0.5"
+                priority
               />{" "}
               and trusted by hundreds of organizations
             </div>

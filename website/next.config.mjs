@@ -2,6 +2,8 @@
 import nextMDX from "@next/mdx";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkMdxFrontmatter from "remark-mdx-frontmatter";
 import rehypeStringify from "rehype-stringify";
 import rehypeHighlight from "rehype-highlight";
 import redirects from "./redirects.js";
@@ -80,7 +82,14 @@ const nextConfig = {
 const withMDX = nextMDX({
   extension: /\.mdx?$/,
   options: {
-    remarkPlugins: [remarkGfm, remarkParse],
+    // remark-frontmatter must run before remark-mdx-frontmatter — the former
+    // parses the YAML block into the AST, the latter exports it as a JS const.
+    remarkPlugins: [
+      remarkFrontmatter,
+      [remarkMdxFrontmatter, { name: "frontmatter" }],
+      remarkGfm,
+      remarkParse,
+    ],
     rehypePlugins: [
       rehypeSlug,
       [rehypeAutolinkHeadings, { behavior: "wrap" }],
