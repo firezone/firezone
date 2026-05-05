@@ -507,7 +507,7 @@ impl PathAgent {
                     && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
                     && d.init_bytes == bytes
                 {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
+                    tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
@@ -523,7 +523,7 @@ impl PathAgent {
                 // would reject as `WrongTai64nTimestamp`). After the
                 // response goes out, `responder_dedup` takes over.
                 if self.last_forwarded_init.as_deref() == Some(bytes) {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
+                    tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
                     return ControlFlow::Break(());
                 }
 
@@ -544,7 +544,7 @@ impl PathAgent {
                 // Re-feeding the same response to boringtun would advance
                 // the session index and desync state.
                 if self.forwarded_response.as_deref() == Some(bytes) {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
+                    tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
                     return ControlFlow::Break(());
                 }
 
