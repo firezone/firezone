@@ -39,7 +39,7 @@ defmodule PortalWeb.Sites do
        socket
        |> unsubscribe_deploy_site_presence()
        |> merge_state(:site_panel, %{
-         tab: String.to_existing_atom(Map.get(params, "tab", "gateways")),
+         tab: parse_site_tab(Map.get(params, "tab", "gateways")),
          view: :gateways,
          confirm_delete_site: false,
          expanded_gateway_id: nil
@@ -69,7 +69,7 @@ defmodule PortalWeb.Sites do
        socket
        |> unsubscribe_deploy_site_presence()
        |> merge_state(:site_panel, %{
-         tab: String.to_existing_atom(Map.get(params, "tab", "gateways")),
+         tab: parse_site_tab(Map.get(params, "tab", "gateways")),
          view: :edit_site,
          confirm_delete_site: false
        })
@@ -136,7 +136,7 @@ defmodule PortalWeb.Sites do
       selected_site: site,
       site_panel:
         Map.merge(base_site_panel_state(), %{
-          tab: String.to_existing_atom(Map.get(params, "tab", "gateways")),
+          tab: parse_site_tab(Map.get(params, "tab", "gateways")),
           gateways: gateways,
           resources: resources
         }),
@@ -943,6 +943,10 @@ defmodule PortalWeb.Sites do
         socket
     end
   end
+
+  defp parse_site_tab("resources"), do: :resources
+  defp parse_site_tab("gateways"), do: :gateways
+  defp parse_site_tab(_), do: :gateways
 
   defp site_deploy_connection_status(%{connected?: true}, _joins), do: :noop
 

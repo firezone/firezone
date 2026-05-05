@@ -881,6 +881,39 @@ defmodule PortalWeb.Policies do
   end
 
   defp init_condition_assigns(%{conditions: conditions}, socket) do
+    base_state = default_policy_conditions_state(socket)
+
+    policy_conditions =
+      if Portal.Account.policy_conditions_enabled?(socket.assigns.account) do
+        hydrate_policy_conditions_state(base_state, conditions)
+      else
+        base_state
+      end
+
+    [policy_conditions: policy_conditions]
+  end
+
+  defp default_policy_conditions_state(socket) do
+    %{
+      timezone: Map.get(socket.private[:connect_params] || %{}, "timezone", "UTC"),
+      active_conditions: [],
+      conditions_dropdown_open?: false,
+      location_search: "",
+      location_operator: "is_in",
+      location_values: [],
+      ip_range_operator: "is_in_cidr",
+      ip_range_values: [],
+      ip_range_input: "",
+      auth_provider_operator: "is_in",
+      auth_provider_values: [],
+      tod_values: [],
+      tod_adding?: false,
+      tod_pending: @tod_pending_empty,
+      tod_pending_error: nil
+    }
+  end
+
+  defp hydrate_policy_conditions_state(base_state, conditions) do
     find = fn prop -> Enum.find(conditions, &(&1.property == prop)) end
     loc = find.(:remote_ip_location_region)
     ip = find.(:remote_ip)
@@ -889,30 +922,22 @@ defmodule PortalWeb.Policies do
 
     {tod_timezone, tod_values} = parse_tod_condition(tod)
 
-    base = [
-      policy_conditions: %{
-        timezone: Map.get(socket.private[:connect_params] || %{}, "timezone", "UTC"),
-        active_conditions: Enum.map(conditions, & &1.property),
-        conditions_dropdown_open?: false,
-        location_search: "",
-        location_operator: cond_op(loc, "is_in"),
-        location_values: cond_values(loc),
-        ip_range_operator: cond_op(ip, "is_in_cidr"),
-        ip_range_values: cond_values(ip),
-        ip_range_input: "",
-        auth_provider_operator: cond_op(auth, "is_in"),
-        auth_provider_values: cond_values(auth),
-        tod_values: tod_values,
-        tod_adding?: false,
-        tod_pending: @tod_pending_empty,
-        tod_pending_error: nil
-      }
-    ]
-
-    if tod_timezone,
-      do: Keyword.update!(base, :policy_conditions, &Map.put(&1, :timezone, tod_timezone)),
-      else: base
+    base_state
+    |> Map.merge(%{
+      active_conditions: Enum.map(conditions, & &1.property),
+      location_operator: cond_op(loc, "is_in"),
+      location_values: cond_values(loc),
+      ip_range_operator: cond_op(ip, "is_in_cidr"),
+      ip_range_values: cond_values(ip),
+      auth_provider_operator: cond_op(auth, "is_in"),
+      auth_provider_values: cond_values(auth),
+      tod_values: tod_values
+    })
+    |> maybe_put_tod_timezone(tod_timezone)
   end
+
+  defp maybe_put_tod_timezone(state, nil), do: state
+  defp maybe_put_tod_timezone(state, tod_timezone), do: Map.put(state, :timezone, tod_timezone)
 
   @spec parse_tod_condition(map() | nil) ::
           {String.t() | nil, [%{String.t() => term()}]}

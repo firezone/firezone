@@ -113,6 +113,37 @@ defmodule PortalWeb.PoliciesTest do
 
       assert policy
     end
+
+    test "shows blurred upgrade state for starter accounts without policy conditions", %{
+      conn: conn
+    } do
+      account =
+        starter_account_fixture(
+          features: %{
+            policy_conditions: false,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade to Unlock"
+      assert html =~ ~s(href="/#{account.slug}/settings/account")
+      assert html =~ ~s(data-locked-section="policy-conditions")
+      assert html =~ "blur-[2px]"
+      assert html =~ "ri-loop-left-line"
+      refute html =~ "Add condition"
+      refute html =~ ~s(phx-click="remove_condition")
+    end
   end
 
   describe ":show action" do
@@ -196,6 +227,46 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Edit Policy"
       assert html =~ "Group"
       assert html =~ "Resource"
+    end
+
+    test "does not render saved policy conditions for starter accounts without the feature", %{
+      conn: conn
+    } do
+      account =
+        starter_account_fixture(
+          features: %{
+            policy_conditions: false,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :remote_ip,
+              operator: :is_in_cidr,
+              values: ["10.10.0.0/16"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      refute html =~ "10.10.0.0/16"
+      refute html =~ ~s(phx-click="remove_condition")
     end
 
     test "updates policy description and condition state", %{

@@ -36,8 +36,7 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    t = Map.get(params, "tab", "overview")
-    tab = if t in ~w[overview authorizations], do: String.to_existing_atom(t), else: :overview
+    tab = parse_client_tab(Map.get(params, "tab", "overview"))
 
     page =
       case Integer.parse(Map.get(params, "page", "1")) do
@@ -419,6 +418,10 @@ defmodule PortalWeb.Clients do
         {:noreply, merge_state(socket, :client_confirm, delete?: false)}
     end
   end
+
+  defp parse_client_tab("authorizations"), do: :authorizations
+  defp parse_client_tab("overview"), do: :overview
+  defp parse_client_tab(_), do: :overview
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
