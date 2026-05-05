@@ -241,7 +241,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert html =~ "Please try again"
     end
 
-    test "does not create service account when billing limit is reached", %{
+    test "shows flash and does not create service account when billing limit is reached", %{
       conn: conn,
       account: account,
       actor: actor
@@ -254,13 +254,15 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts/new")
 
-      lv
-      |> form("form[phx-submit='create_service_account']",
-        actor: %{name: "Over Limit SA"},
-        token_expiration: expiration
-      )
-      |> render_submit()
+      html =
+        lv
+        |> form("form[phx-submit='create_service_account']",
+          actor: %{name: "Over Limit SA"},
+          token_expiration: expiration
+        )
+        |> render_submit()
 
+      assert html =~ "Service account limit reached for your account"
       refute Portal.Repo.get_by(Portal.Actor, name: "Over Limit SA", account_id: account.id)
     end
 

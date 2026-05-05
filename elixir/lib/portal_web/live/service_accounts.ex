@@ -350,7 +350,7 @@ defmodule PortalWeb.ServiceAccounts do
       end
     else
       {:noreply,
-       put_flash(socket, :error_inline, "Service account limit reached for your account")}
+       put_flash(socket, :error, "Service account limit reached for your account")}
     end
   end
 
