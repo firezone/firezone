@@ -497,7 +497,6 @@ impl PathAgent {
             parsed,
             Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
         );
-        let bootstrap_primary = is_handshake && self.primary.is_none();
 
         match parsed {
             Packet::HandshakeInit(_) => {
@@ -538,7 +537,7 @@ impl PathAgent {
                     now,
                 );
                 self.reopen_bootstrap_window(now);
-                self.maybe_set_bootstrap_primary(bootstrap_primary, path, now);
+                self.maybe_adopt_handshake_primary(is_handshake, path, now);
                 ControlFlow::Break(())
             }
             Packet::HandshakeResponse(_) => {
@@ -559,7 +558,7 @@ impl PathAgent {
                     now,
                 );
                 self.reopen_bootstrap_window(now);
-                self.maybe_set_bootstrap_primary(bootstrap_primary, path, now);
+                self.maybe_adopt_handshake_primary(is_handshake, path, now);
                 ControlFlow::Break(())
             }
             Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(()),
@@ -581,18 +580,26 @@ impl PathAgent {
         self.seed_probe_schedule(now);
     }
 
-    /// Adopt `path` as the bootstrap primary so user packets flow
-    /// through `handle_outbound`'s primary branch. Must run *after*
-    /// `Event::ForwardInbound` is queued so the consumer drains the
-    /// handshake (and creates the WG session) before flushing buffered
-    /// data on `Event::PrimaryChanged`.
-    fn maybe_set_bootstrap_primary(
+    /// Adopt `path` as primary so user packets flow through
+    /// `handle_outbound`'s primary branch. Fires whenever a fresh
+    /// inbound handshake reaches us on a path other than the current
+    /// primary — strictly stronger evidence than smoothed RTT, and
+    /// what catches the roam case where the old primary still has a
+    /// recent (but stale) RTT sample. Probe-based selection in
+    /// `select_primary` continues to refine within the bootstrap
+    /// window. Must run *after* `Event::ForwardInbound` is queued so
+    /// the consumer drains the handshake (and creates the WG session)
+    /// before flushing buffered data on `Event::PrimaryChanged`.
+    fn maybe_adopt_handshake_primary(
         &mut self,
-        should_set: bool,
+        is_handshake: bool,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) {
-        if !should_set {
+        if !is_handshake {
+            return;
+        }
+        if self.primary == Some(path) {
             return;
         }
         self.primary = Some(path);

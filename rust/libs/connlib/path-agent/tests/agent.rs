@@ -1049,6 +1049,71 @@ fn different_inbound_init_bytes_skip_dedup_cache() {
 }
 
 #[test]
+fn fresh_inbound_handshake_on_new_path_adopts_it_as_primary() {
+    // After settle, an inbound handshake on a path other than the
+    // current primary is strictly stronger evidence than smoothed
+    // RTT — the handshake completed, so the path is known-working.
+    // This is what catches the roam case where the old primary's
+    // recent (but stale) RTT sample would otherwise dominate the
+    // tier-based score.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let initial_path = (addr(2), addr(4));
+
+    // Bootstrap on the initial path.
+    let _ = a.handle_inbound(&handshake_response_bytes(), initial_path, now);
+    assert_eq!(a.primary(), Some(initial_path));
+    while a.poll_event().is_some() {}
+
+    // A fresh handshake (different bytes -> not deduped) lands on a
+    // different known pair: primary must adopt it.
+    let mut roam_resp = handshake_response_bytes();
+    roam_resp[10] = 0xab;
+    let new_path = (addr(1), addr(3));
+    let _ = a.handle_inbound(&roam_resp, new_path, now + Duration::from_secs(60));
+    assert_eq!(a.primary(), Some(new_path));
+
+    // The PrimaryChanged event reflects the new path.
+    let mut events = std::iter::from_fn(|| a.poll_event()).collect::<Vec<_>>();
+    let primary_changed = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            Event::PrimaryChanged { local, remote } => Some((*local, *remote)),
+            _ => None,
+        })
+        .expect("PrimaryChanged event");
+    assert_eq!(primary_changed, new_path);
+    events.clear();
+}
+
+#[test]
+fn duplicate_inbound_handshake_does_not_change_primary() {
+    // Dedup hits (responder cache, in-flight init, in-flight response)
+    // shouldn't disturb the primary — they aren't fresh sessions.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let initial_path = (addr(2), addr(4));
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), initial_path, now);
+    while a.poll_event().is_some() {}
+
+    // Same response bytes -> hits `forwarded_response` dedup.
+    let _ = a.handle_inbound(
+        &handshake_response_bytes(),
+        (addr(1), addr(3)),
+        now + Duration::from_secs(1),
+    );
+    assert_eq!(a.primary(), Some(initial_path));
+    let primary_changed =
+        std::iter::from_fn(|| a.poll_event()).any(|e| matches!(e, Event::PrimaryChanged { .. }));
+    assert!(
+        !primary_changed,
+        "duplicate handshake must not emit PrimaryChanged"
+    );
+}
+
+#[test]
 fn first_inbound_handshake_adopts_bootstrap_primary_so_outbound_data_flows() {
     // Closes the user-data drop window between handshake completion and
     // the first probe RTT: the relay path the WG handshake landed on is
