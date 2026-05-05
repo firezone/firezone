@@ -635,7 +635,10 @@ defmodule PortalWeb.Policies do
       end
     else
       policy = socket.assigns.selected_policy
-      changeset = change_policy(policy, params, socket.assigns.subject)
+
+      changeset =
+        change_policy(policy, params)
+        |> validate_internet_resource_allowed(socket.assigns.subject)
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -839,7 +842,6 @@ defmodule PortalWeb.Policies do
     %Policy{}
     |> cast(attrs, ~w[description group_id resource_id]a)
     |> validate_required(~w[group_id resource_id]a)
-    |> validate_internet_resource_allowed(subject)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
     |> put_change(:account_id, subject.account.id)
@@ -848,6 +850,7 @@ defmodule PortalWeb.Policies do
   defp create_policy(attrs, %Authentication.Subject{} = subject) do
     attrs
     |> new_policy(subject)
+    |> validate_internet_resource_allowed(subject)
     |> Database.insert_policy(subject)
   end
 
@@ -855,15 +858,6 @@ defmodule PortalWeb.Policies do
     policy
     |> cast(attrs, ~w[description group_id resource_id]a)
     |> validate_required(~w[group_id resource_id]a)
-    |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
-    |> Policy.changeset()
-  end
-
-  defp change_policy(%Policy{} = policy, attrs, %Authentication.Subject{} = subject) do
-    policy
-    |> cast(attrs, ~w[description group_id resource_id]a)
-    |> validate_required(~w[group_id resource_id]a)
-    |> validate_internet_resource_allowed(subject)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
   end
