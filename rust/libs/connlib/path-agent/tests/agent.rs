@@ -820,11 +820,12 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
 }
 
 #[test]
-fn ipv6_preference_dominates_relay_family_match() {
-    // A v6-mismatched-family pair (v6 alloc reached over v4 TURN)
-    // still routes user data over v6 end-to-end and must outrank
-    // a fully-matched v4 alternative — IPv6-first sits *above* the
-    // family-match axis in `pair_score`.
+fn family_match_dominates_ipv6_preference() {
+    // A v6-mismatched-family pair (v6 alloc reached over a v4 TURN
+    // socket) forces the relay to bridge address families, which is
+    // worth dodging even at the cost of giving up v6 on the
+    // user-data leg. A fully-matched v4 alternative wins over a
+    // mismatched-family v6 pair.
     let mut a = PathAgent::new();
     let v6_mismatched_local_alloc = addr_v6(10);
     let v4_matched_local_alloc = addr(11);
@@ -836,7 +837,7 @@ fn ipv6_preference_dominates_relay_family_match() {
 
     let _ = a.handle_inbound(
         &handshake_response_bytes(),
-        (v4_matched_local_alloc, addr(30)),
+        (v6_mismatched_local_alloc, addr_v6(20)),
         now,
     );
     while a.poll_event().is_some() {}
@@ -844,29 +845,29 @@ fn ipv6_preference_dominates_relay_family_match() {
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
 
-    // Reply on the v4-matched pair first.
-    let v4_pair = (v4_matched_local_alloc, addr(30));
-    let v4_probe = extract_probe_for(&outbound, v4_pair);
-    let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(v4_probe.id, v4_probe.seq),
-        v4_pair,
-        now + Duration::from_millis(50),
-    );
-    assert_eq!(a.primary(), Some(v4_pair));
-    while a.poll_event().is_some() {}
-
-    // Reply on the v6-mismatched pair at identical RTT.
+    // Reply on the v6-mismatched pair first (same identity primary).
     let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
     let v6_probe = extract_probe_for(&outbound, v6_pair);
     let _ = a.handle_inbound_decrypted(
         &build_echo_reply(v6_probe.id, v6_probe.seq),
         v6_pair,
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some(v6_pair));
+    while a.poll_event().is_some() {}
+
+    // Reply on the v4-matched pair at identical RTT.
+    let v4_pair = (v4_matched_local_alloc, addr(30));
+    let v4_probe = extract_probe_for(&outbound, v4_pair);
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(v4_probe.id, v4_probe.seq),
+        v4_pair,
         now + Duration::from_millis(100),
     );
     assert_eq!(
         a.primary(),
-        Some(v6_pair),
-        "v6 pair (even mismatched-family) should outrank a fully-matched v4 pair",
+        Some(v4_pair),
+        "fully-matched v4 pair should outrank a mismatched-family v6 pair",
     );
 }
 

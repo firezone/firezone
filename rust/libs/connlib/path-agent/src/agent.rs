@@ -183,25 +183,26 @@ impl PairState {
 }
 
 /// Sort key for primary selection — smaller is better. Ranks by
-/// (worse-of-pair tier, local-relay-first, IPv6-first, relay-family-
-/// matched, smoothed RTT).
+/// (worse-of-pair tier, local-relay-first, relay-family-matched,
+/// IPv6-first, smoothed RTT).
 ///
 /// The local-relay-first axis only matters at the Relayed tier and
 /// breaks ties between routing through *our* relay vs. the peer's. We
 /// prefer ours because then our own probe traffic keeps the binding
 /// alive.
 ///
-/// IPv6-first is a within-tier tie-break: a v6 path is generally
-/// shorter (fewer NATs, often direct) and Firezone runs on dual-stack
-/// gear where the v6 leg tends to be the modern default. It outranks
-/// relay-family-matched: a mismatched v6 path (v6 allocation reached
-/// over a v4 TURN socket) still routes user data over v6 end-to-end
-/// and wins over an all-v4 alternative.
-///
-/// Relay-family-matched only matters within the same v6/v4 bucket at
-/// Relayed tier: matched (our v6 alloc reached over v6 TURN) beats
-/// mismatched (v6 alloc reached over v4 TURN). For Host/Srflx the
+/// Relay-family-matched sits above IPv6-first: a same-family v4 relay
+/// pair (v4 allocation reached over a v4 TURN socket) outranks a
+/// mismatched-family v6 pair (e.g. v6 allocation reached over a v4
+/// TURN socket), because the mismatch forces the relay to bridge
+/// address families internally and that's worth dodging even at the
+/// cost of giving up v6 on the user-data leg. For Host/Srflx the
 /// flag is trivially `true`, so the axis is a no-op.
+///
+/// Within the same family-match bucket, IPv6-first prefers the v6
+/// pair: a v6 path is generally shorter (fewer NATs, often direct)
+/// and Firezone runs on dual-stack gear where the v6 leg tends to be
+/// the modern default.
 fn pair_score(
     pair: (SocketAddr, SocketAddr),
     state: &PairState,
@@ -212,15 +213,15 @@ fn pair_score(
     } else {
         1
     };
+    let family_match = if state.local_family_matched { 0 } else { 1 };
     // We filter cross-family pairs in `add_pair`, so it doesn't matter
     // which side we read the family from.
     let v6_first = if pair.0.is_ipv6() { 0 } else { 1 };
-    let family_match = if state.local_family_matched { 0 } else { 1 };
     (
         tier,
         local_relay_first,
-        v6_first,
         family_match,
+        v6_first,
         state.smoothed_rtt,
     )
 }
