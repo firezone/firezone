@@ -211,12 +211,34 @@ where
     /// - we change our IP or port
     ///
     /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
+    ///
+    /// # Soft vs hard reset
+    ///
+    /// When every established connection runs in iceless mode, the
+    /// reset takes a soft path: the WG private key and the connection
+    /// records (boringtun sessions, `peer_socket`, etc.) stay put,
+    /// and each connection just resets its [`PathAgent`] + force-sends
+    /// a fresh handshake. ICE-based connections rely on the key
+    /// rotation + close-and-reopen cycle to detect roaming, so the
+    /// hard path runs whenever any ICE connection is present.
     pub fn reset(&mut self, now: Instant) {
         self.allocations.clear();
-
         self.buffered_transmits.clear();
-
         self.pending_events.clear();
+        self.inflight_stun_requests.clear();
+
+        if self.connections.all_iceless() {
+            let mut num_iceless = 0;
+            for (_, conn) in self.connections.iter_established_mut() {
+                conn.reset_for_roam(now);
+                num_iceless += 1;
+            }
+            tracing::debug!(
+                %num_iceless,
+                "Soft-reset iceless connections (path-agent reset, key kept)"
+            );
+            return;
+        }
 
         let closed_connections = self
             .connections
@@ -228,8 +250,6 @@ where
         self.pending_events.extend(closed_connections);
 
         self.connections.clear();
-        self.buffered_transmits.clear();
-        self.inflight_stun_requests.clear();
 
         self.private_key = StaticSecret::random_from_rng(&mut self.rng);
         self.public_key = (&self.private_key).into();
@@ -2030,6 +2050,39 @@ where
             .format_handshake_initiation_at(&mut buf, false, now)
         else {
             tracing::debug!("Another handshake is already in progress");
+            return;
+        };
+        self.agent.handle_outbound(bytes.to_vec(), now);
+    }
+
+    /// Soft reset for a roam: reset the [`PathAgent`], re-seed remote
+    /// candidates, and force a fresh boringtun handshake init so the
+    /// peer learns about the new local candidates as soon as they
+    /// arrive. Connection state (peer_socket, WG session keys) stays
+    /// put — outbound encapsulation against the stale `peer_socket`
+    /// will drop until the new primary lands, which is acceptable for
+    /// roaming.
+    ///
+    /// Caller is responsible for gating on iceless mode; on `Ice`
+    /// connections this still produces a fresh init, which the ICE
+    /// path doesn't expect — use [`crate::Node::reset`]'s hard path
+    /// for those.
+    fn reset_for_roam(&mut self, now: Instant)
+    where
+        RId: Ord + fmt::Display + Copy,
+    {
+        self.agent.reset_for_roam();
+
+        // Force-resend so we get fresh init bytes even if boringtun
+        // recently sent one — the network's changed underneath, the
+        // old in-flight init is going nowhere.
+        const MAX_SCRATCH_SPACE: usize = 148;
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+        let TunnResult::WriteToNetwork(bytes) = self
+            .tunnel
+            .format_handshake_initiation_at(&mut buf, true, now)
+        else {
+            tracing::debug!("boringtun declined to emit a fresh init for roam");
             return;
         };
         self.agent.handle_outbound(bytes.to_vec(), now);

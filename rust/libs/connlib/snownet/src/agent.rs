@@ -48,6 +48,35 @@ impl Agent {
         matches!(self, Self::Path { .. })
     }
 
+    /// Reset the iceless [`PathAgent`] for a network change (roam).
+    ///
+    /// Replaces `path` with a fresh `PathAgent::new()` (so any new
+    /// internal field added later is reset by construction), drops
+    /// the now-stale local candidates, and re-seeds the remote
+    /// candidates we already knew — those don't change with our
+    /// network. New local candidates flow back in via the normal
+    /// `add_local_candidate` path as fresh allocations form.
+    ///
+    /// No-op on `Self::Ice` — ICE-based connections rely on the
+    /// node-level key rotation + close-and-reopen path to detect
+    /// roaming.
+    pub(crate) fn reset_for_roam(&mut self) {
+        let Self::Path {
+            local_candidates,
+            remote_candidates,
+            path,
+        } = self
+        else {
+            return;
+        };
+
+        *path = path_agent::PathAgent::new();
+        local_candidates.clear();
+        for c in remote_candidates.iter() {
+            path.add_remote_candidate(crate::candidate::to_path_agent(c));
+        }
+    }
+
     /// Whether negotiation has progressed far enough that the snownet
     /// idle-state machine can run. ICE: connected. Iceless: a primary path
     /// has been selected.
