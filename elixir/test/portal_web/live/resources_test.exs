@@ -443,6 +443,38 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Grant access"
     end
 
+    test "shows blurred upgrade state in grant access form for starter accounts without policy conditions",
+         %{conn: conn} do
+      account =
+        starter_account_fixture(
+          features: %{
+            policy_conditions: false,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+
+      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade to Unlock"
+      assert html =~ ~s(href="/#{account.slug}/settings/account")
+      assert html =~ ~s(id="resource-grant-conditions-locked-container")
+      assert html =~ "blur-[2px]"
+      assert html =~ "ri-loop-left-line"
+      refute html =~ "Add condition"
+    end
+
     test "grants access to multiple groups at once", %{
       conn: conn,
       account: account,

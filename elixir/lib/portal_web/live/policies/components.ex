@@ -262,6 +262,7 @@ defmodule PortalWeb.Policies.Components do
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <.policy_form_body
+          account={@account}
           mode={@mode}
           subject={@subject}
           providers={@providers}
@@ -299,6 +300,7 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :mode, :atom, required: true
+  attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
   attr :panel_form, :any, default: nil
@@ -313,6 +315,7 @@ defmodule PortalWeb.Policies.Components do
       <.policy_form_error panel_form={@panel_form} />
       <.policy_fields mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_conditions_section
+        account={@account}
         mode={@mode}
         panel_selected_resource={@panel_selected_resource}
         panel_active_conditions={@panel_active_conditions}
@@ -438,6 +441,7 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :mode, :atom, required: true
+  attr :account, :any, required: true
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
@@ -445,29 +449,80 @@ defmodule PortalWeb.Policies.Components do
   attr :conditions_state, :map, required: true
 
   def policy_conditions_section(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :policy_conditions_enabled?,
+        Portal.Account.policy_conditions_enabled?(assigns.account)
+      )
+
     ~H"""
     <div
-      :if={@mode == :new or not is_nil(@panel_selected_resource)}
+      :if={@mode == :new or not is_nil(@panel_selected_resource) or @policy_conditions_enabled? == false}
       class="border-t border-[var(--border)] pt-4"
     >
       <.policy_conditions_header
+        policy_conditions_enabled?={@policy_conditions_enabled?}
         panel_selected_resource={@panel_selected_resource}
         panel_active_conditions={@panel_active_conditions}
         panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
       />
-      <%= if is_nil(@panel_selected_resource) do %>
+      <%= if is_nil(@panel_selected_resource) and @policy_conditions_enabled? do %>
         <.policy_conditions_placeholder />
       <% else %>
-        <.policy_conditions_cards
-          panel_active_conditions={@panel_active_conditions}
-          providers={@providers}
-          conditions_state={@conditions_state}
-        />
+        <div class="relative">
+          <div
+            :if={@policy_conditions_enabled? == false}
+            class="absolute inset-0 z-20 flex items-center justify-center px-4 pt-8"
+          >
+            <div class="flex max-w-md flex-col items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-8 py-6 text-center text-[var(--text-tertiary)] shadow-lg">
+              <.icon name="ri-loop-left-line" class="h-8 w-8" />
+              <div class="flex flex-col items-center gap-1">
+                <p class="text-sm font-medium text-[var(--text-primary)]">
+                  Upgrade your plan to unlock policy conditions.
+                </p>
+                <p class="text-xs">
+                  Add policy restrictions like IP ranges, identity providers, and time windows.
+                </p>
+                <.button
+                  style="primary"
+                  icon="ri-sparkling-fill"
+                  navigate={~p"/#{@account}/settings/account"}
+                >
+                  Upgrade to Unlock
+                </.button>
+              </div>
+            </div>
+          </div>
+          <div
+            :if={@policy_conditions_enabled? == false}
+            class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
+          />
+          <div
+            id="policy-conditions-locked-container"
+            class={[
+              @policy_conditions_enabled? == false &&
+                "pointer-events-none select-none blur-[2px] opacity-70",
+              "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
+            ]}
+          >
+            <%= if is_nil(@panel_selected_resource) do %>
+              <.policy_conditions_placeholder />
+            <% else %>
+              <.policy_conditions_cards
+                panel_active_conditions={@panel_active_conditions}
+                providers={@providers}
+                conditions_state={@conditions_state}
+              />
+            <% end %>
+          </div>
+        </div>
       <% end %>
     </div>
     """
   end
 
+  attr :policy_conditions_enabled?, :boolean, default: true
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
@@ -483,6 +538,7 @@ defmodule PortalWeb.Policies.Components do
       </h4>
       <.policy_conditions_dropdown
         :if={
+          @policy_conditions_enabled? and
           not is_nil(@panel_selected_resource) and
             available_conditions(@panel_selected_resource) -- @panel_active_conditions != []
         }
@@ -1539,43 +1595,74 @@ defmodule PortalWeb.Policies.Components do
             All conditions specified below must be met for this policy to be applied.
           </p>
         </div>
-        <%= if @policy_conditions_enabled? == false do %>
-          <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
-            <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="ri-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
-            </.badge>
-          </.link>
-        <% end %>
       </div>
 
-      <div class={@policy_conditions_enabled? == false && "opacity-50"}>
-        <.remote_ip_location_region_condition_form
-          :if={:remote_ip_location_region in @enabled_conditions}
-          form={@form}
-          disabled={@policy_conditions_enabled? == false}
+      <div
+        :if={@policy_conditions_enabled? == false}
+        class="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-raised)] p-4"
+      >
+        <div class="flex items-start gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-overlay)] text-[var(--text-secondary)]">
+            <.icon name="ri-lock-line" class="h-4 w-4" />
+          </div>
+          <div class="space-y-2">
+            <p class="text-sm font-medium text-[var(--text-primary)]">
+              Upgrade your plan to unlock policy conditions.
+            </p>
+            <p class="text-sm text-[var(--text-secondary)]">
+              Starter accounts can view this section, but only higher plans can add policy restrictions like IP ranges, identity providers, and time windows.
+            </p>
+            <.link
+              navigate={~p"/#{@account}/settings/account"}
+              class="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-1.5 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]"
+            >
+              <.icon name="ri-arrow-right-line" class="h-4 w-4" /> Unlock in Account Settings
+            </.link>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div
+          :if={@policy_conditions_enabled? == false}
+          class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
         />
-        <.remote_ip_condition_form
-          :if={:remote_ip in @enabled_conditions}
-          form={@form}
-          disabled={@policy_conditions_enabled? == false}
-        />
-        <.provider_id_condition_form
-          :if={:auth_provider_id in @enabled_conditions}
-          form={@form}
-          providers={@providers}
-          disabled={@policy_conditions_enabled? == false}
-        />
-        <.client_verified_condition_form
-          :if={:client_verified in @enabled_conditions}
-          form={@form}
-          disabled={@policy_conditions_enabled? == false}
-        />
-        <.current_utc_datetime_condition_form
-          :if={:current_utc_datetime in @enabled_conditions}
-          form={@form}
-          timezone={@timezone}
-          disabled={@policy_conditions_enabled? == false}
-        />
+        <div
+          id="policy-conditions-locked-container"
+          class={[
+            @policy_conditions_enabled? == false &&
+              "pointer-events-none select-none blur-[2px] opacity-70",
+            "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
+          ]}
+        >
+          <.remote_ip_location_region_condition_form
+            :if={:remote_ip_location_region in @enabled_conditions}
+            form={@form}
+            disabled={@policy_conditions_enabled? == false}
+          />
+          <.remote_ip_condition_form
+            :if={:remote_ip in @enabled_conditions}
+            form={@form}
+            disabled={@policy_conditions_enabled? == false}
+          />
+          <.provider_id_condition_form
+            :if={:auth_provider_id in @enabled_conditions}
+            form={@form}
+            providers={@providers}
+            disabled={@policy_conditions_enabled? == false}
+          />
+          <.client_verified_condition_form
+            :if={:client_verified in @enabled_conditions}
+            form={@form}
+            disabled={@policy_conditions_enabled? == false}
+          />
+          <.current_utc_datetime_condition_form
+            :if={:current_utc_datetime in @enabled_conditions}
+            form={@form}
+            timezone={@timezone}
+            disabled={@policy_conditions_enabled? == false}
+          />
+        </div>
       </div>
     </fieldset>
     """

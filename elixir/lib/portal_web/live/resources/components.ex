@@ -1083,6 +1083,7 @@ defmodule PortalWeb.Resources.Components do
           />
           <.resource_grant_form
             :if={@tab == :groups && @panel_view == :grant_form}
+            account={@account}
             resource={@resource}
             grant_state={@grant_state}
           />
@@ -1297,11 +1298,18 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :resource, :any, required: true
   attr :grant_state, :map, required: true
 
   def resource_grant_form(assigns) do
     assigns = assign(assigns, assigns.grant_state)
+    assigns =
+      assign(
+        assigns,
+        :policy_conditions_enabled?,
+        Portal.Account.policy_conditions_enabled?(assigns.account)
+      )
 
     assigns =
       assign(assigns, :conditions_state, %{
@@ -1478,7 +1486,10 @@ defmodule PortalWeb.Resources.Components do
                 </span>
               </h4>
               <div
-                :if={available_conditions(@resource) -- @active_conditions != []}
+                :if={
+                  @policy_conditions_enabled? and
+                    available_conditions(@resource) -- @active_conditions != []
+                }
                 class="relative"
               >
                 <button
@@ -1504,19 +1515,57 @@ defmodule PortalWeb.Resources.Components do
                 </div>
               </div>
             </div>
-            <p
-              :if={@active_conditions == []}
-              class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
-            >
-              No conditions — access is unrestricted
-            </p>
-            <div class="space-y-2">
-              <.grant_condition_card
-                :for={type <- @active_conditions}
-                type={type}
-                providers={@providers}
-                conditions_state={@conditions_state}
+            <div class="relative">
+              <div
+                :if={@policy_conditions_enabled? == false}
+                class="absolute inset-0 z-20 flex items-center justify-center px-4 pt-8"
+              >
+                <div class="flex max-w-md flex-col items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-8 py-6 text-center text-[var(--text-tertiary)] shadow-lg">
+                  <.icon name="ri-loop-left-line" class="h-8 w-8" />
+                  <div class="flex flex-col items-center gap-1">
+                    <p class="text-sm font-medium text-[var(--text-primary)]">
+                      Upgrade your plan to unlock policy conditions.
+                    </p>
+                    <p class="text-xs">
+                      Add policy restrictions like IP ranges, identity providers, and time windows.
+                    </p>
+                    <.button
+                      style="primary"
+                      icon="ri-sparkling-fill"
+                      navigate={~p"/#{@account}/settings/account"}
+                    >
+                      Upgrade to Unlock
+                    </.button>
+                  </div>
+                </div>
+              </div>
+              <div
+                :if={@policy_conditions_enabled? == false}
+                class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
               />
+              <div
+                id="resource-grant-conditions-locked-container"
+                class={[
+                  @policy_conditions_enabled? == false &&
+                    "pointer-events-none select-none blur-[2px] opacity-70",
+                  "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
+                ]}
+              >
+                <p
+                  :if={@active_conditions == []}
+                  class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
+                >
+                  No conditions — access is unrestricted
+                </p>
+                <div class="space-y-2">
+                  <.grant_condition_card
+                    :for={type <- @active_conditions}
+                    type={type}
+                    providers={@providers}
+                    conditions_state={@conditions_state}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

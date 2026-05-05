@@ -113,6 +113,36 @@ defmodule PortalWeb.PoliciesTest do
 
       assert policy
     end
+
+    test "shows blurred upgrade state for starter accounts without policy conditions", %{
+      conn: conn
+    } do
+      account =
+        starter_account_fixture(
+          features: %{
+            policy_conditions: false,
+            traffic_filters: true,
+            idp_sync: true,
+            rest_api: true,
+            client_to_client: false
+          }
+        )
+
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade to Unlock"
+      assert html =~ ~s(href="/#{account.slug}/settings/account")
+      assert html =~ ~s(id="policy-conditions-locked-container")
+      assert html =~ "blur-[2px]"
+      assert html =~ "ri-loop-left-line"
+      refute html =~ "Add condition"
+    end
   end
 
   describe ":show action" do
