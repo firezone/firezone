@@ -5352,7 +5352,9 @@ defmodule PortalAPI.Client.ChannelTest do
         ipv6: target_client.ipv6.address,
         name: target_client.name,
         public_key: Portal.DeviceFixtures.generate_public_key(),
-        psk_base: target_client.psk_base
+        psk_base: target_client.psk_base,
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16"
       }
 
       :ok =
@@ -5412,6 +5414,84 @@ defmodule PortalAPI.Client.ChannelTest do
         client_id: ^target_client_id,
         ipv6: ^target_ipv6,
         reason: :offline
+      }
+    end
+
+    test "sends denied with :version_mismatch when target client predates the c2c message support",
+         %{
+           account: account,
+           client: client,
+           subject: subject,
+           target_actor: target_actor,
+           target_client: target_client,
+           pool_resource: pool_resource
+         } do
+      # Apple < 1.5.14 does not handle client_device_access_authorized/denied
+      old_target_subject =
+        subject_fixture(
+          account: account,
+          actor: target_actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.13"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      join_channel(target_client, old_target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      target_client_id = target_client.id
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => target_ip
+      })
+
+      assert_push "client_device_access_denied", %{
+        client_id: ^target_client_id,
+        ipv4: ^target_ip,
+        reason: :version_mismatch
+      }
+    end
+
+    test "sends denied with :version_mismatch when initiator and target are on different minor versions",
+         %{
+           account: account,
+           client: client,
+           subject: subject,
+           target_actor: target_actor,
+           target_client: target_client,
+           pool_resource: pool_resource
+         } do
+      # Initiator is on 1.5.16 (per setup); put target on a later minor with c2c support.
+      mismatched_target_subject =
+        subject_fixture(
+          account: account,
+          actor: target_actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.6.0"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      join_channel(target_client, mismatched_target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      target_client_id = target_client.id
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => target_ip
+      })
+
+      assert_push "client_device_access_denied", %{
+        client_id: ^target_client_id,
+        ipv4: ^target_ip,
+        reason: :version_mismatch
       }
     end
   end
@@ -5571,7 +5651,9 @@ defmodule PortalAPI.Client.ChannelTest do
         ipv6: target_client.ipv6.address,
         name: target_client.name,
         public_key: Portal.DeviceFixtures.generate_public_key(),
-        psk_base: target_client.psk_base
+        psk_base: target_client.psk_base,
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16"
       }
 
       :ok =
@@ -5593,6 +5675,40 @@ defmodule PortalAPI.Client.ChannelTest do
         client_id: ^target_client_id,
         ipv4: ^target_ip,
         reason: :offline
+      }
+    end
+
+    test "sends denied with :version_mismatch when initiator and target are on different minor versions",
+         %{
+           account: account,
+           client: client,
+           subject: subject,
+           target_client: target_client
+         } do
+      # Initiator is on 1.5.16 (per setup); put target on a later minor.
+      target_actor = actor_fixture(account: account)
+
+      mismatched_target_subject =
+        subject_fixture(
+          account: account,
+          actor: target_actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.6.0"
+        )
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      join_channel(target_client, mismatched_target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_denied", %{
+        ipv4: ^target_ip,
+        reason: :version_mismatch
       }
     end
   end
