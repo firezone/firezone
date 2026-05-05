@@ -738,7 +738,7 @@ defmodule PortalWeb.Sites.Components do
 
   def site_deploy_instructions(assigns) do
     ~H"""
-    <.site_deploy_debian :if={@deploy_tab == "debian-instructions"} />
+    <.site_deploy_debian :if={@deploy_tab == "debian-instructions"} deploy_env={@deploy_env} />
     <.site_deploy_systemd :if={@deploy_tab == "systemd-instructions"} deploy_env={@deploy_env} />
     <.site_deploy_docker :if={@deploy_tab == "docker-instructions"} deploy_env={@deploy_env} />
     <.site_deploy_terraform
@@ -781,11 +781,13 @@ defmodule PortalWeb.Sites.Components do
     """
   end
 
+  attr :deploy_env, :any, default: nil
+
   def site_deploy_debian(assigns) do
     ~H"""
     <div class="p-5 space-y-4">
       <p class="text-xs text-[var(--text-secondary)]">
-        Add the Firezone APT repository:
+        Step 1: Add the Firezone APT repository:
       </p>
       <.code_block
         id="deploy-code-debian-repo"
@@ -795,7 +797,7 @@ defmodule PortalWeb.Sites.Components do
       ><%= gateway_debian_apt_repository() %></.code_block>
 
       <p class="text-xs text-[var(--text-secondary)]">
-      Install the Firezone Gateway
+        Step 2: Install the Firezone Gateway:
       </p>
       <.code_block
         id="deploy-code-debian-install"
@@ -805,7 +807,7 @@ defmodule PortalWeb.Sites.Components do
       ><%= gateway_debian_install() %></.code_block>
 
       <p class="text-xs text-[var(--text-secondary)]">
-      Launch the Firezone Gateway:
+        Step 3: Authenticate the Firezone Gateway:
       </p>
       <.code_block
         id="deploy-code-debian-auth"
@@ -813,6 +815,21 @@ defmodule PortalWeb.Sites.Components do
         phx-no-format
         phx-update="ignore"
       ><%= gateway_debian_authenticate() %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+        Step 4: Use this token when prompted:
+      </p>
+      <.code_block
+        id="deploy-code-debian-token"
+        class="w-full text-xs whitespace-pre-line"
+        phx-no-format
+        phx-update="ignore"
+      ><%= gateway_token(@deploy_env) %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+        Step 5: You are now ready to manage the Gateway using the <code class="font-mono">firezone</code>
+        CLI.
+      </p>
     </div>
     """
   end
@@ -823,17 +840,55 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="p-5 space-y-4">
       <p class="text-xs text-[var(--text-secondary)]">
-        Set the <code class="font-mono">FIREZONE_TOKEN</code>
-        environment variable and run the gateway binary directly:
+        Step 1: Download the latest binary for your architecture:
+      </p>
+      <p>
+        <.website_link path="/changelog">Firezone changelog</.website_link>
+      </p>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+        Step 2: Set required environment variables:
       </p>
       <.code_block
-        id="deploy-code-custom"
+        id="deploy-code-custom-env"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_token(@deploy_env) %></.code_block>
+      ><%= gateway_manual_env(@deploy_env) %></.code_block>
+
       <p class="text-xs text-[var(--text-secondary)]">
-        <.website_link path="/kb/deploy/gateways">Gateway deployment guides</.website_link>
+        Step 3: Enable packet forwarding for IPv4 and IPv6:
+      </p>
+      <.code_block
+        id="deploy-code-custom-forwarding"
+        class="w-full text-xs whitespace-pre-line"
+        phx-no-format
+        phx-update="ignore"
+      ><%= gateway_manual_forwarding() %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+        Step 4: Enable masquerading for ethernet and Wi-Fi interfaces:
+      </p>
+      <.code_block
+        id="deploy-code-custom-masquerading"
+        class="w-full text-xs whitespace-pre-line"
+        phx-no-format
+        phx-update="ignore"
+      ><%= gateway_manual_masquerading() %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+        Step 5: Run the binary you downloaded:
+      </p>
+      <.code_block
+        id="deploy-code-custom-run"
+        class="w-full text-xs whitespace-pre-line"
+        phx-no-format
+        phx-update="ignore"
+      ><%= "sudo ./firezone-gateway-<version>-<architecture>" %></.code_block>
+
+      <p class="text-xs text-[var(--text-secondary)]">
+        Make sure to save the <code class="font-mono">FIREZONE_TOKEN</code>
+        shown above to a secure location before continuing. It won't be shown again.
       </p>
     </div>
     """
@@ -1421,6 +1476,36 @@ defmodule PortalWeb.Sites.Components do
   defp gateway_debian_authenticate do
     """
     sudo firezone gateway authenticate
+    """
+  end
+
+  defp gateway_manual_env(env) do
+    """
+    RUST_LOG=info
+    #{Enum.map_join(env, "\n", fn {key, value} -> "#{key}=#{value}" end)}
+    """
+  end
+
+  defp gateway_manual_forwarding do
+    """
+    sudo sysctl -w net.ipv4.ip_forward=1
+    sudo sysctl -w net.ipv4.conf.all.src_valid_mark=1
+    sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+    sudo sysctl -w net.ipv6.conf.all.forwarding=1
+    sudo sysctl -w net.ipv6.conf.default.forwarding=1
+    """
+  end
+
+  defp gateway_manual_masquerading do
+    """
+    sudo iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo iptables -A FORWARD -i tun-firezone -j ACCEPT
+    sudo iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo iptables -A FORWARD -o tun-firezone -j ACCEPT
+    sudo iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || sudo iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    sudo iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+    sudo ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo ip6tables -A FORWARD -i tun-firezone -j ACCEPT
+    sudo ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || sudo ip6tables -A FORWARD -o tun-firezone -j ACCEPT
+    sudo ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
+    sudo ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
     """
   end
 
