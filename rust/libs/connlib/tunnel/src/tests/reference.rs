@@ -269,12 +269,61 @@ impl ReferenceState {
                     )
                 },
             )
-            .with_if_not_empty(1, state.cidr_and_dns_resources_on_client(), |resources| {
+            .with_if_not_empty(1, state.resources_with_filters_on_client(), |resources| {
                 (sample::select(resources), filters()).prop_map(|((_, resource), new_filters)| {
                     Transition::ChangeFiltersOfResource {
                         resource,
                         new_filters,
                     }
+                })
+            })
+            .with_if_not_empty(2, state.static_device_pools_on_any_client(), |pools| {
+                let online_clients: Vec<(ClientId, Ipv4Network, Ipv6Network)> = state
+                    .clients
+                    .iter()
+                    .map(|(id, c)| {
+                        let inner = c.inner();
+                        (
+                            *id,
+                            Ipv4Network::new(inner.tunnel_ip4, 32).unwrap(),
+                            Ipv6Network::new(inner.tunnel_ip6, 128).unwrap(),
+                        )
+                    })
+                    .collect();
+
+                sample::select(pools).prop_flat_map(move |pool| {
+                    let online_clients = online_clients.clone();
+                    let online_ids: BTreeSet<ClientId> =
+                        online_clients.iter().map(|(id, _, _)| *id).collect();
+                    let preserved_offline = pool
+                        .devices
+                        .iter()
+                        .filter(|d| !online_ids.contains(&d.id))
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    let online_member_count = online_clients.len();
+                    let online_subset =
+                        sample::subsequence(online_clients, 0..=online_member_count);
+
+                    online_subset.prop_map(move |online_devices| {
+                        let mut devices: Vec<_> = online_devices
+                            .into_iter()
+                            .map(
+                                |(id, ipv4, ipv6)| crate::messages::client::DevicePoolMember {
+                                    id,
+                                    ipv4,
+                                    ipv6,
+                                },
+                            )
+                            .collect();
+                        devices.extend(preserved_offline.clone());
+
+                        Transition::UpdateStaticDevicePool {
+                            pool_id: pool.id,
+                            new_devices: devices,
+                        }
+                    })
                 })
             })
             .with_if_not_empty(1, state.all_resource_ids(), |resource_ids| {
@@ -619,7 +668,7 @@ impl ReferenceState {
                 (sample::select(domains), btree_set(dns_record(), 1..6))
                     .prop_map(|(domain, records)| Transition::UpdateDnsRecords { domain, records })
             })
-            .with_if_not_empty(5, state.other_client_tun_ips(), |ips| {
+            .with_if_not_empty(5, state.pool_routed_other_client_tun_ips(), |ips| {
                 let clients = state.clients.clone();
 
                 (
@@ -667,7 +716,9 @@ impl ReferenceState {
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
-                        client::Resource::StaticDevicePool(_) => {}
+                        client::Resource::StaticDevicePool(r) => {
+                            client.add_static_device_pool_resource(r.clone());
+                        }
                         client::Resource::DynamicDevicePool(r) => {
                             client.add_dynamic_device_pool_resource(r.clone());
                         }
@@ -729,12 +780,29 @@ impl ReferenceState {
                     client.exec_mut(|c| match &new_resource {
                         client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
                         client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
-                        client::Resource::Internet(_)
-                        | client::Resource::StaticDevicePool(_)
-                        | client::Resource::DynamicDevicePool(_) => {
+                        client::Resource::StaticDevicePool(r) => {
+                            c.add_static_device_pool_resource(r.clone());
+                        }
+                        client::Resource::Internet(_) | client::Resource::DynamicDevicePool(_) => {
                             unreachable!()
                         }
                     })
+                }
+            }
+            Transition::UpdateStaticDevicePool {
+                pool_id,
+                new_devices,
+            } => {
+                let Some(new_pool) = state
+                    .portal
+                    .update_static_device_pool_members(*pool_id, new_devices.clone())
+                else {
+                    tracing::error!(%pool_id, "Unknown static device pool");
+                    return state;
+                };
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| c.add_static_device_pool_resource(new_pool.clone()));
                 }
             }
             Transition::SetInternetResourceState {
@@ -952,6 +1020,20 @@ impl ReferenceState {
                         .clients
                         .values()
                         .any(|c| c.inner().has_resource(resource.id()))
+            }
+            Transition::UpdateStaticDevicePool { pool_id, .. } => {
+                // Pool must already exist on at least one client.
+                state.portal.all_resources().iter().any(|r| {
+                    let client::Resource::StaticDevicePool(existing) = r else {
+                        return false;
+                    };
+
+                    existing.id == *pool_id
+                        && state
+                            .clients
+                            .values()
+                            .any(|c| c.inner().has_resource(*pool_id))
+                })
             }
             Transition::SetInternetResourceState { client_id, .. } => {
                 state.clients.contains_key(client_id)
@@ -1193,9 +1275,9 @@ impl ReferenceState {
 
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && state
-                        .clients
+                        .pool_routed_other_client_tun_ips()
                         .iter()
-                        .any(|(_, c)| c.inner().tunnel_ip4 == *dst)
+                        .any(|(src, ip)| src == client_id && ip == dst)
             }
         }
     }
@@ -1486,6 +1568,30 @@ impl ReferenceState {
             .collect()
     }
 
+    /// Resources that have configurable traffic filters and exist on at least one client.
+    ///
+    /// Used by `Transition::ChangeFiltersOfResource`.
+    fn resources_with_filters_on_client(&self) -> Vec<(ClientId, client::Resource)> {
+        let all_resources = self.portal.all_resources();
+
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                let mut all_resources = all_resources.clone();
+                all_resources.retain(|r| {
+                    matches!(
+                        r,
+                        client::Resource::Cidr(_)
+                            | client::Resource::Dns(_)
+                            | client::Resource::StaticDevicePool(_)
+                    ) && client.inner().has_resource(r.id())
+                });
+
+                all_resources.into_iter().map(move |r| (*client_id, r))
+            })
+            .collect()
+    }
+
     fn cidr_and_dns_resources_on_client(&self) -> Vec<(ClientId, client::Resource)> {
         let all_resources = self.portal.all_resources();
 
@@ -1682,6 +1788,24 @@ impl ReferenceState {
         self.clients.keys().copied().collect()
     }
 
+    fn static_device_pools_on_any_client(&self) -> Vec<client::StaticDevicePoolResource> {
+        let pools = self
+            .portal
+            .all_resources()
+            .into_iter()
+            .filter_map(|r| match r {
+                client::Resource::StaticDevicePool(p) => Some(p),
+                client::Resource::Dns(_)
+                | client::Resource::Cidr(_)
+                | client::Resource::Internet(_)
+                | client::Resource::DynamicDevicePool(_) => None,
+            });
+
+        pools
+            .filter(|p| self.clients.values().any(|c| c.inner().has_resource(p.id)))
+            .collect()
+    }
+
     fn device_pool_resources_on_client(
         &self,
     ) -> Vec<(ClientId, client::DynamicDevicePoolResource)> {
@@ -1732,17 +1856,42 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Generates a list of Client ID <> TUN IPv4 tuples without the entries of each ID's own IP.
-    fn other_client_tun_ips(&self) -> Vec<(ClientId, Ipv4Addr)> {
+    /// Generates a list of `(src_client_id, dst_ipv4)` tuples where `dst_ipv4` is the tunnel
+    /// IPv4 of an online client reachable from `src_client_id` via a static device pool whose
+    /// filters allow ICMP.
+    ///
+    /// Static device pools are the only routing path between clients now, so this is the
+    /// only sampling that produces an ICMP handshake we can predict.
+    fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, Ipv4Addr)> {
+        let online_ips_by_id: BTreeMap<ClientId, Ipv4Addr> = self
+            .clients
+            .iter()
+            .map(|(id, c)| (*id, c.inner().tunnel_ip4))
+            .collect();
+
         self.clients
-            .keys()
-            .flat_map(|outer_id| {
-                self.clients
-                    .iter()
-                    .filter_map(move |(inner_id, c)| {
-                        (outer_id != inner_id).then_some(c.inner().tunnel_ip4)
+            .iter()
+            .flat_map(|(src_id, src_client)| {
+                let online_ips_by_id = online_ips_by_id.clone();
+                let src_id = *src_id;
+
+                src_client
+                    .inner()
+                    .all_resources()
+                    .into_iter()
+                    .filter_map(|r| match r {
+                        client::Resource::StaticDevicePool(p) => Some(p),
+                        client::Resource::Dns(_)
+                        | client::Resource::Cidr(_)
+                        | client::Resource::Internet(_)
+                        | client::Resource::DynamicDevicePool(_) => None,
                     })
-                    .map(|tun_ipv4| (*outer_id, tun_ipv4))
+                    .filter(|pool| pool_filters_allow_icmp(&pool.filters))
+                    .flat_map(|pool| pool.devices)
+                    .filter(move |device| device.id != src_id)
+                    .filter_map(move |device| {
+                        online_ips_by_id.get(&device.id).map(|ip| (src_id, *ip))
+                    })
             })
             .collect()
     }
@@ -1780,4 +1929,8 @@ impl fmt::Debug for PrivateKey {
             .field(&hex::encode(self.0))
             .finish()
     }
+}
+
+fn pool_filters_allow_icmp(filters: &[Filter]) -> bool {
+    filters.is_empty() || filters.iter().any(|f| matches!(f, Filter::Icmp))
 }

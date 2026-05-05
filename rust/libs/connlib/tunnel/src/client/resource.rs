@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::messages::{
     Filter,
     client::{
-        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
+        DevicePoolMember, ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
         ResourceDescriptionDynamicDevicePool, ResourceDescriptionInternet,
         ResourceDescriptionStaticDevicePool,
     },
@@ -85,6 +85,8 @@ pub struct InternetResource {
 pub struct StaticDevicePoolResource {
     pub id: ResourceId,
     pub name: String,
+    pub devices: Vec<DevicePoolMember>,
+    pub filters: Vec<Filter>,
 }
 
 /// A dynamic device pool resource.
@@ -216,9 +218,8 @@ impl Resource {
         match self {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
-            Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => &[],
+            Resource::StaticDevicePool(r) => &r.filters,
+            Resource::Internet(_) | Resource::DynamicDevicePool(_) => &[],
         }
     }
 
@@ -254,8 +255,10 @@ impl Resource {
         match (self, other) {
             (Resource::Dns(dns_a), Resource::Dns(dns_b)) => dns_a.address != dns_b.address,
             (Resource::Cidr(cidr_a), Resource::Cidr(cidr_b)) => cidr_a.address != cidr_b.address,
-            (Resource::Internet(_), Resource::Internet(_))
-            | (Resource::StaticDevicePool(_), Resource::StaticDevicePool(_)) => false,
+            (Resource::Internet(_), Resource::Internet(_)) => false,
+            (Resource::StaticDevicePool(a), Resource::StaticDevicePool(b)) => {
+                a.devices != b.devices
+            }
             (Resource::DynamicDevicePool(a), Resource::DynamicDevicePool(b)) => {
                 a.address != b.address
             }
@@ -328,9 +331,10 @@ impl Resource {
         match self {
             Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
             Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => self,
+            Resource::StaticDevicePool(r) => {
+                Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
+            }
+            Resource::Internet(_) | Resource::DynamicDevicePool(_) => self,
         }
     }
 }
@@ -395,6 +399,8 @@ impl StaticDevicePoolResource {
         Self {
             id: resource.id,
             name: resource.name,
+            devices: resource.devices,
+            filters: resource.filters,
         }
     }
 }

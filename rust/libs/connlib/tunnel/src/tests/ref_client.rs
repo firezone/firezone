@@ -9,7 +9,10 @@ use super::{
 };
 use crate::{
     ClientState,
-    client::{CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource},
+    client::{
+        CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
+        StaticDevicePoolResource,
+    },
     dns,
     filter_engine::FilterEngine,
     malicious_behaviour::MaliciousBehaviour,
@@ -318,6 +321,19 @@ impl RefClient {
         self.resources.push(r);
     }
 
+    pub(crate) fn add_static_device_pool_resource(&mut self, r: StaticDevicePoolResource) {
+        let r = Resource::StaticDevicePool(r);
+        let rid = r.id();
+
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
+            && (existing.has_different_address(&r) || existing.has_different_filters(&r))
+        {
+            self.remove_resource(&existing.id());
+        }
+
+        self.resources.push(r);
+    }
+
     /// Re-adds all resources in the order they have been initially added.
     pub(crate) fn readd_all_resources(&mut self) {
         for resource in mem::take(&mut self.resources) {
@@ -328,7 +344,9 @@ impl RefClient {
                 Resource::DynamicDevicePool(d) => {
                     self.add_dynamic_device_pool_resource(d);
                 }
-                Resource::StaticDevicePool(_) => {}
+                Resource::StaticDevicePool(s) => {
+                    self.add_static_device_pool_resource(s);
+                }
             }
         }
     }

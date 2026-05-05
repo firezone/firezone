@@ -7,13 +7,13 @@ use super::{
 };
 use crate::{
     client,
-    client::{DnsResource, DynamicDevicePoolResource},
-    messages::{UpstreamDo53, UpstreamDoH, gateway},
+    client::{DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource},
+    messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
     proptest::*,
 };
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
     collection,
@@ -40,6 +40,7 @@ pub(crate) struct StubPortal {
     cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
     dns_resources: BTreeMap<ResourceId, client::DnsResource>,
     device_pool_resources: BTreeMap<ResourceId, DynamicDevicePoolResource>,
+    static_device_pool_resources: BTreeMap<ResourceId, StaticDevicePoolResource>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -69,6 +70,7 @@ impl StubPortal {
         cidr_resources: BTreeSet<client::CidrResource>,
         dns_resources: BTreeSet<client::DnsResource>,
         device_pool_resources: BTreeSet<DynamicDevicePoolResource>,
+        static_device_pool_plans: Vec<StaticDevicePoolPlan>,
         internet_resource: client::InternetResource,
         search_domain: Option<DomainName>,
         upstream_do53: Vec<UpstreamDo53>,
@@ -151,6 +153,13 @@ impl StubPortal {
             })
             .collect();
 
+        let static_device_pool_resources = realize_static_device_pool_plans(
+            static_device_pool_plans,
+            &clients,
+            &mut tunnel_ip4s,
+            &mut tunnel_ip6s,
+        );
+
         Self {
             clients,
             gateways_by_site,
@@ -161,6 +170,7 @@ impl StubPortal {
             cidr_resources,
             dns_resources,
             device_pool_resources,
+            static_device_pool_resources,
             internet_resource,
             search_domain,
             upstream_do53,
@@ -205,6 +215,12 @@ impl StubPortal {
                     .values()
                     .cloned()
                     .map(client::Resource::DynamicDevicePool),
+            )
+            .chain(
+                self.static_device_pool_resources
+                    .values()
+                    .cloned()
+                    .map(client::Resource::StaticDevicePool),
             )
             .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),
@@ -349,7 +365,25 @@ impl StubPortal {
             return;
         }
 
+        if let Some(resource) = self.static_device_pool_resources.get_mut(&rid) {
+            resource.filters = new_filters;
+            return;
+        }
+
         tracing::error!(%rid, "Unknown resource");
+    }
+
+    /// Replaces the member list of an existing static device pool.
+    ///
+    /// Returns the updated pool, or `None` if no pool with `pool_id` exists.
+    pub(crate) fn update_static_device_pool_members(
+        &mut self,
+        pool_id: ResourceId,
+        new_devices: Vec<DevicePoolMember>,
+    ) -> Option<StaticDevicePoolResource> {
+        let pool = self.static_device_pool_resources.get_mut(&pool_id)?;
+        pool.devices = new_devices;
+        Some(pool.clone())
     }
 
     pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
@@ -488,6 +522,62 @@ fn dns_resource_records(
 
             map
         })
+}
+
+/// Materializes static-device-pool plans into [`StaticDevicePoolResource`]s.
+///
+/// For each plan, picks `n_online_members` deterministic clients from the
+/// portal's known clients and pulls `n_offline_members` fresh tunnel IPs
+/// (paired with synthetic [`ClientId`]s) for members that are not part of any
+/// real test client. This way each pool exercises both the
+/// "client already connected" and "client unknown" routing paths.
+fn realize_static_device_pool_plans(
+    plans: Vec<StaticDevicePoolPlan>,
+    clients: &BTreeMap<ClientId, StubClient>,
+    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
+    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+) -> BTreeMap<ResourceId, StaticDevicePoolResource> {
+    let online_pool = clients.iter().collect::<Vec<_>>();
+
+    plans
+        .into_iter()
+        .map(|plan| {
+            let StaticDevicePoolPlan {
+                id,
+                name,
+                filters,
+                n_online_members,
+                offline_members,
+            } = plan;
+
+            let online_devices =
+                online_pool
+                    .iter()
+                    .take(n_online_members)
+                    .map(|(cid, c)| DevicePoolMember {
+                        id: **cid,
+                        ipv4: Ipv4Network::new(c.ipv4, 32).unwrap(),
+                        ipv6: Ipv6Network::new(c.ipv6, 128).unwrap(),
+                    });
+
+            let offline_devices = offline_members.into_iter().map(|cid| DevicePoolMember {
+                id: cid,
+                ipv4: Ipv4Network::new(tunnel_ip4s.next().unwrap(), 32).unwrap(),
+                ipv6: Ipv6Network::new(tunnel_ip6s.next().unwrap(), 128).unwrap(),
+            });
+
+            let devices = online_devices.chain(offline_devices).collect();
+
+            let resource = StaticDevicePoolResource {
+                id,
+                name,
+                devices,
+                filters,
+            };
+
+            (id, resource)
+        })
+        .collect()
 }
 
 /// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.

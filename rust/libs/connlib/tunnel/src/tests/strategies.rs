@@ -108,6 +108,13 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
             );
             let device_pool_resources =
                 collection::btree_set(dynamic_device_pool_resource(), 0..=2);
+            // Allow up to three pools so the proptest regularly exercises the
+            // overlap case where the same online client is in multiple pools.
+            // The realizer takes the first `n_online_members` clients from the
+            // (deterministic) online client pool, so any two pools with at
+            // least one online member share that first member by construction.
+            let static_device_pool_plans =
+                collection::vec(static_device_pool_resource_plan(), 0..=3);
             let internet_resource = internet_resource(Just(internet_site.clone()));
 
             // Assign between 1 and 3 gateways to each site.
@@ -128,6 +135,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 cidr_resources,
                 dns_resources,
                 device_pool_resources,
+                static_device_pool_plans,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
@@ -141,6 +149,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 cidr_resources,
                 dns_resources,
                 device_pool_resources,
+                static_device_pool_plans,
                 internet_resource,
                 gateway_selector,
                 upstream_do53_servers,
@@ -156,6 +165,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                         cidr_resources,
                         dns_resources.clone(),
                         device_pool_resources,
+                        static_device_pool_plans,
                         internet_resource,
                         gateway_selector,
                         upstream_do53_servers,
@@ -176,6 +186,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     mut cidr_resources,
                     mut dns_resources,
                     device_pool_resources,
+                    static_device_pool_plans,
                     internet_resource,
                     gateway_selector,
                     upstream_do53_servers,
@@ -228,6 +239,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     cidr_resources,
                     dns_resources,
                     device_pool_resources,
+                    static_device_pool_plans,
                     internet_resource,
                     search_domain,
                     upstream_do53_servers,

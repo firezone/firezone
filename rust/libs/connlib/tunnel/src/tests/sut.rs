@@ -10,7 +10,6 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
-use crate::messages::client::FailReason;
 use crate::messages::gateway::{Client, Subject};
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
@@ -223,6 +222,37 @@ impl TunnelTest {
 
                 for client in state.clients.values_mut() {
                     client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                }
+            }
+            Transition::UpdateStaticDevicePool {
+                pool_id,
+                new_devices,
+            } => {
+                let Some(existing) =
+                    ref_state
+                        .portal
+                        .all_resources()
+                        .into_iter()
+                        .find_map(|r| match r {
+                            client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
+                            client::Resource::Dns(_)
+                            | client::Resource::Cidr(_)
+                            | client::Resource::Internet(_)
+                            | client::Resource::DynamicDevicePool(_)
+                            | client::Resource::StaticDevicePool(_) => None,
+                        })
+                else {
+                    panic!("UpdateStaticDevicePool for unknown pool {pool_id}");
+                };
+
+                let resource =
+                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
+                        devices: new_devices,
+                        ..existing
+                    });
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| c.sut.add_resource(resource.clone(), now));
                 }
             }
             Transition::RemoveResource(rid) => {
@@ -1052,6 +1082,7 @@ impl TunnelTest {
             ClientEvent::ResourceConnectionIntent {
                 resource: resource_id,
                 preferred_gateways,
+                ip: None,
             } => {
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
@@ -1123,7 +1154,11 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceConnectionIntent { ipv4 } => {
+            ClientEvent::ResourceConnectionIntent {
+                resource: resource_id,
+                ip: Some(ip),
+                ..
+            } => {
                 let src_client = self.clients.get(&src).expect("unknown source client");
 
                 let src_key = src_client.inner().sut.public_key();
@@ -1134,7 +1169,10 @@ impl TunnelTest {
                         .inner()
                         .sut
                         .tunnel_ip_config()
-                        .is_some_and(|tun| tun.v4 == ipv4)
+                        .is_some_and(|tun| match ip {
+                            std::net::IpAddr::V4(v4) => tun.v4 == v4,
+                            std::net::IpAddr::V6(v6) => tun.v6 == v6,
+                        })
                 });
 
                 match maybe_remote_client {
@@ -1186,17 +1224,14 @@ impl TunnelTest {
                             Ok(())
                         })?;
                     }
-                    None => self
-                        .clients
-                        .get_mut(&src)
-                        .expect("unknown source client")
-                        .exec_mut(|c| {
-                            c.sut.handle_client_device_access_denied(
-                                ipv4,
-                                FailReason::NotFound,
-                                now,
-                            )
-                        }),
+                    None => {
+                        // The proptest only samples `SendIcmpPacketToDevice` for destinations
+                        // that are online clients (see `pool_routed_other_client_tun_ips`),
+                        // so this branch shouldn't fire.
+                        unreachable!(
+                            "device-connection intent for offline destination ip={ip} resource_id={resource_id}"
+                        )
+                    }
                 }
 
                 Ok(())

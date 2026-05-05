@@ -1,7 +1,7 @@
 use crate::{
     client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
     dns,
-    messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH},
+    messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
     proptest::{host_v4, host_v6},
 };
 use connlib_model::{ClientId, RelayId, ResourceId, Site};
@@ -38,6 +38,15 @@ pub(crate) enum Transition {
     ChangeFiltersOfResource {
         resource: Resource,
         new_filters: Vec<Filter>,
+    },
+    /// Replace the member list of an existing static device pool.
+    ///
+    /// Exercises the SUT's pool-member diff path, which short-circuits the
+    /// generic remove-and-re-add flow when only pool membership changes.
+    /// Filter changes go through `ChangeFiltersOfResource`.
+    UpdateStaticDevicePool {
+        pool_id: ResourceId,
+        new_devices: Vec<DevicePoolMember>,
     },
 
     /// Toggle the Internet Resource on / off
@@ -151,6 +160,7 @@ impl Transition {
             | Transition::MoveResourceToNewSite { .. }
             | Transition::DeauthorizeWhileGatewayIsPartitioned(_)
             | Transition::ChangeFiltersOfResource { .. }
+            | Transition::UpdateStaticDevicePool { .. }
             | Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. }
             | Transition::SendUdpPacket { .. }

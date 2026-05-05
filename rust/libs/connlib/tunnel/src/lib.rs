@@ -607,9 +607,9 @@ pub enum ClientEvent {
     ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
-    },
-    DeviceConnectionIntent {
-        ipv4: Ipv4Addr,
+        /// Set for connection intents to a specific device pool member;
+        /// `None` for intents to a gateway-routed resource.
+        ip: Option<IpAddr>,
     },
     DevicePoolDomainQueried {
         resource_id: ResourceId,

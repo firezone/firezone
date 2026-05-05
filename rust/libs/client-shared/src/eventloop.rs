@@ -320,19 +320,20 @@ impl Eventloop {
             ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
+                ip,
             } => {
+                let (ipv4, ipv6) = match ip {
+                    None => (None, None),
+                    Some(IpAddr::V4(v4)) => (Some(v4), None),
+                    Some(IpAddr::V6(v6)) => (None, Some(v6)),
+                };
+
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         preferred_gateways,
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            ClientEvent::DeviceConnectionIntent { ipv4 } => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
                         ipv4,
+                        ipv6,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -579,11 +580,13 @@ impl Eventloop {
                 };
             }
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
-                ipv4: client_ipv4,
+                ipv4,
+                ipv6,
                 reason,
             }) => {
                 tunnel.state_mut().handle_client_device_access_denied(
-                    client_ipv4,
+                    ipv4,
+                    ipv6,
                     reason,
                     Instant::now(),
                 );

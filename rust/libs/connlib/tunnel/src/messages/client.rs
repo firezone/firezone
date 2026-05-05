@@ -4,7 +4,7 @@ use crate::messages::{
     Filter, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -60,6 +60,17 @@ fn internet_resource_name() -> String {
 pub struct ResourceDescriptionStaticDevicePool {
     pub id: ResourceId,
     pub name: String,
+    #[serde(default)]
+    pub devices: Vec<DevicePoolMember>,
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct DevicePoolMember {
+    pub id: ClientId,
+    pub ipv4: Ipv4Network,
+    pub ipv6: Ipv6Network,
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,6 +159,7 @@ pub struct ClientDeviceAccessAuthorized {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessDenied {
     pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
     pub reason: FailReason,
 }
 
@@ -254,9 +266,10 @@ pub enum EgressMessages {
         resource_id: ResourceId,
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
-    },
-    RequestDeviceAccess {
-        ipv4: Ipv4Addr,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ipv4: Option<Ipv4Addr>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ipv6: Option<Ipv6Addr>,
     },
     ResolveDevicePoolDomain {
         resource_id: ResourceId,
@@ -564,8 +577,38 @@ mod tests {
         let message = EgressMessages::CreateFlow {
             resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
             preferred_gateways: Vec::new(),
+            ipv4: None,
+            ipv6: None,
         };
         let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_create_flow_message_with_ipv4() {
+        let message = EgressMessages::CreateFlow {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
+            ipv4: Some(Ipv4Addr::new(100, 65, 0, 1)),
+            ipv6: None,
+        };
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"ipv4":"100.65.0.1"}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_create_flow_message_with_ipv6() {
+        let message = EgressMessages::CreateFlow {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
+            ipv4: None,
+            ipv6: Some("fd00:2021:1111::1".parse().unwrap()),
+        };
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"ipv6":"fd00:2021:1111::1"}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
