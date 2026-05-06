@@ -192,6 +192,7 @@ jobs:
           RUST_BACKTRACE: 0
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TUNNEL_TEST_ENFORCE_COVERAGE: 1 # Fail the test if we don't hit all intended codepaths.
+          FZFF_ICELESS: true
 
       - name: Extract missing coverage patterns
         id: missing
