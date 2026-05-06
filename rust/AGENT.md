@@ -26,7 +26,7 @@
 - Prefer logging values instead of formatting them into the message. For example, use:
 
   ```rust
-  tracing::info!(?duration_since_intent, "Establishing new connection");
+  tracing::info!(?duration_since_intent, "Established new connection");
   ```
 
   instead of
