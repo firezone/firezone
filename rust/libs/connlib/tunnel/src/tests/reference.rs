@@ -22,6 +22,7 @@ use std::{
     fmt, iter,
     net::{IpAddr, SocketAddr},
 };
+use telemetry::feature_flags;
 
 /// The reference state machine of the tunnel.
 ///
@@ -928,18 +929,8 @@ impl ReferenceState {
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
-                    let to_reset: Vec<ClientId> = state
-                        .clients
-                        .keys()
-                        .copied()
-                        .filter(|cid| !state.all_iceless(cid))
-                        .collect();
-                    for cid in to_reset {
-                        state
-                            .clients
-                            .get_mut(&cid)
-                            .unwrap()
-                            .exec_mut(|c| c.reset_connections(now));
+                    for c in state.clients.values_mut() {
+                        c.exec_mut(|c| c.reset_connections(now));
                     }
                 }
             }
@@ -1377,6 +1368,10 @@ impl ReferenceState {
     /// would soft-reset (no `ConnectionClosed`, no site-status drop)
     /// instead of hard-resetting.
     fn all_iceless(&self, client_id: &ClientId) -> bool {
+        if !feature_flags::iceless() {
+            return false;
+        }
+
         let Some(client) = self.clients.get(client_id) else {
             return false;
         };
