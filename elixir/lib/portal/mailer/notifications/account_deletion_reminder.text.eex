@@ -1,0 +1,13 @@
+Account Deletion Reminder
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) is scheduled to be permanently deleted in approximately 48 hours.
+
+Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
+
+All account data will be permanently and irrecoverably deleted on the scheduled date. To cancel the deletion, visit your account settings before the deadline:
+<%= @settings_url %>
+
+If you intended to delete this account, no action is needed.
+
+Thanks,
+The Firezone Team

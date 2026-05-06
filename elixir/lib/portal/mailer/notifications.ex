@@ -70,6 +70,27 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
+  def account_deletion_reminder_email(account, recipients) do
+    settings_url = url(~p"/#{account.id}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Deletion Reminder")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_deletion_reminder,
+      account: account,
+      settings_url: settings_url
+    )
+  end
+
+  def account_deletion_completed_email(account, recipients) do
+    default_email()
+    |> subject("Firezone Account Deletion Complete")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_deletion_completed, account: account)
+  end
+
   defp put_recipients(email, recipients) when is_list(recipients),
     do: bcc_recipients(email, recipients)
 

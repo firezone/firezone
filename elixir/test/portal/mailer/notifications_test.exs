@@ -44,6 +44,20 @@ defmodule Portal.Mailer.NotificationsTest do
     end
   end
 
+  describe "account_deletion_completed_email/2" do
+    test "includes the completion message", %{account: account} do
+      email =
+        account_deletion_completed_email(account, "admin@example.com")
+
+      assert email.subject == "Firezone Account Deletion Complete"
+      assert email.text_body =~ "has been permanently deleted"
+      assert email.text_body =~ account.slug
+      assert email.text_body =~ account.id
+      assert email.html_body =~ "Account Deletion Complete"
+      assert email.html_body =~ "no longer available"
+    end
+  end
+
   describe "outdated_gateway_email/4" do
     test "should contain current gateway version and list of outdated gateways", %{
       account: account

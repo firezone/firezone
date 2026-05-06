@@ -4,115 +4,79 @@ defmodule Portal.Accounts.Deletion do
   alias Portal.Account
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
-  alias Portal.Safe
-  alias Portal.Workers.DeleteAccount
   alias __MODULE__.Database
   require Logger
 
   def schedule_account_deletion(%Account{} = account, attrs, subject) do
-    Database.transact(fn ->
-      with {:ok, account} <- Database.fetch_account(account.id, subject),
-           {:ok, transition} <- Database.transition_account_deletion(account, attrs, :schedule),
-           {:ok, _job} <- maybe_insert_delete_job(transition) do
-        {:ok, transition}
-      end
-    end)
-    |> case do
-      {:ok, {:transitioned, account}} ->
-        maybe_enqueue_account_deletion_notification(account, subject, :schedule)
-
-      {:ok, {:unchanged, account}} ->
-        {:ok, account}
-
-      {:error, :unauthorized} ->
-        {:error, :unauthorized}
-
-      {:error, reason} ->
-        {:error, reason}
+    case Database.schedule_account_deletion(account, attrs, subject) do
+      {:ok, {:transitioned, account}} -> enqueue_deletion_notification(account, subject)
+      {:ok, {:unchanged, account}} -> {:ok, account}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   def cancel_account_deletion(%Account{} = account, subject) do
-    Database.transact(fn ->
-      with {:ok, account} <- Database.fetch_account(account.id, subject),
-           {:ok, transition} <-
-             Database.transition_account_deletion(
-               account,
-               %{disabled_at: nil, scheduled_deletion_at: nil},
-               :cancel
-             ),
-           {:ok, _jobs} <- maybe_cancel_delete_jobs(transition) do
-        {:ok, transition}
-      end
-    end)
-    |> case do
-      {:ok, {:transitioned, account}} ->
-        maybe_enqueue_account_deletion_notification(account, subject, :cancel)
-
-      {:ok, {:unchanged, account}} ->
-        {:ok, account}
-
-      {:error, :unauthorized} ->
-        {:error, :unauthorized}
-
-      {:error, reason} ->
-        {:error, reason}
+    case Database.cancel_account_deletion(account, subject) do
+      {:ok, {:transitioned, account}} -> enqueue_cancellation_notification(account, subject)
+      {:ok, {:unchanged, account}} -> {:ok, account}
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp maybe_insert_delete_job({:transitioned, account}) do
-    %{"account_id" => account.id}
-    |> DeleteAccount.new(scheduled_at: account.scheduled_deletion_at)
-    |> Oban.insert()
+  defp enqueue_deletion_notification(%Account{} = account, subject) do
+    notify_admins(
+      account,
+      subject,
+      :schedule,
+      &Notifications.account_scheduled_for_deletion_email/2
+    )
   end
 
-  defp maybe_insert_delete_job({:unchanged, _account}), do: {:ok, nil}
-
-  defp maybe_cancel_delete_jobs({:transitioned, account}) do
-    Database.cancel_delete_jobs(account.id)
+  defp enqueue_cancellation_notification(%Account{} = account, subject) do
+    notify_admins(
+      account,
+      subject,
+      :cancel,
+      &Notifications.account_deletion_aborted_email/2
+    )
   end
 
-  defp maybe_cancel_delete_jobs({:unchanged, _account}), do: {:ok, []}
-
-  defp maybe_enqueue_account_deletion_notification(%Account{} = account, subject, action) do
+  defp notify_admins(%Account{} = account, subject, action, email_fun) do
     admin_emails = Database.get_account_admin_emails(account.id, subject)
 
     case admin_emails do
       [] ->
-        Logger.warning("No admin actors found for account deletion notification",
-          account_id: account.id,
-          action: action
-        )
-
+        log_missing_admins(account, action)
         {:ok, account}
 
       admin_emails ->
-        account
-        |> account_deletion_notification_email(admin_emails, action)
-        |> Mailer.enqueue()
-        |> case do
-          {:ok, _result} ->
-            {:ok, account}
-
-          {:error, reason} ->
-            Logger.error("Failed to enqueue account deletion notification",
-              account_id: account.id,
-              action: action,
-              recipient_count: length(admin_emails),
-              reason: inspect(reason)
-            )
-
-            {:ok, account}
-        end
+        email = email_fun.(account, admin_emails)
+        enqueue_notification_email(email, account, admin_emails, action)
     end
   end
 
-  defp account_deletion_notification_email(account, admin_emails, :schedule) do
-    Notifications.account_scheduled_for_deletion_email(account, admin_emails)
+  defp enqueue_notification_email(email, %Account{} = account, admin_emails, action) do
+    case Mailer.enqueue(email) do
+      {:ok, _result} ->
+        {:ok, account}
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue account deletion notification",
+          account_id: account.id,
+          action: action,
+          recipient_count: length(admin_emails),
+          reason: inspect(reason)
+        )
+
+        {:ok, account}
+    end
   end
 
-  defp account_deletion_notification_email(account, admin_emails, :cancel) do
-    Notifications.account_deletion_aborted_email(account, admin_emails)
+  defp log_missing_admins(%Account{} = account, action) do
+    Logger.warning("No admin actors found for account deletion notification",
+      account_id: account.id,
+      action: action
+    )
   end
 
   defmodule Database do
@@ -122,8 +86,37 @@ defmodule Portal.Accounts.Deletion do
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Safe
+    alias Portal.Workers.AccountDeletionReminder
+    alias Portal.Workers.DeleteAccount
 
-    def fetch_account(account_id, subject) do
+    def schedule_account_deletion(%Account{} = account, attrs, subject) do
+      Safe.transact(fn ->
+        with {:ok, transition} <-
+               transition_account_deletion(account, attrs, :schedule, subject),
+             {:ok, _job} <- maybe_insert_delete_job(transition),
+             {:ok, _job} <- maybe_insert_reminder_job(transition) do
+          {:ok, transition}
+        end
+      end)
+    end
+
+    def cancel_account_deletion(%Account{} = account, subject) do
+      Safe.transact(fn ->
+        with {:ok, transition} <-
+               transition_account_deletion(
+                 account,
+                 %{disabled_at: nil, scheduled_deletion_at: nil},
+                 :cancel,
+                 subject
+               ),
+             {:ok, _jobs} <- maybe_cancel_delete_jobs(transition),
+             {:ok, _jobs} <- maybe_cancel_reminder_jobs(transition) do
+          {:ok, transition}
+        end
+      end)
+    end
+
+    defp fetch_account(account_id, subject) do
       from(a in Account, where: a.id == ^account_id)
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -134,16 +127,18 @@ defmodule Portal.Accounts.Deletion do
       end
     end
 
-    def transact(multi) do
-      Safe.transact(multi)
-    end
-
-    def transition_account_deletion(%Account{} = account, attrs, action) do
+    defp transition_account_deletion(
+           %Account{id: account_id},
+           attrs,
+           action,
+           %{account: %{id: subject_account_id}} = subject
+         ) do
       now = DateTime.utc_now()
 
       query =
         from(a in Account,
-          where: a.id == ^account.id,
+          where: a.id == ^account_id,
+          where: a.id == ^subject_account_id,
           select: a
         )
         |> restrict_to_matching_transition(action)
@@ -153,19 +148,69 @@ defmodule Portal.Accounts.Deletion do
         |> Map.take([:disabled_at, :scheduled_deletion_at])
         |> Map.put(:updated_at, now)
 
-      case query |> Safe.unscoped() |> Safe.update_all(set: Map.to_list(updates)) do
+      case query |> Safe.scoped(subject) |> Safe.update_all(set: Map.to_list(updates)) do
         {1, [updated_account]} ->
           {:ok, {:transitioned, updated_account}}
 
         {0, _} ->
-          {:ok, {:unchanged, fetch_account_unscoped!(account.id)}}
+          with {:ok, account} <- fetch_account(account_id, subject) do
+            {:ok, {:unchanged, account}}
+          end
+
+        {:error, :unauthorized} = error ->
+          error
       end
     end
 
-    def cancel_delete_jobs(account_id) do
+    defp maybe_insert_delete_job({:transitioned, account}) do
+      %{"account_id" => account.id}
+      |> DeleteAccount.new(scheduled_at: account.scheduled_deletion_at)
+      |> Oban.insert()
+    end
+
+    defp maybe_insert_delete_job({:unchanged, _account}), do: {:ok, nil}
+
+    defp maybe_insert_reminder_job({:transitioned, account}) do
+      reminder_at = DateTime.add(account.scheduled_deletion_at, -48, :hour)
+
+      if DateTime.compare(reminder_at, DateTime.utc_now()) == :gt do
+        %{"account_id" => account.id}
+        |> AccountDeletionReminder.new(scheduled_at: reminder_at)
+        |> Oban.insert()
+      else
+        {:ok, nil}
+      end
+    end
+
+    defp maybe_insert_reminder_job({:unchanged, _account}), do: {:ok, nil}
+
+    defp maybe_cancel_delete_jobs({:transitioned, account}) do
+      cancel_delete_jobs(account.id)
+    end
+
+    defp maybe_cancel_delete_jobs({:unchanged, _account}), do: {:ok, []}
+
+    defp cancel_delete_jobs(account_id) do
       query =
         from(j in Job,
           where: j.worker == "Portal.Workers.DeleteAccount",
+          where: j.state in ["scheduled", "available", "retryable"],
+          where: fragment("?->>'account_id' = ?", j.args, ^account_id)
+        )
+
+      Oban.cancel_all_jobs(query)
+    end
+
+    defp maybe_cancel_reminder_jobs({:transitioned, account}) do
+      cancel_reminder_jobs(account.id)
+    end
+
+    defp maybe_cancel_reminder_jobs({:unchanged, _account}), do: {:ok, []}
+
+    defp cancel_reminder_jobs(account_id) do
+      query =
+        from(j in Job,
+          where: j.worker == "Portal.Workers.AccountDeletionReminder",
           where: j.state in ["scheduled", "available", "retryable"],
           where: fragment("?->>'account_id' = ?", j.args, ^account_id)
         )
@@ -182,24 +227,6 @@ defmodule Portal.Accounts.Deletion do
       )
       |> Safe.scoped(subject)
       |> Safe.all()
-    end
-
-    def fetch_account_unscoped(account_id) do
-      from(a in Account, where: a.id == ^account_id)
-      |> Safe.unscoped()
-      |> Safe.one()
-    end
-
-    def fetch_account_unscoped!(account_id) do
-      from(a in Account, where: a.id == ^account_id)
-      |> Safe.unscoped()
-      |> Safe.one!()
-    end
-
-    def delete_account(%Account{} = account) do
-      account
-      |> Safe.unscoped()
-      |> Safe.delete()
     end
 
     defp restrict_to_matching_transition(query, :schedule) do

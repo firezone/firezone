@@ -330,6 +330,47 @@ defmodule PortalWeb.Settings.AccountTest do
       assert length(collect_queued_emails(account.id)) == 1
     end
 
+    test "scheduling requires account update permission", %{account: account} do
+      actor = actor_fixture(account: account, type: :account_user)
+      subject = subject_fixture(account: account, actor: actor)
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      attrs = %{
+        disabled_at: disabled_at,
+        scheduled_deletion_at: DateTime.add(disabled_at, 7, :day)
+      }
+
+      assert {:error, :unauthorized} =
+               Deletion.schedule_account_deletion(account, attrs, subject)
+
+      account = fetch_account!(account.id)
+      refute account.disabled_at
+      refute account.scheduled_deletion_at
+      assert jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id) == []
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "scheduling requires subject to belong to the account", %{account: account} do
+      other_account = account_fixture()
+      other_actor = admin_actor_fixture(account: other_account)
+      subject = subject_fixture(account: other_account, actor: other_actor)
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      attrs = %{
+        disabled_at: disabled_at,
+        scheduled_deletion_at: DateTime.add(disabled_at, 7, :day)
+      }
+
+      assert {:error, :unauthorized} =
+               Deletion.schedule_account_deletion(account, attrs, subject)
+
+      account = fetch_account!(account.id)
+      refute account.disabled_at
+      refute account.scheduled_deletion_at
+      assert jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id) == []
+      assert collect_queued_emails(account.id) == []
+    end
+
     test "cancellation is idempotent and only queues one email", %{account: account, actor: actor} do
       disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
@@ -361,5 +402,70 @@ defmodule PortalWeb.Settings.AccountTest do
       assert scheduled_job.state == "cancelled"
       assert length(collect_queued_emails(account.id)) == 1
     end
+
+    test "cancellation requires account update permission", %{account: account} do
+      actor = actor_fixture(account: account, type: :account_user)
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+
+      account =
+        update_account(account,
+          disabled_at: disabled_at,
+          scheduled_deletion_at: scheduled_deletion_at
+        )
+
+      assert {:ok, _job} =
+               Oban.insert(
+                 DeleteAccount.new(%{"account_id" => account.id}, scheduled_at: scheduled_deletion_at)
+               )
+
+      subject = subject_fixture(account: account, actor: actor)
+
+      assert {:error, :unauthorized} =
+               Deletion.cancel_account_deletion(account, subject)
+
+      account = fetch_account!(account.id)
+      assert account.disabled_at
+      assert account.scheduled_deletion_at
+
+      [scheduled_job] =
+        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
+
+      assert scheduled_job.state == "scheduled"
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "cancellation requires subject to belong to the account", %{account: account} do
+      other_account = account_fixture()
+      other_actor = admin_actor_fixture(account: other_account)
+      subject = subject_fixture(account: other_account, actor: other_actor)
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+
+      account =
+        update_account(account,
+          disabled_at: disabled_at,
+          scheduled_deletion_at: scheduled_deletion_at
+        )
+
+      assert {:ok, _job} =
+               Oban.insert(
+                 DeleteAccount.new(%{"account_id" => account.id}, scheduled_at: scheduled_deletion_at)
+               )
+
+      assert {:error, :unauthorized} =
+               Deletion.cancel_account_deletion(account, subject)
+
+      account = fetch_account!(account.id)
+      assert account.disabled_at
+      assert account.scheduled_deletion_at
+
+      [scheduled_job] =
+        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
+
+      assert scheduled_job.state == "scheduled"
+      assert collect_queued_emails(account.id) == []
+    end
+
   end
 end
