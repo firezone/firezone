@@ -5,6 +5,13 @@
 	<string name="resources_favorites">Favorites</string>
 	<string name="resources_all">All</string>
 
+	<!-- Connected devices -->
+	<string name="connected_devices_label">Devices (%d)</string>
+	<string name="connected_devices_title">Connected devices</string>
+	<string name="connected_devices_pool_label">Pool</string>
+	<string name="connected_devices_pools_label">Pools</string>
+	<string name="connected_devices_empty">No connected devices.</string>
+
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="save">Save</string>
