@@ -129,6 +129,8 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     google_directories
     devices
     sites
+    client_sessions
+    gateway_sessions
     gateway_tokens
     policies
     resources
