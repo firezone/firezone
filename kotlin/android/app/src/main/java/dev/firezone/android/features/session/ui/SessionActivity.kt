@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
@@ -16,12 +17,14 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.R
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.toggle
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.model.ConnectedDevice
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -46,6 +49,9 @@ class SessionActivity :
                     serviceBound = true
                     it.setServiceStateMutableStateFlow(viewModel.getServiceStatusMutableStateFlow())
                     it.setResourcesMutableStateFlow(viewModel.getResourcesMutableStateFlow())
+                    it.setConnectedDevicesMutableStateFlow(
+                        viewModel.getConnectedDevicesMutableStateFlow(),
+                    )
                 }
             }
 
@@ -55,6 +61,7 @@ class SessionActivity :
         }
 
     private val resourcesAdapter = ResourcesAdapter()
+    private var connectedDevices: List<ConnectedDevice> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,6 +109,11 @@ class SessionActivity :
             val intent = Intent(this, SettingsActivity::class.java)
             intent.putExtra("isUserSignedIn", true)
             startActivity(intent)
+        }
+
+        binding.btConnectedDevices.setOnClickListener {
+            ConnectedDevicesBottomSheet(connectedDevices)
+                .show(supportFragmentManager, "ConnectedDevicesBottomSheet")
         }
 
         binding.tvActorName.text = viewModel.getActorName()
@@ -152,6 +164,13 @@ class SessionActivity :
                         refreshList()
                     }
                 }
+
+                launch {
+                    viewModel.connectedDevicesStateFlow.collect { devices ->
+                        connectedDevices = devices
+                        refreshConnectedDevicesButton()
+                    }
+                }
             }
         }
 
@@ -171,6 +190,16 @@ class SessionActivity :
         binding.tabLayout.visibility = viewModel.tabLayoutVisibility()
         resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
             afterLoad()
+        }
+    }
+
+    private fun refreshConnectedDevicesButton() {
+        if (connectedDevices.isEmpty()) {
+            binding.btConnectedDevices.visibility = View.GONE
+        } else {
+            binding.btConnectedDevices.visibility = View.VISIBLE
+            binding.btConnectedDevices.text =
+                getString(R.string.connected_devices_label, connectedDevices.size)
         }
     }
 

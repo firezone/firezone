@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="@dimen/spacing_small"
+    android:paddingBottom="@dimen/spacing_small">
+
+    <TextView
+        android:id="@+id/tvDeviceId"
+        style="@style/AppTheme.Base.Body1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:textIsSelectable="true"
+        tools:text="11111111-1111-1111-1111-111111111111" />
+
+    <TextView
+        android:id="@+id/tvDevicePoolsLabel"
+        style="@style/AppTheme.Base.Caption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textStyle="bold"
+        android:paddingTop="@dimen/spacing_small"
+        android:visibility="gone"
+        tools:text="Pool" />
+
+    <TextView
+        android:id="@+id/tvDevicePools"
+        style="@style/AppTheme.Base.Caption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/neutral_600"
+        android:visibility="gone"
+        tools:text="Engineering Pool" />
+
+</LinearLayout>
