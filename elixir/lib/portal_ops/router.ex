@@ -11,11 +11,13 @@ defmodule PortalOps.Router do
          "connect-src 'self' ws: wss:; " <>
          "frame-ancestors 'none'"
 
+  @secure_browser_headers PortalWeb.Plugs.PutSecurityHeaders.headers(@csp)
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :protect_from_forgery
-    plug :put_secure_browser_headers, %{"content-security-policy" => @csp}
+    plug :put_secure_browser_headers, @secure_browser_headers
   end
 
   pipeline :admin_auth do
