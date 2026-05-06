@@ -1,8 +1,12 @@
 defmodule PortalWeb.Settings.AccountTest do
   use PortalWeb.ConnCase, async: true
 
+  alias Portal.Accounts.Deletion
+  alias Portal.Workers.DeleteAccount
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ObanJobFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.SubjectFixtures
 
@@ -224,6 +228,15 @@ defmodule PortalWeb.Settings.AccountTest do
       assert account.disabled_at
       assert account.scheduled_deletion_at
 
+      scheduled_jobs =
+        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
+
+      assert length(scheduled_jobs) == 1
+
+      [scheduled_job] = scheduled_jobs
+      assert scheduled_job.state == "scheduled"
+      assert DateTime.compare(scheduled_job.scheduled_at, account.scheduled_deletion_at) == :eq
+
       queued_emails = collect_queued_emails(account.id)
       assert length(queued_emails) == 1
 
@@ -253,6 +266,11 @@ defmodule PortalWeb.Settings.AccountTest do
           scheduled_deletion_at: scheduled_deletion_at
         )
 
+      assert {:ok, _job} =
+               Oban.insert(
+                 DeleteAccount.new(%{"account_id" => account.id}, scheduled_at: scheduled_deletion_at)
+               )
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -261,10 +279,13 @@ defmodule PortalWeb.Settings.AccountTest do
       html = render_click(lv, "cancel_account_deletion")
 
       account = fetch_account!(account.id)
+      [scheduled_job] =
+        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
 
       refute account.disabled_at
       refute account.scheduled_deletion_at
       refute html =~ "scheduled for deletion"
+      assert scheduled_job.state == "cancelled"
 
       queued_emails = collect_queued_emails(account.id)
       assert length(queued_emails) == 1
@@ -286,14 +307,14 @@ defmodule PortalWeb.Settings.AccountTest do
       }
 
       assert {:ok, first_account} =
-               PortalWeb.Settings.Account.schedule_account_deletion(
+               Deletion.schedule_account_deletion(
                  account,
                  attrs,
                  subject
                )
 
       assert {:ok, second_account} =
-               PortalWeb.Settings.Account.schedule_account_deletion(
+               Deletion.schedule_account_deletion(
                  account,
                  %{
                    disabled_at: DateTime.add(disabled_at, 1, :day),
@@ -304,6 +325,8 @@ defmodule PortalWeb.Settings.AccountTest do
 
       assert DateTime.compare(first_account.scheduled_deletion_at, scheduled_deletion_at) == :eq
       assert DateTime.compare(second_account.scheduled_deletion_at, scheduled_deletion_at) == :eq
+      assert length(jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)) ==
+               1
       assert length(collect_queued_emails(account.id)) == 1
     end
 
@@ -317,16 +340,25 @@ defmodule PortalWeb.Settings.AccountTest do
           scheduled_deletion_at: scheduled_deletion_at
         )
 
+      assert {:ok, _job} =
+               Oban.insert(
+                 DeleteAccount.new(%{"account_id" => account.id}, scheduled_at: scheduled_deletion_at)
+               )
+
       subject = subject_fixture(account: account, actor: actor)
 
       assert {:ok, first_account} =
-               PortalWeb.Settings.Account.cancel_account_deletion(account, subject)
+               Deletion.cancel_account_deletion(account, subject)
 
       assert {:ok, second_account} =
-               PortalWeb.Settings.Account.cancel_account_deletion(account, subject)
+               Deletion.cancel_account_deletion(account, subject)
 
       refute first_account.scheduled_deletion_at
       refute second_account.scheduled_deletion_at
+      [scheduled_job] =
+        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
+
+      assert scheduled_job.state == "cancelled"
       assert length(collect_queued_emails(account.id)) == 1
     end
   end

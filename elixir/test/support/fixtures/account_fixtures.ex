@@ -149,4 +149,11 @@ defmodule Portal.AccountFixtures do
   def fetch_account!(account_id) do
     Repo.get!(Portal.Account, account_id)
   end
+
+  @doc """
+  Fetch an account by id or return nil.
+  """
+  def fetch_account(account_id) do
+    Repo.get(Portal.Account, account_id)
+  end
 end
