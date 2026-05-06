@@ -271,6 +271,7 @@ export default function RootNavbar() {
           }
           className="lg:hidden w-9 ml-2 flex"
           alt="Firezone Logo"
+          priority
         />
         <Image
           width={150}
@@ -280,6 +281,7 @@ export default function RootNavbar() {
           }
           alt="Firezone Logo"
           className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
+          priority
         />
       </NavbarBrand>
       <NavbarToggle barIcon={HiBars3} />

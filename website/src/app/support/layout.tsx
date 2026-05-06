@@ -2,9 +2,9 @@ import { Metadata } from "next";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Get Help & Firezone Zero Trust Support",
+  title: "Zero Trust Access Support & Help Center",
   description:
-    "Find answers to common questions, search the docs, contact our team, or open a GitHub issue. Get fast support for your Firezone deployment.",
+    "Get help with Firezone: search the docs, contact our team, or open a GitHub issue. Fast support for your zero trust access deployment.",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -24,7 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <h1
             className={`justify-center text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight`}
           >
-            Support
+            Firezone Support
           </h1>
           <p className="text-center text-md md:text-lg lg:text-xl mt-2 md:mt-4 tracking-tight">
             {"Need help? We've got you covered. See our support options below."}

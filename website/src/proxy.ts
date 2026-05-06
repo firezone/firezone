@@ -79,28 +79,11 @@ const versionedRedirects = [
 ];
 
 export const config = {
-  matcher: [
-    "/dl/firezone-client-macos/(\\d+).(\\d+).(\\d+)",
-    "/dl/firezone-client-macos/pkg/(\\d+).(\\d+).(\\d+)",
-    "/dl/firezone-client-android/(\\d+).(\\d+).(\\d+)",
-    "/dl/firezone-client-gui-windows/(\\d+).(\\d+).(\\d+)/x86_64",
-    "/dl/firezone-client-headless-windows/(\\d+).(\\d+).(\\d+)/x86_64",
-    "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/x86_64",
-    "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/aarch64",
-    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/x86_64",
-    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/aarch64",
-    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/armv7",
-    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/x86_64",
-    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/aarch64",
-    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/armv7",
-    // Markdown content negotiation
-    "/",
-    "/pricing",
-    "/product",
-    "/about",
-    "/kb",
-    "/kb/:path*",
-  ],
+  // Two behaviors live in this proxy: /dl/* download redirects, and the
+  // markdown-content-negotiation rewrite for marketing + /kb pages. The
+  // matcher excludes Next internals, static assets, and API routes; both
+  // behaviors gate themselves below by pathname.
+  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|images/|api/).*)"],
 };
 
 // Next.js 16 calls the `proxy` export from proxy.ts (not `middleware`).

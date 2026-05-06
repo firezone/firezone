@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { validUrl } from "@/lib/url";
 
 export default function Story() {
   return (
@@ -41,11 +42,9 @@ export default function Story() {
                 <p className="mb-4 text-base font-normal text-neutral-800">
                   The{" "}
                   <Link
-                    href={
-                      new URL(
-                        "https://github.com/firezone/firezone/tree/d049b006f6b530d8aa6f936441ffadd86e02a574"
-                      )
-                    }
+                    href={validUrl(
+                      "https://github.com/firezone/firezone/tree/d049b006f6b530d8aa6f936441ffadd86e02a574"
+                    )}
                     className="hover:underline text-accent-500"
                   >
                     initial commit
@@ -65,9 +64,9 @@ export default function Story() {
                   The first public release of Firezone is{" "}
                   <Link
                     className="hover:underline text-accent-500"
-                    href={
-                      new URL("https://news.ycombinator.com/item?id=28683231")
-                    }
+                    href={validUrl(
+                      "https://news.ycombinator.com/item?id=28683231"
+                    )}
                   >
                     announced
                   </Link>{" "}

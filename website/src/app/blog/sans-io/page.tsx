@@ -1,24 +1,33 @@
 import Post from "@/components/Blog/Post";
-import Content from "./readme.mdx";
+import ArticleJsonLd from "@/components/Blog/ArticleJsonLd";
+import Content, { frontmatter } from "./readme.mdx";
+import { asBlogFrontmatter } from "@/types/frontmatter";
 import { Metadata } from "next";
-import gravatar from "@/lib/gravatar";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
+import { blogAuthorAvatar } from "@/lib/blog-author-avatar";
 
-export const metadata: Metadata = {
-  title: "sans-IO Pattern in Rust Networking Code",
-  description:
-    "Learn how Firezone uses the sans-IO pattern to build testable, deterministic Rust networking code. A deep dive into our connlib design.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
+  const fm = asBlogFrontmatter(frontmatter);
   return (
-    <Post
-      authorName="Thomas Eizinger"
-      authorTitle="Distributed Systems Engineer"
-      authorAvatarSrc={gravatar("thomas@firezone.dev")}
-      title="sans-IO: The secret to effective Rust for network services"
-      date="July 2, 2024"
-    >
-      <Content />
-    </Post>
+    <>
+      <ArticleJsonLd
+        title={fm.postTitle ?? fm.title}
+        description={fm.description}
+        authorName={fm.authorName}
+        date={fm.date}
+        path="/blog/sans-io"
+      />
+      <Post
+        authorName={fm.authorName}
+        authorTitle={fm.authorTitle}
+        authorAvatarSrc={blogAuthorAvatar(fm)}
+        title={fm.postTitle ?? fm.title}
+        date={fm.date}
+      >
+        <Content />
+      </Post>
+    </>
   );
 }

@@ -13,7 +13,11 @@ function PostHogComponent() {
   useEffect(() => {
     if (!pathname) return;
 
-    posthog.init(apiKey, { api_host: "https://us.i.posthog.com" });
+    // Init exactly once. The effect re-runs on every navigation, but
+    // posthog.init is not idempotent — re-calling it logs a warning.
+    if (!(posthog as unknown as { __loaded?: boolean }).__loaded) {
+      posthog.init(apiKey, { api_host: "https://us.i.posthog.com" });
+    }
 
     let url = window.origin + pathname;
     if (searchParams.toString()) {

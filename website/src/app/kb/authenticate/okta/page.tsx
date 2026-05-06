@@ -1,11 +1,9 @@
 import _Page from "./_page";
+import { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Okta Authentication",
-  description:
-    "Configure Firezone SSO with Okta using OpenID Connect. Authenticate users against your Okta directory — follow the integration guide.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <_Page />;

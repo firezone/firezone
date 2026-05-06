@@ -1,12 +1,24 @@
-import { Metadata } from "next";
 import _Page from "./_page";
+import ArticleJsonLd from "@/components/Blog/ArticleJsonLd";
+import { frontmatter } from "./readme.mdx";
+import { asBlogFrontmatter } from "@/types/frontmatter";
+import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Maintenance Window — Dec 6, 2025",
-  description:
-    "Firezone scheduled maintenance on December 6, 2025 from 8–10 PM PT to deploy authentication, directory sync, and user management updates.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
-  return <_Page />;
+  const fm = asBlogFrontmatter(frontmatter);
+  return (
+    <>
+      <ArticleJsonLd
+        title={fm.postTitle ?? fm.title}
+        description={fm.description}
+        authorName={fm.authorName}
+        date={fm.date}
+        path="/blog/2025-12-06-scheduled-maintenance"
+      />
+      <_Page />
+    </>
+  );
 }

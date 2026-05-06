@@ -5,7 +5,7 @@ export function LinkedInIcon({
   url,
   className,
 }: {
-  url: URL;
+  url: Route<string>;
   className?: string;
 }) {
   return (
@@ -29,7 +29,7 @@ export function GitHubIcon({
   url,
   className,
 }: {
-  url: URL;
+  url: Route<string>;
   className?: string;
 }) {
   return (
@@ -49,7 +49,13 @@ export function GitHubIcon({
   );
 }
 
-export function XIcon({ url, className }: { url: URL; className?: string }) {
+export function XIcon({
+  url,
+  className,
+}: {
+  url: Route<string>;
+  className?: string;
+}) {
   return (
     <Link href={url} className={className}>
       <svg
@@ -75,7 +81,7 @@ export function AppleIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: URL | Route<string>;
+  href: Route<string>;
   className?: string;
 }) {
   const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -102,7 +108,7 @@ export function WindowsIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: URL | Route<string>;
+  href: Route<string>;
   className?: string;
 }) {
   const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -124,7 +130,7 @@ export function LinuxIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: URL | Route<string>;
+  href: Route<string>;
   className?: string;
 }) {
   const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -197,7 +203,7 @@ export function AndroidIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: URL | Route<string>;
+  href: Route<string>;
   className?: string;
 }) {
   const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -239,7 +245,7 @@ export function ChromeIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: URL | Route<string>;
+  href: Route<string>;
   className?: string;
 }) {
   const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -270,7 +276,7 @@ export function DockerIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: URL | Route<string>;
+  href: Route<string>;
   className?: string;
 }) {
   const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";

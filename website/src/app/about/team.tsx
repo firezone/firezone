@@ -1,4 +1,6 @@
+import type { Route } from "next";
 import gravatar from "@/lib/gravatar";
+import { validUrl } from "@/lib/url";
 import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,9 +16,9 @@ function teamMember({
   name: string;
   title: string;
   imgSrc: string;
-  xUrl?: URL;
-  githubUrl?: URL;
-  linkedinUrl?: URL;
+  xUrl?: Route<string>;
+  githubUrl?: Route<string>;
+  linkedinUrl?: Route<string>;
 }) {
   return (
     <div className="text-center">
@@ -59,46 +61,46 @@ export default function Team() {
       name: "Jamil Bou Kheir",
       title: "CEO/Founder",
       imgSrc: gravatar("jamil@firezone.dev", 200),
-      xUrl: new URL("https://x.com/jamilbk"),
-      githubUrl: new URL("https://github.com/jamilbk"),
-      linkedinUrl: new URL("https://linkedin.com/in/jamilbk"),
+      xUrl: validUrl("https://x.com/jamilbk"),
+      githubUrl: validUrl("https://github.com/jamilbk"),
+      linkedinUrl: validUrl("https://linkedin.com/in/jamilbk"),
     },
     {
       name: "Gabriel Steinberg",
       title: "Senior Backend Engineer",
       imgSrc: gravatar("gabriel@firezone.dev", 200),
-      xUrl: new URL("https://x.com/tapingmemory"),
-      githubUrl: new URL("https://github.com/conectado"),
+      xUrl: validUrl("https://x.com/tapingmemory"),
+      githubUrl: validUrl("https://github.com/conectado"),
     },
     {
       name: "Andrew Dryga",
       title: "Founding Engineer",
       imgSrc: "/images/avatars/andrew.jpg",
-      xUrl: new URL("https://x.com/andrew_dryga"),
-      githubUrl: new URL("https://github.com/andrewdryga"),
-      linkedinUrl: new URL("https://linkedin.com/in/andrew-dryga-bb382557"),
+      xUrl: validUrl("https://x.com/andrew_dryga"),
+      githubUrl: validUrl("https://github.com/andrewdryga"),
+      linkedinUrl: validUrl("https://linkedin.com/in/andrew-dryga-bb382557"),
     },
     {
       name: "Blake Hitchcock",
       title: "Technical Advisor",
       imgSrc: "/images/avatars/blake.jpeg",
-      githubUrl: new URL("https://github.com/rbhitchcock"),
-      linkedinUrl: new URL("https://www.linkedin.com/in/rblakehitchcock"),
+      githubUrl: validUrl("https://github.com/rbhitchcock"),
+      linkedinUrl: validUrl("https://www.linkedin.com/in/rblakehitchcock"),
     },
     {
       name: "Thomas Eizinger",
       title: "Distributed Systems Engineer",
       imgSrc: "/images/avatars/thomas.jpeg",
-      xUrl: new URL("https://x.com/oetzn"),
-      githubUrl: new URL("https://github.com/thomaseizinger"),
-      linkedinUrl: new URL("https://www.linkedin.com/in/thomas-eizinger"),
+      xUrl: validUrl("https://x.com/oetzn"),
+      githubUrl: validUrl("https://github.com/thomaseizinger"),
+      linkedinUrl: validUrl("https://www.linkedin.com/in/thomas-eizinger"),
     },
     {
       name: "Brian Manifold",
       title: "Senior Full-stack Engineer",
       imgSrc: "/images/avatars/brian.png",
-      githubUrl: new URL("https://github.com/bmanifold"),
-      linkedinUrl: new URL(
+      githubUrl: validUrl("https://github.com/bmanifold"),
+      linkedinUrl: validUrl(
         "https://www.linkedin.com/in/brian-manifold-536a0a3a/"
       ),
     },
@@ -106,13 +108,13 @@ export default function Team() {
       name: "ReactorScram",
       title: "Senior Systems Engineer",
       imgSrc: "/images/avatars/reactorscram.png",
-      githubUrl: new URL("https://github.com/ReactorScram"),
+      githubUrl: validUrl("https://github.com/ReactorScram"),
     },
     {
       name: "Robert Laurence",
       title: "Advisor",
       imgSrc: "/images/avatars/robert_laurence.jpeg",
-      linkedinUrl: new URL("https://www.linkedin.com/in/boblaurence/"),
+      linkedinUrl: validUrl("https://www.linkedin.com/in/boblaurence/"),
     },
   ];
 
@@ -128,7 +130,7 @@ export default function Team() {
             passion for security, reliability, and code quality permeates
             everything we do, and since we’re open source, you can{" "}
             <Link
-              href={new URL("https://github.com/firezone/firezone")}
+              href={validUrl("https://github.com/firezone/firezone")}
               className="hover:underline text-accent-500"
             >
               see for yourself

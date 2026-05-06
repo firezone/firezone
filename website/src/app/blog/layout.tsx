@@ -4,8 +4,8 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: {
-    default: "Blog • Firezone Blog",
-    template: "%s • Firezone Blog",
+    default: "Zero Trust Access Blog | Firezone",
+    template: "%s | Firezone Blog",
   },
 };
 

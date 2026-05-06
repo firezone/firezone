@@ -1,11 +1,8 @@
-import Content from "./readme.mdx";
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Sites",
-  description:
-    "Create Firezone Sites — shared network environments where Gateways and Resources live. Organize your infrastructure — see the Sites guide.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <Content />;

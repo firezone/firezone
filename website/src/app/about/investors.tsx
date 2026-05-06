@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { validUrl } from "@/lib/url";
 
 export default function Investors() {
   return (
@@ -10,7 +11,10 @@ export default function Investors() {
         </h2>
         <div className="pt-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-12">
           <div className="flex p-4">
-            <Link className="my-auto" href={new URL("https://ycombinator.com")}>
+            <Link
+              className="my-auto"
+              href={validUrl("https://ycombinator.com")}
+            >
               <Image
                 src="/images/yc-logo-square.svg"
                 alt="Y Combinator"
@@ -21,7 +25,7 @@ export default function Investors() {
           </div>
           <div className="flex">
             <div className="my-auto p-2 bg-neutral-950">
-              <Link href={new URL("https://1984.vc")}>
+              <Link href={validUrl("https://1984.vc")}>
                 <Image
                   src="/images/1984-logo.svg"
                   alt="1984 Ventures"
@@ -33,7 +37,10 @@ export default function Investors() {
             </div>
           </div>
           <div className="flex">
-            <Link className="my-auto" href={new URL("https://uncorrelated.vc")}>
+            <Link
+              className="my-auto"
+              href={validUrl("https://uncorrelated.vc")}
+            >
               <Image
                 src="/images/uncorrelated-logo.png"
                 alt="Uncorrelated Ventures"
@@ -45,7 +52,7 @@ export default function Investors() {
           <div className="flex">
             <Link
               className="my-auto"
-              href={new URL("https://helium-3ventures.com")}
+              href={validUrl("https://helium-3ventures.com")}
             >
               <Image
                 src="/images/helium3-logo.png"
@@ -58,7 +65,7 @@ export default function Investors() {
           <div className="flex">
             <Link
               className="my-auto"
-              href={new URL("https://aminocapital.com")}
+              href={validUrl("https://aminocapital.com")}
             >
               <Image
                 src="/images/amino-logo.png"
@@ -69,7 +76,7 @@ export default function Investors() {
             </Link>
           </div>
           <div className="flex">
-            <Link className="my-auto" href={new URL("https://gaingels.com")}>
+            <Link className="my-auto" href={validUrl("https://gaingels.com")}>
               <Image
                 src="/images/gaingels-logo.png"
                 alt="Gaingels"

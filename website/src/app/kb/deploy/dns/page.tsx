@@ -1,11 +1,8 @@
-import Content from "./readme.mdx";
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Configure DNS",
-  description:
-    "Configure Firezone split DNS to resolve internal hostnames over your private network. Set up DNS resources — follow the configuration guide.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <Content />;
