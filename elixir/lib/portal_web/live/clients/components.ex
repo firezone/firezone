@@ -672,15 +672,23 @@ defmodule PortalWeb.Clients.Components do
 
   def client_network_section(assigns) do
     ~H"""
-    <div :if={@client.ipv4 || @client.ipv6} class="px-5 pt-4 pb-3">
+    <div class="px-5 pt-4 pb-3">
       <.section_heading title="Network" />
       <dl class="space-y-3">
-        <.client_detail_row :if={@client.ipv4} label="Tunnel IPv4">
+        <.client_detail_row
+          :if={@client.latest_session && @client.latest_session.remote_ip}
+          label="Remote IP"
+        >
+          <span class="text-xs text-[var(--text-secondary)]">
+            <.last_seen schema={@client.latest_session} />
+          </span>
+        </.client_detail_row>
+        <.client_detail_row label="Tunnel IPv4">
           <span class="font-mono text-xs text-[var(--text-secondary)]">
             {@client.ipv4}
           </span>
         </.client_detail_row>
-        <.client_detail_row :if={@client.ipv6} label="Tunnel IPv6">
+        <.client_detail_row label="Tunnel IPv6">
           <span class="font-mono text-xs text-[var(--text-secondary)] break-all">
             {@client.ipv6}
           </span>

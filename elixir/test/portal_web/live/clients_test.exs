@@ -167,6 +167,11 @@ defmodule PortalWeb.ClientsTest do
           actor: owner,
           client: client,
           user_agent: "macOS/15.0 apple-client/1.4.0",
+          remote_ip: {203, 0, 113, 10},
+          remote_ip_location_region: "US",
+          remote_ip_location_city: "San Francisco",
+          remote_ip_location_lat: 37.7749,
+          remote_ip_location_lon: -122.4194,
           version: "1.4.0"
         )
 
@@ -180,6 +185,11 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "SN-123"
       assert html =~ "UUID-123"
       assert html =~ "IFV-123"
+      assert html =~ "Remote IP"
+      assert html =~ "203.0.113.10"
+      assert html =~ "San Francisco"
+      assert html =~ "United States of America"
+      assert html =~ "google.com/maps/place/37.7749,-122.4194"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
       assert html =~ "Verified"

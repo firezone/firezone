@@ -885,8 +885,8 @@ defmodule PortalWeb.Resources.Components do
 
   defp client_details(client) do
     [
-      client.ipv4 && Portal.Types.INET.to_string(client.ipv4),
-      client.ipv6 && Portal.Types.INET.to_string(client.ipv6),
+      Portal.Types.INET.to_string(client.ipv4),
+      Portal.Types.INET.to_string(client.ipv6),
       client.device_serial,
       client.device_uuid,
       client.id
