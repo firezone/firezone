@@ -84,6 +84,9 @@ where
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
     Hello,
+    FirezoneId {
+        firezone_id: String,
+    },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), String>),
@@ -347,6 +350,13 @@ impl<'a> Handler<'a> {
             .send(&ServerMsg::Hello)
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
+
+        ipc_tx
+            .send(&ServerMsg::FirezoneId {
+                firezone_id: device_id.id.clone(),
+            })
+            .await
+            .context("Failed to send Firezone ID to GUI process")?;
 
         Ok(Self {
             device_id,

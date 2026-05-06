@@ -228,6 +228,7 @@ pub struct RunConfig {
     pub debug_update_check: bool,
     pub smoke_test: bool,
     pub no_deep_links: bool,
+    pub telemetry_allowed: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
 }
@@ -364,6 +365,7 @@ pub fn run(
             mdm_settings,
             advanced_settings,
             reloader,
+            config.telemetry_allowed,
             updates_rx,
             gui_ipc,
         ));
