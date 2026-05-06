@@ -5,7 +5,7 @@
 - Do not generate excessive comments
 - Prefer a functional style (i.e. Iterators) over imperative code
 - Prefer turbofish over explicit type-hints
-- Prefer early-returns in functions to keep the indentation of the happy-path minimal, i.e. use `let-else` of `if let`
+- Prefer early-returns in functions to keep the indentation of the happy-path minimal, i.e. use `let-else` instead of `if let`
 - When writing tests, focus on the public API of the module
 - Follow the arrange - act - assert pattern
 - Order functions within a module from high to low priority: Public API first, then sorted roughly in order of how they are called.
