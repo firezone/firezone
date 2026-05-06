@@ -18,9 +18,23 @@ FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
 FIREZONE_GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID:-}
 FIREZONE_LOG_FORMAT=${FIREZONE_LOG_FORMAT:-}
 
+SERVICE_FILE=${SERVICE_FILE:-/etc/systemd/system/firezone-gateway.service}
+TOKEN_FILE=${TOKEN_FILE:-/etc/firezone/gateway-token}
+
+legacy_unit_environment() {
+    local name=$1
+
+    [ -r "$SERVICE_FILE" ] || return 0
+
+    sed -n "s/^Environment=\"$name=\(.*\)\"$/\1/p" "$SERVICE_FILE" | tail -n 1
+}
+
 if [ -z "$FIREZONE_TOKEN" ]; then
-    echo "FIREZONE_TOKEN is required"
-    exit 1
+    FIREZONE_TOKEN=$(legacy_unit_environment FIREZONE_TOKEN)
+fi
+
+if [ -z "$FIREZONE_ID" ]; then
+    FIREZONE_ID=$(legacy_unit_environment FIREZONE_ID)
 fi
 
 if [ -z "$FIREZONE_ID" ]; then
@@ -28,12 +42,50 @@ if [ -z "$FIREZONE_ID" ]; then
     exit 1
 fi
 
+if [ -z "$FIREZONE_TOKEN" ] && ! sudo test -s "$TOKEN_FILE"; then
+    echo "FIREZONE_TOKEN is required"
+    exit 1
+fi
+
+if ! systemd_version=$(systemctl --version | awk 'NR == 1 { print $2 }'); then
+    echo "systemctl is required"
+    exit 1
+fi
+
+case "$systemd_version" in
+"" | *[!0-9]*)
+    echo "Could not determine systemd version"
+    exit 1
+    ;;
+esac
+
+if [ "$systemd_version" -lt 247 ]; then
+    echo "systemd 247 or newer is required to pass FIREZONE_TOKEN as a credential"
+    exit 1
+fi
+
 # Setup user and group
 sudo groupadd -f firezone
 id -u firezone >/dev/null 2>&1 || sudo useradd -r -g firezone -s /sbin/nologin firezone
 
+sudo install -d -m 0755 -o root -g root /etc/firezone
+
+if [ -n "$FIREZONE_TOKEN" ]; then
+    printf '%s\n' "$FIREZONE_TOKEN" | sudo sh -c '
+        set -e
+        token_file=$1
+        token_tmp=$(mktemp "${token_file}.XXXXXX")
+        trap '\''rm -f "$token_tmp"'\'' EXIT
+        cat > "$token_tmp"
+        chown root:root "$token_tmp"
+        chmod 0400 "$token_tmp"
+        mv "$token_tmp" "$token_file"
+        trap - EXIT
+    ' sh "$TOKEN_FILE"
+fi
+
 # Create systemd unit file
-cat <<EOF | sudo tee /etc/systemd/system/firezone-gateway.service
+cat <<EOF | sudo tee "$SERVICE_FILE"
 [Unit]
 Description=Firezone Gateway
 After=network.target
@@ -49,10 +101,10 @@ Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
-# Environment variables
+LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
+
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
 Environment="FIREZONE_ID=$FIREZONE_ID"
-Environment="FIREZONE_TOKEN=$FIREZONE_TOKEN"
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
 Environment="RUST_LOG_STYLE=never"
