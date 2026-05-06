@@ -1,7 +1,6 @@
 defmodule Portal.Accounts.Deletion do
   @moduledoc false
 
-  alias Ecto.Multi
   alias Portal.Account
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
@@ -11,79 +10,69 @@ defmodule Portal.Accounts.Deletion do
   require Logger
 
   def schedule_account_deletion(%Account{} = account, attrs, subject) do
-    Multi.new()
-    |> Multi.run(:account, fn _repo, _changes -> Database.fetch_account(account.id, subject) end)
-    |> Multi.run(:transition, fn _repo, %{account: account} ->
-      Database.transition_account_deletion(account, attrs, :schedule)
-    end)
-    |> Multi.merge(fn %{transition: transition} ->
-      case transition do
-        {:transitioned, account} ->
-          Multi.new()
-          |> Oban.insert(
-            :delete_job,
-            DeleteAccount.new(%{"account_id" => account.id},
-              scheduled_at: account.scheduled_deletion_at
-            )
-          )
-
-        {:unchanged, _account} ->
-          Multi.new()
+    Database.transact(fn ->
+      with {:ok, account} <- Database.fetch_account(account.id, subject),
+           {:ok, transition} <- Database.transition_account_deletion(account, attrs, :schedule),
+           {:ok, _job} <- maybe_insert_delete_job(transition) do
+        {:ok, transition}
       end
     end)
-    |> Database.transact()
     |> case do
-      {:ok, %{transition: {:transitioned, account}}} ->
+      {:ok, {:transitioned, account}} ->
         maybe_enqueue_account_deletion_notification(account, subject, :schedule)
 
-      {:ok, %{transition: {:unchanged, account}}} ->
+      {:ok, {:unchanged, account}} ->
         {:ok, account}
 
-      {:error, :account, :unauthorized, _changes} ->
+      {:error, :unauthorized} ->
         {:error, :unauthorized}
 
-      {:error, :transition, :unauthorized, _changes} ->
-        {:error, :unauthorized}
-
-      {:error, _step, reason, _changes} ->
+      {:error, reason} ->
         {:error, reason}
     end
   end
 
   def cancel_account_deletion(%Account{} = account, subject) do
-    Multi.new()
-    |> Multi.run(:account, fn _repo, _changes -> Database.fetch_account(account.id, subject) end)
-    |> Multi.run(:transition, fn _repo, %{account: account} ->
-      Database.transition_account_deletion(
-        account,
-        %{disabled_at: nil, scheduled_deletion_at: nil},
-        :cancel
-      )
-    end)
-    |> Multi.run(:cancel_delete_jobs, fn _repo, %{transition: transition} ->
-      case transition do
-        {:transitioned, account} -> Database.cancel_delete_jobs(account.id)
-        {:unchanged, _account} -> {:ok, []}
+    Database.transact(fn ->
+      with {:ok, account} <- Database.fetch_account(account.id, subject),
+           {:ok, transition} <-
+             Database.transition_account_deletion(
+               account,
+               %{disabled_at: nil, scheduled_deletion_at: nil},
+               :cancel
+             ),
+           {:ok, _jobs} <- maybe_cancel_delete_jobs(transition) do
+        {:ok, transition}
       end
     end)
-    |> Database.transact()
     |> case do
-      {:ok, %{transition: {:transitioned, account}}} ->
+      {:ok, {:transitioned, account}} ->
         maybe_enqueue_account_deletion_notification(account, subject, :cancel)
 
-      {:ok, %{transition: {:unchanged, account}}} ->
+      {:ok, {:unchanged, account}} ->
         {:ok, account}
 
-      {:error, :account, :unauthorized, _changes} ->
+      {:error, :unauthorized} ->
         {:error, :unauthorized}
 
-      {:error, :transition, :unauthorized, _changes} ->
-        {:error, :unauthorized}
-
-      {:error, _step, reason, _changes} ->
+      {:error, reason} ->
         {:error, reason}
     end
   end
+
+  defp maybe_insert_delete_job({:transitioned, account}) do
+    %{"account_id" => account.id}
+    |> DeleteAccount.new(scheduled_at: account.scheduled_deletion_at)
+    |> Oban.insert()
+  end
+
+  defp maybe_insert_delete_job({:unchanged, _account}), do: {:ok, nil}
+
+  defp maybe_cancel_delete_jobs({:transitioned, account}) do
+    Database.cancel_delete_jobs(account.id)
+  end
+
+  defp maybe_cancel_delete_jobs({:unchanged, _account}), do: {:ok, []}
 
   defp maybe_enqueue_account_deletion_notification(%Account{} = account, subject, action) do
     admin_emails = Database.get_account_admin_emails(account.id, subject)
