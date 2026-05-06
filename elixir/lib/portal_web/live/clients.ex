@@ -259,7 +259,8 @@ defmodule PortalWeb.Clients do
 
   defp client_confirm_state(assigns) do
     %{
-      confirm_delete_client: assigns.client_confirm.delete?
+      confirm_delete_client: assigns.client_confirm.delete?,
+      confirm_unverify_client: assigns.client_confirm.unverify?
     }
   end
 
@@ -271,7 +272,8 @@ defmodule PortalWeb.Clients do
         edit_form: nil
       },
       client_confirm: %{
-        delete?: false
+        delete?: false,
+        unverify?: false
       }
     ]
   end
@@ -289,7 +291,8 @@ defmodule PortalWeb.Clients do
         edit_form: form
       },
       client_confirm: %{
-        delete?: false
+        delete?: false,
+        unverify?: false
       }
     ]
   end
@@ -402,6 +405,51 @@ defmodule PortalWeb.Clients do
     {:noreply, merge_state(socket, :client_confirm, delete?: false)}
   end
 
+  def handle_event("verify_client", _params, socket) do
+    client = socket.assigns.selected_client
+
+    case Database.verify_client(client, socket.assigns.subject) do
+      {:ok, updated_client} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Client \"#{client.name}\" was verified.")
+         |> assign_selected_client(updated_client.id)
+         |> merge_state(:client_confirm, unverify?: false)
+         |> reload_live_table!("clients")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to verify client.")}
+    end
+  end
+
+  def handle_event("confirm_unverify_client", _params, socket) do
+    {:noreply, merge_state(socket, :client_confirm, unverify?: true)}
+  end
+
+  def handle_event("cancel_unverify_client", _params, socket) do
+    {:noreply, merge_state(socket, :client_confirm, unverify?: false)}
+  end
+
+  def handle_event("unverify_client", _params, socket) do
+    client = socket.assigns.selected_client
+
+    case Database.remove_client_verification(client, socket.assigns.subject) do
+      {:ok, updated_client} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Client \"#{client.name}\" was unverified.")
+         |> assign_selected_client(updated_client.id)
+         |> merge_state(:client_confirm, unverify?: false)
+         |> reload_live_table!("clients")}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to unverify client.")
+         |> merge_state(:client_confirm, unverify?: false)}
+    end
+  end
+
   def handle_event("delete_client", _params, socket) do
     client = socket.assigns.selected_client
 
@@ -417,6 +465,14 @@ defmodule PortalWeb.Clients do
       {:error, _} ->
         {:noreply, merge_state(socket, :client_confirm, delete?: false)}
     end
+  end
+
+  defp assign_selected_client(socket, client_id) do
+    assign(
+      socket,
+      :selected_client,
+      Database.get_client_for_panel(client_id, socket.assigns.subject)
+    )
   end
 
   defp parse_client_tab("authorizations"), do: :authorizations
@@ -438,7 +494,9 @@ defmodule PortalWeb.Clients do
   end
 
   defmodule Database do
+    import Ecto.Changeset
     import Ecto.Query
+    import Portal.Changeset
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, ClientSession, Safe}
     alias Portal.Device
@@ -580,6 +638,24 @@ defmodule PortalWeb.Clients do
         {:error, reason} ->
           {:error, reason}
       end
+    end
+
+    @spec verify_client(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
+    def verify_client(client, subject) do
+      client
+      |> change()
+      |> put_default_value(:verified_at, DateTime.utc_now())
+      |> update_client(subject)
+    end
+
+    @spec remove_client_verification(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
+    def remove_client_verification(client, subject) do
+      client
+      |> change()
+      |> put_change(:verified_at, nil)
+      |> update_client(subject)
     end
 
     @spec delete_client(Portal.Device.t(), Portal.Authentication.Subject.t()) ::

@@ -238,6 +238,7 @@ defmodule PortalWeb.Clients.Components do
           client={@client}
           tab={@panel_tab}
           confirm_delete_client={@confirm_delete_client}
+          confirm_unverify_client={@confirm_unverify_client}
           policy_authorizations={@policy_authorizations}
           policy_authorizations_page={@policy_authorizations_page}
           policy_authorizations_has_next={@policy_authorizations_has_next}
@@ -333,6 +334,7 @@ defmodule PortalWeb.Clients.Components do
   attr :client, :any, required: true
   attr :tab, :atom, default: :overview
   attr :confirm_delete_client, :boolean, default: false
+  attr :confirm_unverify_client, :boolean, default: false
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
@@ -394,7 +396,11 @@ defmodule PortalWeb.Clients.Components do
             expanded_id={@policy_authorizations_expanded_id}
           />
         </div>
-        <.client_sidebar client={@client} confirm_delete_client={@confirm_delete_client} />
+        <.client_sidebar
+          client={@client}
+          confirm_delete_client={@confirm_delete_client}
+          confirm_unverify_client={@confirm_unverify_client}
+        />
       </div>
     </div>
     """
@@ -692,11 +698,14 @@ defmodule PortalWeb.Clients.Components do
 
   attr :client, :any, required: true
   attr :confirm_delete_client, :boolean, default: false
+  attr :confirm_unverify_client, :boolean, default: false
 
   def client_sidebar(assigns) do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.client_details_card client={@client} />
+      <div class="border-t border-[var(--border)]"></div>
+      <.client_actions client={@client} confirm_unverify_client={@confirm_unverify_client} />
       <div class="border-t border-[var(--border)]"></div>
       <.client_danger_zone confirm_delete_client={@confirm_delete_client} />
     </div>
@@ -735,6 +744,62 @@ defmodule PortalWeb.Clients.Components do
           </span>
         </.client_detail_row>
       </dl>
+    </section>
+    """
+  end
+
+  attr :client, :any, required: true
+  attr :confirm_unverify_client, :boolean, default: false
+
+  def client_actions(assigns) do
+    ~H"""
+    <section>
+      <.section_heading title="Actions" />
+      <div class="space-y-1.5">
+        <button
+          :if={is_nil(@client.verified_at)}
+          type="button"
+          phx-click="verify_client"
+          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+        >
+          <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Verify
+        </button>
+        <button
+          :if={not is_nil(@client.verified_at) and not @confirm_unverify_client}
+          type="button"
+          phx-click="confirm_unverify_client"
+          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-warning)] hover:bg-[var(--surface-raised)] transition-colors"
+        >
+          <.icon name="ri-prohibited-line" class="w-3.5 h-3.5" /> Revoke verification
+        </button>
+        <div
+          :if={not is_nil(@client.verified_at) and @confirm_unverify_client}
+          class="px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)]"
+        >
+          <p class="text-xs font-medium text-[var(--text-primary)] mb-1">
+            Revoke verification for this client?
+          </p>
+          <p class="text-xs text-[var(--text-secondary)] mb-3">
+            Current authorizations for this client may be revoked.
+          </p>
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              phx-click="cancel_unverify_client"
+              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              phx-click="unverify_client"
+              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors font-medium"
+            >
+              Unverify
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
     """
   end
