@@ -1240,6 +1240,7 @@ impl TunnelTest {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {
                     c.resource_status = resources
+                        .resources
                         .into_iter()
                         .map(|r| (r.id(), r.status()))
                         .collect();

@@ -8,7 +8,7 @@
 use crate::updates::Release;
 use anyhow::{Context as _, Result};
 use compositor::Image;
-use connlib_model::{ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
 use tauri::AppHandle;
 use url::Url;
@@ -45,6 +45,12 @@ const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
 const RESOURCES: &str = "Resources";
 const OTHER_RESOURCES: &str = "Other Resources";
+const DEVICES: &str = "Devices";
+
+/// Maximum number of connected devices listed inline in the Devices submenu.
+///
+/// Anything beyond this is summarized as "And N more devices…".
+const MAX_DEVICES_INLINE: usize = 20;
 const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
@@ -306,6 +312,7 @@ pub struct SignedIn {
     pub actor_name: String,
     pub favorite_resources: HashSet<ResourceId>,
     pub resources: Vec<ResourceView>,
+    pub connected_devices: Vec<ConnectedDeviceView>,
     pub internet_resource_enabled: Option<bool>,
 }
 
@@ -399,8 +406,8 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
+        connected_devices,
         internet_resource_enabled,
-        ..
     } = signed_in;
 
     let has_any_favorites = resources
@@ -456,6 +463,52 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
         menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
+    }
+
+    if !connected_devices.is_empty() {
+        let label = format!("{DEVICES} ({})", connected_devices.len());
+        menu = menu
+            .separator()
+            .add_submenu(label, devices_submenu(connected_devices));
+    }
+
+    menu
+}
+
+fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
+    let mut menu = Menu::default();
+    let visible = connected_devices.len().min(MAX_DEVICES_INLINE);
+    for device in &connected_devices[..visible] {
+        menu = menu.add_submenu(device.id.to_string(), device_submenu(device));
+    }
+
+    let hidden = connected_devices.len() - visible;
+    if hidden > 0 {
+        let label = if hidden == 1 {
+            "And 1 more device…".to_string()
+        } else {
+            format!("And {hidden} more devices…")
+        };
+        menu = menu.separator().disabled(label);
+    }
+    menu
+}
+
+fn device_submenu(device: &ConnectedDeviceView) -> Menu {
+    let mut menu = Menu::default()
+        .disabled("Device")
+        .copyable(&device.id.to_string());
+
+    if !device.pools.is_empty() {
+        let label = if device.pools.len() == 1 {
+            "Pool"
+        } else {
+            "Pools"
+        };
+        menu = menu.separator().disabled(label);
+        for pool in &device.pools {
+            menu = menu.copyable(pool);
+        }
     }
 
     menu
@@ -558,6 +611,7 @@ mod tests {
                 actor_name: "Jane Doe".into(),
                 favorite_resources,
                 resources,
+                connected_devices: Vec::new(),
                 internet_resource_enabled,
             }),
             release: None,
@@ -950,5 +1004,83 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn devices_submenu_lists_connected_devices_with_pool_labels() {
+        use connlib_model::ClientId;
+        let alpha = ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111);
+        let beta = ClientId::from_u128(0x2222_2222_2222_2222_2222_2222_2222_2222);
+        let connected_devices = vec![
+            ConnectedDeviceView {
+                id: alpha,
+                pools: vec!["Engineering Pool".into()],
+            },
+            ConnectedDeviceView {
+                id: beta,
+                pools: vec!["Engineering Pool".into(), "QA Pool".into()],
+            },
+        ];
+
+        let actual = devices_submenu(&connected_devices);
+
+        let expected = Menu::default()
+            .add_submenu(
+                alpha.to_string(),
+                Menu::default()
+                    .disabled("Device")
+                    .copyable(&alpha.to_string())
+                    .separator()
+                    .disabled("Pool")
+                    .copyable("Engineering Pool"),
+            )
+            .add_submenu(
+                beta.to_string(),
+                Menu::default()
+                    .disabled("Device")
+                    .copyable(&beta.to_string())
+                    .separator()
+                    .disabled("Pools")
+                    .copyable("Engineering Pool")
+                    .copyable("QA Pool"),
+            );
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
+    fn devices_submenu_truncates_beyond_inline_limit() {
+        use connlib_model::ClientId;
+        let connected_devices: Vec<ConnectedDeviceView> = (0..MAX_DEVICES_INLINE + 3)
+            .map(|i| ConnectedDeviceView {
+                id: ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
+                pools: Vec::new(),
+            })
+            .collect();
+
+        let actual = devices_submenu(&connected_devices);
+
+        let mut expected = Menu::default();
+        for device in &connected_devices[..MAX_DEVICES_INLINE] {
+            expected = expected.add_submenu(
+                device.id.to_string(),
+                Menu::default()
+                    .disabled("Device")
+                    .copyable(&device.id.to_string()),
+            );
+        }
+        expected = expected.separator().disabled("And 3 more devices…");
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
     }
 }

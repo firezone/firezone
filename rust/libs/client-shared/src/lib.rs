@@ -8,7 +8,7 @@ use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::{ResourceId, ResourceList};
 use eventloop::{Command, Eventloop};
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
@@ -43,7 +43,7 @@ pub struct Session {
 #[derive(Debug)]
 pub struct EventStream {
     eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
-    resource_list_receiver: WatchStream<Vec<ResourceView>>,
+    resource_list_receiver: WatchStream<ResourceList>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
 
@@ -56,7 +56,7 @@ pub enum Event {
     /// The TUN device configuration has been updated.
     TunInterfaceUpdated(TunConfig),
     /// The resource list has been updated.
-    ResourcesUpdated(Vec<ResourceView>),
+    ResourcesUpdated(ResourceList),
     /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
     AllGatewaysOffline { resource_id: ResourceId },
     /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
@@ -197,7 +197,7 @@ impl Drop for Session {
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
-            watch::Sender<Vec<ResourceView>>,
+            watch::Sender<ResourceList>,
             watch::Sender<Option<TunConfig>>,
             mpsc::Sender<UserNotification>,
         ) -> E,
@@ -207,7 +207,8 @@ impl EventStream {
         E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
     {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
-        let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
+        let (resource_list_sender, resource_list_receiver) =
+            watch::channel(ResourceList::default());
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
         let event_loop = make_event_loop(

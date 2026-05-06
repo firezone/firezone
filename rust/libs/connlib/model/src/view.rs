@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::Debug;
 
+use crate::ClientId;
 use crate::ResourceId;
 use crate::Site;
 
@@ -120,6 +121,24 @@ pub struct CidrResourceView {
     pub sites: Vec<Site>,
 
     pub status: ResourceStatus,
+}
+
+/// A device peer that the client currently has a live snownet connection to.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ConnectedDeviceView {
+    pub id: ClientId,
+    /// Names of the device pool resources this client is a member of
+    /// (typically one, but can be multiple).
+    ///
+    /// Empty if pool membership for this client is unknown.
+    pub pools: Vec<String>,
+}
+
+/// Snapshot of resources and currently-connected device peers.
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceList {
+    pub resources: Vec<ResourceView>,
+    pub connected_devices: Vec<ConnectedDeviceView>,
 }
 
 /// Description of an Internet resource

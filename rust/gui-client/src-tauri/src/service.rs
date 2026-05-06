@@ -12,7 +12,7 @@ use bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::{ResourceId, ResourceList};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
@@ -98,7 +98,7 @@ pub enum ServerMsg {
     GatewayVersionMismatch {
         resource_id: ResourceId,
     },
-    OnUpdateResources(Vec<ResourceView>),
+    OnUpdateResources(ResourceList),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
