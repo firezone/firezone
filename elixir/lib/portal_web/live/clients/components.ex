@@ -679,8 +679,8 @@ defmodule PortalWeb.Clients.Components do
           :if={@client.latest_session && @client.latest_session.remote_ip}
           label="Remote IP"
         >
-          <span class="font-mono text-xs text-[var(--text-secondary)]">
-            {@client.latest_session.remote_ip}
+          <span class="text-xs text-[var(--text-secondary)]">
+            <.last_seen schema={@client.latest_session} />
           </span>
         </.client_detail_row>
         <.client_detail_row label="Tunnel IPv4">
