@@ -249,12 +249,6 @@ impl RefClient {
         self.readd_all_resources();
     }
 
-    /// Models the SUT's hard-reset path: every connection closes (so
-    /// `ConnectionClosed` would fire on the real side, clearing
-    /// site status and DNS-NAT per gateway). The iceless soft-reset
-    /// path on the SUT *doesn't* go through this — sites stay online —
-    /// so callers must gate on whether the affected client's
-    /// connections are all iceless before invoking this.
     pub(crate) fn reset_connections(&mut self, now: Instant) {
         self.connection_resets.push(now);
 
