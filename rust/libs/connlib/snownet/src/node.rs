@@ -719,6 +719,7 @@ where
                 &mut self.connections,
                 &allocation,
                 &mut self.pending_events,
+                now,
             );
 
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
@@ -750,6 +751,7 @@ where
                         &mut self.connections,
                         &previous,
                         &mut self.pending_events,
+                        now,
                     );
 
                     tracing::info!(%rid, address = ?server, "Replaced TURN server")
@@ -1196,13 +1198,21 @@ fn invalidate_allocation_candidates<TId, RId>(
     connections: &mut Connections<TId, RId>,
     allocation: &Allocation,
     pending_events: &mut VecDeque<Event<TId>>,
+    now: Instant,
 ) where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     for (cid, c) in connections.iter_mut() {
-        for candidate in allocation.current_relay_candidates() {
-            c.remove_local_candidate(cid, &candidate, pending_events);
+        if c.agent.is_iceless() {
+            // Iceless: rebuild the path-agent and force a fresh
+            // handshake. No `InvalidateIceCandidate` — peer rediscovers
+            // via the next `HandshakeInit`.
+            c.reset_path_for_relay_replacement(cid, allocation, now);
+        } else {
+            for candidate in allocation.current_relay_candidates() {
+                c.remove_local_candidate(cid, &candidate, pending_events);
+            }
         }
     }
 }
@@ -2061,10 +2071,44 @@ where
     where
         RId: Ord + fmt::Display + Copy,
     {
-        self.agent.reset_for_roam();
+        // Local IPs all changed; drop every local candidate.
+        self.agent.rebuild_path(|_| true);
         // Force-resend: the network changed underneath, an in-flight
         // init from before the roam is going nowhere.
         self.agent.initiate_handshake(&mut self.tunnel, true, now);
+    }
+
+    /// Iceless-only: a relay allocation was replaced (e.g. portal
+    /// rotation). Drop the dead relay's candidates from the inner
+    /// `PathAgent` and force a fresh `HandshakeInit` so the surviving
+    /// pairs (host, srflx, other-relay) get one — the receiver
+    /// rediscovers the connection by the init's sender pubkey.
+    fn reset_path_for_relay_replacement<TId>(
+        &mut self,
+        cid: TId,
+        allocation: &Allocation,
+        now: Instant,
+    ) where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
+        debug_assert!(
+            self.agent.is_iceless(),
+            "reset_path_for_relay_replacement is iceless-only"
+        );
+
+        // Two candidates per allocation (host + reflexive); SmallVec
+        // inline-capacity 2 keeps this stack-allocated.
+        let dropped = allocation
+            .current_relay_candidates()
+            .collect::<SmallVec<[_; 2]>>();
+        self.agent.rebuild_path(|c| dropped.contains(c));
+
+        // Force-resend: a fresh PathAgent has no established path, so
+        // the init buffers for fanout across the surviving pairs.
+        self.agent.initiate_handshake(&mut self.tunnel, true, now);
+
+        tracing::info!(%cid, "Reset iceless path-agent after relay invalidation");
     }
 
     fn initiate_wg_session(

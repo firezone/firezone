@@ -18,6 +18,7 @@ use std::time::Instant;
 use boringtun::noise::Tunn;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
+use smallvec::SmallVec;
 
 use crate::{IceConfig, IceRole};
 
@@ -49,19 +50,23 @@ impl Agent {
         matches!(self, Self::Path { .. })
     }
 
-    /// Reset the iceless `PathAgent` for a network change (roam).
+    /// Rebuild the inner `PathAgent` and re-seed it from the surviving
+    /// candidates. `should_drop_local` decides which local candidates
+    /// are no longer valid:
     ///
-    /// Replaces `path` with a fresh `PathAgent::new()` (so any new
-    /// internal field added later is reset by construction), drops
-    /// the now-stale local candidates, and re-seeds the remote
-    /// candidates we already knew — those don't change with our
-    /// network. New local candidates flow back in via the normal
-    /// `add_local_candidate` path as fresh allocations form.
+    /// - Roam: pass `|_| true` — local IPs changed, drop everything.
+    /// - Relay replacement: pass a predicate that matches the dead
+    ///   allocation's candidates — host / srflx / other-relay
+    ///   candidates stay.
+    ///
+    /// Remote candidates are always preserved: they're attached to the
+    /// peer's network, which hasn't changed under us.
     ///
     /// No-op on `Self::Ice` — ICE-based connections rely on the
-    /// node-level key rotation + close-and-reopen path to detect
-    /// roaming.
-    pub(crate) fn reset_for_roam(&mut self) {
+    /// node-level key rotation + close-and-reopen path (roam) or
+    /// per-candidate `InvalidateIceCandidate` signalling (relay
+    /// replacement).
+    pub(crate) fn rebuild_path(&mut self, mut should_drop_local: impl FnMut(&Candidate) -> bool) {
         let Self::Path {
             local_candidates,
             remote_candidates,
@@ -71,8 +76,17 @@ impl Agent {
             return;
         };
 
+        // `extract_if` is lazy — collecting into a SmallVec consumes
+        // it, performing the removal. Inline-capacity 4 covers host +
+        // srflx + up-to-two relays without spilling.
+        let _dropped: SmallVec<[Candidate; 4]> = local_candidates
+            .extract_if(.., |c| should_drop_local(c))
+            .collect();
+
         *path = path_agent::PathAgent::new();
-        local_candidates.clear();
+        for c in local_candidates.iter() {
+            path.add_local_candidate(crate::candidate::to_path_agent(c));
+        }
         for c in remote_candidates.iter() {
             path.add_remote_candidate(crate::candidate::to_path_agent(c));
         }
