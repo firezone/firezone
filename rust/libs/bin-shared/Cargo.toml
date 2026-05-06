@@ -70,6 +70,7 @@ features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
     "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_System_Com",
     # Needed to listen for system DNS changes
     "Win32_System_Registry",

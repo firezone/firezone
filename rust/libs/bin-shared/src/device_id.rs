@@ -89,8 +89,8 @@ fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
-    // Make sure the dir exists, and fix its permissions so the GUI can write the
-    // log filter file
+    // Make sure the dir exists, and fix its permissions before writing files
+    // into it.
     fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
     set_dir_permissions(dir).with_context(|| {
         format!(
@@ -161,8 +161,13 @@ fn set_dir_permissions(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Does nothing on non-Linux systems
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn set_dir_permissions(dir: &Path) -> Result<()> {
+    set_windows_dacl(dir, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+}
+
+/// Does nothing on other non-Linux systems
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[expect(clippy::unnecessary_wraps)]
 fn set_dir_permissions(_: &Path) -> Result<()> {
     Ok(())
@@ -177,8 +182,112 @@ fn set_id_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Does nothing on non-Linux systems
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn set_id_permissions(path: &Path) -> Result<()> {
+    set_windows_dacl(path, "D:P(A;;FA;;;SY)(A;;FA;;;BA)")
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_dacl(path: &Path, sddl: &str) -> Result<()> {
+    use anyhow::ensure;
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, ptr};
+    use windows::{
+        Win32::{
+            Foundation::{ERROR_SUCCESS, HLOCAL, LocalFree},
+            Security::{
+                Authorization::{
+                    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+                    SE_FILE_OBJECT, SetNamedSecurityInfoW,
+                },
+                DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
+                PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+            },
+        },
+        core::{BOOL, PCWSTR},
+    };
+
+    fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
+        s.as_ref().encode_wide().chain(Some(0)).collect()
+    }
+
+    struct LocalSecurityDescriptor(PSECURITY_DESCRIPTOR);
+
+    impl Drop for LocalSecurityDescriptor {
+        fn drop(&mut self) {
+            // SAFETY: The security descriptor was allocated by
+            // `ConvertStringSecurityDescriptorToSecurityDescriptorW` and must be
+            // released with `LocalFree`.
+            unsafe {
+                LocalFree(Some(HLOCAL(self.0.0)));
+            }
+        }
+    }
+
+    let mut security_descriptor = PSECURITY_DESCRIPTOR::default();
+    let sddl = wide(sddl);
+
+    // SAFETY: The SDDL string is null-terminated and the output pointer is valid
+    // for the duration of this call.
+    unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            PCWSTR(sddl.as_ptr()),
+            SDDL_REVISION_1,
+            &mut security_descriptor,
+            None,
+        )
+    }
+    .context("Failed to build Windows security descriptor from SDDL")?;
+
+    let security_descriptor = LocalSecurityDescriptor(security_descriptor);
+
+    let mut dacl_present = BOOL::default();
+    let mut dacl_defaulted = BOOL::default();
+    let mut dacl = ptr::null_mut();
+
+    // SAFETY: The security descriptor is valid and the output pointers are local
+    // variables that live for the duration of the call.
+    unsafe {
+        GetSecurityDescriptorDacl(
+            security_descriptor.0,
+            &mut dacl_present,
+            &mut dacl,
+            &mut dacl_defaulted,
+        )
+    }
+    .context("Failed to get DACL from Windows security descriptor")?;
+
+    ensure!(
+        dacl_present.as_bool(),
+        "Windows security descriptor has no DACL"
+    );
+
+    let path = wide(path.as_os_str());
+    let security_info = DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION;
+
+    // SAFETY: The path is null-terminated, the DACL comes from a valid security
+    // descriptor, and Windows does not retain these pointers after the call.
+    let err = unsafe {
+        SetNamedSecurityInfoW(
+            PCWSTR(path.as_ptr()),
+            SE_FILE_OBJECT,
+            security_info,
+            None,
+            None,
+            Some(dacl),
+            None,
+        )
+    };
+
+    if err != ERROR_SUCCESS {
+        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
+            .with_context(|| "Failed to set Windows DACL");
+    }
+
+    Ok(())
+}
+
+/// Does nothing on other non-Linux systems
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[expect(clippy::unnecessary_wraps)]
 fn set_id_permissions(_: &Path) -> Result<()> {
     Ok(())
