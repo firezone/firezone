@@ -105,10 +105,18 @@ HISTCONTROL=ignorespace # prevents saving the next line in shell history
 
 ## Logs
 
-To see all connlib related logs via ADB use:
+To stream colored logcat from the connected device/emulator:
 
 ```
-adb logcat --format color "connlib *:S"
+mise run logcat
+```
+
+Set `ANDROID_SERIAL` to disambiguate when multiple devices/emulators are
+connected. Pass a tag filterspec after `--` to narrow the output, e.g. just the
+Rust `connlib` tag:
+
+```
+mise run logcat -- 'connlib:V *:S'
 ```
 
 This will show logs of all levels from the `connlib` tag and silence logs from other tags (`*:S`).
