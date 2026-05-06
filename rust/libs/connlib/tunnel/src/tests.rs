@@ -44,17 +44,6 @@ type QueryId = u16;
 
 #[test]
 fn tunnel_test() {
-    // The iceless dispatch in `Node::upsert_connection` gates on
-    // `capabilities.iceless && telemetry::feature_flags::iceless()`,
-    // so the proptest needs the local flag forced on to exercise that
-    // arm at all (sampled `iceless` capabilities alone aren't enough).
-    // Safe: at this point the test binary is single-threaded; tokio
-    // runtimes spawned later read this through `env_or` snapshots.
-    // SAFETY: `set_var` is sound while the process is single-threaded.
-    unsafe {
-        std::env::set_var("FZFF_ICELESS", "true");
-    }
-
     let run_coverage = coverage::run_coverage();
     let harvest_target = coverage::harvest_target();
 
