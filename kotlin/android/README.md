@@ -18,6 +18,17 @@ mise run build
 This installs Java, Android SDK/NDK, Rust cross-compilation targets, and
 creates `local.properties`. See `mise-tasks/setup.sh` for details.
 
+To install on a connected device or emulator:
+
+```bash
+mise run install-phone     # connected hardware device
+mise run install-emulator  # creates/boots an emulator and launches the app
+```
+
+`install-emulator` only builds the cargo target matching your host arch (x86_64
+on Linux/Intel Mac, arm64-v8a on Apple Silicon), which is roughly 4x faster than
+the all-ABI build.
+
 ### Manual setup
 
 If you'd rather not use `mise run setup`:
