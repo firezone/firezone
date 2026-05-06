@@ -50,6 +50,12 @@ env = { CARGO_PROFILE_TEST_OPT_LEVEL = "1", PROPTEST_CASES = "10000", PROPTEST_M
 raw = true
 run = "cargo test tunnel_test --features proptest -- --nocapture"
 
+[tasks.tauri-fake-controller]
+description = "Run the GUI client with a hardcoded fake controller (sample resources and connected devices) for rapid UI iteration; bypasses auth, the portal, and the tunnel service"
+dir = "gui-client"
+raw = true
+run = "cargo tauri dev -- -- debug fake-controller"
+
 # =============================================================================
 # Composite tasks
 # =============================================================================

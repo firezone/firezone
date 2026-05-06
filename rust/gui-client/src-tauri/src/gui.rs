@@ -73,7 +73,7 @@ impl Managed {
     }
 }
 
-struct TauriIntegration {
+pub(crate) struct TauriIntegration {
     app: tauri::AppHandle,
     tray: system_tray::Tray,
 }
@@ -230,6 +230,11 @@ pub struct RunConfig {
     pub no_deep_links: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
+    /// When `true`, skip the auth/portal/tunnel stack and drive the tray with
+    /// hardcoded fake state. Used by the `debug fake-controller` subcommand
+    /// for UI iteration without needing the privileged tunnel service or a
+    /// live portal.
+    pub fake_controller: bool,
 }
 
 /// IPC Messages that a newly launched instance (i.e. a client) may send to an already running instance of Firezone.
@@ -354,19 +359,23 @@ pub fn run(
             tray,
         };
 
-        // Spawn the controller
-        let ctrl_task = tokio::spawn(Controller::start(
-            SocketId::Tunnel,
-            integration,
-            ctlr_tx,
-            ctlr_rx,
-            general_settings,
-            mdm_settings,
-            advanced_settings,
-            reloader,
-            updates_rx,
-            gui_ipc,
-        ));
+        let ctrl_task = if config.fake_controller {
+            tokio::spawn(crate::fake_controller::run(integration, ctlr_rx))
+        } else {
+            // Spawn the controller
+            tokio::spawn(Controller::start(
+                SocketId::Tunnel,
+                integration,
+                ctlr_tx,
+                ctlr_rx,
+                general_settings,
+                mdm_settings,
+                advanced_settings,
+                reloader,
+                updates_rx,
+                gui_ipc,
+            ))
+        };
 
         anyhow::Ok(ctrl_task)
     });
