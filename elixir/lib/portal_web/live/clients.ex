@@ -413,7 +413,7 @@ defmodule PortalWeb.Clients do
         {:noreply,
          socket
          |> put_flash(:success, "Client \"#{client.name}\" was verified.")
-         |> assign_selected_client(updated_client.id)
+         |> assign_updated_selected_client(updated_client)
          |> merge_state(:client_confirm, unverify?: false)
          |> reload_live_table!("clients")}
 
@@ -438,7 +438,7 @@ defmodule PortalWeb.Clients do
         {:noreply,
          socket
          |> put_flash(:success, "Client \"#{client.name}\" was unverified.")
-         |> assign_selected_client(updated_client.id)
+         |> assign_updated_selected_client(updated_client)
          |> merge_state(:client_confirm, unverify?: false)
          |> reload_live_table!("clients")}
 
@@ -467,12 +467,14 @@ defmodule PortalWeb.Clients do
     end
   end
 
-  defp assign_selected_client(socket, client_id) do
-    assign(
-      socket,
-      :selected_client,
-      Database.get_client_for_panel(client_id, socket.assigns.subject)
-    )
+  defp assign_updated_selected_client(socket, updated_client) do
+    selected_client = %{
+      socket.assigns.selected_client
+      | verified_at: updated_client.verified_at,
+        updated_at: updated_client.updated_at
+    }
+
+    assign(socket, :selected_client, selected_client)
   end
 
   defp parse_client_tab("authorizations"), do: :authorizations
