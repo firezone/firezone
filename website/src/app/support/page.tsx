@@ -18,7 +18,7 @@ import {
   HiOutlineEnvelope,
   HiOutlineWrenchScrewdriver,
 } from "react-icons/hi2";
-import { FaGithub, FaSlack, FaApple, FaLinux, FaWindows } from "react-icons/fa";
+import { FaGithub, FaSlack } from "react-icons/fa";
 
 const MACOS_DIAG_SCRIPT_PATH = "/diag/macos.sh";
 const MACOS_DIAG_CMD = `bash <(curl -fsSL https://www.firezone.dev${MACOS_DIAG_SCRIPT_PATH})`;
@@ -308,7 +308,7 @@ export default function Page() {
         </p>
         <div className="mt-8">
           <TabsGroup>
-            <TabsItem title="macOS" icon={FaApple}>
+            <TabsItem title="macOS" icon="apple">
               <p className="mb-3 text-sm text-neutral-800">
                 Run the following command in Terminal. The script will collect
                 diagnostics and save a <code>.tar.gz</code> archive to your
@@ -331,12 +331,12 @@ export default function Page() {
                 </Link>
               </p>
             </TabsItem>
-            <TabsItem title="Linux" icon={FaLinux}>
+            <TabsItem title="Linux" icon="linux">
               <p className="text-sm text-neutral-800">
                 Linux diagnostic script coming soon.
               </p>
             </TabsItem>
-            <TabsItem title="Windows" icon={FaWindows}>
+            <TabsItem title="Windows" icon="windows">
               <p className="text-sm text-neutral-800">
                 Windows diagnostic script coming soon.
               </p>

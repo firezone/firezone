@@ -1,9 +1,10 @@
-import _Page from "./_page";
+import Post from "@/components/Blog/Post";
 import ArticleJsonLd from "@/components/Blog/ArticleJsonLd";
-import { frontmatter } from "./readme.mdx";
+import Content, { frontmatter } from "./readme.mdx";
 import { asBlogFrontmatter } from "@/types/frontmatter";
 import { Metadata } from "next";
 import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
+import { blogAuthorAvatar } from "@/lib/blog-author-avatar";
 
 export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
@@ -18,7 +19,15 @@ export default function Page() {
         date={fm.date}
         path="/blog/how-dns-works-in-firezone"
       />
-      <_Page />
+      <Post
+        authorName={fm.authorName}
+        authorTitle={fm.authorTitle}
+        authorAvatarSrc={blogAuthorAvatar(fm)}
+        title={fm.postTitle ?? fm.title}
+        date={fm.date}
+      >
+        <Content />
+      </Post>
     </>
   );
 }
