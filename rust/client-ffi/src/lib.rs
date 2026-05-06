@@ -413,7 +413,7 @@ impl Session {
                 })
             }
             client_shared::Event::ResourcesUpdated(resources) => {
-                let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
+                let resources = resources.resources.into_iter().map(Into::into).collect();
 
                 Some(Event::ResourcesUpdated { resources })
             }

@@ -1,6 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
+use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceList};
 use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -50,7 +50,7 @@ pub struct Eventloop {
     tunnel: Option<ClientTunnel>,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
-    resource_list_sender: watch::Sender<Vec<ResourceView>>,
+    resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
 
@@ -110,7 +110,7 @@ impl Eventloop {
         dns_servers: Vec<IpAddr>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
-        resource_list_sender: watch::Sender<Vec<ResourceView>>,
+        resource_list_sender: watch::Sender<ResourceList>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Self {

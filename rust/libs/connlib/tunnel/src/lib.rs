@@ -10,7 +10,7 @@
 use crate::unroutable_packet::RoutingError;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceList,
 };
 use dns_types::DomainName;
 use eventloop_budget::Budget;
@@ -615,9 +615,10 @@ pub enum ClientEvent {
         resource_id: ResourceId,
         domain: DomainName,
     },
-    /// The list of resources has changed and UI clients may have to be updated.
+    /// The list of resources or connected device peers has changed; UI clients
+    /// may have to be updated.
     ResourcesChanged {
-        resources: Vec<ResourceView>,
+        resources: ResourceList,
     },
     DnsRecordsChanged {
         records: BTreeSet<DnsResourceRecord>,
