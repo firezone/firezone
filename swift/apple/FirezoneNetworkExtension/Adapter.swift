@@ -414,7 +414,7 @@ actor Adapter {
         }
       }
 
-    case .resourcesUpdated(let resourceList):
+    case .resourcesUpdated(let resourceList, _):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
       // Store resource list (actor-isolated, no dispatch needed)
