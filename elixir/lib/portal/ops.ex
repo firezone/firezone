@@ -1,6 +1,7 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, EmailSuppression, Mailer}
+  alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
 
@@ -66,6 +67,25 @@ defmodule Portal.Ops do
     |> Database.delete()
 
     :ok
+  end
+
+  @doc """
+  Enqueues account deletion jobs for accounts that are already scheduled for deletion.
+
+  This is intended for operational use during the migration from the old daily deletion
+  scanner to one scheduled Oban job per account.
+  """
+  def schedule_missing_account_deletion_jobs do
+    Database.accounts_missing_deletion_jobs()
+    |> Enum.reduce_while({:ok, 0}, fn account, {:ok, count} ->
+      job = DeleteAccount.new(%{"account_id" => account.id}, scheduled_at: account.scheduled_deletion_at)
+
+      case Oban.insert(job) do
+        {:ok, %Oban.Job{conflict?: true}} -> {:cont, {:ok, count}}
+        {:ok, _job} -> {:cont, {:ok, count + 1}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   @doc"""
@@ -145,6 +165,9 @@ defmodule Portal.Ops do
     import Ecto.Query
     alias Portal.{Account, Actor, Safe}
 
+    @delete_account_worker "Portal.Workers.DeleteAccount"
+    @active_delete_job_states ["scheduled", "available", "executing", "retryable"]
+
     def get_disabled_account!(id) do
       from(a in Account,
         where: a.id == ^id,
@@ -183,6 +206,25 @@ defmodule Portal.Ops do
       |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
         email
       end)
+    end
+
+    def accounts_missing_deletion_jobs do
+      delete_jobs_query =
+        from(j in Oban.Job,
+          where: j.worker == @delete_account_worker,
+          where: j.state in @active_delete_job_states,
+          where: fragment("?->>'account_id' = ?::text", j.args, parent_as(:account).id),
+          select: 1
+        )
+
+      from(a in Account,
+        as: :account,
+        where: not is_nil(a.disabled_at),
+        where: not is_nil(a.scheduled_deletion_at),
+        where: not exists(delete_jobs_query)
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     defp maybe_filter_account_ids(query, :all) do

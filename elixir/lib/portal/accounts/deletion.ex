@@ -2,7 +2,6 @@ defmodule Portal.Accounts.Deletion do
   @moduledoc false
 
   alias Ecto.Multi
-  alias Oban.Job
   alias Portal.Account
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
