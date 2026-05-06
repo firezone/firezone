@@ -167,6 +167,7 @@ defmodule PortalWeb.ClientsTest do
           actor: owner,
           client: client,
           user_agent: "macOS/15.0 apple-client/1.4.0",
+          remote_ip: {203, 0, 113, 10},
           version: "1.4.0"
         )
 
@@ -180,6 +181,8 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "SN-123"
       assert html =~ "UUID-123"
       assert html =~ "IFV-123"
+      assert html =~ "Remote IP"
+      assert html =~ "203.0.113.10"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
       assert html =~ "Verified"
