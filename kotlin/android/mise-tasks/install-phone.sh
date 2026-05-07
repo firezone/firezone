@@ -50,6 +50,11 @@ x86)
 esac
 
 echo "==> Installing debug APK (device ABI: ${DEVICE_ABI})..."
+# Kill any running instance so the next launch is a clean cold start (and so
+# Android doesn't keep the old process alive across install).
+echo "==> Force-stopping any running instance of dev.firezone.android..."
+adb shell am force-stop dev.firezone.android
+
 gradle_skip_args=()
 for task in "${SKIP_CARGO_TASKS[@]}"; do
     gradle_skip_args+=(-x "$task")

@@ -96,6 +96,11 @@ start_emulator() {
 start_emulator
 
 echo "==> Installing debug APK (${HOST_ABI} only)..."
+# Kill any running instance so the next launch is a clean cold start (and so
+# Android doesn't keep the old process alive across install).
+echo "==> Force-stopping any running instance of ${PACKAGE}..."
+adb shell am force-stop "$PACKAGE"
+
 # Skip cargo builds for ABIs the emulator can't use; the resulting APK contains only
 # the matching .so, which saves ~4x build time vs the default all-ABI build.
 gradle_skip_args=()
