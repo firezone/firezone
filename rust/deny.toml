@@ -118,11 +118,6 @@ ignore = [
     # Upgrading to rand 0.9 is blocked by x25519-dalek requiring rand_core 0.6.
     "RUSTSEC-2026-0097",
 
-    # `hickory-proto` 0.25.2: NSEC3 closest-encloser proof validation infinite loop (no safe upgrade available).
-    "RUSTSEC-2026-0118",
-    # `hickory-proto` 0.25.2: O(n²) CPU exhaustion during message encoding; fix requires upgrading to 0.26.1.
-    "RUSTSEC-2026-0119",
-
     # `rust-unic` crates are unmaintained but still pulled in via tauri.
     "RUSTSEC-2025-0075",
     "RUSTSEC-2025-0080",
