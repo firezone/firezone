@@ -16,7 +16,10 @@ function PostHogComponent() {
     // Init exactly once. The effect re-runs on every navigation, but
     // posthog.init is not idempotent — re-calling it logs a warning.
     if (!(posthog as unknown as { __loaded?: boolean }).__loaded) {
-      posthog.init(apiKey, { api_host: "https://us.i.posthog.com" });
+      posthog.init(apiKey, {
+        api_host: "https://e.firezone.dev",
+        defaults: "2026-01-30",
+      });
     }
 
     let url = window.origin + pathname;
