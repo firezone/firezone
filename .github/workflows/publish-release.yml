@@ -152,6 +152,39 @@ jobs:
         with:
           key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
           email: github-bot@firezone.dev
+      - name: Export gateway checksums
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gateway') && matrix.component == 'gateway' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+        run: |
+          set -euo pipefail
+
+          version=${release_name#gateway-}
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          gh release download "$release_name" \
+            --pattern "firezone-gateway_${version}_*.sha256sum.txt" \
+            --dir "$tmpdir"
+
+          for arch in x86_64 aarch64 armv7; do
+            checksum_file="$tmpdir/firezone-gateway_${version}_${arch}.sha256sum.txt"
+            checksum=$(awk '{ print $1 }' "$checksum_file")
+
+            if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "Invalid checksum in $checksum_file: $checksum" >&2
+              exit 1
+            fi
+
+            case "$arch" in
+              x86_64) env_name=GATEWAY_X86_64_SHA256 ;;
+              aarch64) env_name=GATEWAY_AARCH64_SHA256 ;;
+              armv7) env_name=GATEWAY_ARMV7_SHA256 ;;
+            esac
+
+            echo "$env_name=$checksum" >> "$GITHUB_ENV"
+          done
       - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
         run: |
           set -x

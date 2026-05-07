@@ -9,9 +9,14 @@ FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
 RUST_LOG=${RUST_LOG:-info}
 
-# Can be used to download a specific version of the gateway from a custom URL
-FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
-FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway}
+# mark:current-gateway-version
+GATEWAY_VERSION="1.5.2"
+# mark:gateway-x86_64-sha256
+GATEWAY_X86_64_SHA256="1f1d7e575a01e592d64aa93ea9c6025ee33e7b77dc9c507c18695600c1c41cc0"
+# mark:gateway-aarch64-sha256
+GATEWAY_AARCH64_SHA256="0772158376371a16d773ecfc1e5cffc6c7f0b92418df6623d6aed61945dda82b"
+# mark:gateway-armv7-sha256
+GATEWAY_ARMV7_SHA256="57db065b1ac89e55c2d3be436164f1674130136419e242736ad9ddbf0b2b1fb1"
 
 # Optional environment variables to configure logging and tracing
 FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
@@ -181,6 +186,33 @@ set -ue
 # Define the target directory and binary path
 TARGET_DIR="/opt/firezone/bin"
 BINARY_PATH="\$TARGET_DIR/firezone-gateway"
+ARTIFACT_BASE_URL="https://www.firezone.dev/dl/firezone-gateway"
+GATEWAY_VERSION="${GATEWAY_VERSION}"
+
+case "\$(uname -m)" in
+  x86_64)
+    arch="x86_64"
+    expected_sha256="${GATEWAY_X86_64_SHA256}"
+    ;;
+  aarch64 | arm64)
+    arch="aarch64"
+    expected_sha256="${GATEWAY_AARCH64_SHA256}"
+    ;;
+  armv7 | armv7l)
+    arch="armv7"
+    expected_sha256="${GATEWAY_ARMV7_SHA256}"
+    ;;
+  *)
+    echo "Unsupported architecture: \$(uname -m)"
+    exit 1
+    ;;
+esac
+
+download_url="\$ARTIFACT_BASE_URL/\$GATEWAY_VERSION/\$arch"
+
+sha256_for() {
+  sha256sum "\$1" | awk '{ print \$1 }'
+}
 
 # Create the directory if it doesn’t exist
 if [ ! -d "\$TARGET_DIR" ]; then
@@ -190,25 +222,47 @@ if [ ! -d "\$TARGET_DIR" ]; then
 fi
 
 
-# Download ${FIREZONE_VERSION} version of the gateway if it doesn't already exist
-if [ ! -e "\$BINARY_PATH" ]; then
+# Download the configured gateway version if it doesn't already exist
+needs_download=0
+if [ -e "\$BINARY_PATH" ]; then
+  actual_sha256=\$(sha256_for "\$BINARY_PATH")
+
+  if [ "\$actual_sha256" = "\$expected_sha256" ]; then
+    echo "\$BINARY_PATH found and checksum verified. Skipping download."
+  else
+    echo "\$BINARY_PATH found, but checksum does not match Firezone Gateway \$GATEWAY_VERSION for \$arch."
+    needs_download=1
+  fi
+else
   echo "\$BINARY_PATH not found."
-  echo "Downloading ${FIREZONE_VERSION} version from ${FIREZONE_ARTIFACT_URL}..."
-  arch=\$(uname -m)
+  needs_download=1
+fi
+
+if [ "\$needs_download" -eq 1 ]; then
+  echo "Downloading Firezone Gateway \$GATEWAY_VERSION from \$download_url..."
 
   # See https://www.firezone.dev/changelog for available binaries
-  curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o "\$BINARY_PATH.download"
+  rm -f "\$BINARY_PATH.download"
+  curl -fsSL "\$download_url" -o "\$BINARY_PATH.download"
+
+  actual_sha256=\$(sha256_for "\$BINARY_PATH.download")
+  if [ "\$actual_sha256" != "\$expected_sha256" ]; then
+    echo "\$BINARY_PATH.download failed checksum verification!"
+    echo "Expected: \$expected_sha256"
+    echo "Actual:   \$actual_sha256"
+    rm -f "\$BINARY_PATH.download"
+    exit 1
+  fi
 
   if file "\$BINARY_PATH.download" | grep -q "ELF"; then
     mv "\$BINARY_PATH.download" "\$BINARY_PATH"
   else
     echo "\$BINARY_PATH.download is not an executable!"
-    echo "Ensure '${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch' is accessible from this machine,"
+    echo "Ensure '\$download_url' is accessible from this machine,"
     echo "or download binary manually and install to \$BINARY_PATH"
+    rm -f "\$BINARY_PATH.download"
     exit 1
   fi
-else
-  echo "\$BINARY_PATH found. Skipping download."
 fi
 
 # Set proper permissions on each start
