@@ -79,16 +79,21 @@ impl Server {
     }
 
     async fn bind_to_pipe(&self) -> Result<ServerStream> {
-        const NUM_ITERS: usize = 10;
-        // This loop is defense-in-depth. The `yield_now` in `next_client` is enough
-        // to fix #5143, but Tokio doesn't guarantee any behavior when yielding, so
-        // the loop will catch it even if yielding doesn't.
+        // Defense-in-depth around #5143: when an IPC handler panics or otherwise
+        // tears down the pipe and we immediately re-bind, Windows can briefly
+        // return `AccessDenied` because the previous instance hasn't been fully
+        // released yet. Polling on a short cadence is plenty — this typically
+        // clears in tens of milliseconds. The previous 1s sleep was long enough
+        // to make the `panic_inside_handler_doesnt_interrupt_service` unit test
+        // race the test-side reconnect window on the `windows-2025` CI runner.
+        const NUM_ITERS: usize = 100;
+        const RETRY_INTERVAL: Duration = Duration::from_millis(100);
         for i in 0..NUM_ITERS {
             match create_pipe_server(&self.pipe_path) {
                 Ok(server) => return Ok(server),
                 Err(PipeError::AccessDenied) => {
                     tracing::debug!("PipeError::AccessDenied, sleeping... (loop {i})");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(RETRY_INTERVAL).await;
                 }
                 Err(error) => Err(error)?,
             }
