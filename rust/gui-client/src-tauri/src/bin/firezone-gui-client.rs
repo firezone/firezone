@@ -70,10 +70,6 @@ fn try_main(cli: Cli, rt: &Runtime, bootstrap_log_guard: &mut Option<DefaultGuar
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
-    // `Controller` resolves the effective API URL, including MDM overrides, and
-    // initializes GUI telemetry after it receives the Firezone ID from the
-    // Tunnel service over IPC.
-
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {
         fix_log_filter(&mut advanced_settings)?;

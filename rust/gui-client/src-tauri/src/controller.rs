@@ -32,7 +32,6 @@ pub struct Controller<I: GuiIntegration> {
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctrl_tx: mpsc::Sender<ControllerRequest>,
-    firezone_id: String,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -41,8 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
-    telemetry: Option<Telemetry>,
-    telemetry_allowed: bool,
+    telemetry: MaybeTelemetry,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
@@ -175,6 +173,64 @@ enum EventloopTick {
 #[error("Failed to receive hello: {0:#}")]
 pub struct FailedToReceiveHello(anyhow::Error);
 
+/// State of the GUI process' telemetry instance.
+enum MaybeTelemetry {
+    /// Telemetry is allowed and we have the Firezone ID needed to start it.
+    Initialized {
+        telemetry: Telemetry,
+        firezone_id: String,
+    },
+    /// Telemetry has been disabled by the user.
+    Disabled,
+}
+
+impl MaybeTelemetry {
+    fn new(telemetry_allowed: bool, firezone_id: String) -> Self {
+        if telemetry_allowed {
+            Self::Initialized {
+                telemetry: Telemetry::new(),
+                firezone_id,
+            }
+        } else {
+            Self::Disabled
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        matches!(self, Self::Initialized { .. })
+    }
+
+    /// Starts the underlying GUI telemetry instance.
+    ///
+    /// Calling this in tests is a no-op so we don't make real HTTP requests to Sentry.
+    #[cfg_attr(test, allow(clippy::unused_async))]
+    async fn start(&mut self, environment: &str, release: &str) {
+        let Self::Initialized {
+            telemetry,
+            firezone_id,
+        } = self
+        else {
+            return;
+        };
+
+        #[cfg(not(test))]
+        telemetry
+            .start(environment, release, telemetry::GUI_DSN, firezone_id.clone())
+            .await;
+
+        #[cfg(test)]
+        {
+            let _ = (environment, release, telemetry, firezone_id);
+        }
+    }
+
+    async fn stop(&mut self) {
+        if let Self::Initialized { telemetry, .. } = self {
+            telemetry.stop().await;
+        }
+    }
+}
+
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
         socket: SocketId,
@@ -193,12 +249,9 @@ impl<I: GuiIntegration> Controller<I> {
 
         let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        receive_hello(&mut ipc_rx)
+        let firezone_id = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
-        let firezone_id = receive_firezone_id(&mut ipc_rx)
-            .await
-            .context("Failed to receive Firezone ID from tunnel service")?;
 
         let controller = Controller {
             general_settings,
@@ -207,7 +260,6 @@ impl<I: GuiIntegration> Controller<I> {
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
             ctrl_tx,
-            firezone_id,
             ipc_client,
             ipc_rx,
             integration,
@@ -215,8 +267,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
-            telemetry: telemetry_allowed.then(Telemetry::new),
-            telemetry_allowed,
+            telemetry: MaybeTelemetry::new(telemetry_allowed, firezone_id),
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -303,9 +354,7 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::error!("ipc_client: {error:#}");
         }
 
-        if let Some(telemetry) = &mut self.telemetry {
-            telemetry.stop().await;
-        }
+        self.telemetry.stop().await;
 
         Ok(())
     }
@@ -376,26 +425,13 @@ impl<I: GuiIntegration> Controller<I> {
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
-        #[cfg(not(test))]
-        if let Some(telemetry) = &mut self.telemetry {
-            telemetry
-                .start(
-                    &environment,
-                    crate::RELEASE,
-                    telemetry::GUI_DSN,
-                    self.firezone_id.clone(),
-                )
-                .await;
-        }
-
-        #[cfg(test)]
-        let _ = &self.firezone_id;
+        self.telemetry.start(&environment, crate::RELEASE).await;
 
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
         }
 
-        if !self.telemetry_allowed {
+        if !self.telemetry.is_enabled() {
             return Ok(());
         }
 
@@ -701,7 +737,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 return Ok(ControlFlow::Break(()));
             }
-            service::ServerMsg::Hello | service::ServerMsg::FirezoneId { .. } => {}
+            service::ServerMsg::Hello { .. } => {}
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
 
@@ -1000,7 +1036,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 }
 
-async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<()> {
+async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -1011,26 +1047,8 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
         .context("No message received from tunnel service")?
         .context("Failed to receive message from tunnel service")?;
 
-    if !matches!(server_msg, service::ServerMsg::Hello) {
+    let service::ServerMsg::Hello { firezone_id } = server_msg else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
-    }
-
-    Ok(())
-}
-
-async fn receive_firezone_id(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
-    const TIMEOUT: Duration = Duration::from_secs(5);
-
-    let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
-        .await
-        .with_context(|| {
-            format!("Timeout while waiting for Firezone ID from tunnel service for {TIMEOUT:?}")
-        })?
-        .context("No Firezone ID received from tunnel service")?
-        .context("Failed to receive Firezone ID from tunnel service")?;
-
-    let service::ServerMsg::FirezoneId { firezone_id } = server_msg else {
-        bail!("Expected `FirezoneId` from tunnel service but got `{server_msg}`")
     };
 
     Ok(firezone_id)
@@ -1396,9 +1414,8 @@ mod tests {
 
     impl MockTunnel {
         async fn send_hello(&mut self) {
-            self.tx.send(&service::ServerMsg::Hello).await.unwrap();
             self.tx
-                .send(&service::ServerMsg::FirezoneId {
+                .send(&service::ServerMsg::Hello {
                     firezone_id: "test-firezone-id".to_owned(),
                 })
                 .await

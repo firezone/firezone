@@ -83,8 +83,12 @@ where
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
-    Hello,
-    FirezoneId {
+    /// First message sent on every IPC connection.
+    ///
+    /// Includes the Firezone ID so the GUI can use it for telemetry without
+    /// having to read the on-disk file (which is locked-down to System and
+    /// Administrators on Windows).
+    Hello {
         firezone_id: String,
     },
     /// The Tunnel service finished clearing its log dir.
@@ -347,16 +351,11 @@ impl<'a> Handler<'a> {
             .boxed();
 
         ipc_tx
-            .send(&ServerMsg::Hello)
-            .await
-            .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
-
-        ipc_tx
-            .send(&ServerMsg::FirezoneId {
+            .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
             })
             .await
-            .context("Failed to send Firezone ID to GUI process")?;
+            .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
         Ok(Self {
             device_id,
