@@ -163,7 +163,8 @@ fn set_dir_permissions(dir: &Path) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
-    set_windows_dacl(dir, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+    windows_security::SecurityDescriptor::from_sddl(windows_security::DIR_SDDL)?
+        .apply_to_path(dir)
 }
 
 /// Does nothing on other non-Linux systems
@@ -184,17 +185,34 @@ fn set_id_permissions(path: &Path) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn set_id_permissions(path: &Path) -> Result<()> {
-    set_windows_dacl(path, "D:P(A;;FA;;;SY)(A;;FA;;;BA)")
+    windows_security::SecurityDescriptor::from_sddl(windows_security::FILE_SDDL)?
+        .apply_to_path(path)
+}
+
+/// Does nothing on other non-Linux systems
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[expect(clippy::unnecessary_wraps)]
+fn set_id_permissions(_: &Path) -> Result<()> {
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn set_windows_dacl(path: &Path, sddl: &str) -> Result<()> {
-    use anyhow::ensure;
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, ptr};
+mod windows_security {
+    //! Safe wrappers around the Windows security descriptor APIs we need to
+    //! lock down the on-disk Firezone ID.
+    //!
+    //! The intent is to confine all unsafe FFI to this module so that callers
+    //! get a Rust-y interface that upholds Windows' lifetime and ownership
+    //! requirements (`LocalFree` on the buffer returned by
+    //! `ConvertStringSecurityDescriptorToSecurityDescriptorW`, etc.).
+
+    use anyhow::{Context as _, Result, ensure};
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
     use windows::{
         Win32::{
             Foundation::{ERROR_SUCCESS, HLOCAL, LocalFree},
             Security::{
+                ACL,
                 Authorization::{
                     ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
                     SE_FILE_OBJECT, SetNamedSecurityInfoW,
@@ -206,91 +224,132 @@ fn set_windows_dacl(path: &Path, sddl: &str) -> Result<()> {
         core::{BOOL, PCWSTR},
     };
 
-    fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
-        s.as_ref().encode_wide().chain(Some(0)).collect()
+    /// SDDL for the Tunnel service config directory.
+    ///
+    /// `D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)` reads as:
+    /// - `D:P` — set a *protected* DACL (don't inherit ACEs from the parent
+    ///   directory).
+    /// - `A;OICI;FA;;;SY` — *Allow* `Full Access` to `LocalSystem`, with
+    ///   `Object` and `Container` inheritance so child files and dirs inherit
+    ///   the same access.
+    /// - `A;OICI;FA;;;BA` — *Allow* `Full Access` to `BUILTIN\Administrators`,
+    ///   with the same inheritance flags.
+    pub(super) const DIR_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+
+    /// SDDL for the on-disk `firezone-id` file.
+    ///
+    /// `D:P(A;;FA;;;SY)(A;;FA;;;BA)` reads as:
+    /// - `D:P` — set a *protected* DACL.
+    /// - `A;;FA;;;SY` — *Allow* `Full Access` to `LocalSystem`. No inheritance
+    ///   flags are needed since this is a leaf file.
+    /// - `A;;FA;;;BA` — *Allow* `Full Access` to `BUILTIN\Administrators`.
+    pub(super) const FILE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
+
+    /// Owned wrapper around a `PSECURITY_DESCRIPTOR` that was allocated by
+    /// `ConvertStringSecurityDescriptorToSecurityDescriptorW`.
+    ///
+    /// The only constructor, [`Self::from_sddl`], guarantees that the inner
+    /// pointer was returned by that API. This upholds the safety invariant of
+    /// the [`Drop`] impl, which calls `LocalFree`.
+    pub(super) struct SecurityDescriptor(PSECURITY_DESCRIPTOR);
+
+    impl SecurityDescriptor {
+        /// Parses an SDDL string into an owned security descriptor.
+        ///
+        /// See [SDDL for Conditional ACEs](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptor-string-format).
+        pub(super) fn from_sddl(sddl: &str) -> Result<Self> {
+            let sddl = wide(sddl);
+            let mut descriptor = PSECURITY_DESCRIPTOR::default();
+
+            // SAFETY: `sddl` is null-terminated by `wide` and `&mut descriptor`
+            // is a valid out-pointer to a stack-allocated value. On success,
+            // `descriptor` is set to a buffer that we own and that will be
+            // released by our `Drop` impl.
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    PCWSTR(sddl.as_ptr()),
+                    SDDL_REVISION_1,
+                    &mut descriptor,
+                    None,
+                )
+            }
+            .context("Failed to build Windows security descriptor from SDDL")?;
+
+            Ok(Self(descriptor))
+        }
+
+        /// Applies this security descriptor's DACL to the named file or
+        /// directory, replacing any inherited ACEs.
+        pub(super) fn apply_to_path(&self, path: &Path) -> Result<()> {
+            let dacl = self.dacl()?;
+            let path_wide = wide(path.as_os_str());
+            let security_info = DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION;
+
+            // SAFETY: `path_wide` is null-terminated, `dacl` borrows from
+            // `self`'s buffer (which lives for this call), and Windows does not
+            // retain any of these pointers after the call returns.
+            let err = unsafe {
+                SetNamedSecurityInfoW(
+                    PCWSTR(path_wide.as_ptr()),
+                    SE_FILE_OBJECT,
+                    security_info,
+                    None,
+                    None,
+                    Some(dacl),
+                    None,
+                )
+            };
+
+            if err != ERROR_SUCCESS {
+                return Err(std::io::Error::from_raw_os_error(err.0 as i32)).with_context(|| {
+                    format!("Failed to set Windows DACL on `{}`", path.display())
+                });
+            }
+
+            Ok(())
+        }
+
+        fn dacl(&self) -> Result<*const ACL> {
+            let mut dacl_present = BOOL::default();
+            let mut dacl_defaulted = BOOL::default();
+            let mut dacl: *mut ACL = ptr::null_mut();
+
+            // SAFETY: `self.0` is a valid security descriptor (only constructed
+            // via `from_sddl`). The other arguments are valid out-pointers into
+            // local variables.
+            unsafe {
+                GetSecurityDescriptorDacl(
+                    self.0,
+                    &mut dacl_present,
+                    &mut dacl,
+                    &mut dacl_defaulted,
+                )
+            }
+            .context("Failed to get DACL from Windows security descriptor")?;
+
+            ensure!(
+                dacl_present.as_bool(),
+                "Windows security descriptor has no DACL"
+            );
+
+            Ok(dacl)
+        }
     }
 
-    struct LocalSecurityDescriptor(PSECURITY_DESCRIPTOR);
-
-    impl Drop for LocalSecurityDescriptor {
+    impl Drop for SecurityDescriptor {
         fn drop(&mut self) {
-            // SAFETY: The security descriptor was allocated by
-            // `ConvertStringSecurityDescriptorToSecurityDescriptorW` and must be
-            // released with `LocalFree`.
+            // SAFETY: `self.0` was allocated by
+            // `ConvertStringSecurityDescriptorToSecurityDescriptorW` (the only
+            // constructor of `Self`) and must be released with `LocalFree`.
             unsafe {
                 LocalFree(Some(HLOCAL(self.0.0)));
             }
         }
     }
 
-    let mut security_descriptor = PSECURITY_DESCRIPTOR::default();
-    let sddl = wide(sddl);
-
-    // SAFETY: The SDDL string is null-terminated and the output pointer is valid
-    // for the duration of this call.
-    unsafe {
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            PCWSTR(sddl.as_ptr()),
-            SDDL_REVISION_1,
-            &mut security_descriptor,
-            None,
-        )
+    fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
+        s.as_ref().encode_wide().chain(Some(0)).collect()
     }
-    .context("Failed to build Windows security descriptor from SDDL")?;
-
-    let security_descriptor = LocalSecurityDescriptor(security_descriptor);
-
-    let mut dacl_present = BOOL::default();
-    let mut dacl_defaulted = BOOL::default();
-    let mut dacl = ptr::null_mut();
-
-    // SAFETY: The security descriptor is valid and the output pointers are local
-    // variables that live for the duration of the call.
-    unsafe {
-        GetSecurityDescriptorDacl(
-            security_descriptor.0,
-            &mut dacl_present,
-            &mut dacl,
-            &mut dacl_defaulted,
-        )
-    }
-    .context("Failed to get DACL from Windows security descriptor")?;
-
-    ensure!(
-        dacl_present.as_bool(),
-        "Windows security descriptor has no DACL"
-    );
-
-    let path = wide(path.as_os_str());
-    let security_info = DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION;
-
-    // SAFETY: The path is null-terminated, the DACL comes from a valid security
-    // descriptor, and Windows does not retain these pointers after the call.
-    let err = unsafe {
-        SetNamedSecurityInfoW(
-            PCWSTR(path.as_ptr()),
-            SE_FILE_OBJECT,
-            security_info,
-            None,
-            None,
-            Some(dacl),
-            None,
-        )
-    };
-
-    if err != ERROR_SUCCESS {
-        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
-            .with_context(|| "Failed to set Windows DACL");
-    }
-
-    Ok(())
-}
-
-/// Does nothing on other non-Linux systems
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
-#[expect(clippy::unnecessary_wraps)]
-fn set_id_permissions(_: &Path) -> Result<()> {
-    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -371,5 +430,79 @@ mod tests {
         let id = compute_from_hardware_id(CLIENT_APP_ID).unwrap();
 
         assert!(!id.id.is_empty())
+    }
+
+    #[cfg(target_os = "windows")]
+    mod windows {
+        use super::super::windows_security::{DIR_SDDL, FILE_SDDL, SecurityDescriptor};
+        use tempfile::tempdir;
+
+        /// Permissive DACL we use in tests that need to actually apply a
+        /// security descriptor. Granting Full Access to `WD` (Everyone) keeps
+        /// the temp dir/file deletable by the test process during cleanup,
+        /// regardless of whether tests run as Administrator.
+        const PERMISSIVE_SDDL: &str = "D:(A;;FA;;;WD)";
+
+        #[test]
+        fn parse_dir_sddl_does_not_crash() {
+            // Exercises `ConvertStringSecurityDescriptorToSecurityDescriptorW`
+            // and the `Drop` impl that calls `LocalFree`.
+            SecurityDescriptor::from_sddl(DIR_SDDL).unwrap();
+        }
+
+        #[test]
+        fn parse_file_sddl_does_not_crash() {
+            SecurityDescriptor::from_sddl(FILE_SDDL).unwrap();
+        }
+
+        #[test]
+        fn parse_invalid_sddl_returns_err() {
+            // We accept anything that isn't valid SDDL: arbitrary garbage or
+            // empty strings.
+            assert!(SecurityDescriptor::from_sddl("not a valid SDDL").is_err());
+            assert!(SecurityDescriptor::from_sddl("").is_err());
+        }
+
+        #[test]
+        fn apply_dacl_to_temp_dir() {
+            let dir = tempdir().unwrap();
+
+            SecurityDescriptor::from_sddl(PERMISSIVE_SDDL)
+                .unwrap()
+                .apply_to_path(dir.path())
+                .unwrap();
+        }
+
+        #[test]
+        fn apply_dacl_to_temp_file() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("firezone-id");
+            std::fs::write(&path, "{}").unwrap();
+
+            SecurityDescriptor::from_sddl(PERMISSIVE_SDDL)
+                .unwrap()
+                .apply_to_path(&path)
+                .unwrap();
+        }
+
+        #[test]
+        fn apply_dacl_to_missing_path_returns_err() {
+            let dir = tempdir().unwrap();
+            let missing = dir.path().join("does-not-exist");
+
+            let result = SecurityDescriptor::from_sddl(PERMISSIVE_SDDL)
+                .unwrap()
+                .apply_to_path(&missing);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn dropping_many_security_descriptors_does_not_crash() {
+            // Hammer `Drop` to surface any double-free or use-after-free.
+            for _ in 0..1024 {
+                let _ = SecurityDescriptor::from_sddl(DIR_SDDL).unwrap();
+                let _ = SecurityDescriptor::from_sddl(FILE_SDDL).unwrap();
+            }
+        }
     }
 }
