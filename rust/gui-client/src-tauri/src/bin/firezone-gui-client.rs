@@ -60,6 +60,13 @@ fn try_main(
         dialog::error("Dialogs are working!")?;
     }
 
+    let fake_controller = matches!(
+        cli.command,
+        Some(Cmd::Debug {
+            command: DebugCommand::FakeController
+        })
+    );
+
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,
@@ -70,6 +77,7 @@ fn try_main(
         no_deep_links: cli.no_deep_links,
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
+        fake_controller,
     };
 
     let mut advanced_settings =
@@ -127,8 +135,13 @@ fn try_main(
                 return Err(error.into());
             }
         },
-        None | Some(Cmd::Elevated) => {
-            // Fall-through to running the GUI if elevation check should be bypassed.
+        None
+        | Some(Cmd::Elevated)
+        | Some(Cmd::Debug {
+            command: DebugCommand::FakeController,
+        }) => {
+            // Fall-through to running the GUI if elevation check should be bypassed,
+            // or if we're in fake-controller demo mode.
         }
 
         // All commands below _don't_ end up running the GUI because they return early.
@@ -315,6 +328,9 @@ enum Cmd {
 
 #[derive(clap::Subcommand)]
 enum DebugCommand {
+    /// Run the GUI with a hardcoded fake tunnel state, for iterating on the
+    /// system tray UI without needing the tunnel service or a live portal.
+    FakeController,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
 }
