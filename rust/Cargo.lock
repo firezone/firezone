@@ -2319,7 +2319,7 @@ dependencies = [
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
- "png 0.17.16",
+ "png 0.18.1",
  "rand 0.8.5",
  "reqwest 0.13.3",
  "rustls",
