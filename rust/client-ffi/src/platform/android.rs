@@ -1,4 +1,7 @@
 use std::time::Duration;
+
+use jni::JNIEnv;
+use jni::objects::{JClass, JObject};
 use telemetry::Dsn;
 
 mod make_writer;
@@ -18,3 +21,27 @@ pub const DSN: Dsn = telemetry::ANDROID_DSN;
 
 pub(crate) use make_writer::MakeWriter;
 pub(crate) use tun::Tun;
+
+/// JNI entrypoint that wires `rustls-platform-verifier` to the Android runtime.
+///
+/// `reqwest` (and through it Sentry) defers TLS certificate verification to
+/// `rustls-platform-verifier`, which on Android needs a `JavaVM` + `Context`
+/// to call into the JVM's `X509TrustManagerFactory`. Other platforms self-init
+/// from native APIs; Android must be told. Without this, the first TLS handshake
+/// panics with `Expect rustls-platform-verifier to be initialized`.
+///
+/// Called once from `FirezoneApp.onCreate`, after `System.loadLibrary("connlib")`.
+#[unsafe(no_mangle)]
+extern "system" fn Java_dev_firezone_android_core_FirezoneApp_initRustlsPlatformVerifier(
+    mut env: JNIEnv,
+    _class: JClass,
+    context: JObject,
+) {
+    if let Err(err) = rustls_platform_verifier::android::init_with_env(&mut env, context) {
+        let _ = env.throw_new(
+            "java/lang/IllegalStateException",
+            format!("rustls-platform-verifier init failed; later TLS handshakes may fail: {err}"),
+        );
+        return;
+    }
+}
