@@ -12,6 +12,8 @@ defmodule PortalWeb.OIDCController do
   require Logger
 
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
+  @unverified_email_sign_in_error "Your identity provider did not confirm that your email address is verified. Please verify your email with the identity provider or contact your administrator."
+  @unverified_email_verification_error "This provider requires verified email addresses, but the identity provider did not return email_verified=true for your account."
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -253,9 +255,8 @@ defmodule PortalWeb.OIDCController do
     email_claim = Map.get(provider, :email_claim)
 
     with {:ok, identity_profile} <-
-           IdentityProfile.build(claims, userinfo, account.id, email_claim: email_claim) do
-      maybe_log_unverified_email(account, identity_profile)
-
+           IdentityProfile.build(claims, userinfo, account.id, email_claim: email_claim),
+         :ok <- enforce_verified_email(account, provider, identity_profile) do
       Database.upsert_identity(
         account.id,
         identity_profile.email,
@@ -266,17 +267,14 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp maybe_log_unverified_email(_account, %{email_verified: true}), do: :ok
+  defp enforce_verified_email(_account, %{require_email_verified: true}, %{email_verified: true}),
+    do: :ok
 
-  defp maybe_log_unverified_email(account, %{email_verified: false, issuer: issuer}) do
-    # In production, admins should hopefully ensure emails are verified.
-    # If this does not occur regularly we might consider enforcing it in the future.
-    Logger.info("OIDC identity email not verified",
-      account_id: account.id,
-      account_slug: account.slug,
-      issuer: issuer
-    )
+  defp enforce_verified_email(_account, %{require_email_verified: true}, %{email_verified: false}) do
+    {:error, :email_not_verified}
   end
+
+  defp enforce_verified_email(_account, _provider, _identity_profile), do: :ok
 
   defp check_admin(
          %Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_admin_user}},
@@ -435,6 +433,10 @@ defmodule PortalWeb.OIDCController do
     redirect_with_error_context(conn, error)
   end
 
+  defp handle_error(conn, {:error, :email_not_verified}) do
+    redirect_with_error_context(conn, @unverified_email_sign_in_error)
+  end
+
   defp handle_error(conn, {:error, :invalid_callback_params}) do
     error = "Invalid sign-in request. Please try again."
     redirect_with_error_context(conn, error)
@@ -518,20 +520,60 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
-  defp verify_oidc_callback({:ok, %{config: config, verifier: verifier}}, code, lv_pid_string) do
-    case PortalWeb.OIDC.verify_callback(config, code, verifier) do
-      {:ok, claims} ->
-        %{ok: true, issuer: claims["iss"], lv_pid: lv_pid_string}
-
+  defp verify_oidc_callback({:ok, %{config: config, verifier: verifier} = pending}, code, lv_pid_string) do
+    with {:ok, claims, userinfo_result} <- PortalWeb.OIDC.verify_callback(config, code, verifier),
+         :ok <- verify_email_verified_claim(pending, claims, userinfo_result) do
+      %{
+        ok: true,
+        issuer: claims["iss"],
+        lv_pid: lv_pid_string,
+        verification_ref: pending[:verification_ref]
+      }
+    else
       {:error, reason} ->
-        Logger.warning("OIDC verification failed", reason: inspect(reason))
-        %{ok: false, error: verification_error_message(reason), lv_pid: lv_pid_string}
+        maybe_log_verification_error(reason)
+
+        %{
+          ok: false,
+          error: verification_error_message(reason),
+          lv_pid: lv_pid_string
+        }
     end
   end
 
   defp verify_oidc_callback({:error, reason}, _code, lv_pid_string) do
     %{ok: false, error: pending_verification_error_message(reason), lv_pid: lv_pid_string}
   end
+
+  defp verify_email_verified_claim(
+         %{require_email_verified: true},
+         %{"email_verified" => true},
+         _userinfo_result
+       ) do
+    :ok
+  end
+
+  defp verify_email_verified_claim(
+         %{require_email_verified: true},
+         %{"email_verified" => _value},
+         _userinfo_result
+       ) do
+    {:error, :email_not_verified}
+  end
+
+  defp verify_email_verified_claim(%{require_email_verified: true}, claims, {:ok, userinfo}) do
+    if PortalWeb.OIDC.email_verified?(claims, userinfo) do
+      :ok
+    else
+      {:error, :email_not_verified}
+    end
+  end
+
+  defp verify_email_verified_claim(%{require_email_verified: true}, _claims, {:error, reason}) do
+    {:error, reason}
+  end
+
+  defp verify_email_verified_claim(_pending, _claims, _userinfo_result), do: :ok
 
   defp request_pending_verification(nil), do: {:error, :no_pid}
 
@@ -555,6 +597,12 @@ defmodule PortalWeb.OIDCController do
     "Unable to load verification session. Please retry verification."
   end
 
+  defp maybe_log_verification_error(:email_not_verified), do: :ok
+
+  defp maybe_log_verification_error(reason) do
+    Logger.warning("OIDC verification failed", reason: inspect(reason))
+  end
+
   defp verification_error_message(%Req.TransportError{reason: reason}) do
     identity_provider_transport_error_message(reason)
   end
@@ -565,6 +613,10 @@ defmodule PortalWeb.OIDCController do
 
   defp verification_error_message({:invalid_jwt, _reason}) do
     "Unable to verify your identity token. Please try again."
+  end
+
+  defp verification_error_message(:email_not_verified) do
+    @unverified_email_verification_error
   end
 
   defp verification_error_message(_reason) do

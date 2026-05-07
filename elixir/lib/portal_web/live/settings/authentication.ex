@@ -43,7 +43,8 @@ defmodule PortalWeb.Settings.Authentication do
     Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
-      @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified is_legacy]a
+      @common_fields ++
+        ~w[discovery_document_uri client_id client_secret require_email_verified is_verified is_legacy]a
   }
 
   def mount(_params, _session, socket) do
@@ -64,7 +65,12 @@ defmodule PortalWeb.Settings.Authentication do
     attrs = %{id: Ecto.UUID.generate()}
     changeset = changeset(struct, attrs, socket)
 
-    {:noreply, assign(socket, type: type, form: to_form(changeset), open_provider_actions_id: nil)}
+    socket =
+      socket
+      |> clear_verification_state()
+      |> assign(type: type, form: to_form(changeset), open_provider_actions_id: nil)
+
+    {:noreply, socket}
   end
 
   # Edit Auth Provider
@@ -82,7 +88,9 @@ defmodule PortalWeb.Settings.Authentication do
     changeset = changeset(provider, %{is_verified: not is_legacy}, socket)
 
     {:noreply,
-     assign(socket,
+     socket
+     |> clear_verification_state()
+     |> assign(
        provider_name: provider.name,
        type: type,
        form: to_form(changeset),
@@ -93,7 +101,7 @@ defmodule PortalWeb.Settings.Authentication do
 
   # Default handler
   def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+    {:noreply, clear_verification_state(socket)}
   end
 
   def handle_event("close_panel", _params, socket) do
@@ -110,13 +118,14 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   def handle_event("validate", %{"auth_provider" => attrs}, socket) do
+    previous_changeset = socket.assigns.form.source
     # Get the original struct (the data field contains the original provider)
-    original_struct = socket.assigns.form.source.data
+    original_struct = previous_changeset.data
 
     # Preserve is_verified and issuer from the current changeset
     # is_verified is virtual, issuer gets set during verification
-    current_is_verified = get_field(socket.assigns.form.source, :is_verified)
-    current_issuer = get_field(socket.assigns.form.source, :issuer)
+    current_is_verified = get_field(previous_changeset, :is_verified)
+    current_issuer = get_field(previous_changeset, :issuer)
 
     attrs =
       attrs
@@ -126,10 +135,20 @@ defmodule PortalWeb.Settings.Authentication do
     changeset =
       original_struct
       |> changeset(attrs, socket)
-      |> clear_verification_if_trigger_fields_changed()
+
+    clear_verification? = verification_trigger_fields_changed?(previous_changeset, changeset)
+
+    changeset =
+      changeset
+      |> clear_verification_if_trigger_fields_changed(clear_verification?)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, form: to_form(changeset))}
+    socket =
+      socket
+      |> maybe_clear_verification_state(clear_verification?)
+      |> assign(form: to_form(changeset))
+
+    {:noreply, socket}
   end
 
   def handle_event("start_verification", _params, socket) do
@@ -159,7 +178,13 @@ defmodule PortalWeb.Settings.Authentication do
          {:ok, uri} <- PortalWeb.OIDC.build_verification_uri(type, config, verifier, state_token) do
       socket =
         assign(socket,
-          pending_verification: %{config: config, verifier: verifier}
+          active_verification: nil,
+          pending_verification: %{
+            config: config,
+            verification_ref: Ecto.UUID.generate(),
+            verifier: verifier,
+            require_email_verified: type == "oidc" and get_field(changeset, :require_email_verified) == true
+          }
         )
 
       {:noreply, push_event(socket, "open_url", %{url: uri})}
@@ -338,25 +363,37 @@ defmodule PortalWeb.Settings.Authentication do
 
   # Sent by VerificationController/OIDCController to fetch config+verifier for code exchange
   def handle_info({:get_pending_verification, from}, socket) do
-    send(from, {:pending_verification, socket.assigns[:pending_verification]})
-    {:noreply, assign(socket, pending_verification: nil)}
+    pending_verification = socket.assigns[:pending_verification]
+    send(from, {:pending_verification, pending_verification})
+
+    socket =
+      case pending_verification do
+        nil ->
+          assign(socket, pending_verification: nil)
+
+        pending_verification ->
+          assign(socket, pending_verification: nil, active_verification: pending_verification)
+      end
+
+    {:noreply, socket}
   end
 
   # Sent directly by the OIDC verification controller after code exchange succeeds
-  def handle_info({:oidc_verify_complete, issuer, ack_to}, socket) do
-    attrs = %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
+  def handle_info({:oidc_verify_complete, issuer, verification_ref, ack_to}, socket) do
+    if active_verification?(socket, verification_ref) do
+      attrs = %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
 
-    changeset =
-      socket.assigns.form.source
-      |> apply_changes()
-      |> changeset(attrs, socket)
+      changeset =
+        socket.assigns.form.source
+        |> apply_changes()
+        |> changeset(attrs, socket)
 
-    maybe_send_verification_ack(ack_to)
-    {:noreply, assign(socket, form: to_form(changeset))}
-  end
-
-  def handle_info({:oidc_verify_complete, issuer}, socket) do
-    handle_info({:oidc_verify_complete, issuer, nil}, socket)
+      maybe_send_verification_ack(ack_to)
+      {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
   end
 
   # Sent directly by the OIDC verification controller when code exchange fails
@@ -398,6 +435,28 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp maybe_send_verification_ack(_), do: :ok
+
+  defp active_verification?(socket, verification_ref) do
+    case socket.assigns[:active_verification] do
+      %{verification_ref: ^verification_ref} when is_binary(verification_ref) ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp maybe_clear_verification_state(socket, true) do
+    clear_verification_state(socket)
+  end
+
+  defp maybe_clear_verification_state(socket, false) do
+    socket
+  end
+
+  defp clear_verification_state(socket) do
+    assign(socket, pending_verification: nil, active_verification: nil)
+  end
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
   defp format_verification_error_reason(reason), do: inspect(reason)
@@ -446,24 +505,38 @@ defmodule PortalWeb.Settings.Authentication do
     "Failed to start verification."
   end
 
-  defp clear_verification_if_trigger_fields_changed(changeset) do
+  defp clear_verification_if_trigger_fields_changed(changeset, true) do
+    put_change(changeset, :is_verified, false)
+  end
+
+  defp clear_verification_if_trigger_fields_changed(changeset, false) do
+    changeset
+  end
+
+  defp verification_trigger_fields_changed?(previous_changeset, changeset) do
+    fields = verification_trigger_fields(changeset)
+
+    Enum.any?(fields, fn field ->
+      get_field(previous_changeset, field) != get_field(changeset, field)
+    end)
+  end
+
+  defp verification_trigger_fields(changeset) do
     schema = changeset.data.__struct__
 
     # Provider-specific trigger fields:
     # - Okta: okta_domain is user-editable, discovery_document_uri is computed from it
     # - OIDC: discovery_document_uri is user-editable
     # - Google/Entra: no user-editable OIDC config fields
-    fields =
-      case schema do
-        Okta.AuthProvider -> [:client_id, :client_secret, :okta_domain]
-        OIDC.AuthProvider -> [:client_id, :client_secret, :discovery_document_uri]
-        _ -> []
-      end
+    case schema do
+      Okta.AuthProvider ->
+        [:client_id, :client_secret, :okta_domain]
 
-    if Enum.any?(fields, &get_change(changeset, &1)) do
-      put_change(changeset, :is_verified, false)
-    else
-      changeset
+      OIDC.AuthProvider ->
+        [:client_id, :client_secret, :discovery_document_uri, :require_email_verified]
+
+      _ ->
+        []
     end
   end
 
@@ -1276,6 +1349,18 @@ defmodule PortalWeb.Settings.Authentication do
                 required
               />
             </div>
+          </div>
+
+          <div :if={@type == "oidc"}>
+            <.input
+              field={@form[:require_email_verified]}
+              type="checkbox"
+              label="Require verified email"
+              unchecked_value="false"
+            />
+            <p class="mt-1 ml-7 text-xs text-[var(--text-tertiary)]">
+              Enforces the email_verified claim to be true on sign in.
+            </p>
           </div>
 
           <%!-- Redirect URI --%>

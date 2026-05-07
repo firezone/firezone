@@ -17,7 +17,8 @@ defmodule Portal.OIDC.AuthProviderTest do
         :client_secret,
         :discovery_document_uri,
         :issuer,
-        :is_verified
+        :is_verified,
+        :require_email_verified
       ]
     )
     |> AuthProvider.changeset()
@@ -128,6 +129,15 @@ defmodule Portal.OIDC.AuthProviderTest do
     test "rejects issuer exceeding maximum length" do
       changeset = build_changeset(%{issuer: String.duplicate("a", 2001)})
       assert %{issuer: ["should be at most 2000 character(s)"]} = errors_on(changeset)
+    end
+
+    test "defaults require_email_verified to true" do
+      assert %AuthProvider{require_email_verified: true} = %AuthProvider{}
+    end
+
+    test "allows disabling require_email_verified" do
+      provider = oidc_provider_fixture(require_email_verified: false)
+      refute provider.require_email_verified
     end
   end
 end
