@@ -451,8 +451,9 @@ mod tests {
 
         #[test]
         fn parse_invalid_sddl_returns_err() {
+            // Empty strings *do* parse successfully on Windows (they yield a
+            // descriptor with no DACL/SACL set), so we only assert on garbage.
             assert!(SecurityDescriptor::from_sddl("not a valid SDDL").is_err());
-            assert!(SecurityDescriptor::from_sddl("").is_err());
         }
 
         #[test]
