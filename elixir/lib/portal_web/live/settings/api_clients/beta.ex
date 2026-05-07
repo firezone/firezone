@@ -56,6 +56,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
                   navigate={"#{@api_url}/swaggerui"}
                   class="text-[var(--brand)] hover:underline"
                   target="_blank"
+                  rel="noopener noreferrer"
                 >REST API</.link>.
               </p>
             </div>

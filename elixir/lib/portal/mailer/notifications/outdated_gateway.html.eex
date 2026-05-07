@@ -74,7 +74,7 @@
                     The latest Firezone Gateway release is: <span style="font-weight: 600"><%= @latest_version %></span>
                   </p>
                   <p style="margin: 0; line-height: 24px">
-                    <a href="https://www.firezone.dev/changelog?tab=gateway" target="_blank">See what's changed in this release</a>.
+                    <a href="https://www.firezone.dev/changelog?tab=gateway" target="_blank" rel="noopener noreferrer">See what's changed in this release</a>.
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px;">
@@ -101,8 +101,8 @@
                   <%= if @incompatible_client_count > 0 do %>
                   <p style="margin: 0; line-height: 24px;">
                     <span style="font-weight: 600; color: #6b6b6b">WARNING:</span>
-                    <span style="font-weight: 600"><a href="<%= @outdated_clients_url %>" target="_blank"><%= @incompatible_client_count %> recently connected client(s)</a> are not compatible</span> with the latest Gateway version. We recommend upgrading these clients before upgrading the Gateways to prevent loss of connectivity.
-                    <a href="<%= @outdated_clients_url %>" target="_blank">See all outdated clients</a> in your account.
+                    <span style="font-weight: 600"><a href="<%= @outdated_clients_url %>" target="_blank" rel="noopener noreferrer"><%= @incompatible_client_count %> recently connected client(s)</a> are not compatible</span> with the latest Gateway version. We recommend upgrading these clients before upgrading the Gateways to prevent loss of connectivity.
+                    <a href="<%= @outdated_clients_url %>" target="_blank" rel="noopener noreferrer">See all outdated clients</a> in your account.
                   </p>
                   <p style="margin: 0; line-height: 24px; margin-top: 16px;">
                     <a href="https://www.firezone.dev/kb/administer/upgrading#version-compatibility">Read more</a> about version compatibility in Firezone.
