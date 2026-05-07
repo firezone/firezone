@@ -106,6 +106,94 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
     end
   end
 
+  describe "build/4 email_verified" do
+    test "requires boolean true from claims or userinfo" do
+      claims =
+        @valid_claims
+        |> Map.put("email_verified", "true")
+
+      assert {:ok, profile} = IdentityProfile.build(claims, %{}, @account_id)
+      refute profile.email_verified
+
+      claims = Map.delete(@valid_claims, "email_verified")
+      userinfo = %{
+        "sub" => @valid_claims["sub"],
+        "email" => @valid_claims["email"],
+        "email_verified" => "true"
+      }
+
+      assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
+      refute profile.email_verified
+
+      userinfo = %{
+        "sub" => @valid_claims["sub"],
+        "email" => @valid_claims["email"],
+        "email_verified" => true
+      }
+
+      assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
+      assert profile.email_verified
+    end
+
+    test "does not trust userinfo when ID token email_verified is non-boolean" do
+      claims =
+        @valid_claims
+        |> Map.put("email_verified", "false")
+
+      assert {:ok, profile} =
+               IdentityProfile.build(
+                 claims,
+                 %{
+                   "sub" => @valid_claims["sub"],
+                   "email" => @valid_claims["email"],
+                   "email_verified" => true
+                 },
+                 @account_id
+               )
+
+      refute profile.email_verified
+    end
+
+    test "does not trust userinfo email_verified when subjects differ" do
+      claims = Map.delete(@valid_claims, "email_verified")
+
+      userinfo = %{
+        "sub" => "different-subject",
+        "email" => @valid_claims["email"],
+        "email_verified" => true
+      }
+
+      assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
+      refute profile.email_verified
+    end
+
+    test "trusts userinfo email_verified when userinfo omits email and subject matches" do
+      claims = Map.delete(@valid_claims, "email_verified")
+
+      userinfo = %{
+        "sub" => @valid_claims["sub"],
+        "email_verified" => true
+      }
+
+      assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
+      assert profile.email_verified
+    end
+
+    test "ignores profile attrs from mismatched userinfo" do
+      userinfo = %{
+        "sub" => "different-subject",
+        "email" => @valid_claims["email"],
+        "email_verified" => true,
+        "name" => "Different User"
+      }
+
+      assert {:ok, profile} = IdentityProfile.build(@valid_claims, userinfo, @account_id)
+
+      assert profile.email_verified
+      assert profile.profile_attrs["name"] == @valid_claims["name"]
+    end
+  end
+
   defp errors_on(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
       Regex.replace(~r"%{(\w+)}", message, fn _, key ->
