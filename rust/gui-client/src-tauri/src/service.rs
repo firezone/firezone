@@ -637,7 +637,7 @@ impl<'a> Handler<'a> {
                 if !no_telemetry {
                     self.telemetry
                         .start(&environment, &release, telemetry::GUI_DSN);
-                    Telemetry::set_firezone_id(self.device_id.id.clone());
+                    Telemetry::set_firezone_id(self.device_id.id.clone()).await;
 
                     otel::install_sentry_meter_provider(
                         env!("CARGO_PKG_NAME"),

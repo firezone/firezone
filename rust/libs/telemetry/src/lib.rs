@@ -318,7 +318,7 @@ impl Telemetry {
     }
 
     /// Attaches the Firezone ID to the active Sentry session.
-    pub fn set_firezone_id(firezone_id: String) {
+    pub async fn set_firezone_id(firezone_id: String) {
         let new_user = compute_user(firezone_id);
         update_user(|user| {
             user.id = new_user.id;
@@ -327,9 +327,7 @@ impl Telemetry {
 
         // In case user and env are now available, re-eval feature-flags.
         if let (Some(id), Some(env)) = (Self::current_user(), Self::current_env()) {
-            tokio::spawn(async move {
-                feature_flags::evaluate_now(id, env).await;
-            });
+            feature_flags::evaluate_now(id, env).await;
         }
     }
 
@@ -587,7 +585,7 @@ mod tests {
         let mut telemetry = Telemetry::new();
         telemetry.start("entrypoint", "1.0.0", TESTING);
 
-        Telemetry::set_firezone_id("device-abc".to_owned());
+        Telemetry::set_firezone_id("device-abc".to_owned()).await;
 
         assert_eq!(Telemetry::current_user().as_deref(), Some("device-abc"));
     }
@@ -601,7 +599,7 @@ mod tests {
         telemetry.start("entrypoint", "1.0.0", TESTING);
 
         Telemetry::set_account_slug("acme".to_owned());
-        Telemetry::set_firezone_id("device-xyz".to_owned());
+        Telemetry::set_firezone_id("device-xyz".to_owned()).await;
 
         assert_eq!(Telemetry::current_user().as_deref(), Some("device-xyz"));
         assert_eq!(Telemetry::current_account_slug().as_deref(), Some("acme"));

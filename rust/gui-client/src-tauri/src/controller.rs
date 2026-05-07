@@ -195,13 +195,7 @@ impl<I: GuiIntegration> Controller<I> {
             .await
             .map_err(FailedToReceiveHello)?;
 
-        // Attach the Firezone ID to the running Sentry session. The session
-        // itself was started in `fn main` (entrypoint) and switched to the real
-        // env in `try_main`; we just bind the user here.
-        #[cfg(not(test))]
-        Telemetry::set_firezone_id(firezone_id);
-        #[cfg(test)]
-        let _ = firezone_id;
+        Telemetry::set_firezone_id(firezone_id).await;
 
         let controller = Controller {
             general_settings,

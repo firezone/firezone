@@ -487,7 +487,7 @@ fn connect(
 
     let mut telemetry = Telemetry::new();
     telemetry.start(&api_url, RELEASE, platform::DSN);
-    Telemetry::set_firezone_id(device_id.clone());
+    runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
     otel::install_sentry_meter_provider(platform::COMPONENT, platform::VERSION, device_id.clone());
