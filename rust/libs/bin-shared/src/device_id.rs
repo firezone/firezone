@@ -163,8 +163,7 @@ fn set_dir_permissions(dir: &Path) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
-    windows_security::SecurityDescriptor::from_sddl(windows_security::DIR_SDDL)?
-        .apply_to_path(dir)
+    windows_security::SecurityDescriptor::from_sddl(windows_security::DIR_SDDL)?.apply_to_path(dir)
 }
 
 /// Does nothing on other non-Linux systems
@@ -318,12 +317,7 @@ mod windows_security {
             // via `from_sddl`). The other arguments are valid out-pointers into
             // local variables.
             unsafe {
-                GetSecurityDescriptorDacl(
-                    self.0,
-                    &mut dacl_present,
-                    &mut dacl,
-                    &mut dacl_defaulted,
-                )
+                GetSecurityDescriptorDacl(self.0, &mut dacl_present, &mut dacl, &mut dacl_defaulted)
             }
             .context("Failed to get DACL from Windows security descriptor")?;
 
@@ -457,8 +451,6 @@ mod tests {
 
         #[test]
         fn parse_invalid_sddl_returns_err() {
-            // We accept anything that isn't valid SDDL: arbitrary garbage or
-            // empty strings.
             assert!(SecurityDescriptor::from_sddl("not a valid SDDL").is_err());
             assert!(SecurityDescriptor::from_sddl("").is_err());
         }
