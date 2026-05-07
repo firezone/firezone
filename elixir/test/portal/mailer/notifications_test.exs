@@ -48,7 +48,7 @@ defmodule Portal.Mailer.NotificationsTest do
       assert email_body.html_body =~ gateway_2.name
 
       assert email_body.html_body =~
-               "/#{account.id}/clients?clients_order_by=latest_session%3Aasc%3Aversion\" target=\"_blank\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
+               "/#{account.id}/clients?clients_order_by=latest_session%3Aasc%3Aversion\" target=\"_blank\" rel=\"noopener noreferrer\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
 
       assert email_body.html_body =~ "See all outdated clients"
     end

@@ -16,6 +16,7 @@ defmodule PortalWeb.NavigationComponents do
         <a
           target="_blank"
           href="https://www.firezone.dev/kb?utm_source=product"
+          rel="noopener noreferrer"
           class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hidden md:block"
         >
           Docs
@@ -23,6 +24,7 @@ defmodule PortalWeb.NavigationComponents do
         <a
           target="_blank"
           href="https://firezone.statuspage.io"
+          rel="noopener noreferrer"
           class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hidden md:block"
         >
           Status
@@ -637,6 +639,7 @@ defmodule PortalWeb.NavigationComponents do
       href={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
       class={link_style()}
       target="_blank"
+      rel="noopener noreferrer"
       {@rest}
     >
       {render_slot(@inner_block)}
@@ -661,6 +664,7 @@ defmodule PortalWeb.NavigationComponents do
       title="View documentation for this page"
       href={"https://www.firezone.dev/kb#{@path}?utm_source=product##{@fragment}"}
       target="_blank"
+      rel="noopener noreferrer"
       {@rest}
     >
       <.icon name="ri-question-line" class="mr-2 w-5 h-5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]" />

@@ -185,7 +185,7 @@ Hooks.CopyClipboard = {
 Hooks.OpenURL = {
   mounted() {
     this.handleEvent("open_url", ({ url }) => {
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
     });
   },
 };
