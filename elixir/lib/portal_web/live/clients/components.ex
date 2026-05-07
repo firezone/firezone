@@ -53,7 +53,7 @@ defmodule PortalWeb.Clients.Components do
     assigns = assign(assigns, :user_agent, device_user_agent(assigns.client))
 
     ~H"""
-    <div class="flex items-center">
+    <div class="flex items-center text-xs text-[var(--text-secondary)]">
       <span class="mr-1 mb-1"><.client_os_icon client={@client} /></span>
       {get_client_os_name_and_version(@user_agent)}
     </div>
@@ -737,7 +737,7 @@ defmodule PortalWeb.Clients.Components do
             {@client.firezone_id}
           </span>
         </.client_detail_row>
-        <.client_detail_row label="Verified">
+        <.client_detail_row label="Verification">
           <.client_verified_status client={@client} />
         </.client_detail_row>
         <.client_detail_row label="Version">
@@ -776,7 +776,7 @@ defmodule PortalWeb.Clients.Components do
           :if={not is_nil(@client.verified_at) and not @confirm_unverify_client}
           type="button"
           phx-click="confirm_unverify_client"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-warning)] hover:bg-[var(--surface-raised)] transition-colors"
+          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
         >
           <.icon name="ri-prohibited-line" class="w-3.5 h-3.5" /> Revoke verification
         </button>
