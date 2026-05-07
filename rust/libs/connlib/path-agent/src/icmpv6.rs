@@ -15,11 +15,12 @@ use std::net::{IpAddr, Ipv6Addr};
 use ip_packet::{Icmpv6Type, IpPacket};
 
 /// Source address of every probe. Public so consumers can filter
-/// probes off the wire by address match.
-pub const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0001);
+/// probes off the wire by address match. `dead:1ce` for "ICE is dead"
+/// — iceless's calling card.
+pub const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xdead, 0x01ce, 0x0001);
 
 /// Destination address of every probe. See [`PROBE_SRC`].
-pub const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xfeed, 0xface, 0x0002);
+pub const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xdead, 0x01ce, 0x0002);
 
 /// Whether a packet is an Echo Request or an Echo Reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
