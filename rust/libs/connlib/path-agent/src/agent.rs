@@ -30,8 +30,17 @@ use crate::candidate::Candidate;
 /// 3. **Settle.** At [`BOOTSTRAP_WINDOW`], probing winds down to
 ///    [`PROBE_INTERVAL_LIVE`] on the primary only — enough to keep its
 ///    NAT binding alive without blanket-probing every pair.
-/// 4. **Failure.** If no `HandshakeResponse` arrives inside
-///    [`BOOTSTRAP_WINDOW`], `Event::BootstrapFailed` fires.
+/// 4. **Re-key.** A WG re-key (outbound `HandshakeInit` while
+///    `established`) reopens the bootstrap window so the next ~10 s
+///    re-evaluates every pair; settle then locks back onto whichever
+///    pair won. The same reset fires on every inbound handshake,
+///    catching roams where the peer's new candidates land via
+///    signalling before the handshake itself.
+///
+/// We don't run our own failure timer — boringtun's
+/// `REKEY_ATTEMPT_TIME` already declares a connection dead when the WG
+/// session can't re-key. snownet handles that via the regular
+/// `WireGuardError::ConnectionExpired` path.
 pub struct PathAgent {
     locals: Vec<Candidate>,
     remotes: Vec<Candidate>,
@@ -110,7 +119,8 @@ struct InflightProbe {
 struct OutboundInit {
     bytes: Vec<u8>,
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
-    /// First emission timestamp; used for the `BOOTSTRAP_WINDOW` give-up.
+    /// First emission timestamp. Surfaced through `poll_timeout` so a
+    /// late-arriving relay pair triggers an immediate fanout tick.
     started_at: Instant,
 }
 
@@ -258,9 +268,6 @@ pub enum Event {
     /// Inbound handshake bytes the caller must feed to
     /// `Tunn::decapsulate_at`.
     ForwardInbound { bytes: Vec<u8> },
-    /// Bootstrap window elapsed without a handshake response. snownet
-    /// transitions the connection to `Failed`.
-    BootstrapFailed,
 }
 
 impl Default for PathAgent {
@@ -350,8 +357,11 @@ impl PathAgent {
     }
 
     /// Drop a previously-added local candidate and every pair that used
-    /// it. Clears `primary` if it pointed at one of the removed pairs.
-    pub fn remove_local_candidate(&mut self, c: &Candidate) -> bool {
+    /// it. Clears `primary` if it pointed at one of the removed pairs;
+    /// reopens the bootstrap window in that case so the remaining
+    /// pairs get re-probed (otherwise we'd be stuck post-settle with
+    /// no pair to probe).
+    pub fn remove_local_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         let Some(i) = self.locals.iter().position(|x| x == c) else {
             return false;
         };
@@ -362,13 +372,16 @@ impl PathAgent {
             && local == removed_local
         {
             self.primary = None;
+            self.reopen_bootstrap_window(now);
         }
         true
     }
 
     /// Drop a previously-added remote candidate and every pair that used
-    /// it. Clears `primary` if it pointed at one of the removed pairs.
-    pub fn remove_remote_candidate(&mut self, c: &Candidate) -> bool {
+    /// it. Clears `primary` if it pointed at one of the removed pairs;
+    /// reopens the bootstrap window in that case (see
+    /// [`Self::remove_local_candidate`]).
+    pub fn remove_remote_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         let Some(i) = self.remotes.iter().position(|x| x == c) else {
             return false;
         };
@@ -379,6 +392,7 @@ impl PathAgent {
             && remote == removed_addr
         {
             self.primary = None;
+            self.reopen_bootstrap_window(now);
         }
         true
     }
@@ -432,12 +446,18 @@ impl PathAgent {
 
     /// Route a WG packet boringtun just produced.
     ///
-    /// - First `HandshakeInit`: stash the bytes; `handle_timeout` fans
-    ///   them out across every relay pair and arms per-pair retransmit
-    ///   ladders on the next tick (also when relay pairs arrive late).
+    /// - First `HandshakeInit` (`!established`): stash the bytes;
+    ///   `handle_timeout` fans them out across every relay pair and
+    ///   arms per-pair retransmit ladders on the next tick (also when
+    ///   relay pairs arrive late).
+    /// - `HandshakeInit` while `established` (re-key): ride `primary`
+    ///   and reopen the bootstrap window so probes restart on every
+    ///   pair immediately — saves the ~RTT we'd otherwise wait for
+    ///   the response to come back before re-evaluating paths. The
+    ///   matching inbound response is idempotent against this.
     /// - `HandshakeResponse`: pair with the most recently forwarded
     ///   inbound init, send on its receive path, cache for replay.
-    /// - Anything else (re-key, data, cookie): single-send on `primary`.
+    /// - Anything else (data, cookie): single-send on `primary`.
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
         let parsed = Tunn::parse_incoming_packet(&bytes);
 
@@ -456,6 +476,25 @@ impl PathAgent {
                     started_at: now,
                 });
                 self.established = true;
+            }
+            Ok(Packet::HandshakeInit(_)) => {
+                // Re-key. Reopen the bootstrap window to re-evaluate
+                // every pair immediately — gives us a chance to
+                // upgrade to a direct path (or detect that the
+                // current primary has died) without waiting for the
+                // response to land.
+                tracing::debug!(
+                    bytes = bytes.len(),
+                    "Re-key HandshakeInit; restarting probes"
+                );
+                self.reopen_bootstrap_window(now);
+                if let Some((local, remote)) = self.primary {
+                    self.pending_transmits.push_back(Transmit {
+                        local,
+                        remote,
+                        payload: Payload::Ciphertext(bytes),
+                    });
+                }
             }
             Ok(Packet::HandshakeResponse(_)) => {
                 if let (Some(init_bytes), Some(path)) = (
@@ -592,7 +631,20 @@ impl PathAgent {
     /// outscore the freshly-measured new one. Steady-state re-keys
     /// also reset, which costs ~10 s of all-pair re-probing every
     /// ~120 s — cheap relative to missing a roam.
+    ///
+    /// Idempotent within an open window: when we send a re-key, this
+    /// fires immediately so probes start without waiting an RTT for
+    /// the response. The matching inbound response 1 RTT later calls
+    /// us again — by then we're inside the window with fresh probe
+    /// data accumulating, and re-wiping would discard it. Skip in
+    /// that case.
     fn reopen_bootstrap_window(&mut self, now: Instant) {
+        if let Some(deadline) = self.bootstrap_until
+            && now < deadline
+            && !self.bootstrap_settled
+        {
+            return;
+        }
         for state in self.pairs.values_mut() {
             // Wipe everything `select_primary` weighs against. A
             // probe reply still in flight before the reset has its
@@ -700,13 +752,6 @@ impl PathAgent {
             .outbound_init
             .as_ref()
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
-        // Wake at the initiator give-up deadline so `BootstrapFailed`
-        // fires promptly. Skipped while retransmits is empty — we
-        // haven't fanned out yet, so the deadline is meaningless.
-        let init_deadline = self
-            .outbound_init
-            .as_ref()
-            .and_then(|i| (!i.retransmits.is_empty()).then_some(i.started_at + BOOTSTRAP_WINDOW));
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
         // Wake immediately if there's a buffered init waiting on relay
         // pairs that arrived after the initial fanout.
@@ -722,7 +767,6 @@ impl PathAgent {
             next_retransmit,
             next_probe,
             self.bootstrap_until,
-            init_deadline,
             pending_fanout,
         ]
         .into_iter()
@@ -763,20 +807,6 @@ impl PathAgent {
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
-        // Inbound response never arrived — surface the failure once and
-        // tear down the ladder. Skip while retransmits is empty (we
-        // haven't fanned out to any pair yet, so there's nothing to
-        // give up on). Snownet logs the actual `Connection failed`
-        // line when it drains the event.
-        if let Some(outbound) = self.outbound_init.as_ref()
-            && !outbound.retransmits.is_empty()
-            && now.saturating_duration_since(outbound.started_at) >= BOOTSTRAP_WINDOW
-        {
-            self.outbound_init = None;
-            self.queue_event(Event::BootstrapFailed, now);
-            return;
-        }
-
         // Disjoint-fields borrow: `outbound_init` and `pending_transmits`
         // share `&mut self` but never alias each other.
         let pending = &mut self.pending_transmits;

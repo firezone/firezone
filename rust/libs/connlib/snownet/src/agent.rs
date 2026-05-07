@@ -12,22 +12,39 @@
 //! creds, `poll_ice_event` / `poll_ice_transmit` return `None`. Path-
 //! agent-only operations on `Ice` mirror that.
 
+use std::collections::VecDeque;
 use std::ops::ControlFlow;
 use std::time::Instant;
 
 use boringtun::noise::Tunn;
 use is::stun::StunPacket;
-use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
+use is::{Candidate, CandidateKind, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 use smallvec::SmallVec;
 
 use crate::{IceConfig, IceRole};
+
+/// FIFO cap on remote candidates per kind. Each portal-driven relay
+/// rotation can add a fresh remote relay candidate without us evicting
+/// the old one; without a cap, `pairs` (= `locals × remotes`) would grow
+/// unbounded over the lifetime of a long-lived connection. Splitting by
+/// kind keeps a runaway burst on one axis (e.g. many relay candidates
+/// from a flapping portal) from evicting still-useful host candidates.
+const MAX_REMOTE_PER_KIND: usize = 6;
 
 #[derive(derive_more::Debug)]
 pub(crate) enum Agent {
     Ice(IceAgent),
     Path {
         local_candidates: Vec<Candidate>,
-        remote_candidates: Vec<Candidate>,
+        /// Remote host candidates. FIFO-bounded at
+        /// [`MAX_REMOTE_PER_KIND`].
+        remote_host: VecDeque<Candidate>,
+        /// Remote server-reflexive (and peer-reflexive) candidates.
+        /// FIFO-bounded at [`MAX_REMOTE_PER_KIND`].
+        remote_srflx: VecDeque<Candidate>,
+        /// Remote relayed candidates. FIFO-bounded at
+        /// [`MAX_REMOTE_PER_KIND`].
+        remote_relayed: VecDeque<Candidate>,
         #[debug(skip)]
         path: path_agent::PathAgent,
     },
@@ -41,7 +58,9 @@ impl Agent {
     pub(crate) fn path() -> Self {
         Self::Path {
             local_candidates: Vec::new(),
-            remote_candidates: Vec::new(),
+            remote_host: VecDeque::new(),
+            remote_srflx: VecDeque::new(),
+            remote_relayed: VecDeque::new(),
             path: path_agent::PathAgent::new(),
         }
     }
@@ -69,7 +88,9 @@ impl Agent {
     pub(crate) fn rebuild_path(&mut self, mut should_drop_local: impl FnMut(&Candidate) -> bool) {
         let Self::Path {
             local_candidates,
-            remote_candidates,
+            remote_host,
+            remote_srflx,
+            remote_relayed,
             path,
         } = self
         else {
@@ -87,7 +108,11 @@ impl Agent {
         for c in local_candidates.iter() {
             path.add_local_candidate(crate::candidate::to_path_agent(c));
         }
-        for c in remote_candidates.iter() {
+        for c in remote_host
+            .iter()
+            .chain(remote_srflx.iter())
+            .chain(remote_relayed.iter())
+        {
             path.add_remote_candidate(crate::candidate::to_path_agent(c));
         }
     }
@@ -193,29 +218,49 @@ impl Agent {
         }
     }
 
-    pub(crate) fn add_remote_candidate(&mut self, c: Candidate) {
+    pub(crate) fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         match self {
             Self::Ice(a) => a.add_remote_candidate(c),
             Self::Path {
-                remote_candidates,
+                remote_host,
+                remote_srflx,
+                remote_relayed,
                 path,
                 ..
             } => {
-                if remote_candidates.contains(&c) {
+                let bucket =
+                    bucket_for_kind_mut(c.kind(), remote_host, remote_srflx, remote_relayed);
+                if bucket.contains(&c) {
                     return;
                 }
+                // FIFO eviction: drop the oldest of this kind to make
+                // room. Mirrors into `path` so pair / primary state
+                // stays in sync.
+                if bucket.len() >= MAX_REMOTE_PER_KIND {
+                    let evicted = bucket
+                        .pop_front()
+                        .expect("len >= MAX_REMOTE_PER_KIND implies non-empty");
+                    tracing::debug!(
+                        evicted = ?evicted,
+                        kind = ?c.kind(),
+                        "Evicting oldest remote candidate to honour per-kind cap",
+                    );
+                    path.remove_remote_candidate(&crate::candidate::to_path_agent(&evicted), now);
+                }
                 path.add_remote_candidate(crate::candidate::to_path_agent(&c));
-                remote_candidates.push(c);
+                bucket.push_back(c);
             }
         }
     }
 
-    pub(crate) fn invalidate_candidate(&mut self, c: &Candidate) -> bool {
+    pub(crate) fn invalidate_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         match self {
             Self::Ice(a) => a.invalidate_candidate(c),
             Self::Path {
                 local_candidates,
-                remote_candidates,
+                remote_host,
+                remote_srflx,
+                remote_relayed,
                 path,
             } => {
                 let pa_c = crate::candidate::to_path_agent(c);
@@ -224,16 +269,14 @@ impl Agent {
                     .position(|x| x == c)
                     .map(|i| local_candidates.remove(i))
                     .is_some();
-                let removed_remote = remote_candidates
-                    .iter()
-                    .position(|x| x == c)
-                    .map(|i| remote_candidates.remove(i))
-                    .is_some();
+                let removed_remote = remove_from_bucket(remote_host, c)
+                    || remove_from_bucket(remote_srflx, c)
+                    || remove_from_bucket(remote_relayed, c);
                 if removed_local {
-                    path.remove_local_candidate(&pa_c);
+                    path.remove_local_candidate(&pa_c, now);
                 }
                 if removed_remote {
-                    path.remove_remote_candidate(&pa_c);
+                    path.remove_remote_candidate(&pa_c, now);
                 }
                 removed_local || removed_remote
             }
@@ -253,8 +296,17 @@ impl Agent {
         match self {
             Self::Ice(a) => Box::new(a.remote_candidates()),
             Self::Path {
-                remote_candidates, ..
-            } => Box::new(remote_candidates.iter().cloned()),
+                remote_host,
+                remote_srflx,
+                remote_relayed,
+                ..
+            } => Box::new(
+                remote_host
+                    .iter()
+                    .chain(remote_srflx.iter())
+                    .chain(remote_relayed.iter())
+                    .cloned(),
+            ),
         }
     }
 
@@ -262,8 +314,15 @@ impl Agent {
         match self {
             Self::Ice(a) => a.remote_candidates().any(|x| &x == c),
             Self::Path {
-                remote_candidates, ..
-            } => remote_candidates.iter().any(|x| x == c),
+                remote_host,
+                remote_srflx,
+                remote_relayed,
+                ..
+            } => remote_host
+                .iter()
+                .chain(remote_srflx.iter())
+                .chain(remote_relayed.iter())
+                .any(|x| x == c),
         }
     }
 
@@ -380,4 +439,29 @@ impl Agent {
             Self::Path { path, .. } => path.poll_transmit(),
         }
     }
+}
+
+/// Map an `is::CandidateKind` to the matching bucket (mutable).
+/// `PeerReflexive` collapses into the server-reflexive bucket — both
+/// shapes are server-reflexive from the path-agent's perspective.
+fn bucket_for_kind_mut<'a>(
+    kind: CandidateKind,
+    host: &'a mut VecDeque<Candidate>,
+    srflx: &'a mut VecDeque<Candidate>,
+    relayed: &'a mut VecDeque<Candidate>,
+) -> &'a mut VecDeque<Candidate> {
+    match kind {
+        CandidateKind::Host => host,
+        CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => srflx,
+        CandidateKind::Relayed => relayed,
+    }
+}
+
+/// Remove `c` from `bucket` if present. Returns whether it was found.
+fn remove_from_bucket(bucket: &mut VecDeque<Candidate>, c: &Candidate) -> bool {
+    bucket
+        .iter()
+        .position(|x| x == c)
+        .map(|i| bucket.remove(i))
+        .is_some()
 }

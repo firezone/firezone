@@ -387,9 +387,9 @@ fn outbound_handshake_init_before_relay_pair_buffers_then_fans_out_on_handle_tim
 }
 
 #[test]
-fn buffered_handshake_init_does_not_fail_bootstrap_while_awaiting_relay_pairs() {
-    // Without a relay pair, `started_at` shouldn't trip
-    // `BootstrapFailed` — we haven't actually sent anything yet.
+fn buffered_handshake_init_does_not_emit_events_while_awaiting_relay_pairs() {
+    // Without a relay pair we have nothing to fan out on; the buffered
+    // init should sit quietly without emitting anything.
     let mut a = PathAgent::new();
     let now = Instant::now();
 
@@ -893,7 +893,10 @@ fn stale_echo_reply_is_ignored() {
 }
 
 #[test]
-fn outbound_init_emits_bootstrap_failed_after_window_without_response() {
+fn outbound_init_keeps_retransmitting_past_bootstrap_window_without_response() {
+    // We no longer fail the connection on a missed handshake — boringtun's
+    // `REKEY_ATTEMPT_TIME` is the source of truth. Verify retransmits
+    // keep firing past the old give-up deadline.
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
@@ -901,35 +904,11 @@ fn outbound_init_emits_bootstrap_failed_after_window_without_response() {
     a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
 
-    a.handle_timeout(now + BOOTSTRAP_WINDOW);
-    let event = a.poll_event().expect("BootstrapFailed event");
-    assert!(matches!(event, Event::BootstrapFailed));
-
     a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
-    assert!(a.poll_event().is_none());
-}
-
-#[test]
-fn outbound_init_does_not_fail_if_response_arrives_in_time() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
-
-    let _ = a.handle_inbound(
-        &handshake_response_bytes(),
-        (addr(2), addr(4)),
-        now + BOOTSTRAP_WINDOW - Duration::from_millis(1),
-    );
-    while a.poll_event().is_some() {}
-
-    a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
-    let event = a.poll_event();
+    assert!(a.poll_event().is_none(), "no BootstrapFailed-style event");
     assert!(
-        !matches!(event, Some(Event::BootstrapFailed)),
-        "got unexpected BootstrapFailed: {event:?}",
+        a.poll_transmit().is_some(),
+        "retransmits should still be firing"
     );
 }
 

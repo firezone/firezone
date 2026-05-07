@@ -1088,7 +1088,7 @@ where
                 }
                 allocation::Event::Invalid(candidate) => {
                     for (cid, c) in self.connections.iter_mut() {
-                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events);
+                        c.remove_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
                 }
             }
@@ -1150,7 +1150,7 @@ where
 /// If only one peer is behind symmetric NAT, this creates a predictable path through the NAT.
 ///
 /// In both cases, a direct connection will be established and we don't need to fall back to a relay.
-fn generate_optimistic_candidates(agent: &mut Agent) {
+fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
     let public_ips = agent
         .remote_candidates()
         .filter_map(|c| (c.kind() == CandidateKind::ServerReflexive).then_some(c.addr().ip()))
@@ -1181,7 +1181,7 @@ fn generate_optimistic_candidates(agent: &mut Agent) {
     for c in optimistic_candidates {
         tracing::debug!(candidate = ?c, "Adding optimistic candidate for remote");
 
-        agent.add_remote_candidate(c);
+        agent.add_remote_candidate(c, now);
     }
 }
 
@@ -1211,7 +1211,7 @@ fn invalidate_allocation_candidates<TId, RId>(
             c.reset_path_for_relay_replacement(cid, allocation, now);
         } else {
             for candidate in allocation.current_relay_candidates() {
-                c.remove_local_candidate(cid, &candidate, pending_events);
+                c.remove_local_candidate(cid, &candidate, pending_events, now);
             }
         }
     }
@@ -1567,8 +1567,7 @@ where
 
         // Drain path-agent events: feed forwarded handshake bytes
         // through boringtun, hand the response back to the agent for
-        // outbound routing, transition state on `PrimaryChanged`, fail
-        // the connection on `BootstrapFailed`.
+        // outbound routing, transition state on `PrimaryChanged`.
         //
         // After a successful HandshakeResponse decapsulation, boringtun
         // may have queued packets (from earlier `encapsulate_at` calls
@@ -1603,10 +1602,6 @@ where
                             tracing::warn!("Unexpected data packet from forwarded handshake");
                         }
                     }
-                }
-                path_agent::Event::BootstrapFailed => {
-                    tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (iceless bootstrap timeout)");
-                    self.state = ConnectionState::Failed;
                 }
                 path_agent::Event::PrimaryChanged { local, remote } => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, local, remote);
@@ -2187,6 +2182,7 @@ where
         id: TId,
         candidate: &Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
+        now: Instant,
     ) where
         TId: fmt::Display,
     {
@@ -2199,7 +2195,7 @@ where
             return;
         }
 
-        let was_present = self.agent.invalidate_candidate(candidate);
+        let was_present = self.agent.invalidate_candidate(candidate, now);
 
         if was_present {
             pending_events.push_back(Event::InvalidateIceCandidate {
@@ -2213,10 +2209,10 @@ where
     where
         TId: fmt::Display,
     {
-        self.agent.add_remote_candidate(candidate);
+        self.agent.add_remote_candidate(candidate, now);
         self.candidate_timeout = None;
 
-        generate_optimistic_candidates(&mut self.agent);
+        generate_optimistic_candidates(&mut self.agent, now);
 
         // Make sure we move out of idle mode when we add new candidates.
         self.state
@@ -2227,7 +2223,7 @@ where
     where
         TId: fmt::Display,
     {
-        self.agent.invalidate_candidate(&candidate);
+        self.agent.invalidate_candidate(&candidate, now);
         self.agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
 
         self.state
@@ -2384,11 +2380,12 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
+        let now = Instant::now();
         let mut agent = Agent::ice(IceAgent::new(is::IceCreds::new()));
-        agent.add_remote_candidate(host);
-        agent.add_remote_candidate(srvflx);
+        agent.add_remote_candidate(host, now);
+        agent.add_remote_candidate(srvflx, now);
 
-        generate_optimistic_candidates(&mut agent);
+        generate_optimistic_candidates(&mut agent, now);
 
         let expected_candidate =
             Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
@@ -2410,11 +2407,12 @@ mod tests {
         let srvflx =
             Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
 
+        let now = Instant::now();
         let mut agent = Agent::ice(IceAgent::new(is::IceCreds::new()));
-        agent.add_remote_candidate(host);
-        agent.add_remote_candidate(srvflx);
+        agent.add_remote_candidate(host, now);
+        agent.add_remote_candidate(srvflx, now);
 
-        generate_optimistic_candidates(&mut agent);
+        generate_optimistic_candidates(&mut agent, now);
 
         let unexpected_candidate =
             Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
@@ -2437,13 +2435,14 @@ mod tests {
         let srflx3 =
             Candidate::server_reflexive(SocketAddr::new(addr3, 40000), base, "udp").unwrap();
 
+        let now = Instant::now();
         let mut agent = Agent::ice(IceAgent::new(is::IceCreds::new()));
-        agent.add_remote_candidate(host);
-        agent.add_remote_candidate(srflx1);
-        agent.add_remote_candidate(srflx2);
-        agent.add_remote_candidate(srflx3);
+        agent.add_remote_candidate(host, now);
+        agent.add_remote_candidate(srflx1, now);
+        agent.add_remote_candidate(srflx2, now);
+        agent.add_remote_candidate(srflx3, now);
 
-        generate_optimistic_candidates(&mut agent);
+        generate_optimistic_candidates(&mut agent, now);
 
         let expected_candidate1 =
             Candidate::server_reflexive(SocketAddr::new(addr1, 52625), base, "udp").unwrap();
