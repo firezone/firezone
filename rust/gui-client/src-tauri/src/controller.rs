@@ -40,6 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
+    telemetry_allowed: bool,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
@@ -182,6 +183,7 @@ impl<I: GuiIntegration> Controller<I> {
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
+        telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
     ) -> Result<()> {
@@ -189,9 +191,11 @@ impl<I: GuiIntegration> Controller<I> {
 
         let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        receive_hello(&mut ipc_rx)
+        let firezone_id = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
+
+        Telemetry::set_firezone_id(firezone_id).await;
 
         let controller = Controller {
             general_settings,
@@ -207,6 +211,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
+            telemetry_allowed,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -365,6 +370,10 @@ impl<I: GuiIntegration> Controller<I> {
 
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
+        }
+
+        if !self.telemetry_allowed {
+            return Ok(());
         }
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
@@ -669,7 +678,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 return Ok(ControlFlow::Break(()));
             }
-            service::ServerMsg::Hello => {}
+            service::ServerMsg::Hello { .. } => {}
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
 
@@ -968,7 +977,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 }
 
-async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<()> {
+async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -979,11 +988,11 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
         .context("No message received from tunnel service")?
         .context("Failed to receive message from tunnel service")?;
 
-    if !matches!(server_msg, service::ServerMsg::Hello) {
+    let service::ServerMsg::Hello { firezone_id } = server_msg else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
-    }
+    };
 
-    Ok(())
+    Ok(firezone_id)
 }
 
 #[cfg(test)]
@@ -1346,7 +1355,12 @@ mod tests {
 
     impl MockTunnel {
         async fn send_hello(&mut self) {
-            self.tx.send(&service::ServerMsg::Hello).await.unwrap();
+            self.tx
+                .send(&service::ServerMsg::Hello {
+                    firezone_id: "test-firezone-id".to_owned(),
+                })
+                .await
+                .unwrap();
         }
 
         async fn rx_start_telemetry(&mut self) {
@@ -1417,6 +1431,7 @@ mod tests {
                 MdmSettings::default(),
                 AdvancedSettings::default(),
                 log_filter_reloader,
+                true,
                 updates_rx,
                 gui_ipc_server,
             ));

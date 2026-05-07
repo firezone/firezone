@@ -142,14 +142,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     };
 
     if cli.is_telemetry_allowed() {
-        telemetry
-            .start(
-                cli.api_url.as_str(),
-                RELEASE,
-                telemetry::GATEWAY_DSN,
-                firezone_id.clone(),
-            )
-            .await;
+        telemetry.start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
+        Telemetry::set_firezone_id(firezone_id.clone()).await;
     }
 
     if let Some(backend) = cli.metrics {

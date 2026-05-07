@@ -25,6 +25,7 @@ fn main() -> ExitCode {
         Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
+    let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
         Telemetry::new()
@@ -32,18 +33,24 @@ fn main() -> ExitCode {
         Telemetry::disabled()
     };
 
-    let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
+    // Start telemetry in `entrypoint` mode so that crashes during settings
+    // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
+    // `try_main` will switch the env to the real api_url once it has loaded
+    // settings; on graceful exit we flush below.
+    telemetry.start(
+        "entrypoint",
+        firezone_gui_client::RELEASE,
+        telemetry::GUI_DSN,
+    );
 
-    match try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry) {
-        Ok(()) => {
-            rt.block_on(telemetry.stop());
+    let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
 
-            ExitCode::SUCCESS
-        }
+    rt.block_on(telemetry.stop());
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("GUI failed: {e:#}");
-
-            rt.block_on(telemetry.stop());
 
             ExitCode::FAILURE
         }
@@ -75,6 +82,7 @@ fn try_main(
             .as_ref()
             .is_some_and(|c| matches!(c, Cmd::SmokeTest)),
         no_deep_links: cli.no_deep_links,
+        telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
         fake_controller,
@@ -87,24 +95,15 @@ fn try_main(
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
+    // Now that we know the real api_url, switch the Sentry session out of
+    // entrypoint mode. `Telemetry::start` notices the env change and stops
+    // the previous session before initialising a new one.
     let api_url = mdm_settings
         .api_url
         .as_ref()
         .unwrap_or(&advanced_settings.api_url)
         .to_string();
-
-    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
-    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    let id = bin_shared::device_id::get_client().context("Failed to get device ID")?;
-
-    if cli.is_telemetry_allowed() {
-        rt.block_on(telemetry.start(
-            &api_url,
-            firezone_gui_client::RELEASE,
-            telemetry::GUI_DSN,
-            id.id,
-        ));
-    }
+    telemetry.start(&api_url, firezone_gui_client::RELEASE, telemetry::GUI_DSN);
 
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {

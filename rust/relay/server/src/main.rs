@@ -141,19 +141,15 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     let mut telemetry = if args.telemetry {
-        let mut telemetry = Telemetry::new();
-
-        runtime.block_on(telemetry.start(
-            args.api_url.as_str(),
-            VERSION.unwrap_or("unknown"),
-            RELAY_DSN,
-            String::new(), // Relays don't have a Firezone ID.
-        ));
-
-        telemetry
+        Telemetry::new()
     } else {
         Telemetry::disabled()
     };
+    telemetry.start(
+        args.api_url.as_str(),
+        VERSION.unwrap_or("unknown"),
+        RELAY_DSN,
+    );
 
     let code = match runtime.block_on(try_main(args)) {
         Ok(()) => ExitCode::SUCCESS,
