@@ -155,8 +155,6 @@ pub struct ClientState {
     tun_config: TrackedState<TunConfig>,
     /// Cache of the resource list we emitted to the app.
     resource_list: TrackedState<ResourceList>,
-    /// Client peers we currently have a live connection to.
-    connected_pool_clients: BTreeSet<ClientId>,
 
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
@@ -208,7 +206,6 @@ impl ClientState {
             pending_device_access: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
-            connected_pool_clients: Default::default(),
         }
     }
 
@@ -240,20 +237,20 @@ impl ClientState {
     /// Builds the list of currently-connected device peers, joined against
     /// static-pool resource memberships so each entry knows which pool(s) it
     /// belongs to.
-    pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
+    fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
-        self.connected_pool_clients
-            .iter()
+        self.clients
+            .ids()
             .map(|client_id| {
                 let pool_names = pools
                     .iter()
-                    .filter(|p| p.devices.iter().any(|d| d.id == *client_id))
+                    .filter(|p| p.devices.iter().any(|d| d.id == client_id))
                     .map(|p| p.name.clone())
                     .sorted()
                     .collect_vec();
                 ConnectedDeviceView {
-                    id: *client_id,
+                    id: client_id,
                     pools: pool_names,
                 }
             })
@@ -342,17 +339,16 @@ impl ClientState {
         };
 
         self.pending_device_access.remove(&entry.client_id);
-        // TODO: Update resource list with offline client.
 
-        let Some(_) = self.clients.remove(&entry.client_id) else {
-            return;
+        if self.clients.remove(&entry.client_id).is_some() {
+            self.node.close_connection(
+                ClientOrGatewayId::Client(entry.client_id),
+                p2p_control::goodbye(),
+                now,
+            );
         };
 
-        self.node.close_connection(
-            ClientOrGatewayId::Client(entry.client_id),
-            p2p_control::goodbye(),
-            now,
-        );
+        self.resource_list.update(self.resource_list_snapshot());
     }
 
     pub fn handle_device_pool_domain_resolved(
@@ -1111,10 +1107,11 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(client = %disconnected_client))]
     fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
-        self.clients.remove(disconnected_client);
-        if self.connected_pool_clients.remove(disconnected_client) {
-            self.resource_list.update(self.resource_list_snapshot());
-        }
+        let Some(_client) = self.clients.remove(disconnected_client) else {
+            return;
+        };
+
+        self.resource_list.update(self.resource_list_snapshot());
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1772,10 +1769,8 @@ impl ClientState {
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                 }
-                snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
-                    if self.connected_pool_clients.insert(id) {
-                        self.resource_list.update(self.resource_list_snapshot());
-                    }
+                snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(_)) => {
+                    self.resource_list.update(self.resource_list_snapshot());
                 }
             }
         }
