@@ -298,6 +298,8 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::error!("ipc_client: {error:#}");
         }
 
+        // Don't close telemetry here, `run` will close it.
+
         Ok(())
     }
 
@@ -363,7 +365,6 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
-        // `api_url` resolves MDM settings first, then falls back to local settings.
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 

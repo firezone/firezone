@@ -102,7 +102,7 @@ impl fmt::Display for Dsn {
 #[doc(hidden)] // Only public for testing.
 pub enum Env {
     /// Pre-`api_url` placeholder used at process boot, so we can capture
-    /// crashes before settings are loaded. Mirrors Swift's `Telemetry.start()`.
+    /// crashes before settings are loaded.
     Entrypoint,
     Production,
     Staging,
@@ -135,10 +135,6 @@ impl Env {
     }
 
     /// Parses a string as either an explicit env name or an API URL.
-    ///
-    /// Tries the env name first so callers can pass `"entrypoint"` (and tests
-    /// can pass any other variant directly). Falls back to URL-based detection,
-    /// which is total — unknown URLs land on `OnPrem`.
     pub(crate) fn parse(input: &str) -> Self {
         if let Ok(env) = input.parse::<Self>() {
             return env;
@@ -262,8 +258,6 @@ impl Telemetry {
             },
         ));
         // Configure scope on the main hub so that all threads will get the tags.
-        // The api_url tag is only meaningful once we know the real URL — skip
-        // it during the entrypoint window.
         let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
         sentry::Hub::main().configure_scope(move |scope| {
             if let Some(api_url) = api_url {
@@ -533,10 +527,6 @@ impl sentry::TransportFactory for TransportFactory {
 }
 
 #[cfg(test)]
-// `sentry::Hub::main()` is process-global; tests that touch it must serialise
-// on `SENTRY_HUB_LOCK`, which means the guard is intentionally held across
-// `await` points in `Telemetry::start`.
-#[allow(clippy::await_holding_lock, reason = "sentry hub is process-global")]
 mod tests {
     use std::time::SystemTime;
 
