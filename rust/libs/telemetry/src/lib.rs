@@ -99,7 +99,8 @@ impl fmt::Display for Dsn {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub(crate) enum Env {
+#[doc(hidden)] // Only public for testing.
+pub enum Env {
     /// Pre-`api_url` placeholder used at process boot, so we can capture
     /// crashes before settings are loaded. Mirrors Swift's `Telemetry.start()`.
     Entrypoint,
@@ -287,6 +288,10 @@ impl Telemetry {
         }
     }
 
+    pub fn is_active(&self) -> bool {
+        self.inner.is_some()
+    }
+
     async fn end_session(&mut self) -> Result<()> {
         let Some(inner) = self.inner.take() else {
             return Ok(());
@@ -331,7 +336,8 @@ impl Telemetry {
         }
     }
 
-    pub(crate) fn current_env() -> Option<Env> {
+    #[doc(hidden)] // Only public for testing.
+    pub fn current_env() -> Option<Env> {
         let client = sentry::Hub::main().client()?;
         let env = client.options().environment.as_deref()?;
         let env = Env::from_str(env).ok()?;
@@ -339,11 +345,13 @@ impl Telemetry {
         Some(env)
     }
 
-    pub(crate) fn current_user() -> Option<String> {
+    #[doc(hidden)] // Only public for testing.
+    pub fn current_user() -> Option<String> {
         sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
     }
 
-    fn current_account_slug() -> Option<String> {
+    #[doc(hidden)] // Only public for testing.
+    pub fn current_account_slug() -> Option<String> {
         sentry::Hub::main()
             .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
     }
@@ -530,30 +538,9 @@ impl sentry::TransportFactory for TransportFactory {
 // `await` points in `Telemetry::start`.
 #[allow(clippy::await_holding_lock, reason = "sentry hub is process-global")]
 mod tests {
-    use std::sync::Mutex;
     use std::time::SystemTime;
 
     use super::*;
-
-    /// `sentry::Hub::main()` is process-global; tests that initialise or
-    /// inspect it must run one at a time.
-    static SENTRY_HUB_LOCK: Mutex<()> = Mutex::new(());
-
-    fn lock_sentry_hub() -> std::sync::MutexGuard<'static, ()> {
-        SENTRY_HUB_LOCK.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    #[tokio::test]
-    async fn starting_session_for_unsupported_env_disables_current_one() {
-        let _guard = lock_sentry_hub();
-        let _ = rustls::crypto::ring::default_provider().install_default();
-
-        let mut telemetry = Telemetry::new();
-        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
-        telemetry.start("wss://example.com", "1.0.0", TESTING);
-
-        assert!(telemetry.inner.is_none());
-    }
 
     #[test]
     fn env_parse_recognises_explicit_names_and_falls_back_to_api_url() {
@@ -562,47 +549,6 @@ mod tests {
         assert_eq!(Env::parse("wss://api.firezone.dev"), Env::Production);
         assert_eq!(Env::parse("wss://api.firez.one"), Env::Staging);
         assert_eq!(Env::parse("https://example.com"), Env::OnPrem);
-    }
-
-    #[tokio::test]
-    async fn entrypoint_then_real_env_swaps_running_session() {
-        let _guard = lock_sentry_hub();
-        let _ = rustls::crypto::ring::default_provider().install_default();
-
-        let mut telemetry = Telemetry::new();
-        telemetry.start("entrypoint", "1.0.0", TESTING);
-        assert_eq!(Telemetry::current_env(), Some(Env::Entrypoint));
-
-        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
-        assert_eq!(Telemetry::current_env(), Some(Env::Staging));
-    }
-
-    #[tokio::test]
-    async fn set_firezone_id_attaches_user_to_running_session() {
-        let _guard = lock_sentry_hub();
-        let _ = rustls::crypto::ring::default_provider().install_default();
-
-        let mut telemetry = Telemetry::new();
-        telemetry.start("entrypoint", "1.0.0", TESTING);
-
-        Telemetry::set_firezone_id("device-abc".to_owned()).await;
-
-        assert_eq!(Telemetry::current_user().as_deref(), Some("device-abc"));
-    }
-
-    #[tokio::test]
-    async fn set_account_slug_before_set_firezone_id_preserves_both() {
-        let _guard = lock_sentry_hub();
-        let _ = rustls::crypto::ring::default_provider().install_default();
-
-        let mut telemetry = Telemetry::new();
-        telemetry.start("entrypoint", "1.0.0", TESTING);
-
-        Telemetry::set_account_slug("acme".to_owned());
-        Telemetry::set_firezone_id("device-xyz".to_owned()).await;
-
-        assert_eq!(Telemetry::current_user().as_deref(), Some("device-xyz"));
-        assert_eq!(Telemetry::current_account_slug().as_deref(), Some("acme"));
     }
 
     #[test]
