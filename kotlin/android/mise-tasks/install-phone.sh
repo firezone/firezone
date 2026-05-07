@@ -60,7 +60,7 @@ for task in "${SKIP_CARGO_TASKS[@]}"; do
     gradle_skip_args+=(-x "$task")
 done
 
-install_log="$(mktemp)"
+install_log="$(mktemp "${TMPDIR:-/tmp}/install-phone.XXXXXX")"
 trap 'rm -f "$install_log"' EXIT
 
 if ./gradlew installDebug "${gradle_skip_args[@]}" 2>&1 | tee "$install_log"; then
