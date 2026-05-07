@@ -47,9 +47,11 @@ pub struct PathAgent {
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
 
-    /// `true` once we've fanned out the bootstrap `HandshakeInit`.
-    /// Subsequent inits from boringtun are re-keys on a working session
-    /// and ride `primary` instead of re-fanning out.
+    /// `true` once this side has taken ownership of the first
+    /// handshake — either by buffering an outbound `HandshakeInit` for
+    /// fanout (initiator) or by emitting a `HandshakeResponse`
+    /// (responder). Subsequent inits from boringtun are re-keys on a
+    /// working session and ride `primary` instead of re-fanning out.
     established: bool,
 
     /// Most recently forwarded inbound `HandshakeInit` and the path it

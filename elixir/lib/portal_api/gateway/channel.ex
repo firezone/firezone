@@ -504,7 +504,8 @@ defmodule PortalAPI.Gateway.Channel do
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
-    socket = assign(socket, snownet_capabilities: payload)
+    capabilities = Portal.Snownet.Capabilities.normalize(payload)
+    socket = assign(socket, snownet_capabilities: capabilities)
     {:noreply, track_presence(socket)}
   end
 

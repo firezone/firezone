@@ -12,7 +12,6 @@
 
 use is::CandidateKind;
 
-#[allow(dead_code)] // Used in the next commit; staged here so the conversion can be reviewed in isolation.
 pub(crate) fn to_path_agent(c: &is::Candidate) -> path_agent::Candidate {
     match c.kind() {
         CandidateKind::Host => path_agent::Candidate::host(c.addr()),

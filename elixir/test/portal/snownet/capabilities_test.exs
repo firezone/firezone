@@ -68,4 +68,26 @@ defmodule Portal.Snownet.CapabilitiesTest do
              }
     end
   end
+
+  describe "normalize/1" do
+    test "drops unknown fields" do
+      # Untrusted clients can include arbitrary keys; storing them in
+      # presence metadata would let a peer bloat memory at will.
+      assert Capabilities.normalize(%{"iceless" => true, "future_flag" => true}) == %{
+               "iceless" => true
+             }
+    end
+
+    test "always returns every known field" do
+      # Output schema is fixed so downstream consumers (presence diff,
+      # Rust serde) see a deterministic shape.
+      assert Capabilities.normalize(%{}) == %{"iceless" => false}
+    end
+
+    test "coerces non-boolean values to false" do
+      assert Capabilities.normalize(%{"iceless" => "yes"}) == %{"iceless" => false}
+      assert Capabilities.normalize(%{"iceless" => 1}) == %{"iceless" => false}
+      assert Capabilities.normalize(%{"iceless" => nil}) == %{"iceless" => false}
+    end
+  end
 end

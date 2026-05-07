@@ -141,12 +141,21 @@ impl Agent {
     /// `ice_role` — the reuse-relevant dimensions (pubkey, PSK) live on
     /// the caller. If `upsert_connection` ever needs creds/role honoured
     /// here, the `Path` arm has to participate.
+    ///
+    /// `want_iceless` reflects the agent mode the caller would build
+    /// today. A mismatch (e.g. negotiated capability or local feature
+    /// flag flipped between upserts) forces replacement so the new mode
+    /// actually takes effect.
     pub(crate) fn matches_existing_connection(
         &self,
         local_creds: &IceCreds,
         remote_creds: &IceCreds,
         ice_role: IceRole,
+        want_iceless: bool,
     ) -> bool {
+        if self.is_iceless() != want_iceless {
+            return false;
+        }
         match self {
             Self::Ice(a) => {
                 a.local_credentials() == local_creds

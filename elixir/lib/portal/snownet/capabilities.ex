@@ -28,6 +28,20 @@ defmodule Portal.Snownet.Capabilities do
     end
   end
 
+  @doc """
+  Normalize an untrusted payload to the canonical capability schema:
+  every known field present as a boolean, unknown fields dropped,
+  non-boolean values coerced to `false`. Use this when storing a
+  payload in `socket.assigns` or presence metadata so untrusted clients
+  cannot bloat them with arbitrary keys.
+  """
+  @spec normalize(map()) :: map()
+  def normalize(payload) when is_map(payload) do
+    for field <- @known_fields, into: %{} do
+      {field, get_bool(payload, field)}
+    end
+  end
+
   defp get_bool(map, field) do
     case Map.get(map, field) do
       true -> true

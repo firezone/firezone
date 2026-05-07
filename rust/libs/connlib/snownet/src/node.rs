@@ -292,11 +292,13 @@ where
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
+        let want_iceless = capabilities.iceless && telemetry::feature_flags::iceless();
 
         // Check if we already have a connection with the exact same parameters.
         // In order for the connection to be same, we need to compare:
         // - The agent's negotiation parameters (ICE creds + role for Ice mode;
-        //   nothing for iceless mode — it always rebuilds)
+        //   for iceless mode, only the mode itself — it always rebuilds creds)
+        // - Desired agent mode (ICE vs iceless), so a flag flip forces replace
         // - Remote public key
         // - Preshared key
         //
@@ -304,7 +306,7 @@ where
         // handshake a session.
         if let Ok(c) = self.connections.get_mut(&cid, now)
             && c.agent
-                .matches_existing_connection(&local_creds, &remote_creds, ice_role)
+                .matches_existing_connection(&local_creds, &remote_creds, ice_role, want_iceless)
             && c.tunnel.remote_static_public() == remote
             && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
         {
@@ -352,7 +354,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = if capabilities.iceless && telemetry::feature_flags::iceless() {
+        let mut agent = if want_iceless {
             tracing::debug!(%cid, "Using iceless path-agent for connection");
             Agent::path()
         } else {
