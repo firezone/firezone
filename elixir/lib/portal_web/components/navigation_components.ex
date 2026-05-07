@@ -663,7 +663,7 @@ defmodule PortalWeb.NavigationComponents do
       target="_blank"
       {@rest}
     >
-      <.icon name="ri-question-line" class="mr-2 w-5 h-5" />
+      <.icon name="ri-question-line" class="mr-2 w-5 h-5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]" />
     </.link>
     """
   end
