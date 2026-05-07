@@ -29,6 +29,7 @@ defmodule PortalWeb.OIDC.IdentityProfile do
 
   @spec build(map(), map(), Ecto.UUID.t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
   def build(claims, userinfo, account_id, opts \\ []) do
+    userinfo = PortalWeb.OIDC.matching_userinfo(claims, userinfo)
     email = resolve_email(claims, Keyword.get(opts, :email_claim))
     idp_id = claims["oid"] || claims["sub"]
     issuer = claims["iss"]
@@ -53,16 +54,12 @@ defmodule PortalWeb.OIDC.IdentityProfile do
            idp_id: idp_id,
            issuer: issuer,
            profile_attrs: profile_attrs,
-           email_verified: email_verified?(claims, userinfo)
+           email_verified: PortalWeb.OIDC.email_verified?(claims, userinfo)
          }}
 
       changeset ->
         {:error, changeset}
     end
-  end
-
-  defp email_verified?(claims, userinfo) do
-    (claims["email_verified"] || userinfo["email_verified"]) == true
   end
 
   defp validate_upsert_attrs(attrs) do

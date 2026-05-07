@@ -22,6 +22,7 @@ defmodule PortalAPI.OIDCAuthProviderJSON do
       is_default: provider.is_default,
       client_id: provider.client_id,
       discovery_document_uri: provider.discovery_document_uri,
+      require_email_verified: provider.require_email_verified,
       inserted_at: provider.inserted_at,
       updated_at: provider.updated_at
     }

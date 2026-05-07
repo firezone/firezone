@@ -17,14 +17,22 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:oidc_verify_complete, issuer, {from, ref}} ->
-              send(parent, {:oidc_verify_complete_received, issuer})
+            {:oidc_verify_complete, issuer, verification_ref, {from, ref}} ->
+              send(parent, {:oidc_verify_complete_received, issuer, verification_ref})
               send(from, {:verification_ack, ref})
           end
         end)
 
       lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
-      token = sign_oidc_result(%{ok: true, issuer: "https://example.com", lv_pid: lv_pid_string})
+      verification_ref = Ecto.UUID.generate()
+
+      token =
+        sign_oidc_result(%{
+          ok: true,
+          issuer: "https://example.com",
+          lv_pid: lv_pid_string,
+          verification_ref: verification_ref
+        })
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
@@ -32,7 +40,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Verification Successful"
       assert conn.resp_body =~ "data-auto-close-window-after-ms=\"1000\""
       refute conn.resp_body =~ "setTimeout(function()"
-      assert_received {:oidc_verify_complete_received, "https://example.com"}
+      assert_received {:oidc_verify_complete_received, "https://example.com", ^verification_ref}
     end
 
     test "with failure result token, sends failure message to LV and renders failure", %{
@@ -51,13 +59,33 @@ defmodule PortalWeb.VerificationControllerTest do
     end
 
     test "with nil lv_pid in result token, renders failure without sending message", %{conn: conn} do
-      token = sign_oidc_result(%{ok: true, issuer: "https://example.com", lv_pid: nil})
+      token =
+        sign_oidc_result(%{
+          ok: true,
+          issuer: "https://example.com",
+          lv_pid: nil,
+          verification_ref: Ecto.UUID.generate()
+        })
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
 
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
-      refute_received {:oidc_verify_complete, _issuer}
+      refute_received {:oidc_verify_complete, _issuer, _verification_ref, _ack_to}
+    end
+
+    test "with success result token missing verification_ref, renders failure without sending message", %{
+      conn: conn
+    } do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      token = sign_oidc_result(%{ok: true, issuer: "https://example.com", lv_pid: lv_pid_string})
+
+      conn = get(conn, ~p"/verification/oidc", %{"result" => token})
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Invalid or expired verification result"
+      refute_received {:oidc_verify_complete, _issuer, _verification_ref, _ack_to}
     end
 
     test "with invalid result token, renders failure", %{conn: conn} do
