@@ -7,8 +7,19 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   alias Portal.ChangeLog
 
   setup do
+    tables =
+      Application.fetch_env!(:portal, Portal.ChangeLogs.ReplicationConnection)
+      |> Keyword.fetch!(:table_subscriptions)
+
     account = account_fixture()
-    %{account: account}
+    %{account: account, tables: tables}
+  end
+
+  describe "configured tables" do
+    test "includes client and gateway sessions in the audit publication", %{tables: tables} do
+      assert "client_sessions" in tables
+      assert "gateway_sessions" in tables
+    end
   end
 
   describe "on_write/6 for inserts" do
