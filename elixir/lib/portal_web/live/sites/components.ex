@@ -433,6 +433,7 @@ defmodule PortalWeb.Sites.Components do
               <.relative_datetime
                 datetime={gateway.latest_session && gateway.latest_session.inserted_at}
                 popover={false}
+                empty="Unknown"
               />
             </span>
             <span class="text-xs text-[var(--text-tertiary)]">Remote IP</span>
