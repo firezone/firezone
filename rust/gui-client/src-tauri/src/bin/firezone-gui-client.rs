@@ -25,23 +25,23 @@ fn main() -> ExitCode {
         Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
-
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
-    // Start telemetry in `entrypoint` mode so that crashes during settings
-    // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
-    // `try_main` will switch the env to the real api_url once it has loaded
-    // settings; on graceful exit we flush below.
     let mut telemetry = if cli.is_telemetry_allowed() {
         Telemetry::new()
     } else {
         Telemetry::disabled()
     };
-    rt.block_on(telemetry.start(
+
+    // Start telemetry in `entrypoint` mode so that crashes during settings
+    // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
+    // `try_main` will switch the env to the real api_url once it has loaded
+    // settings; on graceful exit we flush below.
+    telemetry.start(
         "entrypoint",
         firezone_gui_client::RELEASE,
         telemetry::GUI_DSN,
-    ));
+    );
 
     let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
 
@@ -103,11 +103,7 @@ fn try_main(
         .as_ref()
         .unwrap_or(&advanced_settings.api_url)
         .to_string();
-    rt.block_on(telemetry.start(
-        &api_url,
-        firezone_gui_client::RELEASE,
-        telemetry::GUI_DSN,
-    ));
+    telemetry.start(&api_url, firezone_gui_client::RELEASE, telemetry::GUI_DSN);
 
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {

@@ -327,21 +327,6 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        // Start a Sentry session in `entrypoint` mode immediately so that
-        // panics during TUN bring-up, DNS notifier setup, and the IPC client
-        // handshake are captured. The session is replaced with a real one
-        // (with a known api_url) once the GUI sends `ClientMsg::StartTelemetry`.
-        #[cfg_attr(test, expect(unused_mut, reason = "tests skip the .start() call"))]
-        let mut telemetry = if std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true") {
-            Telemetry::disabled()
-        } else {
-            Telemetry::new()
-        };
-        #[cfg(not(test))]
-        telemetry
-            .start("entrypoint", env!("CARGO_PKG_VERSION"), telemetry::GUI_DSN)
-            .await;
-
         tracing::info!(
             server_pid = std::process::id(),
             "Listening for GUI to connect over IPC..."
@@ -377,7 +362,7 @@ impl<'a> Handler<'a> {
             ipc_tx,
             log_filter_reloader,
             session: Session::None,
-            telemetry,
+            telemetry: Telemetry::new(),
             tun_device,
             dns_notifier,
             network_notifier,
@@ -651,8 +636,7 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry
-                        .start(&environment, &release, telemetry::GUI_DSN)
-                        .await;
+                        .start(&environment, &release, telemetry::GUI_DSN);
                     Telemetry::set_firezone_id(self.device_id.id.clone());
 
                     otel::install_sentry_meter_provider(

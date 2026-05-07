@@ -199,21 +199,7 @@ impl Telemetry {
     }
 
     /// Starts a Sentry session.
-    ///
-    /// `env_or_api_url` is parsed by [`Env::parse`]: pass `"entrypoint"` at
-    /// process boot to capture crashes before settings load, or an api URL
-    /// once it has been resolved. A subsequent call with a different env will
-    /// stop the running session and start a new one. The Firezone ID is
-    /// attached separately via [`Telemetry::set_firezone_id`].
-    //
-    // Kept `async` so callers can keep awaiting it (and so the function lives
-    // inside a tokio runtime context for reqwest client construction); the
-    // body itself no longer awaits anything.
-    #[allow(
-        clippy::unused_async,
-        reason = "callers rely on tokio runtime context being active"
-    )]
-    pub async fn start(&mut self, env_or_api_url: &str, release: &str, dsn: Dsn) {
+    pub fn start(&mut self, env_or_api_url: &str, release: &str, dsn: Dsn) {
         let environment = Env::parse(env_or_api_url);
 
         if self
@@ -331,16 +317,7 @@ impl Telemetry {
         });
     }
 
-    /// Attaches the Firezone ID to the active Sentry session and triggers a
-    /// feature-flag evaluation.
-    ///
-    /// Mirrors Swift's `Telemetry.setUser(...)`: callers may [`start`] the
-    /// session before the ID is known and bind it later without restarting
-    /// Sentry. Safe to call before [`set_account_slug`] or after — the user
-    /// fields are merged.
-    ///
-    /// [`start`]: Self::start
-    /// [`set_account_slug`]: Self::set_account_slug
+    /// Attaches the Firezone ID to the active Sentry session.
     pub fn set_firezone_id(firezone_id: String) {
         let new_user = compute_user(firezone_id);
         update_user(|user| {
@@ -348,6 +325,7 @@ impl Telemetry {
             user.other.extend(new_user.other);
         });
 
+        // In case user and env are now available, re-eval feature-flags.
         if let (Some(id), Some(env)) = (Self::current_user(), Self::current_env()) {
             tokio::spawn(async move {
                 feature_flags::evaluate_now(id, env).await;
@@ -573,12 +551,8 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let mut telemetry = Telemetry::new();
-        telemetry
-            .start("wss://api.firez.one", "1.0.0", TESTING)
-            .await;
-        telemetry
-            .start("wss://example.com", "1.0.0", TESTING)
-            .await;
+        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
+        telemetry.start("wss://example.com", "1.0.0", TESTING);
 
         assert!(telemetry.inner.is_none());
     }
@@ -598,12 +572,10 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let mut telemetry = Telemetry::new();
-        telemetry.start("entrypoint", "1.0.0", TESTING).await;
+        telemetry.start("entrypoint", "1.0.0", TESTING);
         assert_eq!(Telemetry::current_env(), Some(Env::Entrypoint));
 
-        telemetry
-            .start("wss://api.firez.one", "1.0.0", TESTING)
-            .await;
+        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
         assert_eq!(Telemetry::current_env(), Some(Env::Staging));
     }
 
@@ -613,7 +585,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let mut telemetry = Telemetry::new();
-        telemetry.start("entrypoint", "1.0.0", TESTING).await;
+        telemetry.start("entrypoint", "1.0.0", TESTING);
 
         Telemetry::set_firezone_id("device-abc".to_owned());
 
@@ -626,7 +598,7 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let mut telemetry = Telemetry::new();
-        telemetry.start("entrypoint", "1.0.0", TESTING).await;
+        telemetry.start("entrypoint", "1.0.0", TESTING);
 
         Telemetry::set_account_slug("acme".to_owned());
         Telemetry::set_firezone_id("device-xyz".to_owned());

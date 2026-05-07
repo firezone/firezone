@@ -486,7 +486,7 @@ fn connect(
     install_rustls_crypto_provider();
 
     let mut telemetry = Telemetry::new();
-    runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN));
+    telemetry.start(&api_url, RELEASE, platform::DSN);
     Telemetry::set_firezone_id(device_id.clone());
     Telemetry::set_account_slug(account_slug.clone());
 
