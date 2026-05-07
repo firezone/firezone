@@ -29,6 +29,35 @@ Both tasks build only the cargo target matching the device's ABI (detected via
 `adb` for `install-phone`, host arch for `install-emulator`), which is roughly
 4x faster than the default all-ABI build.
 
+### Wireless ADB
+
+Useful when your USB connection is flaky. Both flows give you a regular `adb`
+connection, after which `mise run install-phone` works normally.
+
+**Android 11+** (native pairing, persists across reboots):
+
+1. On the device: Settings → Developer options → Wireless debugging → enable.
+1. Tap "Pair device with pairing code" — note the IP, port, and 6-digit code.
+1. On the host:
+
+   ```bash
+   adb pair <ip>:<pair-port> <code>     # one-off pairing
+   adb connect <ip>:<connect-port>      # port shown on the main wireless screen
+   ```
+
+**Android 10 and older** (USB seed required, resets on reboot):
+
+1. Connect once over USB and confirm `adb devices` lists the phone.
+1. Switch the device's adb daemon to TCP and connect:
+
+   ```bash
+   adb tcpip 5555
+   adb connect <phone-ip>:5555    # Settings → About phone → Status for the IP
+   ```
+
+1. Disconnect USB. The connection persists until the phone reboots, after which
+   you'll need to repeat the USB seed step.
+
 ### Manual setup
 
 If you'd rather not use `mise run setup`:
