@@ -7,15 +7,61 @@ window.addEventListener("phx:copy", (event) => {
 });
 
 // Toast API helpers
-window.addEventListener("toast:show", (event) => {
-  const el = event.target;
+const delayedToastTimers = new WeakMap();
+
+function clearDelayedToastTimer(el) {
+  const timer = delayedToastTimers.get(el);
+
+  if (timer) {
+    clearTimeout(timer);
+    delayedToastTimers.delete(el);
+  }
+}
+
+function showToast(el) {
+  if (!el?.isConnected) {
+    return;
+  }
+
   if (el && !el.matches(":popover-open")) {
     el.showPopover();
   }
+}
+
+function showToastAfterDelay(el, delayMs) {
+  clearDelayedToastTimer(el);
+
+  const timer = setTimeout(() => {
+    delayedToastTimers.delete(el);
+    showToast(el);
+  }, delayMs);
+
+  delayedToastTimers.set(el, timer);
+}
+
+function getToastShowDelayMs(el) {
+  const delayMs = Number(el?.dataset.showDelayMs || "0");
+
+  return Number.isInteger(delayMs) && delayMs > 0 ? delayMs : 0;
+}
+
+window.addEventListener("toast:show", (event) => {
+  const el = event.target;
+  const delayMs = getToastShowDelayMs(el);
+
+  if (delayMs > 0) {
+    showToastAfterDelay(el, delayMs);
+    return;
+  }
+
+  showToast(el);
 });
 
 window.addEventListener("toast:hide", (event) => {
   const el = event.target;
+
+  clearDelayedToastTimer(el);
+
   if (el && el.matches(":popover-open")) {
     el.hidePopover();
   }

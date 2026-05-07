@@ -23,4 +23,19 @@ defmodule PortalWeb.NavigationComponentsTest do
       assert html =~ ~s(data-theme-option="dark")
     end
   end
+
+  describe "disconnected toast" do
+    test "renders reconnecting copy", %{conn: conn, account: account, actor: actor} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      assert html =~ ~s(id="disconnected-toast")
+      assert html =~ ~s(data-show-delay-ms="300")
+      assert html =~ "Connection lost"
+      assert html =~ "Attempting to reconnect"
+      refute html =~ "We can't find the internet"
+    end
+  end
 end
