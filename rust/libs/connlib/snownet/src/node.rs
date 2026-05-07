@@ -305,8 +305,12 @@ where
         // Only if all of those things are the same, will boringtun be able to
         // handshake a session.
         if let Ok(c) = self.connections.get_mut(&cid, now)
-            && c.agent
-                .matches_existing_connection(&local_creds, &remote_creds, ice_role, want_iceless)
+            && c.agent.matches_existing_connection(
+                &local_creds,
+                &remote_creds,
+                ice_role,
+                want_iceless,
+            )
             && c.tunnel.remote_static_public() == remote
             && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
         {
