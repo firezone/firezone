@@ -42,6 +42,7 @@ pub(crate) const REQUIRED_PATTERNS: &[&str] = &[
     "Malicious client: ignoring resource filter",
     "Device FQDN resolved",
     "Using iceless path-agent for connection",
+    "Using ICE agent for connection",
 ];
 
 const ENFORCE_ENV_VAR: &str = "TUNNEL_TEST_ENFORCE_COVERAGE";

@@ -356,6 +356,7 @@ where
             tracing::debug!(%cid, "Using iceless path-agent for connection");
             Agent::path()
         } else {
+            tracing::debug!(%cid, "Using ICE agent for connection");
             Agent::ice(new_agent(ice_role))
         };
 
