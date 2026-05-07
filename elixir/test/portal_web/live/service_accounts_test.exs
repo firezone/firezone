@@ -70,7 +70,8 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts")
 
-      assert html =~ "No service accounts to display."
+      assert html =~ "No service accounts yet"
+      assert html =~ "No service accounts have been created yet."
     end
 
     test "shows disabled badge for disabled service accounts", %{

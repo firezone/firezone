@@ -629,7 +629,25 @@ defmodule PortalWeb.ServiceAccounts do
             <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
           </:col>
           <:empty>
-            <span class="text-sm text-[var(--text-tertiary)]">No service accounts to display.</span>
+            <div class="flex flex-col items-center gap-3 py-16">
+              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
+                <.icon name="ri-robot-3-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              </div>
+              <div class="text-center">
+                <p class="text-sm font-medium text-[var(--text-primary)]">
+                  No service accounts yet
+                </p>
+                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  No service accounts have been created yet.
+                </p>
+              </div>
+              <.link
+                patch={~p"/#{@account}/service_accounts/new"}
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+              >
+                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Service Account
+              </.link>
+            </div>
           </:empty>
         </.live_table>
       </div>
