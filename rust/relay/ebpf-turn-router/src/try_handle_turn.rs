@@ -25,7 +25,7 @@ use ebpf_shared::{
 };
 use network_types::{
     eth::{EthHdr, EtherType},
-    ip::{IpProto, Ipv4Hdr, Ipv6Hdr},
+    ip::{IpError, IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
 use ref_mut_at::ref_mut_at;
@@ -61,9 +61,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
-    if ipv4.proto != IpProto::Udp {
-        return Err(Error::NotUdp);
-    }
+    ensure_udp(ipv4.proto())?;
 
     if ipv4.ihl() != 20 {
         // IPv4 with options is not supported
@@ -99,9 +97,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
-    if ipv6.next_hdr != IpProto::Udp {
-        return Err(Error::NotUdp);
-    }
+    ensure_udp(ipv6.next_hdr())?;
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
@@ -365,4 +361,14 @@ fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
     let ipv6_public = config::public_ipv6_address()?;
 
     Ok(ip == ipv4_public || ip == ipv6_public)
+}
+
+#[inline(always)]
+fn ensure_udp(proto: Result<IpProto, IpError>) -> Result<(), Error> {
+    let proto = proto.map_err(|_| Error::NotUdp)?;
+
+    match proto {
+        IpProto::Udp => Ok(()),
+        _ => Err(Error::NotUdp),
+    }
 }
