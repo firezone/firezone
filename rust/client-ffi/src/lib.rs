@@ -483,6 +483,8 @@ fn connect(
         .build()
         .context("Failed to create tokio runtime")?;
 
+    install_rustls_crypto_provider();
+
     let mut telemetry = Telemetry::new();
     runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN, device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
@@ -492,7 +494,6 @@ fn connect(
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
-    install_rustls_crypto_provider();
 
     let url = LoginUrl::client(
         api_url.as_str(),
