@@ -20,6 +20,11 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull={13126}>
           Shows currently connected devices in the system tray menu.
         </ChangeItem>
+        {os == OS.Windows && (
+          <ChangeItem pull={13153}>
+            {"Restricts access to Firezone's configuration directory."}
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>
