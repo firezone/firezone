@@ -31,6 +31,10 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
         is_default: %Schema{type: :boolean, description: "Whether provider is default"},
         client_id: %Schema{type: :string, description: "Client ID"},
         discovery_document_uri: %Schema{type: :string, description: "Discovery document URI"},
+        require_email_verified: %Schema{
+          type: :boolean,
+          description: "Whether sign-in requires email_verified=true from the identity provider"
+        },
         inserted_at: %Schema{
           type: :string,
           format: :"date-time",
@@ -42,7 +46,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "OIDC Provider",
-        "client_id" => "my-client-id"
+        "client_id" => "my-client-id",
+        "require_email_verified" => true
       }
     })
   end
@@ -62,7 +67,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
       example: %{
         "data" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "OIDC Provider"
+          "name" => "OIDC Provider",
+          "require_email_verified" => true
         }
       }
     })
@@ -88,7 +94,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
         "data" => [
           %{
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "OIDC Provider"
+            "name" => "OIDC Provider",
+            "require_email_verified" => true
           }
         ]
       }
