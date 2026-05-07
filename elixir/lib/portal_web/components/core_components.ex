@@ -1308,11 +1308,14 @@ defmodule PortalWeb.CoreComponents do
             not is_nil(@display_remote_ip_location_lat) and
               not is_nil(@display_remote_ip_location_lon)
           }
-          class="text-accent-800"
+          aria-label="Open remote IP location in Google Maps"
+          class="inline-flex align-middle text-current hover:text-[var(--text-primary)] transition-colors"
           target="_blank"
-          href={"http://www.google.com/maps/place/#{@display_remote_ip_location_lat},#{@display_remote_ip_location_lon}"}
+          title="Open remote IP location in Google Maps"
+          rel="noopener noreferrer"
+          href={"https://www.google.com/maps/place/#{@display_remote_ip_location_lat},#{@display_remote_ip_location_lon}"}
         >
-          <.icon name="ri-external-link-line" class="mb-3 w-3 h-3" />
+          <.icon name="ri-external-link-line" class="ml-1 w-3 h-3" />
         </a>
       </span>
     <% else %>

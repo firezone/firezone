@@ -189,9 +189,11 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "203.0.113.10"
       assert html =~ "San Francisco"
       assert html =~ "United States of America"
-      assert html =~ "google.com/maps/place/37.7749,-122.4194"
+      assert html =~ "https://www.google.com/maps/place/37.7749,-122.4194"
+      assert html =~ "Open remote IP location in Google Maps"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
+      assert html =~ "Verification"
       assert html =~ "Verified"
       assert html =~ session.version
 
