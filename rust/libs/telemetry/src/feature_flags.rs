@@ -64,7 +64,7 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     let api_key = match env {
         Env::Production => posthog::API_KEY_PROD,
         Env::Staging => posthog::API_KEY_STAGING,
-        Env::OnPrem | Env::DockerCompose | Env::Localhost => return,
+        Env::Entrypoint | Env::OnPrem | Env::DockerCompose | Env::Localhost => return,
     };
 
     let (flags, payloads) = decide(user_id, api_key.to_owned())

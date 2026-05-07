@@ -147,8 +147,8 @@ fn main() -> ExitCode {
             args.api_url.as_str(),
             VERSION.unwrap_or("unknown"),
             RELAY_DSN,
-            String::new(), // Relays don't have a Firezone ID.
         ));
+        // Relays don't have a Firezone ID, so no `set_firezone_id` call.
 
         telemetry
     } else {

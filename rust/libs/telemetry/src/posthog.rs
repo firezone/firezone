@@ -17,7 +17,7 @@ pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
         Env::Production => Some(API_KEY_PROD),
         Env::Staging => Some(API_KEY_STAGING),
         Env::OnPrem => Some(API_KEY_ON_PREM),
-        Env::DockerCompose | Env::Localhost => None,
+        Env::Entrypoint | Env::DockerCompose | Env::Localhost => None,
     }
 }
 

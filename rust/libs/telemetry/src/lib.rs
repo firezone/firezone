@@ -100,6 +100,9 @@ impl fmt::Display for Dsn {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum Env {
+    /// Pre-`api_url` placeholder used at process boot, so we can capture
+    /// crashes before settings are loaded. Mirrors Swift's `Telemetry.start()`.
+    Entrypoint,
     Production,
     Staging,
     DockerCompose,
@@ -121,12 +124,25 @@ impl From<ApiUrl<'_>> for Env {
 impl Env {
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
+            Env::Entrypoint => "entrypoint",
             Env::Production => "production",
             Env::Staging => "staging",
             Env::DockerCompose => "docker-compose",
             Env::Localhost => "localhost",
             Env::OnPrem => "on-prem",
         }
+    }
+
+    /// Parses a string as either an explicit env name or an API URL.
+    ///
+    /// Tries the env name first so callers can pass `"entrypoint"` (and tests
+    /// can pass any other variant directly). Falls back to URL-based detection,
+    /// which is total — unknown URLs land on `OnPrem`.
+    pub(crate) fn parse(input: &str) -> Self {
+        if let Ok(env) = input.parse::<Self>() {
+            return env;
+        }
+        Self::from(ApiUrl::new(input))
     }
 }
 
@@ -135,6 +151,7 @@ impl FromStr for Env {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "entrypoint" => Ok(Self::Entrypoint),
             "production" => Ok(Self::Production),
             "staging" => Ok(Self::Staging),
             "docker-compose" => Ok(Self::DockerCompose),
@@ -181,10 +198,23 @@ impl Telemetry {
         }
     }
 
-    pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
-        // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
-        // <https://docs.sentry.io/platforms/rust/configuration/environments/>
-        let environment = Env::from(ApiUrl::new(api_url));
+    /// Starts a Sentry session.
+    ///
+    /// `env_or_api_url` is parsed by [`Env::parse`]: pass `"entrypoint"` at
+    /// process boot to capture crashes before settings load, or an api URL
+    /// once it has been resolved. A subsequent call with a different env will
+    /// stop the running session and start a new one. The Firezone ID is
+    /// attached separately via [`Telemetry::set_firezone_id`].
+    //
+    // Kept `async` so callers can keep awaiting it (and so the function lives
+    // inside a tokio runtime context for reqwest client construction); the
+    // body itself no longer awaits anything.
+    #[allow(
+        clippy::unused_async,
+        reason = "callers rely on tokio runtime context being active"
+    )]
+    pub async fn start(&mut self, env_or_api_url: &str, release: &str, dsn: Dsn) {
+        let environment = Env::parse(env_or_api_url);
 
         if self
             .inner
@@ -206,13 +236,14 @@ impl Telemetry {
             set_current_user(None);
         }
 
-        if [Env::OnPrem, Env::Localhost, Env::DockerCompose].contains(&environment) {
-            tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
+        if matches!(
+            environment,
+            Env::OnPrem | Env::Localhost | Env::DockerCompose
+        ) {
+            tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
             return;
         }
 
-        // Important: Evaluate feature flags before checking `stream_logs` to avoid hitting the default.
-        feature_flags::evaluate_now(firezone_id.clone(), environment).await;
         tracing::info!(%environment, "Starting telemetry");
 
         let client_options = sentry::ClientOptions {
@@ -243,9 +274,14 @@ impl Telemetry {
                 ..client_options
             },
         ));
-        // Configure scope on the main hub so that all threads will get the tags
+        // Configure scope on the main hub so that all threads will get the tags.
+        // The api_url tag is only meaningful once we know the real URL — skip
+        // it during the entrypoint window.
+        let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
         sentry::Hub::main().configure_scope(move |scope| {
-            scope.set_tag("api_url", api_url);
+            if let Some(api_url) = api_url {
+                scope.set_tag("api_url", api_url);
+            }
             let ctx = sentry::integrations::contexts::utils::device_context();
             scope.set_context("device", ctx);
             let ctx = sentry::integrations::contexts::utils::rust_context();
@@ -254,8 +290,6 @@ impl Telemetry {
             if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
                 scope.set_context("os", ctx);
             }
-
-            scope.set_user(Some(compute_user(firezone_id)));
         });
         self.inner.replace(inner);
     }
@@ -295,6 +329,30 @@ impl Telemetry {
         update_user(|user| {
             user.other.insert("account_slug".to_owned(), slug.into());
         });
+    }
+
+    /// Attaches the Firezone ID to the active Sentry session and triggers a
+    /// feature-flag evaluation.
+    ///
+    /// Mirrors Swift's `Telemetry.setUser(...)`: callers may [`start`] the
+    /// session before the ID is known and bind it later without restarting
+    /// Sentry. Safe to call before [`set_account_slug`] or after — the user
+    /// fields are merged.
+    ///
+    /// [`start`]: Self::start
+    /// [`set_account_slug`]: Self::set_account_slug
+    pub fn set_firezone_id(firezone_id: String) {
+        let new_user = compute_user(firezone_id);
+        update_user(|user| {
+            user.id = new_user.id;
+            user.other.extend(new_user.other);
+        });
+
+        if let (Some(id), Some(env)) = (Self::current_user(), Self::current_env()) {
+            tokio::spawn(async move {
+                feature_flags::evaluate_now(id, env).await;
+            });
+        }
     }
 
     pub(crate) fn current_env() -> Option<Env> {
@@ -491,24 +549,90 @@ impl sentry::TransportFactory for TransportFactory {
 }
 
 #[cfg(test)]
+// `sentry::Hub::main()` is process-global; tests that touch it must serialise
+// on `SENTRY_HUB_LOCK`, which means the guard is intentionally held across
+// `await` points in `Telemetry::start`.
+#[allow(clippy::await_holding_lock, reason = "sentry hub is process-global")]
 mod tests {
+    use std::sync::Mutex;
     use std::time::SystemTime;
 
     use super::*;
 
+    /// `sentry::Hub::main()` is process-global; tests that initialise or
+    /// inspect it must run one at a time.
+    static SENTRY_HUB_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_sentry_hub() -> std::sync::MutexGuard<'static, ()> {
+        SENTRY_HUB_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
     #[tokio::test]
     async fn starting_session_for_unsupported_env_disables_current_one() {
+        let _guard = lock_sentry_hub();
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let mut telemetry = Telemetry::new();
         telemetry
-            .start("wss://api.firez.one", "1.0.0", TESTING, String::new())
+            .start("wss://api.firez.one", "1.0.0", TESTING)
             .await;
         telemetry
-            .start("wss://example.com", "1.0.0", TESTING, String::new())
+            .start("wss://example.com", "1.0.0", TESTING)
             .await;
 
         assert!(telemetry.inner.is_none());
+    }
+
+    #[test]
+    fn env_parse_recognises_explicit_names_and_falls_back_to_api_url() {
+        assert_eq!(Env::parse("entrypoint"), Env::Entrypoint);
+        assert_eq!(Env::parse("production"), Env::Production);
+        assert_eq!(Env::parse("wss://api.firezone.dev"), Env::Production);
+        assert_eq!(Env::parse("wss://api.firez.one"), Env::Staging);
+        assert_eq!(Env::parse("https://example.com"), Env::OnPrem);
+    }
+
+    #[tokio::test]
+    async fn entrypoint_then_real_env_swaps_running_session() {
+        let _guard = lock_sentry_hub();
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let mut telemetry = Telemetry::new();
+        telemetry.start("entrypoint", "1.0.0", TESTING).await;
+        assert_eq!(Telemetry::current_env(), Some(Env::Entrypoint));
+
+        telemetry
+            .start("wss://api.firez.one", "1.0.0", TESTING)
+            .await;
+        assert_eq!(Telemetry::current_env(), Some(Env::Staging));
+    }
+
+    #[tokio::test]
+    async fn set_firezone_id_attaches_user_to_running_session() {
+        let _guard = lock_sentry_hub();
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let mut telemetry = Telemetry::new();
+        telemetry.start("entrypoint", "1.0.0", TESTING).await;
+
+        Telemetry::set_firezone_id("device-abc".to_owned());
+
+        assert_eq!(Telemetry::current_user().as_deref(), Some("device-abc"));
+    }
+
+    #[tokio::test]
+    async fn set_account_slug_before_set_firezone_id_preserves_both() {
+        let _guard = lock_sentry_hub();
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let mut telemetry = Telemetry::new();
+        telemetry.start("entrypoint", "1.0.0", TESTING).await;
+
+        Telemetry::set_account_slug("acme".to_owned());
+        Telemetry::set_firezone_id("device-xyz".to_owned());
+
+        assert_eq!(Telemetry::current_user().as_deref(), Some("device-xyz"));
+        assert_eq!(Telemetry::current_account_slug().as_deref(), Some("acme"));
     }
 
     #[test]

@@ -40,7 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
-    telemetry: MaybeTelemetry,
+    telemetry_allowed: bool,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
@@ -173,64 +173,6 @@ enum EventloopTick {
 #[error("Failed to receive hello: {0:#}")]
 pub struct FailedToReceiveHello(anyhow::Error);
 
-/// State of the GUI process' telemetry instance.
-enum MaybeTelemetry {
-    /// Telemetry is allowed and we have the Firezone ID needed to start it.
-    Initialized {
-        telemetry: Telemetry,
-        firezone_id: String,
-    },
-    /// Telemetry has been disabled by the user.
-    Disabled,
-}
-
-impl MaybeTelemetry {
-    fn new(telemetry_allowed: bool, firezone_id: String) -> Self {
-        if telemetry_allowed {
-            Self::Initialized {
-                telemetry: Telemetry::new(),
-                firezone_id,
-            }
-        } else {
-            Self::Disabled
-        }
-    }
-
-    fn is_enabled(&self) -> bool {
-        matches!(self, Self::Initialized { .. })
-    }
-
-    /// Starts the underlying GUI telemetry instance.
-    ///
-    /// Calling this in tests is a no-op so we don't make real HTTP requests to Sentry.
-    #[cfg_attr(test, allow(clippy::unused_async))]
-    async fn start(&mut self, environment: &str, release: &str) {
-        let Self::Initialized {
-            telemetry,
-            firezone_id,
-        } = self
-        else {
-            return;
-        };
-
-        #[cfg(not(test))]
-        telemetry
-            .start(environment, release, telemetry::GUI_DSN, firezone_id.clone())
-            .await;
-
-        #[cfg(test)]
-        {
-            let _ = (environment, release, telemetry, firezone_id);
-        }
-    }
-
-    async fn stop(&mut self) {
-        if let Self::Initialized { telemetry, .. } = self {
-            telemetry.stop().await;
-        }
-    }
-}
-
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
         socket: SocketId,
@@ -253,6 +195,14 @@ impl<I: GuiIntegration> Controller<I> {
             .await
             .map_err(FailedToReceiveHello)?;
 
+        // Attach the Firezone ID to the running Sentry session. The session
+        // itself was started in `fn main` (entrypoint) and switched to the real
+        // env in `try_main`; we just bind the user here.
+        #[cfg(not(test))]
+        Telemetry::set_firezone_id(firezone_id);
+        #[cfg(test)]
+        let _ = firezone_id;
+
         let controller = Controller {
             general_settings,
             mdm_settings,
@@ -267,7 +217,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
-            telemetry: MaybeTelemetry::new(telemetry_allowed, firezone_id),
+            telemetry_allowed,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -354,8 +304,6 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::error!("ipc_client: {error:#}");
         }
 
-        self.telemetry.stop().await;
-
         Ok(())
     }
 
@@ -425,13 +373,11 @@ impl<I: GuiIntegration> Controller<I> {
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
-        self.telemetry.start(&environment, crate::RELEASE).await;
-
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
         }
 
-        if !self.telemetry.is_enabled() {
+        if !self.telemetry_allowed {
             return Ok(());
         }
 

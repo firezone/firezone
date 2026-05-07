@@ -11,6 +11,7 @@ use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging, settings};
 use settings::AdvancedSettingsLegacy;
+use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
@@ -27,7 +28,26 @@ fn main() -> ExitCode {
 
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
-    match try_main(cli, &rt, &mut bootstrap_log_guard) {
+    // Start telemetry in `entrypoint` mode so that crashes during settings
+    // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
+    // `try_main` will switch the env to the real api_url once it has loaded
+    // settings; on graceful exit we flush below.
+    let mut telemetry = if cli.is_telemetry_allowed() {
+        Telemetry::new()
+    } else {
+        Telemetry::disabled()
+    };
+    rt.block_on(telemetry.start(
+        "entrypoint",
+        firezone_gui_client::RELEASE,
+        telemetry::GUI_DSN,
+    ));
+
+    let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
+
+    rt.block_on(telemetry.stop());
+
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("GUI failed: {e:#}");
@@ -37,7 +57,12 @@ fn main() -> ExitCode {
     }
 }
 
-fn try_main(cli: Cli, rt: &Runtime, bootstrap_log_guard: &mut Option<DefaultGuard>) -> Result<()> {
+fn try_main(
+    cli: Cli,
+    rt: &Runtime,
+    bootstrap_log_guard: &mut Option<DefaultGuard>,
+    telemetry: &mut Telemetry,
+) -> Result<()> {
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
@@ -69,6 +94,20 @@ fn try_main(cli: Cli, rt: &Runtime, bootstrap_log_guard: &mut Option<DefaultGuar
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
+
+    // Now that we know the real api_url, switch the Sentry session out of
+    // entrypoint mode. `Telemetry::start` notices the env change and stops
+    // the previous session before initialising a new one.
+    let api_url = mdm_settings
+        .api_url
+        .as_ref()
+        .unwrap_or(&advanced_settings.api_url)
+        .to_string();
+    rt.block_on(telemetry.start(
+        &api_url,
+        firezone_gui_client::RELEASE,
+        telemetry::GUI_DSN,
+    ));
 
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {
