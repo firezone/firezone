@@ -158,6 +158,17 @@ fn try_main(
 
             return Ok(());
         }
+        Some(Cmd::Debug {
+            command: DebugCommand::PrintPackageSid,
+        }) => {
+            // Single-line, deterministic stdout — read by the
+            // `gui-client-install-windows-msi.sh` SID-parity canary.
+            #[allow(clippy::print_stdout)]
+            {
+                println!("{}", firezone_gui_client::PACKAGE_SID);
+            }
+            return Ok(());
+        }
         Some(Cmd::OpenDeepLink(deep_link)) => {
             tracing::info!("Opening deep-link");
 
@@ -330,6 +341,11 @@ enum DebugCommand {
     /// Run the GUI with a hardcoded fake tunnel state, for iterating on the
     /// system tray UI without needing the tunnel service or a live portal.
     FakeController,
+    /// Print the build-time-baked package SID and exit. Used by the
+    /// CI canary in `scripts/tests/gui-client-install-windows-msi.sh`
+    /// to verify the SID matches what the kernel reports for the
+    /// installed sparse-MSIX package.
+    PrintPackageSid,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
 }

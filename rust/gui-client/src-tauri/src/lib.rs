@@ -35,6 +35,29 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
+/// Subject DN of the code-signing certificate, taken verbatim from
+/// `win_files/AppxManifest.xml` at build time. Pinned in pipe DACLs
+/// indirectly via [`PACKAGE_SID`].
+pub const PUBLISHER_DN: &str = env!("FIREZONE_PUBLISHER_DN");
+
+/// AppX `Identity@Name`. Combined with [`PACKAGE_PUBLISHER_ID`] this
+/// forms [`PACKAGE_FAMILY_NAME`].
+pub const PACKAGE_NAME: &str = env!("FIREZONE_PACKAGE_NAME");
+
+/// 13-character Crockford-base32 publisher hash, derived from
+/// [`PUBLISHER_DN`] at build time. `8wekyb3d8bbwe`-style.
+pub const PACKAGE_PUBLISHER_ID: &str = env!("FIREZONE_PACKAGE_PUBLISHER_ID");
+
+/// `{PACKAGE_NAME}_{PACKAGE_PUBLISHER_ID}`. The same string Windows
+/// uses to address an installed package via `Get-AppxPackage`.
+pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
+
+/// Kernel-tracked Package SID, baked in at build time from the manifest
+/// identity. Identical to `(Get-AppxPackage Firezone.Client.GUI).SID`
+/// once the sparse MSIX has registered. Used to build pipe DACLs that
+/// only the running Firezone processes can open.
+pub const PACKAGE_SID: &str = env!("FIREZONE_PACKAGE_SID");
+
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
 #[cfg(target_os = "linux")]

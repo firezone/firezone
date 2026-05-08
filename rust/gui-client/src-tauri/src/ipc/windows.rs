@@ -1,35 +1,35 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail, ensure};
-use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
+use sha2::{Digest, Sha256};
+use std::{
+    ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, sync::OnceLock, time::Duration,
+};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
     Foundation::{HANDLE, HLOCAL, LocalFree},
     Security::{
-        Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
-        IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-        SECURITY_ATTRIBUTES, WinLocalSystemSid,
+        Authorization::{ConvertSidToStringSidW, GetSecurityInfo, SE_KERNEL_OBJECT},
+        GetTokenInformation, IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+        PSID, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser, WinLocalSystemSid,
     },
-    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
+    System::{
+        Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
+        Threading::{GetCurrentProcess, OpenProcessToken},
+    },
 };
+use windows::core::PWSTR;
 use windows_security::SecurityDescriptor;
 
-/// SDDL applied to every Firezone named pipe.
-///
-/// The Tunnel pipe is created by the LocalSystem-privileged tunnel service and
-/// must be reachable by the user-mode GUI; the GUI pipe is created by the GUI
-/// itself but uses the same DACL for uniformity.
-///
-/// - `D:P` — protected DACL (don't inherit ACEs).
-/// - `(A;;FA;;;SY)` — Full Access for `LocalSystem` (the tunnel service).
-/// - `(A;;FA;;;BA)` — Full Access for `BUILTIN\Administrators`.
-/// - `(A;;FRFW;;;BU)` — `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE`
-///   for `BUILTIN\Users`. This is the alias the non-admin GUI runs under and
-///   excludes `NETWORK SERVICE`, `LOCAL SERVICE`, `ANONYMOUS LOGON`, IIS app
-///   pool identities, and arbitrary new service accounts (unlike `AU`).
-const PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
+/// `kernel32!GetCurrentPackageFullName` returns this when the calling
+/// process has no package identity. Any other return value (including
+/// `ERROR_INSUFFICIENT_BUFFER` from the first sizing call) means the
+/// process *is* part of a registered MSIX package and the kernel will
+/// attach our [`crate::PACKAGE_SID`] to its token.
+const APPMODEL_ERROR_NO_PACKAGE: u32 = 15700;
 
 pub(crate) struct Server {
     pipe_path: String,
+    socket_id: SocketId,
 }
 
 /// Alias for the client's half of a platform-specific IPC stream
@@ -136,7 +136,10 @@ impl Server {
     #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
     pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
-        Ok(Self { pipe_path })
+        Ok(Self {
+            pipe_path,
+            socket_id: id,
+        })
     }
 
     // `&mut self` needed to match the Linux signature
@@ -177,7 +180,7 @@ impl Server {
         const NUM_ITERS: usize = 100;
         const RETRY_INTERVAL: Duration = Duration::from_millis(100);
         for i in 0..NUM_ITERS {
-            match create_pipe_server(&self.pipe_path) {
+            match create_pipe_server(&self.pipe_path, self.socket_id) {
                 Ok(server) => return Ok(server),
                 Err(PipeError::AccessDenied) => {
                     tracing::debug!("PipeError::AccessDenied, sleeping... (loop {i})");
@@ -198,14 +201,15 @@ enum PipeError {
     Other(#[from] anyhow::Error),
 }
 
-fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, PipeError> {
+fn create_pipe_server(
+    pipe_path: &str,
+    id: SocketId,
+) -> Result<named_pipe::NamedPipeServer, PipeError> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
-    // Build a `SECURITY_ATTRIBUTES` that grants the non-admin GUI (running as
-    // `BUILTIN\Users`) read/write access to the pipe while keeping it shut to
-    // `NETWORK SERVICE`, anonymous logons, and other unintended principals.
-    let sd = SecurityDescriptor::from_sddl(PIPE_SDDL).map_err(PipeError::Other)?;
+    let sddl = pipe_sddl(id).map_err(|e| PipeError::Other(e.context("Failed to build SDDL")))?;
+    let sd = SecurityDescriptor::from_sddl(&sddl).map_err(PipeError::Other)?;
     let mut sa = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: sd.as_raw().0,
@@ -225,15 +229,186 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     }
 }
 
-/// Named pipe for an IPC connection
+/// Builds the SDDL applied to a Firezone named pipe at creation time.
+///
+/// On Win10 21H2+ where the sparse MSIX has registered, both the Tunnel
+/// and GUI pipes carry an `Allow` ACE keyed on the kernel-tracked
+/// package SID, replacing the spoofable
+/// `GetNamedPipeClientProcessId` -> `WinVerifyTrust` chain. The GUI pipe
+/// additionally narrows access to the owning user via a conditional
+/// ACE, so a same-machine attacker who somehow has the package SID
+/// (e.g. another logged-in account running Firezone) still can't reach
+/// a different user's GUI process.
+///
+/// On older Windows (build < 19044) the kernel won't attach the package
+/// SID to our processes, so we fall back to the legacy `BU` ACE on the
+/// Tunnel pipe and document the weaker security on those targets.
+///
+/// Debug builds always include `BU` so the smoke-test runner — which is
+/// not registered as a package — can connect.
+fn pipe_sddl(id: SocketId) -> Result<String> {
+    let pkg_active = package_identity_active();
+    let mut sddl = String::from("D:P(A;;FA;;;SY)(A;;FA;;;BA)");
+
+    match id {
+        SocketId::Tunnel => {
+            if pkg_active {
+                sddl.push_str(&format!("(A;;FRFW;;;{})", crate::PACKAGE_SID));
+            }
+            if !pkg_active || cfg!(debug_assertions) {
+                sddl.push_str("(A;;FRFW;;;BU)");
+            }
+        }
+        SocketId::Gui => {
+            if pkg_active {
+                let user_sid = current_user_sid_string()
+                    .context("Failed to obtain current user SID for GUI pipe DACL")?;
+                sddl.push_str(&format!(
+                    "(XA;;FRFW;;;{pkg};(Member_of {{SID({user})}}))",
+                    pkg = crate::PACKAGE_SID,
+                    user = user_sid,
+                ));
+            }
+            if !pkg_active || cfg!(debug_assertions) {
+                sddl.push_str("(A;;FRFW;;;BU)");
+            }
+        }
+        #[cfg(test)]
+        SocketId::Test(_) => {
+            // Tests run as the test process; package identity isn't applicable.
+            sddl.push_str("(A;;FRFW;;;BU)");
+        }
+    }
+
+    Ok(sddl)
+}
+
+/// Returns true when the calling process is part of a registered MSIX
+/// package and therefore carries a kernel-attested package SID we can
+/// pin in pipe DACLs.
+///
+/// We ask the kernel directly (`GetCurrentPackageFullName`) rather than
+/// inferring from the OS version + a registry flag: this is the only
+/// source of truth that's resilient to MSIX-registration failures, OS
+/// upgrades that disable AppX (some hardened images), and dev builds
+/// run unwrapped.
+fn package_identity_active() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        let mut len: u32 = 0;
+        // SAFETY: Both pointers may be null; the API returns
+        // `ERROR_INSUFFICIENT_BUFFER` (122) on success when the buffer is
+        // too small (the typical first call), or
+        // `APPMODEL_ERROR_NO_PACKAGE` (15700) if the process has no package
+        // identity. Either is safe to read off the return value alone.
+        let result = unsafe { GetCurrentPackageFullName(&mut len, std::ptr::null_mut()) };
+        result != APPMODEL_ERROR_NO_PACKAGE
+    })
+}
+
+// `GetCurrentPackageFullName` is exported from `kernel32.dll` (it
+// dispatches to `apphelp.dll` internally). Linking it manually keeps
+// the call site stable across `windows` crate version bumps and
+// avoids pulling in the heavy
+// `Win32_Storage_Packaging_Appx` feature for one symbol.
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetCurrentPackageFullName(
+        package_full_name_length: *mut u32,
+        package_full_name: *mut u16,
+    ) -> u32;
+}
+
+/// Looks up the current process's primary user SID and returns it in
+/// SDDL string form (`S-1-5-21-...`).
+fn current_user_sid_string() -> Result<String> {
+    static CACHE: OnceLock<String> = OnceLock::new();
+    if let Some(sid) = CACHE.get() {
+        return Ok(sid.clone());
+    }
+
+    let sid = read_user_sid_string()?;
+    let _ = CACHE.set(sid.clone());
+    Ok(sid)
+}
+
+fn read_user_sid_string() -> Result<String> {
+    let mut token = HANDLE::default();
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle that doesn't need
+    // closing; `OpenProcessToken` writes the real handle into `token`.
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }
+        .context("OpenProcessToken failed")?;
+
+    let mut needed: u32 = 0;
+    // SAFETY: A zero-sized buffer with `None` info is the documented
+    // pattern for sizing. The error return is expected.
+    let _ = unsafe { GetTokenInformation(token, TokenUser, None, 0, &mut needed) };
+
+    let mut buf = vec![0u8; needed as usize];
+    // SAFETY: `buf` has length `needed`; the API writes a `TOKEN_USER`
+    // followed by the embedded SID into it.
+    unsafe {
+        GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr() as *mut c_void),
+            needed,
+            &mut needed,
+        )
+    }
+    .context("GetTokenInformation(TokenUser) failed")?;
+
+    // SAFETY: `buf` holds at least one `TOKEN_USER`; the cast yields a
+    // reference whose lifetime is bounded by the `buf` borrow.
+    let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
+    sid_to_string(token_user.User.Sid)
+}
+
+fn sid_to_string(sid: PSID) -> Result<String> {
+    let mut wide: PWSTR = PWSTR::null();
+    // SAFETY: `ConvertSidToStringSidW` writes a fresh allocation to `wide`
+    // that we own and must release via `LocalFree`.
+    unsafe { ConvertSidToStringSidW(sid, &mut wide) }.context("ConvertSidToStringSidW failed")?;
+
+    // SAFETY: `wide` is a non-null pointer to a NUL-terminated UTF-16
+    // string Windows allocated; `to_string` walks until the NUL.
+    let s = unsafe { wide.to_string() }.context("SID buffer was not valid UTF-16")?;
+
+    // SAFETY: We own `wide` and must release it with `LocalFree`; after
+    // this call no pointer derived from it is used.
+    unsafe { LocalFree(Some(HLOCAL(wide.0 as *mut c_void))) };
+    Ok(s)
+}
+
+/// Named pipe for an IPC connection.
+///
+/// On Win10 21H2+ where package identity is active, the GUI socket name
+/// embeds a hash of the user SID. This avoids cross-user pipe-name
+/// collisions on multi-user RDP hosts; the conditional ACE in
+/// [`pipe_sddl`] is what actually enforces the security boundary.
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
         SocketId::Tunnel => format!("{}_tunnel.ipc", crate::BUNDLE_ID),
-        SocketId::Gui => format!("{}_gui.ipc", crate::BUNDLE_ID),
+        SocketId::Gui => {
+            if package_identity_active() {
+                let suffix = current_user_hash().unwrap_or_else(|_| "fallback".into());
+                format!("{}_gui_{}.ipc", crate::BUNDLE_ID, suffix)
+            } else {
+                format!("{}_gui.ipc", crate::BUNDLE_ID)
+            }
+        }
         #[cfg(test)]
         SocketId::Test(id) => format!("{}_test_{id}.ipc", crate::BUNDLE_ID),
     };
     named_pipe_path(&name)
+}
+
+fn current_user_hash() -> Result<String> {
+    let user = current_user_sid_string()?;
+    let mut h = Sha256::new();
+    h.update(user.as_bytes());
+    let digest = h.finalize();
+    Ok(hex::encode(&digest[..8]))
 }
 
 /// Returns a valid name for a Windows named pipe
@@ -267,6 +442,15 @@ mod tests {
         assert!(super::ipc_path(SocketId::Tunnel).starts_with(r"\\.\pipe\"));
     }
 
+    /// Even on a host where package identity isn't active, the SDDL builder
+    /// must produce a string the kernel will parse.
+    #[test]
+    fn tunnel_sddl_parses() {
+        let sddl = super::pipe_sddl(SocketId::Tunnel).unwrap();
+        windows_security::SecurityDescriptor::from_sddl(&sddl).unwrap();
+        assert!(sddl.starts_with("D:P(A;;FA;;;SY)(A;;FA;;;BA)"));
+    }
+
     #[tokio::test]
     async fn single_instance() -> anyhow::Result<()> {
         let _guard = logging::test("trace");
@@ -283,7 +467,7 @@ mod tests {
         let (_rx, _tx) =
             crate::ipc::connect::<(), ()>(ID, crate::ipc::ConnectOptions::default()).await?;
 
-        match super::create_pipe_server(&pipe_path) {
+        match super::create_pipe_server(&pipe_path, ID) {
             Err(super::PipeError::AccessDenied) => {}
             Err(error) => {
                 Err(error).context("Expected `PipeError::AccessDenied` but got another error")?

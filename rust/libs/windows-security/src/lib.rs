@@ -161,11 +161,34 @@ mod tests {
     /// whether tests run as Administrator.
     const PERMISSIVE_SDDL: &str = "D:(A;;FA;;;WD)";
 
+    /// SDDL with a conditional `XA` (callback-allow) ACE plus a long
+    /// `S-1-15-2-...` package SID and a `Member_of` predicate referencing
+    /// a per-user SID. This is the exact shape of the GUI-pipe DACL the
+    /// Firezone IPC layer constructs at runtime; if the kernel's SDDL
+    /// parser refuses it, the GUI's pipe-creation will fail closed and
+    /// the second-instance/deeplink flow breaks. We pin it here to
+    /// catch any regression in the underlying Win32 surface.
+    const CONDITIONAL_PACKAGE_SDDL: &str = concat!(
+        "D:P(A;;FA;;;SY)(A;;FA;;;BA)",
+        "(XA;;FRFW;;;",
+        "S-1-15-2-1112396765-125922509-3270321643-1953995960-1208983976",
+        ";(Member_of {SID(S-1-5-21-1-2-3-1001)}))",
+    );
+
     #[test]
     fn parse_dacl_only_sddl_does_not_crash() {
         // Exercises `ConvertStringSecurityDescriptorToSecurityDescriptorW`
         // and the `Drop` impl that calls `LocalFree`.
         SecurityDescriptor::from_sddl(DACL_ONLY_SDDL).unwrap();
+    }
+
+    #[test]
+    fn parse_conditional_package_sddl_does_not_crash() {
+        // The Firezone GUI pipe DACL combines a `S-1-15-2-...` package SID
+        // and a per-user `Member_of` predicate. Both are revision-2 SDDL
+        // features; the test guards against future `windows` crate or
+        // OS-side regressions removing support for them.
+        SecurityDescriptor::from_sddl(CONDITIONAL_PACKAGE_SDDL).unwrap();
     }
 
     #[test]

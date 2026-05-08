@@ -29,6 +29,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
+fd-lock = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
@@ -86,6 +87,7 @@ tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
+sha2 = { workspace = true }
 tauri-winrt-notification = "0.7.2"
 windows-native-keyring-store = { workspace = true }
 windows-security = { workspace = true }
@@ -96,9 +98,11 @@ winreg = { workspace = true }
 workspace = true
 features = [
     "Win32_Foundation",
-    # `SECURITY_ATTRIBUTES`, `IsWellKnownSid` for the pipe
+    # `SECURITY_ATTRIBUTES`, `IsWellKnownSid`, `GetTokenInformation`,
+    # `TOKEN_USER`, etc. for the pipe DACL.
     "Win32_Security",
-    # `GetSecurityInfo` for the pipe-owner SID check
+    # `GetSecurityInfo`, `ConvertSidToStringSidW` for the pipe-owner
+    # SID check and DACL building.
     "Win32_Security_Authorization",
     # IPC system
     "Win32_System_Pipes",
@@ -107,6 +111,7 @@ features = [
 
 [build-dependencies]
 anyhow = { workspace = true }
+sha2 = { workspace = true }
 tauri-build = { workspace = true, features = [] }
 
 [dev-dependencies]
