@@ -1,12 +1,32 @@
 use super::{NotFound, SocketId};
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result, bail, ensure};
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::HANDLE,
-    Security as WinSec,
+    Foundation::{HANDLE, HLOCAL, LocalFree},
+    Security::{
+        Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
+        IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+        SECURITY_ATTRIBUTES, WinLocalSystemSid,
+    },
     System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
+use windows_security::SecurityDescriptor;
+
+/// SDDL applied to every Firezone named pipe.
+///
+/// The Tunnel pipe is created by the LocalSystem-privileged tunnel service and
+/// must be reachable by the user-mode GUI; the GUI pipe is created by the GUI
+/// itself but uses the same DACL for uniformity.
+///
+/// - `D:P` — protected DACL (don't inherit ACEs).
+/// - `(A;;FA;;;SY)` — Full Access for `LocalSystem` (the tunnel service).
+/// - `(A;;FA;;;BA)` — Full Access for `BUILTIN\Administrators`.
+/// - `(A;;FRFW;;;BU)` — `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE`
+///   for `BUILTIN\Users`. This is the alias the non-admin GUI runs under and
+///   excludes `NETWORK SERVICE`, `LOCAL SERVICE`, `ANONYMOUS LOGON`, IIS app
+///   pool identities, and arbitrary new service accounts (unlike `AU`).
+const PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
 
 pub(crate) struct Server {
     pipe_path: String,
@@ -33,6 +53,18 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
         })
         .context("Couldn't connect to named pipe")?;
     let handle = HANDLE(stream.as_raw_handle());
+
+    // Skip the owner check in debug builds so the `gui-smoke-test`, which
+    // launches the Tunnel binary as a subprocess of the test runner (not as a
+    // Windows service running under `LocalSystem`), can drive a real GUI
+    // ↔ Tunnel handshake. Production builds are always release-mode (the
+    // `gui-smoke-test` workflow explicitly skips release mode), so the check
+    // is enforced there.
+    if !cfg!(debug_assertions) && matches!(id, SocketId::Tunnel) {
+        ensure_pipe_owner_is_local_system(handle)
+            .context("Refusing to talk to non-LocalSystem Tunnel pipe server")?;
+    }
+
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
@@ -41,6 +73,62 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
     tracing::debug!(?server_pid, "Made IPC connection");
     Ok(stream)
+}
+
+/// Verifies that the connected named pipe was created by `LocalSystem`, the
+/// account the Tunnel service runs as.
+///
+/// `first_pipe_instance(true)` ensures nobody else can create another instance
+/// of our pipe *while the legit server is bound*, but during the brief window
+/// between teardown and re-bind (or before the service starts at all on a
+/// just-booted machine) a local user-mode process can race to be the *first*
+/// creator of the pipe name. The legit service then fails closed via
+/// `ERROR_ACCESS_DENIED`, leaving the squatter as the only server. This check
+/// catches that case before the GUI sends anything sensitive over the wire.
+///
+/// We inspect the *owner* of the kernel pipe object (set at creation time)
+/// rather than the server's current process token. The latter is racy if the
+/// server process exits and its PID is recycled between
+/// `GetNamedPipeServerProcessId` and `OpenProcess`.
+fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
+    let mut owner_sid = PSID::default();
+    let mut sd = PSECURITY_DESCRIPTOR::default();
+
+    // SAFETY: All pointers below are out-pointers to stack locals. On success
+    // the kernel allocates `sd` (which we release via `LocalFree`) and points
+    // `owner_sid` into that allocation.
+    let err = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            Some(&mut owner_sid),
+            None,
+            None,
+            None,
+            Some(&mut sd),
+        )
+    };
+    if err.0 != 0 {
+        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
+            .context("GetSecurityInfo on pipe handle failed");
+    }
+
+    // SAFETY: `owner_sid` is a non-NULL pointer into `sd`'s buffer (still
+    // alive for this call) and `IsWellKnownSid` does not retain it.
+    let is_local_system = unsafe { IsWellKnownSid(owner_sid, WinLocalSystemSid) }.as_bool();
+
+    // SAFETY: `sd` was allocated by `GetSecurityInfo` and must be released
+    // with `LocalFree`. After this call no pointer derived from it is used.
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(sd.0)));
+    }
+
+    ensure!(
+        is_local_system,
+        "Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack"
+    );
+    Ok(())
 }
 
 impl Server {
@@ -114,41 +202,26 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
-    // This will allow non-admin clients to connect to us even though we're running with privilege
-    let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
-    let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
-    // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading or lifetime problems, because we only pass pointers to our local vars to Win32, and Win32 shouldn't sae them anywhere.
-    unsafe {
-        // ChatGPT pointed me to these functions
-        WinSec::InitializeSecurityDescriptor(
-            psd,
-            windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
-        )
-        .context("InitializeSecurityDescriptor failed")?;
-        WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
-            .context("SetSecurityDescriptorDacl failed")?;
-    }
-
-    let mut sa = WinSec::SECURITY_ATTRIBUTES {
-        nLength: 0,
-        lpSecurityDescriptor: psd.0,
+    // Build a `SECURITY_ATTRIBUTES` that grants the non-admin GUI (running as
+    // `BUILTIN\Users`) read/write access to the pipe while keeping it shut to
+    // `NETWORK SERVICE`, anonymous logons, and other unintended principals.
+    let sd = SecurityDescriptor::from_sddl(PIPE_SDDL).map_err(PipeError::Other)?;
+    let mut sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: sd.as_raw().0,
         bInheritHandle: false.into(),
     };
-    sa.nLength = std::mem::size_of_val(&sa)
-        .try_into()
-        .context("Size of SECURITY_ATTRIBUTES struct is not right")?;
 
     let sa_ptr = &mut sa as *mut _ as *mut c_void;
-    // SAFETY: Unsafe needed to call Win32 API. We only pass pointers to local vars, and Win32 shouldn't store them, so there shouldn't be any threading of lifetime problems.
+    // SAFETY: `sa_ptr` is a valid pointer to a fully-initialised
+    // `SECURITY_ATTRIBUTES`. The kernel copies the security descriptor during
+    // `CreateNamedPipeW`, so `sd` may be dropped after the call returns.
     match unsafe { server_options.create_with_security_attributes_raw(pipe_path, sa_ptr) } {
         Ok(x) => Ok(x),
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::PermissionDenied {
-                Err(PipeError::AccessDenied)
-            } else {
-                Err(anyhow::Error::from(err).into())
-            }
+        Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(PipeError::AccessDenied)
         }
+        Err(err) => Err(anyhow::Error::from(err).into()),
     }
 }
 

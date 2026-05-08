@@ -31,6 +31,7 @@ members = [
     "libs/known-dirs",
     "libs/logging",
     "libs/telemetry",
+    "libs/windows-security",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
     "relay/server",
@@ -235,6 +236,7 @@ windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
 windows-native-keyring-store = "0.4.0"
+windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.0"
 winreg = "0.56.0"
 zbus = "5.14.0"

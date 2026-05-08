@@ -88,6 +88,7 @@ tracing-journald = { workspace = true }
 admx-macro = { workspace = true }
 tauri-winrt-notification = "0.7.2"
 windows-native-keyring-store = { workspace = true }
+windows-security = { workspace = true }
 windows-service = { workspace = true }
 winreg = { workspace = true }
 
@@ -95,8 +96,13 @@ winreg = { workspace = true }
 workspace = true
 features = [
     "Win32_Foundation",
+    # `SECURITY_ATTRIBUTES`, `IsWellKnownSid` for the pipe
+    "Win32_Security",
+    # `GetSecurityInfo` for the pipe-owner SID check
+    "Win32_Security_Authorization",
+    # IPC system
+    "Win32_System_Pipes",
     "Win32_System_Threading",
-    "Win32_System_Pipes", # For IPC system
 ]
 
 [build-dependencies]

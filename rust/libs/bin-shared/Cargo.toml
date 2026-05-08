@@ -56,6 +56,7 @@ tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 windows-core = { workspace = true }
 windows-implement = { workspace = true }
+windows-security = { workspace = true }
 winreg = { workspace = true }
 wintun = "0.5.1"
 
@@ -70,14 +71,14 @@ features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
     "Win32_Security",
-    "Win32_Security_Authorization",
     "Win32_System_Com",
     # Needed to listen for system DNS changes
     "Win32_System_Registry",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
     # For uptime
-    "Win32_System_GroupPolicy", # For NRPT when GPO is used
+    # For NRPT when GPO is used
+    "Win32_System_GroupPolicy",
 ]
 
 [dev-dependencies]
