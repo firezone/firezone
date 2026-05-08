@@ -4,9 +4,25 @@ use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Durati
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
     Foundation::HANDLE,
-    Security as WinSec,
+    Security::SECURITY_ATTRIBUTES,
     System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
+use windows_security::SecurityDescriptor;
+
+/// SDDL applied to every Firezone named pipe.
+///
+/// The Tunnel pipe is created by the LocalSystem-privileged tunnel service and
+/// must be reachable by the user-mode GUI; the GUI pipe is created by the GUI
+/// itself but uses the same DACL for uniformity.
+///
+/// - `D:P` — protected DACL (don't inherit ACEs).
+/// - `(A;;FA;;;SY)` — Full Access for `LocalSystem` (the tunnel service).
+/// - `(A;;FA;;;BA)` — Full Access for `BUILTIN\Administrators`.
+/// - `(A;;FRFW;;;BU)` — `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE`
+///   for `BUILTIN\Users`. This is the alias the non-admin GUI runs under and
+///   excludes `NETWORK SERVICE`, `LOCAL SERVICE`, `ANONYMOUS LOGON`, IIS app
+///   pool identities, and arbitrary new service accounts (unlike `AU`).
+const PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
 
 pub(crate) struct Server {
     pipe_path: String,
@@ -114,32 +130,20 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
-    // This will allow non-admin clients to connect to us even though we're running with privilege
-    let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
-    let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
-    // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading or lifetime problems, because we only pass pointers to our local vars to Win32, and Win32 shouldn't sae them anywhere.
-    unsafe {
-        // ChatGPT pointed me to these functions
-        WinSec::InitializeSecurityDescriptor(
-            psd,
-            windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
-        )
-        .context("InitializeSecurityDescriptor failed")?;
-        WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
-            .context("SetSecurityDescriptorDacl failed")?;
-    }
-
-    let mut sa = WinSec::SECURITY_ATTRIBUTES {
-        nLength: 0,
-        lpSecurityDescriptor: psd.0,
+    // Build a `SECURITY_ATTRIBUTES` that grants the non-admin GUI (running as
+    // `BUILTIN\Users`) read/write access to the pipe while keeping it shut to
+    // `NETWORK SERVICE`, anonymous logons, and other unintended principals.
+    let sd = SecurityDescriptor::from_sddl(PIPE_SDDL).map_err(PipeError::Other)?;
+    let mut sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: sd.as_raw().0,
         bInheritHandle: false.into(),
     };
-    sa.nLength = std::mem::size_of_val(&sa)
-        .try_into()
-        .context("Size of SECURITY_ATTRIBUTES struct is not right")?;
 
     let sa_ptr = &mut sa as *mut _ as *mut c_void;
-    // SAFETY: Unsafe needed to call Win32 API. We only pass pointers to local vars, and Win32 shouldn't store them, so there shouldn't be any threading of lifetime problems.
+    // SAFETY: `sa_ptr` is a valid pointer to a fully-initialised
+    // `SECURITY_ATTRIBUTES`. The kernel copies the security descriptor during
+    // `CreateNamedPipeW`, so `sd` may be dropped after the call returns.
     match unsafe { server_options.create_with_security_attributes_raw(pipe_path, sa_ptr) } {
         Ok(x) => Ok(x),
         Err(err) => {
