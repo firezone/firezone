@@ -8,6 +8,7 @@
 //! Windows-only: builds to an empty rlib on other platforms so cross-platform
 //! callers can simply gate their use sites with `cfg(windows)`.
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg(windows)]
 
 use anyhow::{Context as _, Result, ensure};
