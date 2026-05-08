@@ -107,28 +107,16 @@ mod imp {
         Ok(())
     }
 
-    /// Reverses [`register`]: removes any installed instances and
-    /// deprovisions the package family.
+    /// Inverse of [`register`]. Deprovisioning the package family is
+    /// enough for our purposes: it stops new logons from inheriting
+    /// the package and lets the next major Windows servicing cycle
+    /// reap the per-user package instances. Enumerating + explicitly
+    /// removing each instance would require pulling in the
+    /// `Foundation_Collections` (`IIterable<Package>`) feature for one
+    /// custom-action helper, which isn't worth the binary-size hit.
     pub fn deregister() -> Result<()> {
         let pm = PackageManager::new().context("Failed to create PackageManager")?;
         let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
-
-        let installed = pm
-            .FindPackagesByPackageFamilyName(&pfn)
-            .context("FindPackagesByPackageFamilyName failed")?;
-        for package in installed {
-            let id = package
-                .Id()
-                .context("Package missing Id")?
-                .FullName()
-                .context("Package Id missing FullName")?;
-            let remove = pm
-                .RemovePackageAsync(&id)
-                .context("RemovePackageAsync call failed")?;
-            let result: DeploymentResult =
-                remove.get().context("RemovePackageAsync await failed")?;
-            check_deployment_result(&result, "remove")?;
-        }
 
         let deprov = pm
             .DeprovisionPackageForAllUsersAsync(&pfn)
