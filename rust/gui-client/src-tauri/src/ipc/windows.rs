@@ -146,13 +146,10 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     // `CreateNamedPipeW`, so `sd` may be dropped after the call returns.
     match unsafe { server_options.create_with_security_attributes_raw(pipe_path, sa_ptr) } {
         Ok(x) => Ok(x),
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::PermissionDenied {
-                Err(PipeError::AccessDenied)
-            } else {
-                Err(anyhow::Error::from(err).into())
-            }
+        Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(PipeError::AccessDenied)
         }
+        Err(err) => Err(anyhow::Error::from(err).into()),
     }
 }
 
