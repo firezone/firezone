@@ -67,14 +67,30 @@ const versionedRedirects = [
       "https://www.github.com/firezone/firezone/releases/download/gateway-:version/firezone-gateway_:version_x86_64",
   },
   {
+    source: /^\/dl\/firezone-gateway\/(\d+\.\d+\.\d+)\/x86_64\.sha256sum\.txt$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/gateway-:version/firezone-gateway_:version_x86_64.sha256sum.txt",
+  },
+  {
     source: /^\/dl\/firezone-gateway\/(\d+\.\d+\.\d+)\/aarch64$/,
     destination:
       "https://www.github.com/firezone/firezone/releases/download/gateway-:version/firezone-gateway_:version_aarch64",
   },
   {
+    source:
+      /^\/dl\/firezone-gateway\/(\d+\.\d+\.\d+)\/aarch64\.sha256sum\.txt$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/gateway-:version/firezone-gateway_:version_aarch64.sha256sum.txt",
+  },
+  {
     source: /^\/dl\/firezone-gateway\/(\d+\.\d+\.\d+)\/armv7$/,
     destination:
       "https://www.github.com/firezone/firezone/releases/download/gateway-:version/firezone-gateway_:version_armv7",
+  },
+  {
+    source: /^\/dl\/firezone-gateway\/(\d+\.\d+\.\d+)\/armv7\.sha256sum\.txt$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/gateway-:version/firezone-gateway_:version_armv7.sha256sum.txt",
   },
 ];
 

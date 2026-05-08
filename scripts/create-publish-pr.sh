@@ -8,11 +8,42 @@ path_to_self=$(readlink -f "$0")
 scripts_dir=$(dirname "$path_to_self")
 path_to_bump_versions="$scripts_dir/bump-versions.sh"
 
+function gateway_checksum_env() {
+    local version="$1"
+    local name="$2"
+    local checksum="${!name:-}"
+
+    if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "$name must be set to the SHA-256 checksum for gateway $version" >&2
+        exit 1
+    fi
+
+    printf '%s' "$checksum"
+}
+
+function update_gateway_checksums() {
+    local version="$1"
+    local x86_64_checksum
+    local aarch64_checksum
+    local armv7_checksum
+
+    x86_64_checksum=$(gateway_checksum_env "$version" GATEWAY_X86_64_SHA256)
+    aarch64_checksum=$(gateway_checksum_env "$version" GATEWAY_AARCH64_SHA256)
+    armv7_checksum=$(gateway_checksum_env "$version" GATEWAY_ARMV7_SHA256)
+
+    "$path_to_bump_versions" update_gateway_checksums "$version" "$x86_64_checksum" "$aarch64_checksum" "$armv7_checksum"
+}
+
 # Create branch
 git checkout -b "chore/publish-$component-$version"
 
 # Update version variables in script
 "$path_to_bump_versions" update_version_variables "$component" "$version"
+
+if [ "$component" = "gateway" ]; then
+    update_gateway_checksums "$version"
+fi
+
 # Bump versions across the codebase
 "$path_to_bump_versions"
 
