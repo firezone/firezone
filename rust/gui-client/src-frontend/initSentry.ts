@@ -17,7 +17,7 @@ export default function initSentry(apiUrl: string) {
   }
 
   const options = {
-    dsn: "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312",
+    dsn: "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@sentry.firezone.dev/4508008945549312",
     environment: env,
     release: `gui-client@${__APP_VERSION__}`,
   };
