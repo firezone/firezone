@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/Firezone.exe ../target/release/firezone-client-tunnel.exe ../target/release/register-sparse.exe && bash ./win_files/build-msix.sh'"
+    "beforeBundleCommand": "bash -xc 'set -e; pwd; ls -l ../target/release/ | head -40; ../../scripts/build/sign.sh ../target/release/Firezone.exe ../target/release/firezone-client-tunnel.exe ../target/release/register-sparse.exe && bash ./win_files/build-msix.sh'"
   },
   "mainBinaryName": "Firezone",
   "productName": "Firezone"

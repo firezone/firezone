@@ -9,7 +9,7 @@
 # - MakeAppx.exe in PATH (or under `WIX_PATH`/`WindowsSdkPath`)
 # - AzureSignTool configured via `scripts/build/sign.sh`'s env vars.
 
-set -euo pipefail
+set -euxo pipefail
 
 # Resolve paths regardless of which cwd Tauri invoked us from.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +19,13 @@ SIGN_SCRIPT="$WORKSPACE_ROOT/scripts/build/sign.sh"
 TARGET_DIR="$WORKSPACE_ROOT/rust/target/release"
 OUTPUT_MSIX="$TARGET_DIR/firezone.msix"
 MANIFEST="$SCRIPT_DIR/AppxManifest.xml"
+
+echo "build-msix.sh: PWD=$(pwd)"
+echo "build-msix.sh: SCRIPT_DIR=$SCRIPT_DIR"
+echo "build-msix.sh: WORKSPACE_ROOT=$WORKSPACE_ROOT"
+echo "build-msix.sh: TARGET_DIR=$TARGET_DIR"
+echo "build-msix.sh: TARGET_DIR contents:"
+ls -la "$TARGET_DIR" 2>&1 | head -40 || true
 
 # Locate MakeAppx.exe. The Windows SDK is preinstalled on the
 # `windows-2022` runner image but isn't on PATH. We can't pin a
