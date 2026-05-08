@@ -92,18 +92,30 @@ impl GatewayState {
     /// Computes the delta between `unix_ts` and the unix timestamp captured at startup
     /// and applies it to the `Instant` captured at startup.
     ///
-    /// `unix_ts` arrives from the portal and is therefore untrusted; if it would push
-    /// the result past the representable range of [`Instant`], we clamp to
-    /// [`Self::start_instant`] which compares as already-expired against any
-    /// later "now".
-    fn instant_at(&self, unix_ts: Duration) -> Instant {
-        let result = if unix_ts >= self.start_unix_ts {
-            self.start_instant.checked_add(unix_ts - self.start_unix_ts)
-        } else {
-            self.start_instant.checked_sub(self.start_unix_ts - unix_ts)
-        };
+    /// `unix_ts` arrives from the portal and is therefore untrusted:
+    /// - if it predates `start_unix_ts`, we clamp to `start_instant` so the
+    ///   resource is already expired against any later "now";
+    /// - if it would overflow [`Instant`], we log a warning and fall back to
+    ///   a 1-day expiry so access remains time-bounded.
+    fn instant_at(&self, unix_ts: Duration, now: Instant) -> Instant {
+        if unix_ts < self.start_unix_ts {
+            tracing::warn!(
+                unix_ts_secs = unix_ts.as_secs(),
+                start_unix_ts_secs = self.start_unix_ts.as_secs(),
+                "unix timestamp predates startup; treating as already expired",
+            );
+            return self.start_instant;
+        }
 
-        result.unwrap_or(self.start_instant)
+        self.start_instant
+            .checked_add(unix_ts - self.start_unix_ts)
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    unix_ts_secs = unix_ts.as_secs(),
+                    "unix timestamp out of `Instant` range; falling back to 1 day expiry",
+                );
+                now + Duration::from_secs(86400)
+            })
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -372,7 +384,7 @@ impl GatewayState {
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
-        let expires_at = expires_at.map(|d| self.instant_at(d));
+        let expires_at = expires_at.map(|d| self.instant_at(d, now));
         let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
 
         tracing::info!(
@@ -407,7 +419,7 @@ impl GatewayState {
         expires_at: Duration,
         now: Instant,
     ) -> anyhow::Result<()> {
-        let new_expiry = self.instant_at(expires_at);
+        let new_expiry = self.instant_at(expires_at, now);
         let expires_in = new_expiry.saturating_duration_since(now);
 
         tracing::info!(
