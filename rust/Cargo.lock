@@ -6304,8 +6304,8 @@ dependencies = [
 
 [[package]]
 name = "sentry"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "cfg_aliases",
  "httpdate",
@@ -6324,8 +6324,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-backtrace"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "backtrace",
  "regex",
@@ -6334,8 +6334,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-contexts"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "hostname",
  "libc",
@@ -6347,8 +6347,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-core"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "rand 0.9.4",
  "sentry-types",
@@ -6359,8 +6359,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-debug-images"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "findshlibs",
  "sentry-core",
@@ -6368,8 +6368,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-log"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "bitflags 2.10.0",
  "log",
@@ -6378,8 +6378,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-panic"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -6387,8 +6387,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-tracing"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "bitflags 2.10.0",
  "sentry-backtrace",
@@ -6399,8 +6399,8 @@ dependencies = [
 
 [[package]]
 name = "sentry-types"
-version = "0.48.0"
-source = "git+https://github.com/firezone/sentry-rust?branch=fix%2Frustls-no-provider#d0ea483be27b375e47e41efa2c35fc89a81d95dc"
+version = "0.48.1"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
 dependencies = [
  "debugid",
  "hex",
