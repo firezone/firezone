@@ -91,14 +91,19 @@ impl GatewayState {
     ///
     /// Computes the delta between `unix_ts` and the unix timestamp captured at startup
     /// and applies it to the `Instant` captured at startup.
+    ///
+    /// `unix_ts` arrives from the portal and is therefore untrusted; if it would push
+    /// the result past the representable range of [`Instant`], we clamp to
+    /// [`Self::start_instant`] which compares as already-expired against any
+    /// later "now".
     fn instant_at(&self, unix_ts: Duration) -> Instant {
-        if unix_ts >= self.start_unix_ts {
-            self.start_instant + (unix_ts - self.start_unix_ts)
+        let result = if unix_ts >= self.start_unix_ts {
+            self.start_instant.checked_add(unix_ts - self.start_unix_ts)
         } else {
-            self.start_instant
-                .checked_sub(self.start_unix_ts - unix_ts)
-                .unwrap_or(self.start_instant)
-        }
+            self.start_instant.checked_sub(self.start_unix_ts - unix_ts)
+        };
+
+        result.unwrap_or(self.start_instant)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -345,6 +350,7 @@ impl GatewayState {
             expires_at,
             resource,
             None,
+            now,
         );
         debug_assert!(
             result.is_ok(),
@@ -362,12 +368,19 @@ impl GatewayState {
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
+        now: Instant,
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
-        tracing::info!(cid = %client, rid = %resource.id(), expires = ?expires_at.map(|d| d.as_secs()), "Allowing access to resource");
-
         let expires_at = expires_at.map(|d| self.instant_at(d));
+        let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
+
+        tracing::info!(
+            cid = %client,
+            rid = %resource.id(),
+            expires_in = expires_in.map(tracing::field::debug),
+            "Allowing access to resource",
+        );
 
         let peer = self.peers.upsert(client, || {
             ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
@@ -392,10 +405,17 @@ impl GatewayState {
         client: ClientId,
         resource: ResourceId,
         expires_at: Duration,
+        now: Instant,
     ) -> anyhow::Result<()> {
         let new_expiry = self.instant_at(expires_at);
+        let expires_in = new_expiry.saturating_duration_since(now);
 
-        tracing::info!(cid = %client, rid = %resource, new = %expires_at.as_secs(), "Updating resource expiry");
+        tracing::info!(
+            cid = %client,
+            rid = %resource,
+            expires_in = ?expires_in,
+            "Updating resource expiry",
+        );
 
         self.peers
             .peer_by_id_mut(&client)

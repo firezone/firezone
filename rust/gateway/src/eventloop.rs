@@ -384,10 +384,12 @@ impl Eventloop {
                     expires_at,
                 } in authorizations
                 {
-                    if let Err(e) = tunnel
-                        .state_mut()
-                        .update_access_authorization_expiry(cid, rid, expires_at)
-                    {
+                    if let Err(e) = tunnel.state_mut().update_access_authorization_expiry(
+                        cid,
+                        rid,
+                        expires_at,
+                        Instant::now(),
+                    ) {
                         tracing::debug!(%cid, %rid, "Failed to update access authorization: {e:#}");
                     }
                 }
@@ -449,10 +451,12 @@ impl Eventloop {
                     expires_at,
                 },
             ) => {
-                if let Err(e) = tunnel
-                    .state_mut()
-                    .update_access_authorization_expiry(cid, rid, expires_at)
-                {
+                if let Err(e) = tunnel.state_mut().update_access_authorization_expiry(
+                    cid,
+                    rid,
+                    expires_at,
+                    Instant::now(),
+                ) {
                     tracing::debug!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
                 };
             }

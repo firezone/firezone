@@ -918,9 +918,8 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| {
-                    g.receive(transmit, icmp_error_hosts, now)
-                }) else {
+                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, now))
+                else {
                     continue;
                 };
 
