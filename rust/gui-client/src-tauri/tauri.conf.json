@@ -59,7 +59,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://sentry.firezone.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'none'; manifest-src 'none'",
       "capabilities": ["default-capability"]
     },
     "windows": [
