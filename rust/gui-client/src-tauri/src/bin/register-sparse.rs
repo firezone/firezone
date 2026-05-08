@@ -17,6 +17,11 @@
 //! works in CI.
 
 #![cfg_attr(not(windows), allow(dead_code))]
+// `register-sparse.exe` is a single-shot WiX deferred custom action;
+// it has no tracing infrastructure to plumb logs through, so it
+// writes its few status lines directly to stderr (which msiexec
+// captures into the install log).
+#![allow(clippy::print_stderr)]
 
 #[cfg(windows)]
 fn main() -> std::process::ExitCode {
