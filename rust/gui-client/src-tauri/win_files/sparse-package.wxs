@@ -27,7 +27,7 @@
       </Component>
 
       <Component Id="RegisterSparseExe" Guid="92c9f54d-1ab8-4b30-93bf-94c8c0d58f0c">
-        <File Id="RegisterSparseExe" Name="register-sparse.exe"
+        <File Id="RegisterSparseExeFile" Name="register-sparse.exe"
               Source="../../register-sparse.exe" KeyPath="yes" />
       </Component>
     </DirectoryRef>
@@ -39,14 +39,14 @@
       `<InstallExecuteSequence>`.
     -->
     <CustomAction Id="RegisterSparsePackage"
-                  FileKey="RegisterSparseExe"
+                  FileKey="RegisterSparseExeFile"
                   ExeCommand="install"
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
     <CustomAction Id="DeregisterSparsePackage"
-                  FileKey="RegisterSparseExe"
+                  FileKey="RegisterSparseExeFile"
                   ExeCommand="uninstall"
                   Execute="deferred"
                   Impersonate="no"

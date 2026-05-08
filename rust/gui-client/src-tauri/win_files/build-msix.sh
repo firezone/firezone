@@ -20,29 +20,36 @@ TARGET_DIR="$WORKSPACE_ROOT/rust/target/release"
 OUTPUT_MSIX="$TARGET_DIR/firezone.msix"
 MANIFEST="$SCRIPT_DIR/AppxManifest.xml"
 
-# Locate MakeAppx.exe. The Tauri Windows runner has the Windows SDK on
-# PATH, but the Visual Studio installer puts it under varying paths.
+# Locate MakeAppx.exe. The Windows SDK is preinstalled on the
+# `windows-2022` runner image but isn't on PATH. We can't pin a
+# specific SDK build (newer images bring newer SDK versions and the
+# old ones aren't necessarily kept) so we glob all installed SDKs and
+# pick the highest version that ships an x64 MakeAppx.
 MAKEAPPX="${MAKEAPPX:-}"
 if [ -z "$MAKEAPPX" ]; then
     if command -v MakeAppx.exe >/dev/null 2>&1; then
         MAKEAPPX="$(command -v MakeAppx.exe)"
     else
-        # Fall back to the WixToolset bundle of MakeAppx.
-        for c in \
-            "/c/Program Files (x86)/Windows Kits/10/bin/x64/MakeAppx.exe" \
-            "/c/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64/MakeAppx.exe" \
-            "/c/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64/MakeAppx.exe"; do
-            if [ -x "$c" ]; then
-                MAKEAPPX="$c"
-                break
-            fi
-        done
+        # Find candidates from both x86 and x64 SDK roots, sort
+        # version-aware and take the newest.
+        mapfile -t CANDIDATES < <(
+            find \
+                "/c/Program Files (x86)/Windows Kits/10/bin" \
+                "/c/Program Files/Windows Kits/10/bin" \
+                -maxdepth 3 -type f -iname MakeAppx.exe -path '*/x64/*' 2>/dev/null \
+                | sort -V
+        )
+        if [ "${#CANDIDATES[@]}" -gt 0 ]; then
+            MAKEAPPX="${CANDIDATES[-1]}"
+        fi
     fi
 fi
 if [ -z "$MAKEAPPX" ] || [ ! -x "$MAKEAPPX" ]; then
     echo "MakeAppx.exe not found. Set \$MAKEAPPX or install the Windows 10 SDK." >&2
+    echo "Searched: PATH and /c/Program Files*/Windows Kits/10/bin/*/x64/MakeAppx.exe" >&2
     exit 1
 fi
+echo "Using MakeAppx: $MAKEAPPX"
 
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
