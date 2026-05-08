@@ -931,7 +931,10 @@ defmodule PortalWeb.ServiceAccounts do
         |> Enum.map(&%{&1 | identity_count: 0})
 
       actors_by_id = Map.new(actors, &{&1.id, &1})
-      Enum.map(actor_ids, &Map.fetch!(actors_by_id, &1))
+
+      actor_ids
+      |> Enum.map(&Map.get(actors_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     def get_actor(id, subject) do
