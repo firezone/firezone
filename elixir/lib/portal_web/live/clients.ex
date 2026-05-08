@@ -599,9 +599,9 @@ defmodule PortalWeb.Clients do
 
       clients_by_id = Map.new(clients, &{&1.id, &1})
 
-      Enum.map(client_ids, fn client_id ->
-        Map.fetch!(clients_by_id, client_id)
-      end)
+      client_ids
+      |> Enum.map(&Map.get(clients_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     defp maybe_preload_clients(clients, preload, _subject) do

@@ -1394,9 +1394,9 @@ defmodule PortalWeb.Actors do
 
       actors_by_id = Map.new(actors, &{&1.id, &1})
 
-      Enum.map(actor_ids, fn actor_id ->
-        Map.fetch!(actors_by_id, actor_id)
-      end)
+      actor_ids
+      |> Enum.map(&Map.get(actors_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     def fetch_account(subject) do

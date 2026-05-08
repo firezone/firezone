@@ -1387,9 +1387,9 @@ defmodule PortalWeb.Groups do
 
       groups_by_id = Map.new(groups, &{&1.group.id, &1})
 
-      Enum.map(group_ids, fn group_id ->
-        Map.fetch!(groups_by_id, group_id)
-      end)
+      group_ids
+      |> Enum.map(&Map.get(groups_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     def count_groups_with_policies(subject, filter \\ []) do
