@@ -1,10 +1,14 @@
 use super::{NotFound, SocketId};
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result, bail, ensure};
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::HANDLE,
-    Security::SECURITY_ATTRIBUTES,
+    Foundation::{HANDLE, HLOCAL, LocalFree},
+    Security::{
+        Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
+        IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+        SECURITY_ATTRIBUTES, WinLocalSystemSid,
+    },
     System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
 use windows_security::SecurityDescriptor;
@@ -49,6 +53,12 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
         })
         .context("Couldn't connect to named pipe")?;
     let handle = HANDLE(stream.as_raw_handle());
+
+    if matches!(id, SocketId::Tunnel) {
+        ensure_pipe_owner_is_local_system(handle)
+            .context("Refusing to talk to non-LocalSystem Tunnel pipe server")?;
+    }
+
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
@@ -57,6 +67,62 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
     tracing::debug!(?server_pid, "Made IPC connection");
     Ok(stream)
+}
+
+/// Verifies that the connected named pipe was created by `LocalSystem`, the
+/// account the Tunnel service runs as.
+///
+/// `first_pipe_instance(true)` ensures nobody else can create another instance
+/// of our pipe *while the legit server is bound*, but during the brief window
+/// between teardown and re-bind (or before the service starts at all on a
+/// just-booted machine) a local user-mode process can race to be the *first*
+/// creator of the pipe name. The legit service then fails closed via
+/// `ERROR_ACCESS_DENIED`, leaving the squatter as the only server. This check
+/// catches that case before the GUI sends anything sensitive over the wire.
+///
+/// We inspect the *owner* of the kernel pipe object (set at creation time)
+/// rather than the server's current process token. The latter is racy if the
+/// server process exits and its PID is recycled between
+/// `GetNamedPipeServerProcessId` and `OpenProcess`.
+fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
+    let mut owner_sid = PSID::default();
+    let mut sd = PSECURITY_DESCRIPTOR::default();
+
+    // SAFETY: All pointers below are out-pointers to stack locals. On success
+    // the kernel allocates `sd` (which we release via `LocalFree`) and points
+    // `owner_sid` into that allocation.
+    let err = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION.0,
+            Some(&mut owner_sid),
+            None,
+            None,
+            None,
+            Some(&mut sd),
+        )
+    };
+    if err.0 != 0 {
+        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
+            .context("GetSecurityInfo on pipe handle failed");
+    }
+
+    // SAFETY: `owner_sid` is a non-NULL pointer into `sd`'s buffer (still
+    // alive for this call) and `IsWellKnownSid` does not retain it.
+    let is_local_system = unsafe { IsWellKnownSid(owner_sid, WinLocalSystemSid) }.as_bool();
+
+    // SAFETY: `sd` was allocated by `GetSecurityInfo` and must be released
+    // with `LocalFree`. After this call no pointer derived from it is used.
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(sd.0)));
+    }
+
+    ensure!(
+        is_local_system,
+        "Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack"
+    );
+    Ok(())
 }
 
 impl Server {

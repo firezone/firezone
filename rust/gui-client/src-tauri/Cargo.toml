@@ -96,10 +96,12 @@ winreg = { workspace = true }
 workspace = true
 features = [
     "Win32_Foundation",
+    # `SECURITY_ATTRIBUTES`, `IsWellKnownSid` for the pipe
     "Win32_Security",
-    # For `SECURITY_ATTRIBUTES` on the pipe
+    # `GetSecurityInfo` for the pipe-owner SID check
+    "Win32_Security_Authorization",
+    # IPC system
     "Win32_System_Pipes",
-    # For IPC system
     "Win32_System_Threading",
 ]
 
