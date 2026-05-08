@@ -45,6 +45,13 @@ pub struct GatewayState {
 
     tun_ip_config: Option<IpConfig>,
 
+    /// [`Instant`] sampled at startup, paired with [`Self::start_unix_ts`].
+    ///
+    /// Together, these allow us to map a unix timestamp to an [`Instant`].
+    start_instant: Instant,
+    /// Unix timestamp at the time we sampled [`Self::start_instant`].
+    start_unix_ts: Duration,
+
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit>,
 }
@@ -76,7 +83,32 @@ impl GatewayState {
             buffered_transmits: VecDeque::default(),
             flow_tracker: FlowTracker::new(flow_logs, now),
             tun_ip_config: None,
+            start_instant: now,
+            start_unix_ts: unix_ts,
         }
+    }
+
+    /// Maps a unix timestamp (`Duration` since `UNIX_EPOCH`) to an [`Instant`].
+    ///
+    /// Computes the delta between `unix_ts` and the unix timestamp captured at startup
+    /// and applies it to the `Instant` captured at startup.
+    fn instant_at(&self, unix_ts: Duration) -> Instant {
+        if unix_ts >= self.start_unix_ts {
+            self.start_instant + (unix_ts - self.start_unix_ts)
+        } else {
+            self.start_instant
+                .checked_sub(self.start_unix_ts - unix_ts)
+                .unwrap_or(self.start_instant)
+        }
+    }
+
+    fn datetime_to_instant(&self, datetime: DateTime<Utc>) -> Instant {
+        let unix_ts = datetime
+            .signed_duration_since(DateTime::UNIX_EPOCH)
+            .to_std()
+            .unwrap_or_default();
+
+        self.instant_at(unix_ts)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -343,6 +375,10 @@ impl GatewayState {
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
+        tracing::info!(cid = %client, rid = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+
+        let expires_at = expires_at.map(|dt| self.datetime_to_instant(dt));
+
         let peer = self.peers.upsert(client, || {
             ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
         });
@@ -367,10 +403,14 @@ impl GatewayState {
         resource: ResourceId,
         expires_at: DateTime<Utc>,
     ) -> anyhow::Result<()> {
+        let new_expiry = self.datetime_to_instant(expires_at);
+
+        tracing::info!(cid = %client, rid = %resource, new = %expires_at.to_rfc3339(), "Updating resource expiry");
+
         self.peers
             .peer_by_id_mut(&client)
             .context("No peer state")?
-            .update_resource_expiry(resource, expires_at);
+            .update_resource_expiry(resource, new_expiry);
 
         Ok(())
     }
@@ -425,7 +465,7 @@ impl GatewayState {
             .min_by_key(|(instant, _)| *instant)
     }
 
-    pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
+    pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
         self.flow_tracker.handle_timeout(now);
@@ -433,7 +473,7 @@ impl GatewayState {
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
                 self.peers.iter_mut().for_each(|p| {
-                    p.expire_resources(utc_now);
+                    p.expire_resources(now);
                     p.handle_timeout(now)
                 });
                 let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
