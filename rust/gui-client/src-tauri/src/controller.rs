@@ -44,6 +44,13 @@ pub struct Controller<I: GuiIntegration> {
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
+    /// Cookie that every connecting GUI-pipe client must echo back as
+    /// their first frame ([`gui::ClientMsg::Hello`]). The first
+    /// instance generated this cookie at startup and persisted it to
+    /// the launch-cookie file under an exclusive advisory lock. See
+    /// [`gui::LaunchCookie`].
+    gui_cookie: gui::LaunchCookie,
+
     gui_ipc_clients: BoxStream<
         'static,
         Result<(
@@ -174,6 +181,7 @@ enum EventloopTick {
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn start(
         socket: SocketId,
         integration: I,
@@ -186,6 +194,7 @@ impl<I: GuiIntegration> Controller<I> {
         telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
+        gui_cookie: gui::LaunchCookie,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
@@ -214,6 +223,7 @@ impl<I: GuiIntegration> Controller<I> {
             telemetry_allowed,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
+            gui_cookie,
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
                 let result = gui_ipc.next_client_split().await;
 
@@ -278,15 +288,9 @@ impl<I: GuiIntegration> Controller<I> {
                 EventloopTick::NewInstanceLaunched(Some(Err(e))) => {
                     tracing::warn!("Failed to accept IPC connection from new GUI instance: {e:#}");
                 }
-                EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
-                    let client_msg = read.next().await;
-
-                    if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
-                        tracing::debug!("Failed to handle IPC message from new GUI instance: {e:#}")
-                    }
-
-                    if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
-                        tracing::debug!("Failed to ack IPC message from new GUI instance: {e:#}")
+                EventloopTick::NewInstanceLaunched(Some(Ok((read, write)))) => {
+                    if let Err(e) = self.handle_new_gui_instance(read, write).await {
+                        tracing::debug!("Rejected GUI IPC connection: {e:#}")
                     }
                 }
             }
@@ -699,15 +703,50 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_gui_ipc_msg(
+    /// Validates the `Hello { cookie }` frame, dispatches the actual
+    /// payload, and acks. Each step is fallible: if the connection ends
+    /// before sending Hello, if the cookie doesn't match, or if the
+    /// payload itself is malformed, the connection is dropped without
+    /// acking and the controller logs at `debug` level.
+    async fn handle_new_gui_instance(
         &mut self,
-        maybe_msg: Option<Result<gui::ClientMsg>>,
+        mut read: ipc::ServerRead<gui::ClientMsg>,
+        mut write: ipc::ServerWrite<gui::ServerMsg>,
     ) -> Result<()> {
-        let client_msg = maybe_msg
-            .context("No message received")?
-            .context("Failed to read message")?;
+        let hello = read
+            .next()
+            .await
+            .context("No Hello frame received")?
+            .context("Failed to read Hello frame")?;
+        let gui::ClientMsg::Hello { cookie } = hello else {
+            bail!("Expected Hello frame as first message, got {hello:?}");
+        };
+        if !self.gui_cookie.matches(&cookie) {
+            bail!("Hello cookie mismatch — possible cross-instance pipe-squat attempt");
+        }
 
-        match client_msg {
+        let payload = read
+            .next()
+            .await
+            .context("No payload after Hello")?
+            .context("Failed to read payload")?;
+
+        if let Err(e) = self.dispatch_gui_payload(payload).await {
+            tracing::debug!("Failed to handle GUI IPC payload: {e:#}");
+        }
+
+        if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
+            tracing::debug!("Failed to ack GUI IPC payload: {e:#}");
+        }
+
+        Ok(())
+    }
+
+    async fn dispatch_gui_payload(&mut self, msg: gui::ClientMsg) -> Result<()> {
+        match msg {
+            gui::ClientMsg::Hello { .. } => {
+                bail!("Unexpected second Hello frame after handshake");
+            }
             gui::ClientMsg::Deeplink(url) => match self.handle_deep_link(&url).await {
                 Ok(()) => {}
                 Err(error)
@@ -1047,11 +1086,42 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
+        gui_tx
+            .send(&gui::ClientMsg::Hello {
+                cookie: TEST_COOKIE,
+            })
+            .await
+            .unwrap();
         gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
         assert_eq!(response, gui::ServerMsg::Ack)
+    }
+
+    #[tokio::test]
+    async fn rejects_2nd_instance_with_bad_cookie() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
+        // Bogus cookie: every byte differs from `TEST_COOKIE`.
+        gui_tx
+            .send(&gui::ClientMsg::Hello { cookie: [0; 32] })
+            .await
+            .unwrap();
+        // Even if we send a valid request, the server should drop the
+        // connection without acking due to the cookie mismatch above.
+        gui_tx.send(&gui::ClientMsg::NewInstance).await.ok();
+
+        // The server drops the connection on cookie mismatch; the read
+        // side either yields `None` or an EOF-style error — never an Ack.
+        let next = tokio::time::timeout(Duration::from_millis(500), gui_rx.next()).await;
+        let acked = matches!(next, Ok(Some(Ok(gui::ServerMsg::Ack))));
+        assert!(!acked, "Server should not have acked a bad-cookie request");
     }
 
     #[tokio::test]
@@ -1164,6 +1234,11 @@ mod tests {
         gui_id: u32,
     }
 
+    /// Fixed cookie used by every test that drives the GUI IPC server.
+    /// Production uses a fresh random cookie per launch; tests pin it
+    /// so the assertions are deterministic.
+    const TEST_COOKIE: [u8; 32] = [0xAB; 32];
+
     impl TestController {
         async fn tunnel_service_ipc_accept(&mut self) -> MockTunnel {
             let (rx, tx) = self
@@ -1202,6 +1277,11 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
+            tx.send(&gui::ClientMsg::Hello {
+                cookie: TEST_COOKIE,
+            })
+            .await
+            .unwrap();
             tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap())).await.unwrap();
             let ack = rx.next().await.unwrap().unwrap();
             assert_eq!(ack, gui::ServerMsg::Ack);
@@ -1434,6 +1514,7 @@ mod tests {
                 true,
                 updates_rx,
                 gui_ipc_server,
+                gui::LaunchCookie::new(TEST_COOKIE),
             ));
 
             TestController {
