@@ -261,8 +261,8 @@ type_complexity = "allow" # Don't care.
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
-sentry = { git = "https://github.com/firezone/sentry-rust", branch = "fix/rustls-no-provider" }
-sentry-tracing = { git = "https://github.com/firezone/sentry-rust", branch = "fix/rustls-no-provider" }
+sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
+sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
