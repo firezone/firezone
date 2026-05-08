@@ -7,7 +7,6 @@ use super::{
 };
 use crate::GatewayState;
 use anyhow::{Result, bail};
-use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
@@ -76,7 +75,6 @@ impl SimGateway {
         transmit: Transmit,
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
-        utc_now: DateTime<Utc>,
     ) -> Option<Transmit> {
         let Some(packet) = self
             .sut
@@ -85,7 +83,7 @@ impl SimGateway {
             .ok()
             .flatten()
         else {
-            self.sut.handle_timeout(now, utc_now);
+            self.sut.handle_timeout(now);
             return None;
         };
 
@@ -171,9 +169,9 @@ impl SimGateway {
         }
     }
 
-    pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
+    pub fn handle_timeout(&mut self, now: Instant) {
         if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
-            self.sut.handle_timeout(now, utc_now)
+            self.sut.handle_timeout(now)
         }
     }
 

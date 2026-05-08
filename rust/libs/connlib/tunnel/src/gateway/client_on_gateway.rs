@@ -3,7 +3,6 @@ use std::net::IpAddr;
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -141,7 +140,7 @@ impl ClientOnGateway {
         self.resources.is_empty()
     }
 
-    pub(crate) fn expire_resources(&mut self, now: DateTime<Utc>) {
+    pub(crate) fn expire_resources(&mut self, now: Instant) {
         let cid = self.id;
         let mut any_expired = false;
 
@@ -171,10 +170,8 @@ impl ClientOnGateway {
     pub(crate) fn add_resource(
         &mut self,
         resource: crate::messages::gateway::ResourceDescription,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Instant>,
     ) {
-        tracing::info!(cid = %self.id, rid = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
-
         match self.resources.entry(resource.id()) {
             btree_map::Entry::Vacant(v) => {
                 v.insert(ResourceOnGateway::new(resource, expires_at));
@@ -197,22 +194,18 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    pub(crate) fn update_resource_expiry(&mut self, rid: ResourceId, new_expiry: DateTime<Utc>) {
+    pub(crate) fn update_resource_expiry(&mut self, rid: ResourceId, new_expiry: Instant) {
         let Some(resource) = self.resources.get_mut(&rid) else {
             tracing::debug!(%rid, "Unknown resource");
 
             return;
         };
 
-        let new_expiry_rfc3339 = new_expiry.to_rfc3339();
-
-        let old_expiry = match resource {
-            ResourceOnGateway::Cidr { expires_at, .. } => expires_at.replace(new_expiry),
-            ResourceOnGateway::Dns { expires_at, .. } => expires_at.replace(new_expiry),
-            ResourceOnGateway::Internet { expires_at } => expires_at.replace(new_expiry),
-        };
-
-        tracing::info!(old = ?old_expiry.map(|e| e.to_rfc3339()), new = %new_expiry_rfc3339, "Updated resource expiry");
+        match resource {
+            ResourceOnGateway::Cidr { expires_at, .. } => *expires_at = Some(new_expiry),
+            ResourceOnGateway::Dns { expires_at, .. } => *expires_at = Some(new_expiry),
+            ResourceOnGateway::Internet { expires_at } => *expires_at = Some(new_expiry),
+        }
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
@@ -528,22 +521,22 @@ enum ResourceOnGateway {
         name: String,
         network: IpNetwork,
         filters: Vec<Filter>,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Instant>,
     },
     Dns {
         name: String,
         address: String,
         domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
         filters: Vec<Filter>,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Instant>,
     },
     Internet {
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Instant>,
     },
 }
 
 impl ResourceOnGateway {
-    fn new(resource: ResourceDescription, expires_at: Option<DateTime<Utc>>) -> Self {
+    fn new(resource: ResourceDescription, expires_at: Option<Instant>) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
                 name: r.name,
@@ -604,7 +597,7 @@ impl ResourceOnGateway {
         }
     }
 
-    fn is_allowed(&self, now: &DateTime<Utc>) -> bool {
+    fn is_allowed(&self, now: &Instant) -> bool {
         let Some(expires_at) = self.expires_at() else {
             return true;
         };
@@ -612,7 +605,7 @@ impl ResourceOnGateway {
         expires_at > now
     }
 
-    fn expires_at(&self) -> Option<&DateTime<Utc>> {
+    fn expires_at(&self) -> Option<&Instant> {
         match self {
             ResourceOnGateway::Cidr { expires_at, .. } => expires_at.as_ref(),
             ResourceOnGateway::Dns { expires_at, .. } => expires_at.as_ref(),
@@ -719,7 +712,7 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        let now = Utc::now();
+        let now = Instant::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
         peer.add_resource(

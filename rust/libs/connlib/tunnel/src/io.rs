@@ -10,7 +10,6 @@ pub use device::{Device, TunChannelClosed};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
-use chrono::{DateTime, Utc};
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
@@ -102,7 +101,6 @@ impl Default for Buffers {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input<D, I> {
     pub now: Instant,
-    pub now_utc: DateTime<Utc>,
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
@@ -116,7 +114,6 @@ impl<D, I> Input<D, I> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
             now: Instant::now(),
-            now_utc: Utc::now(),
             timeout: false,
             device: None,
             network: None,
@@ -405,7 +402,6 @@ impl Io {
 
         Poll::Ready(Input {
             now: Instant::now(),
-            now_utc: Utc::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
             network: poll_result_to_option(network, &mut error),

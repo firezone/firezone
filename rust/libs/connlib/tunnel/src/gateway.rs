@@ -13,7 +13,6 @@ use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519::{self, PublicKey};
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
@@ -44,6 +43,13 @@ pub struct GatewayState {
     next_expiry_resources_check: Option<Instant>,
 
     tun_ip_config: Option<IpConfig>,
+
+    /// [`Instant`] sampled at startup, paired with [`Self::start_unix_ts`].
+    ///
+    /// Together, these allow us to map a unix timestamp to an [`Instant`].
+    start_instant: Instant,
+    /// Unix timestamp at the time we sampled [`Self::start_instant`].
+    start_unix_ts: Duration,
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit>,
@@ -76,7 +82,40 @@ impl GatewayState {
             buffered_transmits: VecDeque::default(),
             flow_tracker: FlowTracker::new(flow_logs, now),
             tun_ip_config: None,
+            start_instant: now,
+            start_unix_ts: unix_ts,
         }
+    }
+
+    /// Maps a unix timestamp (`Duration` since `UNIX_EPOCH`) to an [`Instant`].
+    ///
+    /// Computes the delta between `unix_ts` and the unix timestamp captured at startup
+    /// and applies it to the `Instant` captured at startup.
+    ///
+    /// `unix_ts` arrives from the portal and is therefore untrusted:
+    /// - if it predates `start_unix_ts`, we clamp to `start_instant` so the
+    ///   resource is already expired against any later "now";
+    /// - if it would overflow [`Instant`], we log a warning and fall back to
+    ///   a 1-day expiry so access remains time-bounded.
+    fn instant_at(&self, unix_ts: Duration, now: Instant) -> Instant {
+        if unix_ts < self.start_unix_ts {
+            tracing::warn!(
+                unix_ts_secs = unix_ts.as_secs(),
+                start_unix_ts_secs = self.start_unix_ts.as_secs(),
+                "unix timestamp predates startup; treating as already expired",
+            );
+            return self.start_instant;
+        }
+
+        self.start_instant
+            .checked_add(unix_ts - self.start_unix_ts)
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    unix_ts_secs = unix_ts.as_secs(),
+                    "unix timestamp out of `Instant` range; falling back to 1 day expiry",
+                );
+                now + Duration::from_secs(86400)
+            })
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -285,7 +324,7 @@ impl GatewayState {
         subject: Subject,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Duration>,
         resource: ResourceDescription,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -323,6 +362,7 @@ impl GatewayState {
             expires_at,
             resource,
             None,
+            now,
         );
         debug_assert!(
             result.is_ok(),
@@ -337,11 +377,22 @@ impl GatewayState {
         client: ClientId,
         client_tun: IpConfig,
         client_props: flow_tracker::ClientProperties,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
+        now: Instant,
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
+
+        let expires_at = expires_at.map(|d| self.instant_at(d, now));
+        let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
+
+        tracing::info!(
+            cid = %client,
+            rid = %resource.id(),
+            expires_in = expires_in.map(tracing::field::debug),
+            "Allowing access to resource",
+        );
 
         let peer = self.peers.upsert(client, || {
             ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
@@ -365,12 +416,23 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         resource: ResourceId,
-        expires_at: DateTime<Utc>,
+        expires_at: Duration,
+        now: Instant,
     ) -> anyhow::Result<()> {
+        let new_expiry = self.instant_at(expires_at, now);
+        let expires_in = new_expiry.saturating_duration_since(now);
+
+        tracing::info!(
+            cid = %client,
+            rid = %resource,
+            expires_in = ?expires_in,
+            "Updating resource expiry",
+        );
+
         self.peers
             .peer_by_id_mut(&client)
             .context("No peer state")?
-            .update_resource_expiry(resource, expires_at);
+            .update_resource_expiry(resource, new_expiry);
 
         Ok(())
     }
@@ -425,7 +487,7 @@ impl GatewayState {
             .min_by_key(|(instant, _)| *instant)
     }
 
-    pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
+    pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
         self.flow_tracker.handle_timeout(now);
@@ -433,7 +495,7 @@ impl GatewayState {
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
                 self.peers.iter_mut().for_each(|p| {
-                    p.expire_resources(utc_now);
+                    p.expire_resources(now);
                     p.handle_timeout(now)
                 });
                 let removed_peers = self.peers.extract_if(|_, p| p.is_empty());

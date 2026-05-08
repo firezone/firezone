@@ -918,16 +918,15 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| {
-                    g.receive(transmit, icmp_error_hosts, now, self.flux_capacitor.now())
-                }) else {
+                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, now))
+                else {
                     continue;
                 };
 
                 buffered_transmits.push_from(reply, gateway, now);
             }
 
-            gateway.exec_mut(|g| g.handle_timeout(now, self.flux_capacitor.now()));
+            gateway.exec_mut(|g| g.handle_timeout(now));
         }
 
         // Handle all relay `Transmit`s and timeouts.

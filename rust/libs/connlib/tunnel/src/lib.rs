@@ -231,7 +231,6 @@ impl ClientTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
-                now_utc: _,
                 timeout,
                 dns_response,
                 tcp_dns_queries: _,
@@ -406,7 +405,6 @@ impl GatewayTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
-                now_utc,
                 timeout,
                 dns_response,
                 tcp_dns_queries,
@@ -448,7 +446,7 @@ impl GatewayTunnel {
                 }
 
                 if timeout {
-                    self.role_state.handle_timeout(now, now_utc);
+                    self.role_state.handle_timeout(now);
                     tick.want_continue();
                 }
 

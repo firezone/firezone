@@ -1,16 +1,14 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
-use chrono::{
-    DateTime, Utc,
-    serde::{ts_seconds, ts_seconds_option},
-};
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, serde_as};
 use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr},
+    time::Duration,
 };
 
 /// Description of a resource that maps to a DNS record.
@@ -99,12 +97,13 @@ pub struct RemoveResource {
     pub id: ResourceId,
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct Authorization {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -163,6 +162,7 @@ pub struct Subject {
     pub actor_email: Option<String>,
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct AuthorizeFlow {
     #[serde(rename = "ref")]
@@ -175,16 +175,17 @@ pub struct AuthorizeFlow {
     pub subject: Subject,
     pub client_ice_credentials: IceCredentials,
 
-    #[serde(with = "ts_seconds_option")]
-    pub expires_at: Option<DateTime<Utc>>,
+    #[serde_as(as = "Option<DurationSeconds<u64>>")]
+    pub expires_at: Option<Duration>,
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct AccessAuthorizationExpiryUpdated {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
 }
 
 /// A client's ice candidate message.
