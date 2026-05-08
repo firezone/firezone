@@ -13,7 +13,6 @@ use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519::{self, PublicKey};
-use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
@@ -100,15 +99,6 @@ impl GatewayState {
                 .checked_sub(self.start_unix_ts - unix_ts)
                 .unwrap_or(self.start_instant)
         }
-    }
-
-    fn datetime_to_instant(&self, datetime: DateTime<Utc>) -> Instant {
-        let unix_ts = datetime
-            .signed_duration_since(DateTime::UNIX_EPOCH)
-            .to_std()
-            .unwrap_or_default();
-
-        self.instant_at(unix_ts)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -317,7 +307,7 @@ impl GatewayState {
         subject: Subject,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Duration>,
         resource: ResourceDescription,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -369,15 +359,15 @@ impl GatewayState {
         client: ClientId,
         client_tun: IpConfig,
         client_props: flow_tracker::ClientProperties,
-        expires_at: Option<DateTime<Utc>>,
+        expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
     ) -> anyhow::Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
-        tracing::info!(cid = %client, rid = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+        tracing::info!(cid = %client, rid = %resource.id(), expires = ?expires_at.map(|d| d.as_secs()), "Allowing access to resource");
 
-        let expires_at = expires_at.map(|dt| self.datetime_to_instant(dt));
+        let expires_at = expires_at.map(|d| self.instant_at(d));
 
         let peer = self.peers.upsert(client, || {
             ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
@@ -401,11 +391,11 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         resource: ResourceId,
-        expires_at: DateTime<Utc>,
+        expires_at: Duration,
     ) -> anyhow::Result<()> {
-        let new_expiry = self.datetime_to_instant(expires_at);
+        let new_expiry = self.instant_at(expires_at);
 
-        tracing::info!(cid = %client, rid = %resource, new = %expires_at.to_rfc3339(), "Updating resource expiry");
+        tracing::info!(cid = %client, rid = %resource, new = %expires_at.as_secs(), "Updating resource expiry");
 
         self.peers
             .peer_by_id_mut(&client)
