@@ -118,6 +118,13 @@ impl SecurityDescriptor {
             dacl_present.as_bool(),
             "Windows security descriptor has no DACL"
         );
+        // A `NULL` DACL with `dacl_present == TRUE` semantically means
+        // "unrestricted access" — distinct from "no DACL set". We never
+        // want to propagate that to `SetNamedSecurityInfoW`.
+        ensure!(
+            !dacl.is_null(),
+            "Windows security descriptor has a NULL DACL"
+        );
 
         Ok(dacl)
     }
