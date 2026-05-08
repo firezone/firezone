@@ -54,7 +54,13 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
         .context("Couldn't connect to named pipe")?;
     let handle = HANDLE(stream.as_raw_handle());
 
-    if matches!(id, SocketId::Tunnel) {
+    // Skip the owner check in debug builds so the `gui-smoke-test`, which
+    // launches the Tunnel binary as a subprocess of the test runner (not as a
+    // Windows service running under `LocalSystem`), can drive a real GUI
+    // ↔ Tunnel handshake. Production builds are always release-mode (the
+    // `gui-smoke-test` workflow explicitly skips release mode), so the check
+    // is enforced there.
+    if !cfg!(debug_assertions) && matches!(id, SocketId::Tunnel) {
         ensure_pipe_owner_is_local_system(handle)
             .context("Refusing to talk to non-LocalSystem Tunnel pipe server")?;
     }
