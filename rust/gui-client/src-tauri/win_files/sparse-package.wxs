@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WiX fragment for the Firezone sparse MSIX package.
+
+  Pulled into the main MSI via `tauri.conf.json:fragmentPaths`. Two
+  components ship the sparse-MSIX payload (`firezone.msix`) and the
+  custom-action helper (`register-sparse.exe`) into INSTALLDIR.
+
+  Two deferred custom actions, sequenced from `main.wxs`, register the
+  sparse package after install (so the kernel attaches our package SID
+  to `Firezone.exe` and `firezone-client-tunnel.exe` for the next
+  launch) and deregister it before uninstall.
+
+  The custom actions run as `LocalSystem` (Execute="deferred"
+  Impersonate="no") so `ProvisionPackageForAllUsersAsync` can succeed.
+  They never fail the MSI: `register-sparse.exe` exits 0 on legacy
+  Windows where MSIX provisioning isn't available, and the runtime
+  SDDL builder in `ipc/windows.rs` falls back to the legacy `BU` ACE
+  via `GetCurrentPackageFullName -> APPMODEL_ERROR_NO_PACKAGE`.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="SparsePackageMsix" Guid="34cca6d3-7b27-4d5e-b86b-3a3b4ee4dbe6">
+        <File Id="FirezoneMsix" Name="firezone.msix"
+              Source="../../firezone.msix" KeyPath="yes" />
+      </Component>
+
+      <Component Id="RegisterSparseExe" Guid="92c9f54d-1ab8-4b30-93bf-94c8c0d58f0c">
+        <File Id="RegisterSparseExe" Name="register-sparse.exe"
+              Source="../../register-sparse.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!--
+      Deferred CAs receive their argument via the `CustomActionData`
+      property, which we populate from `INSTALLDIR` via the matching
+      `SetProperty` immediate CAs declared inside `main.wxs`'s
+      `<InstallExecuteSequence>`.
+    -->
+    <CustomAction Id="RegisterSparsePackage"
+                  FileKey="RegisterSparseExe"
+                  ExeCommand="install"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="DeregisterSparsePackage"
+                  FileKey="RegisterSparseExe"
+                  ExeCommand="uninstall"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="SetRegisterSparsePackageData"
+                  Property="RegisterSparsePackage"
+                  Value="[INSTALLDIR]" />
+
+    <CustomAction Id="SetDeregisterSparsePackageData"
+                  Property="DeregisterSparsePackage"
+                  Value="[INSTALLDIR]" />
+
+    <InstallExecuteSequence>
+      <!--
+        `SetProperty` immediate CAs run during costing; the deferred
+        CAs they target then receive `[INSTALLDIR]` via
+        `CustomActionData` at execution time.
+
+        `RegisterSparsePackage` MUST happen before `StartServices` so
+        the tunnel service is launched with the package SID already
+        attached.
+      -->
+      <Custom Action="SetRegisterSparsePackageData"
+              Before="RegisterSparsePackage">NOT REMOVE</Custom>
+      <Custom Action="RegisterSparsePackage"
+              Before="StartServices">NOT REMOVE</Custom>
+
+      <Custom Action="SetDeregisterSparsePackageData"
+              Before="DeregisterSparsePackage">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="DeregisterSparsePackage"
+              Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

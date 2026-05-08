@@ -107,6 +107,11 @@ features = [
     # IPC system
     "Win32_System_Pipes",
     "Win32_System_Threading",
+    # WinRT `Windows.Foundation.Uri` and
+    # `Windows.Management.Deployment.PackageManager` for the
+    # `register-sparse.exe` WiX custom action.
+    "Foundation",
+    "Management_Deployment",
 ]
 
 [build-dependencies]
