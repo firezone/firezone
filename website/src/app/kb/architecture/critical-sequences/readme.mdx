@@ -8,8 +8,6 @@ description:
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
 import Alert from "@/components/DocsAlert";
-import Link from "next/link";
-import Image from "next/image";
 
 # Architecture: Critical Sequences
 
@@ -47,17 +45,23 @@ authentication before the final redirect back to Firezone.
 
 Here's how the authentication flow works:
 
-<Link
-  target="_blank"
-  href="/images/kb/architecture/critical-sequences/authentication.svg"
->
-  <Image
-    src="/images/kb/architecture/critical-sequences/authentication.svg"
-    alt="Firezone authentication sequence diagram"
-    width={1200}
-    height={1200}
-  />
-</Link>
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Client
+    participant Portal as Admin portal
+    participant IdP as Identity provider
+    User->>Client: Click "Sign in"
+    Client->>Client: Generate state + nonce
+    Client->>Portal: Open sign-in page with state + nonce
+    Portal->>IdP: Redirect for OIDC
+    IdP->>Portal: Callback with auth code
+    Portal->>Portal: Mint Firezone token from nonce
+    Portal->>Client: Redirect to firezone-fd0020211111://… with token + state
+    Client->>Client: Validate state, store token
+    Client->>Portal: Authenticated control plane API requests
+```
 
 1. User clicks `Sign in` from the Client.
 1. The Client generates random 32-byte `state` and `nonce` values. These are
@@ -101,17 +105,17 @@ serving Resources the User is allowed to access.
 
 Here's how the process works:
 
-<Link
-  target="_blank"
-  href="/images/kb/architecture/critical-sequences/policy-evaluation.svg"
->
-  <Image
-    src="/images/kb/architecture/critical-sequences/policy-evaluation.svg"
-    alt="Firezone policy evaluation sequence diagram"
-    width={1200}
-    height={1200}
-  />
-</Link>
+```mermaid
+sequenceDiagram
+    autonumber
+    User->>Client: Access 10.10.10.10
+    Client->>Policy engine: Request
+    Policy engine-->>Policy engine: Evaluate
+    Policy engine->>Client: STUN info + keys
+    Policy engine->>Gateway: STUN info + keys
+    Client->>Gateway: Secure tunnel
+    User->>Resource: Application traffic
+```
 
 1. The User attempts to access a Resource, e.g. `10.10.10.10`.
 1. The Client sees the request and opens a connection request to the Policy

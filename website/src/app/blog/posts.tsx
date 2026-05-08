@@ -12,6 +12,22 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "The enterprise identity crisis: Who's Alice?",
+      date: "May 11, 2026",
+      href: "/blog/the-enterprise-identity-crisis-part-one",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Engineering",
+      description: (
+        <p className="mb-2">
+          Alice signs in with Google and Okta. Same email address. Different
+          identities. Which one got production access? In this post we answer
+          this question and more by exploring the challenges of multi-provider
+          identity in zero trust applications.
+        </p>
+      ),
+    },
+    {
       title: "A New Look for Firezone",
       date: "April 14, 2026",
       href: "/blog/new-ui-launch",

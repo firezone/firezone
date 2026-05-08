@@ -86,10 +86,11 @@
     @apply scroll-mt-20;
   }
 
-  /* Remove styling for anchors inside headings */
+  /* Style anchors inside headings (autolink slugs) to look like the heading
+     itself: no underline, neutral color, and let the weight inherit from the
+     parent heading so weight changes propagate cleanly. */
   *:is(h1, h2, h3, h4, h5, h6) a {
     text-decoration: none !important;
-    font-weight: 700 !important;
     color: var(--color-neutral-800) !important;
   }
 
