@@ -95,7 +95,7 @@ fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
         GetSecurityInfo(
             handle,
             SE_KERNEL_OBJECT,
-            OWNER_SECURITY_INFORMATION.0,
+            OWNER_SECURITY_INFORMATION,
             Some(&mut owner_sid),
             None,
             None,
