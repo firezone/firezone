@@ -32,7 +32,7 @@ defmodule PortalWeb.SignIn.EmailTest do
          %{conn: conn, account: account, provider: provider} do
       path = ~p"/#{account}/sign_in/email_otp/#{provider}"
 
-      assert {:error, {:live_redirect, %{to: _}}} = live(conn, path)
+      assert {:error, {:redirect, %{to: _}}} = live(conn, path)
     end
   end
 

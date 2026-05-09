@@ -271,7 +271,7 @@ defmodule PortalWeb.SignUpTest do
           actor_name: "Test User"
         })
 
-      assert {:error, {:live_redirect, %{to: path}}} =
+      assert {:error, {:redirect, %{to: path}}} =
                live(conn, ~p"/verify_sign_up?token=#{token}")
 
       assert path == ~p"/#{account}/sign_in"

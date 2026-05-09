@@ -41,7 +41,7 @@ defmodule PortalWeb.SignIn.Email do
         socket =
           socket
           |> put_flash(:error, "Account not found.")
-          |> push_navigate(to: ~p"/")
+          |> redirect(to: ~p"/")
 
         {:ok, socket}
 
@@ -49,7 +49,7 @@ defmodule PortalWeb.SignIn.Email do
         socket =
           socket
           |> put_flash(:error, "Please try to sign in again.")
-          |> push_navigate(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
         {:ok, socket}
     end
@@ -116,7 +116,7 @@ defmodule PortalWeb.SignIn.Email do
 
     <div class="mt-4 grid grid-cols-2 gap-2">
       <.link
-        navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
+        href={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
         class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
       >
         <.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
