@@ -403,6 +403,22 @@ defmodule PortalWeb.SitesTest do
       render_click(lv, "select_site", %{"id" => site_b.id})
       assert_patch(lv, ~p"/#{account}/sites/#{site_b.id}")
     end
+
+    test "patches to sites index with flash when site does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/sites/#{missing_id}")
+
+      assert to == ~p"/#{account}/sites"
+      assert flash["error"] =~ "Site does not exist"
+    end
   end
 
   describe ":edit action" do

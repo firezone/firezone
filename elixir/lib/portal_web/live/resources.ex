@@ -15,7 +15,8 @@ defmodule PortalWeb.Resources do
       panel_shell: 1,
       resource_details_panel: 1,
       resource_form_panel: 1,
-      resource_online?: 1,
+      resource_online?: 2,
+      resource_status: 2,
       resource_type_label: 1,
       type_badge_class: 1,
       to_grant_form: 0
@@ -36,6 +37,7 @@ defmodule PortalWeb.Resources do
     socket =
       socket
       |> assign(stale: false)
+      |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
       |> assign(
         selected_resource: nil,
@@ -61,38 +63,35 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    tab =
-      case Map.get(params, "tab", "groups") do
-        t when t in ~w[groups authorizations] -> String.to_existing_atom(t)
-        _ -> :groups
-      end
-
-    page =
-      case Integer.parse(Map.get(params, "page", "1")) do
-        {n, ""} when n >= 1 -> n
-        _ -> 1
-      end
-
-    resource = Database.get_resource!(id, socket.assigns.subject)
-    groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
-
-    {policy_authorizations, has_next_page} =
-      Database.list_policy_authorizations_for_resource(resource, socket.assigns.subject, page)
-
     socket = handle_live_tables_params(socket, params, uri)
-    filter_site = filter_site_from_params(params, socket.assigns.subject)
 
-    {:noreply,
-     socket
-     |> assign(
-       filter_site: filter_site,
-       selected_resource: resource,
-       selected_groups: groups,
-       policy_authorizations: policy_authorizations,
-       policy_authorizations_page: page,
-       policy_authorizations_has_next: has_next_page
-     )
-     |> assign(show_resource_state_assigns(socket, tab))}
+    case Database.get_resource(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_resources_index(socket, "Resource does not exist.")
+
+      resource ->
+        page = parse_page(params)
+        tab = parse_show_tab(params)
+
+        groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
+
+        {policy_authorizations, has_next_page} =
+          Database.list_policy_authorizations_for_resource(resource, socket.assigns.subject, page)
+
+        filter_site = filter_site_from_params(params, socket.assigns.subject)
+
+        {:noreply,
+         socket
+         |> assign(
+           filter_site: filter_site,
+           selected_resource: resource,
+           selected_groups: groups,
+           policy_authorizations: policy_authorizations,
+           policy_authorizations_page: page,
+           policy_authorizations_has_next: has_next_page
+         )
+         |> assign(show_resource_state_assigns(socket, tab))}
+    end
   end
 
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
@@ -107,28 +106,32 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    resource = Database.get_resource!(id, socket.assigns.subject)
+    socket = handle_live_tables_params(socket, params, uri)
 
-    if resource.type == :internet do
-      {:noreply, push_patch(socket, to: resource_show_path(socket, id))}
-    else
-      sites = Database.all_sites(socket.assigns.subject)
-      changeset = Database.change_resource(resource)
-      selected_clients = Database.list_pool_members(resource, socket.assigns.subject)
-      socket = handle_live_tables_params(socket, params, uri)
+    case Database.get_resource(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_resources_index(socket, "Resource does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(filter_site: nil, selected_resource: resource, selected_groups: [])
-       |> assign(
-         edit_resource_state_assigns(
-           socket,
-           to_form(changeset),
-           sites,
-           resource,
-           selected_clients
-         )
-       )}
+      %{type: :internet} ->
+        {:noreply, push_patch(socket, to: resource_show_path(socket, id))}
+
+      resource ->
+        sites = Database.all_sites(socket.assigns.subject)
+        changeset = Database.change_resource(resource)
+        selected_clients = Database.list_pool_members(resource, socket.assigns.subject)
+
+        {:noreply,
+         socket
+         |> assign(filter_site: nil, selected_resource: resource, selected_groups: [])
+         |> assign(
+           edit_resource_state_assigns(
+             socket,
+             to_form(changeset),
+             sites,
+             resource,
+             selected_clients
+           )
+         )}
     end
   end
 
@@ -272,6 +275,27 @@ defmodule PortalWeb.Resources do
     end
   end
 
+  defp parse_page(params) do
+    case Integer.parse(Map.get(params, "page", "1")) do
+      {n, ""} when n >= 1 -> n
+      _ -> 1
+    end
+  end
+
+  defp parse_show_tab(params) do
+    case Map.get(params, "tab", "groups") do
+      tab when tab in ~w[groups authorizations] -> String.to_existing_atom(tab)
+      _ -> :groups
+    end
+  end
+
+  defp redirect_to_resources_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/resources?#{socket.assigns.query_params}")}
+  end
+
   defp resources_index_path(socket), do: ~p"/#{socket.assigns.account}/resources"
   defp new_resource_path(socket), do: ~p"/#{socket.assigns.account}/resources/new"
 
@@ -332,7 +356,7 @@ defmodule PortalWeb.Resources do
           </.button>
         </:action>
         <:filters>
-          <% online_count = Enum.count(@resources, &resource_online?/1) %>
+          <% online_count = Enum.count(@resources, &resource_online?(&1, @presence_tick)) %>
           <% offline_count = length(@resources) - online_count %>
           <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
             All {@resources_metadata.count}
@@ -426,9 +450,7 @@ defmodule PortalWeb.Resources do
               </td>
               <td class="px-4 py-3 text-[var(--text-secondary)] text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.status_badge status={
-                  if resource_online?(@internet_resource), do: :online, else: :offline
-                } />
+                <.status_badge status={resource_status(@internet_resource, @presence_tick)} />
               </td>
             </tr>
           </:prepend_rows>
@@ -512,7 +534,7 @@ defmodule PortalWeb.Resources do
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.status_badge status={if resource_online?(resource), do: :online, else: :offline} />
+            <.status_badge status={resource_status(resource, @presence_tick)} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
@@ -551,6 +573,7 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
+            presence_tick={@presence_tick}
             groups={@selected_groups}
             policy_authorizations={@policy_authorizations}
             policy_authorizations_page={@policy_authorizations_page}
@@ -1192,17 +1215,17 @@ defmodule PortalWeb.Resources do
      )}
   end
 
-  def handle_info(%Change{old_struct: %Resource{}}, socket) do
-    {:noreply, reload_live_table!(socket, "resources")}
+  def handle_info(%Change{old_struct: %Resource{}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
-  def handle_info(%Change{struct: %Resource{}}, socket) do
-    {:noreply, reload_live_table!(socket, "resources")}
+  def handle_info(%Change{struct: %Resource{}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
   def handle_info(%Phoenix.Socket.Broadcast{event: event}, socket)
       when event in ["presence_diff", "presence_state"] do
-    {:noreply, reload_live_table!(socket, "resources")}
+    {:noreply, update(socket, :presence_tick, &(&1 + 1))}
   end
 
   def handle_info(_, socket) do
@@ -1268,6 +1291,12 @@ defmodule PortalWeb.Resources do
   end
 
   defp drop_static_device_pool(filter), do: filter
+
+  defp mark_stale_if_unreflected(socket, change) do
+    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.resources, change),
+      do: socket,
+      else: assign(socket, stale: true)
+  end
 
   defmodule Database do
     import Ecto.Query
@@ -1411,12 +1440,12 @@ defmodule PortalWeb.Resources do
 
     def list_pool_members(_resource, _subject), do: []
 
-    def get_resource!(id, subject) do
+    def get_resource(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
       |> preload(:site)
       |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.one(fallback_to_primary: true)
     end
 
     def get_site(id, subject) do

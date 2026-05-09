@@ -339,6 +339,22 @@ defmodule PortalWeb.ClientsTest do
                "Revoke verification"
              )
     end
+
+    test "patches to clients index with flash when client does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/clients/#{missing_id}")
+
+      assert to == ~p"/#{account}/clients"
+      assert flash["error"] =~ "Client does not exist"
+    end
   end
 
   describe ":edit action" do

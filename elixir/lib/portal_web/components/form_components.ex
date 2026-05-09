@@ -850,9 +850,9 @@ defmodule PortalWeb.FormComponents do
   def button_style("warning") do
     button_style() ++
       [
-        "text-[var(--brand)]",
-        "border border-[var(--brand)]",
-        "hover:text-white hover:bg-[var(--brand)]"
+        "text-[var(--status-warn)]",
+        "border border-[var(--status-warn)]",
+        "hover:text-white hover:bg-[var(--status-warn)]"
       ]
   end
 

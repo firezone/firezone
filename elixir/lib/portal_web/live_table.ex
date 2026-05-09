@@ -214,13 +214,14 @@ defmodule PortalWeb.LiveTable do
         :if={@stale}
         id={"#{@live_table_id}-reload-btn"}
         type="button"
-        style="info"
-        title="The table data has changed."
+        style="warning"
+        size="xs"
+        title="The table data has changed"
         phx-click="reload"
         phx-value-table_id={@live_table_id}
         class="shrink-0"
       >
-        <.icon name="ri-loop-left-line" class="mr-1 w-3.5 h-3.5" /> Reload
+        <.icon name="ri-loop-left-line" class="mr-1 w-3 h-3" /> Reload
       </.button>
       <span
         :for={notice <- @notice}
@@ -589,6 +590,33 @@ defmodule PortalWeb.LiveTable do
         socket
     end
   end
+
+  @doc """
+  Returns true when the rendered list already reflects the change.
+
+  For inserts and updates the rendered row must be field-equal to the
+  broadcast's `struct` — sharing an id is not enough since updates leave
+  the id intact. For deletes the rendered list must no longer contain
+  the deleted id.
+
+  Used by LVs subscribed to `Portal.Changes` to drop broadcasts that
+  fired for a mutation the LV itself just performed and reloaded for.
+  """
+  def view_reflects_change?(list, %Portal.Changes.Change{op: op, struct: struct})
+      when op in [:insert, :update] do
+    Enum.any?(list, &same_record?(&1, struct))
+  end
+
+  def view_reflects_change?(list, %Portal.Changes.Change{op: :delete, old_struct: %{id: id}}) do
+    not Enum.any?(list, &(&1.id == id))
+  end
+
+  defp same_record?(%mod{} = a, %mod{} = b) do
+    fields = mod.__schema__(:fields)
+    Map.take(a, fields) == Map.take(b, fields)
+  end
+
+  defp same_record?(_, _), do: false
 
   if Mix.env() == :test do
     defp maybe_notify_test_pid(id) do
