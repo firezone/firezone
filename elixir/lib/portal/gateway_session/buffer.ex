@@ -75,7 +75,7 @@ defmodule Portal.GatewaySession.Buffer do
     skipped = count - inserted
 
     if skipped > 0 do
-      Logger.warning(
+      Logger.info(
         "Skipped #{skipped} gateway sessions due to deleted associations (tokens/accounts/devices)"
       )
     end
