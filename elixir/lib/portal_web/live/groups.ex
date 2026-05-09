@@ -49,27 +49,14 @@ defmodule PortalWeb.Groups do
 
   # Edit Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    group = Database.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
-    if editable_group?(group) do
-      changeset = changeset(group, %{})
-      resources = preserved_group_resources(socket, id)
+    case Database.get_group_with_actors(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_groups_index(socket, "Group does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(selected_group: group)
-       |> assign(base_group_assigns(socket))
-       |> assign(
-         group_panel: group_panel_state(view: :edit_form),
-         group_form: group_form_state(to_form(changeset)),
-         group_resources: group_resources_state(resources: resources)
-       )}
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
+      group ->
+        edit_group_panel(socket, group, id)
     end
   end
 
@@ -79,33 +66,15 @@ defmodule PortalWeb.Groups do
     tab = parse_group_tab(Map.get(params, "tab", "members"))
 
     if selected_group_matches?(socket, id) do
-      socket =
-        socket
-        |> assign(base_group_assigns(socket))
-        |> assign(
-          selected_group: socket.assigns.selected_group,
-          group_panel: group_panel_state(tab: tab),
-          group_resources:
-            group_resources_state(resources: socket.assigns.group_resources.resources)
-        )
-        |> load_panel_members_from_selected_group()
-
-      {:noreply, socket}
+      show_selected_group_panel(socket, tab)
     else
-      group = Database.get_group_with_actors!(id, socket.assigns.subject)
-      resources = Database.list_resources_for_group(group, socket.assigns.subject)
+      case Database.get_group_with_actors(id, socket.assigns.subject) do
+        nil ->
+          redirect_to_groups_index(socket, "Group does not exist.")
 
-      socket =
-        socket
-        |> assign(selected_group: group)
-        |> assign(base_group_assigns(socket))
-        |> assign(
-          group_panel: group_panel_state(tab: tab),
-          group_resources: group_resources_state(resources: resources)
-        )
-        |> load_panel_members()
-
-      {:noreply, socket}
+        group ->
+          show_group_panel(socket, group, tab)
+      end
     end
   end
 
@@ -743,6 +712,66 @@ defmodule PortalWeb.Groups do
   defp parse_group_tab("resources"), do: :resources
   defp parse_group_tab("members"), do: :members
   defp parse_group_tab(_), do: :members
+
+  defp redirect_to_groups_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/groups?#{socket.assigns.query_params}")}
+  end
+
+  defp edit_group_panel(socket, group, id) do
+    if editable_group?(group) do
+      changeset = changeset(group, %{})
+      resources = preserved_group_resources(socket, id)
+
+      {:noreply,
+       socket
+       |> assign(selected_group: group)
+       |> assign(base_group_assigns(socket))
+       |> assign(
+         group_panel: group_panel_state(view: :edit_form),
+         group_form: group_form_state(to_form(changeset)),
+         group_resources: group_resources_state(resources: resources)
+       )}
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "This group cannot be edited")
+       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
+    end
+  end
+
+  defp show_selected_group_panel(socket, tab) do
+    socket =
+      socket
+      |> assign(base_group_assigns(socket))
+      |> assign(
+        selected_group: socket.assigns.selected_group,
+        group_panel: group_panel_state(tab: tab),
+        group_resources:
+          group_resources_state(resources: socket.assigns.group_resources.resources)
+      )
+      |> load_panel_members_from_selected_group()
+
+    {:noreply, socket}
+  end
+
+  defp show_group_panel(socket, group, tab) do
+    resources = Database.list_resources_for_group(group, socket.assigns.subject)
+
+    socket =
+      socket
+      |> assign(selected_group: group)
+      |> assign(base_group_assigns(socket))
+      |> assign(
+        group_panel: group_panel_state(tab: tab),
+        group_resources: group_resources_state(resources: resources)
+      )
+      |> load_panel_members()
+
+    {:noreply, socket}
+  end
 
   def handle_groups_update!(socket, list_opts) do
     filter = Keyword.get(list_opts, :filter, [])
@@ -1733,7 +1762,7 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def get_group_with_actors!(id, subject, opts \\ []) do
+    def get_group_with_actors(id, subject, opts \\ []) do
       repo = Keyword.get(opts, :repo, :replica)
 
       query =
@@ -1762,7 +1791,7 @@ defmodule PortalWeb.Groups do
           directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od}
         )
 
-      query |> Safe.scoped(subject, repo) |> Safe.one!(fallback_to_primary: true)
+      query |> Safe.scoped(subject, repo) |> Safe.one(fallback_to_primary: true)
     end
 
     def preloads do

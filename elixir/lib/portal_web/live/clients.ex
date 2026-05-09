@@ -36,49 +36,46 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    tab = parse_client_tab(Map.get(params, "tab", "overview"))
-
-    page =
-      case Integer.parse(Map.get(params, "page", "1")) do
-        {n, ""} when n >= 1 -> n
-        _ -> 1
-      end
-
     socket = handle_live_tables_params(socket, params, uri)
-    client = Database.get_client_for_panel(id, socket.assigns.subject)
 
-    if client do
-      {policy_authorizations, has_next} =
-        Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+    case Database.get_client_for_panel(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_clients_index(socket, "Client does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(selected_client: client)
-       |> assign(show_client_assigns(tab))
-       |> assign(
-         policy_authorizations: policy_authorizations,
-         policy_authorizations_page: page,
-         policy_authorizations_has_next: has_next,
-         policy_authorizations_expanded_id: nil
-       )}
-    else
-      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients")}
+      client ->
+        page = parse_page(params)
+        tab = parse_client_tab(Map.get(params, "tab", "overview"))
+
+        {policy_authorizations, has_next} =
+          Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+
+        {:noreply,
+         socket
+         |> assign(selected_client: client)
+         |> assign(show_client_assigns(tab))
+         |> assign(
+           policy_authorizations: policy_authorizations,
+           policy_authorizations_page: page,
+           policy_authorizations_has_next: has_next,
+           policy_authorizations_expanded_id: nil
+         )}
     end
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    client = Database.get_client_for_panel(id, socket.assigns.subject)
 
-    if client do
-      changeset = Database.change_client(client)
+    case Database.get_client_for_panel(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_clients_index(socket, "Client does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(selected_client: client)
-       |> assign(edit_client_assigns(to_form(changeset)))}
-    else
-      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients")}
+      client ->
+        changeset = Database.change_client(client)
+
+        {:noreply,
+         socket
+         |> assign(selected_client: client)
+         |> assign(edit_client_assigns(to_form(changeset)))}
     end
   end
 
@@ -480,6 +477,20 @@ defmodule PortalWeb.Clients do
   defp parse_client_tab("authorizations"), do: :authorizations
   defp parse_client_tab("overview"), do: :overview
   defp parse_client_tab(_), do: :overview
+
+  defp parse_page(params) do
+    case Integer.parse(Map.get(params, "page", "1")) do
+      {n, ""} when n >= 1 -> n
+      _ -> 1
+    end
+  end
+
+  defp redirect_to_clients_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/clients?#{socket.assigns.query_params}")}
+  end
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,

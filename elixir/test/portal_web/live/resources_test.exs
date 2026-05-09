@@ -704,6 +704,22 @@ defmodule PortalWeb.ResourcesTest do
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/resources")
     end
+
+    test "patches to resources index with flash when resource does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/resources/#{missing_id}")
+
+      assert to == ~p"/#{account}/resources"
+      assert flash["error"] =~ "Resource does not exist"
+    end
   end
 
   describe ":edit action" do

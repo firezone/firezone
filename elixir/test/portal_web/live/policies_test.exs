@@ -280,6 +280,42 @@ defmodule PortalWeb.PoliciesTest do
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/policies")
     end
+
+    test "patches to policies index with flash when policy does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+      path = ~p"/#{account}/policies/#{missing_id}"
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(path)
+
+      assert to == ~p"/#{account}/policies"
+      assert flash["error"] =~ "Policy does not exist"
+    end
+
+    test "preserves filter query params when redirecting from missing policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(
+                 ~p"/#{account}/policies/#{missing_id}?#{[policies_filter: %{site_id: site.id}]}"
+               )
+
+      assert to =~ "policies_filter"
+      assert to =~ site.id
+    end
   end
 
   describe ":edit action" do

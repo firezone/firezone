@@ -395,6 +395,22 @@ defmodule PortalWeb.GroupsTest do
                    flash: %{"error" => "This group cannot be edited"}
                  }}}
     end
+
+    test "patches to groups index with flash when group does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/groups/#{missing_id}")
+
+      assert to == ~p"/#{account}/groups"
+      assert flash["error"] =~ "Group does not exist"
+    end
   end
 
   describe ":edit action" do
