@@ -253,7 +253,7 @@ defmodule PortalAPI.Client.Socket do
             [{field, %{existing: existing_value, new: new_value}}]
           end)
 
-        Logger.warning(
+        Logger.info(
           "Hardware ID mismatch for client",
           [client_id: existing_client.id] ++ details
         )
