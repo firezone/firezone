@@ -37,10 +37,13 @@ defmodule PortalAPI.ExternalIdentityJSON do
       profile: external_identity.profile,
       picture: external_identity.picture,
       firezone_avatar_url: external_identity.firezone_avatar_url,
-      last_synced_at: external_identity.last_synced_at,
+      synced_at: synced_at_from_state(external_identity.sync_state),
       inserted_at: external_identity.inserted_at
     }
   end
+
+  defp synced_at_from_state(%Portal.ExternalIdentitySyncState{synced_at: t}), do: t
+  defp synced_at_from_state(nil), do: nil
 
   defp extract_idp_id(idp_id) do
     String.split(idp_id, ":", parts: 2) |> List.last()

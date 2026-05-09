@@ -1,6 +1,9 @@
 defmodule PortalAPI.IdentityControllerTest do
   use PortalAPI.ConnCase, async: true
 
+  alias Portal.ExternalIdentitySyncState
+  alias Portal.Repo
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.IdentityFixtures
@@ -113,6 +116,8 @@ defmodule PortalAPI.IdentityControllerTest do
           idp_id: "172836495673"
         })
 
+      sync_state = Repo.get_by!(ExternalIdentitySyncState, external_identity_id: identity.id)
+
       conn =
         conn
         |> authorize_conn(actor)
@@ -138,8 +143,7 @@ defmodule PortalAPI.IdentityControllerTest do
       assert data["picture"] == identity.picture
       assert data["firezone_avatar_url"] == identity.firezone_avatar_url
 
-      assert data["last_synced_at"] ==
-               identity.last_synced_at |> DateTime.to_iso8601()
+      assert data["synced_at"] == DateTime.to_iso8601(sync_state.synced_at)
 
       assert data["inserted_at"] ==
                identity.inserted_at

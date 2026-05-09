@@ -33,7 +33,7 @@ defmodule PortalAPI.Schemas.Group do
           description: "Identity provider ID for synced groups",
           nullable: true
         },
-        last_synced_at: %Schema{
+        synced_at: %Schema{
           type: :string,
           format: :"date-time",
           description: "Last sync timestamp for synced groups",
@@ -58,7 +58,7 @@ defmodule PortalAPI.Schemas.Group do
         "entity_type" => "group",
         "directory_id" => nil,
         "idp_id" => nil,
-        "last_synced_at" => nil,
+        "synced_at" => nil,
         "inserted_at" => "2024-01-15T10:30:00Z",
         "updated_at" => "2024-01-15T10:30:00Z"
       }
@@ -106,7 +106,7 @@ defmodule PortalAPI.Schemas.Group do
           "entity_type" => "group",
           "directory_id" => nil,
           "idp_id" => nil,
-          "last_synced_at" => nil,
+          "synced_at" => nil,
           "inserted_at" => "2024-01-15T10:30:00Z",
           "updated_at" => "2024-01-15T10:30:00Z"
         }
@@ -136,7 +136,7 @@ defmodule PortalAPI.Schemas.Group do
             "entity_type" => "group",
             "directory_id" => nil,
             "idp_id" => nil,
-            "last_synced_at" => nil,
+            "synced_at" => nil,
             "inserted_at" => "2024-01-15T10:30:00Z",
             "updated_at" => "2024-01-15T10:30:00Z"
           },
@@ -147,7 +147,7 @@ defmodule PortalAPI.Schemas.Group do
             "entity_type" => "group",
             "directory_id" => "6b4e3a2c-1234-5678-9abc-def012345678",
             "idp_id" => "google-workspace-group-123",
-            "last_synced_at" => "2024-01-14T16:00:00Z",
+            "synced_at" => "2024-01-14T16:00:00Z",
             "inserted_at" => "2024-01-10T08:15:00Z",
             "updated_at" => "2024-01-14T16:45:00Z"
           }

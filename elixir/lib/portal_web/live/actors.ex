@@ -1436,6 +1436,10 @@ defmodule PortalWeb.Actors do
         on: od.id == d.id and d.type == :okta,
         as: :okta_directory
       )
+      |> join(:left, [identities: i], ss in Portal.ExternalIdentitySyncState,
+        on: ss.external_identity_id == i.id and ss.account_id == i.account_id,
+        as: :sync_state
+      )
       |> select_merge(
         [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
         %{
@@ -1449,6 +1453,7 @@ defmodule PortalWeb.Actors do
         }
       )
       |> order_by([identities: i], desc: i.inserted_at)
+      |> preload([identities: i, sync_state: ss], sync_state: ss)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
     end

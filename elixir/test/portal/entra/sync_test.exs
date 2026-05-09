@@ -484,7 +484,6 @@ defmodule Portal.Entra.SyncTest do
 
       # Create an old identity that won't be in the new sync
       issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
-      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
 
       actor =
         Repo.insert!(%Actor{
@@ -506,7 +505,6 @@ defmodule Portal.Entra.SyncTest do
           directory_id: directory.id,
           email: "old@example.com",
           name: "Old User",
-          last_synced_at: old_synced_at
         })
 
       # Mock successful sync with a different user
@@ -571,8 +569,6 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account, sync_all_groups: true)
 
       # Create an old group that won't be in the new sync
-      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
-
       old_group =
         Repo.insert!(%Group{
           id: Ecto.UUID.generate(),
@@ -581,7 +577,6 @@ defmodule Portal.Entra.SyncTest do
           idp_id: "old_group_123",
           name: "Old Group",
           type: :static,
-          last_synced_at: old_synced_at
         })
 
       # Mock successful sync with a different group
@@ -2471,6 +2466,181 @@ defmodule Portal.Entra.SyncTest do
                  now,
                  [{"group1", "user1"}, {"group1", "user1"}]
                )
+    end
+
+    test "identity upsert rejects stale synced_at and accepts fresh" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+
+      now = DateTime.utc_now()
+      stale = DateTime.add(now, -3600, :second)
+      future = DateTime.add(now, 3600, :second)
+
+      identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: issuer,
+          idp_id: "monotonic_user",
+          email: "old@example.com",
+          synced_at: now
+        )
+
+      stale_attrs = [
+        %{
+          idp_id: "monotonic_user",
+          email: "stale@example.com",
+          name: nil,
+          given_name: nil,
+          family_name: nil,
+          preferred_username: nil,
+          profile: nil
+        }
+      ]
+
+      assert {:ok, _} =
+               Database.batch_upsert_identities(
+                 account.id,
+                 issuer,
+                 directory.id,
+                 stale,
+                 stale_attrs
+               )
+
+      identity_after_stale = Repo.get_by!(ExternalIdentity, id: identity.id, account_id: account.id)
+      assert identity_after_stale.email == "old@example.com"
+
+      sync_state_after_stale =
+        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+
+      assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
+
+      fresh_attrs = [Map.put(hd(stale_attrs), :email, "fresh@example.com")]
+
+      assert {:ok, _} =
+               Database.batch_upsert_identities(
+                 account.id,
+                 issuer,
+                 directory.id,
+                 future,
+                 fresh_attrs
+               )
+
+      identity_after_fresh = Repo.get_by!(ExternalIdentity, id: identity.id, account_id: account.id)
+      assert identity_after_fresh.email == "fresh@example.com"
+
+      sync_state_after_fresh =
+        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+
+      assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
+    end
+
+    test "group upsert rejects stale synced_at and accepts fresh" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      now = DateTime.utc_now()
+      stale = DateTime.add(now, -3600, :second)
+      future = DateTime.add(now, 3600, :second)
+
+      group =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "monotonic_group",
+          name: "Original Name",
+          synced_at: now
+        )
+
+      assert {:ok, _} =
+               Database.batch_upsert_groups(account.id, directory.id, stale, [
+                 %{idp_id: "monotonic_group", name: "Stale Name"}
+               ])
+
+      group_after_stale = Repo.get_by!(Group, id: group.id, account_id: account.id)
+      assert group_after_stale.name == "Original Name"
+
+      sync_state_after_stale = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
+
+      assert {:ok, _} =
+               Database.batch_upsert_groups(account.id, directory.id, future, [
+                 %{idp_id: "monotonic_group", name: "Fresh Name"}
+               ])
+
+      group_after_fresh = Repo.get_by!(Group, id: group.id, account_id: account.id)
+      assert group_after_fresh.name == "Fresh Name"
+
+      sync_state_after_fresh = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
+    end
+
+    test "membership upsert rejects stale synced_at and accepts fresh" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+
+      now = DateTime.utc_now()
+      stale = DateTime.add(now, -3600, :second)
+      future = DateTime.add(now, 3600, :second)
+
+      group =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "monotonic_mem_group"
+        )
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: issuer,
+        idp_id: "monotonic_mem_user"
+      )
+
+      membership =
+        Portal.MembershipFixtures.membership_fixture(
+          account: account,
+          actor: actor,
+          group: group,
+          synced_at: now
+        )
+
+      assert {:ok, _} =
+               Database.batch_upsert_memberships(
+                 account.id,
+                 issuer,
+                 directory.id,
+                 stale,
+                 [{"monotonic_mem_group", "monotonic_mem_user"}]
+               )
+
+      sync_state_after_stale =
+        Repo.get_by!(Portal.MembershipSyncState, membership_id: membership.id)
+
+      assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
+
+      assert {:ok, _} =
+               Database.batch_upsert_memberships(
+                 account.id,
+                 issuer,
+                 directory.id,
+                 future,
+                 [{"monotonic_mem_group", "monotonic_mem_user"}]
+               )
+
+      sync_state_after_fresh =
+        Repo.get_by!(Portal.MembershipSyncState, membership_id: membership.id)
+
+      assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
   end
 

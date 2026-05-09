@@ -30,7 +30,9 @@ defmodule Portal.ExternalIdentity do
     # For hosting the picture internally
     field :firezone_avatar_url, :string
 
-    field :last_synced_at, :utc_datetime_usec
+    has_one :sync_state, Portal.ExternalIdentitySyncState,
+      foreign_key: :external_identity_id,
+      references: :id
 
     field :directory_name, :string, virtual: true
 
