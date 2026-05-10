@@ -124,7 +124,7 @@ jobs:
 
       - name: Validate OpenAPI spec
         env:
-          START_OBAN: "false"
+          OBAN_ENABLED: "false"
         run: |
           mix openapi.spec.yaml --spec PortalAPI.ApiSpec
           result=$(curl --fail --show-error --silent \

@@ -54,6 +54,15 @@ defmodule Portal.Config.Definitions do
   defconfig(:region, :string, default: "")
 
   @doc """
+  Enable or disable starting the Oban supervisor on application boot.
+
+  Set to `false` for tasks that only need the application to boot but cannot reach
+  Postgres (e.g. CI generating the OpenAPI spec). Oban 2.22+ verifies migrations
+  at supervisor start, which requires a live database.
+  """
+  defconfig(:oban_enabled, :boolean, default: true)
+
+  @doc """
   Enable or disable the Changes (CDC) replication consumer for this app instance.
   """
   defconfig(:changes_replication_enabled, :boolean, default: false)
