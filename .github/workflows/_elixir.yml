@@ -123,6 +123,8 @@ jobs:
         run: mix deps.unlock --check-unused
 
       - name: Validate OpenAPI spec
+        env:
+          START_OBAN: "false"
         run: |
           mix openapi.spec.yaml --spec PortalAPI.ApiSpec
           result=$(curl --fail --show-error --silent \

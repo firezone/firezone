@@ -140,7 +140,14 @@ defmodule Portal.Application do
   end
 
   defp oban do
-    [{Oban, Application.fetch_env!(:portal, Oban)}]
+    # Skip starting Oban when only the application boot is needed (e.g. CI
+    # generating the OpenAPI spec without a Postgres service). Oban 2.22+
+    # verifies migrations at supervisor start, which requires a live DB.
+    if System.get_env("START_OBAN", "true") == "false" do
+      []
+    else
+      [{Oban, Application.fetch_env!(:portal, Oban)}]
+    end
   end
 
   defp replication do
