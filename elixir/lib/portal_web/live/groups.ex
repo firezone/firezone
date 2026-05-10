@@ -522,45 +522,25 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("disable_resource_access", %{"resource_id" => resource_id}, socket) do
-    case Database.disable_policy_for_resource(
-           socket.assigns.selected_group,
-           resource_id,
-           socket.assigns.subject
-         ) do
-      {:ok, _} ->
-        resources =
-          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+    result =
+      Database.disable_policy_for_resource(
+        socket.assigns.selected_group,
+        resource_id,
+        socket.assigns.subject
+      )
 
-        {:noreply,
-         merge_state(socket, :group_resources,
-           resources: resources,
-           resource_access_actions_open_id: nil
-         )}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
+    apply_resource_access_change(socket, result)
   end
 
   def handle_event("enable_resource_access", %{"resource_id" => resource_id}, socket) do
-    case Database.enable_policy_for_resource(
-           socket.assigns.selected_group,
-           resource_id,
-           socket.assigns.subject
-         ) do
-      {:ok, _} ->
-        resources =
-          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+    result =
+      Database.enable_policy_for_resource(
+        socket.assigns.selected_group,
+        resource_id,
+        socket.assigns.subject
+      )
 
-        {:noreply,
-         merge_state(socket, :group_resources,
-           resources: resources,
-           resource_access_actions_open_id: nil
-         )}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
+    apply_resource_access_change(socket, result)
   end
 
   def handle_event("confirm_remove_resource_access", %{"resource_id" => resource_id}, socket) do
@@ -576,24 +556,14 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("remove_resource_access", %{"resource_id" => resource_id}, socket) do
-    case Database.delete_policy_for_resource(
-           socket.assigns.selected_group,
-           resource_id,
-           socket.assigns.subject
-         ) do
-      {:ok, _} ->
-        resources =
-          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+    result =
+      Database.delete_policy_for_resource(
+        socket.assigns.selected_group,
+        resource_id,
+        socket.assigns.subject
+      )
 
-        {:noreply,
-         merge_state(socket, :group_resources,
-           resources: resources,
-           confirm_remove_resource_access_id: nil
-         )}
-
-      {:error, _} ->
-        {:noreply, merge_state(socket, :group_resources, confirm_remove_resource_access_id: nil)}
-    end
+    apply_resource_access_removal(socket, result)
   end
 
   def handle_event("prev_member_page", _params, socket) do
@@ -1263,6 +1233,50 @@ defmodule PortalWeb.Groups do
     )
   end
 
+  defp apply_resource_access_change(socket, {:error, _}) do
+    {:noreply, put_flash(socket, :error, "Could not update resource access.")}
+  end
+
+  defp apply_resource_access_change(socket, result) do
+    socket =
+      socket
+      |> refresh_group_resources(resource_access_actions_open_id: nil)
+      |> maybe_put_stale_flash(result, "Resource access state has changed.")
+
+    {:noreply, socket}
+  end
+
+  defp apply_resource_access_removal(socket, {:error, _}) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "Could not remove resource access.")
+     |> merge_state(:group_resources, confirm_remove_resource_access_id: nil)}
+  end
+
+  defp apply_resource_access_removal(socket, result) do
+    socket =
+      socket
+      |> refresh_group_resources(confirm_remove_resource_access_id: nil)
+      |> maybe_put_stale_flash(result, "Resource access no longer exists.")
+
+    {:noreply, socket}
+  end
+
+  defp refresh_group_resources(socket, ui_state) do
+    resources =
+      Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+
+    merge_state(socket, :group_resources, Keyword.put(ui_state, :resources, resources))
+  end
+
+  defp maybe_put_stale_flash(socket, nil, message) do
+    put_flash(socket, :error, message)
+  end
+
+  defp maybe_put_stale_flash(socket, _result, _message) do
+    socket
+  end
+
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
@@ -1586,41 +1600,23 @@ defmodule PortalWeb.Groups do
     end
 
     def disable_policy_for_resource(group, resource_id, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where(
-        [policies: p],
-        p.group_id == ^group.id and p.resource_id == ^resource_id and is_nil(p.disabled_at)
-      )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(fn policy ->
-        Ecto.Changeset.change(policy, %{disabled_at: DateTime.utc_now()})
-        |> Safe.scoped(subject)
-        |> Safe.update()
-      end)
+      with %Portal.Policy{} = policy <-
+             fetch_policy_for_resource(group, resource_id, subject, state: :enabled) do
+        set_policy_disabled_at(policy, subject, DateTime.utc_now())
+      end
     end
 
     def enable_policy_for_resource(group, resource_id, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where(
-        [policies: p],
-        p.group_id == ^group.id and p.resource_id == ^resource_id and not is_nil(p.disabled_at)
-      )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(fn policy ->
-        Ecto.Changeset.change(policy, %{disabled_at: nil})
-        |> Safe.scoped(subject)
-        |> Safe.update()
-      end)
+      with %Portal.Policy{} = policy <-
+             fetch_policy_for_resource(group, resource_id, subject, state: :disabled) do
+        set_policy_disabled_at(policy, subject, nil)
+      end
     end
 
     def delete_policy_for_resource(group, resource_id, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where([policies: p], p.group_id == ^group.id and p.resource_id == ^resource_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
+      with %Portal.Policy{} = policy <- fetch_policy_for_resource(group, resource_id, subject) do
+        Safe.scoped(policy, subject) |> Safe.delete()
+      end
     end
 
     def list_group_members(group, subject, page, page_size, filter, opts \\ []) do
@@ -1671,14 +1667,6 @@ defmodule PortalWeb.Groups do
         end
 
       {members, total}
-    end
-
-    def remove_group_member(group, actor_id, subject) do
-      from(m in Portal.Membership, as: :memberships)
-      |> where([memberships: m], m.group_id == ^group.id and m.actor_id == ^actor_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
     end
 
     def list_available_resources(existing_resource_ids, subject) do
@@ -1814,6 +1802,28 @@ defmodule PortalWeb.Groups do
       group
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+
+    defp fetch_policy_for_resource(group, resource_id, subject, opts \\ []) do
+      from(p in Portal.Policy, as: :policies)
+      |> where([policies: p], p.group_id == ^group.id and p.resource_id == ^resource_id)
+      |> filter_policy_state(opts[:state])
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+    end
+
+    defp filter_policy_state(query, :enabled),
+      do: where(query, [policies: p], is_nil(p.disabled_at))
+
+    defp filter_policy_state(query, :disabled),
+      do: where(query, [policies: p], not is_nil(p.disabled_at))
+
+    defp filter_policy_state(query, _), do: query
+
+    defp set_policy_disabled_at(policy, subject, disabled_at) do
+      Ecto.Changeset.change(policy, %{disabled_at: disabled_at})
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
   end
 end

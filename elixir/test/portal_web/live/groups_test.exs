@@ -340,6 +340,77 @@ defmodule PortalWeb.GroupsTest do
       assert render(lv) =~ "No resource access"
     end
 
+    test "shows flash when remove_resource_access loses race", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Internal DB")
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      Repo.delete!(policy)
+
+      render_click(lv, "confirm_remove_resource_access", %{"resource_id" => resource.id})
+      html = render_click(lv, "remove_resource_access", %{"resource_id" => resource.id})
+
+      assert html =~ "Resource access no longer exists."
+    end
+
+    test "shows flash when disable_resource_access loses race", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Internal DB")
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      Repo.delete!(policy)
+
+      html = render_click(lv, "disable_resource_access", %{"resource_id" => resource.id})
+
+      assert html =~ "Resource access state has changed."
+    end
+
+    test "shows flash when enable_resource_access loses race", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Internal DB")
+
+      policy =
+        policy_fixture(
+          account: account,
+          group: group,
+          resource: resource,
+          disabled_at: DateTime.utc_now()
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      Repo.delete!(policy)
+
+      html = render_click(lv, "enable_resource_access", %{"resource_id" => resource.id})
+
+      assert html =~ "Resource access state has changed."
+    end
+
     test "filters and paginates members", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
 

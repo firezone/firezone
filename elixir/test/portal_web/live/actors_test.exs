@@ -856,6 +856,42 @@ defmodule PortalWeb.ActorsTest do
       refute html =~ current_group.name
     end
 
+    test "saves successfully when a pending group removal was already deleted in another tab",
+         %{conn: conn, account: account, actor: actor} do
+      other_actor = actor_fixture(account: account)
+      current_group = group_fixture(account: account, name: "Current Group")
+      membership = membership_fixture(actor: other_actor, group: current_group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      render_click(lv, "add_pending_group_removal", %{"group_id" => current_group.id})
+
+      Portal.Repo.delete!(membership)
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: other_actor.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      html = render(lv)
+      assert html =~ "Actor updated successfully."
+      refute html =~ "Failed to update some group memberships."
+
+      refute Portal.Repo.get_by(Portal.Membership,
+               actor_id: other_actor.id,
+               group_id: current_group.id
+             )
+    end
+
     test "shows error flash when adding a group membership fails", %{
       conn: conn,
       account: account,
