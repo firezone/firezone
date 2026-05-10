@@ -53,10 +53,39 @@ defmodule Portal.Mailer do
 
   defp deliver_with_mailer_config(email, opts, metadata) do
     if opts[:adapter] do
+      email = put_adapter_client_options(email, opts)
+      metadata = %{metadata | email: email}
+
       deliver_with_telemetry(email, opts, metadata)
     else
       Logger.info("Emails are not configured", email_subject: inspect(email.subject))
       {:ok, %{}}
+    end
+  end
+
+  defp put_adapter_client_options(%Email{} = email, opts) do
+    req_opts =
+      opts[:req_opts]
+      |> List.wrap()
+      |> Keyword.merge(email.private[:client_options] || [])
+      |> maybe_put_acs_hmac_auth_plugin(opts)
+
+    case req_opts do
+      [] -> email
+      _ -> Email.put_private(email, :client_options, req_opts)
+    end
+  end
+
+  defp maybe_put_acs_hmac_auth_plugin(req_opts, opts) do
+    with Swoosh.Adapters.AzureCommunicationServices <- Keyword.get(opts, :adapter),
+         access_key when is_binary(access_key) <- Keyword.get(opts, :access_key) do
+      plugin = fn req -> Portal.AzureCommunicationServices.HMACAuth.attach(req, access_key) end
+
+      Keyword.update(req_opts, :plugins, [plugin], fn plugins ->
+        List.wrap(plugins) ++ [plugin]
+      end)
+    else
+      _ -> req_opts
     end
   end
 
