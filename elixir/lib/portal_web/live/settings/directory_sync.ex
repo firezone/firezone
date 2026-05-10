@@ -1994,13 +1994,13 @@ defmodule PortalWeb.Settings.DirectorySync do
       # Query for active sync jobs for all directory types
       # Note: Oban.Job doesn't have account_id - security is ensured by
       # filtering on directory_ids which are already scoped to the account
+      sync_workers = [Portal.Entra.Sync, Portal.Google.Sync, Portal.Okta.Sync]
+
       active_jobs =
-        from(j in Oban.Job,
-          where: j.worker in ["Portal.Entra.Sync", "Portal.Google.Sync", "Portal.Okta.Sync"],
-          where: j.state in ["available", "executing", "scheduled"],
-          where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
-          order_by: [desc: j.inserted_at]
-        )
+        [worker: sync_workers, state: [:available, :executing, :scheduled]]
+        |> Oban.Job.query()
+        |> where([j], fragment("?->>'directory_id'", j.args) in ^directory_ids)
+        |> order_by([j], desc: j.inserted_at)
         |> Safe.unscoped(:replica)
         |> Safe.all()
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
@@ -2008,12 +2008,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       # Query for most recent completed job per directory
       completed_jobs =
-        from(j in Oban.Job,
-          where: j.worker in ["Portal.Entra.Sync", "Portal.Google.Sync", "Portal.Okta.Sync"],
-          where: j.state in ["completed", "discarded", "cancelled", "retryable"],
-          where: fragment("?->>'directory_id'", j.args) in ^directory_ids,
-          order_by: [desc: j.completed_at]
-        )
+        [worker: sync_workers, state: [:completed, :discarded, :cancelled, :retryable]]
+        |> Oban.Job.query()
+        |> where([j], fragment("?->>'directory_id'", j.args) in ^directory_ids)
+        |> order_by([j], desc: j.completed_at)
         |> Safe.unscoped(:replica)
         |> Safe.all()
         |> Enum.uniq_by(& &1.args["directory_id"])
