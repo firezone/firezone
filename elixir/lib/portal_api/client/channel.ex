@@ -13,6 +13,7 @@ defmodule PortalAPI.Client.Channel do
     Authentication
   }
 
+  alias Portal.Repo.Batch
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -24,6 +25,19 @@ defmodule PortalAPI.Client.Channel do
 
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
+
+  @session_durability_timeout :timer.seconds(15)
+
+  @doc false
+  def policy_authorization_queue_opts do
+    [
+      name: :policy_authorization_queue,
+      flush_interval: :timer.seconds(1),
+      flush_threshold: 10_000,
+      label: "policy authorization",
+      on_flush: &flush_policy_authorizations/1
+    ]
+  end
 
   ####################################
   ##### Channel lifecycle events #####
@@ -93,7 +107,7 @@ defmodule PortalAPI.Client.Channel do
 
     init(socket, resources, relays)
 
-    {:noreply, socket}
+    {:noreply, arm_session_durability_timer(socket)}
   end
 
   ####################################
@@ -356,6 +370,7 @@ defmodule PortalAPI.Client.Channel do
   def handle_info({:client_device_access_authorized, payload}, socket) do
     {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
     {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
+    {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
 
     authorizations_cache =
       maybe_put_authorization(
@@ -376,7 +391,12 @@ defmodule PortalAPI.Client.Channel do
     push(socket, "client_device_access_authorized", payload)
     cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
 
-    {:noreply, assign(socket, cache: cache, authorizations_cache: authorizations_cache)}
+    socket =
+      socket
+      |> assign(cache: cache, authorizations_cache: authorizations_cache)
+      |> maybe_arm_authz_durability_timer(policy_authorization)
+
+    {:noreply, socket}
   end
 
   def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
@@ -393,27 +413,58 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
-  # Sent by the initiating client's channel when a policy_authorization fails to persist
-  # after the receiver was already told it could accept the connection. Mirrors the
-  # gateway's reject_access handler — connlib tears down the inbound peer connection.
-  def handle_info({:reject_access, client_id, resource_id}, socket) do
-    push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
-    {:noreply, socket}
+  # Delivered to the receiver (peer client, in the client-to-client case) via
+  # `Portal.PG` when a policy_authorization fails to persist after the receiver
+  # was already told it could accept the connection. Mirrors the gateway's
+  # reject_access handler: per-authz_id cache eviction via the same
+  # `reauthorize_deleted_policy_authorization` path used by CDC deletes.
+  def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
+    socket = cancel_authz_durability_timer(socket, policy_authorization.id)
+    revoke_policy_authorization(socket, policy_authorization)
   end
 
-  # Sent by the persistence Task back to this channel when policy_authorization creation
-  # fails. We re-deliver as :reject_access from the channel pid so the receiver sees it
-  # ordered after the original authorize message that was also sent by this pid.
-  def handle_info(
-        {:revoke_receiver_access, receiving_device_id, initiating_device_id, resource_id},
-        socket
-      ) do
-    PG.deliver(
-      receiving_device_id,
-      {:reject_access, initiating_device_id, resource_id}
-    )
+  # Queue confirms a c2c policy_authorization was durably persisted; cancel
+  # the authz durability timer so the timer doesn't fire and revoke.
+  def handle_info({:confirm_authz_durability, authz_id}, socket) do
+    {:noreply, cancel_authz_durability_timer(socket, authz_id)}
+  end
 
-    {:noreply, socket}
+  def handle_info({:confirm_session_durability, session_id}, socket) do
+    {:noreply, cancel_session_durability_timer(socket, session_id)}
+  end
+
+  # Authz durability timer fired — no confirm/reject arrived in time. Fail-closed.
+  # See gateway channel's equivalent handler for the rationale on the
+  # generation check.
+  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+    case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
+      {^generation, _ref} ->
+        Logger.warning(
+          "Authz durability timeout firing for c2c authz #{inspect(pa.id)} — queue never confirmed durability"
+        )
+
+        socket = cancel_authz_durability_timer(socket, pa.id)
+        revoke_policy_authorization(socket, pa)
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info({:session_durability_timeout, session_id, generation}, socket) do
+    case socket.assigns[:session_durability] do
+      {^session_id, ^generation, _timer_ref} ->
+        Logger.warning(
+          "Client session #{inspect(session_id)} was not confirmed durable; disconnecting"
+        )
+
+        socket = cancel_session_durability_timer(socket, session_id)
+        push(socket, "disconnect", %{reason: "token_expired"})
+        {:stop, :shutdown, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_info(:disconnect, socket) do
@@ -447,6 +498,81 @@ defmodule PortalAPI.Client.Channel do
 
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp flush_policy_authorizations(entries) do
+    {inserted, failed} =
+      Batch.insert_all(Portal.PolicyAuthorization, entries,
+        label: "policy authorization",
+        fk_partitions: %{
+          "policy_authorizations_account_id_fkey" => {:simple, :account_id, Portal.Account},
+          "policy_authorizations_policy_id_fkey" => {:composite, :policy_id, Portal.Policy},
+          "policy_authorizations_resource_id_fkey" =>
+            {:composite, :resource_id, Portal.Resource},
+          "policy_authorizations_token_id_fkey" =>
+            {:composite, :token_id, Portal.ClientToken},
+          "policy_authorizations_membership_id_fkey" =>
+            {:composite_optional, :membership_id, Portal.Membership},
+          "policy_authorizations_initiating_device_id_fkey" =>
+            {:composite, :initiating_device_id, Portal.Device},
+          "policy_authorizations_receiving_device_id_fkey" =>
+            {:composite, :receiving_device_id, Portal.Device}
+        }
+      )
+
+    dispatch_failed_policy_authorizations(failed)
+    dispatch_confirmed_policy_authorizations(entries, failed)
+
+    if failed != [] do
+      Logger.warning(
+        "Skipped #{length(failed)} policy authorization entries during flush due to missing references"
+      )
+    end
+
+    inserted
+  end
+
+  defp dispatch_failed_policy_authorizations(failed) do
+    for {attrs, _metadata} <- failed do
+      dispatch_queue_callback("policy authorization", :on_failed, attrs, fn ->
+        policy_authorization = struct(Portal.PolicyAuthorization, attrs)
+
+        PG.deliver(
+          attrs.receiving_device_id,
+          {:reject_access, policy_authorization}
+        )
+      end)
+    end
+  end
+
+  defp dispatch_confirmed_policy_authorizations(entries, failed) do
+    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+      dispatch_queue_callback("policy authorization", :on_confirmed, attrs, fn ->
+        PG.deliver(
+          attrs.receiving_device_id,
+          {:confirm_authz_durability, attrs.id}
+        )
+      end)
+    end
+  end
+
+  defp dispatch_queue_callback(label, callback, attrs, fun) do
+    fun.()
+    :ok
+  rescue
+    error ->
+      Logger.error(
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:id])}: " <>
+          Exception.message(error)
+      )
+  catch
+    kind, reason ->
+      Logger.error(
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:id])}: " <>
+          inspect(reason)
+      )
+  end
 
   defp put_site_id(payload, site_id, client_session) do
     key =
@@ -644,34 +770,44 @@ defmodule PortalAPI.Client.Channel do
          true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
       policy_authorization_id = Ecto.UUID.generate()
 
-      async_create_policy_authorization(
-        policy_authorization_id,
-        socket.assigns.client,
-        gateway,
-        resource_id,
-        policy_id,
-        membership_id,
-        socket.assigns.subject,
-        expires_at
-      )
+      attrs =
+        policy_authorization_attrs(
+          policy_authorization_id,
+          socket.assigns.client,
+          gateway,
+          resource_id,
+          policy_id,
+          membership_id,
+          socket.assigns.subject,
+          expires_at
+        )
 
-      case PG.deliver(
-             gateway.id,
-             {:allow_access, {self(), socket_ref(socket)},
-              %{
-                client_id: socket.assigns.client.id,
-                client_ipv4: socket.assigns.client.ipv4,
-                client_ipv6: socket.assigns.client.ipv6,
-                resource: resource,
-                policy_authorization_id: policy_authorization_id,
-                authorization_expires_at: expires_at,
-                client_payload: payload
-              }}
+      message =
+        {:allow_access, {self(), socket_ref(socket)},
+         %{
+           client_id: socket.assigns.client.id,
+           client_ipv4: socket.assigns.client.ipv4,
+           client_ipv6: socket.assigns.client.ipv6,
+           resource: resource,
+           policy_authorization_id: policy_authorization_id,
+           authorization_expires_at: expires_at,
+           client_payload: payload
+         }}
+
+      policy_authorization = struct(Portal.PolicyAuthorization, attrs)
+
+      case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+             dispatch: fn ->
+               PG.deliver(
+                 gateway.id,
+                 attach_policy_authorization(message, policy_authorization)
+               )
+             end
            ) do
         :ok ->
           {:noreply, socket}
 
-        {:error, :not_found} ->
+        {:error, _reason} ->
           {:reply, {:error, %{reason: :offline}}, socket}
       end
     else
@@ -717,37 +853,47 @@ defmodule PortalAPI.Client.Channel do
          true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
       policy_authorization_id = Ecto.UUID.generate()
 
-      async_create_policy_authorization(
-        policy_authorization_id,
-        socket.assigns.client,
-        gateway,
-        resource_id,
-        policy_id,
-        membership_id,
-        socket.assigns.subject,
-        expires_at
-      )
+      attrs =
+        policy_authorization_attrs(
+          policy_authorization_id,
+          socket.assigns.client,
+          gateway,
+          resource_id,
+          policy_id,
+          membership_id,
+          socket.assigns.subject,
+          expires_at
+        )
 
-      case PG.deliver(
-             gateway.id,
-             {:request_connection, {self(), socket_ref(socket)},
-              %{
-                client:
-                  PortalAPI.Gateway.Views.Client.render_legacy(
-                    socket.assigns.client,
-                    socket.assigns.session.public_key,
-                    client_payload,
-                    preshared_key
-                  ),
-                resource: resource,
-                policy_authorization_id: policy_authorization_id,
-                authorization_expires_at: expires_at
-              }}
+      message =
+        {:request_connection, {self(), socket_ref(socket)},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render_legacy(
+               socket.assigns.client,
+               socket.assigns.session.public_key,
+               client_payload,
+               preshared_key
+             ),
+           resource: resource,
+           policy_authorization_id: policy_authorization_id,
+           authorization_expires_at: expires_at
+         }}
+
+      policy_authorization = struct(Portal.PolicyAuthorization, attrs)
+
+      case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+             dispatch: fn ->
+               PG.deliver(
+                 gateway.id,
+                 attach_policy_authorization(message, policy_authorization)
+               )
+             end
            ) do
         :ok ->
           {:noreply, socket}
 
-        {:error, :not_found} ->
+        {:error, _reason} ->
           {:reply, {:error, %{reason: :offline}}, socket}
       end
     else
@@ -865,15 +1011,22 @@ defmodule PortalAPI.Client.Channel do
          {:ok, target_client_id, target_meta} <-
            find_online_client_by_address(account_id, target),
          :ok <- check_peer_compatibility(target_meta, socket) do
-      case send_client_device_access_authorized(
-             target_client_id,
-             target_meta,
-             nil,
-             nil,
-             nil,
-             socket
-           ) do
+      # PoC shim: bypass the Queue entirely because we don't persist a
+      # `policy_authorization` row here. Deliver to the target first; only
+      # push the initiator-side confirmation if the target was reachable.
+      {receiver_message, initiator_payload} =
+        build_client_device_access_authorized_messages(
+          target_client_id,
+          target_meta,
+          nil,
+          nil,
+          nil,
+          socket
+        )
+
+      case PG.deliver(target_client_id, receiver_message) do
         :ok ->
+          push(socket, "client_device_access_authorized", initiator_payload)
           {:noreply, socket}
 
         {:error, :not_found} ->
@@ -1143,18 +1296,28 @@ defmodule PortalAPI.Client.Channel do
              preshared_key: preshared_key
            }}
 
-        async_create_policy_authorization(
-          policy_authorization_id,
-          socket.assigns.client,
-          gateway,
-          resource_id,
-          policy_id,
-          membership_id,
-          socket.assigns.subject,
-          expires_at
-        )
+        attrs =
+          policy_authorization_attrs(
+            policy_authorization_id,
+            socket.assigns.client,
+            gateway,
+            resource_id,
+            policy_id,
+            membership_id,
+            socket.assigns.subject,
+            expires_at
+          )
 
-        case PG.deliver(gateway.id, message) do
+        policy_authorization = struct(Portal.PolicyAuthorization, attrs)
+
+        case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+               dispatch: fn ->
+                 PG.deliver(
+                   gateway.id,
+                   attach_policy_authorization(message, policy_authorization)
+                 )
+               end
+             ) do
           :ok ->
             timer_ref =
               Process.send_after(
@@ -1172,7 +1335,7 @@ defmodule PortalAPI.Client.Channel do
 
             {:noreply, socket}
 
-          {:error, :not_found} ->
+          {:error, _reason} ->
             push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
             {:noreply, socket}
         end
@@ -1347,40 +1510,57 @@ defmodule PortalAPI.Client.Channel do
     resource_id = Ecto.UUID.load!(resource.id)
     policy_authorization_id = Ecto.UUID.generate()
 
-    # Deliver to the target FIRST so we know the peer is still registered. Only after
-    # successful delivery do we persist the policy_authorization — otherwise a
-    # disconnect between presence lookup and PG.deliver would leave a stale row in
-    # the DB authorizing access for a peer that never received the message.
-    case send_client_device_access_authorized(
-           target_client_id,
-           target_meta,
-           resource,
-           policy_authorization_id,
-           expires_at,
-           socket
+    target_device = %Portal.Device{
+      id: target_client_id,
+      account_id: socket.assigns.client.account_id,
+      type: :client,
+      latest_session: %{remote_ip: target_meta.remote_ip}
+    }
+
+    attrs =
+      policy_authorization_attrs(
+        policy_authorization_id,
+        socket.assigns.client,
+        target_device,
+        resource_id,
+        policy_id,
+        membership_id,
+        socket.assigns.subject,
+        expires_at
+      )
+
+    # Precompute the receiver-side and initiator-side messages BEFORE entering
+    # the Queue dispatch callback. This keeps the dispatch callback minimal
+    # (just `PG.deliver/2`) so it can't raise mid-execution: any crash in
+    # crypto/render code happens up front, before any allow-equivalent message
+    # is on the wire, and before the queue buffers an entry. The initiator-side
+    # push happens AFTER `Queue.enqueue/3` returns `:ok`, so we never end up in
+    # a state where the receiver got allow but the queue didn't buffer.
+    {receiver_message, initiator_payload} =
+      build_client_device_access_authorized_messages(
+        target_client_id,
+        target_meta,
+        resource,
+        policy_authorization_id,
+        expires_at,
+        socket
+      )
+
+    policy_authorization = struct(Portal.PolicyAuthorization, attrs)
+
+    case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+           dispatch: fn ->
+             PG.deliver(
+               target_client_id,
+               attach_policy_authorization(receiver_message, policy_authorization)
+             )
+           end
          ) do
       :ok ->
-        target_device = %Portal.Device{
-          id: target_client_id,
-          account_id: socket.assigns.client.account_id,
-          type: :client,
-          latest_session: %{remote_ip: target_meta.remote_ip}
-        }
-
-        async_create_policy_authorization(
-          policy_authorization_id,
-          socket.assigns.client,
-          target_device,
-          resource_id,
-          policy_id,
-          membership_id,
-          socket.assigns.subject,
-          expires_at
-        )
-
+        push(socket, "client_device_access_authorized", initiator_payload)
         {:noreply, socket}
 
-      {:error, :not_found} ->
+      {:error, _} ->
         push(socket, "client_device_access_denied", %{
           client_id: target_client_id,
           ipv4: payload["ipv4"],
@@ -1392,10 +1572,13 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  # Tries to deliver `client_device_access_authorized` to the target client and, on
-  # successful delivery, pushes the matching message to the initiator. Returns the
-  # PG.deliver result so callers can decide whether to persist authorization state.
-  defp send_client_device_access_authorized(
+  # Returns `{receiver_message, initiator_payload}`. The receiver_message goes
+  # to the target client via PG (delivered inside the Queue's dispatch
+  # callback so it shares a sender pid with any later `:reject_access`). The
+  # initiator_payload is pushed back to the originating client's socket only
+  # after Queue.enqueue returns `:ok`, so the initiator never gets a
+  # confirmation that the queue didn't durably accept.
+  defp build_client_device_access_authorized_messages(
          target_client_id,
          target_meta,
          resource,
@@ -1439,44 +1622,35 @@ defmodule PortalAPI.Client.Channel do
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
-    case PG.deliver(
-           target_client_id,
-           {:client_device_access_authorized,
-            %{
-              client_id: client.id,
-              client_public_key: client_public_key,
-              client_ipv4: client.ipv4,
-              client_ipv6: client.ipv6,
-              preshared_key: preshared_key,
-              local_ice_credentials: ice_credentials.receiver,
-              remote_ice_credentials: ice_credentials.initiator,
-              ice_role: :controlled,
-              resource: rendered_resource,
-              subject: rendered_subject,
-              policy_authorization_id: policy_authorization_id,
-              authorization_expires_at: expires_at
-            }}
-         ) do
-      :ok ->
-        target_ipv4 = %Postgrex.INET{address: target_meta.ipv4}
-        target_ipv6 = %Postgrex.INET{address: target_meta.ipv6}
+    receiver_message =
+      {:client_device_access_authorized,
+       %{
+         client_id: client.id,
+         client_public_key: client_public_key,
+         client_ipv4: client.ipv4,
+         client_ipv6: client.ipv6,
+         preshared_key: preshared_key,
+         local_ice_credentials: ice_credentials.receiver,
+         remote_ice_credentials: ice_credentials.initiator,
+         ice_role: :controlled,
+         resource: rendered_resource,
+         subject: rendered_subject,
+         policy_authorization_id: policy_authorization_id,
+         authorization_expires_at: expires_at
+       }}
 
-        push(socket, "client_device_access_authorized", %{
-          client_id: target_client_id,
-          client_public_key: target_meta.public_key,
-          client_ipv4: target_ipv4,
-          client_ipv6: target_ipv6,
-          preshared_key: preshared_key,
-          local_ice_credentials: ice_credentials.initiator,
-          remote_ice_credentials: ice_credentials.receiver,
-          ice_role: :controlling
-        })
+    initiator_payload = %{
+      client_id: target_client_id,
+      client_public_key: target_meta.public_key,
+      client_ipv4: %Postgrex.INET{address: target_meta.ipv4},
+      client_ipv6: %Postgrex.INET{address: target_meta.ipv6},
+      preshared_key: preshared_key,
+      local_ice_credentials: ice_credentials.initiator,
+      remote_ice_credentials: ice_credentials.receiver,
+      ice_role: :controlling
+    }
 
-        :ok
-
-      {:error, :not_found} ->
-        {:error, :not_found}
-    end
+    {receiver_message, initiator_payload}
   end
 
   # TODO: Re-enable after verifying compatibility with older clients
@@ -1803,47 +1977,13 @@ defmodule PortalAPI.Client.Channel do
          %Change{
            op: :delete,
            old_struct:
-             %Portal.PolicyAuthorization{
-               receiving_device_id: client_id,
-               initiating_device_id: initiating_client_id,
-               resource_id: resource_id
-             } = policy_authorization
+             %Portal.PolicyAuthorization{receiving_device_id: client_id} =
+               policy_authorization
          },
          %{assigns: %{client: %{id: client_id}}} = socket
        ) do
-    socket.assigns.authorizations_cache
-    |> Cache.Client.Authorizations.reauthorize_deleted_policy_authorization(policy_authorization)
-    |> case do
-      {:ok, expires_at_unix, authorizations_cache} ->
-        Logger.info("Updating client-to-client authorization expiration for deleted policy authorization",
-          deleted_policy_authorization: inspect(policy_authorization),
-          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
-        )
-
-        push(
-          socket,
-          "access_authorization_expiry_updated",
-          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
-        )
-
-        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
-
-      {:error, :unauthorized, authorizations_cache} ->
-        Logger.info(
-          "No client-to-client authorizations remaining for deleted policy authorization, revoking access",
-          deleted_policy_authorization: inspect(policy_authorization)
-        )
-
-        push(socket, "reject_access", %{
-          client_id: initiating_client_id,
-          resource_id: resource_id
-        })
-
-        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
-
-      {:error, :not_found} ->
-        {:noreply, socket}
-    end
+    socket = cancel_authz_durability_timer(socket, policy_authorization.id)
+    revoke_policy_authorization(socket, policy_authorization)
   end
 
   # RESOURCES
@@ -1924,6 +2064,121 @@ defmodule PortalAPI.Client.Channel do
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
+  # Shared eviction path for both the CDC delete handler and the direct
+  # `:reject_access` from `Portal.Queue`'s on_failed callback. Per-authz_id:
+  # if other authorizations still grant the same `(initiator, resource)` access
+  # to this receiving client, we push an expiry update; if none do, we push
+  # `reject_access`.
+  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{} = policy_authorization) do
+    %Portal.PolicyAuthorization{
+      initiating_device_id: initiating_client_id,
+      resource_id: resource_id
+    } = policy_authorization
+
+    socket.assigns.authorizations_cache
+    |> Cache.Client.Authorizations.reauthorize_deleted_policy_authorization(policy_authorization)
+    |> case do
+      {:ok, expires_at_unix, authorizations_cache} ->
+        Logger.info(
+          "Updating client-to-client authorization expiration for deleted policy authorization",
+          deleted_policy_authorization: inspect(policy_authorization),
+          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
+        )
+
+        push(
+          socket,
+          "access_authorization_expiry_updated",
+          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
+        )
+
+        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
+
+      {:error, :unauthorized, authorizations_cache} ->
+        Logger.info(
+          "No client-to-client authorizations remaining for deleted policy authorization, revoking access",
+          deleted_policy_authorization: inspect(policy_authorization)
+        )
+
+        push(socket, "reject_access", %{
+          client_id: initiating_client_id,
+          resource_id: resource_id
+        })
+
+        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
+  end
+
+  # Authz durability timer for fail-closed cleanup when the originating queue
+  # loses state. See gateway channel's equivalent helpers for full rationale,
+  # including the rationale for the generation token in `authz_durability`.
+  @authz_durability_timeout :timer.seconds(15)
+
+  defp arm_session_durability_timer(socket) do
+    case socket.assigns.session.id do
+      nil ->
+        socket
+
+      session_id ->
+        generation = make_ref()
+
+        timer_ref =
+          Process.send_after(
+            self(),
+            {:session_durability_timeout, session_id, generation},
+            @session_durability_timeout
+          )
+
+        # Fail-safe: if the session queue never confirms the DB flush, the
+        # channel disconnects and lets the client reconnect to create a new row.
+        assign(socket, session_durability: {session_id, generation, timer_ref})
+    end
+  end
+
+  defp cancel_session_durability_timer(socket, session_id) do
+    case socket.assigns[:session_durability] do
+      {^session_id, _generation, timer_ref} ->
+        Process.cancel_timer(timer_ref)
+        assign(socket, session_durability: nil)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp maybe_arm_authz_durability_timer(socket, nil), do: socket
+
+  defp maybe_arm_authz_durability_timer(socket, %Portal.PolicyAuthorization{} = pa) do
+    generation = make_ref()
+
+    timer_ref =
+      Process.send_after(self(), {:authz_durability_timeout, pa, generation}, @authz_durability_timeout)
+
+    pending = socket.assigns[:authz_durability] || %{}
+
+    case Map.get(pending, pa.id) do
+      nil -> :ok
+      {_old_generation, old_ref} -> Process.cancel_timer(old_ref)
+    end
+
+    assign(socket, authz_durability: Map.put(pending, pa.id, {generation, timer_ref}))
+  end
+
+  defp cancel_authz_durability_timer(socket, authz_id) do
+    pending = socket.assigns[:authz_durability] || %{}
+
+    case Map.pop(pending, authz_id) do
+      {nil, _} ->
+        socket
+
+      {{_generation, timer_ref}, rest} ->
+        Process.cancel_timer(timer_ref)
+        assign(socket, authz_durability: rest)
+    end
+  end
+
   defp push_device_access_denied(_socket, nil), do: :ok
 
   defp push_device_access_denied(socket, {ipv4_tuple, ipv6_tuple}) do
@@ -1998,7 +2253,14 @@ defmodule PortalAPI.Client.Channel do
   defp nils_last(_, nil), do: true
   defp nils_last(a, b), do: a <= b
 
-  defp async_create_policy_authorization(
+  # Builds the attrs map for a `Portal.PolicyAuthorization` row. The caller
+  # passes this to `Portal.Queue.enqueue/3` with a `:dispatch` callback that
+  # delivers the corresponding `:allow_access` (or equivalent) message to the
+  # gateway. Routing the dispatch through the Queue process ensures that
+  # `:allow_access` and any later `:reject_access` (from the Queue's
+  # `:on_failed` callback when the insert fails FK) share a sender pid, so the
+  # gateway sees them in send order.
+  defp policy_authorization_attrs(
          policy_authorization_id,
          %Portal.Device{
            id: client_id,
@@ -2021,10 +2283,10 @@ defmodule PortalAPI.Client.Channel do
              remote_ip: initiator_remote_ip,
              user_agent: initiator_user_agent
            }
-         } = subject,
+         },
          expires_at
        ) do
-    attrs = %{
+    %{
       id: policy_authorization_id,
       token_id: token_id,
       policy_id: policy_id,
@@ -2038,93 +2300,31 @@ defmodule PortalAPI.Client.Channel do
       receiver_remote_ip: receiver_remote_ip,
       expires_at: expires_at
     }
-
-    channel_pid = self()
-    Task.start(fn -> do_create_policy_authorization(attrs, subject, channel_pid) end)
   end
 
-  @doc false
-  def do_create_policy_authorization(attrs, subject, channel_pid \\ nil) do
-    changeset = create_policy_authorization_changeset(attrs)
+  # Attaches a synthetic `%Portal.PolicyAuthorization{}` to a receiver-side
+  # allow message. The receiver uses it to:
+  #   1. Arm an authz durability timer keyed by `pa.id`, so that if no
+  #      `:confirm_authz_durability` (queue flush success) or `:reject_access`
+  #      (queue flush failure) arrives within the timeout window, the
+  #      receiver fail-closes by running the same eviction path used for
+  #      `:reject_access`.
+  #   2. On the per-authz_id eviction path itself (CDC delete, on_failed
+  #      reject, authz durability timer fire), reuse the struct for
+  #      `reauthorize_deleted_policy_authorization`.
+  #
+  # Accepts the two message shapes used by the gateway/peer-bound paths:
+  # `{tag, {channel_pid, socket_ref}, payload}` (used by :allow_access,
+  # :authorize_policy, :request_connection) and `{tag, payload}` (used by
+  # :client_device_access_authorized in the c2c flow).
+  defp attach_policy_authorization(message, %Portal.PolicyAuthorization{} = pa) do
+    case message do
+      {tag, ref_tuple, payload} when is_tuple(ref_tuple) ->
+        {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
 
-    Database.insert_policy_authorization(changeset, subject)
-    |> case do
-      {:ok, _} ->
-        :ok
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        Logger.error("Failed to create policy authorization",
-          policy_authorization_id: attrs.id,
-          reason: :changeset_error,
-          changeset_errors: inspect(changeset.errors),
-          policy_id: attrs.policy_id,
-          initiating_device_id: attrs.initiating_device_id,
-          receiving_device_id: attrs.receiving_device_id,
-          resource_id: attrs.resource_id,
-          membership_id: attrs.membership_id
-        )
-
-        notify_revoke_receiver_access(channel_pid, attrs)
-
-      {:error, reason} ->
-        Logger.error("Failed to create policy authorization",
-          policy_authorization_id: attrs.id,
-          reason: inspect(reason),
-          policy_id: attrs.policy_id,
-          initiating_device_id: attrs.initiating_device_id,
-          receiving_device_id: attrs.receiving_device_id,
-          resource_id: attrs.resource_id,
-          membership_id: attrs.membership_id
-        )
-
-        notify_revoke_receiver_access(channel_pid, attrs)
+      {tag, payload} when is_map(payload) ->
+        {tag, Map.put(payload, :policy_authorization, pa)}
     end
-  rescue
-    exception ->
-      Logger.error("Failed to create policy authorization",
-        policy_authorization_id: attrs.id,
-        reason: Exception.message(exception),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__),
-        policy_id: attrs.policy_id,
-        initiating_device_id: attrs.initiating_device_id,
-        receiving_device_id: attrs.receiving_device_id,
-        resource_id: attrs.resource_id,
-        membership_id: attrs.membership_id
-      )
-
-      notify_revoke_receiver_access(channel_pid, attrs)
-  end
-
-  # The persistence Task runs in its own process. If it sent reject_access directly,
-  # Erlang's per-pid ordering guarantee wouldn't apply: the original authorize message
-  # was sent by the channel pid, so a reject_access from the Task pid could race ahead of
-  # it and leave the receiver in the dangling state we're trying to prevent. Notify the
-  # channel pid instead and let it issue the PG.deliver from the same pid that sent the
-  # original authorize message.
-  defp notify_revoke_receiver_access(nil, _attrs), do: :ok
-
-  defp notify_revoke_receiver_access(channel_pid, attrs) do
-    send(
-      channel_pid,
-      {:revoke_receiver_access, attrs.receiving_device_id, attrs.initiating_device_id,
-       attrs.resource_id}
-    )
-  end
-
-  defp create_policy_authorization_changeset(attrs) do
-    import Ecto.Changeset
-
-    fields =
-      ~w[id token_id policy_id initiating_device_id receiving_device_id resource_id membership_id
-                account_id
-                expires_at
-                initiator_remote_ip initiator_user_agent
-                receiver_remote_ip]a
-
-    %Portal.PolicyAuthorization{}
-    |> cast(attrs, fields)
-    |> validate_required(fields -- [:membership_id])
-    |> Portal.PolicyAuthorization.changeset()
   end
 
   defp flow_creation_timeout do
@@ -2235,11 +2435,6 @@ defmodule PortalAPI.Client.Channel do
         true ->
           {:ok, []}
       end
-    end
-
-    def insert_policy_authorization(changeset, subject) do
-      Portal.Safe.scoped(changeset, subject)
-      |> Portal.Safe.insert()
     end
 
     @doc """

@@ -5,7 +5,6 @@ defmodule PortalAPI.Client.ChannelTest do
   alias Portal.Changes
   alias Portal.Presence
   alias Portal.{PG, PubSub}
-  alias PortalAPI.Client.Channel
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -33,8 +32,11 @@ defmodule PortalAPI.Client.ChannelTest do
     # Fetch the Device row matching the client — the channel now expects Device structs
     device = fetch_device!(client)
 
+    session_id = Keyword.get(opts, :session_id)
+
     # Build a ClientSession struct to match what Socket.connect does
     session = %Portal.ClientSession{
+      id: session_id,
       device_id: client.id,
       account_id: client.account_id,
       public_key: Portal.DeviceFixtures.generate_public_key(),
@@ -81,6 +83,13 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   setup do
+    start_supervised!(
+      {Portal.Queue,
+       Keyword.merge(PortalAPI.Client.Channel.policy_authorization_queue_opts(),
+         callers: [self()]
+       )}
+    )
+
     account =
       account_fixture(
         config: %{
@@ -1029,6 +1038,47 @@ defmodule PortalAPI.Client.ChannelTest do
 
       # Simulate a second connection registering for the same client
       PG.register(client.id)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+  end
+
+  describe "session durability fail-safe" do
+    test "confirmation cancels the session durability timeout", %{
+      client: client,
+      subject: subject
+    } do
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(client, subject, session_id: session_id)
+      assert_push "init", _
+
+      state = :sys.get_state(socket.channel_pid)
+      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+
+      send(socket.channel_pid, {:confirm_session_durability, session_id})
+
+      state = :sys.get_state(socket.channel_pid)
+      assert state.assigns.session_durability == nil
+
+      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
+      refute_push "disconnect", _
+    end
+
+    test "matching session durability timeout disconnects the client", %{
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(client, subject, session_id: session_id)
+      assert_push "init", _
+
+      state = :sys.get_state(socket.channel_pid)
+      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+
+      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
@@ -3031,6 +3081,13 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       assert resource_id == resource.id
+
+      # Queue must NOT have buffered a policy_authorization for the offline
+      # gateway: if it did, flushing would create a row that can never be
+      # revoked via the dispatched `:reject_access` path (because no
+      # `:authorize_policy` ever reached a gateway).
+      Portal.Queue.flush(:policy_authorization_queue)
+      assert Repo.all(Portal.PolicyAuthorization) == []
     end
 
     test "returns online gateway connected to a resource", %{
@@ -3090,6 +3147,70 @@ defmodule PortalAPI.Client.ChannelTest do
       assert received_resource.id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
+    end
+
+    # End-to-end ordering test for the gateway create_flow path. The invariant
+    # we're guarding against regressions of: a queued `policy_authorization`
+    # that later fails to persist must produce a `:reject_access` AFTER the
+    # original `:authorize_policy`, never before. The sender-pid guarantee
+    # (both sends originate from the Queue pid) is asserted at the Queue level
+    # in `Portal.QueueTest`. Here we verify the channel correctly wires the
+    # call site through the Queue: if it didn't, the row would never be
+    # buffered and `on_failed` would never fire, so `:reject_access` would
+    # never arrive.
+    test "delivers :authorize_policy before :reject_access on FK violation",
+         %{
+           dns_resource: resource,
+           dns_resource_policy: policy,
+           membership: membership,
+           client: client,
+           gateway_token: gateway_token,
+           gateway: gateway,
+           global_relay: global_relay,
+           subject: subject
+         } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :insert,
+        struct: membership
+      })
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _allow_payload}, 500
+
+      # Force the queued insert to fail by deleting the policy parent row.
+      # After flush, on_failed must fire reject_access for the orphaned entry.
+      Portal.Repo.delete!(policy)
+      Portal.Queue.flush(:policy_authorization_queue)
+
+      client_id = client.id
+      resource_id = resource.id
+      assert_receive {:reject_access, %Portal.PolicyAuthorization{} = pa}, 500
+      assert pa.initiating_device_id == client_id
+      assert pa.resource_id == resource_id
     end
 
     test "returns online gateway connected to an internet resource", %{
@@ -5353,6 +5474,7 @@ defmodule PortalAPI.Client.ChannelTest do
         name: target_client.name,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
         version: "1.5.16",
         user_agent: "Mac OS/14 apple-client/1.5.16"
       }
@@ -5380,6 +5502,11 @@ defmodule PortalAPI.Client.ChannelTest do
         ipv4: ^target_ip,
         reason: :offline
       }
+
+      # Queue must not buffer the row when the dispatch fails — flushing should
+      # leave no `Portal.PolicyAuthorization` rows behind.
+      Portal.Queue.flush(:policy_authorization_queue)
+      assert Portal.Repo.all(Portal.PolicyAuthorization) == []
 
       _ = account
     end
@@ -5652,6 +5779,7 @@ defmodule PortalAPI.Client.ChannelTest do
         name: target_client.name,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
         version: "1.5.16",
         user_agent: "Mac OS/14 apple-client/1.5.16"
       }
@@ -5891,7 +6019,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "client_device_access_authorized", _
 
       :sys.get_state(initiating_socket.channel_pid)
-      Process.sleep(50)
+      Portal.Queue.flush(:policy_authorization_queue)
 
       pa =
         Portal.Repo.one(
@@ -5903,6 +6031,77 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       assert %Portal.PolicyAuthorization{} = pa
+    end
+
+    # End-to-end ordering test for the c2c path. Same shape as the
+    # `delivers :authorize_policy before :reject_access` test for gateway
+    # flows. We register the test pid as the c2c receiver in `:pg` (instead
+    # of joining a real target channel) so we can directly observe the order
+    # of `:client_device_access_authorized` and `:reject_access` at the
+    # receiver. The Queue-level test in `Portal.QueueTest` already asserts
+    # both sends originate from the same Queue pid.
+    test "delivers :client_device_access_authorized before :reject_access on FK violation",
+         %{
+           client: client,
+           subject: subject,
+           target_client: target_client,
+           target_subject: target_subject,
+           pool_resource: pool_resource
+         } do
+      target_client_id = target_client.id
+
+      # Manually place the target in presence (so the initiator's flow finds
+      # it as online) and register the test pid as the `:pg` receiver for
+      # target_client_id so we capture both messages at the same process.
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16"
+      }
+
+      :ok =
+        Presence.Clients.connect(
+          target_client,
+          target_subject.credential.id,
+          session_meta
+        )
+
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => target_ip
+      })
+
+      assert_receive {:client_device_access_authorized, _allow_payload}, 500
+
+      # Force the queued insert to fail by deleting the policy that grants this
+      # authorization. After flush, on_failed must fire reject_access for the
+      # orphaned entry — if the channel ever bypasses Queue.enqueue for this
+      # call site, the row would not be buffered and no reject would arrive.
+      policy =
+        Portal.Repo.one!(
+          from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id)
+        )
+
+      Portal.Repo.delete!(policy)
+      Portal.Queue.flush(:policy_authorization_queue)
+
+      client_id = client.id
+      pool_resource_id = pool_resource.id
+      assert_receive {:reject_access, %Portal.PolicyAuthorization{} = pa}, 500
+      assert pa.initiating_device_id == client_id
+      assert pa.resource_id == pool_resource_id
     end
   end
 
@@ -6527,265 +6726,158 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "do_create_policy_authorization/2" do
-    test "succeeds when all FK references are valid", %{
-      subject: subject,
-      client: client,
-      gateway: gateway,
-      dns_resource: resource,
-      dns_resource_policy: policy,
-      membership: membership
-    } do
-      attrs = %{
-        id: Ecto.UUID.generate(),
-        token_id: subject.credential.id,
-        policy_id: policy.id,
-        initiating_device_id: client.id,
-        receiving_device_id: gateway.id,
-        resource_id: resource.id,
-        membership_id: membership.id,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
-      }
+  describe "handle_info/2 :reject_access" do
+    # Same eviction semantics as the gateway channel's :reject_access handler —
+    # see `PortalAPI.Gateway.ChannelTest` for branch-by-branch coverage of
+    # `reauthorize_deleted_policy_authorization`. Here we just verify the
+    # client channel routes the new struct-shaped message correctly.
 
-      assert :ok = Channel.do_create_policy_authorization(attrs, subject)
-    end
+    test "with no other cached authz, pushes reject_access and clears the cache",
+         %{
+           client: client,
+           subject: subject,
+           account: account
+         } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
 
-    test "logs changeset errors with entity IDs when FK references are invalid", %{
-      subject: subject
-    } do
-      policy_id = Ecto.UUID.generate()
-      client_id = Ecto.UUID.generate()
-      gateway_id = Ecto.UUID.generate()
+      initiating_client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      policy_authorization_id = Ecto.UUID.generate()
+      ghost_paid = Ecto.UUID.generate()
+      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
-      attrs = %{
-        id: policy_authorization_id,
-        token_id: subject.credential.id,
-        policy_id: policy_id,
-        initiating_device_id: client_id,
-        receiving_device_id: gateway_id,
-        resource_id: resource_id,
-        membership_id: nil,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
-      }
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Portal.Cache.Client.Authorizations.put(
+            state.assigns.authorizations_cache,
+            initiating_client_id,
+            resource_id,
+            ghost_paid,
+            expires_at
+          )
 
-      log =
-        capture_log(fn ->
-          Channel.do_create_policy_authorization(attrs, subject)
-        end)
-
-      assert log =~ "Failed to create policy authorization"
-      assert log =~ policy_authorization_id
-      assert log =~ policy_id
-      assert log =~ client_id
-      assert log =~ gateway_id
-      assert log =~ resource_id
-      refute log =~ "reason: \":rollback\""
-    end
-
-    test "does not log on success", %{
-      subject: subject,
-      client: client,
-      gateway: gateway,
-      dns_resource: resource,
-      dns_resource_policy: policy,
-      membership: membership
-    } do
-      attrs = %{
-        id: Ecto.UUID.generate(),
-        token_id: subject.credential.id,
-        policy_id: policy.id,
-        initiating_device_id: client.id,
-        receiving_device_id: gateway.id,
-        resource_id: resource.id,
-        membership_id: membership.id,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
-      }
-
-      log =
-        capture_log(fn ->
-          Channel.do_create_policy_authorization(attrs, subject)
-        end)
-
-      refute log =~ "Failed to create policy authorization"
-    end
-
-    test "logs exception when an unexpected error occurs", %{subject: subject} do
-      # nil does not match %Subject{} in Portal.Safe.scoped/2, raising FunctionClauseError
-      attrs = %{
-        id: Ecto.UUID.generate(),
-        token_id: nil,
-        policy_id: Ecto.UUID.generate(),
-        initiating_device_id: Ecto.UUID.generate(),
-        receiving_device_id: Ecto.UUID.generate(),
-        resource_id: Ecto.UUID.generate(),
-        membership_id: nil,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
-      }
-
-      log =
-        capture_log(fn ->
-          Channel.do_create_policy_authorization(attrs, nil)
-        end)
-
-      assert log =~ "Failed to create policy authorization"
-    end
-
-    test "notifies channel pid to revoke receiver access on changeset error", %{
-      subject: subject
-    } do
-      initiating_device_id = Ecto.UUID.generate()
-      receiving_device_id = Ecto.UUID.generate()
-      resource_id = Ecto.UUID.generate()
-
-      attrs = %{
-        id: Ecto.UUID.generate(),
-        token_id: subject.credential.id,
-        policy_id: Ecto.UUID.generate(),
-        initiating_device_id: initiating_device_id,
-        receiving_device_id: receiving_device_id,
-        resource_id: resource_id,
-        membership_id: nil,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
-      }
-
-      capture_log(fn ->
-        Channel.do_create_policy_authorization(attrs, subject, self())
+        put_in(state.assigns.authorizations_cache, cache)
       end)
 
-      assert_receive {:revoke_receiver_access, ^receiving_device_id, ^initiating_device_id,
-                      ^resource_id}
-    end
-
-    test "notifies channel pid to revoke receiver access on rescued exception", %{
-      subject: subject
-    } do
-      initiating_device_id = Ecto.UUID.generate()
-      receiving_device_id = Ecto.UUID.generate()
-      resource_id = Ecto.UUID.generate()
-
-      # nil subject raises FunctionClauseError inside Database.insert_policy_authorization
-      attrs = %{
-        id: Ecto.UUID.generate(),
-        token_id: nil,
-        policy_id: Ecto.UUID.generate(),
-        initiating_device_id: initiating_device_id,
-        receiving_device_id: receiving_device_id,
+      policy_authorization = %Portal.PolicyAuthorization{
+        id: ghost_paid,
+        account_id: account.id,
+        initiating_device_id: initiating_client_id,
+        receiving_device_id: client.id,
         resource_id: resource_id,
-        membership_id: nil,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
+        expires_at: expires_at
       }
 
-      capture_log(fn ->
-        Channel.do_create_policy_authorization(attrs, nil, self())
-      end)
+      send(socket.channel_pid, {:reject_access, policy_authorization})
+      :sys.get_state(socket.channel_pid)
 
-      assert_receive {:revoke_receiver_access, ^receiving_device_id, ^initiating_device_id,
-                      ^resource_id}
-    end
+      assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
 
-    test "does not notify channel pid on success", %{
-      subject: subject,
-      client: client,
-      gateway: gateway,
-      dns_resource: resource,
-      dns_resource_policy: policy,
-      membership: membership
-    } do
-      attrs = %{
-        id: Ecto.UUID.generate(),
-        token_id: subject.credential.id,
-        policy_id: policy.id,
-        initiating_device_id: client.id,
-        receiving_device_id: gateway.id,
-        resource_id: resource.id,
-        membership_id: membership.id,
-        account_id: subject.account.id,
-        initiator_remote_ip: {100, 64, 0, 1},
-        initiator_user_agent: "test-agent",
-        receiver_remote_ip: {100, 64, 0, 2},
-        expires_at: DateTime.utc_now() |> DateTime.add(30, :second)
-      }
-
-      assert :ok = Channel.do_create_policy_authorization(attrs, subject, self())
-      refute_receive {:revoke_receiver_access, _, _, _}
+      key = {Ecto.UUID.dump!(initiating_client_id), Ecto.UUID.dump!(resource_id)}
+      refute Map.has_key?(
+               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               key
+             )
     end
   end
 
-  describe "handle_info/2 :reject_access" do
-    test "pushes reject_access to the client socket", %{client: client, subject: subject} do
+  describe "authz durability timer (c2c)" do
+    # See `PortalAPI.Gateway.ChannelTest` "authz durability timer" describe for
+    # the full motivation. The c2c receiver runs the same protocol.
+
+    test "on :confirm_authz_durability, cancels the timer", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        initiating_device_id: Ecto.UUID.generate(),
+        receiving_device_id: client.id,
+        resource_id: Ecto.UUID.generate(),
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      generation = make_ref()
+
+      ref =
+        Process.send_after(
+          socket.channel_pid,
+          {:authz_durability_timeout, pa, generation},
+          :timer.seconds(15)
+        )
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(state.assigns[:authz_durability], %{pa.id => {generation, ref}})
+      end)
+
+      send(socket.channel_pid, {:confirm_authz_durability, pa.id})
+      :sys.get_state(socket.channel_pid)
+
+      state = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(state.assigns.authz_durability, pa.id)
+      refute_push "reject_access", _
+    end
+
+    test "timer expiry fires :authz_durability_timeout and runs the eviction", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
       socket = join_channel(client, subject)
       assert_push "init", _
 
       initiating_client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
 
-      send(socket.channel_pid, {:reject_access, initiating_client_id, resource_id})
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        initiating_device_id: initiating_client_id,
+        receiving_device_id: client.id,
+        resource_id: resource_id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      generation = make_ref()
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Portal.Cache.Client.Authorizations.put(
+            state.assigns.authorizations_cache,
+            initiating_client_id,
+            resource_id,
+            pa.id,
+            pa.expires_at
+          )
+
+        ref =
+          Process.send_after(
+            socket.channel_pid,
+            {:authz_durability_timeout, pa, generation},
+            :timer.hours(1)
+          )
+
+        state
+        |> put_in([Access.key!(:assigns), :authorizations_cache], cache)
+        |> put_in([Access.key!(:assigns), :authz_durability], %{pa.id => {generation, ref}})
+      end)
+
+      send(socket.channel_pid, {:authz_durability_timeout, pa, generation})
       :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
-    end
-  end
 
-  describe "handle_info/2 :revoke_receiver_access" do
-    test "delivers reject_access to the receiving device via PG", %{
-      client: client,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
+      key = {Ecto.UUID.dump!(initiating_client_id), Ecto.UUID.dump!(resource_id)}
 
-      receiving_device_id = Ecto.UUID.generate()
-      initiating_device_id = Ecto.UUID.generate()
-      resource_id = Ecto.UUID.generate()
-
-      :ok = PG.register(receiving_device_id)
-
-      send(
-        socket.channel_pid,
-        {:revoke_receiver_access, receiving_device_id, initiating_device_id, resource_id}
-      )
-
-      assert_receive {:reject_access, ^initiating_device_id, ^resource_id}
-    end
-
-    test "is a no-op when receiver is not registered in PG", %{client: client, subject: subject} do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      send(
-        socket.channel_pid,
-        {:revoke_receiver_access, Ecto.UUID.generate(), Ecto.UUID.generate(),
-         Ecto.UUID.generate()}
-      )
-
-      # Channel survives even when the receiver has gone away.
-      assert :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(
+               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               key
+             )
     end
   end
 

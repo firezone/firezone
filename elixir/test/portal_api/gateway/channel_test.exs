@@ -1,5 +1,6 @@
 defmodule PortalAPI.Gateway.ChannelTest do
   use PortalAPI.ChannelCase, async: true
+  alias Portal.Cache
   alias Portal.Changes
   alias Portal.PG
   import Portal.Cache.Cacheable, only: [to_cache: 1]
@@ -20,9 +21,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
-  defp join_channel(gateway, site, token) do
+  defp join_channel(gateway, site, token, opts \\ []) do
     device = fetch_device!(gateway)
-    session = build_gateway_session(gateway, token)
+    session = build_gateway_session(gateway, token, opts)
 
     {:ok, _reply, socket} =
       PortalAPI.Gateway.Socket
@@ -39,8 +40,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
     socket
   end
 
-  defp build_gateway_session(gateway, token) do
+  defp build_gateway_session(gateway, token, opts \\ []) do
     %Portal.GatewaySession{
+      id: Keyword.get(opts, :session_id),
       device_id: gateway.id,
       account_id: gateway.account_id,
       gateway_token_id: token.id,
@@ -273,22 +275,350 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   describe "handle_info/2 :reject_access" do
-    test "pushes reject_access to the socket", %{
-      gateway: gateway,
-      site: site,
-      token: token,
-      client: client,
-      resource: resource
-    } do
+    # The internal `:reject_access` message now carries a synthetic
+    # `%Portal.PolicyAuthorization{}` so the handler can evict per-authz_id
+    # (same path as the CDC delete handler). The three branches below match
+    # the three outcomes of `Cache.Gateway.reauthorize_deleted_policy_authorization/2`.
+
+    test "with no other cached authz for the pair, pushes reject_access and clears the cache",
+         %{
+           gateway: gateway,
+           site: site,
+           token: token,
+           client: client,
+           resource: resource,
+           account: account
+         } do
       socket = join_channel(gateway, site, token)
       assert_push "init", _
 
-      send(socket.channel_pid, {:reject_access, client.id, resource.id})
+      ghost_paid = Ecto.UUID.generate()
+      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Cache.Gateway.put(
+            state.assigns.cache,
+            client.id,
+            Ecto.UUID.dump!(resource.id),
+            ghost_paid,
+            expires_at
+          )
+
+        put_in(state.assigns.cache, cache)
+      end)
+
+      policy_authorization = %Portal.PolicyAuthorization{
+        id: ghost_paid,
+        account_id: account.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: expires_at
+      }
+
+      send(socket.channel_pid, {:reject_access, policy_authorization})
       :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
       assert client_id == client.id
       assert resource_id == resource.id
+
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
+      refute Map.has_key?(:sys.get_state(socket.channel_pid).assigns.cache, key),
+             "expected the cache entry to be cleared when no other authz remains"
+    end
+
+    test "with another valid cached authz, pushes expiry update instead of reject_access",
+         %{
+           gateway: gateway,
+           site: site,
+           token: token,
+           client: client,
+           resource: resource,
+           account: account
+         } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      # Pre-populate TWO authz_ids for the same pair — only the ghost is rejected;
+      # the surviving authz must keep the cache entry alive and trigger an
+      # expiry update rather than a reject.
+      ghost_paid = Ecto.UUID.generate()
+      surviving_paid = Ecto.UUID.generate()
+      ghost_expiry = DateTime.utc_now() |> DateTime.add(1800, :second)
+      surviving_expiry = DateTime.utc_now() |> DateTime.add(3600, :second)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          state.assigns.cache
+          |> Cache.Gateway.put(client.id, Ecto.UUID.dump!(resource.id), ghost_paid, ghost_expiry)
+          |> Cache.Gateway.put(
+            client.id,
+            Ecto.UUID.dump!(resource.id),
+            surviving_paid,
+            surviving_expiry
+          )
+
+        put_in(state.assigns.cache, cache)
+      end)
+
+      policy_authorization = %Portal.PolicyAuthorization{
+        id: ghost_paid,
+        account_id: account.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: ghost_expiry
+      }
+
+      send(socket.channel_pid, {:reject_access, policy_authorization})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "reject_access", _
+
+      assert_push "access_authorization_expiry_updated", push_payload
+      assert push_payload.expires_at == DateTime.to_unix(surviving_expiry, :second)
+
+      # Cache still holds the surviving authz_id for the pair.
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
+      paid_map = :sys.get_state(socket.channel_pid).assigns.cache |> Map.fetch!(key)
+      assert Map.has_key?(paid_map, Ecto.UUID.dump!(surviving_paid))
+      refute Map.has_key?(paid_map, Ecto.UUID.dump!(ghost_paid))
+    end
+
+    test "when the authz is not in the cache, no push and no crash",
+         %{
+           gateway: gateway,
+           site: site,
+           token: token,
+           client: client,
+           resource: resource,
+           account: account
+         } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      # No cache pre-population — the channel cache is empty for this pair.
+      policy_authorization = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      send(socket.channel_pid, {:reject_access, policy_authorization})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "reject_access", _
+      refute_push "access_authorization_expiry_updated", _
+      assert Process.alive?(socket.channel_pid)
+    end
+  end
+
+  describe "authz durability timer" do
+    # When a cached authz isn't acknowledged within the timeout by either
+    # `:confirm_authz_durability` (queue flush success) or `:reject_access` (queue
+    # flush failure), the receiver fail-closes: runs the same eviction path
+    # used for `:reject_access`. Guards against scenarios where the queue's
+    # `on_failed` never fires (node crash, OOM, hard kill, netsplit) and
+    # avoids leaving a phantom authz cached on the receiver until the next
+    # gateway reconnect.
+
+    test "on :confirm_authz_durability, cancels the timer so no revoke fires",
+         %{gateway: gateway, site: site, token: token, client: client, resource: resource} do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: gateway.account_id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      # Manually seed a pending timer for this authz_id so we can observe
+      # the cancellation without waiting 15s.
+      generation = make_ref()
+
+      ref =
+        Process.send_after(
+          socket.channel_pid,
+          {:authz_durability_timeout, pa, generation},
+          :timer.seconds(15)
+        )
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(state.assigns[:authz_durability], %{pa.id => {generation, ref}})
+      end)
+
+      send(socket.channel_pid, {:confirm_authz_durability, pa.id})
+      :sys.get_state(socket.channel_pid)
+
+      state = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(state.assigns.authz_durability, pa.id)
+
+      # No revoke push should have fired (and won't, since the timer was
+      # cancelled before its 15s deadline).
+      refute_push "reject_access", _
+    end
+
+    test "on :reject_access, cancels the authz durability timer AND runs revoke",
+         %{gateway: gateway, site: site, token: token, client: client, resource: resource} do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: gateway.account_id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      generation = make_ref()
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Cache.Gateway.put(
+            state.assigns.cache,
+            client.id,
+            Ecto.UUID.dump!(resource.id),
+            pa.id,
+            pa.expires_at
+          )
+
+        ref =
+          Process.send_after(
+            socket.channel_pid,
+            {:authz_durability_timeout, pa, generation},
+            :timer.seconds(15)
+          )
+
+        state
+        |> put_in([Access.key!(:assigns), :cache], cache)
+        |> put_in([Access.key!(:assigns), :authz_durability], %{pa.id => {generation, ref}})
+      end)
+
+      send(socket.channel_pid, {:reject_access, pa})
+      :sys.get_state(socket.channel_pid)
+
+      # Reject fired, AND the authz durability timer is no longer pending.
+      assert_push "reject_access", _
+      state = :sys.get_state(socket.channel_pid)
+      refute Map.has_key?(state.assigns.authz_durability, pa.id)
+    end
+
+    test "timer expiry fires :authz_durability_timeout which runs the same eviction as reject_access",
+         %{gateway: gateway, site: site, token: token, client: client, resource: resource} do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: gateway.account_id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      generation = make_ref()
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Cache.Gateway.put(
+            state.assigns.cache,
+            client.id,
+            Ecto.UUID.dump!(resource.id),
+            pa.id,
+            pa.expires_at
+          )
+
+        # The handler validates the message's generation against
+        # authz_durability — seed both so the synthesized message matches
+        # the current entry.
+        ref =
+          Process.send_after(
+            socket.channel_pid,
+            {:authz_durability_timeout, pa, generation},
+            :timer.hours(1)
+          )
+
+        state
+        |> put_in([Access.key!(:assigns), :cache], cache)
+        |> put_in([Access.key!(:assigns), :authz_durability], %{pa.id => {generation, ref}})
+      end)
+
+      # Synthesize the timer firing directly (avoids waiting for the real
+      # timer). The generation in the message matches pending → handler acts.
+      send(socket.channel_pid, {:authz_durability_timeout, pa, generation})
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
+      assert client_id == client.id
+      assert resource_id == resource.id
+
+      # Cache entry for the pair is gone.
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
+      refute Map.has_key?(:sys.get_state(socket.channel_pid).assigns.cache, key)
+    end
+
+    test "stale :authz_durability_timeout arriving after :confirm_authz_durability is ignored",
+         %{gateway: gateway, site: site, token: token, client: client, resource: resource} do
+      # The race we're guarding against: the timer fires (its message lands
+      # in the mailbox), and `:confirm_authz_durability` arrives right after.
+      # `Process.cancel_timer/1` can't take back a message already delivered,
+      # so the stale `:authz_durability_timeout` would otherwise evict a valid authz.
+      # The generation token in the message must NOT match the current entry
+      # in `authz_durability` after the confirm-driven cancellation, so
+      # the handler ignores it.
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: gateway.account_id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      stale_generation = make_ref()
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Cache.Gateway.put(
+            state.assigns.cache,
+            client.id,
+            Ecto.UUID.dump!(resource.id),
+            pa.id,
+            pa.expires_at
+          )
+
+        # `authz_durability` is empty — simulating the case where the
+        # confirm/reject already came in and cleared the entry, but the
+        # stale timer message is still in our mailbox.
+        state
+        |> put_in([Access.key!(:assigns), :cache], cache)
+        |> put_in([Access.key!(:assigns), :authz_durability], %{})
+      end)
+
+      send(socket.channel_pid, {:authz_durability_timeout, pa, stale_generation})
+      :sys.get_state(socket.channel_pid)
+
+      # Must NOT have pushed reject — the message was stale.
+      refute_push "reject_access", _
+
+      # Cache entry for the pair must still be present.
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
+      assert Map.has_key?(:sys.get_state(socket.channel_pid).assigns.cache, key)
     end
   end
 
@@ -388,6 +718,49 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       # Simulate a second connection registering for the same gateway
       PG.register(gateway.id)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+  end
+
+  describe "session durability fail-safe" do
+    test "confirmation cancels the session durability timeout", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(gateway, site, token, session_id: session_id)
+      assert_push "init", _
+
+      state = :sys.get_state(socket.channel_pid)
+      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+
+      send(socket.channel_pid, {:confirm_session_durability, session_id})
+
+      state = :sys.get_state(socket.channel_pid)
+      assert state.assigns.session_durability == nil
+
+      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
+      refute_push "disconnect", _
+    end
+
+    test "matching session durability timeout disconnects the gateway", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(gateway, site, token, session_id: session_id)
+      assert_push "init", _
+
+      state = :sys.get_state(socket.channel_pid)
+      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+
+      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
