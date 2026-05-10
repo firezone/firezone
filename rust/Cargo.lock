@@ -1649,7 +1649,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21d8f54da401bb5eb2a4d873ac4b359f4a599df2ca8634bb5b8c045e5ee78757"
 dependencies = [
  "dbus-secret-service",
- "keyring-core 1.0.0",
+ "keyring-core",
 ]
 
 [[package]]
@@ -2311,7 +2311,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "ip_network",
- "keyring-core 1.0.0",
+ "keyring-core",
  "known-dirs",
  "logging",
  "native-dialog",
@@ -3947,15 +3947,6 @@ dependencies = [
  "bitflags 2.10.0",
  "serde",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "keyring-core"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d8286c3ab222af2fa9e57874fe419893d967f739c7bf1743f98a88678edbf08"
-dependencies = [
- "log",
 ]
 
 [[package]]
@@ -9215,12 +9206,12 @@ checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 
 [[package]]
 name = "windows-native-keyring-store"
-version = "0.4.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9aeb875eb87bfceb88c4f9510382ba48016ca5992980c281c1b71d82d922d22e"
+checksum = "b5fd986f648459dd29aa252ed3a5ad11a60c0b1251bf81625fb03a86c69d274e"
 dependencies = [
  "byteorder",
- "keyring-core 0.7.4",
+ "keyring-core",
  "regex",
  "windows-sys 0.61.2",
  "zeroize",
