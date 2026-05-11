@@ -78,7 +78,7 @@ client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
 dashmap = "6.1.0"
-dbus-secret-service-keyring-store = { version = "0.3.0", features = ["crypto-rust"] }
+dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
 difference = "2.0.0"
 dirs = "6.0.0"
@@ -117,7 +117,7 @@ ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.8.0"
 itertools = "0.14.0"
 jni = "0.22.4"
-keyring-core = "0.7.3"
+keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
@@ -235,7 +235,7 @@ which = "4.4.2"
 windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
-windows-native-keyring-store = "0.4.0"
+windows-native-keyring-store = "1.0.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.0"
 winreg = "0.56.0"
