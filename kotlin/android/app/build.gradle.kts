@@ -313,9 +313,7 @@ val generateUniffiBindings =
                 "arm64-v8a" -> "aarch64-linux-android"
                 "armeabi-v7a" -> "armv7-linux-androideabi"
                 "x86" -> "i686-linux-android"
-                else -> throw GradleException(
-                    "Unsupported deviceAbi '$deviceAbi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.",
-                )
+                else -> throw GradleException("Unsupported deviceAbi '$deviceAbi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
             }
         val inputFile = file("$cargoTargetDir/$rustTargetTriple/$profile/libconnlib.so")
 
