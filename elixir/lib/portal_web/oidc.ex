@@ -235,11 +235,11 @@ defmodule PortalWeb.OIDC do
   Signs a short-lived token encoding the LV pid and verification type for use as
   the OAuth state parameter. Verified by the callback with a 5-minute TTL.
   """
-  def sign_verification_state(lv_pid_string, type_string) do
+  def sign_verification_state(lv_pid_string, type_string, attrs \\ %{}) do
     Phoenix.Token.sign(
       PortalWeb.Endpoint,
       "oidc-verification-state",
-      %{type: type_string, lv_pid: lv_pid_string}
+      Map.merge(%{type: type_string, lv_pid: lv_pid_string}, attrs)
     )
   end
 

@@ -169,23 +169,28 @@ defmodule PortalWeb.Settings.Authentication do
 
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(type, opts),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
+         verification_ref = Ecto.UUID.generate(),
          lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
-             PortalWeb.OIDC.verification_state_type(type)
+             PortalWeb.OIDC.verification_state_type(type),
+             %{verification_ref: verification_ref}
            ),
          {:ok, uri} <- PortalWeb.OIDC.build_verification_uri(type, config, verifier, state_token) do
+      verification = %{
+        config: config,
+        verification_ref: verification_ref,
+        verifier: verifier,
+        require_email_verified: type == "oidc" and get_field(changeset, :require_email_verified) == true
+      }
+
       socket =
-        assign(socket,
-          active_verification: nil,
-          pending_verification: %{
-            config: config,
-            verification_ref: Ecto.UUID.generate(),
-            verifier: verifier,
-            require_email_verified: type == "oidc" and get_field(changeset, :require_email_verified) == true
-          }
-        )
+        if type == "entra" do
+          assign(socket, active_verification: verification, pending_verification: nil)
+        else
+          assign(socket, active_verification: nil, pending_verification: verification)
+        end
 
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
@@ -209,7 +214,10 @@ defmodule PortalWeb.Settings.Authentication do
         socket
       )
 
-    {:noreply, assign(socket, verification_error: nil, form: to_form(changeset))}
+    {:noreply,
+     socket
+     |> clear_verification_state()
+     |> assign(verification_error: nil, form: to_form(changeset))}
   end
 
   def handle_event("submit_provider", _params, socket) do
@@ -397,29 +405,56 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   # Sent directly by the OIDC verification controller when code exchange fails
+  def handle_info({:oidc_verify_failed, reason, verification_ref}, socket) do
+    if active_verification?(socket, verification_ref) do
+      error = "Failed to verify: #{format_verification_error_reason(reason)}"
+      {:noreply, assign(socket, active_verification: nil, verification_error: error)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:oidc_verify_failed, reason}, socket) do
     error = "Failed to verify: #{format_verification_error_reason(reason)}"
     {:noreply, assign(socket, verification_error: error)}
   end
 
   # Sent directly by the Entra auth_provider verification controller
-  def handle_info({:entra_verify_complete, issuer, _tenant_id, ack_to}, socket) do
-    attrs = %{"is_verified" => true, "issuer" => issuer}
+  def handle_info({:entra_verify_complete, issuer, _tenant_id, verification_ref, ack_to}, socket) do
+    if active_verification?(socket, verification_ref) do
+      attrs = %{"is_verified" => true, "issuer" => issuer}
 
-    changeset =
-      socket.assigns.form.source
-      |> apply_changes()
-      |> changeset(attrs, socket)
+      changeset =
+        socket.assigns.form.source
+        |> apply_changes()
+        |> changeset(attrs, socket)
 
-    maybe_send_verification_ack(ack_to)
-    {:noreply, assign(socket, form: to_form(changeset))}
+      maybe_send_verification_ack(ack_to)
+      {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:entra_verify_complete, issuer, tenant_id, ack_to}, socket) do
+    handle_info({:entra_verify_complete, issuer, tenant_id, nil, ack_to}, socket)
   end
 
   def handle_info({:entra_verify_complete, issuer, _tenant_id}, socket) do
-    handle_info({:entra_verify_complete, issuer, nil, nil}, socket)
+    handle_info({:entra_verify_complete, issuer, nil, nil, nil}, socket)
   end
 
   # Sent directly by the verification controller on any failure
+  def handle_info({:verification_failed, reason, verification_ref}, socket) do
+    if active_verification?(socket, verification_ref) do
+      error = "Verification failed: #{format_verification_error_reason(reason)}"
+      {:noreply, assign(socket, active_verification: nil, verification_error: error)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:verification_failed, reason}, socket) do
     error = "Verification failed: #{format_verification_error_reason(reason)}"
     {:noreply, assign(socket, verification_error: error)}

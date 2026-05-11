@@ -113,14 +113,19 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:entra_verify_complete, issuer, tenant_id, {from, ref}} ->
-              send(parent, {:entra_verify_complete_received, issuer, tenant_id})
+            {:entra_verify_complete, issuer, tenant_id, verification_ref, {from, ref}} ->
+              send(parent, {:entra_verify_complete_received, issuer, tenant_id, verification_ref})
               send(from, {:verification_ack, ref})
           end
         end)
 
       lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+      verification_ref = Ecto.UUID.generate()
+
+      state =
+        PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider", %{
+          verification_ref: verification_ref
+        })
 
       params = %{
         "state" => state,
@@ -134,7 +139,8 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Verification Successful"
 
       assert_received {:entra_verify_complete_received,
-                       "https://login.microsoftonline.com/my-tenant-id/v2.0", "my-tenant-id"}
+                       "https://login.microsoftonline.com/my-tenant-id/v2.0", "my-tenant-id",
+                       ^verification_ref}
     end
 
     test "with invalid state, renders failure", %{conn: conn} do
@@ -265,14 +271,19 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:entra_directory_sync_complete, tenant_id, {from, ref}} ->
-              send(parent, {:entra_directory_sync_complete_received, tenant_id})
+            {:entra_directory_sync_complete, tenant_id, verification_ref, {from, ref}} ->
+              send(parent, {:entra_directory_sync_complete_received, tenant_id, verification_ref})
               send(from, {:verification_ack, ref})
           end
         end)
 
       lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+      verification_ref = Ecto.UUID.generate()
+
+      state =
+        PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync", %{
+          verification_ref: verification_ref
+        })
 
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         cond do
@@ -306,7 +317,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Successful"
-      assert_received {:entra_directory_sync_complete_received, "my-tenant-id"}
+      assert_received {:entra_directory_sync_complete_received, "my-tenant-id", ^verification_ref}
     end
 
     test "with Entra API 401 error (nested message body), sends failure and renders failure", %{

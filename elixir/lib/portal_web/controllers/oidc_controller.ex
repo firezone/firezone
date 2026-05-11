@@ -536,7 +536,8 @@ defmodule PortalWeb.OIDCController do
         %{
           ok: false,
           error: verification_error_message(reason),
-          lv_pid: lv_pid_string
+          lv_pid: lv_pid_string,
+          verification_ref: pending[:verification_ref]
         }
     end
   end
