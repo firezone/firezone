@@ -1,7 +1,9 @@
 use std::time::Duration;
 
-use jni::JNIEnv;
+use jni::errors::{Error as JNIError, ThrowRuntimeExAndDefault};
 use jni::objects::{JClass, JObject};
+use jni::strings::JNIString;
+use jni::{EnvUnowned, jni_str};
 use telemetry::Dsn;
 
 mod make_writer;
@@ -32,16 +34,22 @@ pub(crate) use tun::Tun;
 ///
 /// Called once from `FirezoneApp.onCreate`, after `System.loadLibrary("connlib")`.
 #[unsafe(no_mangle)]
-extern "system" fn Java_dev_firezone_android_core_FirezoneApp_initRustlsPlatformVerifier(
-    mut env: JNIEnv,
-    _class: JClass,
-    context: JObject,
+extern "system" fn Java_dev_firezone_android_core_FirezoneApp_initRustlsPlatformVerifier<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    context: JObject<'local>,
 ) {
-    if let Err(err) = rustls_platform_verifier::android::init_with_env(&mut env, context) {
-        let _ = env.throw_new(
-            "java/lang/IllegalStateException",
-            format!("rustls-platform-verifier init failed; later TLS handshakes may fail: {err}"),
-        );
-        return;
-    }
+    unowned_env
+        .with_env(|env| -> Result<(), JNIError> {
+            if let Err(err) = rustls_platform_verifier::android::init_with_env(env, context) {
+                let _ = env.throw_new(
+                    jni_str!("java/lang/IllegalStateException"),
+                    JNIString::from(format!(
+                        "rustls-platform-verifier init failed; later TLS handshakes may fail: {err}"
+                    )),
+                );
+            }
+            Ok(())
+        })
+        .resolve::<ThrowRuntimeExAndDefault>();
 }
