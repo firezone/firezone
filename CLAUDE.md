@@ -37,3 +37,10 @@ For example, for Rust code, check `rust/AGENT.md`; for Elixir code, check `elixi
 - Assume that code compiles and is syntactically correct.
 - Focus on consistency and correctness.
 - Give extra special attention to any security-sensitive code, such as cryptographic operations, authentication logic, and access control mechanisms.
+
+## Code contributions
+
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for PR titles. The static analysis workflow enforces a maximum length of 64 characters (see `.github/workflows/_static-analysis.yml`).
+- Keep PR descriptions minimal: concise prose explaining what is changing and why. No test plan section. Do not include links to the Claude session.
+- Run static analysis locally before committing.
+- If a required tool is missing, check whether `mise.toml` declares it and install it via `mise` rather than through another package manager.
