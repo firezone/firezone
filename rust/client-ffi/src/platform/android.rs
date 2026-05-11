@@ -42,12 +42,12 @@ extern "system" fn Java_dev_firezone_android_core_FirezoneApp_initRustlsPlatform
     unowned_env
         .with_env(|env| -> Result<(), JNIError> {
             if let Err(err) = rustls_platform_verifier::android::init_with_env(env, context) {
-                let _ = env.throw_new(
+                env.throw_new(
                     jni_str!("java/lang/IllegalStateException"),
                     JNIString::from(format!(
                         "rustls-platform-verifier init failed; later TLS handshakes may fail: {err}"
                     )),
-                );
+                )?;
             }
             Ok(())
         })
