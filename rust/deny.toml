@@ -269,6 +269,7 @@ skip = [
     "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
     "foldhash",
     "getrandom",
+    "goblin", # uniffi_bindgen 0.31 pins goblin 0.8; minidump-writer 0.11 pins goblin 0.9. Both are leaf transitives in unrelated subtrees.
     "hashbrown",
     "heck",
     "indexmap",
@@ -276,6 +277,7 @@ skip = [
     "jni-sys",
     "libloading",
     "linux-raw-sys",
+    "nix", # minidump-writer 0.11 pins nix 0.29; rest of the workspace (bin-shared, os_info, firezone-cli, etc.) is on 0.30.
     "nom",
     "object",
     "png",
