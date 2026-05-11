@@ -308,7 +308,7 @@ val generateUniffiBindings =
         // -PdeviceAbi=<android-abi> to point this task at an ABI that actually gets built.
         // Defaults to x86_64 so the all-ABI build keeps working unchanged.
         val rustTarget =
-            when (project.findProperty("deviceAbi") as String?) {
+            when (providers.gradleProperty("deviceAbi").orNull) {
                 "arm64-v8a" -> "aarch64-linux-android"
                 "armeabi-v7a" -> "armv7-linux-androideabi"
                 "x86" -> "i686-linux-android"
