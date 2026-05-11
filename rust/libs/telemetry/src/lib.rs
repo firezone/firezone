@@ -102,6 +102,7 @@ impl fmt::Display for Dsn {
 ///
 /// Drop order matters: the minidump watcher handle is dropped first so the
 /// watcher subprocess shuts down before we flush the local Sentry guard.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[must_use = "drop the crash handler guard at process exit, not earlier"]
 pub struct CrashReporter {
     _minidump_handle: sentry_rust_minidump::Handle,
@@ -122,6 +123,7 @@ pub struct CrashReporter {
 /// runtime `api_url` is not yet known; once [`Telemetry::start`] runs it
 /// re-initialises the global Sentry hub with the correct environment for
 /// non-native events.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn install_crash_handler(dsn: Dsn, release: &'static str) -> Option<CrashReporter> {
     let environment = if cfg!(debug_assertions) {
         Env::Staging

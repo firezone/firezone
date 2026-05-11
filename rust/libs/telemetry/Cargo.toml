@@ -15,7 +15,6 @@ opentelemetry_sdk = { workspace = true, features = ["metrics"] }
 parking_lot = { workspace = true }
 reqwest = { workspace = true, features = ["http2"] }
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls-no-provider", "tracing", "logs", "metrics"] }
-sentry-rust-minidump = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -23,6 +22,9 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+sentry-rust-minidump = { workspace = true }
 
 [dev-dependencies]
 rustls = { workspace = true, features = ["ring"] }
