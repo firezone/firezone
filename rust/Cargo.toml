@@ -240,7 +240,7 @@ windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.0"
 winreg = "0.56.0"
 zbus = "5.15.0"
-zip = { version = "8.5.1", default-features = false }
+zip = { version = "8.6.0", default-features = false }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
