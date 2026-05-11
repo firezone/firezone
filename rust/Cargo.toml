@@ -117,7 +117,7 @@ ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.8.0"
 itertools = "0.14.0"
 jni = "0.22.4"
-keyring-core = "0.7.3"
+keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
 l3-tcp = { path = "libs/connlib/l3-tcp" }

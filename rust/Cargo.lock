@@ -1649,7 +1649,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fec3a0f31addb56ee6d5c55599068d2093bc737469a448b34e426603ef61f93e"
 dependencies = [
  "dbus-secret-service",
- "keyring-core",
+ "keyring-core 0.7.4",
 ]
 
 [[package]]
@@ -2106,7 +2106,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea14ef9355e3beab063703aa9dab15afd25f0667c341310c1e5274bb1d0da18"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2311,7 +2311,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "ip_network",
- "keyring-core",
+ "keyring-core 1.0.0",
  "known-dirs",
  "logging",
  "native-dialog",
@@ -3954,6 +3954,15 @@ name = "keyring-core"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d8286c3ab222af2fa9e57874fe419893d967f739c7bf1743f98a88678edbf08"
+dependencies = [
+ "log",
+]
+
+[[package]]
+name = "keyring-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb1e621458ca9c51aa110bd0339d4751a056b9576bf1253aee1aa560dda0fc9d"
 dependencies = [
  "log",
 ]
@@ -6013,7 +6022,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9211,7 +9220,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aeb875eb87bfceb88c4f9510382ba48016ca5992980c281c1b71d82d922d22e"
 dependencies = [
  "byteorder",
- "keyring-core",
+ "keyring-core 0.7.4",
  "regex",
  "windows-sys 0.61.2",
  "zeroize",
