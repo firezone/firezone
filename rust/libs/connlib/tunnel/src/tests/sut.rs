@@ -1168,10 +1168,7 @@ impl TunnelTest {
                         .inner()
                         .sut
                         .tunnel_ip_config()
-                        .is_some_and(|tun| match ip {
-                            std::net::IpAddr::V4(v4) => tun.v4 == v4,
-                            std::net::IpAddr::V6(v6) => tun.v6 == v6,
-                        })
+                        .is_some_and(|tun| tun.is_ip(ip))
                 });
 
                 match maybe_remote_client {

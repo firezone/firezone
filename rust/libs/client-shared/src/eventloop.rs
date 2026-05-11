@@ -539,7 +539,13 @@ impl Eventloop {
                             .send(UserNotification::GatewayVersionMismatch { resource_id })
                             .await;
                     }
-                    FailReason::NotFound | FailReason::Forbidden | FailReason::Unknown => {}
+                    FailReason::NotFound
+                    | FailReason::Forbidden
+                    | FailReason::Disabled
+                    | FailReason::AmbiguousAddress
+                    | FailReason::MissingAddress
+                    | FailReason::InvalidAddress
+                    | FailReason::Unknown => {}
                 }
             }
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {

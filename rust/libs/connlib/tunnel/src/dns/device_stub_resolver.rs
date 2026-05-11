@@ -197,6 +197,10 @@ impl DeviceStubResolver {
                 FailReason::Offline
                 | FailReason::VersionMismatch
                 | FailReason::Forbidden
+                | FailReason::Disabled
+                | FailReason::AmbiguousAddress
+                | FailReason::MissingAddress
+                | FailReason::InvalidAddress
                 | FailReason::Unknown,
             ) => dns_types::Response::servfail(&pending.query),
         };

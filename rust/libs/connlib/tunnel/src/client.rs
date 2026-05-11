@@ -319,24 +319,28 @@ impl ClientState {
     /// 2. When access is revoked after it has been established.
     pub fn handle_client_device_access_denied(
         &mut self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
+        ipv4: Option<Ipv4Addr>,
+        ipv6: Option<Ipv6Addr>,
         reason: FailReason,
         now: Instant,
     ) {
-        tracing::debug!(%ipv4, %ipv6, "Device access denied: {reason:?}");
+        tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
         // The protocol is irrelevant: each member device has exactly one routing-table entry
         // per address, so the lookup always resolves to that entry regardless of the dummy.
-        let entry = self
-            .client_routing_table
-            .matches(IpAddr::V4(ipv4), Ok(Protocol::Tcp(0)))
-            .cloned();
-        let entry = entry.or_else(|| {
-            self.client_routing_table
-                .matches(IpAddr::V6(ipv6), Ok(Protocol::Tcp(0)))
-                .cloned()
-        });
+        let entry = ipv4
+            .and_then(|ip| {
+                self.client_routing_table
+                    .matches(IpAddr::V4(ip), Ok(Protocol::Tcp(0)))
+                    .cloned()
+            })
+            .or_else(|| {
+                ipv6.and_then(|ip| {
+                    self.client_routing_table
+                        .matches(IpAddr::V6(ip), Ok(Protocol::Tcp(0)))
+                        .cloned()
+                })
+            });
         let Some(entry) = entry else {
             return;
         };
