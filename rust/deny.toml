@@ -287,6 +287,7 @@ skip = [
     "phf_generator",
     "phf_macros",
     "phf_shared",
+    "png", # `ico` (via `tauri-codegen`) pins `^0.17`; `image` and `tray-icon` (via tauri) pull `0.18`.
     "proc-macro-crate",
     "quick-xml",
     "rand",
