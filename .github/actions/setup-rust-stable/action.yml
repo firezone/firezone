@@ -36,7 +36,7 @@ runs:
         echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
       shell: bash
 
-    - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
+    - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
       id: toolchain-1
       continue-on-error: true
       with:
@@ -45,7 +45,7 @@ runs:
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure caching somewhere else.
 
-    - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
+    - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
       if: ${{ steps.toolchain-1.outcome == 'failure' }}
       continue-on-error: true
       id: toolchain-2
@@ -55,7 +55,7 @@ runs:
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure caching somewhere else.
 
-    - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
+    - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
       if: ${{ steps.toolchain-2.outcome == 'failure' }}
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
