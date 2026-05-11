@@ -46,24 +46,26 @@ x86)
 *)
     echo "==> Unknown device ABI '${DEVICE_ABI}', falling back to all-ABI build."
     SKIP_CARGO_TASKS=()
+    DEVICE_ABI=""
     ;;
 esac
 
-echo "==> Installing debug APK (device ABI: ${DEVICE_ABI})..."
+echo "==> Installing debug APK (device ABI: ${DEVICE_ABI:-unknown, building all ABIs})..."
 # Kill any running instance so the next launch is a clean cold start (and so
 # Android doesn't keep the old process alive across install).
 echo "==> Force-stopping any running instance of dev.firezone.android..."
 adb shell am force-stop dev.firezone.android
 
-gradle_skip_args=()
+gradle_args=()
+[ -n "$DEVICE_ABI" ] && gradle_args+=("-PdeviceAbi=$DEVICE_ABI")
 for task in "${SKIP_CARGO_TASKS[@]}"; do
-    gradle_skip_args+=(-x "$task")
+    gradle_args+=(-x "$task")
 done
 
 install_log="$(mktemp "${TMPDIR:-/tmp}/install-phone.XXXXXX")"
 trap 'rm -f "$install_log"' EXIT
 
-if ./gradlew installDebug "${gradle_skip_args[@]}" 2>&1 | tee "$install_log"; then
+if ./gradlew installDebug "${gradle_args[@]}" 2>&1 | tee "$install_log"; then
     exit 0
 fi
 
@@ -96,4 +98,4 @@ fi
 echo "==> Uninstalling dev.firezone.android..."
 adb uninstall dev.firezone.android
 echo "==> Retrying install..."
-./gradlew installDebug "${gradle_skip_args[@]}"
+./gradlew installDebug "${gradle_args[@]}"
