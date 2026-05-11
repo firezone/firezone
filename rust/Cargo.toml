@@ -172,6 +172,7 @@ sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnera
 secrecy = "0.10.3"
 semver = "1.0.28"
 sentry = { version = "0.48.0", default-features = false }
+sentry-rust-minidump = { version = "0.15.0", default-features = false }
 sentry-tracing = "0.48.0"
 serde = "1.0.228"
 serde_json = "1.0.149"
@@ -262,6 +263,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 
 [patch.crates-io]
 sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
+minidumper-child = { git = "https://github.com/klochowicz/minidumper-child", branch = "feat/minidumper-0.9" } # Bumps transitive `minidumper` 0.8 -> 0.9 and `thiserror` 1 -> 2 to unify the dep graph. Drop once upstream releases.
 sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.

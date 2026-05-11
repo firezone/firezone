@@ -11,6 +11,9 @@ fn main() -> anyhow::Result<()> {
         .install_default()
         .map_err(|_| anyhow!("Failed to install default crypto provider"))?;
 
+    let _crash_reporter =
+        telemetry::install_crash_handler(telemetry::GUI_DSN, firezone_gui_client::RELEASE);
+
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
     // thing to run after entering `main` and parsing CLI args.

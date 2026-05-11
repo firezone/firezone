@@ -98,6 +98,57 @@ impl fmt::Display for Dsn {
     }
 }
 
+/// Guard returned by [`install_crash_handler`]. Hold until process exit.
+///
+/// Drop order matters: the minidump watcher handle is dropped first so the
+/// watcher subprocess shuts down before we flush the local Sentry guard.
+#[must_use = "drop the crash handler guard at process exit, not earlier"]
+pub struct CrashReporter {
+    _minidump_handle: sentry_rust_minidump::Handle,
+    _sentry_guard: sentry::ClientInitGuard,
+}
+
+/// Install a native-crash handler that captures SIGSEGV/SIGBUS/SIGILL/SIGABRT
+/// (and the Windows equivalents) as minidumps and uploads them to Sentry.
+///
+/// Must be called as the very first thing in `main()`, before any CLI parsing
+/// or other startup work. Internally, this re-execs the current binary as a
+/// crash-reporter watcher subprocess; in that subprocess this function blocks
+/// running the minidump server and then `std::process::exit(0)`s, so anything
+/// after this call only runs in the app process.
+///
+/// `release` should be the same string passed to [`Telemetry::start`] later.
+/// The environment is hard-coded here to a build-profile default because the
+/// runtime `api_url` is not yet known; once [`Telemetry::start`] runs it
+/// re-initialises the global Sentry hub with the correct environment for
+/// non-native events.
+pub fn install_crash_handler(dsn: Dsn, release: &'static str) -> Option<CrashReporter> {
+    let environment = if cfg!(debug_assertions) {
+        Env::Staging
+    } else {
+        Env::Production
+    };
+
+    let sentry_guard = sentry::init((
+        dsn.to_string(),
+        sentry::ClientOptions {
+            release: Some(release.into()),
+            environment: Some(Cow::Borrowed(environment.as_str())),
+            debug: cfg!(debug_assertions),
+            ..Default::default()
+        },
+    ));
+
+    let minidump_handle = sentry_rust_minidump::init(&sentry_guard)
+        .inspect_err(|e| tracing::warn!("Failed to install native crash handler: {e:#}"))
+        .ok()?;
+
+    Some(CrashReporter {
+        _minidump_handle: minidump_handle,
+        _sentry_guard: sentry_guard,
+    })
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[doc(hidden)] // Only public for testing.
 pub enum Env {
