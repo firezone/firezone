@@ -307,14 +307,17 @@ val generateUniffiBindings =
         // Callers (e.g. install-phone.sh) may skip building ABIs they don't need; pass
         // -PdeviceAbi=<android-abi> to point this task at an ABI that actually gets built.
         // Defaults to x86_64 so the all-ABI build keeps working unchanged.
-        val rustTarget =
-            when (providers.gradleProperty("deviceAbi").orNull) {
+        val rustTargetTriple =
+            when (val deviceAbi = providers.gradleProperty("deviceAbi").orNull) {
+                null, "x86_64" -> "x86_64-linux-android"
                 "arm64-v8a" -> "aarch64-linux-android"
                 "armeabi-v7a" -> "armv7-linux-androideabi"
                 "x86" -> "i686-linux-android"
-                else -> "x86_64-linux-android"
+                else -> throw GradleException(
+                    "Unsupported deviceAbi '$deviceAbi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.",
+                )
             }
-        val inputFile = file("$cargoTargetDir/$rustTarget/$profile/libconnlib.so")
+        val inputFile = file("$cargoTargetDir/$rustTargetTriple/$profile/libconnlib.so")
 
         inputs.file(inputFile)
         outputs.dir(outDir)
