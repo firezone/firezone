@@ -303,9 +303,18 @@ val generateUniffiBindings =
 
         val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
 
-        // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
-        // all the same from the bindings PoV.
-        val inputFile = file("$cargoTargetDir/x86_64-linux-android/$profile/libconnlib.so")
+        // UniFFI bindings are identical across ABIs, so we only need one libconnlib.so as input.
+        // Callers (e.g. install-phone.sh) may skip building ABIs they don't need; pass
+        // -PdeviceAbi=<android-abi> to point this task at an ABI that actually gets built.
+        // Defaults to x86_64 so the all-ABI build keeps working unchanged.
+        val rustTarget =
+            when (project.findProperty("deviceAbi") as String?) {
+                "arm64-v8a" -> "aarch64-linux-android"
+                "armeabi-v7a" -> "armv7-linux-androideabi"
+                "x86" -> "i686-linux-android"
+                else -> "x86_64-linux-android"
+            }
+        val inputFile = file("$cargoTargetDir/$rustTarget/$profile/libconnlib.so")
 
         inputs.file(inputFile)
         outputs.dir(outDir)

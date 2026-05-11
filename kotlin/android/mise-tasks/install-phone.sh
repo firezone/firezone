@@ -63,7 +63,7 @@ done
 install_log="$(mktemp "${TMPDIR:-/tmp}/install-phone.XXXXXX")"
 trap 'rm -f "$install_log"' EXIT
 
-if ./gradlew installDebug "${gradle_skip_args[@]}" 2>&1 | tee "$install_log"; then
+if ./gradlew installDebug -PdeviceAbi="$DEVICE_ABI" "${gradle_skip_args[@]}" 2>&1 | tee "$install_log"; then
     exit 0
 fi
 
@@ -96,4 +96,4 @@ fi
 echo "==> Uninstalling dev.firezone.android..."
 adb uninstall dev.firezone.android
 echo "==> Retrying install..."
-./gradlew installDebug "${gradle_skip_args[@]}"
+./gradlew installDebug -PdeviceAbi="$DEVICE_ABI" "${gradle_skip_args[@]}"
