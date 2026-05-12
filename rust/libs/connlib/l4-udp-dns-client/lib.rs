@@ -79,7 +79,7 @@ impl UdpDnsClient {
                         tracing::debug!(
                             domain = %response.domain(),
                             qtype = %response.qtype(),
-                            "Dropping malformed NOERROR response with no answers and no SOA in authority section (RFC 2308 §3)"
+                            "Dropping untrustworthy NOERROR response with no answers and no SOA in authority section (RFC 2308 §5)"
                         );
                         return false;
                     }
@@ -105,26 +105,35 @@ impl UdpDnsClient {
 ///
 /// Some consumer-grade DNS forwarders reply to certain UDP queries with a
 /// `NOERROR` response that contains no answer records, no authority records,
-/// and no additional records — i.e. the bare query echoed back. This is not a
-/// valid negative answer:
+/// and no additional records — i.e. the bare query echoed back. Our upstream
+/// here is a recursive forwarder, so the strict authoritative-server
+/// requirements in RFC 2308 §3 don't directly apply, but the spec still
+/// gives us a clear basis for rejection:
 ///
 /// - [RFC 2308 §2.2](https://datatracker.ietf.org/doc/html/rfc2308#section-2.2)
-///   defines a NODATA response as `NOERROR` with no answers; the authority
-///   section must contain an SOA, or there must be no NS records there.
-/// - [RFC 2308 §3](https://datatracker.ietf.org/doc/html/rfc2308#section-3)
-///   requires authoritative servers to include the zone SOA in the authority
-///   section when reporting NXDOMAIN or NODATA.
+///   defines a NODATA response as `NOERROR` with no answers and either an SOA
+///   in the authority section or no NS records.
 /// - [RFC 2308 §5](https://datatracker.ietf.org/doc/html/rfc2308#section-5)
-///   says negative responses without an SOA SHOULD NOT be cached.
+///   says negative responses without an SOA SHOULD NOT be cached, because
+///   without an SOA there is no way to confirm the response is trustworthy.
 ///
-/// Treating such a response as an authoritative empty answer hides the
-/// upstream's misbehavior and produces an empty `addresses` list at the
-/// caller, which manifests as `phoenix_channel`'s "no IP addresses available"
-/// retries until the budget expires. Instead we drop the response and let a
-/// sibling query (e.g. AAAA when the broken one was A) or a second resolver
-/// supply the real answer.
+/// A NOERROR with empty answer, authority, and additional sections satisfies
+/// the §2.2 NODATA shape only in the most degenerate way and is explicitly
+/// untrustworthy under §5. Treating it as an authoritative empty answer
+/// hides the upstream's misbehavior and produces an empty `addresses` list at
+/// the caller, which manifests as `phoenix_channel`'s "no IP addresses
+/// available" retries until the budget expires. We instead drop the response
+/// and let a sibling query (e.g. AAAA when the broken one was A) or a second
+/// resolver supply the real answer.
+///
+/// Truncated (`TC=1`) responses are *not* classified as malformed by this
+/// function: empty sections in a truncated response are a separate failure
+/// mode (the resolver couldn't fit the answer in a UDP packet), not a buggy
+/// upstream. They still produce no IPs because we don't currently retry over
+/// TCP, but conflating them here would emit a misleading log line.
 fn is_malformed(response: &dns_types::Response) -> bool {
-    response.response_code() == dns_types::ResponseCode::NOERROR
+    !response.truncated()
+        && response.response_code() == dns_types::ResponseCode::NOERROR
         && response.records().next().is_none()
         && !response.has_authority()
 }
@@ -222,8 +231,8 @@ mod tests {
     fn is_malformed_detects_buggy_router_empty_response() {
         // 31-byte NOERROR reply for `api.firez.one A` with all section counts
         // zeroed except QD — the exact shape we saw from a misbehaving consumer
-        // router. This is not a valid NODATA per RFC 2308 §3 (no SOA in
-        // authority) and should not be treated as an authoritative empty answer.
+        // router. RFC 2308 §5 marks such SOA-less negative responses as
+        // untrustworthy, so we should refuse to treat it as an empty answer.
         let bytes =
             hex_literal::hex!("1234818000010000000000000361706905666972657a036f6e650000010001");
         let response = dns_types::Response::parse(&bytes).unwrap();

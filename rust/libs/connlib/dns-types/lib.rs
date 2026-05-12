@@ -239,7 +239,12 @@ impl Response {
         self.inner.header().tc()
     }
 
-    /// Returns whether this response carries any records in the authority section.
+    /// Returns whether the response header claims any records in the authority
+    /// section.
+    ///
+    /// This is a header-only check (`nscount > 0`); the authority section is
+    /// not parsed, so a packet whose `nscount` does not match its actual
+    /// payload will still return `true`.
     pub fn has_authority(&self) -> bool {
         self.inner.header_counts().nscount() > 0
     }
