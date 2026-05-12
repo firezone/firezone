@@ -241,6 +241,47 @@ mod tests {
     }
 
     #[test]
+    fn is_malformed_returns_false_for_truncated_response() {
+        // Same shape as the buggy-router case but with TC=1 (flags 0x8380).
+        // Truncation is a different failure mode (UDP payload didn't fit) and
+        // should not be reported via the malformed-response log line.
+        let bytes =
+            hex_literal::hex!("1234838000010000000000000361706905666972657a036f6e650000010001");
+        let response = dns_types::Response::parse(&bytes).unwrap();
+
+        assert!(response.truncated());
+        assert!(!is_malformed(&response));
+    }
+
+    #[test]
+    fn is_malformed_returns_false_for_valid_nodata_with_soa() {
+        // A well-formed NODATA: NOERROR for `api.firez.one A` with no answer
+        // records but an SOA record in the authority section. This is what a
+        // real recursive resolver returns when the name exists but has no
+        // records of the requested type, and `is_malformed` must let it pass.
+        //
+        // Wire layout (82 bytes):
+        //   header     id=0x1234, flags=0x8180 (qr+rd+ra, rcode=NOERROR),
+        //              qd=1, an=0, ns=1, ar=0
+        //   question   `api.firez.one` A IN
+        //   authority  SOA for `firez.one` (name compressed to offset 16),
+        //              ttl=3600, mname=ns1.firez.one,
+        //              rname=hostmaster.firez.one, serial=1, refresh=7200,
+        //              retry=3600, expire=604800, minimum=3600
+        let bytes = hex_literal::hex!(
+            "1234818000010000000100000361706905666972657a036f6e650000010001\
+             c0100006000100000e100027036e7331c0100a686f73746d6173746572c010\
+             0000000100001c2000000e1000093a8000000e10"
+        );
+        let response = dns_types::Response::parse(&bytes).unwrap();
+
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+        assert!(response.has_authority());
+        assert!(!is_malformed(&response));
+    }
+
+    #[test]
     fn is_malformed_returns_false_for_response_with_answer() {
         let domain = dns_types::DomainName::vec_from_str("example.com").unwrap();
         let query = dns_types::Query::new(domain.clone(), dns_types::RecordType::A);
