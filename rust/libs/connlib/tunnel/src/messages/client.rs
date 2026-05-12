@@ -68,7 +68,7 @@ pub struct ResourceDescriptionStaticDevicePool {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DevicePoolMember {
-    #[serde(rename = "client_id")]
+    #[serde(rename = "client_id", alias = "id")]
     pub id: ClientId,
     pub ipv4: Ipv4Network,
     pub ipv6: Ipv6Network,
