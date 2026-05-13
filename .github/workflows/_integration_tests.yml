@@ -94,6 +94,7 @@ jobs:
           - script: dns-two-resources
           - script: static-device-pool
             extra_services: client-pool-member
+            min_client_version: 1.5.9
           - name: dns-systemd-resolved
             script: systemd/dns-systemd-resolved
           - script: tcp-dns
