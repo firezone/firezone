@@ -139,7 +139,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov@0.6.21
       - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
         if: ${{ runner.os == 'Linux' }}
         env:
@@ -176,7 +176,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov@0.6.21
       - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
