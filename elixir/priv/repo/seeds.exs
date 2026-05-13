@@ -505,6 +505,14 @@ defmodule Portal.Repo.Seeds do
         name: "Backup Manager"
       })
 
+    {:ok, pool_member_actor} =
+      Repo.insert(%Actor{
+        id: "cff1cf0e-0829-4b99-8ba7-0c09580386b4",
+        account_id: account.id,
+        type: :service_account,
+        name: "CI Pool Member Actor"
+      })
+
     # Set password on actors (no identity needed for userpass/email)
     password_hash = Crypto.hash(:argon2, "Firezone1234")
 
@@ -748,6 +756,29 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
+    pool_member_token =
+      %ClientToken{
+        id: "fe2bf22d-0986-433a-85ed-a8f37c90a34b",
+        account_id: pool_member_actor.account_id,
+        actor_id: pool_member_actor.id,
+        secret_salt: "ljWUfZy-6zmpUxijQhjiKg",
+        secret_hash: "9c65535e71259350e7cd171b43f4fea42f94e3da4904e4c493b5830b3aed3159",
+        expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+      }
+      |> Repo.insert!()
+
+    pool_member_subject = %Authentication.Subject{
+      account: account,
+      actor: pool_member_actor,
+      credential: %Authentication.Credential{type: :token, id: pool_member_token.id},
+      expires_at: pool_member_token.expires_at,
+      context: %Authentication.Context{
+        type: :client,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: "seeds/1"
+      }
+    }
+
     service_account_actor_encoded_token =
       "n" <> Authentication.encode_fragment!(service_account_token)
 
@@ -834,6 +865,22 @@ defmodule Portal.Repo.Seeds do
         admin_subject,
         admin_client_token.id,
         @ua_macos
+      )
+
+    pool_member_firezone_id = "2f3cbd32-d0dd-4bdf-bb78-428bbc5ce6cb"
+
+    {:ok, pool_member_device} =
+      create_client(
+        %{
+          name: "CI Pool Member",
+          # Headless client hashes its FIREZONE_ID before sending it; the seeded row must match.
+          firezone_id: :crypto.hash(:sha256, pool_member_firezone_id) |> Base.encode16(case: :lower),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "POOL-#{Ecto.UUID.generate()}"
+        },
+        pool_member_subject,
+        pool_member_token.id,
+        @ua_ubuntu
       )
 
     admin_encoded_client_token = Authentication.encode_fragment!(admin_client_token)
@@ -1320,6 +1367,26 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, pool_resource} =
+      create_resource(
+        %{
+          type: :static_device_pool,
+          name: "CI Static Pool",
+          address_description: "CI integration test static device pool",
+          site_id: site.id,
+          filters: []
+        },
+        admin_subject
+      )
+
+    %Portal.StaticDevicePoolMember{
+      account_id: account.id,
+      resource_id: pool_resource.id,
+      device_id: pool_member_device.id,
+      device_type: :client
+    }
+    |> Repo.insert!()
+
     IO.puts("Created resources:")
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
@@ -1475,6 +1542,17 @@ defmodule Portal.Repo.Seeds do
           description: "Synced Group Access To **.httpbin.search.test",
           group_id: synced_group.id,
           resource_id: search_domain_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "All Access To CI Static Pool",
+          # synced_group, not everyone_group: service accounts don't auto-join Everyone.
+          group_id: synced_group.id,
+          resource_id: pool_resource.id
         },
         admin_subject
       )

@@ -18,6 +18,10 @@ function relay2() {
     docker compose exec -T relay-2 "$@"
 }
 
+function pool_member() {
+    docker compose exec -T client-pool-member "$@"
+}
+
 function client_curl() {
     client curl --connect-timeout 10 --fail "$1" >/dev/null
 }

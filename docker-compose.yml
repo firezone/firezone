@@ -187,6 +187,78 @@ services:
       internet:
         interface_name: internet
 
+  client-pool-member:
+    healthcheck:
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+      <<: *health-check
+    environment:
+      FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
+      FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkZmUyYmYyMmQtMDk4Ni00MzNhLTg1ZWQtYThmMzdjOTBhMzRibQAAADg5SE00QTZSRE03UUxEVjhOMUMwRFFEMThKVEpOVUpJQ0Y0QThWUklKODM0SkhDTjA5NFIwPT09PW4GACphrxmeAWIAAVGA.LHufO50MaDTncVMV1CBGr3pnpemR-__n8RSbh9xwB3Y"
+      RUST_LOG: ${RUST_LOG:-wire=trace,debug}
+      FIREZONE_API_URL: ws://portal:8081
+      FIREZONE_ID: 2f3cbd32-d0dd-4bdf-bb78-428bbc5ce6cb
+      FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to internet subnet via router
+        ip -4 route add 203.0.113.0/24 via 172.32.0.254
+        ip -6 route add 203:0:113::/64 via 172:32:0::254
+
+        # Disable checksum offloading so that checksums are correct when they reach the relay
+        apk add --no-cache ethtool iproute2
+        ethtool -K eth0 tx off
+
+        ip link set dev eth0 txqueuelen 100000
+
+        exec firezone-headless-client
+    init: true
+    build:
+      target: ${DOCKER_BUILD_TARGET:-debug}
+      context: rust
+      dockerfile: Dockerfile
+      args:
+        PACKAGE: firezone-headless-client
+    image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
+    privileged: true # Needed to tune `sysctl` inside container.
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      pool-member-router:
+        condition: "service_healthy"
+      portal:
+        condition: "service_healthy"
+    networks:
+      pool-member-internal:
+        ipv4_address: 172.32.0.100
+        ipv6_address: 172:32:0::100
+    extra_hosts:
+      - "portal:203.0.113.10"
+      - "portal:203:0:113::10"
+
+  pool-member-router:
+    extends:
+      file: scripts/compose/router.yml
+      service: router
+    environment:
+      MASQUERADE_TYPE: ${POOL_MEMBER_MASQUERADE:-}
+      NETWORK_LATENCY_MS: 10
+    networks:
+      pool-member-internal:
+        ipv4_address: 172.32.0.254
+        ipv6_address: 172:32:0::254
+        interface_name: internal
+      internet:
+        interface_name: internet
+
   gateway:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
@@ -467,6 +539,13 @@ networks:
       config:
         - subnet: 172.30.0.0/24
         - subnet: 172:30:0::/64
+
+  pool-member-internal:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+        - subnet: 172:32:0::/64
 
   gateway-internal:
     enable_ipv6: true
