@@ -117,7 +117,7 @@ defmodule Portal.Accounts.Deletion do
 
     defp fetch_account(account_id, subject) do
       from(a in Account, where: a.id == ^account_id)
-      |> Safe.scoped(subject)
+      |> Safe.scoped(subject, :replica)
       |> Safe.one()
       |> case do
         %Account{} = account -> {:ok, account}
