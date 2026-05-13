@@ -209,7 +209,7 @@ defmodule Portal.Ops do
       delete_jobs_query =
         [worker: Portal.Workers.DeleteAccount, state: [:scheduled, :available, :executing, :retryable]]
         |> Oban.Job.query()
-        |> where([j], fragment("?->>'account_id'", j.args) == parent_as(:account).id)
+        |> where([j], fragment("?->>'account_id' = ?::text", j.args, parent_as(:account).id))
         |> select([j], 1)
 
       from(a in Account,
