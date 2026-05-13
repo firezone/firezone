@@ -68,6 +68,7 @@ pub struct ResourceDescriptionStaticDevicePool {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DevicePoolMember {
+    #[serde(rename = "client_id", alias = "id")]
     pub id: ClientId,
     pub ipv4: Ipv4Network,
     pub ipv6: Ipv6Network,
@@ -156,10 +157,15 @@ pub struct ClientDeviceAccessAuthorized {
     pub ice_role: IceRole,
 }
 
+/// Portal's denial of a `create_flow` toward a static device pool peer.
+///
+/// Either or both of `ipv4` / `ipv6` may be absent depending on the denial reason.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessDenied {
-    pub ipv4: Ipv4Addr,
-    pub ipv6: Ipv6Addr,
+    #[serde(default)]
+    pub ipv4: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub ipv6: Option<Ipv6Addr>,
     pub reason: FailReason,
 }
 
@@ -186,6 +192,10 @@ pub enum FailReason {
     Offline,
     VersionMismatch,
     Forbidden,
+    Disabled,
+    AmbiguousAddress,
+    MissingAddress,
+    InvalidAddress,
     #[serde(other)]
     Unknown,
 }
@@ -629,7 +639,20 @@ mod tests {
             {
                 "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "type": "static_device_pool",
-                "name": "IoT Devices"
+                "name": "IoT Devices",
+                "devices": [
+                    {
+                        "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                        "ipv4": "100.64.1.38/32",
+                        "ipv6": "fd00:2021:1111::125/128"
+                    },
+                    {
+                        "client_id": "75fb9102-2651-49eb-9b0b-80f4eee182cb",
+                        "ipv4": "100.64.23.121/32",
+                        "ipv6": "fd00:2021:1111::1777/128"
+                    }
+                ],
+                "filters": []
             }
         ]"#;
 
@@ -645,6 +668,21 @@ mod tests {
         };
         let desc = ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
         assert_eq!(desc.name, "IoT Devices");
+        assert_eq!(
+            desc.devices,
+            vec![
+                DevicePoolMember {
+                    id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap(),
+                    ipv4: "100.64.1.38/32".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::125/128".parse().unwrap(),
+                },
+                DevicePoolMember {
+                    id: "75fb9102-2651-49eb-9b0b-80f4eee182cb".parse().unwrap(),
+                    ipv4: "100.64.23.121/32".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::1777/128".parse().unwrap(),
+                },
+            ]
+        );
     }
 
     #[test]
