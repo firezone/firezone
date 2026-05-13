@@ -14,6 +14,7 @@ defmodule PortalWeb.OIDCController do
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
   @unverified_email_sign_in_error "Your identity provider did not confirm that your email address is verified. Please verify your email with the identity provider or contact your administrator."
   @unverified_email_verification_error "This provider requires verified email addresses, but the identity provider did not return email_verified=true for your account."
+  @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 3000)
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -50,6 +51,22 @@ defmodule PortalWeb.OIDCController do
   def callback(conn, params) do
     Logger.info("OIDC callback called with invalid params", params: Map.keys(params))
 
+    handle_error(conn, {:error, :invalid_callback_params})
+  end
+
+  @spec verify_identity(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def verify_identity(conn, %{"secret" => entered_code} = params) do
+    result =
+      Portal.Timing.execute_with_constant_time(
+        fn -> do_verify_identity(conn, params, String.downcase(entered_code)) end,
+        @constant_execution_time
+      )
+
+    handle_verify_identity_result(conn, result, params)
+  end
+
+  def verify_identity(conn, params) do
+    Logger.info("Invalid OIDC pending identity verification parameters", params: params)
     handle_error(conn, {:error, :invalid_callback_params})
   end
 
@@ -102,7 +119,6 @@ defmodule PortalWeb.OIDCController do
   defp run_authentication_flow(auth_context, code) do
     %{
       conn: conn,
-      params: params,
       verifier: verifier,
       context_type: context_type,
       account: account,
@@ -114,20 +130,36 @@ defmodule PortalWeb.OIDCController do
          {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
          {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
-         {:ok, identity} <- upsert_identity(account, provider, claims, userinfo),
-         :ok <- check_admin(identity, context_type),
+         {:ok, identity_result} <- resolve_identity(account, provider, claims, userinfo) do
+      finish_resolved_identity(auth_context, identity_result, tokens)
+    else
+      error -> handle_error(conn, error)
+    end
+  end
+
+  defp finish_resolved_identity(
+         %{conn: conn, context_type: context_type, account: account, provider: provider, params: params},
+         {:identity, identity},
+         tokens
+       ) do
+    with :ok <- check_admin(identity, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
-      signed_in(
-        conn,
-        context_type,
-        account,
-        identity,
-        session_or_token,
-        provider,
-        tokens,
-        params
-      )
+      signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
+    else
+      error -> handle_error(conn, error)
+    end
+  end
+
+  defp finish_resolved_identity(
+         %{conn: conn, context_type: context_type, account: account, provider: provider, params: params},
+         {:proof_required, actor, identity_profile},
+         _tokens
+       ) do
+    with :ok <- check_actor(actor, context_type),
+         {:ok, conn} <-
+           start_owner_verification(conn, account, provider, actor, identity_profile, params) do
+      conn
     else
       error -> handle_error(conn, error)
     end
@@ -166,7 +198,7 @@ defmodule PortalWeb.OIDCController do
 
     error = authorization_error_message(reason)
     log_sign_in_redirect_error(account.id, error)
-    path = error_path_for_context(account.slug, params, error)
+    path = error_path_for_context(account, params, error)
 
     conn
     |> put_flash(:error, error)
@@ -251,30 +283,290 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp upsert_identity(account, provider, claims, userinfo) do
+  defp resolve_identity(account, provider, claims, userinfo) do
     email_claim = Map.get(provider, :email_claim)
 
     with {:ok, identity_profile} <-
-           IdentityProfile.build(claims, userinfo, account.id, email_claim: email_claim),
-         :ok <- enforce_verified_email(account, provider, identity_profile) do
-      Database.upsert_identity(
-        account.id,
-        identity_profile.email,
-        identity_profile.issuer,
-        identity_profile.idp_id,
-        identity_profile.profile_attrs
-      )
+           IdentityProfile.build(claims, userinfo, account.id, email_claim: email_claim) do
+      resolve_identity(account, provider, identity_profile)
     end
   end
 
-  defp enforce_verified_email(_account, %{require_email_verified: true}, %{email_verified: true}),
-    do: :ok
+  defp resolve_identity(account, provider, identity_profile) do
+    case email_verification_method(provider) do
+      :none -> upsert_verified_identity(account, identity_profile)
+      :claim -> resolve_claim_identity(account, identity_profile)
+      :proof -> resolve_proof_identity(account, identity_profile)
+    end
+  end
 
-  defp enforce_verified_email(_account, %{require_email_verified: true}, %{email_verified: false}) do
+  defp resolve_claim_identity(account, identity_profile) do
+    with :ok <- enforce_verified_email(identity_profile) do
+      upsert_verified_identity(account, identity_profile)
+    end
+  end
+
+  defp upsert_verified_identity(account, identity_profile) do
+    with {:ok, identity} <-
+           Database.upsert_identity(
+             account.id,
+             identity_profile.email,
+             identity_profile.issuer,
+             identity_profile.idp_id,
+             identity_profile.profile_attrs
+           ) do
+      {:ok, {:identity, identity}}
+    end
+  end
+
+  defp resolve_proof_identity(account, identity_profile) do
+    case Database.fetch_active_identity_by_idp(
+           account.id,
+           identity_profile.issuer,
+           identity_profile.idp_id
+         ) do
+      {:ok, identity} ->
+        with {:ok, identity} <- Database.update_identity_profile(identity, identity_profile.profile_attrs) do
+          {:ok, {:identity, identity}}
+        end
+
+      {:error, :not_found} ->
+        with {:ok, actor} <- Database.fetch_active_actor_by_email(account, identity_profile.email) do
+          {:ok, {:proof_required, actor, identity_profile}}
+        end
+    end
+  end
+
+  defp email_verification_method(%Portal.OIDC.AuthProvider{email_verification_method: method}),
+    do: method
+
+  defp email_verification_method(_provider), do: :none
+
+  defp enforce_verified_email(%IdentityProfile{email_verified: true}), do: :ok
+
+  defp enforce_verified_email(%IdentityProfile{email_verified: false}) do
     {:error, :email_not_verified}
   end
 
-  defp enforce_verified_email(_account, _provider, _identity_profile), do: :ok
+  defp start_owner_verification(conn, account, provider, actor, identity_profile, params) do
+    pending_identity_id = Ecto.UUID.generate()
+
+    case create_pending_identity_verification(
+           conn,
+           account,
+           provider,
+           actor,
+           pending_identity_id,
+           identity_profile,
+           params
+         ) do
+      {:ok, _pending_identity, _passcode} ->
+        cookie = %Cookie.PendingIdentity{pending_identity_id: pending_identity_id}
+
+        conn =
+          conn
+          |> Cookie.PendingIdentity.put(cookie)
+          |> redirect(
+            to:
+              ~p"/#{account}/sign_in/oidc/#{provider.id}/verify_identity?#{verification_params(pending_identity_id, params)}"
+          )
+
+        {:ok, conn}
+
+      {:error, :rate_limited} ->
+        Logger.info("OIDC identity verification email rate limited",
+          account_slug: account.slug,
+          auth_provider_id: provider.id
+        )
+
+        {:error, :rate_limited}
+
+      error ->
+        Logger.info("OIDC identity verification email not sent",
+          account_slug: account.slug,
+          auth_provider_id: provider.id,
+          error: inspect(error)
+        )
+
+        error
+    end
+  end
+
+  defp create_pending_identity_verification(
+         conn,
+         account,
+         provider,
+         actor,
+         pending_identity_id,
+         identity_profile,
+         params
+       ) do
+    with {:ok, passcode} <- Database.create_one_time_passcode(account, actor) do
+      with {:ok, pending_identity} <-
+             Database.insert_pending_identity(
+               account,
+               actor,
+               provider,
+               pending_identity_id,
+               passcode,
+               identity_profile
+             ),
+           {:ok, _email} <-
+             send_identity_verification_email(
+               conn,
+               actor,
+               provider,
+               pending_identity_id,
+               passcode.code,
+               params
+             ) do
+        {:ok, pending_identity, passcode}
+      else
+        {:error, _reason} = error ->
+          :ok = Database.delete_one_time_passcode(passcode.account_id, passcode.id)
+          error
+      end
+    end
+  end
+
+  defp send_identity_verification_email(conn, actor, provider, pending_identity_id, code, params) do
+    context = authentication_context(conn, context_type(params))
+
+    Portal.Mailer.AuthEmail.oidc_identity_verification_email(
+      actor,
+      DateTime.utc_now(),
+      provider.id,
+      pending_identity_id,
+      code,
+      context,
+      sanitize(params)
+    )
+    |> Portal.Mailer.deliver_with_rate_limit(
+      rate_limit_key: {:oidc_identity_verification, actor.email},
+      rate_limit: 3,
+      rate_limit_interval: :timer.minutes(5)
+    )
+  end
+
+  defp do_verify_identity(conn, params, entered_code) do
+    case load_pending_identity_context(conn, params) do
+      {:ok, context} ->
+        run_pending_identity_verification(context, entered_code)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp load_pending_identity_context(conn, params) do
+    case Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]) do
+      %Cookie.PendingIdentity{} = cookie ->
+        account = Database.get_account_by_id_or_slug!(params["account_id_or_slug"])
+        provider = Database.get_provider!(account.id, "oidc", params["auth_provider_id"])
+        sign_in_params = sanitize(params)
+        conn = put_pending_identity_error_context(conn, account, params)
+
+        {:ok,
+         %{
+           conn: conn,
+           pending_identity_id: cookie.pending_identity_id,
+           account: account,
+           provider: provider,
+           params: sign_in_params,
+           context_type: context_type(sign_in_params)
+         }}
+
+      nil ->
+        {:error, :pending_identity_state_not_found}
+    end
+  end
+
+  defp put_pending_identity_error_context(conn, account, params) do
+    Plug.Conn.assign(conn, :oidc_error_context, %{
+      account_id: account.id,
+      account_slug: account.slug,
+      params: sanitize(params),
+      auth_provider_id: params["auth_provider_id"]
+    })
+  end
+
+  defp run_pending_identity_verification(
+         %{
+           conn: conn,
+           pending_identity_id: pending_identity_id,
+           account: account,
+           provider: provider,
+           params: params,
+           context_type: context_type
+         },
+         entered_code
+       ) do
+    with :ok <- validate_context(provider, context_type),
+         :ok <- ensure_client_sign_in_allowed(account, context_type),
+         {:ok, identity, pending_identity_ids} <-
+           Database.verify_and_promote_pending_identity(
+             account.id,
+             pending_identity_id,
+             provider.id,
+             entered_code
+           ),
+         :ok <- check_admin(identity, context_type),
+         {:ok, session_or_token} <- create_session_or_token(conn, identity, provider, params) do
+      {:ok,
+       %{
+         conn: conn,
+         account: account,
+         identity: identity,
+         provider: provider,
+         session_or_token: session_or_token,
+         context_type: context_type,
+         params: params,
+         email: identity.email,
+         pending_identity_ids: pending_identity_ids
+       }}
+    else
+      error -> {:error, error, conn}
+    end
+  end
+
+  defp handle_verify_identity_result(_conn, {:ok, result}, _params) do
+    conn = Cookie.PendingIdentity.delete_all(result.conn, result.pending_identity_ids)
+    :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:oidc_identity_verification, result.email})
+
+    signed_in(
+      conn,
+      result.context_type,
+      result.account,
+      result.identity,
+      result.session_or_token,
+      result.provider,
+      %{},
+      result.params
+    )
+  end
+
+  defp handle_verify_identity_result(_conn, {:error, {:error, :invalid_code}, conn}, params) do
+    redirect_pending_identity_error(
+      conn,
+      "The verification code is invalid or expired.",
+      params
+    )
+  end
+
+  defp handle_verify_identity_result(_conn, {:error, error, conn}, _params) do
+    handle_error(conn, error)
+  end
+
+  defp handle_verify_identity_result(conn, error, _params) do
+    handle_error(conn, error)
+  end
+
+  defp redirect_pending_identity_error(conn, error, params) do
+    path =
+      ~p"/#{params["account_id_or_slug"]}/sign_in/oidc/#{params["auth_provider_id"]}/verify_identity?#{verification_params(params)}"
+
+    redirect_for_error(conn, error, path)
+  end
 
   defp check_admin(
          %Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_admin_user}},
@@ -282,11 +574,18 @@ defmodule PortalWeb.OIDCController do
        ),
        do: :ok
 
-  defp check_admin(%Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_user}}, t)
+  defp check_admin(%Portal.ExternalIdentity{actor: actor}, context_type),
+    do: check_actor(actor, context_type)
+
+  defp check_admin(_identity, _context_type), do: {:error, :not_admin}
+
+  defp check_actor(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
+
+  defp check_actor(%Portal.Actor{type: :account_user}, t)
        when t in [:gui_client, :headless_client],
        do: :ok
 
-  defp check_admin(_identity, _context_type), do: {:error, :not_admin}
+  defp check_actor(_actor, _context_type), do: {:error, :not_admin}
 
   defp validate_context(%{context: context}, t)
        when t in [:gui_client, :headless_client] and
@@ -313,11 +612,8 @@ defmodule PortalWeb.OIDCController do
   defp ensure_client_sign_in_allowed(_account, _context_type), do: :ok
 
   defp create_session_or_token(conn, identity, provider, params) do
-    user_agent = conn.assigns[:user_agent]
-    remote_ip = conn.remote_ip
     type = context_type(params)
-    headers = conn.req_headers
-    context = Portal.Authentication.Context.build(remote_ip, user_agent, headers, type)
+    context = authentication_context(conn, type)
 
     # Get the provider schema module to access default values
     schema = provider.__struct__
@@ -381,7 +677,7 @@ defmodule PortalWeb.OIDCController do
       conn,
       account,
       identity.actor.name,
-      identity.email || identity.actor.email,
+      identity.email,
       token,
       params["state"]
     )
@@ -404,9 +700,27 @@ defmodule PortalWeb.OIDCController do
   defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
 
+  defp authentication_context(conn, type) do
+    Portal.Authentication.Context.build(
+      conn.remote_ip,
+      conn.assigns[:user_agent] || "",
+      conn.req_headers,
+      type
+    )
+  end
+
   defp handle_error(conn, {:error, reason})
-       when reason in [:oidc_state_not_found, :oidc_state_session_mismatch] do
+       when reason in [
+              :oidc_state_not_found,
+              :oidc_state_session_mismatch,
+              :pending_identity_state_not_found
+            ] do
     error = "Your sign-in session has timed out. Please try again."
+    redirect_with_error_context(conn, error)
+  end
+
+  defp handle_error(conn, {:error, :rate_limited}) do
+    error = "You're attempting to do that too quickly. Wait a few minutes and try again."
     redirect_with_error_context(conn, error)
   end
 
@@ -694,13 +1008,13 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp error_path("", _params), do: ~p"/sign_in"
-  defp error_path(account_slug, params), do: ~p"/#{account_slug}/sign_in?#{sanitize(params)}"
+  defp error_path(account, params), do: ~p"/#{account}/sign_in?#{sanitize(params)}"
 
-  defp error_path_for_context(account_slug, params, error) do
-    if client_context?(params) and account_slug != "" do
-      ~p"/#{account_slug}/sign_in/client_auth_error?#{client_error_params(params, error)}"
+  defp error_path_for_context(account, params, error) do
+    if client_context?(params) and account != "" do
+      ~p"/#{account}/sign_in/client_auth_error?#{client_error_params(params, error)}"
     else
-      error_path(account_slug, params)
+      error_path(account, params)
     end
   end
 
@@ -714,6 +1028,19 @@ defmodule PortalWeb.OIDCController do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
 
+  defp verification_params(%{"pending_identity_id" => pending_identity_id} = params)
+       when is_binary(pending_identity_id) do
+    verification_params(pending_identity_id, params)
+  end
+
+  defp verification_params(params), do: sanitize(params)
+
+  defp verification_params(pending_identity_id, params) do
+    params
+    |> sanitize()
+    |> Map.put("pending_identity_id", pending_identity_id)
+  end
+
   defp client_context?(%{"as" => as}) when as in ["client", "gui-client", "headless-client"],
     do: true
 
@@ -721,8 +1048,26 @@ defmodule PortalWeb.OIDCController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Safe, AuthProvider, ExternalIdentity}
+    import Ecto.Changeset
+    alias Portal.{Safe, AuthProvider, ExternalIdentity, PendingIdentity, OneTimePasscode}
     alias Portal.Account
+
+    @otp_expiration_seconds 15 * 60
+
+    @profile_fields ~w[
+      email
+      name
+      given_name
+      family_name
+      middle_name
+      nickname
+      preferred_username
+      profile
+      picture
+      firezone_avatar_url
+    ]a
+
+    @pending_identity_profile_fields @profile_fields -- [:firezone_avatar_url]
 
     def get_account_by_id_or_slug!(id_or_slug) do
       query =
@@ -741,6 +1086,166 @@ defmodule PortalWeb.OIDCController do
       )
       |> Safe.unscoped(:replica)
       |> Safe.one!()
+    end
+
+    def fetch_active_identity_by_idp(account_id, issuer, idp_id) do
+      from(identity in ExternalIdentity,
+        join: actor in assoc(identity, :actor),
+        where: identity.account_id == ^account_id,
+        where: identity.issuer == ^issuer,
+        where: identity.idp_id == ^idp_id,
+        where: is_nil(actor.disabled_at),
+        preload: [:account, actor: actor]
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        identity -> {:ok, identity}
+      end
+    end
+
+    def fetch_active_actor_by_email(account, email) do
+      email = trim_email(email)
+
+      from(actor in Portal.Actor,
+        where: actor.account_id == ^account.id,
+        where: actor.type in [:account_admin_user, :account_user],
+        where: is_nil(actor.disabled_at),
+        where: actor.email == ^email,
+        preload: [:account],
+        limit: 1
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :actor_not_found}
+        actor -> {:ok, actor}
+      end
+    end
+
+    def update_identity_profile(%ExternalIdentity{} = identity, profile_attrs) do
+      identity
+      |> cast(atomize_profile_attrs(profile_attrs), @profile_fields)
+      |> ExternalIdentity.changeset()
+      |> Safe.unscoped()
+      |> Safe.update()
+      |> case do
+        {:ok, identity} -> {:ok, Safe.preload(identity, [:actor, :account], :replica)}
+        error -> error
+      end
+    end
+
+    def insert_pending_identity(account, actor, provider, pending_identity_id, passcode, identity_profile) do
+      attrs =
+        identity_profile.profile_attrs
+        |> atomize_profile_attrs()
+        |> Map.merge(%{
+          id: pending_identity_id,
+          account_id: account.id,
+          actor_id: actor.id,
+          auth_provider_id: provider.id,
+          one_time_passcode_id: passcode.id,
+          issuer: identity_profile.issuer,
+          idp_id: identity_profile.idp_id
+        })
+
+      %PendingIdentity{}
+      |> cast(
+        attrs,
+        [
+          :id,
+          :account_id,
+          :actor_id,
+          :auth_provider_id,
+          :one_time_passcode_id,
+          :issuer,
+          :idp_id,
+          :directory_id | @pending_identity_profile_fields
+        ]
+      )
+      |> PendingIdentity.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def create_one_time_passcode(account, actor) do
+      code = Portal.Crypto.random_token(5, encoder: :user_friendly)
+      code_hash = Portal.Crypto.hash(:argon2, code)
+      expires_at = DateTime.utc_now() |> DateTime.add(@otp_expiration_seconds, :second)
+
+      %OneTimePasscode{
+        account_id: account.id,
+        actor_id: actor.id,
+        code: code,
+        code_hash: code_hash,
+        expires_at: expires_at
+      }
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def verify_and_promote_pending_identity(
+          account_id,
+          pending_identity_id,
+          auth_provider_id,
+          entered_code
+        ) do
+      Safe.transact(fn ->
+        with {:ok, pending_identity} <-
+               fetch_pending_identity_for_update(account_id, pending_identity_id, auth_provider_id),
+             {:ok, passcode} <- fetch_pending_passcode_for_update(pending_identity),
+             :ok <- verify_pending_identity_code(entered_code, passcode),
+             pending_identity_ids <- fetch_related_pending_identity_ids(pending_identity),
+             {:ok, identity} <- insert_external_identity_from_pending(pending_identity),
+             :ok <- delete_related_pending_identities_and_passcodes(pending_identity) do
+          {:ok, {identity, pending_identity_ids}}
+        else
+          {:error, :not_found} ->
+            dummy_verify_pending_identity_code()
+            {:error, :invalid_code}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end)
+      |> case do
+        {:ok, {%ExternalIdentity{} = identity, pending_identity_ids}} ->
+          {:ok, Safe.preload(identity, [:actor, :account], :replica), pending_identity_ids}
+
+        {:error, :not_found} ->
+          {:error, :invalid_code}
+
+        {:error, :invalid_code} ->
+          {:error, :invalid_code}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    defp verify_pending_identity_code(entered_code, %OneTimePasscode{} = passcode) do
+      if Portal.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
+        :ok
+      else
+        {:error, :invalid_code}
+      end
+    end
+
+    defp dummy_verify_pending_identity_code do
+      Portal.Crypto.equal?(:argon2, nil, nil)
+      :ok
+    end
+
+    def delete_one_time_passcode(account_id, passcode_id) do
+      from(passcode in OneTimePasscode,
+        where: passcode.account_id == ^account_id,
+        where: passcode.id == ^passcode_id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      :ok
     end
 
     def upsert_identity(account_id, email, issuer, idp_id, profile_attrs) do
@@ -795,7 +1300,7 @@ defmodule PortalWeb.OIDCController do
             account_id: ^account_id_bytes,
             issuer: ^issuer,
             idp_id: ^idp_id,
-            actor_id: fragment("COALESCE(?.id, ?.actor_id)", al, ei),
+            actor_id: fragment("COALESCE(?.actor_id, ?.id)", ei, al),
             email: ^profile_attrs["email"],
             name: ^profile_attrs["name"],
             given_name: ^profile_attrs["given_name"],
@@ -835,5 +1340,133 @@ defmodule PortalWeb.OIDCController do
           {:ok, Safe.preload(identity, [:actor, :account], :replica)}
       end
     end
+
+    defp fetch_related_pending_identity_ids(%PendingIdentity{} = pending_identity) do
+      from(identity in PendingIdentity,
+        where: identity.account_id == ^pending_identity.account_id,
+        where: identity.actor_id == ^pending_identity.actor_id,
+        where: identity.issuer == ^pending_identity.issuer,
+        where: identity.idp_id == ^pending_identity.idp_id,
+        select: identity.id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    defp delete_related_pending_identities_and_passcodes(%PendingIdentity{} = pending_identity) do
+      related_passcode_ids =
+        from(identity in PendingIdentity,
+          where: identity.account_id == ^pending_identity.account_id,
+          where: identity.actor_id == ^pending_identity.actor_id,
+          where: identity.issuer == ^pending_identity.issuer,
+          where: identity.idp_id == ^pending_identity.idp_id,
+          select: identity.one_time_passcode_id
+        )
+
+      # The pending_identities rows are removed by the one_time_passcode_id
+      # foreign key's ON DELETE CASCADE.
+      from(passcode in OneTimePasscode,
+        where: passcode.account_id == ^pending_identity.account_id,
+        where: passcode.id in subquery(related_passcode_ids)
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      :ok
+    end
+
+    defp fetch_pending_passcode_for_update(%PendingIdentity{} = pending_identity) do
+      from(passcode in OneTimePasscode,
+        join: actor in assoc(passcode, :actor),
+        where: passcode.account_id == ^pending_identity.account_id,
+        where: passcode.actor_id == ^pending_identity.actor_id,
+        where: passcode.id == ^pending_identity.one_time_passcode_id,
+        where: passcode.expires_at > ^DateTime.utc_now(),
+        where: is_nil(actor.disabled_at),
+        lock: "FOR UPDATE"
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        passcode -> {:ok, passcode}
+      end
+    end
+
+    defp fetch_pending_identity_for_update(account_id, pending_identity_id, auth_provider_id) do
+      from(identity in PendingIdentity,
+        where: identity.account_id == ^account_id,
+        where: identity.id == ^pending_identity_id,
+        where: identity.auth_provider_id == ^auth_provider_id,
+        lock: "FOR UPDATE"
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        identity -> {:ok, identity}
+      end
+    end
+
+    defp insert_external_identity_from_pending(%PendingIdentity{} = pending_identity) do
+      now = DateTime.utc_now()
+
+      attrs =
+        pending_identity
+        |> Map.from_struct()
+        |> Map.take([
+          :id,
+          :account_id,
+          :actor_id,
+          :issuer,
+          :idp_id,
+          :directory_id | @pending_identity_profile_fields
+        ])
+        |> Map.put(:inserted_at, now)
+        |> Map.put(:updated_at, now)
+
+      case Safe.insert_all(
+             Safe.unscoped(),
+             ExternalIdentity,
+             [attrs],
+             on_conflict: external_identity_conflict_query(pending_identity),
+             conflict_target: [:account_id, :idp_id, :issuer],
+             returning: true
+           ) do
+        {1, [%ExternalIdentity{} = identity]} -> {:ok, identity}
+        {0, []} -> {:error, :invalid_code}
+      end
+    end
+
+    defp external_identity_conflict_query(%PendingIdentity{} = pending_identity) do
+      from(identity in ExternalIdentity,
+        where: identity.actor_id == ^pending_identity.actor_id,
+        update: [
+          set: [
+            email: fragment("EXCLUDED.email"),
+            name: fragment("EXCLUDED.name"),
+            given_name: fragment("EXCLUDED.given_name"),
+            family_name: fragment("EXCLUDED.family_name"),
+            middle_name: fragment("EXCLUDED.middle_name"),
+            nickname: fragment("EXCLUDED.nickname"),
+            preferred_username: fragment("EXCLUDED.preferred_username"),
+            profile: fragment("EXCLUDED.profile"),
+            picture: fragment("EXCLUDED.picture"),
+            updated_at: fragment("EXCLUDED.updated_at")
+          ]
+        ]
+      )
+    end
+
+    defp atomize_profile_attrs(attrs) do
+      Map.new(attrs, fn
+        {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
+        {key, value} -> {key, value}
+      end)
+    end
+
+    defp trim_email(email) when is_binary(email), do: String.trim(email)
+
+    defp trim_email(email), do: email
   end
 end

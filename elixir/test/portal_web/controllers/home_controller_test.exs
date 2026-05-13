@@ -97,7 +97,7 @@ defmodule PortalWeb.HomeControllerTest do
       assert html =~ "Sign in to Firezone"
       assert html =~ "Recently signed in"
       assert html =~ account.name
-      assert html =~ ~p"/#{account.slug}/sign_in"
+      assert html =~ ~p"/#{account}/sign_in"
     end
 
     test "renders multiple recent accounts", %{conn: conn} do
@@ -120,7 +120,7 @@ defmodule PortalWeb.HomeControllerTest do
 
       for account <- accounts do
         assert html =~ account.name
-        assert html =~ ~p"/#{account.slug}/sign_in"
+        assert html =~ ~p"/#{account}/sign_in"
       end
     end
 

@@ -1,6 +1,9 @@
 defmodule PortalWeb.FindAccountTest do
   use PortalWeb.ConnCase, async: true
 
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+
   describe "mount" do
     test "renders email input form", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/find_account")
@@ -35,6 +38,27 @@ defmodule PortalWeb.FindAccountTest do
 
       assert html =~ "Check your inbox"
       assert html =~ "user@example.com"
+    end
+
+    test "emails account sign-in links with account slugs", %{conn: conn} do
+      email = "user@example.com"
+      account = account_fixture()
+      actor_fixture(account: account, email: email)
+
+      {:ok, lv, _html} = live(conn, ~p"/find_account")
+
+      html =
+        lv
+        |> form("form", email_form: %{email: email})
+        |> render_submit()
+
+      assert html =~ "Check your inbox"
+
+      assert_email_sent(fn email ->
+        assert email.text_body =~ "http://localhost:13100/#{account.slug}/sign_in"
+        refute email.text_body =~ "http://localhost:13100/#{account.id}/sign_in"
+        true
+      end)
     end
 
     test "invalid email stays on form with error", %{conn: conn} do

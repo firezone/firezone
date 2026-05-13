@@ -1,16 +1,16 @@
-Finish Signing In!
+<%= @heading %>
 
-Copy and paste the following token into the Sign In form
+<%= @code_instruction %>
 
 <%= @secret %>
-<%= unless @client_sign_in do %>
-or click on the following link if you are on the same device where you are trying to sign in:
+<%= if @show_link? do %>
+<%= @link_instruction %>
 
 <%= @sign_in_url %>
 <% end %>
 This email is valid for 15 minutes.
 
-If you did not request this action and have received this email in error, you can safely ignore
+If you did not request this <%= @unsolicited_action %> and have received this email in error, you can safely ignore
 and discard this email. However, if you continue to receive multiple unsolicited emails of this nature,
 we strongly recommend contacting your system administrator to report the issue.
 
@@ -19,4 +19,4 @@ Request details:
   Account ID: <%= @account.id %>
   Time: <%= @sign_in_token_created_at %>
   IP address: <%= @remote_ip %>
-  User Agent: <%= @user_agent %>
+<%= if @request_location, do: "  Location: #{@request_location}\n" %>  User Agent: <%= @user_agent %>

@@ -15,11 +15,20 @@ defmodule PortalWeb.SignIn.Email do
     account = Database.get_account_by_id_or_slug(account_id_or_slug)
 
     with %Portal.Account{} = account <- account,
-         {:ok, email} <- Map.fetch(session, "email") do
+         {:ok, email} <- fetch_email(socket.assigns.live_action, account, session) do
       form = to_form(%{"secret" => nil})
+      pending_identity? = socket.assigns.live_action == :pending_identity
+      pending_identity_id = Map.get(session, "pending_identity_id")
 
-      verify_action = ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}/verify"
-      resend_action = ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}?resend=true"
+      verify_action =
+        verify_action(
+          socket.assigns.live_action,
+          account_id_or_slug,
+          provider_id,
+          pending_identity_id
+        )
+
+      resend_action = resend_action(socket.assigns.live_action, account_id_or_slug, provider_id)
 
       socket =
         assign(socket,
@@ -28,6 +37,7 @@ defmodule PortalWeb.SignIn.Email do
           account_id_or_slug: account_id_or_slug,
           account: account,
           provider_id: provider_id,
+          pending_identity?: pending_identity?,
           resent: params["resent"],
           redirect_params: redirect_params,
           verify_action: verify_action,
@@ -67,7 +77,10 @@ defmodule PortalWeb.SignIn.Email do
     <h1 class="text-xl font-semibold text-[var(--text-primary)] mb-2">
       Check your email
     </h1>
-    <p class="text-sm text-[var(--text-secondary)] mb-6">
+    <p :if={@pending_identity?} class="text-sm text-[var(--text-secondary)] mb-6">
+      A verification code has been sent to your email address.
+    </p>
+    <p :if={!@pending_identity?} class="text-sm text-[var(--text-secondary)] mb-6">
       If <strong class="text-[var(--text-primary)]">{@email}</strong>
       is registered, a sign-in code has been sent.
     </p>
@@ -114,7 +127,7 @@ defmodule PortalWeb.SignIn.Email do
       </button>
     </form>
 
-    <div class="mt-4 grid grid-cols-2 gap-2">
+    <div class={["mt-4 grid gap-2", if(@resend_action, do: "grid-cols-2", else: "grid-cols-1")]}>
       <.link
         href={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
         class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
@@ -123,6 +136,7 @@ defmodule PortalWeb.SignIn.Email do
         Different method
       </.link>
       <.resend
+        :if={@resend_action}
         resend_action={@resend_action}
         email={@email}
         redirect_params={@redirect_params}
@@ -132,6 +146,27 @@ defmodule PortalWeb.SignIn.Email do
     <.dev_mailbox_link />
     """
   end
+
+  defp verify_action(:pending_identity, account_id_or_slug, provider_id, pending_identity_id),
+    do:
+      ~p"/#{account_id_or_slug}/sign_in/oidc/#{provider_id}/verify_identity?pending_identity_id=#{pending_identity_id}"
+
+  defp verify_action(_live_action, account_id_or_slug, provider_id, _pending_identity_id),
+    do: ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}/verify"
+
+  defp resend_action(:pending_identity, _account_id_or_slug, _provider_id), do: nil
+
+  defp resend_action(_live_action, account_id_or_slug, provider_id),
+    do: ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}?resend=true"
+
+  defp fetch_email(:pending_identity, _account, session) do
+    case Map.fetch(session, "pending_identity_id") do
+      {:ok, _pending_identity_id} -> {:ok, nil}
+      :error -> :error
+    end
+  end
+
+  defp fetch_email(_live_action, _account, session), do: Map.fetch(session, "email")
 
   def handle_info(:hide_resent_flash, socket) do
     {:noreply, assign(socket, :resent, nil)}

@@ -47,7 +47,9 @@ defmodule Portal.OIDC.AuthProvider do
     field :client_id, :string
     field :client_secret, :string, redact: true
     field :discovery_document_uri, :string
-    field :require_email_verified, :boolean, default: true
+    field :email_verification_method, Ecto.Enum,
+      values: ~w[none claim proof]a,
+      default: :claim
 
     timestamps()
   end
@@ -62,7 +64,7 @@ defmodule Portal.OIDC.AuthProvider do
       :discovery_document_uri,
       :issuer,
       :is_verified,
-      :require_email_verified
+      :email_verification_method
     ])
     |> validate_acceptance(:is_verified)
     |> validate_length(:client_id, min: 1, max: 255)
@@ -89,6 +91,7 @@ defmodule Portal.OIDC.AuthProvider do
       message: "An OIDC authentication provider with this name already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
+    |> check_constraint(:email_verification_method, name: :email_verification_method_must_be_valid)
   end
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs

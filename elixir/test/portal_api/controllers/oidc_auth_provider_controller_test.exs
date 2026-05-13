@@ -13,12 +13,12 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
   end
 
   describe "index/2" do
-    test "lists OIDC providers with require_email_verified", %{
+    test "lists OIDC providers with email_verification_method", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      provider = oidc_provider_fixture(account: account, require_email_verified: false)
+      provider = oidc_provider_fixture(account: account, email_verification_method: :none)
 
       conn =
         conn
@@ -29,14 +29,14 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
       assert %{"data" => data} = json_response(conn, 200)
 
       assert Enum.any?(data, fn item ->
-               item["id"] == provider.id and item["require_email_verified"] == false
+               item["id"] == provider.id and item["email_verification_method"] == "none"
              end)
     end
   end
 
   describe "show/2" do
-    test "shows require_email_verified", %{conn: conn, account: account, actor: actor} do
-      provider = oidc_provider_fixture(account: account, require_email_verified: true)
+    test "shows email_verification_method", %{conn: conn, account: account, actor: actor} do
+      provider = oidc_provider_fixture(account: account, email_verification_method: :proof)
 
       conn =
         conn
@@ -46,7 +46,7 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["id"] == provider.id
-      assert data["require_email_verified"] == true
+      assert data["email_verification_method"] == "proof"
     end
   end
 end
