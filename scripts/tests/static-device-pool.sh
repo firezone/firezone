@@ -5,8 +5,8 @@
 
 source "./scripts/tests/lib.sh"
 
-echo "# Pool member should be up and have its tun interface"
-pool_member ip link | grep -q tun-firezone
+echo "# Wait for pool member to bring up its tun interface with an IPv4 address"
+pool_member timeout 30 sh -c "until ip -4 -o addr show tun-firezone 2>/dev/null | grep -q inet; do sleep 0.2; done"
 
 echo "# Discover the pool member's tunnel IPv4"
 pool_member_ip="$(pool_member sh -c "ip -4 -o addr show tun-firezone | awk '{split(\$4,a,\"/\"); print a[1]}'")"

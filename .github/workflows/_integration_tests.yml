@@ -170,7 +170,7 @@ jobs:
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
           fi
 
-          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router
+          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router pool-member-router
 
           # Start one-by-one to avoid variability in service startup order
           # Retries are used because network I/O is flaky in GitHub Actions runners
