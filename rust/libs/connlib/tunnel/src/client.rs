@@ -259,7 +259,7 @@ impl ClientState {
                 pool_names.sort();
 
                 if pool_names.is_empty() {
-                    tracing::error!(
+                    tracing::debug!(
                         %client_id,
                         "Connected client is not a member of any pool"
                     );
