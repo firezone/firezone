@@ -238,22 +238,36 @@ impl ClientState {
     }
 
     /// Builds the list of currently-connected device peers, joined against
-    /// static-pool resource memberships so each entry knows which pool(s) it
-    /// belongs to.
+    /// static-pool resource memberships so each entry knows its tunnel IPv4
+    /// and which pool(s) it belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
         self.connected_pool_clients
             .iter()
             .map(|client_id| {
-                let pool_names = pools
-                    .iter()
-                    .filter(|p| p.devices.iter().any(|d| d.id == *client_id))
-                    .map(|p| p.name.clone())
-                    .sorted()
-                    .collect_vec();
+                let mut tunneled_ipv4 = None;
+                let mut pool_names = Vec::new();
+
+                for pool in &pools {
+                    if let Some(device) = pool.devices.iter().find(|d| d.id == *client_id) {
+                        tunneled_ipv4.get_or_insert(device.ipv4.network_address());
+                        pool_names.push(pool.name.clone());
+                    }
+                }
+
+                pool_names.sort();
+
+                if pool_names.is_empty() {
+                    tracing::error!(
+                        %client_id,
+                        "Connected client is not a member of any pool"
+                    );
+                }
+
                 ConnectedDeviceView {
                     id: *client_id,
+                    tunneled_ipv4,
                     pools: pool_names,
                 }
             })
