@@ -18,6 +18,11 @@ runs:
         workspaces: rust
         cache-targets: true
         cache-workspace-crates: false
+        # Disabled because every plugin in ~/.cargo/bin/ is installed via
+        # taiki-e/install-action (prebuilt binaries). Caching ~/.cargo/bin/
+        # provides no speed-up while exposing CI to cache-restore corruption
+        # of the rustup-managed cargo binary.
+        cache-bin: false
         key: ${{ inputs.key }}
         prefix-key: v2-rust-deps
         save-if: ${{ inputs.save-if }}
