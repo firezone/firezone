@@ -68,7 +68,7 @@ defmodule Portal.MixProject do
     [
       # Ecto / Database
       {:postgrex, "~> 0.20"},
-      {:decimal, "~> 2.0"},
+      {:decimal, "~> 3.0"},
       {:ecto_sql, "~> 3.7"},
       {:ecto_psql_extras, "~> 0.8"},
       {:phoenix_ecto, "~> 4.4"},
