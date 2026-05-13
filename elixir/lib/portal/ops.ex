@@ -165,9 +165,6 @@ defmodule Portal.Ops do
     import Ecto.Query
     alias Portal.{Account, Actor, Safe}
 
-    @delete_account_worker "Portal.Workers.DeleteAccount"
-    @active_delete_job_states ["scheduled", "available", "executing", "retryable"]
-
     def get_disabled_account!(id) do
       from(a in Account,
         where: a.id == ^id,
@@ -210,12 +207,10 @@ defmodule Portal.Ops do
 
     def accounts_missing_deletion_jobs do
       delete_jobs_query =
-        from(j in Oban.Job,
-          where: j.worker == @delete_account_worker,
-          where: j.state in @active_delete_job_states,
-          where: fragment("?->>'account_id' = ?::text", j.args, parent_as(:account).id),
-          select: 1
-        )
+        [worker: Portal.Workers.DeleteAccount, state: [:scheduled, :available, :executing, :retryable]]
+        |> Oban.Job.query()
+        |> where([j], fragment("?->>'account_id'", j.args) == parent_as(:account).id)
+        |> select([j], 1)
 
       from(a in Account,
         as: :account,

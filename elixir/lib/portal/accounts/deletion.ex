@@ -82,7 +82,6 @@ defmodule Portal.Accounts.Deletion do
   defmodule Database do
     import Ecto.Query
 
-    alias Oban.Job
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Safe
@@ -191,14 +190,10 @@ defmodule Portal.Accounts.Deletion do
     defp maybe_cancel_delete_jobs({:unchanged, _account}), do: {:ok, []}
 
     defp cancel_delete_jobs(account_id) do
-      query =
-        from(j in Job,
-          where: j.worker == "Portal.Workers.DeleteAccount",
-          where: j.state in ["scheduled", "available", "retryable"],
-          where: fragment("?->>'account_id' = ?", j.args, ^account_id)
-        )
-
-      Oban.cancel_all_jobs(query)
+      [worker: DeleteAccount, state: [:scheduled, :available, :retryable]]
+      |> Oban.Job.query()
+      |> where([j], fragment("?->>'account_id'", j.args) == ^account_id)
+      |> Oban.cancel_all_jobs()
     end
 
     defp maybe_cancel_reminder_jobs({:transitioned, account}) do
@@ -208,14 +203,10 @@ defmodule Portal.Accounts.Deletion do
     defp maybe_cancel_reminder_jobs({:unchanged, _account}), do: {:ok, []}
 
     defp cancel_reminder_jobs(account_id) do
-      query =
-        from(j in Job,
-          where: j.worker == "Portal.Workers.AccountDeletionReminder",
-          where: j.state in ["scheduled", "available", "retryable"],
-          where: fragment("?->>'account_id' = ?", j.args, ^account_id)
-        )
-
-      Oban.cancel_all_jobs(query)
+      [worker: AccountDeletionReminder, state: [:scheduled, :available, :retryable]]
+      |> Oban.Job.query()
+      |> where([j], fragment("?->>'account_id'", j.args) == ^account_id)
+      |> Oban.cancel_all_jobs()
     end
 
     def get_account_admin_emails(account_id, subject) do
