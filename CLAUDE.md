@@ -42,7 +42,7 @@ For example, for Rust code, check `rust/AGENT.md`; for Elixir code, check `elixi
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/) for PR titles. The static analysis workflow enforces a maximum length of 64 characters (see `.github/workflows/_static-analysis.yml`).
 - Keep PR descriptions minimal.
-  - Concise prose explaining what is changing **on a high-level** and why.
+  - Concise prose explaining what is changing **at a high level** and why.
   - Do not describe the code changes that can be seen in the diff again in prose.
   - Do not add a test plan section.
   - Do not include links to the Claude session.
