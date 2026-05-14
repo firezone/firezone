@@ -93,7 +93,6 @@ jobs:
           - script: dns-nm
           - script: dns-two-resources
           - script: static-device-pool
-            extra_services: client-2
             min_client_version: 1.5.9
           - name: dns-systemd-resolved
             script: systemd/dns-systemd-resolved
@@ -183,7 +182,7 @@ jobs:
           retry docker compose up -d relay-1 --no-build
           retry docker compose up -d relay-2 --no-build
           retry docker compose up -d gateway --no-build
-          retry docker compose up -d client-1 ${{ matrix.test.extra_services }} --no-build
+          retry docker compose up -d client-1 client-2 --no-build
           retry docker compose up -d network-config
 
           docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
@@ -208,12 +207,12 @@ jobs:
         if: "!cancelled()"
         run: |
           # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
-          docker compose logs client-1 | \
+          docker compose logs client-1 client-2 | \
             grep --invert "I/O error (os error 5)" | \
             grep "WARN" && exit 1 || exit 0
       - name: Show Client logs
         if: "!cancelled()"
-        run: docker compose logs client-1
+        run: docker compose logs client-1 client-2
 
       - name: Show Relay-1 logs
         if: "!cancelled()"
