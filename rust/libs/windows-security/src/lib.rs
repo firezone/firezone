@@ -24,9 +24,8 @@ use windows::{
                 SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
             DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, GetTokenInformation,
-            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SID_AND_ATTRIBUTES,
-            TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER, TokenLogonSid,
-            TokenUser,
+            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_GROUPS,
+            TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER, TokenLogonSid, TokenUser,
         },
         System::Threading::{GetCurrentProcess, OpenProcessToken},
     },
@@ -241,7 +240,7 @@ pub fn current_logon_sid_string() -> Result<String> {
         groups.GroupCount >= 1,
         "Process token has no logon-session SID (likely a service / non-interactive context)"
     );
-    let first = unsafe { &*(groups.Groups.as_ptr() as *const SID_AND_ATTRIBUTES) };
+    let first = unsafe { &*groups.Groups.as_ptr() };
     sid_to_string(first.Sid)
 }
 
