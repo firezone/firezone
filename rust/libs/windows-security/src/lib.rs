@@ -149,6 +149,50 @@ fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
 }
 
+/// Returns the calling process's primary-user SID in SDDL string form
+/// (e.g. `"S-1-5-21-..."`).
+///
+/// Built on `OpenProcessToken` + `GetTokenInformation(TokenUser)` +
+/// `ConvertSidToStringSidW`. The token handle is closed via
+/// [`OwnedHandle`]; the `LocalFree` on the SID buffer is handled
+/// internally so callers don't have to think about Windows lifetime
+/// rules.
+pub fn current_user_sid_string() -> Result<String> {
+    let token = open_current_process_token()?;
+    let buf = read_token_information(&token, TokenUser)?;
+
+    // SAFETY: `buf` holds at least one `TOKEN_USER`; the cast yields a
+    // reference whose lifetime is bounded by the `buf` borrow.
+    let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
+    sid_to_string(token_user.User.Sid)
+}
+
+/// Returns the calling process's *logon-session* SID in SDDL string
+/// form (e.g. `"S-1-5-5-X-Y"`). Distinct from the user SID — this one
+/// changes per interactive logon / RDP session, which is exactly the
+/// boundary you want for "this user's running GUI process" rather than
+/// "any process from this user account anywhere on the box".
+///
+/// Returns an error in service contexts that don't have a logon-SID
+/// entry (background services, scheduled tasks running as `LocalSystem`,
+/// some sandboxed processes). Callers that need to gracefully degrade
+/// should fall back to [`current_user_sid_string`] on error.
+pub fn current_logon_sid_string() -> Result<String> {
+    let token = open_current_process_token()?;
+    let buf = read_token_information(&token, TokenLogonSid)?;
+
+    // SAFETY: `buf` starts with a `TOKEN_GROUPS` (GroupCount + flexible
+    // array of `SID_AND_ATTRIBUTES`); the second cast walks one entry
+    // past the GroupCount, which is in-bounds when `GroupCount >= 1`.
+    let groups = unsafe { &*(buf.as_ptr() as *const TOKEN_GROUPS) };
+    ensure!(
+        groups.GroupCount >= 1,
+        "Process token has no logon-session SID (likely a service / non-interactive context)"
+    );
+    let first = unsafe { &*groups.Groups.as_ptr() };
+    sid_to_string(first.Sid)
+}
+
 /// RAII wrapper around a `HANDLE` opened by `OpenProcessToken` (or
 /// similar). Unlike the `GetCurrentProcess` pseudo-handle, real token
 /// handles must be released with `CloseHandle` — without this wrapper
@@ -198,50 +242,6 @@ fn read_token_information(token: &OwnedHandle, class: TOKEN_INFORMATION_CLASS) -
     }
     .with_context(|| format!("GetTokenInformation({class:?}) failed"))?;
     Ok(buf)
-}
-
-/// Returns the calling process's primary-user SID in SDDL string form
-/// (e.g. `"S-1-5-21-..."`).
-///
-/// Built on `OpenProcessToken` + `GetTokenInformation(TokenUser)` +
-/// `ConvertSidToStringSidW`. The token handle is closed via
-/// [`OwnedHandle`]; the `LocalFree` on the SID buffer is handled
-/// internally so callers don't have to think about Windows lifetime
-/// rules.
-pub fn current_user_sid_string() -> Result<String> {
-    let token = open_current_process_token()?;
-    let buf = read_token_information(&token, TokenUser)?;
-
-    // SAFETY: `buf` holds at least one `TOKEN_USER`; the cast yields a
-    // reference whose lifetime is bounded by the `buf` borrow.
-    let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
-    sid_to_string(token_user.User.Sid)
-}
-
-/// Returns the calling process's *logon-session* SID in SDDL string
-/// form (e.g. `"S-1-5-5-X-Y"`). Distinct from the user SID — this one
-/// changes per interactive logon / RDP session, which is exactly the
-/// boundary you want for "this user's running GUI process" rather than
-/// "any process from this user account anywhere on the box".
-///
-/// Returns an error in service contexts that don't have a logon-SID
-/// entry (background services, scheduled tasks running as `LocalSystem`,
-/// some sandboxed processes). Callers that need to gracefully degrade
-/// should fall back to [`current_user_sid_string`] on error.
-pub fn current_logon_sid_string() -> Result<String> {
-    let token = open_current_process_token()?;
-    let buf = read_token_information(&token, TokenLogonSid)?;
-
-    // SAFETY: `buf` starts with a `TOKEN_GROUPS` (GroupCount + flexible
-    // array of `SID_AND_ATTRIBUTES`); the second cast walks one entry
-    // past the GroupCount, which is in-bounds when `GroupCount >= 1`.
-    let groups = unsafe { &*(buf.as_ptr() as *const TOKEN_GROUPS) };
-    ensure!(
-        groups.GroupCount >= 1,
-        "Process token has no logon-session SID (likely a service / non-interactive context)"
-    );
-    let first = unsafe { &*groups.Groups.as_ptr() };
-    sid_to_string(first.Sid)
 }
 
 fn sid_to_string(sid: PSID) -> Result<String> {

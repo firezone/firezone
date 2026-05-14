@@ -311,10 +311,11 @@ fn package_identity_active() -> bool {
 }
 
 // `GetCurrentPackageFullName` is exported from `kernel32.dll` (it
-// dispatches to `apphelp.dll` internally). Linking it manually keeps
-// the call site stable across `windows` crate version bumps and
-// avoids pulling in the heavy
-// `Win32_Storage_Packaging_Appx` feature for one symbol.
+// dispatches to `apphelp.dll` internally). The bare `#[link]` block
+// here is what the `windows-link` crate's `link!()` macro would
+// expand to, but with one fewer dependency in the tree. Pulling in
+// the `Win32_Storage_Packaging_Appx` `windows` feature would also
+// work but drags in every AppX/MSIX type for one symbol.
 #[link(name = "kernel32")]
 unsafe extern "system" {
     fn GetCurrentPackageFullName(
@@ -361,14 +362,11 @@ fn cached_current_logon_sid_string() -> Result<String> {
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
         SocketId::Tunnel => format!("{}_tunnel.ipc", crate::BUNDLE_ID),
-        SocketId::Gui => {
-            if package_identity_active() {
-                let suffix = current_user_hash().unwrap_or_else(|_| "fallback".into());
-                format!("{}_gui_{}.ipc", crate::BUNDLE_ID, suffix)
-            } else {
-                format!("{}_gui.ipc", crate::BUNDLE_ID)
-            }
+        SocketId::Gui if package_identity_active() => {
+            let suffix = current_user_hash().unwrap_or_else(|_| "fallback".into());
+            format!("{}_gui_{}.ipc", crate::BUNDLE_ID, suffix)
         }
+        SocketId::Gui => format!("{}_gui.ipc", crate::BUNDLE_ID),
         #[cfg(test)]
         SocketId::Test(id) => format!("{}_test_{id}.ipc", crate::BUNDLE_ID),
     };
