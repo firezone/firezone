@@ -2,6 +2,7 @@ use crate::{
     auth, deep_link, dialog,
     gui::{self, system_tray},
     ipc::{self, SocketId},
+    launch_cookie::LaunchCookie,
     logging::{self, FileCount},
     service,
     settings::{AdvancedSettings, GeneralSettings, MdmSettings},
@@ -48,7 +49,7 @@ pub struct Controller<I: GuiIntegration> {
     /// The first instance generated this cookie at startup and persisted
     /// it to the launch-cookie file under an exclusive advisory lock.
     /// See [`crate::launch_cookie`].
-    gui_cookie: crate::launch_cookie::LaunchCookie,
+    gui_cookie: LaunchCookie,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -175,13 +176,8 @@ enum EventloopTick {
     ),
 }
 
-/// Error type kept for backward compatibility of tests that asserted on
-/// the error returned when the new-instance protocol short-circuited.
-/// The protocol is now stateless (cookie embedded in every frame), so
-/// "failed to receive Hello" reads more naturally as "failed to receive
-/// first frame".
 #[derive(Debug, thiserror::Error)]
-#[error("Failed to receive first frame from new GUI instance: {0:#}")]
+#[error("Failed to receive hello: {0:#}")]
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
@@ -198,7 +194,7 @@ impl<I: GuiIntegration> Controller<I> {
         telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
-        gui_cookie: crate::launch_cookie::LaunchCookie,
+        gui_cookie: LaunchCookie,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
@@ -707,15 +703,6 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
-    /// Reads one [`gui::ClientMsg`], validates the embedded cookie, acks
-    /// the matching message, and dispatches its payload.
-    ///
-    /// The protocol is stateless: every frame carries its own cookie, so
-    /// the server never has to remember whether a "handshake" has
-    /// happened for a given connection. The ACK happens as soon as the
-    /// cookie matches — before the payload is dispatched — so the new
-    /// instance can know its request was accepted without waiting on the
-    /// running instance's async dispatch path.
     async fn handle_new_gui_instance(
         &mut self,
         mut read: ipc::ServerRead<gui::ClientMsg>,
@@ -726,7 +713,7 @@ impl<I: GuiIntegration> Controller<I> {
             .await
             .context("No frame received from new GUI instance")?
             .context("Failed to read frame from new GUI instance")?;
-        if !self.gui_cookie.matches(&msg.cookie) {
+        if self.gui_cookie != *msg.cookie() {
             bail!("Cookie mismatch — possible cross-instance pipe-squat attempt");
         }
 
@@ -734,16 +721,16 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::debug!("Failed to ack GUI IPC frame: {e:#}");
         }
 
-        if let Err(e) = self.dispatch_gui_payload(msg.payload).await {
+        if let Err(e) = self.dispatch_gui_msg(msg).await {
             tracing::debug!("Failed to handle GUI IPC payload: {e:#}");
         }
 
         Ok(())
     }
 
-    async fn dispatch_gui_payload(&mut self, payload: gui::Payload) -> Result<()> {
-        match payload {
-            gui::Payload::Deeplink(url) => match self.handle_deep_link(&url).await {
+    async fn dispatch_gui_msg(&mut self, msg: gui::ClientMsg) -> Result<()> {
+        match msg {
+            gui::ClientMsg::Deeplink { url, .. } => match self.handle_deep_link(&url).await {
                 Ok(()) => {}
                 Err(error)
                     if error
@@ -756,7 +743,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!("`handle_deep_link` failed: {error:#}");
                 }
             },
-            gui::Payload::NewInstance => {
+            gui::ClientMsg::NewInstance { .. } => {
                 let (_, session_view_model) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
@@ -1083,9 +1070,8 @@ mod tests {
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         gui_tx
-            .send(&gui::ClientMsg {
-                cookie: TEST_COOKIE,
-                payload: gui::Payload::NewInstance,
+            .send(&gui::ClientMsg::NewInstance {
+                cookie: LaunchCookie::new(TEST_COOKIE),
             })
             .await
             .unwrap();
@@ -1106,9 +1092,8 @@ mod tests {
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         // Bogus cookie: every byte differs from `TEST_COOKIE`.
         gui_tx
-            .send(&gui::ClientMsg {
-                cookie: [0; 32],
-                payload: gui::Payload::NewInstance,
+            .send(&gui::ClientMsg::NewInstance {
+                cookie: LaunchCookie::new([0; 32]),
             })
             .await
             .ok();
@@ -1273,9 +1258,9 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui::ClientMsg {
-                cookie: TEST_COOKIE,
-                payload: gui::Payload::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()),
+            tx.send(&gui::ClientMsg::Deeplink {
+                cookie: LaunchCookie::new(TEST_COOKIE),
+                url: format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap(),
             })
             .await
             .unwrap();
@@ -1510,7 +1495,7 @@ mod tests {
                 true,
                 updates_rx,
                 gui_ipc_server,
-                crate::launch_cookie::LaunchCookie::new(TEST_COOKIE),
+                LaunchCookie::new(TEST_COOKIE),
             ));
 
             TestController {

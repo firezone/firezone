@@ -34,16 +34,17 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
-    // We're the second instance: read the cookie the running first
-    // instance wrote so we can authenticate this one frame to it. If
-    // we are somehow the *first* instance (e.g. the user clicked a
-    // deeplink before Firezone is fully launched), `create_or_read`
-    // hands back a fresh cookie of our own — sending that won't
-    // match the running cookie if there's a real running instance,
-    // but at worst the deep-link is dropped, which is the same
-    // failure mode as a stale handshake.
+    // Deep-link delivery is strictly a hand-off path: we expect a
+    // running first instance to exist and to have written the launch
+    // cookie under its lock. If `create_or_read` reports us as the
+    // first instance there is nothing to hand off to, so refuse
+    // rather than connect with a freshly-minted cookie that won't
+    // match anything anyway.
     let cookie = match launch_cookie::create_or_read()? {
-        FirstInstance::Yes { cookie, .. } | FirstInstance::No { cookie } => cookie,
+        FirstInstance::No { cookie } => cookie,
+        FirstInstance::Yes { .. } => {
+            bail!("No running Firezone instance to deliver deep-link to");
+        }
     };
 
     let (mut read, mut write) = crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(
@@ -53,10 +54,7 @@ pub async fn open(url: url::Url) -> Result<()> {
     .await?;
 
     write
-        .send(&gui::ClientMsg {
-            cookie: *cookie.as_bytes(),
-            payload: gui::Payload::Deeplink(url),
-        })
+        .send(&gui::ClientMsg::Deeplink { cookie, url })
         .await
         .context("Failed to send deep-link")?;
 

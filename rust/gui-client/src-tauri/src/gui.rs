@@ -240,32 +240,19 @@ pub struct RunConfig {
 }
 
 /// Authenticated request from a newly launched instance to the running
-/// first instance.
-///
-/// Every frame carries the [`launch_cookie`] (no separate handshake
-/// step), so the server validates freshness on every message and the
-/// protocol is fully stateless. The cookie binds an IPC connection to
-/// a specific *launch generation*: a stale connection from a previous
-/// boot, or a connection that failed to read the up-to-date cookie
-/// file, is rejected before any payload is processed.
-///
-/// The cookie is *not* a secret in the same-user threat model — a
-/// hostile same-user process can read it directly from the user-
-/// private cookie file. The actual identity check is the pipe DACL on
-/// Windows (kernel-tracked package SID) and the socket filesystem
-/// permissions on Linux. The cookie is the freshness glue between
-/// launches.
+/// first instance. See [`crate::launch_cookie`].
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ClientMsg {
-    pub cookie: [u8; launch_cookie::COOKIE_LEN],
-    pub payload: Payload,
+pub enum ClientMsg {
+    Deeplink { cookie: LaunchCookie, url: url::Url },
+    NewInstance { cookie: LaunchCookie },
 }
 
-/// What the new instance is actually asking the running instance to do.
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub enum Payload {
-    Deeplink(url::Url),
-    NewInstance,
+impl ClientMsg {
+    pub fn cookie(&self) -> &LaunchCookie {
+        match self {
+            ClientMsg::Deeplink { cookie, .. } | ClientMsg::NewInstance { cookie } => cookie,
+        }
+    }
 }
 
 /// Reply from the running instance to a newly launched instance.
@@ -607,23 +594,6 @@ pub struct AlreadyRunning;
 #[error("Failed to communicate with existing Firezone instance")]
 pub struct NewInstanceHandshakeFailed(anyhow::Error);
 
-/// Create a new instance of the GUI IPC server, or hand off to an
-/// already-running instance.
-///
-/// First, we attempt to acquire an advisory exclusive lock on the
-/// launch-cookie file (cross-platform via `fd-lock`: `LockFileEx` on
-/// Windows, `flock` on Linux). If we get the lock, we are the first
-/// instance: a fresh 32-byte cookie is written to the file, the lock
-/// is held for the lifetime of this process, and we return a new IPC
-/// server whose accept loop will validate the cookie on every frame.
-///
-/// If the lock is already held, another instance is alive. We read
-/// its cookie from the file, connect to the GUI IPC socket, send a
-/// single `ClientMsg` carrying the cookie + payload, wait for the
-/// `Ack`, and exit. The lock is released by the kernel on first-
-/// instance exit (graceful or otherwise), so a fresh launch after a
-/// crash recovers cleanly: the cookie file is overwritten with a new
-/// value when the next first instance acquires the lock.
 async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchCookie, LaunchLock)> {
     match launch_cookie::create_or_read()? {
         FirstInstance::Yes { lock, cookie } => {
@@ -660,12 +630,7 @@ async fn new_instance_handshake(
     mut write: ClientWrite<ClientMsg>,
     cookie: LaunchCookie,
 ) -> Result<()> {
-    write
-        .send(&ClientMsg {
-            cookie: *cookie.as_bytes(),
-            payload: Payload::NewInstance,
-        })
-        .await?;
+    write.send(&ClientMsg::NewInstance { cookie }).await?;
     let response = read
         .next()
         .await
