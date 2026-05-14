@@ -22,6 +22,10 @@ x-health-check: &health-check
   retries: 15
   timeout: 1s
 
+# Shared by the client-2 container (FIREZONE_ID) and the seeds (POOL_MEMBER_FIREZONE_ID),
+# which must agree for the seeded static-pool member to match the running client.
+x-pool-member-firezone-id: &pool-member-firezone-id "2f3cbd32-d0dd-4bdf-bb78-428bbc5ce6cb"
+
 services:
   portal:
     extends:
@@ -110,6 +114,7 @@ services:
       # Mix env should be set to prod to use secrets declared above,
       # otherwise seeds will generate invalid tokens
       MIX_ENV: "prod"
+      POOL_MEMBER_FIREZONE_ID: *pool-member-firezone-id
     depends_on:
       postgres:
         condition: "service_healthy"
@@ -196,7 +201,7 @@ services:
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkZmUyYmYyMmQtMDk4Ni00MzNhLTg1ZWQtYThmMzdjOTBhMzRibQAAADg5SE00QTZSRE03UUxEVjhOMUMwRFFEMThKVEpOVUpJQ0Y0QThWUklKODM0SkhDTjA5NFIwPT09PW4GACphrxmeAWIAAVGA.LHufO50MaDTncVMV1CBGr3pnpemR-__n8RSbh9xwB3Y"
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://portal:8081
-      FIREZONE_ID: 2f3cbd32-d0dd-4bdf-bb78-428bbc5ce6cb
+      FIREZONE_ID: *pool-member-firezone-id
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
       - sh

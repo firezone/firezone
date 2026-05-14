@@ -869,7 +869,7 @@ defmodule Portal.Repo.Seeds do
         @ua_macos
       )
 
-    pool_member_firezone_id = "2f3cbd32-d0dd-4bdf-bb78-428bbc5ce6cb"
+    pool_member_firezone_id = System.fetch_env!("POOL_MEMBER_FIREZONE_ID")
 
     {:ok, pool_member_device} =
       create_client(
