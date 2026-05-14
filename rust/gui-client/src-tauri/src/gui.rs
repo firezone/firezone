@@ -265,7 +265,10 @@ pub fn run(
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
-    let (gui_ipc, _launch_lock) = rt.block_on(create_gui_ipc_server())?;
+    let (gui_ipc, _launch_lock) = match rt.block_on(establish_single_instance())? {
+        SingleInstance::First { server, lock } => (server, lock),
+        SingleInstance::SecondHandedOff => bail!(AlreadyRunning),
+    };
 
     let (general_settings, advanced_settings) =
         rt.block_on(settings::migrate_legacy_settings(advanced_settings));
@@ -582,15 +585,43 @@ pub struct AlreadyRunning;
 #[error("Failed to communicate with existing Firezone instance")]
 pub struct NewInstanceHandshakeFailed(anyhow::Error);
 
-async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchLock)> {
+/// Outcome of [`establish_single_instance`].
+pub enum SingleInstance {
+    /// We acquired the launch lock and now own the GUI IPC pipe
+    /// server. The caller proceeds with normal startup; the
+    /// `LaunchLock` must outlive the IPC server.
+    First {
+        server: ipc::Server,
+        lock: LaunchLock,
+    },
+    /// Another instance was already running. We connected to its GUI
+    /// IPC pipe, sent `ClientMsg::NewInstance`, awaited the `Ack`,
+    /// and closed our end. Production callers bail with
+    /// [`AlreadyRunning`] here; the `debug single-instance`
+    /// subcommand uses it as a successful end state for the
+    /// second-instance side of the smoke test.
+    SecondHandedOff,
+}
+
+/// Acquire the launch lock and produce a [`SingleInstance`] describing
+/// which role this process plays.
+///
+/// First instance: opens the GUI IPC pipe server. Second instance:
+/// connects to the running instance, drives the `NewInstance` -> `Ack`
+/// handshake to completion, and reports `SecondHandedOff`.
+///
+/// Pulled out of `gui::run` so the same code path can drive the
+/// `debug single-instance` subcommand end-to-end without standing up
+/// the controller, the tunnel-service IPC, or the Tauri UI.
+pub async fn establish_single_instance() -> Result<SingleInstance> {
     match launch_lock::acquire()? {
         FirstInstance::Yes(lock) => {
             let server =
                 ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?;
-            Ok((server, lock))
+            Ok(SingleInstance::First { server, lock })
         }
         FirstInstance::No => {
-            // Hand off to the running instance and exit.
+            // Hand off to the running instance.
             let (read, write) = ipc::connect::<ServerMsg, ClientMsg>(
                 SocketId::Gui,
                 ipc::ConnectOptions { num_attempts: 3 },
@@ -605,9 +636,36 @@ async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchLock)> {
                 .map_err(NewInstanceHandshakeFailed)?
                 .map_err(NewInstanceHandshakeFailed)?;
 
-            bail!(AlreadyRunning)
+            Ok(SingleInstance::SecondHandedOff)
         }
     }
+}
+
+/// Accept exactly one client on `server`, read its first
+/// [`ClientMsg`], send a `ServerMsg::Ack`, and return the message
+/// so the caller can log / assert on it.
+///
+/// Used by the `debug single-instance` subcommand to exercise the
+/// pipe-server side of the launch-lock hand-off without standing up
+/// the controller or any other normal-runtime machinery. Production
+/// code uses the same `ipc::Server` + framed reader/writer types
+/// through `Controller`, but iterating over many clients in an
+/// accept loop, not one-shot.
+pub async fn accept_one_for_debug(server: &mut ipc::Server) -> Result<ClientMsg> {
+    let (mut read, mut write) = server
+        .next_client_split::<ClientMsg, ServerMsg>()
+        .await
+        .context("Failed to accept GUI IPC client")?;
+    let msg = read
+        .next()
+        .await
+        .context("No frame received from second instance")?
+        .context("Failed to read frame from second instance")?;
+    write
+        .send(&ServerMsg::Ack)
+        .await
+        .context("Failed to ack second instance")?;
+    Ok(msg)
 }
 
 async fn new_instance_handshake(

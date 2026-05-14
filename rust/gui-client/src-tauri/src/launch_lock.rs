@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use fd_lock::{RwLock as FdRwLock, RwLockWriteGuard as FdRwLockWriteGuard};
 use std::{
     fs::{File, OpenOptions},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 /// RAII guard holding the advisory file lock for the lifetime of the
@@ -36,7 +36,7 @@ pub struct LaunchLock {
     _guard: FdRwLockWriteGuard<'static, File>,
 }
 
-/// Outcome of [`acquire`].
+/// Outcome of [`acquire`] / [`acquire_at`].
 pub enum FirstInstance {
     /// We acquired the exclusive lock and are the running first
     /// instance. The `LaunchLock` must be held for the process
@@ -51,8 +51,17 @@ pub enum FirstInstance {
 }
 
 /// Tries to become the first GUI instance.
+///
+/// Uses the default path under [`known_dirs::session`]; production
+/// callers want this. Tests use [`acquire_at`] with a tempdir so each
+/// test gets an isolated lock file.
 pub fn acquire() -> Result<FirstInstance> {
-    let path = path()?;
+    acquire_at(&default_path()?)
+}
+
+/// Like [`acquire`] but with a caller-provided lock path. Used by
+/// tests to point at a `tempfile::tempdir()`-owned path.
+pub fn acquire_at(path: &Path) -> Result<FirstInstance> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create `{}`", parent.display()))?;
@@ -63,7 +72,7 @@ pub fn acquire() -> Result<FirstInstance> {
         .write(true)
         .create(true)
         .truncate(false)
-        .open(&path)
+        .open(path)
         .with_context(|| format!("Failed to open launch lock `{}`", path.display()))?;
 
     // Leak the `RwLock` so the guard's borrow is `'static`; the
@@ -76,7 +85,42 @@ pub fn acquire() -> Result<FirstInstance> {
     }
 }
 
-fn path() -> Result<PathBuf> {
+fn default_path() -> Result<PathBuf> {
     let dir = known_dirs::session().context("No session directory available")?;
     Ok(dir.join("launch.lock"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// In-process check that the lock primitive is mutually exclusive:
+    ///
+    /// - The first `acquire_at` succeeds and returns `Yes`.
+    /// - A second `acquire_at` against the *same path*, while the first
+    ///   guard is still alive, observes the lock and returns `No`.
+    /// - After dropping the first guard, a fresh `acquire_at` succeeds
+    ///   again — confirming the lock is released cleanly.
+    ///
+    /// Cross-platform: `fd-lock` uses `flock` (per open-file-description)
+    /// on Linux and `LockFileEx` (per handle) on Windows; both treat
+    /// "second open + try_lock from the same process" as a real
+    /// conflict, so we don't need to spawn a child process to exercise
+    /// the contention path.
+    #[test]
+    fn second_acquire_observes_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("launch.lock");
+
+        let first = acquire_at(&path).unwrap();
+        assert!(matches!(first, FirstInstance::Yes(_)));
+
+        let second = acquire_at(&path).unwrap();
+        assert!(matches!(second, FirstInstance::No));
+
+        drop(first);
+
+        let third = acquire_at(&path).unwrap();
+        assert!(matches!(third, FirstInstance::Yes(_)));
+    }
 }
