@@ -7,7 +7,7 @@ use crate::{
     auth,
     gui::{self, ServerMsg},
     ipc::SocketId,
-    launch_cookie::{self, FirstInstance},
+    launch_cookie::{self, CreatedOrRead},
 };
 use anyhow::{Context as _, Result, bail};
 use futures::SinkExt as _;
@@ -41,8 +41,8 @@ pub async fn open(url: url::Url) -> Result<()> {
     // rather than connect with a freshly-minted cookie that won't
     // match anything anyway.
     let cookie = match launch_cookie::create_or_read()? {
-        FirstInstance::No { cookie } => cookie,
-        FirstInstance::Yes { .. } => {
+        CreatedOrRead::Read { cookie } => cookie,
+        CreatedOrRead::Created { .. } => {
             bail!("No running Firezone instance to deliver deep-link to");
         }
     };

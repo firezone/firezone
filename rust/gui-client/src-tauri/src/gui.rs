@@ -7,7 +7,7 @@ use crate::{
     controller::{Controller, ControllerRequest, Failure, GuiIntegration, NotificationHandle},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
-    launch_cookie::{self, FirstInstance, LaunchCookie, LaunchLock},
+    launch_cookie::{self, CreatedOrRead, LaunchCookie, LaunchLock},
     logging::FileCount,
     settings::{
         self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, GeneralSettings,
@@ -596,12 +596,12 @@ pub struct NewInstanceHandshakeFailed(anyhow::Error);
 
 async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchCookie, LaunchLock)> {
     match launch_cookie::create_or_read()? {
-        FirstInstance::Yes { lock, cookie } => {
+        CreatedOrRead::Created { lock, cookie } => {
             let server =
                 ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?;
             Ok((server, cookie, lock))
         }
-        FirstInstance::No { cookie } => {
+        CreatedOrRead::Read { cookie } => {
             // Hand off to the running instance and exit.
             let (read, write) = ipc::connect::<ServerMsg, ClientMsg>(
                 SocketId::Gui,
