@@ -130,14 +130,13 @@ defmodule Portal.Accounts.Deletion do
            %Account{id: account_id},
            attrs,
            action,
-           %{account: %{id: subject_account_id}} = subject
+          %{account: %{id: account_id}} = subject
          ) do
       now = DateTime.utc_now()
 
       query =
         from(a in Account,
           where: a.id == ^account_id,
-          where: a.id == ^subject_account_id,
           select: a
         )
         |> restrict_to_matching_transition(action)
@@ -160,6 +159,8 @@ defmodule Portal.Accounts.Deletion do
           error
       end
     end
+
+    defp transition_account_deletion(_account, _attrs, _action, _subject), do: {:error, :unauthorized}
 
     defp maybe_insert_delete_job({:transitioned, account}) do
       %{"account_id" => account.id}
