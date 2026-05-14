@@ -605,14 +605,9 @@ pub enum SingleInstance {
 
 /// Acquire the launch lock and produce a [`SingleInstance`] describing
 /// which role this process plays.
-///
 /// First instance: opens the GUI IPC pipe server. Second instance:
 /// connects to the running instance, drives the `NewInstance` -> `Ack`
 /// handshake to completion, and reports `SecondHandedOff`.
-///
-/// Pulled out of `gui::run` so the same code path can drive the
-/// `debug single-instance` subcommand end-to-end without standing up
-/// the controller, the tunnel-service IPC, or the Tauri UI.
 pub async fn establish_single_instance() -> Result<SingleInstance> {
     match launch_lock::acquire()? {
         FirstInstance::Yes(lock) => {
