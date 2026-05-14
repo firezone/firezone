@@ -378,6 +378,10 @@ pub struct DeepLink {
 /// a shell smoke test, or by hand from two terminals) to exercise
 /// the hand-off path; the two stdout lines below let the harness
 /// assert on the outcome.
+#[allow(
+    clippy::print_stdout,
+    reason = "the whole point of this subcommand is to print a smoke-test signal to stdout"
+)]
 async fn debug_single_instance() -> anyhow::Result<()> {
     use firezone_gui_client::gui::{self, SingleInstance};
 
