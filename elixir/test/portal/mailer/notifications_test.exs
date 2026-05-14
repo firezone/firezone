@@ -3,6 +3,7 @@ defmodule Portal.Mailer.NotificationsTest do
   import Portal.Mailer.Notifications
   import Portal.AccountFixtures
   import Portal.DeviceFixtures
+  alias Portal.Authentication.Context
   alias Portal.ComponentVersions
 
   setup do
@@ -10,37 +11,75 @@ defmodule Portal.Mailer.NotificationsTest do
     %{account: account}
   end
 
-  describe "account_scheduled_for_deletion_email/2" do
-    test "includes the scheduled deletion date and settings link", %{account: account} do
-      scheduled_deletion_at = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+  describe "account_scheduled_for_deletion_email/3" do
+    test "includes the scheduled deletion date, settings link, and request context", %{
+      account: account
+    } do
+      scheduled_deletion_at =
+        DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
       account = update_account(account, scheduled_deletion_at: scheduled_deletion_at)
       formatted_date = Calendar.strftime(scheduled_deletion_at, "%B %-d, %Y")
 
+      context = %Context{
+        type: :portal,
+        remote_ip: {93, 184, 216, 34},
+        remote_ip_location_region: "California",
+        remote_ip_location_city: "Los Angeles",
+        remote_ip_location_lat: 34.05,
+        remote_ip_location_lon: -118.24,
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+      }
+
       email =
-        account_scheduled_for_deletion_email(account, "admin@example.com")
+        account_scheduled_for_deletion_email(account, "admin@example.com", context)
 
       assert email.subject == "Firezone Account Scheduled for Deletion"
       assert email.text_body =~ account.slug
       assert email.text_body =~ account.id
       assert email.text_body =~ formatted_date
-      assert email.text_body =~ "/#{account.id}/settings/account"
+      assert email.text_body =~ "/#{account.slug}/settings/account"
+      assert email.text_body =~ "93.184.216.34"
+      assert email.text_body =~ "Los Angeles"
+      assert email.text_body =~ "California"
+      assert email.text_body =~ context.user_agent
       assert email.html_body =~ "Account Scheduled for Deletion"
       assert email.html_body =~ formatted_date
+      assert email.html_body =~ "93.184.216.34"
+      assert email.html_body =~ "Los Angeles"
+      assert email.html_body =~ context.user_agent
     end
   end
 
-  describe "account_deletion_aborted_email/2" do
-    test "includes the cancellation message and settings link", %{account: account} do
-      email =
-        account_deletion_aborted_email(account, "admin@example.com")
+  describe "account_deletion_aborted_email/3" do
+    test "includes the cancellation message, settings link, and request context", %{
+      account: account
+    } do
+      context = %Context{
+        type: :portal,
+        remote_ip: {93, 184, 216, 34},
+        remote_ip_location_region: "California",
+        remote_ip_location_city: "Los Angeles",
+        remote_ip_location_lat: 34.05,
+        remote_ip_location_lon: -118.24,
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+      }
+
+      email = account_deletion_aborted_email(account, "admin@example.com", context)
 
       assert email.subject == "Firezone Account Deletion Aborted"
       assert email.text_body =~ "has been canceled"
       assert email.text_body =~ account.slug
       assert email.text_body =~ account.id
-      assert email.text_body =~ "/#{account.id}/settings/account"
+      assert email.text_body =~ "/#{account.slug}/settings/account"
+      assert email.text_body =~ "93.184.216.34"
+      assert email.text_body =~ "Los Angeles"
+      assert email.text_body =~ context.user_agent
       assert email.html_body =~ "Account Deletion Aborted"
       assert email.html_body =~ "no longer scheduled for deletion"
+      assert email.html_body =~ "93.184.216.34"
+      assert email.html_body =~ "Los Angeles"
+      assert email.html_body =~ context.user_agent
     end
   end
 
@@ -96,7 +135,7 @@ defmodule Portal.Mailer.NotificationsTest do
       assert email_body.html_body =~ gateway_2.name
 
       assert email_body.html_body =~
-               "/#{account.id}/clients?clients_order_by=latest_session%3Aasc%3Aversion\" target=\"_blank\" rel=\"noopener noreferrer\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
+               "/#{account.slug}/clients?clients_order_by=latest_session%3Aasc%3Aversion\" target=\"_blank\" rel=\"noopener noreferrer\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
 
       assert email_body.html_body =~ "See all outdated clients"
     end

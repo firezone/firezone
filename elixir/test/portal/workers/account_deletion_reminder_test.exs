@@ -28,7 +28,7 @@ defmodule Portal.Workers.AccountDeletionReminderTest do
       assert email.text_body =~ account.slug
       assert email.text_body =~ account.id
       assert email.text_body =~ Calendar.strftime(scheduled_deletion_at, "%B %-d, %Y")
-      assert email.text_body =~ "/#{account.id}/settings/account"
+      assert email.text_body =~ "/#{account.slug}/settings/account"
       assert Enum.map(email.bcc, fn {_name, address} -> address end) == [admin.email]
     end
 

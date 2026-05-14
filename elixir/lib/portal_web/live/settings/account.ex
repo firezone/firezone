@@ -10,7 +10,6 @@ defmodule PortalWeb.Settings.Account do
   def mount(_params, _session, socket) do
     account = socket.assigns.account
     subject = socket.assigns.subject
-
     socket =
       assign(socket,
         page_title: "Account",

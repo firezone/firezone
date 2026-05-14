@@ -28,7 +28,7 @@ defmodule Portal.Accounts.Deletion do
       account,
       subject,
       :schedule,
-      &Notifications.account_scheduled_for_deletion_email/2
+      &Notifications.account_scheduled_for_deletion_email/3
     )
   end
 
@@ -37,7 +37,7 @@ defmodule Portal.Accounts.Deletion do
       account,
       subject,
       :cancel,
-      &Notifications.account_deletion_aborted_email/2
+      &Notifications.account_deletion_aborted_email/3
     )
   end
 
@@ -50,7 +50,7 @@ defmodule Portal.Accounts.Deletion do
         {:ok, account}
 
       admin_emails ->
-        email = email_fun.(account, admin_emails)
+        email = email_fun.(account, admin_emails, subject.context)
         enqueue_notification_email(email, account, admin_emails, action)
     end
   end

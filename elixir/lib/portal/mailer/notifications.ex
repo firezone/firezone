@@ -13,7 +13,7 @@ defmodule Portal.Mailer.Notifications do
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, recipients) do
     params = %{clients_order_by: "latest_session:asc:version"}
-    outdated_clients_url = url(~p"/#{account.id}/clients?#{params}")
+    outdated_clients_url = url(~p"/#{account}/clients?#{params}")
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")
@@ -29,7 +29,7 @@ defmodule Portal.Mailer.Notifications do
   end
 
   def limits_exceeded_email(account, warning, recipients) do
-    billing_url = url(~p"/#{account.id}/settings/account")
+    billing_url = url(~p"/#{account}/settings/account")
     plan_type = Portal.Billing.plan_type(account)
 
     default_email()
@@ -44,8 +44,8 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
-  def account_scheduled_for_deletion_email(account, recipients) do
-    settings_url = url(~p"/#{account.id}/settings/account")
+  def account_scheduled_for_deletion_email(account, recipients, context) do
+    settings_url = url(~p"/#{account}/settings/account")
 
     default_email()
     |> subject("Firezone Account Scheduled for Deletion")
@@ -53,12 +53,13 @@ defmodule Portal.Mailer.Notifications do
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :account_scheduled_for_deletion,
       account: account,
-      settings_url: settings_url
+      settings_url: settings_url,
+      context: context
     )
   end
 
-  def account_deletion_aborted_email(account, recipients) do
-    settings_url = url(~p"/#{account.id}/settings/account")
+  def account_deletion_aborted_email(account, recipients, context) do
+    settings_url = url(~p"/#{account}/settings/account")
 
     default_email()
     |> subject("Firezone Account Deletion Aborted")
@@ -66,12 +67,13 @@ defmodule Portal.Mailer.Notifications do
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :account_deletion_aborted,
       account: account,
-      settings_url: settings_url
+      settings_url: settings_url,
+      context: context
     )
   end
 
   def account_deletion_reminder_email(account, recipients) do
-    settings_url = url(~p"/#{account.id}/settings/account")
+    settings_url = url(~p"/#{account}/settings/account")
 
     default_email()
     |> subject("Firezone Account Deletion Reminder")

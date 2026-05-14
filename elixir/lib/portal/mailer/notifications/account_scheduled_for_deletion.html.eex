@@ -77,6 +77,23 @@
                   <div style="margin: 0; padding: 16px; background-color: #fef2f2; border-radius: 4px; color: #991b1b; font-weight: 500; line-height: 24px">
                     Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
                   </div>
+                  <div role="separator" style="line-height: 16px">&zwj;</div>
+                  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <tr style="border-bottom-width: 1px; background-color: #f9fafb;">
+                      <th scope="row" style="white-space: nowrap; padding: 8px 16px; font-weight: 500; color: #3d3d3d; text-align: left;">IP Address</th>
+                      <td style="padding: 8px 16px; color: #4f4f4f;"><%= :inet.ntoa(@context.remote_ip) %></td>
+                    </tr>
+                    <%= if @context.remote_ip_location_city || @context.remote_ip_location_region do %>
+                    <tr style="border-bottom-width: 1px; background-color: #ffffff;">
+                      <th scope="row" style="white-space: nowrap; padding: 8px 16px; font-weight: 500; color: #3d3d3d; text-align: left;">Location</th>
+                      <td style="padding: 8px 16px; color: #4f4f4f;"><%= [@context.remote_ip_location_city, @context.remote_ip_location_region] |> Enum.reject(&is_nil/1) |> Enum.join(", ") %></td>
+                    </tr>
+                    <% end %>
+                    <tr style="border-bottom-width: 1px; background-color: #f9fafb;">
+                      <th scope="row" style="white-space: nowrap; padding: 8px 16px; font-weight: 500; color: #3d3d3d; text-align: left;">User Agent</th>
+                      <td style="padding: 8px 16px; color: #4f4f4f;"><%= @context.user_agent %></td>
+                    </tr>
+                  </table>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
                     The account is disabled now and all data will be permanently deleted on the scheduled date unless an account admin cancels the deletion first.

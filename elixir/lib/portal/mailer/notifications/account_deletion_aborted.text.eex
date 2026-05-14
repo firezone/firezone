@@ -2,6 +2,11 @@ Account Deletion Aborted
 
 The scheduled deletion for your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has been canceled.
 
+This action was performed from:
+IP Address: <%= :inet.ntoa(@context.remote_ip) %><%= if @context.remote_ip_location_city || @context.remote_ip_location_region do %> (<%= [@context.remote_ip_location_city, @context.remote_ip_location_region] |> Enum.reject(&is_nil/1) |> Enum.join(", ") %>)<% end %>
+
+User Agent: <%= @context.user_agent %>
+
 The account is no longer scheduled for deletion.
 
 Review this account in Settings -> Account:

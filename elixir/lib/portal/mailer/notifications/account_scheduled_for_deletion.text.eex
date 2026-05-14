@@ -4,6 +4,11 @@ Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has been sched
 
 Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
 
+This action was performed from:
+IP Address: <%= :inet.ntoa(@context.remote_ip) %><%= if @context.remote_ip_location_city || @context.remote_ip_location_region do %> (<%= [@context.remote_ip_location_city, @context.remote_ip_location_region] |> Enum.reject(&is_nil/1) |> Enum.join(", ") %>)<% end %>
+
+User Agent: <%= @context.user_agent %>
+
 The account is disabled now and all data will be permanently deleted on the scheduled date unless an account admin cancels the deletion first.
 
 Review this account in Settings -> Account:

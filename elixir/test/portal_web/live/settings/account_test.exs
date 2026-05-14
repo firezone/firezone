@@ -307,11 +307,7 @@ defmodule PortalWeb.Settings.AccountTest do
       }
 
       assert {:ok, first_account} =
-               Deletion.schedule_account_deletion(
-                 account,
-                 attrs,
-                 subject
-               )
+               Deletion.schedule_account_deletion(account, attrs, subject)
 
       assert {:ok, second_account} =
                Deletion.schedule_account_deletion(

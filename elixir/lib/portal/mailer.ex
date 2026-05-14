@@ -98,11 +98,10 @@ defmodule Portal.Mailer do
     end)
   end
 
-  # sobelow_skip ["DOS.StringToAtom"]
   defp render_template(view, template, format, assigns) do
-    heex = apply(view, String.to_atom("#{template}_#{format}"), [assigns])
+    heex = apply(view, String.to_existing_atom("#{template}_#{format}"), [assigns])
     assigns = Keyword.merge(assigns, inner_content: heex)
-    Phoenix.Template.render_to_string(view, "#{template}_#{format}", "html", assigns)
+    Phoenix.Template.render_to_string(view, "#{template}_#{format}", format, assigns)
   end
 
   def render_body(%Swoosh.Email{} = email, view, template, assigns) do
