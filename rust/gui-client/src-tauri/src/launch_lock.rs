@@ -51,17 +51,14 @@ pub enum FirstInstance {
 }
 
 /// Tries to become the first GUI instance.
-///
-/// Uses the default path under [`known_dirs::session`]; production
-/// callers want this. Tests use [`acquire_at`] with a tempdir so each
-/// test gets an isolated lock file.
 pub fn acquire() -> Result<FirstInstance> {
     acquire_at(&default_path()?)
 }
 
-/// Like [`acquire`] but with a caller-provided lock path. Used by
-/// tests to point at a `tempfile::tempdir()`-owned path.
-pub fn acquire_at(path: &Path) -> Result<FirstInstance> {
+/// Like [`acquire`] but with a caller-provided lock path. Module-
+/// private; the only non-default caller is the in-module test, which
+/// points it at a `tempfile::tempdir()`-owned path.
+fn acquire_at(path: &Path) -> Result<FirstInstance> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create `{}`", parent.display()))?;
