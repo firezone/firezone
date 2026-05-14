@@ -22,9 +22,8 @@ x-health-check: &health-check
   retries: 15
   timeout: 1s
 
-# Shared by the client-2 container (FIREZONE_ID) and the seeds (POOL_MEMBER_FIREZONE_ID),
-# which must agree for the seeded static-pool member to match the running client.
-x-pool-member-firezone-id: &pool-member-firezone-id "2f3cbd32-d0dd-4bdf-bb78-428bbc5ce6cb"
+# Shared by the client-2 container (FIREZONE_ID) and the seeds (POOL_MEMBER_FIREZONE_ID).
+x-pool-member-firezone-id: &pool-member-firezone-id "68511a32d29b4c81591877beea18d3c95e4d12c52314b1aa2f5a568eccc0e6ad"
 
 services:
   portal:
@@ -129,7 +128,7 @@ services:
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://portal:8081
-      FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
+      FIREZONE_ID: 2606a54a327020a1285cc141aeceb5737a91625e5e1a85c234682266f45820bf
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
       - sh
@@ -273,7 +272,7 @@ services:
       RUST_LOG: ${RUST_LOG:-wire=trace,debug,flow_logs=trace}
       FIREZONE_FLOW_LOGS: true
       FIREZONE_API_URL: ws://portal:8081
-      FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
+      FIREZONE_ID: c9cc2a8a01f9d3d6b2c26719965709196ae2c79214a837e28f0a751af1e2f2ca
     command:
       - sh
       - -c

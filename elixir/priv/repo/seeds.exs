@@ -877,8 +877,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "CI Pool Member",
-          # Headless client hashes its FIREZONE_ID before sending it; the seeded row must match.
-          firezone_id: :crypto.hash(:sha256, pool_member_firezone_id) |> Base.encode16(case: :lower),
+          firezone_id: pool_member_firezone_id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "POOL-#{Ecto.UUID.generate()}",
           # Pinned so the static-device-pool test can target a known tun IP.
