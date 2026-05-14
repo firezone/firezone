@@ -29,7 +29,7 @@ runs:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
         reshim: true
-        cache_key_prefix: "mise-v1"
+        cache_key_prefix: "mise-v2"
 
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
       if: ${{ steps.mise-1.outcome == 'failure' }}
@@ -39,7 +39,7 @@ runs:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
         reshim: true
-        cache_key_prefix: "mise-v1"
+        cache_key_prefix: "mise-v2"
 
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
       if: ${{ steps.mise-2.outcome == 'failure' }}
@@ -47,4 +47,4 @@ runs:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
         reshim: true
-        cache_key_prefix: "mise-v1"
+        cache_key_prefix: "mise-v2"
