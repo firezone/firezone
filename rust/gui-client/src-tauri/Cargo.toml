@@ -106,10 +106,16 @@ features = [
     "Win32_System_Threading",
     # `ProcessIdToSessionId` for the GUI-pipe cross-session check.
     "Win32_System_RemoteDesktop",
+    # WinRT `Windows.Foundation.Uri` and
+    # `Windows.Management.Deployment.PackageManager` for the
+    # `register-sparse.exe` WiX custom action.
+    "Foundation",
+    "Management_Deployment",
 ]
 
 [build-dependencies]
 anyhow = { workspace = true }
+sha2 = { workspace = true }
 tauri-build = { workspace = true, features = [] }
 
 [dev-dependencies]
