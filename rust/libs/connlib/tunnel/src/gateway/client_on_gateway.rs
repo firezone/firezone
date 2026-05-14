@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque, btree_map};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::IpAddr;
 use std::time::Instant;
 
@@ -9,6 +9,8 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::expiring_map;
+use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
@@ -27,7 +29,7 @@ pub struct ClientOnGateway {
 
     flow_properties: flow_tracker::ClientProperties,
 
-    resources: BTreeMap<ResourceId, ResourceOnGateway>,
+    resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
@@ -55,7 +57,7 @@ impl ClientOnGateway {
             client_tun,
             gateway_tun,
             flow_properties,
-            resources: BTreeMap::new(),
+            resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
             nat_table: Default::default(),
@@ -140,26 +142,25 @@ impl ClientOnGateway {
         self.resources.is_empty()
     }
 
-    pub(crate) fn expire_resources(&mut self, now: Instant) {
-        let cid = self.id;
-        let mut any_expired = false;
-
-        for (rid, _) in self.resources.extract_if(.., |_, r| !r.is_allowed(&now)) {
-            tracing::info!(%cid, %rid, "Access to resource expired");
-            any_expired = true;
-        }
-
-        if any_expired {
-            self.recalculate_filters();
-        }
-    }
-
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
         self.buffered_events.pop_front()
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.nat_table.handle_timeout(now);
+        self.resources.handle_timeout(now);
+
+        let cid = self.id;
+        let mut any_expired = false;
+        while let Some(expiring_map::Event::EntryExpired { key, .. }) = self.resources.poll_event()
+        {
+            tracing::info!(%cid, rid = %key, "Access to resource expired");
+            any_expired = true;
+        }
+
+        if any_expired {
+            self.recalculate_filters();
+        }
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
@@ -171,12 +172,22 @@ impl ClientOnGateway {
         &mut self,
         resource: crate::messages::gateway::ResourceDescription,
         expires_at: Option<Instant>,
+        now: Instant,
     ) {
-        match self.resources.entry(resource.id()) {
-            btree_map::Entry::Vacant(v) => {
-                v.insert(ResourceOnGateway::new(resource, expires_at));
-            }
-            btree_map::Entry::Occupied(mut o) => o.get_mut().update(&resource),
+        let rid = resource.id();
+
+        // A past `expires_at` collapses to a zero TTL, which causes the
+        // entry to be evicted on the next `handle_timeout` call.
+        let ttl = expires_at
+            .map(|e| e.saturating_duration_since(now))
+            .unwrap_or(NEVER_EXPIRES_TTL);
+
+        if let Some(existing) = self.resources.get_mut(&rid) {
+            existing.update(&resource);
+            self.resources.update_expiry(&rid, now, ttl);
+        } else {
+            self.resources
+                .insert(rid, ResourceOnGateway::new(resource), now, ttl);
         }
 
         self.recalculate_filters();
@@ -194,24 +205,24 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    pub(crate) fn update_resource_expiry(&mut self, rid: ResourceId, new_expiry: Instant) {
-        let Some(resource) = self.resources.get_mut(&rid) else {
+    pub(crate) fn update_resource_expiry(
+        &mut self,
+        rid: ResourceId,
+        new_expiry: Instant,
+        now: Instant,
+    ) {
+        // A past `new_expiry` collapses to a zero TTL, evicting the
+        // entry on the next `handle_timeout` call.
+        let ttl = new_expiry.saturating_duration_since(now);
+        if !self.resources.update_expiry(&rid, now, ttl) {
             tracing::debug!(%rid, "Unknown resource");
-
-            return;
-        };
-
-        match resource {
-            ResourceOnGateway::Cidr { expires_at, .. } => *expires_at = Some(new_expiry),
-            ResourceOnGateway::Dns { expires_at, .. } => *expires_at = Some(new_expiry),
-            ResourceOnGateway::Internet { expires_at } => *expires_at = Some(new_expiry),
         }
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
         for (rid, _) in self
             .resources
-            .extract_if(.., |rid, _| !authorization.contains(rid))
+            .extract_if(|rid, _| !authorization.contains(rid))
         {
             tracing::info!(%rid, "Revoking resource authorization");
         }
@@ -275,13 +286,13 @@ impl ClientOnGateway {
     fn recalculate_dns_filters(&mut self) {
         for (addr, TranslationState { resources, .. }) in &self.permanent_translations {
             for resource_id in resources {
-                let Some(resource) = self.resources.get(resource_id) else {
+                let Some(entry) = self.resources.get(resource_id) else {
                     continue;
                 };
 
-                debug_assert!(resource.is_dns());
+                debug_assert!(entry.value.is_dns());
 
-                let filter = FilterEngine::new(resource.filters());
+                let filter = FilterEngine::new(entry.value.filters());
                 tracing::trace!(ip = %addr, filters = ?filter, "Installing new filters");
                 self.routing_table.upsert(
                     IpNetwork::from(*addr),
@@ -452,10 +463,11 @@ impl ClientOnGateway {
 
         let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
-        let Some(resource) = self.resources.get(&rid) else {
+        let Some(entry) = self.resources.get(&rid) else {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
             return Ok(());
         };
+        let resource = &entry.value;
 
         flow_tracker::inbound_wg::record_resource(
             rid,
@@ -521,37 +533,31 @@ enum ResourceOnGateway {
         name: String,
         network: IpNetwork,
         filters: Vec<Filter>,
-        expires_at: Option<Instant>,
     },
     Dns {
         name: String,
         address: String,
         domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
         filters: Vec<Filter>,
-        expires_at: Option<Instant>,
     },
-    Internet {
-        expires_at: Option<Instant>,
-    },
+    Internet,
 }
 
 impl ResourceOnGateway {
-    fn new(resource: ResourceDescription, expires_at: Option<Instant>) -> Self {
+    fn new(resource: ResourceDescription) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
                 name: r.name,
                 domains: BTreeMap::default(),
                 filters: r.filters,
                 address: r.address,
-                expires_at,
             },
             ResourceDescription::Cidr(r) => ResourceOnGateway::Cidr {
                 name: r.name,
                 network: r.address,
                 filters: r.filters,
-                expires_at,
             },
-            ResourceDescription::Internet(_) => ResourceOnGateway::Internet { expires_at },
+            ResourceDescription::Internet(_) => ResourceOnGateway::Internet,
         }
     }
 
@@ -563,7 +569,7 @@ impl ResourceOnGateway {
             (ResourceOnGateway::Dns { filters, .. }, ResourceDescription::Dns(new)) => {
                 *filters = new.filters.clone();
             }
-            (ResourceOnGateway::Internet { .. }, ResourceDescription::Internet(_)) => {
+            (ResourceOnGateway::Internet, ResourceDescription::Internet(_)) => {
                 // No-op.
             }
             (current, new) => {
@@ -582,7 +588,7 @@ impl ResourceOnGateway {
                 .copied()
                 .map(IpNetwork::from)
                 .collect(),
-            ResourceOnGateway::Internet { .. } => vec![
+            ResourceOnGateway::Internet => vec![
                 Ipv4Network::DEFAULT_ROUTE.into(),
                 Ipv6Network::DEFAULT_ROUTE.into(),
             ],
@@ -593,23 +599,7 @@ impl ResourceOnGateway {
         match self {
             ResourceOnGateway::Cidr { filters, .. } => filters,
             ResourceOnGateway::Dns { filters, .. } => filters,
-            ResourceOnGateway::Internet { .. } => &[],
-        }
-    }
-
-    fn is_allowed(&self, now: &Instant) -> bool {
-        let Some(expires_at) = self.expires_at() else {
-            return true;
-        };
-
-        expires_at > now
-    }
-
-    fn expires_at(&self) -> Option<&Instant> {
-        match self {
-            ResourceOnGateway::Cidr { expires_at, .. } => expires_at.as_ref(),
-            ResourceOnGateway::Dns { expires_at, .. } => expires_at.as_ref(),
-            ResourceOnGateway::Internet { expires_at } => expires_at.as_ref(),
+            ResourceOnGateway::Internet => &[],
         }
     }
 
@@ -622,14 +612,14 @@ impl ResourceOnGateway {
     }
 
     fn is_internet_resource(&self) -> bool {
-        matches!(self, ResourceOnGateway::Internet { .. })
+        matches!(self, ResourceOnGateway::Internet)
     }
 
     fn name(&self) -> String {
         match self {
             ResourceOnGateway::Cidr { name, .. } => name.clone(),
             ResourceOnGateway::Dns { name, .. } => name.clone(),
-            ResourceOnGateway::Internet { .. } => "Internet".to_owned(),
+            ResourceOnGateway::Internet => "Internet".to_owned(),
         }
     }
 
@@ -637,7 +627,7 @@ impl ResourceOnGateway {
         match self {
             ResourceOnGateway::Cidr { network, .. } => network.to_string(),
             ResourceOnGateway::Dns { address, .. } => address.clone(),
-            ResourceOnGateway::Internet { .. } => match dst {
+            ResourceOnGateway::Internet => match dst {
                 IpAddr::V4(_) => "0.0.0.0/0".to_owned(),
                 IpAddr::V6(_) => "::/0".to_owned(),
             },
@@ -726,6 +716,7 @@ mod tests {
                 })],
             }),
             Some(then),
+            now,
         );
         peer.add_resource(
             ResourceDescription::Cidr(ResourceDescriptionCidr {
@@ -738,6 +729,7 @@ mod tests {
                 })],
             }),
             Some(after_then),
+            now,
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
@@ -759,7 +751,7 @@ mod tests {
         )
         .unwrap();
 
-        peer.expire_resources(now);
+        peer.handle_timeout(now);
 
         assert!(
             peer.classify_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
@@ -770,7 +762,7 @@ mod tests {
                 .is_ok()
         );
 
-        peer.expire_resources(then);
+        peer.handle_timeout(then);
 
         assert!(
             peer.classify_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
@@ -781,7 +773,7 @@ mod tests {
                 .is_ok()
         );
 
-        peer.expire_resources(after_then);
+        peer.handle_timeout(after_then);
 
         assert!(
             peer.classify_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
@@ -791,6 +783,31 @@ mod tests {
             peer.classify_resource(udp_packet.destination(), udp_packet.destination_protocol())
                 .is_err()
         );
+    }
+
+    #[test]
+    fn re_adding_resource_with_past_expiry_clears_it_on_next_handle_timeout() {
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_tun(),
+            gateway_tun(),
+            flow_tracker::ClientProperties::default(),
+        );
+        let now = Instant::now();
+
+        peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
+        assert!(peer.resources.contains_key(&foo_resource_id()));
+
+        // Re-add the same resource with an expiry that's already in the past.
+        let later = now + Duration::from_secs(30);
+        peer.add_resource(foo_dns_resource(), Some(now), later);
+
+        // Still present until the next `handle_timeout` call.
+        assert!(peer.resources.contains_key(&foo_resource_id()));
+
+        peer.handle_timeout(later);
+
+        assert!(!peer.resources.contains_key(&foo_resource_id()));
     }
 
     #[test]
@@ -837,8 +854,8 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        peer.add_resource(foo_dns_resource(), None);
-        peer.add_resource(bar_cidr_resource(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(bar_cidr_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
@@ -908,8 +925,8 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        peer.add_resource(foo_dns_resource(), None);
-        peer.add_resource(internet_resource(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(internet_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
@@ -965,7 +982,7 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
@@ -1038,7 +1055,7 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
@@ -1132,8 +1149,8 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        peer.add_resource(foo_dns_resource(), None);
-        peer.add_resource(baz_dns_resource(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(baz_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
@@ -1189,7 +1206,7 @@ mod tests {
             gateway_tun(),
             flow_tracker::ClientProperties::default(),
         );
-        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
@@ -1243,8 +1260,8 @@ mod tests {
             flow_tracker::ClientProperties::default(),
         );
 
-        peer.add_resource(foo_dns_resource(), None);
-        peer.add_resource(foo_dns_resource2(), None);
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.add_resource(foo_dns_resource2(), None, Instant::now());
 
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1548,7 +1565,7 @@ mod proptests {
             flow_tracker::ClientProperties::default(),
         );
         for (resource, _, _) in &resources {
-            peer.add_resource(resource.clone(), None);
+            peer.add_resource(resource.clone(), None, Instant::now());
         }
 
         for (_, protocol, dest) in &resources {
@@ -1612,6 +1629,7 @@ mod proptests {
                     filters: filters.clone(),
                 }),
                 None,
+                Instant::now(),
             );
         }
 
@@ -1677,6 +1695,7 @@ mod proptests {
                 filters,
             }),
             None,
+            Instant::now(),
         );
 
         assert!(
@@ -1745,6 +1764,7 @@ mod proptests {
                 filters: filters_allowed,
             }),
             None,
+            Instant::now(),
         );
 
         peer.add_resource(
@@ -1755,6 +1775,7 @@ mod proptests {
                 filters: filters_removed,
             }),
             None,
+            Instant::now(),
         );
         peer.remove_resource(&resource_id_removed);
 
