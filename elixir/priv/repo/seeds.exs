@@ -40,6 +40,8 @@ defmodule Portal.Repo.Seeds do
   @ua_windows "Windows/11.0.22631 connlib/1.4.1"
   @ua_ubuntu "Ubuntu/22.04 connlib/1.4.1"
   @ua_macos "Mac OS/14.1.0 apple-client/1.4.1 (arm64; 23.1.0)"
+  # Pinned >= 1.5.9: client-to-client connections are version-gated.
+  @ua_pool_member "Ubuntu/22.04 connlib/1.5.9"
 
   @initiator_user_agents [@ua_ios, @ua_android, @ua_windows, @ua_ubuntu, @ua_macos]
 
@@ -777,7 +779,7 @@ defmodule Portal.Repo.Seeds do
       context: %Authentication.Context{
         type: :client,
         remote_ip: {127, 0, 0, 1},
-        user_agent: "seeds/1"
+        user_agent: @ua_pool_member
       }
     }
 
@@ -885,7 +887,7 @@ defmodule Portal.Repo.Seeds do
         },
         pool_member_subject,
         pool_member_token.id,
-        @ua_ubuntu
+        @ua_pool_member
       )
 
     admin_encoded_client_token = Authentication.encode_fragment!(admin_client_token)
