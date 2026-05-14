@@ -235,50 +235,50 @@ url_api = "https://api.github.com/repos/kornelski/cargo-deb/releases/assets/4106
 github_attestations = "unavailable"
 
 [[tools."github:taiki-e/cargo-llvm-cov"]]
-version = "0.8.5"
+version = "0.6.21"
 backend = "github:taiki-e/cargo-llvm-cov"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-arm64"]
-checksum = "sha256:8248a6d5dcb47307c2ef6d5815f90bca07d04a6f1acd06b658f689cb2d8247d9"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-aarch64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377827059"
-provenance = "github-attestations"
+checksum = "sha256:8187c40fa3cbef6fe65e426bee24ddcfefee943dc68bdb0617f0293a092941af"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302796358"
+github_attestations = "unavailable"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-arm64-musl"]
-checksum = "sha256:bc14a4551e633b12ec89bb15469e6099b4ddc998a5d1bcad0fd95320b148a40f"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377827106"
-provenance = "github-attestations"
+checksum = "sha256:f7f3d23104f79dbc66831335f1e77e5fa12932f9b88d449a8170390c86e4d064"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-aarch64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302795822"
+github_attestations = "unavailable"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-x64"]
-checksum = "sha256:7e62d664f5133d43d33a3b11138c93feff98bd71e953ddc260ea8ddf360a37c6"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377825273"
-provenance = "github-attestations"
+checksum = "sha256:57f491aedf7cdb261538ceb49cbb1ee9d27df7ca205a5e1a009caaf5cb911afb"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302795845"
+github_attestations = "unavailable"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-x64-musl"]
-checksum = "sha256:e9fc23dbbdc502ee9267544f8c6e8e162c6d7df8fb2e3f62d8289a4c0bd240ce"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377826123"
-provenance = "github-attestations"
+checksum = "sha256:0fa9ac9953583fa993786b529ce9c828a2e548ee9d183f5e908a357157d030f0"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302795801"
+github_attestations = "unavailable"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.macos-arm64"]
-checksum = "sha256:816b6ff2c23ba569327d153189d7434afd501fc873cc0f5fbb0cfe412b97bc22"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377828171"
-provenance = "github-attestations"
+checksum = "sha256:623bab61799ab4de8a88e0bd8c5101133cb6a4377a0f22f06be91913f40a3ba9"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302796471"
+github_attestations = "unavailable"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.macos-x64"]
-checksum = "sha256:b8598f0ea19900f6dea3b3fd4214f1de96f1bff47eaa32a775643fc402cabad0"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377828328"
-provenance = "github-attestations"
+checksum = "sha256:0bae81daedc549de52691cab8ecc4c6bf9fb03d16eb693f6de4a871cfe1f2413"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302796569"
+github_attestations = "unavailable"
 
 [tools."github:taiki-e/cargo-llvm-cov"."platforms.windows-x64"]
-checksum = "sha256:62d3265ea30455fedc42eef4a7164cc3389195fa6fe97edf87caa102c0739bcd"
-url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-pc-windows-msvc.zip"
-url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377825876"
-provenance = "github-attestations"
+checksum = "sha256:521a638aec9f85dfdfafe705cb1fd8a34b518564ff9ff81cb79b8ffd1f0be5f1"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.6.21/cargo-llvm-cov-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/302796221"
+github_attestations = "unavailable"
 
 [[tools.node]]
 version = "24.13.0"
