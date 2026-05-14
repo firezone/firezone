@@ -73,11 +73,18 @@ for size in StoreLogo Square150x150Logo Square44x44Logo; do
     cp "$ICON_SRC" "$STAGING/Assets/${size}.png"
 done
 
+# MSYS / Git Bash auto-translates argv elements that look like POSIX
+# paths (`/foo`) into Windows paths (`C:\foo`) when invoking native
+# Windows binaries. MakeAppx uses `/d`, `/p`, `/nv`, `/o` etc. as
+# command-line *flags* — bare `/d` gets translated to `D:` and the
+# binary then complains `Unknown command line option: D:/`. The
+# escape convention is to prefix the flag with a second `/`; MSYS
+# strips it before exec and MakeAppx sees the original flag.
 "$MAKEAPPX" pack \
-    /d "$STAGING" \
-    /p "$OUTPUT_MSIX" \
-    /nv \
-    /o
+    //d "$STAGING" \
+    //p "$OUTPUT_MSIX" \
+    //nv \
+    //o
 
 if [ -x "$SIGN_SCRIPT" ]; then
     "$SIGN_SCRIPT" "$OUTPUT_MSIX"
