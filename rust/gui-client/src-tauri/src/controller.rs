@@ -287,7 +287,10 @@ impl<I: GuiIntegration> Controller<I> {
                     let client_msg = read.next().await;
 
                     if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
-                        tracing::debug!("Failed to handle IPC message from new GUI instance: {e:#}")
+                        tracing::debug!(
+                            "Failed to handle IPC message from new GUI instance: {e:#}"
+                        );
+                        continue;
                     }
 
                     if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
@@ -713,7 +716,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to read message")?;
 
         if self.gui_cookie != *client_msg.cookie() {
-            bail!("Cookie mismatch — possible cross-instance pipe-squat attempt");
+            bail!("Cookie mismatch: Refusing to process message");
         }
 
         match client_msg {
