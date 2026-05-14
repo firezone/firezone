@@ -41,6 +41,12 @@ For example, for Rust code, check `rust/AGENT.md`; for Elixir code, check `elixi
 ## Code contributions
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/) for PR titles. The static analysis workflow enforces a maximum length of 64 characters (see `.github/workflows/_static-analysis.yml`).
-- Keep PR descriptions minimal: concise prose explaining what is changing and why. No test plan section. Do not include links to the Claude session.
+- Keep PR descriptions minimal.
+  - Concise prose explaining what is changing **at a high level** and why.
+  - Do not describe the code changes that can be seen in the diff again in prose.
+  - Do not add a test plan section.
+  - Do not include links to the Claude session.
+  - Link relevant PRs / issues using `Related: #XXXX`
+  - Take inspiration from https://cbea.ms/git-commit; the squash-merged PRs will have the PR description as a commit message on main.
 - Run static analysis locally before committing.
 - If a required tool is missing, check whether `mise.toml` declares it and install it via `mise` rather than through another package manager.
