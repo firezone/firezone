@@ -177,11 +177,18 @@ pub fn create_or_read() -> Result<FirstInstance> {
         }
         Err(_) => {
             // Second instance: the process exits very shortly after
-            // the hand-off handshake, so the leaked `FdRwLock` (and
-            // its underlying file handle) is reclaimed by the OS
-            // without user-visible impact. Drop the reference
-            // explicitly to make the leak audit-trail obvious.
-            drop(lock);
+            // the hand-off handshake, so the `Box::leak`-ed
+            // `FdRwLock` and its underlying file handle are reclaimed
+            // by the OS without user-visible impact.
+            //
+            // We deliberately *don't* `drop(lock)` here. `lock` is a
+            // `&'static mut FdRwLock<File>`, and `lock.try_write()`
+            // above keeps that reference mutably borrowed across the
+            // whole `match` expression — calling `drop` on it would
+            // try to *move* it and fail to compile with "cannot move
+            // out of `lock` because it is borrowed". The variable
+            // simply falls out of scope at the end of this arm; the
+            // leaked allocation is what we want.
             let cookie = read_cookie_with_retry(&path)?;
             Ok(FirstInstance::No { cookie })
         }
