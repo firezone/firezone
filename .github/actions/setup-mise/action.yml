@@ -18,7 +18,7 @@ runs:
       run: echo "MISE_LOCKED=1" >> "$GITHUB_ENV"
     - shell: bash
       run: echo "MISE_DEBUG=1" >> "$GITHUB_ENV"
-    - shell: powershell
+    - shell: bash
       if: ${{ runner.os == 'Windows' }}
       run: echo "MISE_INSTALLS_DIR=C:\.mise-installs" >> "$GITHUB_ENV"
 
