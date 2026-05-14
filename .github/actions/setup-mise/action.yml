@@ -55,6 +55,7 @@ runs:
     # because reshim has nothing to copy into the shims directory. Install mise
     # manually from the upstream release zip, which contains both `mise.exe`
     # and `mise-shim.exe`.
+    # We can remove this once https://github.com/jdx/mise-action/issues/475 ships.
     - name: Install mise (Windows)
       if: ${{ runner.os == 'Windows' }}
       shell: pwsh
