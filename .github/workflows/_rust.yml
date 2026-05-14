@@ -39,6 +39,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
@@ -91,6 +93,8 @@ jobs:
       - uses: ./.github/actions/Qsetup-mise
         with:
           install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --verbose --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo udeps
 
@@ -121,6 +125,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: "cargo test"
         shell: bash
         run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
@@ -150,6 +156,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Tunnel proptest
         id: proptest
         shell: bash

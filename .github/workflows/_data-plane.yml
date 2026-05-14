@@ -249,6 +249,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build binaries
         run: |
           set -xe

@@ -38,6 +38,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd swift/apple swiftlint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
@@ -58,6 +60,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd swift/apple swiftlint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Check Swift formatting and linting
         run: mise run //swift/apple:check
 
@@ -108,6 +112,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd swift/apple swiftlint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.rust-targets }}
