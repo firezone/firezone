@@ -246,11 +246,9 @@ jobs:
         with:
           key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+      - uses: ./.github/actions/setup-mise
         with:
-          tool: bpf-linker,cargo-deb
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          install_args: --cd rust
       - name: Build binaries
         run: |
           set -xe

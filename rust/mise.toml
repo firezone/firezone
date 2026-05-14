@@ -13,6 +13,8 @@ NIGHTLY_VERSION = "nightly-2025-09-30"
 
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
+"github:kornelski/cargo-deb" = { version = "3.7.0", os = ["linux"] }
+"github:taiki-e/cargo-llvm-cov" = "0.8.5"
 
 # =============================================================================
 # Individual checks (matching CI)

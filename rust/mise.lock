@@ -8,21 +8,25 @@ backend = "github:DevinR528/cargo-sort"
 checksum = "sha256:c10fdf954e51221d63743884aaf6ee5d576464abdc4965b395e3ec26948072ee"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268442"
+github_attestations = "unavailable"
 
 [tools."github:DevinR528/cargo-sort"."platforms.linux-x64-musl"]
 checksum = "sha256:c10fdf954e51221d63743884aaf6ee5d576464abdc4965b395e3ec26948072ee"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268442"
+github_attestations = "unavailable"
 
 [tools."github:DevinR528/cargo-sort"."platforms.macos-arm64"]
 checksum = "sha256:d2091a14be8482d8771ac379ef46a9501d678cee000a5e855490009fad3a65a3"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268421"
+github_attestations = "unavailable"
 
 [tools."github:DevinR528/cargo-sort"."platforms.windows-x64"]
 checksum = "sha256:0c59ef2433e523e060909cdfa678969eaa81a44fdc4313cb5a1a9592e8ded2b3"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268766"
+github_attestations = "unavailable"
 
 [[tools."github:EmbarkStudios/cargo-deny"]]
 version = "0.19.4"
@@ -32,36 +36,43 @@ backend = "github:EmbarkStudios/cargo-deny"
 checksum = "sha256:c32ded194b38b48e0b44a838a0d85c856120801e1253fc7febf6f2e48ccb84d8"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-aarch64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396997007"
+github_attestations = "unavailable"
 
 [tools."github:EmbarkStudios/cargo-deny"."platforms.linux-arm64-musl"]
 checksum = "sha256:c32ded194b38b48e0b44a838a0d85c856120801e1253fc7febf6f2e48ccb84d8"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-aarch64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396997007"
+github_attestations = "unavailable"
 
 [tools."github:EmbarkStudios/cargo-deny"."platforms.linux-x64"]
 checksum = "sha256:3bd58b784e83715b86ddbc9deac591890372ec77fda5741bb0826970b958506f"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396996900"
+github_attestations = "unavailable"
 
 [tools."github:EmbarkStudios/cargo-deny"."platforms.linux-x64-musl"]
 checksum = "sha256:3bd58b784e83715b86ddbc9deac591890372ec77fda5741bb0826970b958506f"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396996900"
+github_attestations = "unavailable"
 
 [tools."github:EmbarkStudios/cargo-deny"."platforms.macos-arm64"]
 checksum = "sha256:2437a51d904b29abe2d3aa9ea87e353c86cff108d519ba1e5fb495bb28e7fbaf"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396996898"
+github_attestations = "unavailable"
 
 [tools."github:EmbarkStudios/cargo-deny"."platforms.macos-x64"]
 checksum = "sha256:90fb22528daae11d0ce68cd968ea1f8e4d852b33510d0243d8c6666fc1dbea16"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396996891"
+github_attestations = "unavailable"
 
 [tools."github:EmbarkStudios/cargo-deny"."platforms.windows-x64"]
 checksum = "sha256:410b2f2bcb4d802dd8b018939156617ca290ac06554e95c35ab0a2bd07be2298"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-pc-windows-msvc.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396997478"
+github_attestations = "unavailable"
 
 [[tools."github:aya-rs/bpf-linker"]]
 version = "0.10.3"
@@ -71,31 +82,37 @@ backend = "github:aya-rs/bpf-linker"
 checksum = "sha256:02f71967eddf61229fd0ae39736bfcaa00b27872df5af868b025f578371204d1"
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525950"
+github_attestations = "unavailable"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-arm64-musl"]
 checksum = "sha256:02f71967eddf61229fd0ae39736bfcaa00b27872df5af868b025f578371204d1"
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525950"
+github_attestations = "unavailable"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-x64"]
 checksum = "sha256:0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c"
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525972"
+github_attestations = "unavailable"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-x64-musl"]
 checksum = "sha256:0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c"
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525972"
+github_attestations = "unavailable"
 
 [tools."github:aya-rs/bpf-linker"."platforms.macos-arm64"]
 checksum = "sha256:983f86e20f5353c9645e6ee314dcd897133c613315b57b00c7e75ddb507ee6a3"
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525317"
+github_attestations = "unavailable"
 
 [tools."github:aya-rs/bpf-linker"."platforms.macos-x64"]
 checksum = "sha256:8dbea75f14d96e84a5fe7ce6120627e3c3511a49c406e76c14d187dc191ca528"
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395527257"
+github_attestations = "unavailable"
 
 [[tools."github:cargo-bins/cargo-binstall"]]
 version = "1.18.1"
@@ -105,36 +122,43 @@ backend = "github:cargo-bins/cargo-binstall"
 checksum = "sha256:f6ec6ac6e5782327863bcaa1b0acdd0ad81caee05c79b0074549829c41ffd52e"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-aarch64-unknown-linux-gnu.tgz"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392671"
+github_attestations = "unavailable"
 
 [tools."github:cargo-bins/cargo-binstall"."platforms.linux-arm64-musl"]
 checksum = "sha256:c55962a0115f9716b709216de7f8bdd59d6ba8738779e60b051b4593f677717a"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-aarch64-unknown-linux-musl.tgz"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392646"
+github_attestations = "unavailable"
 
 [tools."github:cargo-bins/cargo-binstall"."platforms.linux-x64"]
 checksum = "sha256:6cfb065d6a5ee29dea185e9878d1e055357744ec1339987ca34d6f86853d537a"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-x86_64-unknown-linux-gnu.tgz"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392385"
+github_attestations = "unavailable"
 
 [tools."github:cargo-bins/cargo-binstall"."platforms.linux-x64-musl"]
 checksum = "sha256:cf2a4b54494ea8555d6349685e9a301efc1051d9fba6308c76914b2486f8700f"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-x86_64-unknown-linux-musl.tgz"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392355"
+github_attestations = "unavailable"
 
 [tools."github:cargo-bins/cargo-binstall"."platforms.macos-arm64"]
 checksum = "sha256:955abf167994c90f3547e233edace4c0f794465dd4aa408249b38999aa5ca3cf"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-aarch64-apple-darwin.zip"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392739"
+github_attestations = "unavailable"
 
 [tools."github:cargo-bins/cargo-binstall"."platforms.macos-x64"]
 checksum = "sha256:e06370bec7143668653bb7c09d0b8b689fc703dd4fa58ec5847c4b571d8a490d"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-x86_64-apple-darwin.zip"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392447"
+github_attestations = "unavailable"
 
 [tools."github:cargo-bins/cargo-binstall"."platforms.windows-x64"]
 checksum = "sha256:89706aa5215c164d8d091597a470fee72308ac87e8553af395ea77db844a888c"
 url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/cargo-binstall-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392416"
+github_attestations = "unavailable"
 
 [[tools."github:est31/cargo-udeps"]]
 version = "0.1.61"
@@ -144,36 +168,117 @@ backend = "github:est31/cargo-udeps"
 checksum = "sha256:e59b967cfd4ee60fda5bc615f96e6702fde22641282decce662a6ba4e6d4b843"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-aarch64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407801768"
+github_attestations = "unavailable"
 
 [tools."github:est31/cargo-udeps"."platforms.linux-arm64-musl"]
 checksum = "sha256:d257553c03b36d2ee7e8028d622c80b1244fc512fabb2de058c1e0ceeb92169b"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-aarch64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407801801"
+github_attestations = "unavailable"
 
 [tools."github:est31/cargo-udeps"."platforms.linux-x64"]
 checksum = "sha256:458419d47f48bc177e9b895b06abdccb08613f8a2d1b6eaf1729e968c041e03b"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407801002"
+github_attestations = "unavailable"
 
 [tools."github:est31/cargo-udeps"."platforms.linux-x64-musl"]
 checksum = "sha256:27031ca3902390a1d793901d17ec073ac85297ab3477b13faea984e4c97de479"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407802602"
+github_attestations = "unavailable"
 
 [tools."github:est31/cargo-udeps"."platforms.macos-arm64"]
 checksum = "sha256:0ca49f226c268ff3f7d65e82dd471900b962e4dcb3e75793558e5f4287be2011"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407800985"
+github_attestations = "unavailable"
 
 [tools."github:est31/cargo-udeps"."platforms.macos-x64"]
 checksum = "sha256:0840c47e3ac640db8cf1ac9136c7a133eff68f07753a8a450363b95124d0ee34"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-x86_64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407802892"
+github_attestations = "unavailable"
 
 [tools."github:est31/cargo-udeps"."platforms.windows-x64"]
 checksum = "sha256:6920b6f493f0c13a28e32522ccb7efffcc57c8849d887366b19c599dc2238cc0"
 url = "https://github.com/est31/cargo-udeps/releases/download/v0.1.61/cargo-udeps-v0.1.61-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/est31/cargo-udeps/releases/assets/407804338"
+github_attestations = "unavailable"
+
+[[tools."github:kornelski/cargo-deb"]]
+version = "3.7.0"
+backend = "github:kornelski/cargo-deb"
+
+[tools."github:kornelski/cargo-deb"."platforms.linux-x64"]
+checksum = "sha256:e61273031c84b6ef2ca3fb259b594d34d2b592e1c6bc378c1249380c53e5b05e"
+url = "https://github.com/kornelski/cargo-deb/releases/download/v3.7.0/cargo-deb_3.7.0-1_amd64.deb"
+url_api = "https://api.github.com/repos/kornelski/cargo-deb/releases/assets/410682800"
+github_attestations = "unavailable"
+
+[tools."github:kornelski/cargo-deb"."platforms.linux-x64-musl"]
+checksum = "sha256:e61273031c84b6ef2ca3fb259b594d34d2b592e1c6bc378c1249380c53e5b05e"
+url = "https://github.com/kornelski/cargo-deb/releases/download/v3.7.0/cargo-deb_3.7.0-1_amd64.deb"
+url_api = "https://api.github.com/repos/kornelski/cargo-deb/releases/assets/410682800"
+github_attestations = "unavailable"
+
+[tools."github:kornelski/cargo-deb"."platforms.macos-x64"]
+checksum = "sha256:e61273031c84b6ef2ca3fb259b594d34d2b592e1c6bc378c1249380c53e5b05e"
+url = "https://github.com/kornelski/cargo-deb/releases/download/v3.7.0/cargo-deb_3.7.0-1_amd64.deb"
+url_api = "https://api.github.com/repos/kornelski/cargo-deb/releases/assets/410682800"
+github_attestations = "unavailable"
+
+[tools."github:kornelski/cargo-deb"."platforms.windows-x64"]
+checksum = "sha256:e61273031c84b6ef2ca3fb259b594d34d2b592e1c6bc378c1249380c53e5b05e"
+url = "https://github.com/kornelski/cargo-deb/releases/download/v3.7.0/cargo-deb_3.7.0-1_amd64.deb"
+url_api = "https://api.github.com/repos/kornelski/cargo-deb/releases/assets/410682800"
+github_attestations = "unavailable"
+
+[[tools."github:taiki-e/cargo-llvm-cov"]]
+version = "0.8.5"
+backend = "github:taiki-e/cargo-llvm-cov"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-arm64"]
+checksum = "sha256:8248a6d5dcb47307c2ef6d5815f90bca07d04a6f1acd06b658f689cb2d8247d9"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377827059"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-arm64-musl"]
+checksum = "sha256:bc14a4551e633b12ec89bb15469e6099b4ddc998a5d1bcad0fd95320b148a40f"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-aarch64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377827106"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-x64"]
+checksum = "sha256:7e62d664f5133d43d33a3b11138c93feff98bd71e953ddc260ea8ddf360a37c6"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377825273"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.linux-x64-musl"]
+checksum = "sha256:e9fc23dbbdc502ee9267544f8c6e8e162c6d7df8fb2e3f62d8289a4c0bd240ce"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377826123"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.macos-arm64"]
+checksum = "sha256:816b6ff2c23ba569327d153189d7434afd501fc873cc0f5fbb0cfe412b97bc22"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377828171"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.macos-x64"]
+checksum = "sha256:b8598f0ea19900f6dea3b3fd4214f1de96f1bff47eaa32a775643fc402cabad0"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377828328"
+provenance = "github-attestations"
+
+[tools."github:taiki-e/cargo-llvm-cov"."platforms.windows-x64"]
+checksum = "sha256:62d3265ea30455fedc42eef4a7164cc3389195fa6fe97edf87caa102c0739bcd"
+url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.8.5/cargo-llvm-cov-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/taiki-e/cargo-llvm-cov/releases/assets/377825876"
+provenance = "github-attestations"
 
 [[tools.node]]
 version = "24.13.0"
