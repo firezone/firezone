@@ -63,9 +63,47 @@ fn main() -> Result<()> {
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
+    // Launch-lock hand-off smoke test. No tunnel service or display
+    // server required — the subcommand only drives the lock + GUI IPC
+    // pipe.
+    single_instance_test(&app)?;
+
     if cli.manual_tests {
         manual_tests(&app)?;
     }
+
+    Ok(())
+}
+
+/// Spawn two `debug single-instance` invocations back-to-back and
+/// assert that:
+///
+/// - The first acquires the launch lock and binds the GUI IPC pipe.
+/// - The second observes the lock held, connects to the pipe, sends
+///   `NewInstance`, awaits `Ack`, and exits 0.
+/// - The first then exits 0 after acking the second.
+///
+/// Both subprocesses are wrapped in a `wait_timeout` so a hang in
+/// either side fails CI loudly instead of stalling the runner.
+fn single_instance_test(app: &App) -> Result<()> {
+    tracing::info!("Running launch-lock single-instance smoke test");
+
+    let first = app.gui_command(&["debug", "single-instance"])?.start()?;
+
+    // Give the first process a moment to acquire the lock and bind the
+    // pipe before we race a second invocation against it.
+    std::thread::sleep(Duration::from_millis(500));
+
+    let second = app.gui_command(&["debug", "single-instance"])?.start()?;
+    let second_status = second
+        .wait_timeout(Duration::from_secs(10))?
+        .context("Second instance timed out")?;
+    second_status.fz_exit_ok().context("Second instance")?;
+
+    let first_status = first
+        .wait_timeout(Duration::from_secs(10))?
+        .context("First instance timed out")?;
+    first_status.fz_exit_ok().context("First instance")?;
 
     Ok(())
 }
