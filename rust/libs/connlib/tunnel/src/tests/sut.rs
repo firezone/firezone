@@ -300,29 +300,6 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now);
             }
-            Transition::SendIcmpPacketToDevice {
-                client_id,
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let packet = ip_packet::make::icmp_request_packet(
-                    src,
-                    IpAddr::V4(dst),
-                    seq.0,
-                    identifier.0,
-                    &payload.to_be_bytes(),
-                )
-                .unwrap();
-
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
-
-                buffered_transmits.push_from(transmit, client, now);
-            }
             Transition::SendUdpPacket {
                 client_id,
                 src,
@@ -1168,7 +1145,10 @@ impl TunnelTest {
                         .inner()
                         .sut
                         .tunnel_ip_config()
-                        .is_some_and(|tun| tun.is_ip(ip))
+                        .is_some_and(|tun| match ip {
+                            std::net::IpAddr::V4(v4) => tun.v4 == v4,
+                            std::net::IpAddr::V6(v6) => tun.v6 == v6,
+                        })
                 });
 
                 match maybe_remote_client {
@@ -1180,6 +1160,15 @@ impl TunnelTest {
                         let (preshared_key, local_client_ice, remote_client_ice) =
                             make_preshared_key_and_ice(src_key, remote_key);
 
+                        let pool_filters = portal
+                            .static_device_pool_filters(resource_id)
+                            .unwrap_or_default();
+
+                        let remote_authorization = crate::messages::client::ResourceAuthorization {
+                            resource_id,
+                            filters: pool_filters,
+                            expires_at: None,
+                        };
                         remote_client.exec_mut(|c| {
                             c.sut
                                 .handle_client_device_access_authorized(
@@ -1190,6 +1179,7 @@ impl TunnelTest {
                                     remote_client_ice.clone(),
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
+                                    Some(remote_authorization),
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client {
@@ -1213,6 +1203,7 @@ impl TunnelTest {
                                     local_client_ice,
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
+                                    None,
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client { id: src, error })?;
@@ -1221,9 +1212,6 @@ impl TunnelTest {
                         })?;
                     }
                     None => {
-                        // The proptest only samples `SendIcmpPacketToDevice` for destinations
-                        // that are online clients (see `pool_routed_other_client_tun_ips`),
-                        // so this branch shouldn't fire.
                         unreachable!(
                             "device-connection intent for offline destination ip={ip} resource_id={resource_id}"
                         )

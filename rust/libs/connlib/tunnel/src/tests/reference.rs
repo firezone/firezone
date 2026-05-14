@@ -671,24 +671,19 @@ impl ReferenceState {
             .with_if_not_empty(5, state.pool_routed_other_client_tun_ips(), |ips| {
                 let clients = state.clients.clone();
 
-                (
-                    sample::select(ips),
-                    any::<u16>(),
-                    any::<u16>(),
-                    any::<u64>(),
-                )
-                    .prop_map(move |((src_id, dst_ip), seq, id, payload)| {
-                        let tunnel_ip4 = clients.get(&src_id).unwrap().inner().tunnel_ip4;
+                sample::select(ips).prop_flat_map(move |(src_id, dst_ip, filters)| {
+                    let inner = clients.get(&src_id).unwrap().inner();
+                    let src_ip = match dst_ip {
+                        IpAddr::V4(_) => IpAddr::V4(inner.tunnel_ip4),
+                        IpAddr::V6(_) => IpAddr::V6(inner.tunnel_ip6),
+                    };
 
-                        Transition::SendIcmpPacketToDevice {
-                            client_id: src_id,
-                            src: IpAddr::V4(tunnel_ip4),
-                            dst: dst_ip,
-                            seq: Seq(seq),
-                            identifier: Identifier(id),
-                            payload,
-                        }
-                    })
+                    // TCP-to-peer would require an l3-tcp server on the
+                    // simulated client to satisfy SYN handshakes; until that
+                    // exists we restrict to ICMP/UDP, which the simple echo
+                    // path on sim_client already covers.
+                    icmp_or_udp_packet_for_filters(src_id, Just(src_ip), Just(dst_ip), filters)
+                })
             })
             .boxed()
     }
@@ -827,20 +822,24 @@ impl ReferenceState {
                 identifier,
                 payload,
                 ..
-            } => state
-                .clients
-                .get_mut(client_id)
-                .unwrap()
-                .exec_mut(|client| {
-                    client.on_icmp_packet(
-                        dst.clone(),
-                        *seq,
-                        *identifier,
-                        *payload,
-                        |r| state.portal.gateway_for_resource(r).copied(),
-                        |ip| state.portal.gateway_by_ip(ip),
-                    )
-                }),
+            } => {
+                let client_ip_to_id = state.client_ip_to_id();
+                state
+                    .clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| {
+                        client.on_icmp_packet(
+                            dst.clone(),
+                            *seq,
+                            *identifier,
+                            *payload,
+                            |r| state.portal.gateway_for_resource(r).copied(),
+                            |ip| state.portal.gateway_by_ip(ip),
+                            |ip| client_ip_to_id.get(&ip).copied(),
+                        )
+                    });
+            }
             Transition::SendUdpPacket {
                 client_id,
                 dst,
@@ -849,6 +848,7 @@ impl ReferenceState {
                 payload,
                 ..
             } => {
+                let client_ip_to_id = state.client_ip_to_id();
                 state
                     .clients
                     .get_mut(client_id)
@@ -861,6 +861,7 @@ impl ReferenceState {
                             *payload,
                             |r| state.portal.gateway_for_resource(r).copied(),
                             |ip| state.portal.gateway_by_ip(ip),
+                            |ip| client_ip_to_id.get(&ip).copied(),
                         )
                     });
             }
@@ -870,13 +871,18 @@ impl ReferenceState {
                 dst,
                 sport,
                 dport,
-            } => state
-                .clients
-                .get_mut(client_id)
-                .unwrap()
-                .exec_mut(|client| {
-                    client.on_connect_tcp(*src, dst.clone(), *sport, *dport);
-                }),
+            } => {
+                let client_ip_to_id = state.client_ip_to_id();
+                state
+                    .clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| {
+                        client.on_connect_tcp(*src, dst.clone(), *sport, *dport, |ip| {
+                            client_ip_to_id.get(&ip).copied()
+                        });
+                    });
+            }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.set_system_dns_resolvers(servers));
@@ -945,34 +951,6 @@ impl ReferenceState {
                     domain.clone(),
                     BTreeMap::from([(now, records.clone())]),
                 )]));
-            }
-            Transition::SendIcmpPacketToDevice {
-                client_id,
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let Some((remote_id, _)) = state
-                    .clients
-                    .iter()
-                    .find(|(_, c)| c.inner().tunnel_ip4 == *dst)
-                else {
-                    return state;
-                };
-
-                let remote_id = *remote_id;
-
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_icmp_packet_to_device(
-                        remote_id,
-                        Destination::IpAddr(IpAddr::V4(*dst)),
-                        *seq,
-                        *identifier,
-                        *payload,
-                    );
-                })
             }
         };
 
@@ -1260,25 +1238,6 @@ impl ReferenceState {
                 has_resource && has_gateway_for_resource && !has_tcp_connection
             }
             Transition::UpdateDnsRecords { .. } => true,
-
-            Transition::SendIcmpPacketToDevice {
-                client_id,
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state
-                        .pool_routed_other_client_tun_ips()
-                        .iter()
-                        .any(|(src, ip)| src == client_id && ip == dst)
-            }
         }
     }
 
@@ -1360,6 +1319,18 @@ impl ReferenceState {
         self.clients
             .values()
             .flat_map(|c| c.inner().all_resource_ids())
+            .collect()
+    }
+
+    /// Map of every client's tunnel IPs (v4 and v6) to its `ClientId`.
+    fn client_ip_to_id(&self) -> BTreeMap<IpAddr, ClientId> {
+        self.clients
+            .iter()
+            .flat_map(|(id, c)| {
+                let ip4 = IpAddr::V4(c.inner().tunnel_ip4);
+                let ip6 = IpAddr::V6(c.inner().tunnel_ip6);
+                [(ip4, *id), (ip6, *id)]
+            })
             .collect()
     }
 
@@ -1858,15 +1829,18 @@ impl ReferenceState {
 
     /// Generates a list of `(src_client_id, dst_ipv4)` tuples where `dst_ipv4` is the tunnel
     /// IPv4 of an online client reachable from `src_client_id` via a static device pool whose
-    /// filters allow ICMP.
-    ///
-    /// Static device pools are the only routing path between clients now, so this is the
-    /// only sampling that produces an ICMP handshake we can predict.
-    fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, Ipv4Addr)> {
-        let online_ips_by_id: BTreeMap<ClientId, Ipv4Addr> = self
+    /// filters allow ICMP, paired with the pool filters that authorize the route.
+    fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
+        let online_ips_by_id: BTreeMap<ClientId, (IpAddr, IpAddr)> = self
             .clients
             .iter()
-            .map(|(id, c)| (*id, c.inner().tunnel_ip4))
+            .map(|(id, c)| {
+                let inner = c.inner();
+                (
+                    *id,
+                    (IpAddr::V4(inner.tunnel_ip4), IpAddr::V6(inner.tunnel_ip6)),
+                )
+            })
             .collect();
 
         self.clients
@@ -1886,11 +1860,19 @@ impl ReferenceState {
                         | client::Resource::Internet(_)
                         | client::Resource::DynamicDevicePool(_) => None,
                     })
-                    .filter(|pool| pool_filters_allow_icmp(&pool.filters))
-                    .flat_map(|pool| pool.devices)
-                    .filter(move |device| device.id != src_id)
-                    .filter_map(move |device| {
-                        online_ips_by_id.get(&device.id).map(|ip| (src_id, *ip))
+                    .filter(|pool| pool_filters_allow_icmp_or_udp(&pool.filters))
+                    .flat_map(|pool| {
+                        let filters = pool.filters.clone();
+                        pool.devices
+                            .into_iter()
+                            .map(move |device| (device, filters.clone()))
+                    })
+                    .filter(move |(device, _)| device.id != src_id)
+                    .flat_map(move |(device, filters)| {
+                        let entry = online_ips_by_id.get(&device.id).copied();
+                        entry.into_iter().flat_map(move |(v4, v6)| {
+                            [(src_id, v4, filters.clone()), (src_id, v6, filters.clone())]
+                        })
                     })
             })
             .collect()
@@ -1931,6 +1913,9 @@ impl fmt::Debug for PrivateKey {
     }
 }
 
-fn pool_filters_allow_icmp(filters: &[Filter]) -> bool {
-    filters.is_empty() || filters.iter().any(|f| matches!(f, Filter::Icmp))
+fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
+    filters.is_empty()
+        || filters
+            .iter()
+            .any(|f| matches!(f, Filter::Icmp | Filter::Udp(_)))
 }

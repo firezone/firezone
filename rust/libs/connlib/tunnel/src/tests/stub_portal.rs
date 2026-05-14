@@ -386,6 +386,18 @@ impl StubPortal {
         Some(pool.clone())
     }
 
+    pub(crate) fn static_device_pool_filters(
+        &self,
+        pool_id: ResourceId,
+    ) -> Option<Vec<crate::messages::Filter>> {
+        Some(
+            self.static_device_pool_resources
+                .get(&pool_id)?
+                .filters
+                .clone(),
+        )
+    }
+
     pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             self.sites_by_resource.insert(rid, site.id);

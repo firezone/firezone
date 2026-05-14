@@ -79,16 +79,6 @@ pub(crate) enum Transition {
         dport: DPort,
     },
 
-    /// Send an ICMP packet to another client.
-    SendIcmpPacketToDevice {
-        client_id: ClientId,
-        src: IpAddr,
-        dst: Ipv4Addr,
-        seq: Seq,
-        identifier: Identifier,
-        payload: u64,
-    },
-
     /// Send a DNS query.
     SendDnsQueries(Vec<(ClientId, DnsQuery)>),
 
@@ -165,7 +155,6 @@ impl Transition {
             Transition::SendIcmpPacket { .. }
             | Transition::SendUdpPacket { .. }
             | Transition::ConnectTcp { .. }
-            | Transition::SendIcmpPacketToDevice { .. }
             | Transition::SendDnsQueries(_)
             | Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
@@ -457,14 +446,16 @@ where
 /// When `filters` is non-empty and contains TCP entries, this generates:
 /// - With 80% probability: a connection to a port within one of the TCP filter ranges.
 /// - With 20% probability: an unconstrained connection (any non-DNS, non-zero port).
-pub(crate) fn connect_tcp_for_filters<I>(
+#[expect(private_bounds)]
+pub(crate) fn connect_tcp_for_filters<I, D>(
     client_id: ClientId,
     src: impl Strategy<Value = I> + Clone + 'static,
-    dst: impl Strategy<Value = DomainName> + Clone + 'static,
+    dst: impl Strategy<Value = D> + Clone + 'static,
     filters: Vec<Filter>,
 ) -> BoxedStrategy<Transition>
 where
     I: Into<IpAddr> + 'static,
+    D: Into<PacketDestination> + 'static,
 {
     let any_tcp = connect_tcp(
         client_id,
@@ -510,27 +501,28 @@ where
     .boxed()
 }
 
-fn connect_tcp<I>(
+fn connect_tcp<I, D>(
     client_id: ClientId,
     src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = DomainName>,
+    dst: impl Strategy<Value = D>,
     dport: impl Strategy<Value = u16>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
+    D: Into<PacketDestination>,
 {
     (
         src.prop_map(Into::into),
-        dst,
+        dst.prop_map(Into::into),
         any::<NonZeroU16>().prop_map(|p| p.get()),
         dport,
         any::<sample::Selector>(),
     )
         .prop_map(
-            move |(src, name, sport, dport, resolved_ip)| Transition::ConnectTcp {
+            move |(src, dst, sport, dport, resolved_ip)| Transition::ConnectTcp {
                 client_id,
                 src,
-                dst: Destination::DomainName { resolved_ip, name },
+                dst: dst.into_destination(resolved_ip),
                 sport: SPort(sport),
                 dport: DPort(dport),
             },
