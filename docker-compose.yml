@@ -115,7 +115,7 @@ services:
         condition: "service_healthy"
 
   # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
-  client:
+  client-1:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
       <<: *health-check
@@ -160,19 +160,19 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      client-router:
+      client-1-router:
         condition: "service_healthy"
       portal:
         condition: "service_healthy"
     networks:
-      client-internal:
+      client-1-internal:
         ipv4_address: 172.30.0.100
         ipv6_address: 172:30:0::100
     extra_hosts:
       - "portal:203.0.113.10"
       - "portal:203:0:113::10"
 
-  client-router:
+  client-1-router:
     extends:
       file: scripts/compose/router.yml
       service: router
@@ -180,14 +180,14 @@ services:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
       NETWORK_LATENCY_MS: 10
     networks:
-      client-internal:
+      client-1-internal:
         ipv4_address: 172.30.0.254
         ipv6_address: 172:30:0::254
         interface_name: internal
       internet:
         interface_name: internet
 
-  client-pool-member:
+  client-2:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
       <<: *health-check
@@ -232,19 +232,19 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      pool-member-router:
+      client-2-router:
         condition: "service_healthy"
       portal:
         condition: "service_healthy"
     networks:
-      pool-member-internal:
+      client-2-internal:
         ipv4_address: 172.32.0.100
         ipv6_address: 172:32:0::100
     extra_hosts:
       - "portal:203.0.113.10"
       - "portal:203:0:113::10"
 
-  pool-member-router:
+  client-2-router:
     extends:
       file: scripts/compose/router.yml
       service: router
@@ -252,7 +252,7 @@ services:
       MASQUERADE_TYPE: ${POOL_MEMBER_MASQUERADE:-}
       NETWORK_LATENCY_MS: 10
     networks:
-      pool-member-internal:
+      client-2-internal:
         ipv4_address: 172.32.0.254
         ipv6_address: 172:32:0::254
         interface_name: internal
@@ -491,11 +491,11 @@ services:
         condition: "service_healthy"
       gateway-router:
         condition: "service_healthy"
-      client-router:
+      client-1-router:
         condition: "service_healthy"
       gateway:
         condition: "service_healthy"
-      client:
+      client-1:
         condition: "service_healthy"
 
   otel:
@@ -533,14 +533,14 @@ networks:
         - subnet: 172.29.2.0/24
         - subnet: 172:29:2::/64
 
-  client-internal:
+  client-1-internal:
     enable_ipv6: true
     ipam:
       config:
         - subnet: 172.30.0.0/24
         - subnet: 172:30:0::/64
 
-  pool-member-internal:
+  client-2-internal:
     enable_ipv6: true
     ipam:
       config:

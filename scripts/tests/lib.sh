@@ -3,7 +3,7 @@
 set -euox pipefail
 
 function client() {
-    docker compose exec -T client "$@"
+    docker compose exec -T client-1 "$@"
 }
 
 function gateway() {
@@ -18,8 +18,8 @@ function relay2() {
     docker compose exec -T relay-2 "$@"
 }
 
-function pool_member() {
-    docker compose exec -T client-pool-member "$@"
+function client2() {
+    docker compose exec -T client-2 "$@"
 }
 
 function client_curl() {
