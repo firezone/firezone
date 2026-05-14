@@ -207,9 +207,11 @@ defmodule Portal.Repo.Seeds do
           firezone_id: firezone_id,
           identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
           device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
-          device_serial: attrs["device_serial"] || attrs[:device_serial]
+          device_serial: attrs["device_serial"] || attrs[:device_serial],
+          ipv4: attrs["ipv4"] || attrs[:ipv4],
+          ipv6: attrs["ipv6"] || attrs[:ipv6]
         },
-        [:name, :firezone_id, :identifier_for_vendor, :device_uuid, :device_serial]
+        [:name, :firezone_id, :identifier_for_vendor, :device_uuid, :device_serial, :ipv4, :ipv6]
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
@@ -876,7 +878,10 @@ defmodule Portal.Repo.Seeds do
           # Headless client hashes its FIREZONE_ID before sending it; the seeded row must match.
           firezone_id: :crypto.hash(:sha256, pool_member_firezone_id) |> Base.encode16(case: :lower),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          device_uuid: "POOL-#{Ecto.UUID.generate()}"
+          device_uuid: "POOL-#{Ecto.UUID.generate()}",
+          # Pinned so the static-device-pool test can target a known tun IP.
+          ipv4: "100.64.0.2",
+          ipv6: "fd00:2021:1111::2"
         },
         pool_member_subject,
         pool_member_token.id,

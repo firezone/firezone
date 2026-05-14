@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 
 # In static device pools the member is addressed by its tun IP.
-# Finds the tun IP of the pool member, pings it and asserts the gateway saw no flow, proving the P2P path.
+# Pings the pool member at its pinned tun IP and asserts the gateway saw no flow, proving the P2P path.
 
 source "./scripts/tests/lib.sh"
 
-echo "# Wait for pool member to bring up its tun interface with an IPv4 address"
-client2 timeout 30 sh -c "until ip -4 -o addr show tun-firezone 2>/dev/null | grep -q inet; do sleep 0.2; done"
-
-echo "# Discover the pool member's tunnel IPv4"
-pool_member_ip="$(client2 sh -c "ip -4 -o addr show tun-firezone | awk '{split(\$4,a,\"/\"); print a[1]}'")"
-assert_ne "$pool_member_ip" ""
+# Matches the ipv4 pinned for the pool member device in elixir/priv/repo/seeds.exs
+pool_member_ip="100.64.0.2"
 
 echo "# Primary client should be able to ping the pool member at $pool_member_ip"
 client_ping "$pool_member_ip"
