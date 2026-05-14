@@ -264,8 +264,8 @@ fn pipe_sddl(id: SocketId) -> Result<String> {
                 // the pipe. `TokenLogonSid` is empty in some service
                 // contexts; degrade to the user SID there so the GUI
                 // still works under headless smoke-test harnesses.
-                let scope_sid = cached_current_logon_sid_string()
-                    .or_else(|_| cached_current_user_sid_string())
+                let scope_sid = current_logon_sid_string()
+                    .or_else(|_| current_user_sid_string())
                     .context("Failed to obtain current logon/user SID for GUI pipe DACL")?;
                 sddl.push_str(&format!(
                     "(XA;;FRFW;;;{pkg};(Member_of {{SID({scope})}}))",
@@ -311,47 +311,13 @@ fn package_identity_active() -> bool {
 }
 
 // `GetCurrentPackageFullName` is exported from `kernel32.dll` (it
-// dispatches to `apphelp.dll` internally). The bare `#[link]` block
-// here is what the `windows-link` crate's `link!()` macro would
-// expand to, but with one fewer dependency in the tree. Pulling in
-// the `Win32_Storage_Packaging_Appx` `windows` feature would also
-// work but drags in every AppX/MSIX type for one symbol.
-#[link(name = "kernel32")]
-unsafe extern "system" {
-    fn GetCurrentPackageFullName(
-        package_full_name_length: *mut u32,
-        package_full_name: *mut u16,
-    ) -> u32;
-}
-
-/// Cached wrapper around [`windows_security::current_user_sid_string`].
-///
-/// The SID doesn't change for the life of the process, and we compose it
-/// into the GUI-pipe filename + DACL builder on every `accept` cycle —
-/// caching saves a `OpenProcessToken` round-trip per accept without
-/// changing the underlying Win32 calls.
-fn cached_current_user_sid_string() -> Result<String> {
-    static CACHE: OnceLock<String> = OnceLock::new();
-    if let Some(sid) = CACHE.get() {
-        return Ok(sid.clone());
-    }
-    let sid = current_user_sid_string()?;
-    let _ = CACHE.set(sid.clone());
-    Ok(sid)
-}
-
-/// Cached wrapper around [`windows_security::current_logon_sid_string`].
-/// Same rationale as [`cached_current_user_sid_string`] — the logon SID
-/// is fixed for the lifetime of the process.
-fn cached_current_logon_sid_string() -> Result<String> {
-    static CACHE: OnceLock<String> = OnceLock::new();
-    if let Some(sid) = CACHE.get() {
-        return Ok(sid.clone());
-    }
-    let sid = current_logon_sid_string()?;
-    let _ = CACHE.set(sid.clone());
-    Ok(sid)
-}
+// dispatches to `apphelp.dll` internally). Use `windows-link` rather
+// than pulling in the `Win32_Storage_Packaging_Appx` `windows` feature
+// which would drag in every AppX/MSIX type for one symbol.
+windows_link::link!("kernel32.dll" "system" fn GetCurrentPackageFullName(
+    package_full_name_length: *mut u32,
+    package_full_name: *mut u16,
+) -> u32);
 
 /// Named pipe for an IPC connection.
 ///
@@ -374,7 +340,7 @@ fn ipc_path(id: SocketId) -> String {
 }
 
 fn current_user_hash() -> Result<String> {
-    let user = cached_current_user_sid_string()?;
+    let user = current_user_sid_string()?;
     let digest = Sha256::digest(user.as_bytes());
     Ok(hex::encode(&digest[..8]))
 }

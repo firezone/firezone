@@ -157,7 +157,25 @@ fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
 /// [`OwnedHandle`]; the `LocalFree` on the SID buffer is handled
 /// internally so callers don't have to think about Windows lifetime
 /// rules.
+///
+/// Cached in a `thread_local` so repeated calls from the same thread
+/// don't re-issue the Win32 round-trip. The cache is keyed on success
+/// — failures are not memoised, so a transient error doesn't poison
+/// the slot for the life of the thread.
 pub fn current_user_sid_string() -> Result<String> {
+    thread_local! {
+        static CACHE: std::cell::OnceCell<String> = const { std::cell::OnceCell::new() };
+    }
+    CACHE.with(|cell| {
+        if let Some(sid) = cell.get() {
+            return Ok(sid.clone());
+        }
+        let sid = read_current_user_sid_string()?;
+        Ok(cell.get_or_init(|| sid).clone())
+    })
+}
+
+fn read_current_user_sid_string() -> Result<String> {
     let token = open_current_process_token()?;
     let buf = read_token_information(&token, TokenUser)?;
 
@@ -177,7 +195,22 @@ pub fn current_user_sid_string() -> Result<String> {
 /// entry (background services, scheduled tasks running as `LocalSystem`,
 /// some sandboxed processes). Callers that need to gracefully degrade
 /// should fall back to [`current_user_sid_string`] on error.
+///
+/// Cached in a `thread_local`; see [`current_user_sid_string`].
 pub fn current_logon_sid_string() -> Result<String> {
+    thread_local! {
+        static CACHE: std::cell::OnceCell<String> = const { std::cell::OnceCell::new() };
+    }
+    CACHE.with(|cell| {
+        if let Some(sid) = cell.get() {
+            return Ok(sid.clone());
+        }
+        let sid = read_current_logon_sid_string()?;
+        Ok(cell.get_or_init(|| sid).clone())
+    })
+}
+
+fn read_current_logon_sid_string() -> Result<String> {
     let token = open_current_process_token()?;
     let buf = read_token_information(&token, TokenLogonSid)?;
 

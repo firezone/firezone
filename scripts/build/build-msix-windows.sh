@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Pack the Firezone sparse MSIX manifest into a signed `.msix` and
-# place it where the Tauri/WiX bundler will pick it up
-# (`../../firezone.msix` relative to `win_files/`).
+# place it where the Tauri/WiX bundler picks it up (`target/release/
+# firezone.msix`).
 #
-# Run from the Tauri build pipeline via
-# `tauri.windows.conf.json:beforeBundleCommand`. Requires:
+# Driven from `tauri-pre-bundle-windows.sh`, which the Tauri build
+# pipeline invokes via `tauri.windows.conf.json:beforeBundleCommand`.
+# Requires:
 #
 # - MakeAppx.exe in PATH (or under `WIX_PATH`/`WindowsSdkPath`)
 # - AzureSignTool configured via `scripts/build/sign.sh`'s env vars.
@@ -13,18 +14,17 @@ set -euxo pipefail
 
 # Resolve paths regardless of which cwd Tauri invoked us from.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_TAURI_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-WORKSPACE_ROOT="$(cd "$SRC_TAURI_DIR/../../.." && pwd)"
-SIGN_SCRIPT="$WORKSPACE_ROOT/scripts/build/sign.sh"
+WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SRC_TAURI_DIR="$WORKSPACE_ROOT/rust/gui-client/src-tauri"
+SIGN_SCRIPT="$SCRIPT_DIR/sign.sh"
 TARGET_DIR="$WORKSPACE_ROOT/rust/target/release"
 OUTPUT_MSIX="$TARGET_DIR/firezone.msix"
-MANIFEST="$SCRIPT_DIR/AppxManifest.xml"
+MANIFEST="$SRC_TAURI_DIR/win_files/AppxManifest.xml"
 
-echo "build-msix.sh: PWD=$(pwd)"
-echo "build-msix.sh: SCRIPT_DIR=$SCRIPT_DIR"
-echo "build-msix.sh: WORKSPACE_ROOT=$WORKSPACE_ROOT"
-echo "build-msix.sh: TARGET_DIR=$TARGET_DIR"
-echo "build-msix.sh: TARGET_DIR contents:"
+echo "build-msix-windows.sh: PWD=$(pwd)"
+echo "build-msix-windows.sh: WORKSPACE_ROOT=$WORKSPACE_ROOT"
+echo "build-msix-windows.sh: TARGET_DIR=$TARGET_DIR"
+echo "build-msix-windows.sh: TARGET_DIR contents:"
 ls -la "$TARGET_DIR" 2>&1 | head -40 || true
 
 # Locate MakeAppx.exe. The Windows SDK is preinstalled on the
