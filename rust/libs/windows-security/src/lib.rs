@@ -16,7 +16,7 @@ use std::ffi::c_void;
 use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows::{
     Win32::{
-        Foundation::{ERROR_SUCCESS, HANDLE, HLOCAL, LocalFree},
+        Foundation::{CloseHandle, ERROR_SUCCESS, HANDLE, HLOCAL, LocalFree},
         Security::{
             ACL,
             Authorization::{
@@ -24,8 +24,9 @@ use windows::{
                 SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
             DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, GetTokenInformation,
-            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY,
-            TOKEN_USER, TokenUser,
+            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+            SID_AND_ATTRIBUTES, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_USER,
+            TokenLogonSid, TokenUser,
         },
         System::Threading::{GetCurrentProcess, OpenProcessToken},
     },
@@ -149,42 +150,99 @@ fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
 }
 
-/// Returns the calling process's primary-user SID in SDDL string form
-/// (e.g. `"S-1-5-21-..."`).
-///
-/// Built on `OpenProcessToken` + `GetTokenInformation(TokenUser)` +
-/// `ConvertSidToStringSidW`; the `LocalFree` on the SID buffer is handled
-/// internally so callers don't have to think about Windows lifetime rules.
-pub fn current_user_sid_string() -> Result<String> {
+/// RAII wrapper around a `HANDLE` opened by `OpenProcessToken` (or
+/// similar). Unlike the `GetCurrentProcess` pseudo-handle, real token
+/// handles must be released with `CloseHandle` — without this wrapper
+/// each call to `current_user_sid_string` leaks a kernel handle.
+struct OwnedHandle(HANDLE);
+
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        if !self.0.is_invalid() {
+            // SAFETY: `self.0` was produced by `OpenProcessToken`; the
+            // wrapper is the sole owner.
+            let _ = unsafe { CloseHandle(self.0) };
+        }
+    }
+}
+
+fn open_current_process_token() -> Result<OwnedHandle> {
     let mut token = HANDLE::default();
     // SAFETY: `GetCurrentProcess` returns a pseudo-handle that doesn't need
     // closing; `OpenProcessToken` writes the real handle into `token`.
     unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }
         .context("OpenProcessToken failed")?;
+    Ok(OwnedHandle(token))
+}
 
+/// Allocates a buffer sized for the requested token-information class
+/// and fills it via `GetTokenInformation`. The two-call sizing pattern
+/// is the documented way to discover the length of variable-sized
+/// token info (`TokenUser`, `TokenLogonSid`, ...).
+fn read_token_information(token: &OwnedHandle, class: TOKEN_INFORMATION_CLASS) -> Result<Vec<u8>> {
     let mut needed: u32 = 0;
     // SAFETY: A zero-sized buffer with `None` info is the documented
     // pattern for sizing. The error return is expected.
-    let _ = unsafe { GetTokenInformation(token, TokenUser, None, 0, &mut needed) };
+    let _ = unsafe { GetTokenInformation(token.0, class, None, 0, &mut needed) };
 
     let mut buf = vec![0u8; needed as usize];
-    // SAFETY: `buf` has length `needed`; the API writes a `TOKEN_USER`
-    // followed by the embedded SID into it.
+    // SAFETY: `buf` has length `needed`; the API writes the structure
+    // for `class` into it.
     unsafe {
         GetTokenInformation(
-            token,
-            TokenUser,
+            token.0,
+            class,
             Some(buf.as_mut_ptr() as *mut c_void),
             needed,
             &mut needed,
         )
     }
-    .context("GetTokenInformation(TokenUser) failed")?;
+    .with_context(|| format!("GetTokenInformation({class:?}) failed"))?;
+    Ok(buf)
+}
+
+/// Returns the calling process's primary-user SID in SDDL string form
+/// (e.g. `"S-1-5-21-..."`).
+///
+/// Built on `OpenProcessToken` + `GetTokenInformation(TokenUser)` +
+/// `ConvertSidToStringSidW`. The token handle is closed via
+/// [`OwnedHandle`]; the `LocalFree` on the SID buffer is handled
+/// internally so callers don't have to think about Windows lifetime
+/// rules.
+pub fn current_user_sid_string() -> Result<String> {
+    let token = open_current_process_token()?;
+    let buf = read_token_information(&token, TokenUser)?;
 
     // SAFETY: `buf` holds at least one `TOKEN_USER`; the cast yields a
     // reference whose lifetime is bounded by the `buf` borrow.
     let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
     sid_to_string(token_user.User.Sid)
+}
+
+/// Returns the calling process's *logon-session* SID in SDDL string
+/// form (e.g. `"S-1-5-5-X-Y"`). Distinct from the user SID — this one
+/// changes per interactive logon / RDP session, which is exactly the
+/// boundary you want for "this user's running GUI process" rather than
+/// "any process from this user account anywhere on the box".
+///
+/// Returns an error in service contexts that don't have a logon-SID
+/// entry (background services, scheduled tasks running as `LocalSystem`,
+/// some sandboxed processes). Callers that need to gracefully degrade
+/// should fall back to [`current_user_sid_string`] on error.
+pub fn current_logon_sid_string() -> Result<String> {
+    let token = open_current_process_token()?;
+    let buf = read_token_information(&token, TokenLogonSid)?;
+
+    // SAFETY: `buf` starts with a `TOKEN_GROUPS` (GroupCount + flexible
+    // array of `SID_AND_ATTRIBUTES`); the second cast walks one entry
+    // past the GroupCount, which is in-bounds when `GroupCount >= 1`.
+    let groups = unsafe { &*(buf.as_ptr() as *const TOKEN_GROUPS) };
+    ensure!(
+        groups.GroupCount >= 1,
+        "Process token has no logon-session SID (likely a service / non-interactive context)"
+    );
+    let first = unsafe { &*(groups.Groups.as_ptr() as *const SID_AND_ATTRIBUTES) };
+    sid_to_string(first.Sid)
 }
 
 fn sid_to_string(sid: PSID) -> Result<String> {

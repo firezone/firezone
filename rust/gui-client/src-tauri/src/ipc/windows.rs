@@ -14,7 +14,7 @@ use windows::Win32::{
     },
     System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
-use windows_security::{SecurityDescriptor, current_user_sid_string};
+use windows_security::{SecurityDescriptor, current_logon_sid_string, current_user_sid_string};
 
 /// `kernel32!GetCurrentPackageFullName` returns this when the calling
 /// process has no package identity. Any other return value (including
@@ -257,12 +257,20 @@ fn pipe_sddl(id: SocketId) -> Result<String> {
         }
         SocketId::Gui => {
             if pkg_active {
-                let user_sid = cached_current_user_sid_string()
-                    .context("Failed to obtain current user SID for GUI pipe DACL")?;
+                // Scope the GUI pipe to a single user *logon session* —
+                // distinct from the user SID, which would let any
+                // process from the same user account anywhere on the
+                // host (incl. other RDP sessions, scheduled tasks) hit
+                // the pipe. `TokenLogonSid` is empty in some service
+                // contexts; degrade to the user SID there so the GUI
+                // still works under headless smoke-test harnesses.
+                let scope_sid = cached_current_logon_sid_string()
+                    .or_else(|_| cached_current_user_sid_string())
+                    .context("Failed to obtain current logon/user SID for GUI pipe DACL")?;
                 sddl.push_str(&format!(
-                    "(XA;;FRFW;;;{pkg};(Member_of {{SID({user})}}))",
+                    "(XA;;FRFW;;;{pkg};(Member_of {{SID({scope})}}))",
                     pkg = crate::PACKAGE_SID,
-                    user = user_sid,
+                    scope = scope_sid,
                 ));
             }
             if !pkg_active || cfg!(debug_assertions) {
@@ -326,8 +334,20 @@ fn cached_current_user_sid_string() -> Result<String> {
     if let Some(sid) = CACHE.get() {
         return Ok(sid.clone());
     }
-
     let sid = current_user_sid_string()?;
+    let _ = CACHE.set(sid.clone());
+    Ok(sid)
+}
+
+/// Cached wrapper around [`windows_security::current_logon_sid_string`].
+/// Same rationale as [`cached_current_user_sid_string`] — the logon SID
+/// is fixed for the lifetime of the process.
+fn cached_current_logon_sid_string() -> Result<String> {
+    static CACHE: OnceLock<String> = OnceLock::new();
+    if let Some(sid) = CACHE.get() {
+        return Ok(sid.clone());
+    }
+    let sid = current_logon_sid_string()?;
     let _ = CACHE.set(sid.clone());
     Ok(sid)
 }
