@@ -11,6 +11,11 @@ RUSTFLAGS = "--cfg tokio_unstable"
 # Nightly version used for cargo-udeps (keep in sync with .github/actions/setup-rust-nightly)
 NIGHTLY_VERSION = "nightly-2025-09-30"
 
+[tools]
+"github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
+"github:kornelski/cargo-deb" = { version = "3.7.0", os = ["linux"] }
+"github:taiki-e/cargo-llvm-cov" = "0.6.21"
+
 # =============================================================================
 # Individual checks (matching CI)
 # =============================================================================
