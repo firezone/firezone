@@ -2,7 +2,6 @@ use crate::{
     auth, deep_link, dialog,
     gui::{self, system_tray},
     ipc::{self, SocketId},
-    launch_cookie::LaunchCookie,
     logging::{self, FileCount},
     service,
     settings::{AdvancedSettings, GeneralSettings, MdmSettings},
@@ -44,8 +43,6 @@ pub struct Controller<I: GuiIntegration> {
     telemetry_allowed: bool,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
-
-    gui_cookie: LaunchCookie,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -189,7 +186,6 @@ impl<I: GuiIntegration> Controller<I> {
         telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
-        gui_cookie: LaunchCookie,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
@@ -218,7 +214,6 @@ impl<I: GuiIntegration> Controller<I> {
             telemetry_allowed,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
-            gui_cookie,
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
                 let result = gui_ipc.next_client_split().await;
 
@@ -715,12 +710,8 @@ impl<I: GuiIntegration> Controller<I> {
             .context("No message received")?
             .context("Failed to read message")?;
 
-        if self.gui_cookie != *client_msg.cookie() {
-            bail!("Cookie mismatch: Refusing to process message");
-        }
-
         match client_msg {
-            gui::ClientMsg::Deeplink { url, .. } => match self.handle_deep_link(&url).await {
+            gui::ClientMsg::Deeplink(url) => match self.handle_deep_link(&url).await {
                 Ok(()) => {}
                 Err(error)
                     if error
@@ -733,7 +724,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!("`handle_deep_link` failed: {error:#}");
                 }
             },
-            gui::ClientMsg::NewInstance { .. } => {
+            gui::ClientMsg::NewInstance => {
                 let (_, session_view_model) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
@@ -1059,40 +1050,11 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
-        gui_tx
-            .send(&gui::ClientMsg::NewInstance {
-                cookie: LaunchCookie::new(TEST_COOKIE),
-            })
-            .await
-            .unwrap();
+        gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
         assert_eq!(response, gui::ServerMsg::Ack)
-    }
-
-    #[tokio::test]
-    async fn rejects_2nd_instance_with_bad_cookie() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
-
-        let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
-        // Bogus cookie: every byte differs from `TEST_COOKIE`.
-        gui_tx
-            .send(&gui::ClientMsg::NewInstance {
-                cookie: LaunchCookie::new([0; 32]),
-            })
-            .await
-            .ok();
-
-        // The server drops the connection on cookie mismatch; the read
-        // side either yields `None` or an EOF-style error — never an Ack.
-        let next = tokio::time::timeout(Duration::from_millis(500), gui_rx.next()).await;
-        let acked = matches!(next, Ok(Some(Ok(gui::ServerMsg::Ack))));
-        assert!(!acked, "Server should not have acked a bad-cookie request");
     }
 
     #[tokio::test]
@@ -1205,11 +1167,6 @@ mod tests {
         gui_id: u32,
     }
 
-    /// Fixed cookie used by every test that drives the GUI IPC server.
-    /// Production uses a fresh random cookie per launch; tests pin it
-    /// so the assertions are deterministic.
-    const TEST_COOKIE: [u8; 32] = [0xAB; 32];
-
     impl TestController {
         async fn tunnel_service_ipc_accept(&mut self) -> MockTunnel {
             let (rx, tx) = self
@@ -1248,10 +1205,7 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui::ClientMsg::Deeplink {
-                cookie: LaunchCookie::new(TEST_COOKIE),
-                url: format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap(),
-            })
+            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
             .await
             .unwrap();
             let ack = rx.next().await.unwrap().unwrap();
@@ -1485,7 +1439,6 @@ mod tests {
                 true,
                 updates_rx,
                 gui_ipc_server,
-                LaunchCookie::new(TEST_COOKIE),
             ));
 
             TestController {

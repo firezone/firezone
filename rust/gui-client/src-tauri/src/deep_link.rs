@@ -7,7 +7,6 @@ use crate::{
     auth,
     gui::{self, ServerMsg},
     ipc::SocketId,
-    launch_cookie::{self, CreatedOrRead},
 };
 use anyhow::{Context as _, Result, bail};
 use futures::SinkExt as _;
@@ -34,19 +33,6 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
-    // Deep-link delivery is strictly a hand-off path: we expect a
-    // running first instance to exist and to have written the launch
-    // cookie under its lock. If `create_or_read` reports us as the
-    // first instance there is nothing to hand off to, so refuse
-    // rather than connect with a freshly-minted cookie that won't
-    // match anything anyway.
-    let cookie = match launch_cookie::create_or_read()? {
-        CreatedOrRead::Read { cookie } => cookie,
-        CreatedOrRead::Created { .. } => {
-            bail!("No running Firezone instance to deliver deep-link to");
-        }
-    };
-
     let (mut read, mut write) = crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(
         SocketId::Gui,
         crate::ipc::ConnectOptions::default(),
@@ -54,7 +40,7 @@ pub async fn open(url: url::Url) -> Result<()> {
     .await?;
 
     write
-        .send(&gui::ClientMsg::Deeplink { cookie, url })
+        .send(&gui::ClientMsg::Deeplink(url))
         .await
         .context("Failed to send deep-link")?;
 

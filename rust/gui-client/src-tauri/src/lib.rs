@@ -14,7 +14,7 @@ pub mod dialog;
 pub mod elevation;
 pub mod gui;
 pub mod ipc;
-pub mod launch_cookie;
+pub mod launch_lock;
 pub mod logging;
 pub mod service;
 pub mod settings;

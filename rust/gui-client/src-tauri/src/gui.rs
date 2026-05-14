@@ -7,7 +7,7 @@ use crate::{
     controller::{Controller, ControllerRequest, Failure, GuiIntegration, NotificationHandle},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
-    launch_cookie::{self, CreatedOrRead, LaunchCookie, LaunchLock},
+    launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
         self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, GeneralSettings,
@@ -239,29 +239,18 @@ pub struct RunConfig {
     pub fake_controller: bool,
 }
 
-/// Authenticated request from a newly launched instance to the running
-/// first instance. See [`crate::launch_cookie`].
+/// IPC messages that a newly launched instance may send to an already
+/// running instance of Firezone.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
-    Deeplink { cookie: LaunchCookie, url: url::Url },
-    NewInstance { cookie: LaunchCookie },
+    Deeplink(url::Url),
+    NewInstance,
 }
 
-impl ClientMsg {
-    pub fn cookie(&self) -> &LaunchCookie {
-        match self {
-            ClientMsg::Deeplink { cookie, .. } | ClientMsg::NewInstance { cookie } => cookie,
-        }
-    }
-}
-
-/// Reply from the running instance to a newly launched instance.
+/// IPC messages that an already running instance may send back to a
+/// newly launched instance.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ServerMsg {
-    /// Cookie matched. Sent after each accepted [`ClientMsg`] before
-    /// the running instance hands the payload off to its event loop;
-    /// the new instance uses it to know its request was accepted
-    /// before it exits.
     Ack,
 }
 
@@ -276,7 +265,7 @@ pub fn run(
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
-    let (gui_ipc, gui_cookie, _launch_lock) = rt.block_on(create_gui_ipc_server())?;
+    let (gui_ipc, _launch_lock) = rt.block_on(create_gui_ipc_server())?;
 
     let (general_settings, advanced_settings) =
         rt.block_on(settings::migrate_legacy_settings(advanced_settings));
@@ -390,7 +379,6 @@ pub fn run(
                 config.telemetry_allowed,
                 updates_rx,
                 gui_ipc,
-                gui_cookie,
             ))
         };
 
@@ -594,14 +582,14 @@ pub struct AlreadyRunning;
 #[error("Failed to communicate with existing Firezone instance")]
 pub struct NewInstanceHandshakeFailed(anyhow::Error);
 
-async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchCookie, LaunchLock)> {
-    match launch_cookie::create_or_read()? {
-        CreatedOrRead::Created { lock, cookie } => {
+async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchLock)> {
+    match launch_lock::acquire()? {
+        FirstInstance::Yes(lock) => {
             let server =
                 ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?;
-            Ok((server, cookie, lock))
+            Ok((server, lock))
         }
-        CreatedOrRead::Read { cookie } => {
+        FirstInstance::No => {
             // Hand off to the running instance and exit.
             let (read, write) = ipc::connect::<ServerMsg, ClientMsg>(
                 SocketId::Gui,
@@ -611,14 +599,11 @@ async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchCookie, LaunchLoc
             .context("Failed to connect to running Firezone instance")
             .map_err(NewInstanceHandshakeFailed)?;
 
-            tokio::time::timeout(
-                Duration::from_secs(5),
-                new_instance_handshake(read, write, cookie),
-            )
-            .await
-            .context("Failed to handshake with existing instance in 5s")
-            .map_err(NewInstanceHandshakeFailed)?
-            .map_err(NewInstanceHandshakeFailed)?;
+            tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
+                .await
+                .context("Failed to handshake with existing instance in 5s")
+                .map_err(NewInstanceHandshakeFailed)?
+                .map_err(NewInstanceHandshakeFailed)?;
 
             bail!(AlreadyRunning)
         }
@@ -628,9 +613,8 @@ async fn create_gui_ipc_server() -> Result<(ipc::Server, LaunchCookie, LaunchLoc
 async fn new_instance_handshake(
     mut read: ClientRead<ServerMsg>,
     mut write: ClientWrite<ClientMsg>,
-    cookie: LaunchCookie,
 ) -> Result<()> {
-    write.send(&ClientMsg::NewInstance { cookie }).await?;
+    write.send(&ClientMsg::NewInstance).await?;
     let response = read
         .next()
         .await
