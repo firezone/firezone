@@ -54,7 +54,9 @@ defmodule Portal.Mailer.Notifications do
     |> render_body(__MODULE__, :account_scheduled_for_deletion,
       account: account,
       settings_url: settings_url,
-      context: context
+      remote_ip: redact_ip(context.remote_ip),
+      location: format_location(context),
+      user_agent: context.user_agent
     )
   end
 
@@ -68,7 +70,9 @@ defmodule Portal.Mailer.Notifications do
     |> render_body(__MODULE__, :account_deletion_aborted,
       account: account,
       settings_url: settings_url,
-      context: context
+      remote_ip: redact_ip(context.remote_ip),
+      location: format_location(context),
+      user_agent: context.user_agent
     )
   end
 
@@ -97,4 +101,18 @@ defmodule Portal.Mailer.Notifications do
     do: bcc_recipients(email, recipients)
 
   defp put_recipients(email, recipient), do: to(email, recipient)
+
+  defp redact_ip({a, b, _, _}), do: "#{a}.#{b}.*.*"
+
+  defp redact_ip({a, b, c, d, _, _, _, _}),
+    do: "#{hex(a)}:#{hex(b)}:#{hex(c)}:#{hex(d)}:*:*:*:*"
+
+  defp hex(n), do: Integer.to_string(n, 16)
+
+  defp format_location(%{remote_ip_location_city: city, remote_ip_location_region: region}) do
+    case [city, region] |> Enum.reject(&is_nil/1) |> Enum.join(", ") do
+      "" -> "Unknown"
+      location -> location
+    end
+  end
 end

@@ -39,13 +39,13 @@ defmodule Portal.Mailer.NotificationsTest do
       assert email.text_body =~ account.id
       assert email.text_body =~ formatted_date
       assert email.text_body =~ "/#{account.slug}/settings/account"
-      assert email.text_body =~ "93.184.216.34"
+      assert email.text_body =~ "93.184.*.*"
       assert email.text_body =~ "Los Angeles"
       assert email.text_body =~ "California"
       assert email.text_body =~ context.user_agent
       assert email.html_body =~ "Account Scheduled for Deletion"
       assert email.html_body =~ formatted_date
-      assert email.html_body =~ "93.184.216.34"
+      assert email.html_body =~ "93.184.*.*"
       assert email.html_body =~ "Los Angeles"
       assert email.html_body =~ context.user_agent
     end
@@ -72,12 +72,12 @@ defmodule Portal.Mailer.NotificationsTest do
       assert email.text_body =~ account.slug
       assert email.text_body =~ account.id
       assert email.text_body =~ "/#{account.slug}/settings/account"
-      assert email.text_body =~ "93.184.216.34"
+      assert email.text_body =~ "93.184.*.*"
       assert email.text_body =~ "Los Angeles"
       assert email.text_body =~ context.user_agent
       assert email.html_body =~ "Account Deletion Aborted"
       assert email.html_body =~ "no longer scheduled for deletion"
-      assert email.html_body =~ "93.184.216.34"
+      assert email.html_body =~ "93.184.*.*"
       assert email.html_body =~ "Los Angeles"
       assert email.html_body =~ context.user_agent
     end
