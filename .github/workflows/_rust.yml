@@ -90,7 +90,7 @@ jobs:
           key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
-      - uses: ./.github/actions/Qsetup-mise
+      - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
         env:
