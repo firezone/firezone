@@ -476,10 +476,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
 }
 
 fn device_label(device: &ConnectedDeviceView) -> String {
-    device
-        .tunneled_ipv4
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|| device.id.to_string())
+    device.tunneled_ipv4.to_string()
 }
 
 fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
@@ -504,14 +501,10 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
 fn device_submenu(device: &ConnectedDeviceView) -> Menu {
     let mut menu = Menu::default().disabled("Device");
 
-    if let Some(ip) = device.tunneled_ipv4 {
-        menu = menu
-            .separator()
-            .disabled("Tunnel IPv4")
-            .copyable(&ip.to_string());
-    }
-
     menu = menu
+        .separator()
+        .disabled("Tunnel IPv4")
+        .copyable(&device.tunneled_ipv4.to_string())
         .separator()
         .disabled("Client ID")
         .copyable(&device.id.to_string());
@@ -1034,12 +1027,12 @@ mod tests {
         let connected_devices = vec![
             ConnectedDeviceView {
                 id: alpha,
-                tunneled_ipv4: Some(alpha_ip),
+                tunneled_ipv4: alpha_ip,
                 pools: vec!["Engineering Pool".into()],
             },
             ConnectedDeviceView {
                 id: beta,
-                tunneled_ipv4: Some(beta_ip),
+                tunneled_ipv4: beta_ip,
                 pools: vec!["Engineering Pool".into(), "QA Pool".into()],
             },
         ];
@@ -1092,7 +1085,7 @@ mod tests {
         let connected_devices: Vec<ConnectedDeviceView> = (0..MAX_DEVICES_INLINE + 3)
             .map(|i| ConnectedDeviceView {
                 id: ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
-                tunneled_ipv4: Some(Ipv4Addr::new(100, 64, 0, i as u8)),
+                tunneled_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
                 pools: vec!["Engineering Pool".into()],
             })
             .collect();
@@ -1101,7 +1094,7 @@ mod tests {
 
         let mut expected = Menu::default();
         for device in &connected_devices[..MAX_DEVICES_INLINE] {
-            let ip = device.tunneled_ipv4.unwrap().to_string();
+            let ip = device.tunneled_ipv4.to_string();
             expected = expected.add_submenu(
                 ip.clone(),
                 Menu::default()

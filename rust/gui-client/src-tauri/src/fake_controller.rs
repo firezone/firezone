@@ -141,7 +141,7 @@ fn fake_connected_devices() -> Vec<ConnectedDeviceView> {
     (0..22u128)
         .map(|i| ConnectedDeviceView {
             id: ClientId::from_u128(i + 1),
-            tunneled_ipv4: Some(Ipv4Addr::new(100, 96, 0, (i as u8) + 1)),
+            tunneled_ipv4: Ipv4Addr::new(100, 96, 0, (i as u8) + 1),
             pools: POOL_PATTERNS[(i as usize) % POOL_PATTERNS.len()]
                 .iter()
                 .map(|name| (*name).to_string())

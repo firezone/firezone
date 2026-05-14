@@ -130,10 +130,9 @@ pub struct ConnectedDeviceView {
     pub id: ClientId,
     /// Tunnel IPv4 address the device is reachable on.
     ///
-    /// A device has a single tunnel IPv4 regardless of how many pools list it.
-    /// `None` only in the transient window where the snownet connection is
-    /// still up but the device has been removed from every pool.
-    pub tunneled_ipv4: Option<Ipv4Addr>,
+    /// Sourced from the live snownet connection state, so it is always known
+    /// for a connected device regardless of pool membership.
+    pub tunneled_ipv4: Ipv4Addr,
     /// Names of the static device pools the device belongs to, sorted.
     pub pools: Vec<String>,
 }
