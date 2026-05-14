@@ -6,7 +6,9 @@ use crate::messages::{
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, serde_as};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Duration;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -145,6 +147,10 @@ pub struct FlowCreationFailed {
     pub violated_properties: Vec<ViolatedProperty>,
 }
 
+/// Sent by the portal once both peers in a static-device-pool flow agree to
+/// connect. The recipient is the target device when `authorization` is
+/// `Some` (and must apply the filters / expiry to its inbound authorization)
+/// and the initiating device when it is `None`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
     pub client_id: ClientId,
@@ -155,6 +161,58 @@ pub struct ClientDeviceAccessAuthorized {
     pub local_ice_credentials: IceCredentials,
     pub remote_ice_credentials: IceCredentials,
     pub ice_role: IceRole,
+
+    /// The resource that authorises this connection on the receiving side,
+    /// along with its filters and expiry. `None` on the initiating side.
+    #[serde(flatten, default)]
+    pub authorization: Option<ResourceAuthorization>,
+}
+
+/// Authorization metadata granted by a resource for an inbound peer
+/// connection.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct ResourceAuthorization {
+    /// The authorising resource ID.
+    pub resource_id: ResourceId,
+
+    /// Filters that govern inbound traffic the remote peer is allowed to
+    /// send to us through this resource.
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+
+    /// When the authorization expires, as a unix timestamp.
+    #[serde_as(as = "Option<DurationSeconds<u64>>")]
+    #[serde(default)]
+    pub expires_at: Option<Duration>,
+}
+
+/// Sent by the portal when a resource's filters change while access remains
+/// authorized. Receivers must update the inbound filter for any peer the
+/// resource currently authorizes.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ResourceFiltersUpdated {
+    pub id: ResourceId,
+    pub filters: Vec<Filter>,
+}
+
+/// Sent by the portal to revoke a previously-authorized client-to-client
+/// access. The receiver drops the inbound authorization keyed by
+/// `resource_id` for `client_id`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientRejectAccess {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+}
+
+/// Sent by the portal when an authorization's expiry time changes.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientAccessAuthorizationExpiryUpdated {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
 }
 
 /// Portal's denial of a `create_flow` toward a static device pool peer.
@@ -245,6 +303,16 @@ pub enum IngressMessages {
 
     DevicePoolDomainResolved(DevicePoolDomainResolved),
     DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
+
+    /// A resource's filters have changed while at least one authorization
+    /// referencing it remains active.
+    ResourceFiltersUpdated(ResourceFiltersUpdated),
+
+    /// A previously-authorized peer-to-peer access has been revoked.
+    RejectAccess(ClientRejectAccess),
+
+    /// An authorization's expiry time has changed.
+    AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
 
 #[serde_with::serde_as]
@@ -770,5 +838,56 @@ mod tests {
         let gateway_candidates = GatewayIceCandidates::deserialize(bad_candidates).unwrap();
 
         assert_eq!(gateway_candidates.candidates.len(), 1);
+    }
+
+    /// Target side: portal sends the resource_id, filters and expiry. They
+    /// flatten into a single `Some(ResourceAuthorization)` value.
+    #[test]
+    fn client_device_access_authorized_target_side_deserializes_authorization() {
+        let json = serde_json::json!({
+            "client_id": "11111111-1111-1111-1111-111111111111",
+            "client_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "client_ipv4": "100.64.0.1",
+            "client_ipv6": "fd00:2021:1111::1",
+            "preshared_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+            "local_ice_credentials": { "username": "u-local", "password": "p-local" },
+            "remote_ice_credentials": { "username": "u-remote", "password": "p-remote" },
+            "ice_role": "controlled",
+            "resource_id": "22222222-2222-2222-2222-222222222222",
+            "filters": [{"protocol": "icmp"}],
+            "expires_at": 1_700_000_000_i64,
+        });
+
+        let msg: ClientDeviceAccessAuthorized = serde_json::from_value(json).unwrap();
+
+        let auth = msg
+            .authorization
+            .expect("target side carries authorization");
+        assert_eq!(
+            auth.resource_id,
+            ResourceId::from_u128(0x22222222_2222_2222_2222_222222222222)
+        );
+        assert!(matches!(auth.filters[..], [Filter::Icmp]));
+        assert_eq!(auth.expires_at, Some(Duration::from_secs(1_700_000_000)));
+    }
+
+    /// Initiator side: portal omits all authorization fields. The flattened
+    /// `Option` deserializes to `None`.
+    #[test]
+    fn client_device_access_authorized_initiator_side_omits_authorization() {
+        let json = serde_json::json!({
+            "client_id": "11111111-1111-1111-1111-111111111111",
+            "client_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "client_ipv4": "100.64.0.1",
+            "client_ipv6": "fd00:2021:1111::1",
+            "preshared_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+            "local_ice_credentials": { "username": "u-local", "password": "p-local" },
+            "remote_ice_credentials": { "username": "u-remote", "password": "p-remote" },
+            "ice_role": "controlling",
+        });
+
+        let msg: ClientDeviceAccessAuthorized = serde_json::from_value(json).unwrap();
+
+        assert!(msg.authorization.is_none());
     }
 }

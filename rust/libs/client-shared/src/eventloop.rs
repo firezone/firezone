@@ -20,9 +20,10 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
-    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
-    FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ClientAccessAuthorizationExpiryUpdated, ClientDeviceAccessAuthorized, ClientDeviceAccessDenied,
+    ClientIceCandidates, ClientRejectAccess, DevicePoolDomainResolutionFailed,
+    DevicePoolDomainResolved, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
+    GatewayIceCandidates, IngressMessages, InitClient, ResourceFiltersUpdated,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -557,6 +558,7 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
+                authorization,
             }) => {
                 match tunnel.state_mut().handle_client_device_access_authorized(
                     client_id,
@@ -569,6 +571,7 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
+                    authorization,
                     Instant::now(),
                 ) {
                     Ok(()) => {}
@@ -584,6 +587,35 @@ impl Eventloop {
                             .context("Failed to connect phoenix-channel")?;
                     }
                 };
+            }
+            IngressMessages::ResourceFiltersUpdated(ResourceFiltersUpdated { id, filters }) => {
+                tunnel
+                    .state_mut()
+                    .handle_resource_filters_updated(id, filters);
+            }
+            IngressMessages::RejectAccess(ClientRejectAccess {
+                client_id,
+                resource_id,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_reject_client_device_access(client_id, resource_id);
+            }
+            IngressMessages::AccessAuthorizationExpiryUpdated(
+                ClientAccessAuthorizationExpiryUpdated {
+                    client_id,
+                    resource_id,
+                    expires_at,
+                },
+            ) => {
+                tunnel
+                    .state_mut()
+                    .handle_client_device_access_authorization_expiry_updated(
+                        client_id,
+                        resource_id,
+                        expires_at,
+                        Instant::now(),
+                    );
             }
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,

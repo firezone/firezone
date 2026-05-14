@@ -7,6 +7,7 @@ use std::{
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
 
+use crate::filter_engine::FilterEngine;
 use crate::unique_packet_buffer::UniquePacketBuffer;
 
 #[derive(Default)]
@@ -29,13 +30,19 @@ impl PendingDeviceAccessRequests {
         client_id: ClientId,
         resource_id: ResourceId,
         ip: IpAddr,
+        filter: &FilterEngine,
         trigger: IpPacket,
         now: Instant,
     ) {
-        let pending_flow = self
-            .inner
-            .entry(client_id)
-            .or_insert_with(|| PendingClientAccessRequest::new(now - Duration::from_secs(10))); // Insert with a negative time to ensure we instantly send an intent.
+        if !is_trigger_allowed(filter, &trigger) {
+            tracing::debug!("Trigger filtered by device filters, dropping");
+            return;
+        }
+
+        let pending_flow = self.inner.entry(client_id).or_insert_with(|| {
+            // Insert with a negative time to ensure we instantly send an intent.
+            PendingClientAccessRequest::new(resource_id, now - Duration::from_secs(10))
+        });
 
         pending_flow.push(trigger);
 
@@ -63,6 +70,8 @@ impl PendingDeviceAccessRequests {
 }
 
 pub struct PendingClientAccessRequest {
+    /// The resource that triggered this intent.
+    resource_id: ResourceId,
     last_intent_sent_at: Instant,
     packets: UniquePacketBuffer,
 }
@@ -71,8 +80,9 @@ impl PendingClientAccessRequest {
     /// How many packets we will at most buffer in a [`PendingClientAccessRequest`].
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    fn new(now: Instant) -> Self {
+    fn new(resource_id: ResourceId, now: Instant) -> Self {
         Self {
+            resource_id,
             last_intent_sent_at: now,
             packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
@@ -85,11 +95,31 @@ impl PendingClientAccessRequest {
         self.packets.push(packet);
     }
 
+    pub fn resource_id(&self) -> ResourceId {
+        self.resource_id
+    }
+
     pub fn into_buffered_packets(self) -> UniquePacketBuffer {
         let Self { packets, .. } = self;
 
         packets
     }
+}
+
+/// Check whether the device pool's filter allows the trigger packet, with
+/// the malicious-behaviour `ignore_resource_filter` bypass available in tests.
+fn is_trigger_allowed(filter: &FilterEngine, trigger: &IpPacket) -> bool {
+    if filter.apply(trigger.destination_protocol()).is_ok() {
+        return true;
+    }
+
+    #[cfg(test)]
+    if crate::malicious_behaviour::ignore_resource_filter() {
+        tracing::debug!("Malicious client: ignoring resource filter");
+        return true;
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -106,12 +136,12 @@ mod tests {
         let rid = ResourceId::from_u128(1);
         let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
 
-        pending_requests.on_not_connected_device(cid, rid, ip, trigger(1), now);
+        pending_requests.on_not_connected_device(cid, rid, ip, &permit_all(), trigger(1), now);
         assert!(pending_requests.poll_connection_intents().is_some());
 
         now += Duration::from_secs(1);
 
-        pending_requests.on_not_connected_device(cid, rid, ip, trigger(2), now);
+        pending_requests.on_not_connected_device(cid, rid, ip, &permit_all(), trigger(2), now);
         assert!(pending_requests.poll_connection_intents().is_none());
     }
 
@@ -123,12 +153,12 @@ mod tests {
         let rid = ResourceId::from_u128(1);
         let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
 
-        pending_requests.on_not_connected_device(cid, rid, ip, trigger(1), now);
+        pending_requests.on_not_connected_device(cid, rid, ip, &permit_all(), trigger(1), now);
         assert!(pending_requests.poll_connection_intents().is_some());
 
         now += Duration::from_secs(3);
 
-        pending_requests.on_not_connected_device(cid, rid, ip, trigger(2), now);
+        pending_requests.on_not_connected_device(cid, rid, ip, &permit_all(), trigger(2), now);
         assert!(pending_requests.poll_connection_intents().is_some());
     }
 
@@ -144,10 +174,10 @@ mod tests {
         let ip_foo = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
         let ip_bar = IpAddr::from(Ipv4Addr::new(100, 64, 0, 200));
 
-        pending_flows.on_not_connected_device(cid_foo, rid, ip_foo, trigger(1), now);
+        pending_flows.on_not_connected_device(cid_foo, rid, ip_foo, &permit_all(), trigger(1), now);
         let intent = pending_flows.poll_connection_intents().unwrap();
         assert_eq!(intent.ip, ip_foo);
-        pending_flows.on_not_connected_device(cid_bar, rid, ip_bar, trigger(2), now);
+        pending_flows.on_not_connected_device(cid_bar, rid, ip_bar, &permit_all(), trigger(2), now);
         let intent = pending_flows.poll_connection_intents().unwrap();
         assert_eq!(intent.ip, ip_bar);
     }
@@ -161,6 +191,10 @@ mod tests {
             &[payload], // We need to vary the payload because identical packets don't get buffered.
         )
         .unwrap()
+    }
+
+    fn permit_all() -> FilterEngine {
+        FilterEngine::PermitAll
     }
 
     fn client_foo() -> ClientId {

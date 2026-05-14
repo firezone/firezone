@@ -7,6 +7,7 @@ use crate::messages::Filter;
 pub(crate) enum FilterEngine {
     PermitAll,
     PermitSome(AllowRules),
+    DenyAll,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
@@ -50,6 +51,12 @@ impl FilterEngine {
         match self {
             FilterEngine::PermitAll => Ok(()),
             FilterEngine::PermitSome(filter_engine) => filter_engine.apply(protocol),
+            FilterEngine::DenyAll => match protocol {
+                Ok(Protocol::Tcp(_)) => Err(Filtered::Tcp),
+                Ok(Protocol::Udp(_)) => Err(Filtered::Udp),
+                Ok(Protocol::IcmpEcho(_)) => Err(Filtered::Icmp),
+                Err(e) => Err(Filtered::UnsupportedProtocol(e)),
+            },
         }
     }
 }

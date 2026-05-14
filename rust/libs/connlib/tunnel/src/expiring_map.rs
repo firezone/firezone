@@ -79,6 +79,10 @@ where
         self.inner.iter().map(|(k, e)| (k, &e.value))
     }
 
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.inner.values().map(|e| &e.value)
+    }
+
     /// Push back (or move forward) the expiration of an existing entry to
     /// `now + ttl`, re-bucketing it in the expiration index. Returns `true`
     /// if the entry exists.
