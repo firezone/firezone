@@ -61,8 +61,13 @@ jobs:
             echo "Changed files:"
             cat changed_files.txt
           elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            git fetch origin ${{ github.event.merge_group.base_sha }} --depth=1
-            git diff --name-only ${{ github.event.merge_group.base_sha }} ${{ github.sha }} > changed_files.txt
+            base_sha="${{ github.event.merge_group.base_sha }}"
+            git fetch origin "$base_sha" --depth=1
+            if ! git cat-file -e "${base_sha}^{commit}"; then
+              echo "::error::merge_group base SHA $base_sha not available after fetch" >&2
+              exit 1
+            fi
+            git diff --name-only "$base_sha" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
