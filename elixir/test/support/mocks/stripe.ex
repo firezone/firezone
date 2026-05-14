@@ -158,6 +158,11 @@ defmodule Portal.Mocks.Stripe do
     [{"POST", "/v1/billing_portal/sessions", 200, response}]
   end
 
+  def mock_cancel_subscription_endpoint(subscription_id, status \\ 200, resp \\ %{}) do
+    response = Map.merge(%{"id" => subscription_id, "object" => "subscription", "status" => "canceled"}, resp)
+    [{"DELETE", "/v1/subscriptions/#{subscription_id}", status, response}]
+  end
+
   def mock_create_subscription_endpoint(resp \\ %{}) do
     response =
       Map.merge(

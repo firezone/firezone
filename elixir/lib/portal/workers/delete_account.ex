@@ -13,6 +13,7 @@ defmodule Portal.Workers.DeleteAccount do
   ]
 
   alias Portal.Account
+  alias Portal.Billing
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
   alias __MODULE__.Database
@@ -48,17 +49,19 @@ defmodule Portal.Workers.DeleteAccount do
   end
 
   defp delete_account_and_notify_admins(%Account{} = account) do
-    admin_emails = Database.get_account_admin_emails(account.id)
+    with :ok <- Billing.cancel_subscription(account) do
+      admin_emails = Database.get_account_admin_emails(account.id)
 
-    if admin_emails == [] do
-      Logger.warning("No admin actors found for account deletion completion notification",
-        account_id: account.id
-      )
+      if admin_emails == [] do
+        Logger.warning("No admin actors found for account deletion completion notification",
+          account_id: account.id
+        )
+      end
+
+      account
+      |> Database.delete_account()
+      |> maybe_enqueue_email(admin_emails)
     end
-
-    account
-    |> Database.delete_account()
-    |> maybe_enqueue_email(admin_emails)
   end
 
   defp maybe_enqueue_email({:ok, _account}, []), do: :ok

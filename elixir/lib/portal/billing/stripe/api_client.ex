@@ -75,6 +75,10 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "subscriptions", body)
   end
 
+  def cancel_subscription(api_token, subscription_id) do
+    request(api_token, :delete, "subscriptions/#{subscription_id}", "")
+  end
+
   def request(api_token, method, path, body) do
     endpoint = fetch_config!(:endpoint)
     url = "#{endpoint}/v1/#{path}"

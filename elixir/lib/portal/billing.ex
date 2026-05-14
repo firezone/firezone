@@ -361,6 +361,38 @@ defmodule Portal.Billing do
     end
   end
 
+  def cancel_subscription(%Portal.Account{} = account) do
+    if enabled?() do
+      subscription_id = get_in(account, [Access.key(:metadata), Access.key(:stripe), Access.key(:subscription_id)])
+      do_cancel_subscription(account, subscription_id)
+    else
+      :ok
+    end
+  end
+
+  defp do_cancel_subscription(_account, nil), do: :ok
+
+  defp do_cancel_subscription(account, subscription_id) do
+    secret_key = fetch_config!(:secret_key)
+
+    case APIClient.cancel_subscription(secret_key, subscription_id) do
+      {:ok, _} ->
+        :ok
+
+      {:error, {404, _}} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Cannot cancel Stripe subscription",
+          account_id: account.id,
+          subscription_id: subscription_id,
+          reason: inspect(reason)
+        )
+
+        {:error, :retry_later}
+    end
+  end
+
   def list_all_subscriptions do
     secret_key = fetch_config!(:secret_key)
     APIClient.list_all_subscriptions(secret_key)
