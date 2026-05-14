@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, sync::OnceLock, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::{HLOCAL, LocalFree},
+    Foundation::{HANDLE, HLOCAL, LocalFree},
     Security::{
         Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
         IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
