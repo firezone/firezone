@@ -10,7 +10,14 @@ anyhow = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows]
 workspace = true
-features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization"]
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    # `OpenProcessToken` (Threading) -> `GetTokenInformation` (Security) for
+    # `current_user_sid_string`.
+    "Win32_System_Threading",
+]
 
 [target.'cfg(windows)'.dev-dependencies]
 tempfile = { workspace = true }

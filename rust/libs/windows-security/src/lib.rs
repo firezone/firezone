@@ -15,19 +15,22 @@ use anyhow::{Context as _, Result, ensure};
 use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows::{
     Win32::{
-        Foundation::{ERROR_SUCCESS, HLOCAL, LocalFree},
+        Foundation::{ERROR_SUCCESS, HANDLE, HLOCAL, LocalFree},
         Security::{
             ACL,
             Authorization::{
-                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-                SE_FILE_OBJECT, SetNamedSecurityInfoW,
+                ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+                SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
-            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
-            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, GetTokenInformation, PSID,
+            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, TOKEN_QUERY, TOKEN_USER,
+            TokenUser,
         },
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
     },
-    core::{BOOL, PCWSTR},
+    core::{BOOL, PCWSTR, PWSTR},
 };
+use std::ffi::c_void;
 
 /// Owned wrapper around a `PSECURITY_DESCRIPTOR` allocated by
 /// `ConvertStringSecurityDescriptorToSecurityDescriptorW`.
@@ -146,6 +149,61 @@ fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
 }
 
+/// Returns the calling process's primary-user SID in SDDL string form
+/// (e.g. `"S-1-5-21-..."`).
+///
+/// Built on `OpenProcessToken` + `GetTokenInformation(TokenUser)` +
+/// `ConvertSidToStringSidW`; the `LocalFree` on the SID buffer is handled
+/// internally so callers don't have to think about Windows lifetime rules.
+pub fn current_user_sid_string() -> Result<String> {
+    let mut token = HANDLE::default();
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle that doesn't need
+    // closing; `OpenProcessToken` writes the real handle into `token`.
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }
+        .context("OpenProcessToken failed")?;
+
+    let mut needed: u32 = 0;
+    // SAFETY: A zero-sized buffer with `None` info is the documented
+    // pattern for sizing. The error return is expected.
+    let _ = unsafe { GetTokenInformation(token, TokenUser, None, 0, &mut needed) };
+
+    let mut buf = vec![0u8; needed as usize];
+    // SAFETY: `buf` has length `needed`; the API writes a `TOKEN_USER`
+    // followed by the embedded SID into it.
+    unsafe {
+        GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr() as *mut c_void),
+            needed,
+            &mut needed,
+        )
+    }
+    .context("GetTokenInformation(TokenUser) failed")?;
+
+    // SAFETY: `buf` holds at least one `TOKEN_USER`; the cast yields a
+    // reference whose lifetime is bounded by the `buf` borrow.
+    let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
+    sid_to_string(token_user.User.Sid)
+}
+
+fn sid_to_string(sid: PSID) -> Result<String> {
+    let mut wide_ptr: PWSTR = PWSTR::null();
+    // SAFETY: `ConvertSidToStringSidW` writes a fresh allocation to
+    // `wide_ptr` that we own and must release via `LocalFree`.
+    unsafe { ConvertSidToStringSidW(sid, &mut wide_ptr) }
+        .context("ConvertSidToStringSidW failed")?;
+
+    // SAFETY: `wide_ptr` is a non-null pointer to a NUL-terminated UTF-16
+    // string Windows allocated; `to_string` walks until the NUL.
+    let s = unsafe { wide_ptr.to_string() }.context("SID buffer was not valid UTF-16")?;
+
+    // SAFETY: We own `wide_ptr` and must release it with `LocalFree`; after
+    // this call no pointer derived from it is used.
+    unsafe { LocalFree(Some(HLOCAL(wide_ptr.0 as *mut c_void))) };
+    Ok(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +316,19 @@ mod tests {
 
         assert!(dacl_present.as_bool());
         assert!(!dacl.is_null());
+    }
+
+    #[test]
+    fn current_user_sid_string_has_user_prefix() {
+        // Domain / local accounts both fall under `S-1-5-21-`; the test
+        // runner won't be one of the well-known SIDs that share the
+        // `S-1-5-` prefix without a `-21-` subauthority (e.g. SYSTEM
+        // is `S-1-5-18`). Asserting the longer prefix catches the case
+        // where `ConvertSidToStringSidW` returns a non-user SID.
+        let sid = current_user_sid_string().unwrap();
+        assert!(
+            sid.starts_with("S-1-5-21-") || sid.starts_with("S-1-12-"),
+            "got SID: {sid}"
+        );
     }
 }

@@ -25,36 +25,49 @@
 
 #[cfg(windows)]
 fn main() -> std::process::ExitCode {
+    use clap::Parser;
     use std::process::ExitCode;
 
-    let mut args = std::env::args().skip(1);
-    let action = args.next().unwrap_or_else(|| "install".into());
+    /// `register-sparse` is a WiX deferred custom action: WiX passes
+    /// the `INSTALLDIR` property via the `CustomActionData` environment
+    /// variable (`clap`'s `env` feature reads it directly), and the
+    /// install/uninstall mode comes in as the first positional arg
+    /// from the WiX `ExeCommand` attribute.
+    #[derive(Parser)]
+    #[command(disable_version_flag = true)]
+    struct Cli {
+        #[arg(default_value = "install")]
+        action: Action,
+        /// Filled by WiX via `CustomActionData` on deferred CAs.
+        #[arg(env = "CustomActionData", default_value = "")]
+        install_dir: String,
+    }
 
-    // WiX deferred custom actions only see properties via CustomActionData;
-    // we accept either an explicit second positional arg (for manual
-    // testing) or the env var `CustomActionData` itself, which WiX sets.
-    let install_dir = args
-        .next()
-        .unwrap_or_else(|| std::env::var("CustomActionData").unwrap_or_default());
+    #[derive(clap::ValueEnum, Clone, Copy)]
+    enum Action {
+        Install,
+        Uninstall,
+    }
 
-    let result = match action.as_str() {
-        "install" => imp::register(&install_dir),
-        "uninstall" => imp::deregister(),
-        other => {
-            eprintln!("register-sparse: unknown action `{other}`");
-            return ExitCode::FAILURE;
-        }
+    let Cli {
+        action,
+        install_dir,
+    } = Cli::parse();
+
+    let (label, result) = match action {
+        Action::Install => ("install", imp::register(&install_dir)),
+        Action::Uninstall => ("uninstall", imp::deregister()),
     };
 
     match result {
         Ok(()) => {
-            eprintln!("register-sparse: {action} OK");
+            eprintln!("register-sparse: {label} OK");
             ExitCode::SUCCESS
         }
         Err(e) => {
             // Don't fail the MSI on legacy / hardened Windows where
             // sparse-package registration isn't available.
-            eprintln!("register-sparse: {action} failed (non-fatal): {e:#}");
+            eprintln!("register-sparse: {label} failed (non-fatal): {e:#}");
             ExitCode::SUCCESS
         }
     }

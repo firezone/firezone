@@ -1,24 +1,18 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail, ensure};
 use sha2::{Digest, Sha256};
-use std::{
-    ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, sync::OnceLock, time::Duration,
-};
+use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, sync::OnceLock, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::{HANDLE, HLOCAL, LocalFree},
+    Foundation::{HLOCAL, LocalFree},
     Security::{
-        Authorization::{ConvertSidToStringSidW, GetSecurityInfo, SE_KERNEL_OBJECT},
-        GetTokenInformation, IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
-        PSID, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser, WinLocalSystemSid,
+        Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
+        IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+        SECURITY_ATTRIBUTES, WinLocalSystemSid,
     },
-    System::{
-        Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
-        Threading::{GetCurrentProcess, OpenProcessToken},
-    },
+    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
-use windows::core::PWSTR;
-use windows_security::SecurityDescriptor;
+use windows_security::{SecurityDescriptor, current_user_sid_string};
 
 /// `kernel32!GetCurrentPackageFullName` returns this when the calling
 /// process has no package identity. Any other return value (including
@@ -261,7 +255,7 @@ fn pipe_sddl(id: SocketId) -> Result<String> {
         }
         SocketId::Gui => {
             if pkg_active {
-                let user_sid = current_user_sid_string()
+                let user_sid = cached_current_user_sid_string()
                     .context("Failed to obtain current user SID for GUI pipe DACL")?;
                 sddl.push_str(&format!(
                     "(XA;;FRFW;;;{pkg};(Member_of {{SID({user})}}))",
@@ -319,65 +313,21 @@ unsafe extern "system" {
     ) -> u32;
 }
 
-/// Looks up the current process's primary user SID and returns it in
-/// SDDL string form (`S-1-5-21-...`).
-fn current_user_sid_string() -> Result<String> {
+/// Cached wrapper around [`windows_security::current_user_sid_string`].
+///
+/// The SID doesn't change for the life of the process, and we compose it
+/// into the GUI-pipe filename + DACL builder on every `accept` cycle —
+/// caching saves a `OpenProcessToken` round-trip per accept without
+/// changing the underlying Win32 calls.
+fn cached_current_user_sid_string() -> Result<String> {
     static CACHE: OnceLock<String> = OnceLock::new();
     if let Some(sid) = CACHE.get() {
         return Ok(sid.clone());
     }
 
-    let sid = read_user_sid_string()?;
+    let sid = current_user_sid_string()?;
     let _ = CACHE.set(sid.clone());
     Ok(sid)
-}
-
-fn read_user_sid_string() -> Result<String> {
-    let mut token = HANDLE::default();
-    // SAFETY: `GetCurrentProcess` returns a pseudo-handle that doesn't need
-    // closing; `OpenProcessToken` writes the real handle into `token`.
-    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }
-        .context("OpenProcessToken failed")?;
-
-    let mut needed: u32 = 0;
-    // SAFETY: A zero-sized buffer with `None` info is the documented
-    // pattern for sizing. The error return is expected.
-    let _ = unsafe { GetTokenInformation(token, TokenUser, None, 0, &mut needed) };
-
-    let mut buf = vec![0u8; needed as usize];
-    // SAFETY: `buf` has length `needed`; the API writes a `TOKEN_USER`
-    // followed by the embedded SID into it.
-    unsafe {
-        GetTokenInformation(
-            token,
-            TokenUser,
-            Some(buf.as_mut_ptr() as *mut c_void),
-            needed,
-            &mut needed,
-        )
-    }
-    .context("GetTokenInformation(TokenUser) failed")?;
-
-    // SAFETY: `buf` holds at least one `TOKEN_USER`; the cast yields a
-    // reference whose lifetime is bounded by the `buf` borrow.
-    let token_user = unsafe { &*(buf.as_ptr() as *const TOKEN_USER) };
-    sid_to_string(token_user.User.Sid)
-}
-
-fn sid_to_string(sid: PSID) -> Result<String> {
-    let mut wide: PWSTR = PWSTR::null();
-    // SAFETY: `ConvertSidToStringSidW` writes a fresh allocation to `wide`
-    // that we own and must release via `LocalFree`.
-    unsafe { ConvertSidToStringSidW(sid, &mut wide) }.context("ConvertSidToStringSidW failed")?;
-
-    // SAFETY: `wide` is a non-null pointer to a NUL-terminated UTF-16
-    // string Windows allocated; `to_string` walks until the NUL.
-    let s = unsafe { wide.to_string() }.context("SID buffer was not valid UTF-16")?;
-
-    // SAFETY: We own `wide` and must release it with `LocalFree`; after
-    // this call no pointer derived from it is used.
-    unsafe { LocalFree(Some(HLOCAL(wide.0 as *mut c_void))) };
-    Ok(s)
 }
 
 /// Named pipe for an IPC connection.
@@ -404,10 +354,8 @@ fn ipc_path(id: SocketId) -> String {
 }
 
 fn current_user_hash() -> Result<String> {
-    let user = current_user_sid_string()?;
-    let mut h = Sha256::new();
-    h.update(user.as_bytes());
-    let digest = h.finalize();
+    let user = cached_current_user_sid_string()?;
+    let digest = Sha256::digest(user.as_bytes());
     Ok(hex::encode(&digest[..8]))
 }
 
