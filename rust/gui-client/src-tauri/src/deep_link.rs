@@ -7,6 +7,7 @@ use crate::{
     auth,
     gui::{self, ServerMsg},
     ipc::SocketId,
+    launch_cookie::{self, FirstInstance},
 };
 use anyhow::{Context as _, Result, bail};
 use futures::SinkExt as _;
@@ -33,6 +34,18 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
+    // We're the second instance: read the cookie the running first
+    // instance wrote so we can authenticate this one frame to it. If
+    // we are somehow the *first* instance (e.g. the user clicked a
+    // deeplink before Firezone is fully launched), `create_or_read`
+    // hands back a fresh cookie of our own — sending that won't
+    // match the running cookie if there's a real running instance,
+    // but at worst the deep-link is dropped, which is the same
+    // failure mode as a stale handshake.
+    let cookie = match launch_cookie::create_or_read()? {
+        FirstInstance::Yes { cookie, .. } | FirstInstance::No { cookie } => cookie,
+    };
+
     let (mut read, mut write) = crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(
         SocketId::Gui,
         crate::ipc::ConnectOptions::default(),
@@ -40,7 +53,10 @@ pub async fn open(url: url::Url) -> Result<()> {
     .await?;
 
     write
-        .send(&gui::ClientMsg::Deeplink(url))
+        .send(&gui::ClientMsg {
+            cookie: *cookie.as_bytes(),
+            payload: gui::Payload::Deeplink(url),
+        })
         .await
         .context("Failed to send deep-link")?;
 

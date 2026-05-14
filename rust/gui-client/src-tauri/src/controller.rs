@@ -44,12 +44,11 @@ pub struct Controller<I: GuiIntegration> {
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
-    /// Cookie that every connecting GUI-pipe client must echo back as
-    /// their first frame ([`gui::ClientMsg::Hello`]). The first
-    /// instance generated this cookie at startup and persisted it to
-    /// the launch-cookie file under an exclusive advisory lock. See
-    /// [`gui::LaunchCookie`].
-    gui_cookie: gui::LaunchCookie,
+    /// Cookie that every [`gui::ClientMsg`] must carry on every frame.
+    /// The first instance generated this cookie at startup and persisted
+    /// it to the launch-cookie file under an exclusive advisory lock.
+    /// See [`crate::launch_cookie`].
+    gui_cookie: crate::launch_cookie::LaunchCookie,
 
     gui_ipc_clients: BoxStream<
         'static,
@@ -176,8 +175,13 @@ enum EventloopTick {
     ),
 }
 
+/// Error type kept for backward compatibility of tests that asserted on
+/// the error returned when the new-instance protocol short-circuited.
+/// The protocol is now stateless (cookie embedded in every frame), so
+/// "failed to receive Hello" reads more naturally as "failed to receive
+/// first frame".
 #[derive(Debug, thiserror::Error)]
-#[error("Failed to receive hello: {0:#}")]
+#[error("Failed to receive first frame from new GUI instance: {0:#}")]
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
@@ -194,7 +198,7 @@ impl<I: GuiIntegration> Controller<I> {
         telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
-        gui_cookie: gui::LaunchCookie,
+        gui_cookie: crate::launch_cookie::LaunchCookie,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
@@ -703,51 +707,43 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
-    /// Validates the `Hello { cookie }` frame, dispatches the actual
-    /// payload, and acks. Each step is fallible: if the connection ends
-    /// before sending Hello, if the cookie doesn't match, or if the
-    /// payload itself is malformed, the connection is dropped without
-    /// acking and the controller logs at `debug` level.
+    /// Reads one [`gui::ClientMsg`], validates the embedded cookie, acks
+    /// the matching message, and dispatches its payload.
+    ///
+    /// The protocol is stateless: every frame carries its own cookie, so
+    /// the server never has to remember whether a "handshake" has
+    /// happened for a given connection. The ACK happens as soon as the
+    /// cookie matches — before the payload is dispatched — so the new
+    /// instance can know its request was accepted without waiting on the
+    /// running instance's async dispatch path.
     async fn handle_new_gui_instance(
         &mut self,
         mut read: ipc::ServerRead<gui::ClientMsg>,
         mut write: ipc::ServerWrite<gui::ServerMsg>,
     ) -> Result<()> {
-        let hello = read
+        let msg = read
             .next()
             .await
-            .context("No Hello frame received")?
-            .context("Failed to read Hello frame")?;
-        let gui::ClientMsg::Hello { cookie } = hello else {
-            bail!("Expected Hello frame as first message, got {hello:?}");
-        };
-        if !self.gui_cookie.matches(&cookie) {
-            bail!("Hello cookie mismatch — possible cross-instance pipe-squat attempt");
-        }
-
-        let payload = read
-            .next()
-            .await
-            .context("No payload after Hello")?
-            .context("Failed to read payload")?;
-
-        if let Err(e) = self.dispatch_gui_payload(payload).await {
-            tracing::debug!("Failed to handle GUI IPC payload: {e:#}");
+            .context("No frame received from new GUI instance")?
+            .context("Failed to read frame from new GUI instance")?;
+        if !self.gui_cookie.matches(&msg.cookie) {
+            bail!("Cookie mismatch — possible cross-instance pipe-squat attempt");
         }
 
         if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
-            tracing::debug!("Failed to ack GUI IPC payload: {e:#}");
+            tracing::debug!("Failed to ack GUI IPC frame: {e:#}");
+        }
+
+        if let Err(e) = self.dispatch_gui_payload(msg.payload).await {
+            tracing::debug!("Failed to handle GUI IPC payload: {e:#}");
         }
 
         Ok(())
     }
 
-    async fn dispatch_gui_payload(&mut self, msg: gui::ClientMsg) -> Result<()> {
-        match msg {
-            gui::ClientMsg::Hello { .. } => {
-                bail!("Unexpected second Hello frame after handshake");
-            }
-            gui::ClientMsg::Deeplink(url) => match self.handle_deep_link(&url).await {
+    async fn dispatch_gui_payload(&mut self, payload: gui::Payload) -> Result<()> {
+        match payload {
+            gui::Payload::Deeplink(url) => match self.handle_deep_link(&url).await {
                 Ok(()) => {}
                 Err(error)
                     if error
@@ -760,7 +756,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!("`handle_deep_link` failed: {error:#}");
                 }
             },
-            gui::ClientMsg::NewInstance => {
+            gui::Payload::NewInstance => {
                 let (_, session_view_model) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
@@ -1087,12 +1083,12 @@ mod tests {
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         gui_tx
-            .send(&gui::ClientMsg::Hello {
+            .send(&gui::ClientMsg {
                 cookie: TEST_COOKIE,
+                payload: gui::Payload::NewInstance,
             })
             .await
             .unwrap();
-        gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
@@ -1110,12 +1106,12 @@ mod tests {
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         // Bogus cookie: every byte differs from `TEST_COOKIE`.
         gui_tx
-            .send(&gui::ClientMsg::Hello { cookie: [0; 32] })
+            .send(&gui::ClientMsg {
+                cookie: [0; 32],
+                payload: gui::Payload::NewInstance,
+            })
             .await
-            .unwrap();
-        // Even if we send a valid request, the server should drop the
-        // connection without acking due to the cookie mismatch above.
-        gui_tx.send(&gui::ClientMsg::NewInstance).await.ok();
+            .ok();
 
         // The server drops the connection on cookie mismatch; the read
         // side either yields `None` or an EOF-style error — never an Ack.
@@ -1277,12 +1273,12 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui::ClientMsg::Hello {
+            tx.send(&gui::ClientMsg {
                 cookie: TEST_COOKIE,
+                payload: gui::Payload::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()),
             })
             .await
             .unwrap();
-            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap())).await.unwrap();
             let ack = rx.next().await.unwrap().unwrap();
             assert_eq!(ack, gui::ServerMsg::Ack);
         }
@@ -1514,7 +1510,7 @@ mod tests {
                 true,
                 updates_rx,
                 gui_ipc_server,
-                gui::LaunchCookie::new(TEST_COOKIE),
+                crate::launch_cookie::LaunchCookie::new(TEST_COOKIE),
             ));
 
             TestController {
