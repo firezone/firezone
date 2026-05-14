@@ -12,6 +12,7 @@
 #![cfg(windows)]
 
 use anyhow::{Context as _, Result, ensure};
+use std::ffi::c_void;
 use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows::{
     Win32::{
@@ -22,15 +23,14 @@ use windows::{
                 ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
                 SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
-            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, GetTokenInformation, PSID,
-            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, TOKEN_QUERY, TOKEN_USER,
-            TokenUser,
+            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, GetTokenInformation,
+            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY,
+            TOKEN_USER, TokenUser,
         },
         System::Threading::{GetCurrentProcess, OpenProcessToken},
     },
     core::{BOOL, PCWSTR, PWSTR},
 };
-use std::ffi::c_void;
 
 /// Owned wrapper around a `PSECURITY_DESCRIPTOR` allocated by
 /// `ConvertStringSecurityDescriptorToSecurityDescriptorW`.

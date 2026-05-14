@@ -1,7 +1,9 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail, ensure};
 use sha2::{Digest, Sha256};
-use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, sync::OnceLock, time::Duration};
+use std::{
+    ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, sync::OnceLock, time::Duration,
+};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
     Foundation::{HANDLE, HLOCAL, LocalFree},
