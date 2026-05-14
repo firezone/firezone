@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBundleCommand": "bash ./win_files/pre-bundle.sh"
+    "beforeBundleCommand": "bash ./src-tauri/win_files/pre-bundle.sh"
   },
   "mainBinaryName": "Firezone",
   "productName": "Firezone"
