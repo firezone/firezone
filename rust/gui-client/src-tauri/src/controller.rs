@@ -45,10 +45,6 @@ pub struct Controller<I: GuiIntegration> {
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
-    /// Cookie that every [`gui::ClientMsg`] must carry on every frame.
-    /// The first instance generated this cookie at startup and persisted
-    /// it to the launch-cookie file under an exclusive advisory lock.
-    /// See [`crate::launch_cookie`].
     gui_cookie: LaunchCookie,
 
     gui_ipc_clients: BoxStream<
@@ -181,7 +177,6 @@ enum EventloopTick {
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn start(
         socket: SocketId,
         integration: I,
@@ -288,9 +283,15 @@ impl<I: GuiIntegration> Controller<I> {
                 EventloopTick::NewInstanceLaunched(Some(Err(e))) => {
                     tracing::warn!("Failed to accept IPC connection from new GUI instance: {e:#}");
                 }
-                EventloopTick::NewInstanceLaunched(Some(Ok((read, write)))) => {
-                    if let Err(e) = self.handle_new_gui_instance(read, write).await {
-                        tracing::debug!("Rejected GUI IPC connection: {e:#}")
+                EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
+                    let client_msg = read.next().await;
+
+                    if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
+                        tracing::debug!("Failed to handle IPC message from new GUI instance: {e:#}")
+                    }
+
+                    if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
+                        tracing::debug!("Failed to ack IPC message from new GUI instance: {e:#}")
                     }
                 }
             }
@@ -703,33 +704,19 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_new_gui_instance(
+    async fn handle_gui_ipc_msg(
         &mut self,
-        mut read: ipc::ServerRead<gui::ClientMsg>,
-        mut write: ipc::ServerWrite<gui::ServerMsg>,
+        maybe_msg: Option<Result<gui::ClientMsg>>,
     ) -> Result<()> {
-        let msg = read
-            .next()
-            .await
-            .context("No frame received from new GUI instance")?
-            .context("Failed to read frame from new GUI instance")?;
-        if self.gui_cookie != *msg.cookie() {
+        let client_msg = maybe_msg
+            .context("No message received")?
+            .context("Failed to read message")?;
+
+        if self.gui_cookie != *client_msg.cookie() {
             bail!("Cookie mismatch — possible cross-instance pipe-squat attempt");
         }
 
-        if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
-            tracing::debug!("Failed to ack GUI IPC frame: {e:#}");
-        }
-
-        if let Err(e) = self.dispatch_gui_msg(msg).await {
-            tracing::debug!("Failed to handle GUI IPC payload: {e:#}");
-        }
-
-        Ok(())
-    }
-
-    async fn dispatch_gui_msg(&mut self, msg: gui::ClientMsg) -> Result<()> {
-        match msg {
+        match client_msg {
             gui::ClientMsg::Deeplink { url, .. } => match self.handle_deep_link(&url).await {
                 Ok(()) => {}
                 Err(error)
