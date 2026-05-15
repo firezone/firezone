@@ -282,7 +282,10 @@ impl<I: GuiIntegration> Controller<I> {
                     let client_msg = read.next().await;
 
                     if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
-                        tracing::debug!("Failed to handle IPC message from new GUI instance: {e:#}")
+                        tracing::debug!(
+                            "Failed to handle IPC message from new GUI instance: {e:#}"
+                        );
+                        continue;
                     }
 
                     if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
@@ -1202,7 +1205,9 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap())).await.unwrap();
+            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
+            .await
+            .unwrap();
             let ack = rx.next().await.unwrap().unwrap();
             assert_eq!(ack, gui::ServerMsg::Ack);
         }

@@ -28,7 +28,7 @@ use windows_security::SecurityDescriptor;
 ///   pool identities, and arbitrary new service accounts (unlike `AU`).
 const PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
 
-pub(crate) struct Server {
+pub struct Server {
     pipe_path: String,
 }
 

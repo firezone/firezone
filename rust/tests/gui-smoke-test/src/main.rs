@@ -63,8 +63,73 @@ fn main() -> Result<()> {
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
+    // Launch-lock hand-off smoke test. No tunnel service or display
+    // server required — the subcommand only drives the lock + GUI IPC
+    // pipe.
+    single_instance_test(&app)?;
+
     if cli.manual_tests {
         manual_tests(&app)?;
+    }
+
+    Ok(())
+}
+
+/// Spawn two `debug single-instance` invocations back-to-back and
+/// assert that:
+///
+/// - The first acquires the launch lock and binds the GUI IPC pipe.
+/// - The second observes the lock held, connects to the pipe, sends
+///   `NewInstance`, awaits `Ack`, and exits 0.
+/// - The first then exits 0 after acking the second.
+///
+/// Both subprocesses pipe their stdout so we can also assert each
+/// one identified itself with the right role marker, and a 10-second
+/// `capture_timeout` keeps a hang in either side from stalling CI.
+fn single_instance_test(app: &App) -> Result<()> {
+    tracing::info!("Running launch-lock single-instance smoke test");
+
+    let first = app
+        .gui_command(&["debug", "single-instance"])?
+        .stdout(subprocess::Redirection::Pipe)
+        .start()?;
+
+    // Give the first process a moment to acquire the lock and bind the
+    // pipe before we race a second invocation against it.
+    std::thread::sleep(Duration::from_millis(500));
+
+    let second = app
+        .gui_command(&["debug", "single-instance"])?
+        .stdout(subprocess::Redirection::Pipe)
+        .start()?;
+    let second_capture = second
+        .capture_timeout(Duration::from_secs(10))
+        .context("Second instance timed out")?;
+    second_capture
+        .exit_status
+        .fz_exit_ok()
+        .context("Second instance")?;
+    let second_stdout = second_capture.stdout_str();
+    if !second_stdout.contains("second-instance:") {
+        bail!(
+            "second instance did not identify itself; stdout was:\n{}",
+            second_stdout
+        );
+    }
+
+    let first_capture = first
+        .capture_timeout(Duration::from_secs(10))
+        .context("First instance timed out")?;
+    first_capture
+        .exit_status
+        .fz_exit_ok()
+        .context("First instance")?;
+    let first_stdout = first_capture.stdout_str();
+    if !first_stdout.contains("first-instance:") {
+        bail!(
+            "first instance did not identify itself; stdout was:\n{}",
+            first_stdout
+        );
     }
 
     Ok(())

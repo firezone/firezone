@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
-pub(crate) struct Server {
+pub struct Server {
     listener: UnixListener,
     id: SocketId,
 }

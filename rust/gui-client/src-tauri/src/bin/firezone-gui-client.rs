@@ -158,6 +158,13 @@ fn try_main(
 
             return Ok(());
         }
+        Some(Cmd::Debug {
+            command: DebugCommand::SingleInstance,
+        }) => {
+            rt.block_on(debug_single_instance())?;
+
+            return Ok(());
+        }
         Some(Cmd::OpenDeepLink(deep_link)) => {
             tracing::info!("Opening deep-link");
 
@@ -332,6 +339,16 @@ enum DebugCommand {
     FakeController,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
+    /// Drive only the launch-lock + GUI IPC handshake — no controller, no
+    /// auth, no tunnel-service IPC, no Tauri UI. Two invocations exercise
+    /// the single-instance hand-off end to end:
+    ///
+    /// - First invocation: acquires the lock, binds the GUI pipe, prints
+    ///   `first-instance: …`, accepts one client, acks, and exits.
+    /// - Second invocation: sees the lock held, connects to the pipe,
+    ///   sends `NewInstance`, awaits the `Ack`, prints
+    ///   `second-instance: …`, and exits.
+    SingleInstance,
 }
 
 #[derive(clap::Parser)]
@@ -354,6 +371,34 @@ struct StoreTokenArgs {
 pub struct DeepLink {
     // TODO: Should be `Secret`?
     pub url: url::Url,
+}
+
+/// Drives the launch-lock + GUI-pipe handshake to exit cleanly as
+/// either the first or second instance. Run twice (concurrently from
+/// a shell smoke test, or by hand from two terminals) to exercise
+/// the hand-off path; the two stdout lines below let the harness
+/// assert on the outcome.
+#[allow(
+    clippy::print_stdout,
+    reason = "the whole point of this subcommand is to print a smoke-test signal to stdout"
+)]
+async fn debug_single_instance() -> anyhow::Result<()> {
+    use firezone_gui_client::gui::{self, SingleInstance};
+
+    match gui::establish_single_instance().await? {
+        SingleInstance::First {
+            mut server,
+            lock: _lock,
+        } => {
+            println!("first-instance: lock acquired; waiting for one client");
+            let msg = gui::accept_one_for_debug(&mut server).await?;
+            println!("first-instance: received {msg:?}; acked, exiting");
+        }
+        SingleInstance::SecondHandedOff => {
+            println!("second-instance: handshake completed, exiting");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

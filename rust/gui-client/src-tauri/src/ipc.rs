@@ -9,7 +9,7 @@ use tokio_util::{
     codec::{FramedRead, FramedWrite, LengthDelimitedCodec},
 };
 
-pub(crate) use platform::Server;
+pub use platform::Server;
 
 pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
 pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
