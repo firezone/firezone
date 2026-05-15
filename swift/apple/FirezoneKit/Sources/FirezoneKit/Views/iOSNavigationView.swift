@@ -141,10 +141,11 @@ import SwiftUI
     }
 
     private func supportButtonTapped() {
-      // defaultSupportURL is a static constant guaranteed to be valid
+      guard let defaultURL = URL(string: ConfigurationDefaults.supportURL) else { return }
+
       let url =
         URL(string: configuration.supportURL)
-        ?? URL(string: Configuration.defaultSupportURL)!  // swiftlint:disable:this force_unwrapping
+        ?? defaultURL
       openURL(url)
     }
   }

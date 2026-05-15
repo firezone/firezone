@@ -245,10 +245,11 @@ import SwiftUI
     init() {
       self.enabled = configuration.internetResourceEnabled
 
-      configuration.$publishedInternetResourceEnabled
+      configuration.objectWillChange
         .receive(on: RunLoop.main)
-        .sink(receiveValue: { [self] enabled in
-          self.enabled = enabled
+        .sink(receiveValue: { [weak self] _ in
+          guard let self else { return }
+          self.enabled = self.configuration.internetResourceEnabled
         })
         .store(in: &cancellables)
     }

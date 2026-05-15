@@ -9,7 +9,7 @@ import Foundation
 
 public enum ProviderMessage: Codable {
   case getState(Data)
-  case setConfiguration(TunnelConfiguration)
+  case setInternetResourceEnabled(Bool)
   case signOut
   case clearLogs
   case getLogFolderSize
@@ -23,7 +23,7 @@ public enum ProviderMessage: Codable {
 
   enum MessageType: String, Codable {
     case getState
-    case setConfiguration
+    case setInternetResourceEnabled
     case signOut
     case clearLogs
     case getLogFolderSize
@@ -38,9 +38,9 @@ public enum ProviderMessage: Codable {
     case .getState:
       let value = try container.decode(Data.self, forKey: .value)
       self = .getState(value)
-    case .setConfiguration:
-      let value = try container.decode(TunnelConfiguration.self, forKey: .value)
-      self = .setConfiguration(value)
+    case .setInternetResourceEnabled:
+      let value = try container.decode(Bool.self, forKey: .value)
+      self = .setInternetResourceEnabled(value)
     case .signOut:
       self = .signOut
     case .clearLogs:
@@ -60,8 +60,8 @@ public enum ProviderMessage: Codable {
     case .getState(let value):
       try container.encode(MessageType.getState, forKey: .type)
       try container.encode(value, forKey: .value)
-    case .setConfiguration(let value):
-      try container.encode(MessageType.setConfiguration, forKey: .type)
+    case .setInternetResourceEnabled(let value):
+      try container.encode(MessageType.setInternetResourceEnabled, forKey: .type)
       try container.encode(value, forKey: .value)
     case .signOut:
       try container.encode(MessageType.signOut, forKey: .type)

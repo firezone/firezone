@@ -56,10 +56,16 @@ public final class Store: ObservableObject {
   private static let statePollingInterval: Duration = .seconds(1)
   private var stateUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
-  private var lastSavedConfiguration: TunnelConfiguration?
+  private var lastSyncedSnapshot: ConfigurationSnapshot?
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
   private let tunnelManagerFactory: TunnelProviderManagerFactory
+
+  private struct ConfigurationSnapshot: Equatable {
+    var providerConfiguration: [String: String]
+    var internetResourceEnabled: Bool
+    var startOnLogin: Bool
+  }
 
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
@@ -89,7 +95,7 @@ public final class Store: ObservableObject {
       self.tunnelManagerFactory = tunnelManagerFactory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
+      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -106,7 +112,7 @@ public final class Store: ObservableObject {
       self.tunnelManagerFactory = tunnelManagerFactory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = userDefaults.string(forKey: "actorName") ?? "Unknown user"
+      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -117,34 +123,15 @@ public final class Store: ObservableObject {
       do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
     }
 
-    // We monitor for any configuration changes and tell the tunnel service about them
+    // We monitor for configuration changes and persist them to the VPN provider configuration.
     self.configuration.objectWillChange
       .receive(on: DispatchQueue.main)
       .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // These happen quite frequently
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-        let current = self.configuration.toTunnelConfiguration()
-
-        if self.vpnConfigurationManager == nil {
-          // No manager yet, nothing to update
-          return
-        }
-
-        if self.lastSavedConfiguration == current {
-          // No changes
-          return
-        }
-
-        self.lastSavedConfiguration = current
-
-        Task {
-          do {
-            guard let session = try self.manager().session() else { return }
-            try await IPCClient.setConfiguration(session: session, current)
-          } catch {
-            Log.error(error)
-          }
-        }
+        self.objectWillChange.send()
+        guard self.vpnConfigurationManager != nil else { return }
+        Task { @MainActor in await self.syncConfiguration() }
       })
       .store(in: &cancellables)
 
@@ -163,8 +150,7 @@ public final class Store: ObservableObject {
     // Forward internet resource toggle changes for immediate UI feedback.
     // The debounced configuration.objectWillChange subscription above handles
     // tunnel sync but adds 0.3s latency. This provides instant menu updates.
-    self.configuration.$publishedInternetResourceEnabled
-      .dropFirst()  // Skip initial value
+    self.configuration.internetResourceEnabledPublisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] _ in
         self?.objectWillChange.send()
@@ -174,12 +160,6 @@ public final class Store: ObservableObject {
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
-      do {
-        try await LoginItemManager.syncStartOnLogin(startOnLogin: configuration.startOnLogin)
-      } catch {
-        Log.error(error)
-      }
-
       do {
         try await LaunchAgentManager.syncKeepAppRunning()
       } catch {
@@ -318,12 +298,8 @@ public final class Store: ObservableObject {
   /// extension daemon isn't ready yet). Steps that run inside the retry loop are
   /// idempotent, so retrying is safe.
   private func startupSequence() async {
-    // Configure telemetry once before retryable steps — it only depends on the
-    // API URL which is fixed, and calling setEnvironmentOrClose multiple times
-    // can close the Sentry SDK with no way to reopen it.
-    Telemetry.setEnvironmentOrClose(configuration.apiURL)
-
     let maxAttempts = 4
+    var telemetryConfigured = false
 
     for attempt in 0..<maxAttempts {
       do {
@@ -331,6 +307,10 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
+        if !telemetryConfigured {
+          Telemetry.setEnvironmentOrClose(configuration.apiURL)
+          telemetryConfigured = true
+        }
         Log.debug("Startup: setupTunnelObservers")
         try await setupTunnelObservers()
         Log.debug("Startup: maybeAutoConnect")
@@ -386,7 +366,10 @@ public final class Store: ObservableObject {
   private func initVPNConfiguration() async throws {
     // Try to load existing configuration
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
-      try await manager.maybeMigrateConfiguration()
+      try await manager.loadConfiguration(into: configuration, userDefaults: userDefaults)
+      actorName = configuration.actorName
+      lastSyncedSnapshot = currentSnapshot()
+      await syncStartOnLogin()
       self.vpnConfigurationManager = manager
       SharedAccess.markAppRunning()
     } else {
@@ -396,11 +379,12 @@ public final class Store: ObservableObject {
 
   private func maybeAutoConnect() async throws {
     if configuration.connectOnStart {
+      try await manager().save(configuration: configuration)
       try await manager().enable()
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
-      try IPCClient.start(session: session, configuration: configuration.toTunnelConfiguration())
+      try IPCClient.start(session: session)
     }
   }
   func installVPNConfiguration() async throws {
@@ -408,6 +392,11 @@ public final class Store: ObservableObject {
     self.vpnConfigurationManager = try await VPNConfigurationManager(
       manager: tunnelManagerFactory.createManager()
     )
+
+    try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
+    actorName = configuration.actorName
+    lastSyncedSnapshot = currentSnapshot()
+    await syncStartOnLogin()
 
     try await setupTunnelObservers()
     SharedAccess.markAppRunning()
@@ -420,6 +409,61 @@ public final class Store: ObservableObject {
     }
 
     return vpnConfigurationManager
+  }
+
+  private func syncStartOnLogin() async {
+    do {
+      try await LoginItemManager.syncStartOnLogin(startOnLogin: configuration.startOnLogin)
+      lastSyncedSnapshot = currentSnapshot()
+    } catch {
+      Log.error(error)
+    }
+  }
+
+  private func currentSnapshot() -> ConfigurationSnapshot {
+    ConfigurationSnapshot(
+      providerConfiguration: configuration.toProviderConfiguration(),
+      internetResourceEnabled: configuration.internetResourceEnabled,
+      startOnLogin: configuration.startOnLogin
+    )
+  }
+
+  private func syncConfiguration() async {
+    let target = currentSnapshot()
+    // initVPNConfiguration / installVPNConfiguration seed lastSyncedSnapshot
+    // before the configuration sink can fire, so this is expected to be non-nil.
+    guard var synced = lastSyncedSnapshot else { return }
+    defer { lastSyncedSnapshot = synced }
+    guard synced != target else { return }
+
+    // Advance `synced` per-field only after each step's async work succeeds so a
+    // failure in one step doesn't lose the retry signal for the others.
+    do {
+      if synced.startOnLogin != target.startOnLogin {
+        try await LoginItemManager.syncStartOnLogin(startOnLogin: target.startOnLogin)
+        synced.startOnLogin = target.startOnLogin
+      }
+      if synced.providerConfiguration != target.providerConfiguration {
+        try await manager().save(providerConfiguration: target.providerConfiguration)
+        synced.providerConfiguration = target.providerConfiguration
+      }
+      if synced.internetResourceEnabled != target.internetResourceEnabled {
+        // The new value is already persisted via providerConfiguration above;
+        // push it live to a running tunnel as well. If IPC throws we exit before
+        // advancing synced so the next configuration change retries.
+        if let session = try manager().session(),
+          [.connected, .connecting, .reasserting].contains(session.status)
+        {
+          try await IPCClient.setInternetResourceEnabled(
+            session: session,
+            target.internetResourceEnabled
+          )
+        }
+        synced.internetResourceEnabled = target.internetResourceEnabled
+      }
+    } catch {
+      Log.error(error)
+    }
   }
 
   func grantNotifications() async throws {
@@ -438,12 +482,13 @@ public final class Store: ObservableObject {
     let actorName = authResponse.actorName
     let accountSlug = authResponse.accountSlug
 
-    // This is only shown in the GUI, cache it here
+    // This is only shown in the GUI.
+    configuration.actorName = actorName
     self.actorName = actorName
-    userDefaults.set(actorName, forKey: "actorName")
 
     configuration.accountSlug = accountSlug
 
+    try await manager().save(configuration: configuration)
     try await manager().enable()
 
     // Clear shown alerts when starting a new session so user can see new errors
@@ -453,14 +498,11 @@ public final class Store: ObservableObject {
     // Clear notified unreachable resources for fresh session
     unreachableResources.removeAll()
 
-    // Bring the tunnel up and send it a token and configuration to start
+    // Bring the tunnel up and send it a token to start
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(
-      session: session, token: authResponse.token,
-      configuration: configuration.toTunnelConfiguration()
-    )
+    try IPCClient.start(session: session, token: authResponse.token)
   }
 
   func signOut() async throws {
