@@ -2,14 +2,17 @@ use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail, ensure};
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
-use windows::Win32::{
-    Foundation::{HANDLE, HLOCAL, LocalFree},
-    Security::{
-        Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
-        IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-        SECURITY_ATTRIBUTES, WinLocalSystemSid,
+use windows::{
+    Win32::{
+        Foundation::{HANDLE, HLOCAL, LocalFree},
+        Security::{
+            Authorization::{ConvertSidToStringSidW, GetSecurityInfo, SE_KERNEL_OBJECT},
+            IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+            SECURITY_ATTRIBUTES, WinLocalSystemSid,
+        },
+        System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
     },
-    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
+    core::PWSTR,
 };
 use windows_security::SecurityDescriptor;
 
@@ -118,6 +121,11 @@ fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
     // alive for this call) and `IsWellKnownSid` does not retain it.
     let is_local_system = unsafe { IsWellKnownSid(owner_sid, WinLocalSystemSid) }.as_bool();
 
+    // Stringify the SID *before* freeing `sd`: `owner_sid` points into
+    // that allocation. Empty string on conversion failure — we still
+    // surface the mismatch even if we couldn't render the SID.
+    let owner_sid_str = sid_to_string(owner_sid).unwrap_or_default();
+
     // SAFETY: `sd` was allocated by `GetSecurityInfo` and must be released
     // with `LocalFree`. After this call no pointer derived from it is used.
     unsafe {
@@ -126,9 +134,32 @@ fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
 
     ensure!(
         is_local_system,
-        "Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack"
+        "Tunnel pipe owner is `{owner_sid_str}`; expected LocalSystem (`S-1-5-18`). \
+         Another process may be holding the pipe — kill any stray \
+         `firezone-client-tunnel.exe` instances and restart the FirezoneClientTunnelService."
     );
     Ok(())
+}
+
+/// `ConvertSidToStringSidW` wrapper. Returns the SDDL form of the SID
+/// (e.g. `S-1-5-18`). The SID buffer is owned by the caller; we
+/// allocate-and-release the wide buffer Windows returns.
+fn sid_to_string(sid: PSID) -> Option<String> {
+    let mut wide_ptr = PWSTR::null();
+    // SAFETY: `sid` is a non-NULL pointer to a valid SID and Windows
+    // writes a fresh allocation to `wide_ptr` on success.
+    unsafe { ConvertSidToStringSidW(sid, &mut wide_ptr) }.ok()?;
+
+    // SAFETY: `wide_ptr` points to a NUL-terminated UTF-16 string
+    // Windows allocated; `to_string` walks until the NUL.
+    let s = unsafe { wide_ptr.to_string() }.ok()?;
+
+    // SAFETY: we own `wide_ptr` and must release it with `LocalFree`;
+    // no derived pointer is used after this call.
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(wide_ptr.0 as *mut std::ffi::c_void)));
+    }
+    Some(s)
 }
 
 impl Server {
