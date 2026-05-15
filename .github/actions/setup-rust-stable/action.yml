@@ -30,45 +30,25 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Extract Rust version
-      run: |
-        RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
-        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
-      shell: bash
-
-    - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
-      id: toolchain-1
-      continue-on-error: true
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,llvm-tools-preview
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure caching somewhere else.
-
-    - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
-      if: ${{ steps.toolchain-1.outcome == 'failure' }}
-      continue-on-error: true
-      id: toolchain-2
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,llvm-tools-preview
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure caching somewhere else.
-
-    - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
-      if: ${{ steps.toolchain-2.outcome == 'failure' }}
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,llvm-tools-preview
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure caching somewhere else.
-
-    # Workaround for actions/runner-images#14099: the macos-26 image pre-installs
-    # rustup via Homebrew, which leaves /opt/homebrew/bin/cargo ahead of
-    # ~/.cargo/bin/cargo on PATH. The Homebrew shim is currently broken and
-    # rejects valid cargo argv (e.g. `cargo llvm-cov` -> "unexpected argument
-    # 'llvm-cov'"). Force the toolchain proxies to win PATH resolution.
-    - name: Prepend ~/.cargo/bin to PATH (macOS)
+    # macos-26 ships a broken Homebrew rustup formula whose proxies reject
+    # cargo argv (actions/runner-images#14099, #14097). Replace it with an
+    # official install so PATH resolution is clean.
+    - name: Replace Homebrew rustup with official install (macOS)
       if: runner.os == 'macOS'
       shell: bash
-      run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      run: |
+        brew uninstall --ignore-dependencies rustup 2>/dev/null || true
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --no-modify-path --default-toolchain none --profile minimal
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+    # Auto-installs the channel + components pinned in rust/rust-toolchain.toml.
+    - name: Install pinned Rust toolchain
+      shell: bash
+      working-directory: rust
+      run: rustup show
+
+    - name: Install additional targets
+      if: ${{ inputs.targets != '' }}
+      shell: bash
+      run: rustup target add ${{ inputs.targets }}

@@ -1,4 +1,4 @@
 [toolchain]
 channel = "1.95.0" # Keep in sync with `Dockerfile`
-components = ["rust-src", "rust-analyzer", "clippy"]
+components = ["rust-src", "rust-analyzer", "clippy", "rustfmt", "llvm-tools-preview"]
 targets = ["x86_64-unknown-linux-musl"]
