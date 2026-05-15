@@ -1,0 +1,22 @@
+[package]
+name = "dep-diff"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+description = "Generate a markdown report of Cargo.lock changes between two git refs"
+
+[[bin]]
+name = "dep-diff"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+cargo-lock = { version = "10", default-features = false }
+clap = { workspace = true, features = ["derive", "env"] }
+reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
+rustls = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+
+[lints]
+workspace = true

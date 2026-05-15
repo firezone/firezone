@@ -973,6 +973,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-lock"
+version = "10.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c06acb4f71407ba205a07cb453211e0e6a67b21904e47f6ba1f9589e38f2e454"
+dependencies = [
+ "semver",
+ "serde",
+ "toml 0.8.22",
+ "url",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1701,6 +1713,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "dep-diff"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "cargo-lock",
+ "clap",
+ "reqwest 0.13.3",
+ "rustls",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
