@@ -78,6 +78,7 @@ defmodule Portal.Workers.DeleteAccountTest do
 
     test "cancels the Stripe subscription before deleting the account" do
       subscription_id = "sub_#{System.unique_integer([:positive])}"
+      customer_id = "cus_#{System.unique_integer([:positive])}"
 
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
@@ -86,17 +87,23 @@ defmodule Portal.Workers.DeleteAccountTest do
         update_account(account_fixture(),
           disabled_at: disabled_at,
           scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{subscription_id: subscription_id}}
+          metadata: %{stripe: %{customer_id: customer_id}}
         )
 
-      Stripe.stub(Stripe.mock_cancel_subscription_endpoint(subscription_id))
+      subscription = %{"id" => subscription_id, "object" => "subscription"}
+
+      Stripe.stub(
+        Stripe.mock_fetch_customer_subscriptions_endpoint(customer_id, [subscription]) ++
+          Stripe.mock_cancel_subscription_endpoint(subscription_id)
+      )
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
     end
 
-    test "succeeds when the Stripe subscription is already canceled (idempotency)" do
+    test "succeeds when all Stripe subscriptions are already canceled (idempotency)" do
       subscription_id = "sub_#{System.unique_integer([:positive])}"
+      customer_id = "cus_#{System.unique_integer([:positive])}"
 
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
@@ -105,10 +112,15 @@ defmodule Portal.Workers.DeleteAccountTest do
         update_account(account_fixture(),
           disabled_at: disabled_at,
           scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{subscription_id: subscription_id}}
+          metadata: %{stripe: %{customer_id: customer_id}}
         )
 
-      Stripe.stub(Stripe.mock_cancel_subscription_endpoint(subscription_id, 404, %{}))
+      subscription = %{"id" => subscription_id, "object" => "subscription"}
+
+      Stripe.stub(
+        Stripe.mock_fetch_customer_subscriptions_endpoint(customer_id, [subscription]) ++
+          Stripe.mock_cancel_subscription_endpoint(subscription_id, 404, %{})
+      )
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
@@ -116,6 +128,7 @@ defmodule Portal.Workers.DeleteAccountTest do
 
     test "fails the job when Stripe subscription cancellation fails" do
       subscription_id = "sub_#{System.unique_integer([:positive])}"
+      customer_id = "cus_#{System.unique_integer([:positive])}"
 
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
@@ -124,10 +137,15 @@ defmodule Portal.Workers.DeleteAccountTest do
         update_account(account_fixture(),
           disabled_at: disabled_at,
           scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{subscription_id: subscription_id}}
+          metadata: %{stripe: %{customer_id: customer_id}}
         )
 
-      Stripe.stub(Stripe.mock_cancel_subscription_endpoint(subscription_id, 500, %{}))
+      subscription = %{"id" => subscription_id, "object" => "subscription"}
+
+      Stripe.stub(
+        Stripe.mock_fetch_customer_subscriptions_endpoint(customer_id, [subscription]) ++
+          Stripe.mock_cancel_subscription_endpoint(subscription_id, 500, %{})
+      )
 
       assert {:error, _} = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id)
@@ -143,14 +161,14 @@ defmodule Portal.Workers.DeleteAccountTest do
         update_account(account_fixture(),
           disabled_at: disabled_at,
           scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{subscription_id: "sub_should_not_be_called"}}
+          metadata: %{stripe: %{customer_id: "cus_should_not_be_called"}}
         )
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
     end
 
-    test "deletes the account without calling Stripe when account has no subscription" do
+    test "deletes the account without calling Stripe when account has no customer ID" do
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
 

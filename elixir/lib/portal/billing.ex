@@ -364,31 +364,35 @@ defmodule Portal.Billing do
     end
   end
 
-  def cancel_subscription(%Portal.Account{} = account) do
+  def cancel_subscriptions(%Portal.Account{} = account) do
     if enabled?() do
-      subscription_id = get_in(account, [Access.key(:metadata), Access.key(:stripe), Access.key(:subscription_id)])
-      do_cancel_subscription(account, subscription_id)
+      customer_id =
+        get_in(account, [Access.key(:metadata), Access.key(:stripe), Access.key(:customer_id)])
+
+      do_cancel_subscriptions(account, customer_id)
     else
       :ok
     end
   end
 
-  defp do_cancel_subscription(_account, nil), do: :ok
+  defp do_cancel_subscriptions(account, nil) do
+    Logger.warning("Deleting account with no Stripe customer ID", account_id: account.id)
+    :ok
+  end
 
-  defp do_cancel_subscription(account, subscription_id) do
+  defp do_cancel_subscriptions(account, customer_id) do
     secret_key = fetch_config!(:secret_key)
 
-    case APIClient.cancel_subscription(secret_key, subscription_id) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {404, _}} ->
-        :ok
+    case APIClient.fetch_customer_subscriptions(secret_key, customer_id) do
+      {:ok, %{"data" => subscriptions}} ->
+        Enum.reduce_while(subscriptions, :ok, fn %{"id" => subscription_id}, :ok ->
+          cancel_subscription(secret_key, account, subscription_id)
+        end)
 
       {:error, reason} ->
-        Logger.error("Cannot cancel Stripe subscription",
+        Logger.error("Cannot fetch Stripe subscriptions for customer",
           account_id: account.id,
-          subscription_id: subscription_id,
+          customer_id: customer_id,
           reason: inspect(reason)
         )
 
@@ -399,6 +403,25 @@ defmodule Portal.Billing do
   def list_all_subscriptions do
     secret_key = fetch_config!(:secret_key)
     APIClient.list_all_subscriptions(secret_key)
+  end
+
+  defp cancel_subscription(secret_key, account, subscription_id) do
+    case APIClient.cancel_subscription(secret_key, subscription_id) do
+      {:ok, _} ->
+        {:cont, :ok}
+
+      {:error, {404, _}} ->
+        {:cont, :ok}
+
+      {:error, reason} ->
+        Logger.error("Cannot cancel Stripe subscription",
+          account_id: account.id,
+          subscription_id: subscription_id,
+          reason: inspect(reason)
+        )
+
+        {:halt, {:error, :retry_later}}
+    end
   end
 
   def create_subscription(%Portal.Account{} = account) do

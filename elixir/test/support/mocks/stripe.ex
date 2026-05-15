@@ -22,7 +22,8 @@ defmodule Portal.Mocks.Stripe do
   def stub(expectations) when is_list(expectations) do
     Req.Test.stub(APIClient, fn conn ->
       method = conn.method
-      path = "/" <> Enum.join(conn.path_info, "/")
+      base_path = "/" <> Enum.join(conn.path_info, "/")
+      path = if conn.query_string != "", do: base_path <> "?" <> conn.query_string, else: base_path
 
       case find_expectation(expectations, method, path) do
         {:ok, {status, response}} ->
@@ -156,6 +157,11 @@ defmodule Portal.Mocks.Stripe do
       )
 
     [{"POST", "/v1/billing_portal/sessions", 200, response}]
+  end
+
+  def mock_fetch_customer_subscriptions_endpoint(customer_id, subscriptions \\ []) do
+    response = %{"object" => "list", "data" => subscriptions, "has_more" => false}
+    [{"GET", ~r|/v1/subscriptions\?customer=#{customer_id}|, 200, response}]
   end
 
   def mock_cancel_subscription_endpoint(subscription_id, status \\ 200, resp \\ %{}) do

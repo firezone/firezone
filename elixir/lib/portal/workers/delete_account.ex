@@ -49,7 +49,7 @@ defmodule Portal.Workers.DeleteAccount do
   end
 
   defp delete_account_and_notify_admins(%Account{} = account) do
-    with :ok <- Billing.cancel_subscription(account) do
+    with :ok <- Billing.cancel_subscriptions(account) do
       admin_emails = Database.get_account_admin_emails(account.id)
 
       if admin_emails == [] do
