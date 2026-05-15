@@ -42,6 +42,10 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           REPORT_PATH: ${{ runner.temp }}/dep-diff.md
+          # Read-only here, so the PR head — including its untrusted code —
+          # can be built and run safely. Used by dep-diff only to lift the
+          # GitHub tags API rate limit from 60/h to 5000/h.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cargo run --quiet -p dep-diff -- \
             --base-ref "origin/$BASE_REF" \

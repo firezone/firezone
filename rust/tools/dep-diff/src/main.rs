@@ -15,7 +15,7 @@ use clap::Parser;
 use serde::Deserialize;
 
 const CRATES_IO_API: &str = "https://crates.io/api/v1/crates";
-const DIFF_RS: &str = "https://diff.rs";
+const GITHUB_API: &str = "https://api.github.com";
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -45,6 +45,11 @@ struct Cli {
     #[arg(long, default_value_t = 250)]
     request_delay_ms: u64,
 
+    /// GitHub token for the tags API. Optional, but lifts the unauthenticated
+    /// 60 req/hour rate limit to 5000 req/hour.
+    #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true)]
+    github_token: Option<String>,
+
     /// Write the report to this file. Defaults to stdout.
     #[arg(long)]
     output: Option<PathBuf>,
@@ -59,6 +64,11 @@ struct CratesIoResponse {
 #[derive(Deserialize)]
 struct CrateInfo {
     repository: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GhTag {
+    name: String,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -97,6 +107,7 @@ async fn main() -> Result<()> {
         &cli.lockfile_path,
         &changes,
         Duration::from_millis(cli.request_delay_ms),
+        cli.github_token.as_deref(),
     )
     .await?;
 
@@ -242,6 +253,7 @@ async fn render_report(
     lockfile_path: &Path,
     changes: &[Change],
     request_delay: Duration,
+    github_token: Option<&str>,
 ) -> Result<String> {
     let mut out = String::new();
     out.push_str(&format!(
@@ -253,6 +265,7 @@ async fn render_report(
     out.push_str("| Crate | Change | Diff | Repository |\n");
     out.push_str("| --- | --- | --- | --- |\n");
 
+    let mut tags_cache: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
     let mut bumped = 0usize;
     let mut added = 0usize;
     let mut removed = 0usize;
@@ -269,7 +282,29 @@ async fn render_report(
         } else {
             None
         };
-        out.push_str(&format_row(change, repo.as_deref()));
+        let compare_url = match (&change.kind, repo.as_deref()) {
+            (
+                ChangeKind::Bump {
+                    from,
+                    to,
+                    from_crates_io: true,
+                },
+                Some(repo_url),
+            ) => {
+                resolve_compare_url(
+                    client,
+                    &mut tags_cache,
+                    github_token,
+                    change.name.as_str(),
+                    repo_url,
+                    from,
+                    to,
+                )
+                .await
+            }
+            _ => None,
+        };
+        out.push_str(&format_row(change, repo.as_deref(), compare_url.as_deref()));
         match change.kind {
             ChangeKind::Bump { .. } => bumped += 1,
             ChangeKind::Added { .. } => added += 1,
@@ -312,19 +347,113 @@ async fn fetch_repository(client: &reqwest::Client, crate_name: &str) -> Result<
     Ok(parsed.crate_.repository)
 }
 
-fn format_row(change: &Change, repo_url: Option<&str>) -> String {
+/// Return `(owner, repo)` if `url` points to a GitHub repository.
+///
+/// Tolerates `.git` suffixes and the `git+` URL prefix that some crates.io
+/// metadata uses verbatim from `Cargo.toml`.
+fn parse_github_repo(url: &str) -> Option<(String, String)> {
+    let url = url.strip_prefix("git+").unwrap_or(url);
+    let parsed = reqwest::Url::parse(url).ok()?;
+    if parsed.host_str() != Some("github.com") {
+        return None;
+    }
+    let mut segments = parsed.path_segments()?;
+    let owner = segments.next()?.to_string();
+    let repo = segments.next()?.trim_end_matches(".git").to_string();
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some((owner, repo))
+}
+
+/// Fetch up to ~300 tags from `<owner>/<repo>` via the GitHub tags API.
+///
+/// The Rust ecosystem has no convention for tag naming — `v1.2.3`, `1.2.3`,
+/// `serde-1.2.3` (monorepos), `crate/v1.2.3` are all in active use — so the
+/// only reliable way to construct a `compare/...` URL is to list real tags
+/// and match against the version string.
+async fn fetch_tags(
+    client: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+    token: Option<&str>,
+) -> Result<Vec<String>> {
+    let mut tags = Vec::new();
+    for page in 1..=3 {
+        let url = format!("{GITHUB_API}/repos/{owner}/{repo}/tags?per_page=100&page={page}");
+        let mut req = client
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(t) = token {
+            req = req.bearer_auth(t);
+        }
+        let resp = req.send().await?;
+        if !resp.status().is_success() {
+            break;
+        }
+        let batch: Vec<GhTag> = resp.json().await?;
+        let was_full = batch.len() == 100;
+        tags.extend(batch.into_iter().map(|t| t.name));
+        if !was_full {
+            break;
+        }
+    }
+    Ok(tags)
+}
+
+/// Find a tag in `tags` matching `version`, allowing for the common Rust
+/// crate naming patterns (`v1.2.3`, bare `1.2.3`, and the `name`-prefixed
+/// variants used by monorepos).
+fn find_tag<'a>(tags: &'a [String], crate_name: &str, version: &Version) -> Option<&'a str> {
+    let v = version.to_string();
+    let candidates: [String; 8] = [
+        format!("v{v}"),
+        v.clone(),
+        format!("{crate_name}-v{v}"),
+        format!("{crate_name}-{v}"),
+        format!("{crate_name}/v{v}"),
+        format!("{crate_name}/{v}"),
+        format!("{crate_name}_v{v}"),
+        format!("{crate_name}_{v}"),
+    ];
+    tags.iter()
+        .find(|t| candidates.iter().any(|c| c == *t))
+        .map(String::as_str)
+}
+
+async fn resolve_compare_url(
+    client: &reqwest::Client,
+    cache: &mut BTreeMap<(String, String), Vec<String>>,
+    token: Option<&str>,
+    crate_name: &str,
+    repo_url: &str,
+    from: &Version,
+    to: &Version,
+) -> Option<String> {
+    let (owner, repo) = parse_github_repo(repo_url)?;
+    let key = (owner.clone(), repo.clone());
+    if !cache.contains_key(&key) {
+        let tags = fetch_tags(client, &owner, &repo, token)
+            .await
+            .unwrap_or_default();
+        cache.insert(key.clone(), tags);
+    }
+    let tags = cache.get(&key)?;
+    let from_tag = find_tag(tags, crate_name, from)?;
+    let to_tag = find_tag(tags, crate_name, to)?;
+    Some(format!(
+        "https://github.com/{owner}/{repo}/compare/{from_tag}...{to_tag}"
+    ))
+}
+
+fn format_row(change: &Change, repo_url: Option<&str>, compare_url: Option<&str>) -> String {
     let name_cell = format!("[`{0}`](https://crates.io/crates/{0})", change.name);
     let (change_cell, diff_cell) = match &change.kind {
-        ChangeKind::Bump {
-            from,
-            to,
-            from_crates_io,
-        } => {
-            let diff = if *from_crates_io {
-                format!("[view diff]({DIFF_RS}/{}/{}/{}/)", change.name, from, to)
-            } else {
-                "—".to_string()
-            };
+        ChangeKind::Bump { from, to, .. } => {
+            let diff = compare_url
+                .map(|u| format!("[compare]({u})"))
+                .unwrap_or_else(|| "—".to_string());
             (format!("`{from}` → `{to}`"), diff)
         }
         ChangeKind::Added {
@@ -570,7 +699,7 @@ source = "git+https://github.com/foo/bar?branch=main#cafef00d"
     }
 
     #[test]
-    fn bump_row_links_to_diff_rs() {
+    fn bump_row_links_to_github_compare_when_available() {
         let change = Change {
             name: name("serde"),
             kind: ChangeKind::Bump {
@@ -579,14 +708,20 @@ source = "git+https://github.com/foo/bar?branch=main#cafef00d"
                 from_crates_io: true,
             },
         };
-        let row = format_row(&change, Some("https://github.com/serde-rs/serde"));
-        assert!(row.contains("[view diff](https://diff.rs/serde/1.0.0/1.0.1/)"));
+        let row = format_row(
+            &change,
+            Some("https://github.com/serde-rs/serde"),
+            Some("https://github.com/serde-rs/serde/compare/v1.0.0...v1.0.1"),
+        );
+        assert!(
+            row.contains("[compare](https://github.com/serde-rs/serde/compare/v1.0.0...v1.0.1)")
+        );
         assert!(row.contains("[serde-rs/serde](https://github.com/serde-rs/serde)"));
         assert!(row.contains("`1.0.0` → `1.0.1`"));
     }
 
     #[test]
-    fn non_crates_io_bump_omits_diff_link() {
+    fn bump_row_with_no_compare_url_falls_back_to_em_dash() {
         let change = Change {
             name: name("forked"),
             kind: ChangeKind::Bump {
@@ -595,9 +730,83 @@ source = "git+https://github.com/foo/bar?branch=main#cafef00d"
                 from_crates_io: false,
             },
         };
-        let row = format_row(&change, None);
-        assert!(!row.contains("diff.rs"));
+        let row = format_row(&change, None, None);
         assert!(row.contains("`1.0.0` → `1.1.0`"));
+        // Diff cell should be em-dash when there is no compare URL.
+        assert!(row.contains("| — | — |"));
+    }
+
+    #[test]
+    fn parse_github_repo_accepts_common_url_shapes() {
+        assert_eq!(
+            parse_github_repo("https://github.com/serde-rs/serde"),
+            Some(("serde-rs".to_string(), "serde".to_string()))
+        );
+        assert_eq!(
+            parse_github_repo("https://github.com/serde-rs/serde/"),
+            Some(("serde-rs".to_string(), "serde".to_string()))
+        );
+        assert_eq!(
+            parse_github_repo("https://github.com/serde-rs/serde.git"),
+            Some(("serde-rs".to_string(), "serde".to_string()))
+        );
+        assert_eq!(
+            parse_github_repo("git+https://github.com/serde-rs/serde.git"),
+            Some(("serde-rs".to_string(), "serde".to_string()))
+        );
+        assert_eq!(
+            parse_github_repo("https://github.com/tokio-rs/tokio/tree/master/tokio"),
+            Some(("tokio-rs".to_string(), "tokio".to_string())),
+            "monorepo URLs that include a path should still yield owner/repo"
+        );
+    }
+
+    #[test]
+    fn parse_github_repo_rejects_non_github() {
+        assert_eq!(parse_github_repo("https://gitlab.com/foo/bar"), None);
+        assert_eq!(parse_github_repo("https://sr.ht/~foo/bar"), None);
+        assert_eq!(parse_github_repo("not a url"), None);
+        assert_eq!(parse_github_repo("https://github.com/"), None);
+        assert_eq!(parse_github_repo("https://github.com/lonely-owner"), None);
+    }
+
+    #[test]
+    fn find_tag_matches_the_common_naming_conventions() {
+        let tags: Vec<String> = ["v1.0.0", "v0.9.0", "old-release"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(find_tag(&tags, "serde", &ver("1.0.0")), Some("v1.0.0"));
+
+        let tags: Vec<String> = ["serde-1.0.0", "serde_derive-1.0.0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            find_tag(&tags, "serde", &ver("1.0.0")),
+            Some("serde-1.0.0"),
+            "monorepo prefix should match the owning crate"
+        );
+        assert_eq!(
+            find_tag(&tags, "serde_derive", &ver("1.0.0")),
+            Some("serde_derive-1.0.0")
+        );
+
+        let tags: Vec<String> = ["tokio-1.45.0"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            find_tag(&tags, "tokio", &ver("1.45.0")),
+            Some("tokio-1.45.0")
+        );
+
+        // Bare numeric tag (some crates use this).
+        let tags: Vec<String> = vec!["1.2.3".to_string()];
+        assert_eq!(find_tag(&tags, "anything", &ver("1.2.3")), Some("1.2.3"));
+    }
+
+    #[test]
+    fn find_tag_returns_none_when_nothing_matches() {
+        let tags: Vec<String> = vec!["release-2024-01".to_string(), "rc1".to_string()];
+        assert_eq!(find_tag(&tags, "serde", &ver("1.0.0")), None);
     }
 
     #[test]
