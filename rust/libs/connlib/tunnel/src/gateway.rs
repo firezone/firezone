@@ -27,8 +27,6 @@ use std::time::{Duration, Instant};
 
 pub const TUN_DNS_PORT: u16 = 53535;
 
-const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
-
 /// A SANS-IO implementation of a gateway's functionality.
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
@@ -40,12 +38,15 @@ pub struct GatewayState {
 
     flow_tracker: FlowTracker,
 
-    /// When to next check whether a resource-access policy has expired.
-    next_expiry_resources_check: Option<Instant>,
-
     tun_ip_config: Option<IpConfig>,
 
     unix_ts_clock: UnixTsClock,
+
+    /// Drives a 1 Hz wake-up so test harnesses (and any callers without
+    /// other near-term work) pump the gateway's internal subsystems
+    /// (NAT/flow tracking eviction etc.) at a regular cadence. Lazily
+    /// initialised on the first `handle_timeout` call.
+    next_periodic_tick: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit>,
@@ -73,12 +74,12 @@ impl GatewayState {
         Self {
             peers: Default::default(),
             node: Node::new(seed, now, unix_ts),
-            next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
             flow_tracker: FlowTracker::new(flow_logs, now),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
+            next_periodic_tick: None,
         }
     }
 
@@ -362,7 +363,7 @@ impl GatewayState {
             ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
         });
 
-        peer.add_resource(resource.clone(), expires_at);
+        peer.add_resource(resource.clone(), expires_at, now);
 
         if let Some(entry) = dns_resource_nat {
             peer.setup_nat(
@@ -396,7 +397,7 @@ impl GatewayState {
         self.peers
             .peer_by_id_mut(&client)
             .context("No peer state")?
-            .update_resource_expiry(resource, new_expiry);
+            .update_resource_expiry(resource, new_expiry, now);
 
         Ok(())
     }
@@ -442,12 +443,11 @@ impl GatewayState {
 
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
-            .chain(
-                self.next_expiry_resources_check
-                    .map(|instant| (instant, "resource expiry")),
-            )
             .chain(self.node.poll_timeout())
+            .chain(
+                self.next_periodic_tick
+                    .map(|instant| (instant, "periodic tick")),
+            )
             .min_by_key(|(instant, _)| *instant)
     }
 
@@ -456,25 +456,18 @@ impl GatewayState {
         self.drain_node_events();
         self.flow_tracker.handle_timeout(now);
 
-        match self.next_expiry_resources_check {
-            Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
-                self.peers.iter_mut().for_each(|p| {
-                    p.expire_resources(now);
-                    p.handle_timeout(now)
-                });
-                let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
+        self.peers.iter_mut().for_each(|p| {
+            p.handle_timeout(now);
+        });
+        let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
 
-                for (id, _) in removed_peers {
-                    tracing::debug!(cid = %id, "Access to last resource for Client removed");
+        for (id, _) in removed_peers {
+            tracing::debug!(cid = %id, "Access to last resource for Client removed");
 
-                    self.node.close_connection(id, p2p_control::goodbye(), now);
-                }
-
-                self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
-            }
-            None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
-            Some(_) => {}
+            self.node.close_connection(id, p2p_control::goodbye(), now);
         }
+
+        self.next_periodic_tick = Some(now + Duration::from_secs(1));
 
         while let Some(flow) = self.flow_tracker.poll_completed_flow() {
             match flow {
