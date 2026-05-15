@@ -34,13 +34,9 @@ fn emit_package_identity_env() -> Result<()> {
     let name = extract_attr(&manifest, "Identity", "Name")
         .context("Failed to extract Identity.Name from AppxManifest.xml")?;
 
-    let publisher_id = publisher_id(&publisher);
-    let pfn = format!("{name}_{publisher_id}");
+    let pfn = format!("{name}_{}", publisher_id(&publisher));
     let sid = package_sid_from_pfn(&pfn);
 
-    println!("cargo:rustc-env=FIREZONE_PUBLISHER_DN={publisher}");
-    println!("cargo:rustc-env=FIREZONE_PACKAGE_NAME={name}");
-    println!("cargo:rustc-env=FIREZONE_PACKAGE_PUBLISHER_ID={publisher_id}");
     println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");
     println!("cargo:rustc-env=FIREZONE_PACKAGE_SID={sid}");
 

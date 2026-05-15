@@ -170,23 +170,6 @@ fn try_main(
             return Ok(());
         }
         Some(Cmd::Debug {
-            command: DebugCommand::PrintPackageFamilyName,
-        }) => {
-            // Used by `scripts/tests/gui-client-install-windows-msi.sh`
-            // to assert the build-time-baked PFN matches what the
-            // Windows kernel records when the sparse MSIX is
-            // registered. Stdout is the documented contract.
-            #[allow(
-                clippy::print_stdout,
-                reason = "stdout is the contract for the CI canary"
-            )]
-            {
-                println!("{}", firezone_gui_client::PACKAGE_FAMILY_NAME);
-            }
-
-            return Ok(());
-        }
-        Some(Cmd::Debug {
             command: DebugCommand::PrintPackageSid,
         }) => {
             // Same canary pattern: the install script compares this
@@ -402,9 +385,6 @@ enum DebugCommand {
     ///   sends `NewInstance`, awaits the `Ack`, prints
     ///   `second-instance: …`, and exits.
     SingleInstance,
-    /// Print the build-time-baked Package Family Name. Used by the
-    /// install canary to assert parity with the kernel-reported value.
-    PrintPackageFamilyName,
     /// Print the build-time-baked Package SID. Used by the install
     /// canary to assert parity with `(Get-AppxPackage …).Sid`.
     PrintPackageSid,
