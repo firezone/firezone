@@ -4,7 +4,7 @@ Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has been perma
 
 The account and its associated data are no longer available.
 
-If you did not expect this change, please contact Firezone support immediately.
+If you did not expect this change, please contact support@firezone.dev immediately.
 
 Thanks,
 The Firezone Team

@@ -94,13 +94,13 @@
                   </table>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    The account is disabled now and all data will be permanently deleted on the scheduled date unless an account admin cancels the deletion first.
+                    The account is now disabled. All data will be <strong>permanently deleted</strong> on the scheduled date.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
-                    Review this account in <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a>.
+                    To prevent this, cancel the deletion in <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a>.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
-                    If you did not expect this change, please contact another account admin or Firezone support immediately.
+                    If you did not expect this change, please contact another account admin or <a href="mailto:support@firezone.dev">support@firezone.dev</a> immediately.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
                     Thanks, <br>The Firezone Team

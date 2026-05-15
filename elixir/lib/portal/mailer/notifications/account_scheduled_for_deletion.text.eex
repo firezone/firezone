@@ -9,12 +9,12 @@ IP Address: <%= @remote_ip %>
 Location: <%= @location %>
 User Agent: <%= @user_agent %>
 
-The account is disabled now and all data will be permanently deleted on the scheduled date unless an account admin cancels the deletion first.
+The account is now disabled. All data will be **permanently deleted** on the scheduled date.
 
-Review this account in Settings -> Account:
+To prevent this, cancel the deletion in Settings -> Account:
 <%= @settings_url %>
 
-If you did not expect this change, please contact another account admin or Firezone support immediately.
+If you did not expect this change, please contact another account admin or support@firezone.dev immediately.
 
 Thanks,
 The Firezone Team
