@@ -53,6 +53,18 @@ impl fmt::Display for Action {
 }
 
 fn main() -> ExitCode {
+    // Watchdog: if anything below hangs (e.g. the AppX Deployment
+    // Service wedging on Server SKUs has been observed to turn an MSI
+    // install into a multi-hour stall), self-terminate with exit 0
+    // so MSI sees the CA complete and proceeds. The runtime SDDL
+    // builder in `ipc/windows.rs` falls back to the legacy ACE when
+    // package identity isn't attached.
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(120));
+        eprintln!("register-sparse: watchdog fired after 120s, exiting 0 to let MSI continue");
+        std::process::exit(0);
+    });
+
     let Cli {
         action,
         install_dir,
