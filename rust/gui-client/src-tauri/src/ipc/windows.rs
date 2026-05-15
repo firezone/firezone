@@ -151,15 +151,17 @@ fn sid_to_string(sid: PSID) -> Option<String> {
     unsafe { ConvertSidToStringSidW(sid, &mut wide_ptr) }.ok()?;
 
     // SAFETY: `wide_ptr` points to a NUL-terminated UTF-16 string
-    // Windows allocated; `to_string` walks until the NUL.
-    let s = unsafe { wide_ptr.to_string() }.ok()?;
+    // Windows allocated; `to_string` walks until the NUL. We do the
+    // copy first so the buffer is always released below regardless of
+    // whether `to_string` succeeded.
+    let result = unsafe { wide_ptr.to_string() }.ok();
 
-    // SAFETY: we own `wide_ptr` and must release it with `LocalFree`;
-    // no derived pointer is used after this call.
+    // SAFETY: we own `wide_ptr` and must release it with `LocalFree`.
+    // Freed unconditionally to avoid leaking when `to_string` errors.
     unsafe {
         let _ = LocalFree(Some(HLOCAL(wide_ptr.0 as *mut std::ffi::c_void)));
     }
-    Some(s)
+    result
 }
 
 impl Server {
