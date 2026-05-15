@@ -62,3 +62,13 @@ runs:
         components: rustfmt,clippy,llvm-tools-preview
         target: ${{ inputs.targets }}
         cache: false # We explicitly configure caching somewhere else.
+
+    # Workaround for actions/runner-images#14099: the macos-26 image pre-installs
+    # rustup via Homebrew, which leaves /opt/homebrew/bin/cargo ahead of
+    # ~/.cargo/bin/cargo on PATH. The Homebrew shim is currently broken and
+    # rejects valid cargo argv (e.g. `cargo llvm-cov` -> "unexpected argument
+    # 'llvm-cov'"). Force the toolchain proxies to win PATH resolution.
+    - name: Prepend ~/.cargo/bin to PATH (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
