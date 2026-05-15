@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use cargo_lock::Lockfile;
+use cargo_lock::{Lockfile, Name, Package, SourceId, Version};
 use clap::Parser;
 use serde::Deserialize;
 
@@ -50,15 +50,6 @@ struct Cli {
     output: Option<PathBuf>,
 }
 
-/// Internal representation of a single locked package, derived from a
-/// `cargo_lock::Package` and stripped down to what we need.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Package {
-    name: String,
-    version: String,
-    is_crates_io: bool,
-}
-
 #[derive(Deserialize)]
 struct CratesIoResponse {
     #[serde(rename = "crate")]
@@ -82,36 +73,42 @@ async fn main() -> Result<()> {
     let head = load_lockfile_from_git(&cli.head_ref, &cli.lockfile_path)?;
     let changes = diff_lockfiles(&base, &head);
 
-    let report = if changes.is_empty() {
-        format!(
-            "_No dependency changes detected between `{}` and `{}` for `{}`._\n",
-            cli.base_ref,
-            cli.head_ref,
-            cli.lockfile_path.display(),
-        )
-    } else {
-        let client = reqwest::Client::builder()
-            .user_agent(&cli.user_agent)
-            .timeout(Duration::from_secs(15))
-            .build()
-            .context("build HTTP client")?;
-        render_report(
-            &client,
-            &cli.base_ref,
-            &cli.head_ref,
-            &cli.lockfile_path,
-            &changes,
-            Duration::from_millis(cli.request_delay_ms),
-        )
-        .await?
-    };
-
-    match &cli.output {
-        Some(path) => std::fs::write(path, &report)
-            .with_context(|| format!("write report to {}", path.display()))?,
-        None => print!("{report}"),
+    if changes.is_empty() {
+        return write_report(
+            &cli.output,
+            &format!(
+                "_No dependency changes detected between `{}` and `{}` for `{}`._\n",
+                cli.base_ref,
+                cli.head_ref,
+                cli.lockfile_path.display(),
+            ),
+        );
     }
-    Ok(())
+
+    let client = reqwest::Client::builder()
+        .user_agent(&cli.user_agent)
+        .timeout(Duration::from_secs(15))
+        .build()
+        .context("build HTTP client")?;
+    let report = render_report(
+        &client,
+        &cli.base_ref,
+        &cli.head_ref,
+        &cli.lockfile_path,
+        &changes,
+        Duration::from_millis(cli.request_delay_ms),
+    )
+    .await?;
+
+    write_report(&cli.output, &report)
+}
+
+fn write_report(output: &Option<PathBuf>, report: &str) -> Result<()> {
+    let Some(path) = output else {
+        print!("{report}");
+        return Ok(());
+    };
+    std::fs::write(path, report).with_context(|| format!("write report to {}", path.display()))
 }
 
 fn load_lockfile_from_git(git_ref: &str, path: &Path) -> Result<Vec<Package>> {
@@ -129,23 +126,12 @@ fn load_lockfile_from_git(git_ref: &str, path: &Path) -> Result<Vec<Package>> {
     let lockfile: Lockfile = content
         .parse()
         .with_context(|| format!("parse {spec} as Cargo.lock"))?;
-    Ok(lockfile.packages.into_iter().map(into_package).collect())
-}
-
-fn into_package(pkg: cargo_lock::Package) -> Package {
-    Package {
-        name: pkg.name.as_str().to_string(),
-        version: pkg.version.to_string(),
-        is_crates_io: pkg
-            .source
-            .as_ref()
-            .is_some_and(cargo_lock::SourceId::is_default_registry),
-    }
+    Ok(lockfile.packages)
 }
 
 #[derive(Debug, PartialEq, Eq)]
 struct Change {
-    name: String,
+    name: Name,
     kind: ChangeKind,
 }
 
@@ -153,18 +139,21 @@ struct Change {
 enum ChangeKind {
     /// One version replaced another. The most common case.
     Bump {
-        from: String,
-        to: String,
+        from: Version,
+        to: Version,
         from_crates_io: bool,
     },
     /// A version of this crate was newly added (no version of it existed before).
-    Added { version: String, on_crates_io: bool },
+    Added {
+        version: Version,
+        on_crates_io: bool,
+    },
     /// A version of this crate disappeared (no version of it remains).
-    Removed { version: String },
+    Removed { version: Version },
     /// Multiple versions changed at once and we cannot pair them up unambiguously.
     Multi {
-        removed: Vec<String>,
-        added: Vec<String>,
+        removed: Vec<Version>,
+        added: Vec<Version>,
     },
 }
 
@@ -172,7 +161,7 @@ fn diff_lockfiles(base_pkgs: &[Package], head_pkgs: &[Package]) -> Vec<Change> {
     let base = group_by_name(base_pkgs);
     let head = group_by_name(head_pkgs);
 
-    let names: BTreeSet<&String> = base.keys().chain(head.keys()).collect();
+    let names: BTreeSet<&Name> = base.keys().chain(head.keys()).copied().collect();
     let empty = BTreeMap::new();
 
     names
@@ -180,15 +169,15 @@ fn diff_lockfiles(base_pkgs: &[Package], head_pkgs: &[Package]) -> Vec<Change> {
         .filter_map(|name| {
             let b = base.get(name).unwrap_or(&empty);
             let h = head.get(name).unwrap_or(&empty);
-            let removed: Vec<(String, bool)> = b
+            let removed: Vec<(Version, bool)> = b
                 .iter()
                 .filter(|(v, _)| !h.contains_key(*v))
-                .map(|(v, s)| (v.clone(), *s))
+                .map(|(v, pkg)| ((*v).clone(), is_crates_io(pkg)))
                 .collect();
-            let added: Vec<(String, bool)> = h
+            let added: Vec<(Version, bool)> = h
                 .iter()
                 .filter(|(v, _)| !b.contains_key(*v))
-                .map(|(v, s)| (v.clone(), *s))
+                .map(|(v, pkg)| ((*v).clone(), is_crates_io(pkg)))
                 .collect();
             if removed.is_empty() && added.is_empty() {
                 return None;
@@ -201,17 +190,23 @@ fn diff_lockfiles(base_pkgs: &[Package], head_pkgs: &[Package]) -> Vec<Change> {
         .collect()
 }
 
-fn group_by_name(packages: &[Package]) -> BTreeMap<String, BTreeMap<String, bool>> {
-    let mut map: BTreeMap<String, BTreeMap<String, bool>> = BTreeMap::new();
+fn group_by_name(packages: &[Package]) -> BTreeMap<&Name, BTreeMap<&Version, &Package>> {
+    let mut map = BTreeMap::new();
     for pkg in packages {
-        map.entry(pkg.name.clone())
-            .or_default()
-            .insert(pkg.version.clone(), pkg.is_crates_io);
+        map.entry(&pkg.name)
+            .or_insert_with(BTreeMap::new)
+            .insert(&pkg.version, pkg);
     }
     map
 }
 
-fn classify(mut removed: Vec<(String, bool)>, mut added: Vec<(String, bool)>) -> ChangeKind {
+fn is_crates_io(pkg: &Package) -> bool {
+    pkg.source
+        .as_ref()
+        .is_some_and(SourceId::is_default_registry)
+}
+
+fn classify(mut removed: Vec<(Version, bool)>, mut added: Vec<(Version, bool)>) -> ChangeKind {
     match (removed.len(), added.len()) {
         (1, 1) => {
             let (from, from_crates_io) = removed.pop().expect("len == 1");
@@ -268,7 +263,9 @@ async fn render_report(
             if i > 0 {
                 tokio::time::sleep(request_delay).await;
             }
-            fetch_repository(client, &change.name).await.unwrap_or(None)
+            fetch_repository(client, change.name.as_str())
+                .await
+                .unwrap_or(None)
         } else {
             None
         };
@@ -376,26 +373,48 @@ fn short_repo(url: &str) -> String {
 mod tests {
     use super::*;
 
-    fn pkg(name: &str, version: &str, is_crates_io: bool) -> Package {
-        Package {
-            name: name.to_string(),
-            version: version.to_string(),
-            is_crates_io,
-        }
+    /// Construct test packages by parsing a tiny lockfile, so each test is
+    /// faithful to what `cargo_lock` actually produces from a real `Cargo.lock`.
+    fn lockfile(toml: &str) -> Vec<Package> {
+        let lockfile: Lockfile = toml.parse().expect("test lockfile parses");
+        lockfile.packages
+    }
+
+    fn registry_pkg(name: &str, version: &str) -> String {
+        format!(
+            r#"
+[[package]]
+name = "{name}"
+version = "{version}"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#
+        )
+    }
+
+    fn header() -> &'static str {
+        "version = 4\n"
+    }
+
+    fn ver(s: &str) -> Version {
+        s.parse().expect("test version parses")
+    }
+
+    fn name(s: &str) -> Name {
+        s.parse().expect("test crate name parses")
     }
 
     #[test]
     fn detects_clean_bump() {
-        let base = vec![pkg("serde", "1.0.0", true)];
-        let head = vec![pkg("serde", "1.0.1", true)];
+        let base = lockfile(&format!("{}{}", header(), registry_pkg("serde", "1.0.0")));
+        let head = lockfile(&format!("{}{}", header(), registry_pkg("serde", "1.0.1")));
         let changes = diff_lockfiles(&base, &head);
         assert_eq!(
             changes,
             vec![Change {
-                name: "serde".to_string(),
+                name: name("serde"),
                 kind: ChangeKind::Bump {
-                    from: "1.0.0".to_string(),
-                    to: "1.0.1".to_string(),
+                    from: ver("1.0.0"),
+                    to: ver("1.0.1"),
                     from_crates_io: true,
                 },
             }]
@@ -404,15 +423,19 @@ mod tests {
 
     #[test]
     fn detects_added_crate() {
-        let base = vec![];
-        let head = vec![pkg("new-crate", "0.1.0", true)];
+        let base = lockfile(header());
+        let head = lockfile(&format!(
+            "{}{}",
+            header(),
+            registry_pkg("new-crate", "0.1.0")
+        ));
         let changes = diff_lockfiles(&base, &head);
         assert_eq!(
             changes,
             vec![Change {
-                name: "new-crate".to_string(),
+                name: name("new-crate"),
                 kind: ChangeKind::Added {
-                    version: "0.1.0".to_string(),
+                    version: ver("0.1.0"),
                     on_crates_io: true,
                 },
             }]
@@ -421,15 +444,15 @@ mod tests {
 
     #[test]
     fn detects_removed_crate() {
-        let base = vec![pkg("gone", "1.0.0", true)];
-        let head = vec![];
+        let base = lockfile(&format!("{}{}", header(), registry_pkg("gone", "1.0.0")));
+        let head = lockfile(header());
         let changes = diff_lockfiles(&base, &head);
         assert_eq!(
             changes,
             vec![Change {
-                name: "gone".to_string(),
+                name: name("gone"),
                 kind: ChangeKind::Removed {
-                    version: "1.0.0".to_string()
+                    version: ver("1.0.0"),
                 },
             }]
         );
@@ -437,25 +460,36 @@ mod tests {
 
     #[test]
     fn unchanged_crates_are_skipped() {
-        let base = vec![pkg("a", "1.0.0", true), pkg("b", "2.0.0", true)];
-        let head = vec![pkg("a", "1.0.0", true), pkg("b", "2.0.0", true)];
+        let pkgs = format!(
+            "{}{}{}",
+            header(),
+            registry_pkg("a", "1.0.0"),
+            registry_pkg("b", "2.0.0")
+        );
+        let base = lockfile(&pkgs);
+        let head = lockfile(&pkgs);
         assert_eq!(diff_lockfiles(&base, &head), vec![]);
     }
 
     #[test]
     fn multi_version_change_is_flagged_as_ambiguous() {
-        // serde had only 1.0.0, now has 1.0.1 AND 2.0.0 — we can't say which
+        // `serde` had only 1.0.0, now has 1.0.1 AND 2.0.0 — we can't say which
         // one "replaced" the original.
-        let base = vec![pkg("serde", "1.0.0", true)];
-        let head = vec![pkg("serde", "1.0.1", true), pkg("serde", "2.0.0", true)];
+        let base = lockfile(&format!("{}{}", header(), registry_pkg("serde", "1.0.0")));
+        let head = lockfile(&format!(
+            "{}{}{}",
+            header(),
+            registry_pkg("serde", "1.0.1"),
+            registry_pkg("serde", "2.0.0")
+        ));
         let changes = diff_lockfiles(&base, &head);
         assert_eq!(
             changes,
             vec![Change {
-                name: "serde".to_string(),
+                name: name("serde"),
                 kind: ChangeKind::Multi {
-                    removed: vec!["1.0.0".to_string()],
-                    added: vec!["1.0.1".to_string(), "2.0.0".to_string()],
+                    removed: vec![ver("1.0.0")],
+                    added: vec![ver("1.0.1"), ver("2.0.0")],
                 },
             }]
         );
@@ -464,16 +498,26 @@ mod tests {
     #[test]
     fn coexisting_versions_dont_trigger_change_for_unchanged_one() {
         // Both refs have serde 1.0.0; only 2.0.0 was bumped to 2.0.1.
-        let base = vec![pkg("serde", "1.0.0", true), pkg("serde", "2.0.0", true)];
-        let head = vec![pkg("serde", "1.0.0", true), pkg("serde", "2.0.1", true)];
+        let base = lockfile(&format!(
+            "{}{}{}",
+            header(),
+            registry_pkg("serde", "1.0.0"),
+            registry_pkg("serde", "2.0.0")
+        ));
+        let head = lockfile(&format!(
+            "{}{}{}",
+            header(),
+            registry_pkg("serde", "1.0.0"),
+            registry_pkg("serde", "2.0.1")
+        ));
         let changes = diff_lockfiles(&base, &head);
         assert_eq!(
             changes,
             vec![Change {
-                name: "serde".to_string(),
+                name: name("serde"),
                 kind: ChangeKind::Bump {
-                    from: "2.0.0".to_string(),
-                    to: "2.0.1".to_string(),
+                    from: ver("2.0.0"),
+                    to: ver("2.0.1"),
                     from_crates_io: true,
                 },
             }]
@@ -481,37 +525,57 @@ mod tests {
     }
 
     #[test]
-    fn workspace_path_crates_are_marked_not_on_crates_io() {
-        let base = vec![pkg("local", "0.1.0", false)];
-        let head = vec![pkg("local", "0.2.0", false)];
-        let changes = diff_lockfiles(&base, &head);
-        let ChangeKind::Bump { from_crates_io, .. } = &changes[0].kind else {
-            panic!("expected Bump, got {:?}", changes[0].kind);
-        };
-        assert!(!from_crates_io);
-    }
+    fn non_registry_sources_are_not_marked_as_crates_io() {
+        // Workspace member crates have no source; git deps have a `git+` source.
+        // Both should be classified as not-on-crates-io for diff-link purposes.
+        let base = lockfile(&format!(
+            r#"
+{header}
+[[package]]
+name = "local"
+version = "0.1.0"
 
-    #[test]
-    fn git_sourced_crates_are_marked_not_on_crates_io() {
-        // Same shape as workspace path crates from the diff's perspective —
-        // both are "not crates.io". The test below is the dedicated git-source
-        // case, kept distinct so the intent is clear.
-        let base = vec![pkg("forked", "1.0.0", false)];
-        let head = vec![pkg("forked", "1.1.0", false)];
+[[package]]
+name = "forked"
+version = "1.0.0"
+source = "git+https://github.com/foo/bar?branch=main#deadbeef"
+"#,
+            header = header(),
+        ));
+        let head = lockfile(&format!(
+            r#"
+{header}
+[[package]]
+name = "local"
+version = "0.2.0"
+
+[[package]]
+name = "forked"
+version = "1.1.0"
+source = "git+https://github.com/foo/bar?branch=main#cafef00d"
+"#,
+            header = header(),
+        ));
         let changes = diff_lockfiles(&base, &head);
-        let ChangeKind::Bump { from_crates_io, .. } = &changes[0].kind else {
-            panic!("expected Bump, got {:?}", changes[0].kind);
-        };
-        assert!(!from_crates_io);
+        for change in &changes {
+            let ChangeKind::Bump { from_crates_io, .. } = change.kind else {
+                panic!("expected Bump, got {:?}", change.kind);
+            };
+            assert!(
+                !from_crates_io,
+                "{} should not be marked crates.io",
+                change.name
+            );
+        }
     }
 
     #[test]
     fn bump_row_links_to_diff_rs() {
         let change = Change {
-            name: "serde".to_string(),
+            name: name("serde"),
             kind: ChangeKind::Bump {
-                from: "1.0.0".to_string(),
-                to: "1.0.1".to_string(),
+                from: ver("1.0.0"),
+                to: ver("1.0.1"),
                 from_crates_io: true,
             },
         };
@@ -524,47 +588,16 @@ mod tests {
     #[test]
     fn non_crates_io_bump_omits_diff_link() {
         let change = Change {
-            name: "forked".to_string(),
+            name: name("forked"),
             kind: ChangeKind::Bump {
-                from: "1.0.0".to_string(),
-                to: "1.1.0".to_string(),
+                from: ver("1.0.0"),
+                to: ver("1.1.0"),
                 from_crates_io: false,
             },
         };
         let row = format_row(&change, None);
         assert!(!row.contains("diff.rs"));
         assert!(row.contains("`1.0.0` → `1.1.0`"));
-    }
-
-    #[test]
-    fn into_package_classifies_sources() {
-        // Round-trip a tiny Cargo.lock through the cargo_lock parser to make
-        // sure our `is_crates_io` derivation matches `SourceId` semantics for
-        // each kind of source.
-        let lockfile_toml = r#"
-version = 4
-
-[[package]]
-name = "from-crates-io"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "from-git"
-version = "0.1.0"
-source = "git+https://github.com/foo/bar?branch=main#deadbeef"
-
-[[package]]
-name = "from-path"
-version = "0.1.0"
-"#;
-        let lockfile: cargo_lock::Lockfile = lockfile_toml.parse().expect("test lockfile parses");
-        let pkgs: Vec<Package> = lockfile.packages.into_iter().map(into_package).collect();
-
-        let by_name: BTreeMap<&str, &Package> = pkgs.iter().map(|p| (p.name.as_str(), p)).collect();
-        assert!(by_name["from-crates-io"].is_crates_io);
-        assert!(!by_name["from-git"].is_crates_io);
-        assert!(!by_name["from-path"].is_crates_io);
     }
 
     #[test]

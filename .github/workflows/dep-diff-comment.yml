@@ -1,0 +1,70 @@
+name: Dependency Diff Comment
+
+# Companion to `dep-diff.yml`. Triggered when that workflow finishes, runs in
+# the trusted base-branch context (so the GITHUB_TOKEN has write access to
+# pull requests), downloads the report artifact, and posts/updates a sticky
+# comment on the originating PR.
+
+on:
+  workflow_run:
+    workflows: ["Dependency Diff Report"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download report artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dep-diff-report
+          path: ${{ runner.temp }}/artifact
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post or update PR comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ARTIFACT_DIR: ${{ runner.temp }}/artifact
+          # Trusted source of truth for the PR number — comes from the
+          # workflow_run event payload, not from anything the PR controlled.
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR number on the triggering workflow_run; skipping." >&2
+            exit 0
+          fi
+
+          MARKER="<!-- dep-diff-report -->"
+          BODY_PATH="$RUNNER_TEMP/comment-body.md"
+          {
+            printf '%s\n\n' "$MARKER"
+            cat "$ARTIFACT_DIR/dep-diff.md"
+          } > "$BODY_PATH"
+
+          existing=$(gh api --paginate \
+            "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq "[.[] | select(.body | startswith(\"${MARKER}\"))][0].id")
+
+          payload=$(jq -nR --rawfile body "$BODY_PATH" '{body: $body}')
+
+          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
+            echo "Updating existing comment $existing"
+            printf '%s' "$payload" \
+              | gh api --method PATCH \
+                "repos/${REPO}/issues/comments/${existing}" --input -
+          else
+            echo "Creating new comment"
+            printf '%s' "$payload" \
+              | gh api --method POST \
+                "repos/${REPO}/issues/${PR_NUMBER}/comments" --input -
+          fi

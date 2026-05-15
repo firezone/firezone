@@ -1,38 +1,35 @@
 name: Dependency Diff Report
 
-# Runs on Dependabot PRs that touch the Rust lockfile and posts a sticky
-# markdown comment with diff.rs / repository links for every changed crate,
-# so reviewers (human or AI) can audit the source diff of each bump.
+# Runs the `dep-diff` tool on Dependabot PRs that touch the Rust lockfile and
+# uploads its markdown report as a workflow artifact. The companion workflow
+# `dep-diff-comment.yml` is triggered via `workflow_run` afterwards and posts
+# the report as a sticky PR comment.
 #
-# `pull_request_target` is required: GitHub gives Dependabot's `GITHUB_TOKEN`
-# read-only permissions on `pull_request` events, but full write access on
-# `pull_request_target`. The workflow file and the `dep-diff` binary are
-# checked out from the base ref (trusted), so PR-controlled code is never
-# executed — the PR's lockfile is read only as data via `git show`.
+# Splitting the build (untrusted PR context) from the comment (trusted base
+# context) avoids needing `pull_request_target` here: this workflow runs with
+# only `contents: read` against the PR head, so PR-controlled code can build
+# and run freely without any write-token risk.
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - "rust/Cargo.lock"
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   report:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ./rust
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-
-      - name: Fetch PR head commit
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git fetch --no-tags --depth=1 origin "$PR_HEAD_SHA"
 
       - uses: ./.github/actions/setup-rust-stable
 
@@ -42,47 +39,20 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Generate dependency diff report
-        working-directory: rust
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           REPORT_PATH: ${{ runner.temp }}/dep-diff.md
         run: |
           cargo run --quiet -p dep-diff -- \
-            --base-ref "$BASE_SHA" \
-            --head-ref "$HEAD_SHA" \
+            --base-ref "origin/$BASE_REF" \
+            --head-ref HEAD \
             --lockfile-path rust/Cargo.lock \
             --output "$REPORT_PATH"
 
-      - name: Post or update PR comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-          REPORT_PATH: ${{ runner.temp }}/dep-diff.md
-        run: |
-          set -euo pipefail
-          MARKER="<!-- dep-diff-report -->"
-          BODY_PATH="${RUNNER_TEMP}/comment-body.md"
-          {
-            printf '%s\n\n' "$MARKER"
-            cat "$REPORT_PATH"
-          } > "$BODY_PATH"
-
-          existing=$(gh api --paginate \
-            "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-            --jq "[.[] | select(.body | startswith(\"${MARKER}\"))][0].id")
-
-          payload=$(jq -nR --rawfile body "$BODY_PATH" '{body: $body}')
-
-          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
-            echo "Updating existing comment $existing"
-            printf '%s' "$payload" \
-              | gh api --method PATCH \
-                "repos/${REPO}/issues/comments/${existing}" --input -
-          else
-            echo "Creating new comment"
-            printf '%s' "$payload" \
-              | gh api --method POST \
-                "repos/${REPO}/issues/${PR_NUMBER}/comments" --input -
-          fi
+      - name: Upload report artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dep-diff-report
+          path: ${{ runner.temp }}/dep-diff.md
+          retention-days: 1
+          if-no-files-found: error
