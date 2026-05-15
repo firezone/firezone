@@ -611,11 +611,15 @@ pub enum SingleInstance {
 pub async fn establish_single_instance() -> Result<SingleInstance> {
     match launch_lock::acquire()? {
         FirstInstance::Yes(lock) => {
+            tracing::debug!("Acquired launch lock, we are the first GUI instance");
+
             let server =
                 ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?;
             Ok(SingleInstance::First { server, lock })
         }
         FirstInstance::No => {
+            tracing::debug!("Encountered existing launch lock, we are not the first GUI instance");
+
             // Hand off to the running instance.
             let (read, write) = ipc::connect::<ServerMsg, ClientMsg>(
                 SocketId::Gui,
