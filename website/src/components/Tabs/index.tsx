@@ -1,6 +1,9 @@
 "use client";
 import { Tabs, TabItem } from "flowbite-react";
+import type { TabItemProps as FlowbiteTabItemProps } from "flowbite-react";
 import type { CustomFlowbiteTheme } from "flowbite-react/types";
+import { Children, isValidElement } from "react";
+import type { ReactNode } from "react";
 import {
   FaAndroid,
   FaApple,
@@ -28,6 +31,11 @@ const TABS_ICONS = {
 } as const;
 
 export type TabsItemIcon = keyof typeof TABS_ICONS;
+type TabsItemProps = Omit<FlowbiteTabItemProps, "icon" | "title"> & {
+  children: ReactNode;
+  icon?: TabsItemIcon;
+  title: FlowbiteTabItemProps["title"];
+};
 
 const customTheme: CustomFlowbiteTheme["tabs"] = {
   base: "flex flex-col gap-2",
@@ -87,29 +95,37 @@ const customTheme: CustomFlowbiteTheme["tabs"] = {
   tabpanel: "p-3",
 };
 
-function TabsGroup({ children }: { children: React.ReactNode }) {
+function iconComponent(icon?: TabsItemIcon) {
+  return icon ? TABS_ICONS[icon] : undefined;
+}
+
+function tabItemFromChild(child: ReactNode) {
+  if (!isValidElement<TabsItemProps>(child)) {
+    return null;
+  }
+
+  const { children, icon, ...props } = child.props;
+
+  return (
+    <TabItem {...props} icon={iconComponent(icon)}>
+      {children}
+    </TabItem>
+  );
+}
+
+function TabsGroup({ children }: { children: ReactNode }) {
   return (
     <div className="mb-8">
       <Tabs theme={customTheme} variant="underline">
-        {children}
+        {Children.map(children, tabItemFromChild)}
       </Tabs>
     </div>
   );
 }
 
-function TabsItem({
-  children,
-  title,
-  icon,
-  ...props
-}: {
-  children: React.ReactNode;
-  title: string;
-  icon?: TabsItemIcon;
-}) {
-  const IconComponent = icon ? TABS_ICONS[icon] : undefined;
+function TabsItem({ children, title, icon, ...props }: TabsItemProps) {
   return (
-    <TabItem title={title} icon={IconComponent} {...props}>
+    <TabItem title={title} icon={iconComponent(icon)} {...props}>
       {children}
     </TabItem>
   );
