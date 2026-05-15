@@ -13,12 +13,15 @@
 
   The `Publisher` attribute MUST match the Subject DN of the
   code-signing certificate used to sign the .msix exactly. Adjusting
-  this requires updating Cargo.lock, `lib.rs` (PUBLISHER_DN) and the
-  build.rs SID computation in lockstep — the CI canary in
-  scripts/tests/gui-client-install-windows-msi.sh enforces parity.
+  this requires updating the build.rs SID computation in lockstep —
+  the CI canary in scripts/tests/gui-client-install-windows-msi.sh
+  enforces parity.
 
-  The version is updated automatically by scripts/bump-versions.sh on
-  release; the marker comment below keeps it in lockstep with the MSI.
+  The version is updated automatically by scripts/bump-versions.sh
+  via the `mark:next-gui-version` comment below — same marker as
+  Cargo.toml so the manifest stays in lockstep with the in-development
+  GUI version on every release. The trailing `.0` is preserved (MSIX
+  requires a 4-part version).
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -27,7 +30,7 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap10 rescap">
 
-  <!-- mark:current-gui-version -->
+  <!-- mark:next-gui-version -->
   <Identity Version="1.5.13.0"
             Name="Firezone.Client.GUI"
             Publisher="CN=&quot;Firezone, Inc.&quot;, O=&quot;Firezone, Inc.&quot;, STREET=&quot;2261 Market Street, Suite 4574&quot;, L=San Francisco, S=California, C=US, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, SERIALNUMBER=6383880, OID.2.5.4.15=Private Organization"
