@@ -55,7 +55,6 @@ runs:
         rustup toolchain install ${{ steps.rust.outputs.channel }} \
           --profile minimal \
           --component rust-src \
-          --component rust-analyzer \
           --component clippy \
           --component rustfmt \
           --component llvm-tools-preview
