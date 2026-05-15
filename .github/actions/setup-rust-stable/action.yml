@@ -46,7 +46,7 @@ runs:
     - name: Install pinned Rust toolchain
       shell: bash
       working-directory: rust
-      run: rustup show active-toolchain --install
+      run: rustup show
 
     - name: Install additional targets
       if: ${{ inputs.targets != '' }}
