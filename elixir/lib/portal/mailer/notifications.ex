@@ -56,7 +56,8 @@ defmodule Portal.Mailer.Notifications do
       settings_url: settings_url,
       remote_ip: redact_ip(context.remote_ip),
       location: format_location(context),
-      user_agent: context.user_agent
+      user_agent: context.user_agent,
+      paid_plan: Portal.Billing.paid_plan?(account)
     )
   end
 
@@ -85,7 +86,8 @@ defmodule Portal.Mailer.Notifications do
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :account_deletion_reminder,
       account: account,
-      settings_url: settings_url
+      settings_url: settings_url,
+      paid_plan: Portal.Billing.paid_plan?(account)
     )
   end
 

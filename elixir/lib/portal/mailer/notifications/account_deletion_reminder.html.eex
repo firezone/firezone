@@ -77,6 +77,12 @@
                   <div style="margin: 0; padding: 16px; background-color: #fef2f2; border-radius: 4px; color: #991b1b; font-weight: 500; line-height: 24px">
                     Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
                   </div>
+                  <%= if @paid_plan do %>
+                  <div role="separator" style="line-height: 16px">&zwj;</div>
+                  <div style="margin: 0; padding: 16px; background-color: #fffbeb; border-radius: 4px; color: #92400e; font-weight: 500; line-height: 24px">
+                    You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+                  </div>
+                  <% end %>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
                     All account data will be permanently and irrecoverably deleted on the scheduled date. To cancel the deletion, visit your account settings before the deadline.

@@ -9,7 +9,9 @@ IP Address: <%= @remote_ip %>
 Location: <%= @location %>
 User Agent: <%= @user_agent %>
 
-The account is now disabled. All data will be **permanently deleted** on the scheduled date.
+<%= if @paid_plan do %>WARNING: You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+
+<% end %>The account is now disabled. All data will be **permanently deleted** on the scheduled date.
 
 To prevent this, cancel the deletion in Settings -> Account:
 <%= @settings_url %>

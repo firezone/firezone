@@ -113,6 +113,9 @@ defmodule Portal.Billing do
 
   def plan_type(%Portal.Account{}), do: :unknown
 
+  @spec paid_plan?(Portal.Account.t()) :: boolean()
+  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]
+
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count

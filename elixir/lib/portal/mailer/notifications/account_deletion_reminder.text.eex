@@ -4,7 +4,9 @@ Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) is scheduled t
 
 Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
 
-All account data will be permanently and irrecoverably deleted on the scheduled date. To cancel the deletion, visit your account settings before the deadline:
+<%= if @paid_plan do %>WARNING: You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+
+<% end %>All account data will be permanently and irrecoverably deleted on the scheduled date. To cancel the deletion, visit your account settings before the deadline:
 <%= @settings_url %>
 
 If you intended to delete this account, no action is needed.

@@ -145,6 +145,12 @@ defmodule PortalWeb.Settings.Account do
             <p class="text-xs text-[var(--text-secondary)] mb-3">
               This account is scheduled for deletion on <strong>{Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y")}</strong>.
             </p>
+            <div
+              :if={Portal.Billing.paid_plan?(@account)}
+              class="mb-3 px-3 py-2 rounded border border-amber-200 bg-amber-50 text-xs text-amber-800"
+            >
+              You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+            </div>
             <button
               type="button"
               phx-click="cancel_account_deletion"

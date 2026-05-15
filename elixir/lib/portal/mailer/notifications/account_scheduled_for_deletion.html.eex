@@ -92,6 +92,12 @@
                       <td style="padding: 8px 16px; color: #4f4f4f;"><%= @user_agent %></td>
                     </tr>
                   </table>
+                  <%= if @paid_plan do %>
+                  <div role="separator" style="line-height: 16px">&zwj;</div>
+                  <div style="margin: 0; padding: 16px; background-color: #fffbeb; border-radius: 4px; color: #92400e; font-weight: 500; line-height: 24px">
+                    You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+                  </div>
+                  <% end %>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
                     The account is now disabled. All data will be <strong>permanently deleted</strong> on the scheduled date.
