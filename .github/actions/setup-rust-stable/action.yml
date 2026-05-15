@@ -42,14 +42,26 @@ runs:
           | sh -s -- -y --no-modify-path --default-toolchain none --profile minimal
         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-    # Auto-installs the channel + components pinned in rust/rust-toolchain.toml.
-    - name: Install pinned Rust toolchain
+    - name: Extract pinned Rust channel
+      id: rust
       shell: bash
-      working-directory: rust
-      run: rustup show
+      run: |
+        CHANNEL=$(awk -F'"' '/^channel/ {print $2}' rust/rust-toolchain.toml)
+        echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
+    - name: Install Rust toolchain
+      shell: bash
+      run: |
+        rustup toolchain install ${{ steps.rust.outputs.channel }} \
+          --profile minimal \
+          --component rust-src \
+          --component rust-analyzer \
+          --component clippy \
+          --component rustfmt \
+          --component llvm-tools-preview
+        rustup default ${{ steps.rust.outputs.channel }}
 
     - name: Install additional targets
       if: ${{ inputs.targets != '' }}
       shell: bash
-      working-directory: rust
       run: rustup target add ${{ inputs.targets }}
