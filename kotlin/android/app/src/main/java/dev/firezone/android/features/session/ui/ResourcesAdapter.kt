@@ -8,14 +8,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.databinding.ListItemResourceBinding
 
-internal class ResourcesAdapter(
-    private val internetResourceToggle: () -> ResourceState,
-) : ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
-        ResourceDiffCallback(),
-    ) {
+internal class ResourcesAdapter : ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
+    ResourceDiffCallback(),
+) {
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
@@ -34,7 +31,7 @@ internal class ResourcesAdapter(
             // Show bottom sheet
             val fragmentManager =
                 (holder.itemView.context as AppCompatActivity).supportFragmentManager
-            val bottomSheet = ResourceDetailsBottomSheet(resource, internetResourceToggle)
+            val bottomSheet = ResourceDetailsBottomSheet.newInstance(resource)
             bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
         }
     }

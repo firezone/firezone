@@ -23,14 +23,44 @@ import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(
-    private val resource: ResourceViewModel,
-    private val internetResourceToggle: () -> ResourceState,
-) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
+    private lateinit var resource: ResourceViewModel
+    private var internetResourceToggleCallback: InternetResourceToggleCallback? = null
+
+    interface InternetResourceToggleCallback {
+        fun onInternetResourceToggled(): ResourceState
+    }
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        internetResourceToggleCallback = context as? InternetResourceToggleCallback
+    }
+
+    override fun onDetach() {
+        super.onDetach()
+        internetResourceToggleCallback = null
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        @Suppress("DEPRECATION")
+        val resourceArg =
+            checkNotNull(requireArguments().getParcelable<Resource>(ARG_RESOURCE)) {
+                "Missing required argument: $ARG_RESOURCE"
+            }
+        val stateArg =
+            ResourceState.valueOf(
+                checkNotNull(requireArguments().getString(ARG_STATE)) {
+                    "Missing required argument: $ARG_STATE"
+                },
+            )
+        resource = ResourceViewModel(resourceArg, stateArg)
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -179,7 +209,7 @@ class ResourceDetailsBottomSheet(
         toggleResourceEnabled.visibility = View.VISIBLE
         toggleResourceEnabled.text = resourceToggleText(resource)
         toggleResourceEnabled.setOnClickListener {
-            resource.state = internetResourceToggle()
+            resource.state = internetResourceToggleCallback?.onInternetResourceToggled() ?: resource.state
             refreshDisableToggleButton()
         }
     }
@@ -194,5 +224,30 @@ class ResourceDetailsBottomSheet(
         val builder = CustomTabsIntent.Builder()
         val customTabsIntent = builder.build()
         customTabsIntent.launchUrl(requireContext(), Uri.parse(url))
+    }
+
+    companion object {
+        private const val ARG_RESOURCE = "resource"
+        private const val ARG_STATE = "state"
+
+        fun newInstance(resource: ResourceViewModel): ResourceDetailsBottomSheet =
+            ResourceDetailsBottomSheet().apply {
+                arguments =
+                    Bundle().apply {
+                        putParcelable(
+                            ARG_RESOURCE,
+                            Resource(
+                                type = resource.type,
+                                id = resource.id,
+                                address = resource.address,
+                                addressDescription = resource.addressDescription,
+                                sites = resource.sites,
+                                name = resource.name,
+                                status = resource.status,
+                            ),
+                        )
+                        putString(ARG_STATE, resource.state.name)
+                    }
+            }
     }
 }
