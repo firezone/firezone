@@ -4,7 +4,12 @@
 //! Swift implementation in `swift/apple/`; this enables running controller
 //! tests on macOS.
 
-#[path = "unix/peer_check.rs"]
+#[cfg(target_os = "linux")]
+#[path = "unix/peer_check_linux.rs"]
+mod peer_check;
+
+#[cfg(target_os = "macos")]
+#[path = "unix/peer_check_macos.rs"]
 mod peer_check;
 
 use super::{NotFound, SocketId};
@@ -15,7 +20,6 @@ use tokio::net::{UnixListener, UnixStream};
 pub struct Server {
     listener: UnixListener,
     id: SocketId,
-    #[cfg(not(test))]
     allowlist: peer_check::Allowlist,
 }
 
@@ -91,12 +95,10 @@ impl Server {
         Ok(Self {
             listener,
             id,
-            #[cfg(not(test))]
             allowlist: peer_check::Allowlist::load_default(),
         })
     }
 
-    #[cfg(not(test))]
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
         loop {
             let (stream, _) = self.listener.accept().await?;
@@ -136,21 +138,6 @@ impl Server {
                 }
             }
         }
-    }
-
-    /// Test variant: skip the allowlist check. Controller tests connect
-    /// from cargo-built test binaries that aren't on any allowlist.
-    #[cfg(test)]
-    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
-        let (stream, _) = self.listener.accept().await?;
-        let cred = stream.peer_cred()?;
-        tracing::info!(
-            uid = cred.uid(),
-            gid = cred.gid(),
-            pid = cred.pid(),
-            "Accepted an IPC connection"
-        );
-        Ok(stream)
     }
 }
 
