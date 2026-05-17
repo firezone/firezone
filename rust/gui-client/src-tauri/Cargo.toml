@@ -78,6 +78,7 @@ zip = { workspace = true, features = ["deflate", "time"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
+libc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 notify-rust = { workspace = true }
 sd-notify = { workspace = true }

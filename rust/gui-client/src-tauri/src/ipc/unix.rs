@@ -4,6 +4,10 @@
 //! Swift implementation in `swift/apple/`; this enables running controller
 //! tests on macOS.
 
+#[cfg(target_os = "linux")]
+#[path = "unix/peer_check.rs"]
+mod peer_check;
+
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
@@ -12,6 +16,8 @@ use tokio::net::{UnixListener, UnixStream};
 pub struct Server {
     listener: UnixListener,
     id: SocketId,
+    #[cfg(all(target_os = "linux", not(test)))]
+    allowlist: peer_check::Allowlist,
 }
 
 impl Drop for Server {
@@ -83,11 +89,70 @@ impl Server {
             sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
-        Ok(Self { listener, id })
+        Ok(Self {
+            listener,
+            id,
+            #[cfg(all(target_os = "linux", not(test)))]
+            allowlist: peer_check::Allowlist::load_default(),
+        })
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
-        let (stream, _) = self.listener.accept().await?;
+        loop {
+            let (stream, _) = self.listener.accept().await?;
+
+            if self.accept_or_log(&stream)? {
+                return Ok(stream);
+            }
+        }
+    }
+
+    /// Decide whether to keep the freshly-accepted stream, logging the
+    /// outcome either way.
+    ///
+    /// `Ok(true)` → keep the stream, `Ok(false)` → drop it and accept the
+    /// next one. The platform-specific implementations live below.
+    #[cfg(all(target_os = "linux", not(test)))]
+    fn accept_or_log(&self, stream: &ServerStream) -> Result<bool> {
+        let cred = stream.peer_cred()?;
+
+        match peer_check::verify_peer(stream, &self.allowlist) {
+            Ok(peer_check::VerifiedPeer::Allowlisted { exe }) => {
+                tracing::info!(
+                    uid = cred.uid(),
+                    gid = cred.gid(),
+                    pid = cred.pid(),
+                    exe = %exe.display(),
+                    "Accepted an IPC connection"
+                );
+                Ok(true)
+            }
+            Ok(peer_check::VerifiedPeer::KernelTooOld) => {
+                tracing::info!(
+                    uid = cred.uid(),
+                    gid = cred.gid(),
+                    pid = cred.pid(),
+                    reason = "kernel_too_old",
+                    "Accepted an IPC connection without binary verification (kernel lacks SO_PEERPIDFD)"
+                );
+                Ok(true)
+            }
+            Err(rejected) => {
+                tracing::info!(
+                    uid = cred.uid(),
+                    gid = cred.gid(),
+                    pid = cred.pid(),
+                    reason = rejected.reason(),
+                    exe = rejected.exe().map(|p| p.display().to_string()),
+                    "Rejected an IPC connection: {rejected}"
+                );
+                Ok(false)
+            }
+        }
+    }
+
+    #[cfg(not(all(target_os = "linux", not(test))))]
+    fn accept_or_log(&self, stream: &ServerStream) -> Result<bool> {
         let cred = stream.peer_cred()?;
         tracing::info!(
             uid = cred.uid(),
@@ -95,7 +160,7 @@ impl Server {
             pid = cred.pid(),
             "Accepted an IPC connection"
         );
-        Ok(stream)
+        Ok(true)
     }
 }
 
