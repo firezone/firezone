@@ -17,6 +17,16 @@ const FZ_GROUP: &str = "firezone-client";
 const GUI_NAME: &str = "firezone-gui-client";
 const TUNNEL_NAME: &str = "firezone-client-tunnel";
 
+/// The tunnel daemon allowlists peers by canonical executable path, and the
+/// path must live on a root-owned, non-user-writable filesystem.
+/// `target/debug/` is owned by the CI runner, so we install the GUI to this
+/// fixed system location before launching it; the allowlist file at
+/// `/etc/firezone/allowed-clients.conf` is rewritten to point here.
+#[cfg(target_os = "linux")]
+const INSTALLED_GUI_PATH: &str = "/usr/local/bin/firezone-client-gui";
+#[cfg(target_os = "linux")]
+const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
+
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
 
@@ -177,17 +187,18 @@ impl App {
             .join()?
             .fz_exit_ok()?;
 
+        install_gui_for_allowlist()?;
+
         Ok(Self { username })
     }
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        let gui_path = gui_path().canonicalize()?;
         let args: Vec<_> = [
             "--auto-servernum",
-            gui_path
-                .to_str()
-                .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
+            // Launch the root-installed copy so `/proc/<pid>/exe` matches
+            // the allowlisted path the tunnel daemon enforces.
+            INSTALLED_GUI_PATH,
             "--no-deep-links",
             "--no-elevation-check",
         ]
@@ -211,6 +222,66 @@ impl App {
             .env("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); // Might help with CI
         Ok(cmd)
     }
+}
+
+/// Copy the cargo-built GUI binary to a root-owned location and write the
+/// peer-allowlist file the tunnel daemon reads.
+///
+/// Both files must be owned by `root:root` and have no group/world-writable
+/// ancestors — see `target_safe` in `peer_check.rs`.
+#[cfg(target_os = "linux")]
+fn install_gui_for_allowlist() -> Result<()> {
+    let built_gui = gui_path()
+        .canonicalize()
+        .context("Couldn't canonicalize built GUI binary path")?;
+    let built_gui_str = built_gui
+        .to_str()
+        .context("Built GUI path is not valid UTF-8")?;
+
+    Exec::cmd("sudo")
+        .args([
+            "install",
+            "-D",
+            "-o",
+            "root",
+            "-g",
+            "root",
+            "-m",
+            "0755",
+            built_gui_str,
+            INSTALLED_GUI_PATH,
+        ])
+        .join()?
+        .fz_exit_ok()
+        .context("Failed to install GUI binary for allowlist")?;
+
+    Exec::cmd("sudo")
+        .args(["mkdir", "-p", "/etc/firezone"])
+        .join()?
+        .fz_exit_ok()
+        .context("Failed to create /etc/firezone")?;
+
+    // Write the allowlist via `tee` so sudo handles the output redirect.
+    let allowlist_body = format!("{INSTALLED_GUI_PATH}\n");
+    let pipeline = format!(
+        "printf '%s' '{allowlist_body}' | sudo tee {ALLOWLIST_PATH} > /dev/null",
+        allowlist_body = allowlist_body.replace('\'', "'\\''"),
+    );
+    Exec::cmd("sh")
+        .args(["-c", &pipeline])
+        .join()?
+        .fz_exit_ok()
+        .context("Failed to write allowlist file")?;
+    Exec::cmd("sudo")
+        .args(["chown", "root:root", ALLOWLIST_PATH])
+        .join()?
+        .fz_exit_ok()?;
+    Exec::cmd("sudo")
+        .args(["chmod", "0644", ALLOWLIST_PATH])
+        .join()?
+        .fz_exit_ok()?;
+
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]

@@ -7,42 +7,42 @@
 //! can refuse calls from any process whose binary is not a Firezone-published
 //! binary, even processes running as the same UID.
 //!
-//! On kernels lacking `SO_PEERPIDFD` the function reports `KernelTooOld` and
-//! the caller logs that enforcement is unavailable; the connection is
-//! accepted without verification because no better signal exists on those
-//! kernels.
+//! On kernels lacking `SO_PEERPIDFD`, `verify_peer` returns
+//! `PeerRejected::Unverifiable`; the caller decides what to do (production
+//! today accepts the connection and logs that enforcement is unavailable).
 //!
-//! Test note: this module is built unconditionally on Linux so its inline
-//! tests run; production callers gate `verify_peer` invocation on
-//! `not(test)` so the IPC framework's own tests can connect from a
-//! non-allowlisted test runner.
+//! On non-Linux targets the module compiles as a stub whose `verify_peer`
+//! always returns `Unverifiable`, keeping `unix.rs` free of `cfg` gating.
 
 #![cfg_attr(test, allow(dead_code))]
 
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::ffi::OsStrExt as _;
-use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
 use tokio::net::UnixStream;
 
+#[cfg(target_os = "linux")]
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+#[cfg(target_os = "linux")]
+use std::os::unix::ffi::OsStrExt as _;
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::MetadataExt as _;
+
+#[cfg(target_os = "linux")]
 const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
-const DEV_OVERRIDE_ENV: &str = "FIREZONE_TUNNEL_ALLOWED_CALLER_PATHS";
 
 #[derive(Debug, Default)]
 pub struct Allowlist {
     paths: Vec<PathBuf>,
 }
 
-#[derive(Debug)]
-pub enum VerifiedPeer {
-    Allowlisted { exe: PathBuf },
-    KernelTooOld,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum PeerRejected {
+    /// The kernel (or platform) does not support `SO_PEERPIDFD`, so the
+    /// daemon cannot identify the peer's executable. Not a verification
+    /// failure — the caller decides whether to accept anyway.
+    #[error("Peer binary cannot be verified on this kernel/platform")]
+    Unverifiable,
     #[error("Couldn't read peer's executable: {0}")]
     ExeUnreadable(#[source] io::Error),
     #[error("Peer's executable has been deleted: {0}")]
@@ -54,6 +54,7 @@ pub enum PeerRejected {
 impl PeerRejected {
     pub fn reason(&self) -> &'static str {
         match self {
+            Self::Unverifiable => "unverifiable",
             Self::ExeUnreadable(_) => "exe_unreadable",
             Self::ExeDeleted(_) => "exe_deleted",
             Self::NotAllowlisted { .. } => "not_allowlisted",
@@ -62,7 +63,7 @@ impl PeerRejected {
 
     pub fn exe(&self) -> Option<&Path> {
         match self {
-            Self::ExeUnreadable(_) => None,
+            Self::Unverifiable | Self::ExeUnreadable(_) => None,
             Self::ExeDeleted(path) | Self::NotAllowlisted { exe: path } => Some(path),
         }
     }
@@ -74,31 +75,26 @@ impl Allowlist {
     /// Failures (file missing, bad ownership/mode, malformed entries) are
     /// logged and result in an empty or partial allowlist. The caller will
     /// reject all non-allowlisted connections regardless.
+    #[cfg(target_os = "linux")]
     pub fn load_default() -> Self {
-        let mut paths = read_allowlist_file(Path::new(ALLOWLIST_PATH));
-
-        if cfg!(debug_assertions)
-            && let Some(extra) = std::env::var_os(DEV_OVERRIDE_ENV)
-        {
-            for raw in std::env::split_paths(&extra) {
-                match std::fs::canonicalize(&raw) {
-                    Ok(canon) => paths.push(canon),
-                    Err(error) => tracing::info!(
-                        path = %raw.display(),
-                        "Ignoring dev override entry that cannot be canonicalised: {error}"
-                    ),
-                }
-            }
+        Self {
+            paths: read_allowlist_file(Path::new(ALLOWLIST_PATH)),
         }
+    }
 
-        Self { paths }
+    /// No-op loader on non-Linux. The macOS production client uses Swift;
+    /// this Rust path is only used by tests, where the per-connection check
+    /// short-circuits to `Unverifiable`.
+    #[cfg(not(target_os = "linux"))]
+    pub fn load_default() -> Self {
+        Self::default()
     }
 
     pub fn contains(&self, exe: &Path) -> bool {
         self.paths.iter().any(|allowed| allowed == exe)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "linux"))]
     pub fn from_paths(paths: Vec<PathBuf>) -> Self {
         Self { paths }
     }
@@ -110,20 +106,22 @@ impl Allowlist {
 /// Steps:
 ///   1. `getsockopt(SO_PEERPIDFD)` to obtain a pidfd pinned to the peer
 ///      process; on `ENOPROTOOPT` the kernel doesn't support pidfds and we
-///      return `KernelTooOld` so the caller can accept and log that fact.
+///      return `Unverifiable`, leaving the accept/reject choice to the
+///      caller.
 ///   2. Read the peer's `Pid` from `/proc/self/fdinfo/<pidfd>` — the pidfd
 ///      keeps the PID from being reused.
 ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks it
 ///      `(deleted)`.
 ///   4. Canonicalise the exe path and check it against the allowlist.
+#[cfg(target_os = "linux")]
 pub fn verify_peer(
     stream: &UnixStream,
     allowlist: &Allowlist,
-) -> Result<VerifiedPeer, PeerRejected> {
+) -> Result<PathBuf, PeerRejected> {
     let pidfd = match peer_pidfd(stream.as_raw_fd()) {
         Ok(fd) => fd,
         Err(error) if error.raw_os_error() == Some(libc::ENOPROTOOPT) => {
-            return Ok(VerifiedPeer::KernelTooOld);
+            return Err(PeerRejected::Unverifiable);
         }
         Err(error) => return Err(PeerRejected::ExeUnreadable(error)),
     };
@@ -142,9 +140,21 @@ pub fn verify_peer(
         return Err(PeerRejected::NotAllowlisted { exe: canonical });
     }
 
-    Ok(VerifiedPeer::Allowlisted { exe: canonical })
+    Ok(canonical)
 }
 
+/// Stub for non-Linux targets. The macOS production client uses the Swift
+/// network extension; this Rust path is only used by controller tests, where
+/// the caller will accept `Unverifiable` and proceed.
+#[cfg(not(target_os = "linux"))]
+pub fn verify_peer(
+    _stream: &UnixStream,
+    _allowlist: &Allowlist,
+) -> Result<PathBuf, PeerRejected> {
+    Err(PeerRejected::Unverifiable)
+}
+
+#[cfg(target_os = "linux")]
 fn peer_pidfd(socket_fd: RawFd) -> io::Result<OwnedFd> {
     let mut raw: libc::c_int = -1;
     let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
@@ -169,14 +179,16 @@ fn peer_pidfd(socket_fd: RawFd) -> io::Result<OwnedFd> {
     Ok(unsafe { OwnedFd::from_raw_fd(raw) })
 }
 
+#[cfg(target_os = "linux")]
 fn read_pid_from_fdinfo(pidfd: RawFd) -> io::Result<libc::pid_t> {
     let contents = std::fs::read_to_string(format!("/proc/self/fdinfo/{pidfd}"))?;
     contents
         .lines()
         .find_map(|line| line.strip_prefix("Pid:")?.trim().parse().ok())
-        .ok_or_else(|| io::Error::other("missing or unparseable `Pid:` field in fdinfo"))
+        .ok_or_else(|| io::Error::other("missing or unparsable `Pid:` field in fdinfo"))
 }
 
+#[cfg(target_os = "linux")]
 fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
     let metadata = match std::fs::metadata(path) {
         Ok(meta) => meta,
@@ -225,6 +237,7 @@ fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+#[cfg(target_os = "linux")]
 fn parse_allowlist_line(line: &str) -> Option<PathBuf> {
     let trimmed = line.split('#').next()?.trim();
 
@@ -240,6 +253,7 @@ fn parse_allowlist_line(line: &str) -> Option<PathBuf> {
     Some(PathBuf::from(trimmed))
 }
 
+#[cfg(target_os = "linux")]
 fn canonicalise_entry(raw: &Path) -> Option<PathBuf> {
     let canonical = match std::fs::canonicalize(raw) {
         Ok(p) => p,
@@ -250,19 +264,32 @@ fn canonicalise_entry(raw: &Path) -> Option<PathBuf> {
     };
 
     if !target_safe(&canonical) {
-        tracing::info!(entry = %canonical.display(), "Ignoring allowlist entry: target or ancestor is group/world-writable");
+        tracing::info!(entry = %canonical.display(), "Ignoring allowlist entry: target or ancestor not root-owned, or is group/world-writable");
         return None;
     }
 
     Some(canonical)
 }
 
+/// True iff `path` and every ancestor up to the root are owned by uid 0
+/// and not group- or world-writable.
+///
+/// Owner check (`uid == 0`) is what prevents a non-root user from
+/// substituting the allowlisted binary by recreating it after the daemon
+/// loads the allowlist: even if a `0755` directory along the path happens
+/// to be writable only by its owner, that owner could replace the
+/// allowlisted file if they're not root.
+#[cfg(target_os = "linux")]
 fn target_safe(path: &Path) -> bool {
     let mut current = Some(path);
     while let Some(p) = current {
         let Ok(meta) = std::fs::metadata(p) else {
             return false;
         };
+
+        if meta.uid() != 0 {
+            return false;
+        }
 
         if meta.mode() & 0o022 != 0 {
             return false;
@@ -273,7 +300,7 @@ fn target_safe(path: &Path) -> bool {
     true
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
     use std::io::Write as _;
@@ -324,6 +351,7 @@ mod tests {
 
     #[test]
     fn rejected_reason_strings_are_stable() {
+        assert_eq!(PeerRejected::Unverifiable.reason(), "unverifiable");
         assert_eq!(
             PeerRejected::NotAllowlisted {
                 exe: PathBuf::from("/x")
@@ -356,12 +384,7 @@ mod tests {
         let own_exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
         let allowlist = Allowlist::from_paths(vec![own_exe.clone()]);
 
-        match verify_peer(&b, &allowlist).unwrap() {
-            VerifiedPeer::Allowlisted { exe } => assert_eq!(exe, own_exe),
-            VerifiedPeer::KernelTooOld => {
-                panic!("kernel supports SO_PEERPIDFD but returned KernelTooOld")
-            }
-        }
+        assert_eq!(verify_peer(&b, &allowlist).unwrap(), own_exe);
 
         let empty = Allowlist::default();
         match verify_peer(&b, &empty) {

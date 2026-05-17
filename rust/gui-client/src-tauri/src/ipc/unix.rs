@@ -4,7 +4,6 @@
 //! Swift implementation in `swift/apple/`; this enables running controller
 //! tests on macOS.
 
-#[cfg(target_os = "linux")]
 #[path = "unix/peer_check.rs"]
 mod peer_check;
 
@@ -16,7 +15,7 @@ use tokio::net::{UnixListener, UnixStream};
 pub struct Server {
     listener: UnixListener,
     id: SocketId,
-    #[cfg(all(target_os = "linux", not(test)))]
+    #[cfg(not(test))]
     allowlist: peer_check::Allowlist,
 }
 
@@ -92,7 +91,7 @@ impl Server {
         Ok(Self {
             listener,
             id,
-            #[cfg(all(target_os = "linux", not(test)))]
+            #[cfg(not(test))]
             allowlist: peer_check::Allowlist::load_default(),
         })
     }
@@ -100,67 +99,57 @@ impl Server {
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
         loop {
             let (stream, _) = self.listener.accept().await?;
+            let cred = stream.peer_cred()?;
 
-            if self.accept_or_log(&stream)? {
-                return Ok(stream);
-            }
-        }
-    }
-
-    /// Decide whether to keep the freshly-accepted stream, logging the
-    /// outcome either way.
-    ///
-    /// `Ok(true)` → keep the stream, `Ok(false)` → drop it and accept the
-    /// next one. The platform-specific implementations live below.
-    #[cfg(all(target_os = "linux", not(test)))]
-    fn accept_or_log(&self, stream: &ServerStream) -> Result<bool> {
-        let cred = stream.peer_cred()?;
-
-        match peer_check::verify_peer(stream, &self.allowlist) {
-            Ok(peer_check::VerifiedPeer::Allowlisted { exe }) => {
+            // Test runs aren't shipped from `/usr/bin/firezone-client-gui`,
+            // so don't subject them to the allowlist; controller tests rely
+            // on running against arbitrary cargo-built test binaries.
+            #[cfg(test)]
+            {
                 tracing::info!(
                     uid = cred.uid(),
                     gid = cred.gid(),
                     pid = cred.pid(),
-                    exe = %exe.display(),
                     "Accepted an IPC connection"
                 );
-                Ok(true)
+                return Ok(stream);
             }
-            Ok(peer_check::VerifiedPeer::KernelTooOld) => {
-                tracing::info!(
-                    uid = cred.uid(),
-                    gid = cred.gid(),
-                    pid = cred.pid(),
-                    reason = "kernel_too_old",
-                    "Accepted an IPC connection without binary verification (kernel lacks SO_PEERPIDFD)"
-                );
-                Ok(true)
-            }
-            Err(rejected) => {
-                tracing::info!(
-                    uid = cred.uid(),
-                    gid = cred.gid(),
-                    pid = cred.pid(),
-                    reason = rejected.reason(),
-                    exe = rejected.exe().map(|p| p.display().to_string()),
-                    "Rejected an IPC connection: {rejected}"
-                );
-                Ok(false)
+
+            #[cfg(not(test))]
+            match peer_check::verify_peer(&stream, &self.allowlist) {
+                Ok(exe) => {
+                    tracing::info!(
+                        uid = cred.uid(),
+                        gid = cred.gid(),
+                        pid = cred.pid(),
+                        exe = %exe.display(),
+                        "Accepted an IPC connection"
+                    );
+                    return Ok(stream);
+                }
+                Err(peer_check::PeerRejected::Unverifiable) => {
+                    tracing::info!(
+                        uid = cred.uid(),
+                        gid = cred.gid(),
+                        pid = cred.pid(),
+                        reason = "unverifiable",
+                        "Accepted an IPC connection without binary verification"
+                    );
+                    return Ok(stream);
+                }
+                Err(rejected) => {
+                    tracing::info!(
+                        uid = cred.uid(),
+                        gid = cred.gid(),
+                        pid = cred.pid(),
+                        reason = rejected.reason(),
+                        exe = rejected.exe().map(|p| p.display().to_string()),
+                        "Rejected an IPC connection: {rejected}"
+                    );
+                    // Drop `stream` and loop to the next accept().
+                }
             }
         }
-    }
-
-    #[cfg(not(all(target_os = "linux", not(test))))]
-    fn accept_or_log(&self, stream: &ServerStream) -> Result<bool> {
-        let cred = stream.peer_cred()?;
-        tracing::info!(
-            uid = cred.uid(),
-            gid = cred.gid(),
-            pid = cred.pid(),
-            "Accepted an IPC connection"
-        );
-        Ok(true)
     }
 }
 
