@@ -14,7 +14,11 @@
 //! On non-Linux targets the module compiles as a stub whose `verify_peer`
 //! always returns `Unverifiable`, keeping `unix.rs` free of `cfg` gating.
 
-#![cfg_attr(test, allow(dead_code))]
+// On non-Linux targets the module compiles as a stub: most variants and
+// helpers are never constructed/called, but the API shape stays uniform
+// for `unix.rs`. Suppress dead-code warnings there (and under `cfg(test)`,
+// where the controller-test path skips verification).
+#![cfg_attr(any(test, not(target_os = "linux")), allow(dead_code))]
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -114,10 +118,7 @@ impl Allowlist {
 ///      `(deleted)`.
 ///   4. Canonicalise the exe path and check it against the allowlist.
 #[cfg(target_os = "linux")]
-pub fn verify_peer(
-    stream: &UnixStream,
-    allowlist: &Allowlist,
-) -> Result<PathBuf, PeerRejected> {
+pub fn verify_peer(stream: &UnixStream, allowlist: &Allowlist) -> Result<PathBuf, PeerRejected> {
     let pidfd = match peer_pidfd(stream.as_raw_fd()) {
         Ok(fd) => fd,
         Err(error) if error.raw_os_error() == Some(libc::ENOPROTOOPT) => {
@@ -147,10 +148,7 @@ pub fn verify_peer(
 /// network extension; this Rust path is only used by controller tests, where
 /// the caller will accept `Unverifiable` and proceed.
 #[cfg(not(target_os = "linux"))]
-pub fn verify_peer(
-    _stream: &UnixStream,
-    _allowlist: &Allowlist,
-) -> Result<PathBuf, PeerRejected> {
+pub fn verify_peer(_stream: &UnixStream, _allowlist: &Allowlist) -> Result<PathBuf, PeerRejected> {
     Err(PeerRejected::Unverifiable)
 }
 

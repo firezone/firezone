@@ -96,26 +96,12 @@ impl Server {
         })
     }
 
+    #[cfg(not(test))]
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
         loop {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
 
-            // Test runs aren't shipped from `/usr/bin/firezone-client-gui`,
-            // so don't subject them to the allowlist; controller tests rely
-            // on running against arbitrary cargo-built test binaries.
-            #[cfg(test)]
-            {
-                tracing::info!(
-                    uid = cred.uid(),
-                    gid = cred.gid(),
-                    pid = cred.pid(),
-                    "Accepted an IPC connection"
-                );
-                return Ok(stream);
-            }
-
-            #[cfg(not(test))]
             match peer_check::verify_peer(&stream, &self.allowlist) {
                 Ok(exe) => {
                     tracing::info!(
@@ -150,6 +136,21 @@ impl Server {
                 }
             }
         }
+    }
+
+    /// Test variant: skip the allowlist check. Controller tests connect
+    /// from cargo-built test binaries that aren't on any allowlist.
+    #[cfg(test)]
+    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
+        let (stream, _) = self.listener.accept().await?;
+        let cred = stream.peer_cred()?;
+        tracing::info!(
+            uid = cred.uid(),
+            gid = cred.gid(),
+            pid = cred.pid(),
+            "Accepted an IPC connection"
+        );
+        Ok(stream)
     }
 }
 

@@ -255,31 +255,32 @@ fn install_gui_for_allowlist() -> Result<()> {
         .fz_exit_ok()
         .context("Failed to install GUI binary for allowlist")?;
 
-    Exec::cmd("sudo")
-        .args(["mkdir", "-p", "/etc/firezone"])
-        .join()?
-        .fz_exit_ok()
-        .context("Failed to create /etc/firezone")?;
+    // Stage the allowlist in a tempdir, then `sudo install` it. This avoids
+    // shell quoting concerns and gets the mode/owner right in one syscall.
+    let tempdir = tempfile::tempdir().context("Couldn't create tempdir")?;
+    let staged_allowlist = tempdir.path().join("allowed-clients.conf");
+    std::fs::write(&staged_allowlist, format!("{INSTALLED_GUI_PATH}\n"))
+        .context("Couldn't write staged allowlist")?;
+    let staged_str = staged_allowlist
+        .to_str()
+        .context("Staged allowlist path is not valid UTF-8")?;
 
-    // Write the allowlist via `tee` so sudo handles the output redirect.
-    let allowlist_body = format!("{INSTALLED_GUI_PATH}\n");
-    let pipeline = format!(
-        "printf '%s' '{allowlist_body}' | sudo tee {ALLOWLIST_PATH} > /dev/null",
-        allowlist_body = allowlist_body.replace('\'', "'\\''"),
-    );
-    Exec::cmd("sh")
-        .args(["-c", &pipeline])
+    Exec::cmd("sudo")
+        .args([
+            "install",
+            "-D",
+            "-o",
+            "root",
+            "-g",
+            "root",
+            "-m",
+            "0644",
+            staged_str,
+            ALLOWLIST_PATH,
+        ])
         .join()?
         .fz_exit_ok()
-        .context("Failed to write allowlist file")?;
-    Exec::cmd("sudo")
-        .args(["chown", "root:root", ALLOWLIST_PATH])
-        .join()?
-        .fz_exit_ok()?;
-    Exec::cmd("sudo")
-        .args(["chmod", "0644", ALLOWLIST_PATH])
-        .join()?
-        .fz_exit_ok()?;
+        .context("Failed to install allowlist file")?;
 
     Ok(())
 }
