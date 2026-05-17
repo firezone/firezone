@@ -4,12 +4,7 @@
 //! Swift implementation in `swift/apple/`; this enables running controller
 //! tests on macOS.
 
-#[cfg(target_os = "linux")]
-#[path = "unix/peer_check_linux.rs"]
-mod peer_check;
-
-#[cfg(target_os = "macos")]
-#[path = "unix/peer_check_macos.rs"]
+#[path = "unix/peer_check.rs"]
 mod peer_check;
 
 use super::{NotFound, SocketId};

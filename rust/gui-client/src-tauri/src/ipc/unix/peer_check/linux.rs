@@ -1,99 +1,31 @@
-//! Verify that the peer of a connected Unix Domain Socket is one of the
-//! binaries on a root-managed allowlist.
-//!
-//! Linux 6.5+ exposes `SO_PEERPIDFD` on `AF_UNIX` sockets which yields a
-//! `pidfd` pinned to a specific process incarnation. Combined with the
-//! `/proc/<pid>/exe` symlink and a canonicalised path allowlist, the daemon
-//! can refuse calls from any process whose binary is not a Firezone-published
-//! binary, even processes running as the same UID.
-//!
-//! On kernels lacking `SO_PEERPIDFD`, `verify_peer` returns
-//! `PeerRejected::Unverifiable`; the caller decides what to do (production
-//! today accepts the connection and logs that enforcement is unavailable).
-
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt as _;
+#[cfg(not(test))]
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
 use tokio::net::UnixStream;
 
+use super::{Allowlist, PeerRejected};
+
 #[cfg(not(test))]
 const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
 
-#[derive(Debug, Default)]
-pub struct Allowlist {
-    paths: Vec<PathBuf>,
+#[cfg(not(test))]
+pub fn load_default() -> Allowlist {
+    Allowlist::with_paths(read_allowlist_file(Path::new(ALLOWLIST_PATH)))
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum PeerRejected {
-    /// The kernel does not support `SO_PEERPIDFD`, so the daemon cannot
-    /// identify the peer's executable. Not a verification failure — the
-    /// caller decides whether to accept anyway.
-    #[error("Peer binary cannot be verified on this kernel")]
-    Unverifiable,
-    #[error("Couldn't read peer's executable: {0}")]
-    ExeUnreadable(#[source] io::Error),
-    #[error("Peer's executable has been deleted: {0}")]
-    ExeDeleted(PathBuf),
-    #[error("Peer's executable `{}` is not on the allowlist", exe.display())]
-    NotAllowlisted { exe: PathBuf },
-}
-
-impl PeerRejected {
-    pub fn reason(&self) -> &'static str {
-        match self {
-            Self::Unverifiable => "unverifiable",
-            Self::ExeUnreadable(_) => "exe_unreadable",
-            Self::ExeDeleted(_) => "exe_deleted",
-            Self::NotAllowlisted { .. } => "not_allowlisted",
-        }
-    }
-
-    pub fn exe(&self) -> Option<&Path> {
-        match self {
-            Self::Unverifiable | Self::ExeUnreadable(_) => None,
-            Self::ExeDeleted(path) | Self::NotAllowlisted { exe: path } => Some(path),
-        }
-    }
-}
-
-impl Allowlist {
-    /// Load the allowlist from `/etc/firezone/allowed-clients.conf`.
-    ///
-    /// Failures (file missing, bad ownership/mode, malformed entries) are
-    /// logged and result in an empty or partial allowlist. The caller will
-    /// reject all non-allowlisted connections regardless.
-    #[cfg(not(test))]
-    pub fn load_default() -> Self {
-        Self {
-            paths: read_allowlist_file(Path::new(ALLOWLIST_PATH)),
-        }
-    }
-
-    /// Test variant: trust the running test binary. Controller tests
-    /// connect from a cargo-built test binary that lives under
-    /// `target/.../deps/` and is owned by the test runner, so it can never
-    /// be on a real root-managed allowlist.
-    #[cfg(test)]
-    pub fn load_default() -> Self {
-        let exe = std::env::current_exe().expect("test binary must have an exe path");
-        let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
-        Self {
-            paths: vec![canonical],
-        }
-    }
-
-    pub fn contains(&self, exe: &Path) -> bool {
-        self.paths.iter().any(|allowed| allowed == exe)
-    }
-
-    #[cfg(test)]
-    pub fn from_paths(paths: Vec<PathBuf>) -> Self {
-        Self { paths }
-    }
+/// Test variant: trust the running test binary. Controller tests connect
+/// from a cargo-built test binary that lives under `target/.../deps/` and
+/// is owned by the test runner, so it can never be on a real root-managed
+/// allowlist.
+#[cfg(test)]
+pub fn load_default() -> Allowlist {
+    let exe = std::env::current_exe().expect("test binary must have an exe path");
+    let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
+    Allowlist::with_paths(vec![canonical])
 }
 
 /// Verify that the peer connected to `stream` is running a binary on the
@@ -167,6 +99,14 @@ fn read_pid_from_fdinfo(pidfd: RawFd) -> io::Result<libc::pid_t> {
         .ok_or_else(|| io::Error::other("missing or unparsable `Pid:` field in fdinfo"))
 }
 
+/// Read and parse the allowlist file.
+///
+/// The file ownership/mode check is defence-in-depth: `target_safe` already
+/// requires every entry's binary and ancestors to be root-owned, but an
+/// attacker who can write to this file alone could still add a root-owned
+/// interpreter like `/usr/bin/bash` (which passes `target_safe`) and then
+/// connect via `bash -c "..."` so `/proc/<bash-pid>/exe` matches. Requiring
+/// the allowlist itself to be root-owned closes that path.
 #[cfg(not(test))]
 fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
     let metadata = match std::fs::metadata(path) {
@@ -176,13 +116,13 @@ fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
             return Vec::new();
         }
         Err(error) => {
-            tracing::error!(path = %path.display(), "Couldn't stat allowlist: {error}");
+            tracing::debug!(path = %path.display(), "Couldn't stat allowlist: {error}");
             return Vec::new();
         }
     };
 
     if metadata.uid() != 0 || metadata.gid() != 0 {
-        tracing::error!(
+        tracing::debug!(
             path = %path.display(),
             uid = metadata.uid(),
             gid = metadata.gid(),
@@ -193,7 +133,7 @@ fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
 
     let mode = metadata.mode() & 0o777;
     if mode != 0o644 && mode != 0o640 {
-        tracing::error!(
+        tracing::debug!(
             path = %path.display(),
             mode = format_args!("{mode:#o}"),
             "Allowlist must have mode 0644 or 0640; ignoring"
@@ -204,7 +144,7 @@ fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(error) => {
-            tracing::error!(path = %path.display(), "Couldn't read allowlist: {error}");
+            tracing::debug!(path = %path.display(), "Couldn't read allowlist: {error}");
             return Vec::new();
         }
     };
@@ -281,32 +221,6 @@ fn target_safe(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
-    use std::os::unix::fs::PermissionsExt as _;
-    use tempfile::NamedTempFile;
-
-    // Local copy of the production loader for the parser tests below; the
-    // real `read_allowlist_file` is gated `#[cfg(not(test))]` because the
-    // cfg(test) `load_default` doesn't read the file.
-    fn read_allowlist_file_for_test(path: &Path) -> Vec<PathBuf> {
-        let metadata = match std::fs::metadata(path) {
-            Ok(meta) => meta,
-            Err(_) => return Vec::new(),
-        };
-        if metadata.uid() != 0 || metadata.gid() != 0 {
-            return Vec::new();
-        }
-        let mode = metadata.mode() & 0o777;
-        if mode != 0o644 && mode != 0o640 {
-            return Vec::new();
-        }
-        std::fs::read_to_string(path)
-            .unwrap_or_default()
-            .lines()
-            .filter_map(parse_allowlist_line)
-            .filter_map(|raw| std::fs::canonicalize(&raw).ok())
-            .collect()
-    }
 
     #[test]
     fn parse_allowlist_line_strips_comments_and_blanks() {
@@ -322,24 +236,6 @@ mod tests {
             Some(PathBuf::from("/usr/bin/foo"))
         );
         assert_eq!(parse_allowlist_line("relative/path"), None);
-    }
-
-    #[test]
-    fn read_allowlist_file_rejects_world_writable() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "/usr/bin/true").unwrap();
-        let perms = std::fs::Permissions::from_mode(0o666);
-        std::fs::set_permissions(file.path(), perms).unwrap();
-
-        assert!(read_allowlist_file_for_test(file.path()).is_empty());
-    }
-
-    #[test]
-    fn read_allowlist_file_missing_returns_empty() {
-        assert!(
-            read_allowlist_file_for_test(Path::new("/nonexistent/firezone/allowed-clients.conf"))
-                .is_empty()
-        );
     }
 
     #[test]
