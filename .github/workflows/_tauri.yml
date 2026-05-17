@@ -78,7 +78,7 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+      - uses: taiki-e/install-action@0e01fba183f89b991766ac4092315c09f1acb55c # v2.78.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
