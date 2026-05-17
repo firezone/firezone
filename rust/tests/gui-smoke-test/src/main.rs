@@ -310,6 +310,41 @@ fn install_gui_for_allowlist() -> Result<()> {
             .with_context(|| format!("stat {path}"))?;
     }
 
+    // Fail fast if `target_safe` won't accept the entry. Mirrors the rules
+    // in `peer_check::target_safe` so a misconfiguration here surfaces as a
+    // clear error instead of a silent IPC rejection that times out.
+    verify_path_will_pass_target_safe(Path::new(INSTALLED_GUI_PATH))
+        .context("Installed GUI path will not pass peer_check::target_safe")?;
+
+    Ok(())
+}
+
+/// Replicates `peer_check::target_safe`: every ancestor must be owned by
+/// uid 0 and have neither group- nor world-writable bits set.
+#[cfg(target_os = "linux")]
+fn verify_path_will_pass_target_safe(path: &Path) -> Result<()> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let mut current = Some(path);
+    while let Some(p) = current {
+        let meta = std::fs::metadata(p)
+            .with_context(|| format!("Couldn't stat {} during target_safe check", p.display()))?;
+        if meta.uid() != 0 {
+            bail!(
+                "{} is owned by uid {}, not root (target_safe rejects)",
+                p.display(),
+                meta.uid()
+            );
+        }
+        if meta.mode() & 0o022 != 0 {
+            bail!(
+                "{} has group- or world-writable bits ({:#o}); target_safe rejects",
+                p.display(),
+                meta.mode() & 0o777
+            );
+        }
+        current = p.parent();
+    }
     Ok(())
 }
 
