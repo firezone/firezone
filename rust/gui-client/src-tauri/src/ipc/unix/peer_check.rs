@@ -1,3 +1,10 @@
+// On macOS the production client uses the Swift network extension; the
+// Rust path is test-only and `verify_peer` always returns `Unverifiable`,
+// so the non-Unverifiable variants and the `Allowlist::paths` field are
+// never constructed on that target. Allow them rather than gating each
+// variant individually.
+#![cfg_attr(target_os = "macos", allow(dead_code))]
+
 //! Verify that the peer of a connected Unix Domain Socket is one of the
 //! binaries on a root-managed allowlist.
 //!
@@ -13,6 +20,10 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+
+#[cfg(target_os = "linux")]
+#[path = "peer_check/allowlist_file.rs"]
+mod allowlist_file;
 
 #[cfg(target_os = "linux")]
 #[path = "peer_check/linux.rs"]

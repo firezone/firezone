@@ -1,12 +1,12 @@
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt as _;
-#[cfg(not(test))]
-use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
 use tokio::net::UnixStream;
 
+#[cfg(not(test))]
+use super::allowlist_file;
 use super::{Allowlist, PeerRejected};
 
 #[cfg(not(test))]
@@ -14,7 +14,7 @@ const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
 
 #[cfg(not(test))]
 pub fn load_default() -> Allowlist {
-    Allowlist::with_paths(read_allowlist_file(Path::new(ALLOWLIST_PATH)))
+    Allowlist::with_paths(allowlist_file::read(Path::new(ALLOWLIST_PATH)))
 }
 
 /// Test variant: trust the running test binary. Controller tests connect
@@ -99,144 +99,9 @@ fn read_pid_from_fdinfo(pidfd: RawFd) -> io::Result<libc::pid_t> {
         .ok_or_else(|| io::Error::other("missing or unparsable `Pid:` field in fdinfo"))
 }
 
-/// Read and parse the allowlist file.
-///
-/// The file ownership/mode check is defence-in-depth: `target_safe` already
-/// requires every entry's binary and ancestors to be root-owned, but an
-/// attacker who can write to this file alone could still add a root-owned
-/// interpreter like `/usr/bin/bash` (which passes `target_safe`) and then
-/// connect via `bash -c "..."` so `/proc/<bash-pid>/exe` matches. Requiring
-/// the allowlist itself to be root-owned closes that path.
-#[cfg(not(test))]
-fn read_allowlist_file(path: &Path) -> Vec<PathBuf> {
-    let metadata = match std::fs::metadata(path) {
-        Ok(meta) => meta,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            tracing::info!(path = %path.display(), "Allowlist file is missing; no peers will be accepted");
-            return Vec::new();
-        }
-        Err(error) => {
-            tracing::debug!(path = %path.display(), "Couldn't stat allowlist: {error}");
-            return Vec::new();
-        }
-    };
-
-    if metadata.uid() != 0 || metadata.gid() != 0 {
-        tracing::debug!(
-            path = %path.display(),
-            uid = metadata.uid(),
-            gid = metadata.gid(),
-            "Allowlist must be owned by root:root; ignoring"
-        );
-        return Vec::new();
-    }
-
-    let mode = metadata.mode() & 0o777;
-    if mode != 0o644 && mode != 0o640 {
-        tracing::debug!(
-            path = %path.display(),
-            mode = format_args!("{mode:#o}"),
-            "Allowlist must have mode 0644 or 0640; ignoring"
-        );
-        return Vec::new();
-    }
-
-    let contents = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(error) => {
-            tracing::debug!(path = %path.display(), "Couldn't read allowlist: {error}");
-            return Vec::new();
-        }
-    };
-
-    contents
-        .lines()
-        .filter_map(parse_allowlist_line)
-        .filter_map(|raw| canonicalise_entry(&raw))
-        .collect()
-}
-
-fn parse_allowlist_line(line: &str) -> Option<PathBuf> {
-    let trimmed = line.split('#').next()?.trim();
-
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if !Path::new(trimmed).is_absolute() {
-        tracing::info!(entry = %trimmed, "Ignoring non-absolute allowlist entry");
-        return None;
-    }
-
-    Some(PathBuf::from(trimmed))
-}
-
-#[cfg(not(test))]
-fn canonicalise_entry(raw: &Path) -> Option<PathBuf> {
-    let canonical = match std::fs::canonicalize(raw) {
-        Ok(p) => p,
-        Err(error) => {
-            tracing::info!(entry = %raw.display(), "Ignoring allowlist entry: {error}");
-            return None;
-        }
-    };
-
-    if !target_safe(&canonical) {
-        tracing::info!(entry = %canonical.display(), "Ignoring allowlist entry: target or ancestor not root-owned, or is group/world-writable");
-        return None;
-    }
-
-    Some(canonical)
-}
-
-/// True iff `path` and every ancestor up to the root are owned by uid 0
-/// and not group- or world-writable.
-///
-/// Owner check (`uid == 0`) is what prevents a non-root user from
-/// substituting the allowlisted binary by recreating it after the daemon
-/// loads the allowlist: even if a `0755` directory along the path happens
-/// to be writable only by its owner, that owner could replace the
-/// allowlisted file if they're not root.
-#[cfg(not(test))]
-fn target_safe(path: &Path) -> bool {
-    let mut current = Some(path);
-    while let Some(p) = current {
-        let Ok(meta) = std::fs::metadata(p) else {
-            return false;
-        };
-
-        if meta.uid() != 0 {
-            return false;
-        }
-
-        if meta.mode() & 0o022 != 0 {
-            return false;
-        }
-
-        current = p.parent();
-    }
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_allowlist_line_strips_comments_and_blanks() {
-        assert_eq!(parse_allowlist_line(""), None);
-        assert_eq!(parse_allowlist_line("   "), None);
-        assert_eq!(parse_allowlist_line("# comment"), None);
-        assert_eq!(
-            parse_allowlist_line("/usr/bin/foo  # inline"),
-            Some(PathBuf::from("/usr/bin/foo"))
-        );
-        assert_eq!(
-            parse_allowlist_line("  /usr/bin/foo"),
-            Some(PathBuf::from("/usr/bin/foo"))
-        );
-        assert_eq!(parse_allowlist_line("relative/path"), None);
-    }
 
     #[test]
     fn allowlist_contains_canonicalised_path() {
