@@ -18,12 +18,13 @@ const GUI_NAME: &str = "firezone-gui-client";
 const TUNNEL_NAME: &str = "firezone-client-tunnel";
 
 /// The tunnel daemon allowlists peers by canonical executable path, and the
-/// path must live on a root-owned, non-user-writable filesystem.
-/// `target/debug/` is owned by the CI runner, so we install the GUI to this
-/// fixed system location before launching it; the allowlist file at
-/// `/etc/firezone/allowed-clients.conf` is rewritten to point here.
+/// path must live on a root-owned, non-user-writable filesystem (`target_safe`
+/// in `peer_check.rs` walks every ancestor). `/usr/local/*` is `0o775
+/// root:staff` on Ubuntu runners and fails the check; `/usr/bin` is the
+/// canonical `0o755 root:root` directory. The `-smoke` suffix avoids
+/// clashing with any deb-installed firezone-client-gui on dev machines.
 #[cfg(target_os = "linux")]
-const INSTALLED_GUI_PATH: &str = "/usr/local/bin/firezone-client-gui";
+const INSTALLED_GUI_PATH: &str = "/usr/bin/firezone-client-gui-smoke";
 #[cfg(target_os = "linux")]
 const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
 
@@ -228,7 +229,8 @@ impl App {
 /// peer-allowlist file the tunnel daemon reads.
 ///
 /// Both files must be owned by `root:root` and have no group/world-writable
-/// ancestors — see `target_safe` in `peer_check.rs`.
+/// ancestors — see `target_safe` in `peer_check.rs`. Logs every step so a
+/// CI failure here is debuggable without re-running.
 #[cfg(target_os = "linux")]
 fn install_gui_for_allowlist() -> Result<()> {
     let built_gui = gui_path()
@@ -237,6 +239,11 @@ fn install_gui_for_allowlist() -> Result<()> {
     let built_gui_str = built_gui
         .to_str()
         .context("Built GUI path is not valid UTF-8")?;
+    tracing::info!(
+        src = built_gui_str,
+        dst = INSTALLED_GUI_PATH,
+        "Installing GUI binary"
+    );
 
     Exec::cmd("sudo")
         .args([
@@ -255,8 +262,6 @@ fn install_gui_for_allowlist() -> Result<()> {
         .fz_exit_ok()
         .context("Failed to install GUI binary for allowlist")?;
 
-    // Stage the allowlist in a tempdir, then `sudo install` it. This avoids
-    // shell quoting concerns and gets the mode/owner right in one syscall.
     let tempdir = tempfile::tempdir().context("Couldn't create tempdir")?;
     let staged_allowlist = tempdir.path().join("allowed-clients.conf");
     std::fs::write(&staged_allowlist, format!("{INSTALLED_GUI_PATH}\n"))
@@ -264,6 +269,11 @@ fn install_gui_for_allowlist() -> Result<()> {
     let staged_str = staged_allowlist
         .to_str()
         .context("Staged allowlist path is not valid UTF-8")?;
+    tracing::info!(
+        src = staged_str,
+        dst = ALLOWLIST_PATH,
+        "Installing allowlist"
+    );
 
     Exec::cmd("sudo")
         .args([
@@ -281,6 +291,24 @@ fn install_gui_for_allowlist() -> Result<()> {
         .join()?
         .fz_exit_ok()
         .context("Failed to install allowlist file")?;
+
+    // Diagnostic: print mode/ownership of the installed path and each
+    // ancestor so CI logs show whether `target_safe` will accept the entry.
+    for path in [
+        INSTALLED_GUI_PATH,
+        "/usr/bin",
+        "/usr",
+        "/",
+        ALLOWLIST_PATH,
+        "/etc/firezone",
+        "/etc",
+    ] {
+        Exec::cmd("stat")
+            .args(["-c", "%a %U:%G %n", path])
+            .join()?
+            .fz_exit_ok()
+            .with_context(|| format!("stat {path}"))?;
+    }
 
     Ok(())
 }
