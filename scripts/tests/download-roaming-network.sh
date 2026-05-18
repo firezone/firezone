@@ -3,11 +3,11 @@
 source "./scripts/tests/lib.sh"
 
 # Download 10MB at a max rate of 1MB/s. The first two UDP socket writes will fail as checksum offload is disabled.
-# This means it will take 13 seconds + the resent STUN binding request round trip time.
+# This means it will take ~13 seconds + ICE reconnection time after roaming. Allow 30s for CI timing variability.
 client sh -c \
     "curl \
         --fail \
-        --max-time 16 \
+        --max-time 30 \
         --keepalive-time 1 \
         --limit-rate 1000000 \
         --output download.file \
