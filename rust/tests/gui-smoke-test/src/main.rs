@@ -44,6 +44,7 @@ fn main() -> Result<()> {
     dump_syms().context("Failed to run `dump_syms`")?;
 
     // Run normal smoke test
+    tracing::info!("=== normal smoke test: GUI starts, connects to tunnel, quits gracefully ===");
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
     std::thread::sleep(Duration::from_millis(500)); // Wait for tunnel service to boot to write firezone-id.json
 
@@ -54,14 +55,19 @@ fn main() -> Result<()> {
     gui.wait()?.fz_exit_ok().context("GUI process")?;
 
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
+    tracing::info!("=== normal smoke test complete ===");
 
     // Force the GUI to crash
+    tracing::info!(
+        "=== crash test: the GUI will deliberately SIGSEGV; any 'Segmentation fault' message that follows is expected ==="
+    );
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
     let gui = app.gui_command(&["--crash"])?.start()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
+    tracing::info!("=== crash test complete: the expected SIGSEGV was handled ===");
 
     // Launch-lock hand-off smoke test. No tunnel service or display
     // server required — the subcommand only drives the lock + GUI IPC
@@ -87,7 +93,9 @@ fn main() -> Result<()> {
 /// one identified itself with the right role marker, and a 10-second
 /// `capture_timeout` keeps a hang in either side from stalling CI.
 fn single_instance_test(app: &App) -> Result<()> {
-    tracing::info!("Running launch-lock single-instance smoke test");
+    tracing::info!(
+        "=== single-instance test: two GUI invocations race for the launch lock, second hands off to first ==="
+    );
 
     let first = app
         .gui_command(&["debug", "single-instance"])?
@@ -132,21 +140,25 @@ fn single_instance_test(app: &App) -> Result<()> {
         );
     }
 
+    tracing::info!("=== single-instance test complete ===");
     Ok(())
 }
 
 fn manual_tests(app: &App) -> Result<()> {
-    // Replicate #6791
+    tracing::info!("=== manual: replicate #6791 ===");
     app.gui_command(&["debug", "replicate6791"])?
         .start()?
         .wait()?;
+    tracing::info!("=== manual: replicate #6791 complete ===");
 
+    tracing::info!("=== manual: --quit-after 10s ===");
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
     let gui = app.gui_command(&["--quit-after", "10"])?.start()?;
 
     // Expect exit codes of 0
     gui.wait()?.fz_exit_ok().context("GUI process")?;
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
+    tracing::info!("=== manual: --quit-after 10s complete ===");
 
     Ok(())
 }

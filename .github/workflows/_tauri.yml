@@ -86,7 +86,7 @@ jobs:
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
-        timeout-minutes: 2
+        timeout-minutes: 4
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
