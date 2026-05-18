@@ -40,6 +40,11 @@ pub struct MdmSettings {
 
 #[derive(Clone, Deserialize, Serialize, specta::Type)]
 pub struct AdvancedSettings {
+    // `auth_base_url` was the field name before #9211 (May 2025) split the
+    // settings file. The alias keeps pre-split installs deserializing
+    // successfully so their custom self-hosted portal URL isn't silently
+    // reset to the default.
+    #[serde(alias = "auth_base_url")]
     pub auth_url: Url,
     pub api_url: Url,
     pub log_filter: String,
@@ -216,4 +221,28 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_pre_9211_format_via_auth_base_url_alias() {
+        // Snapshot of the on-disk shape used by GUI builds before #9211
+        // (May 2025). The new `AdvancedSettings` accepts `auth_base_url`
+        // via a serde alias so pre-9211 installs preserve their custom
+        // portal URLs after this PR removes the legacy migration code.
+        let s = r#"{
+            "auth_base_url": "https://example.com/",
+            "api_url": "wss://example.com/",
+            "favorite_resources": [],
+            "internet_resource_enabled": true,
+            "log_filter": "info"
+        }"#;
+        let actual: AdvancedSettings = serde_json::from_str(s).unwrap();
+        assert_eq!(actual.auth_url.as_str(), "https://example.com/");
+        assert_eq!(actual.api_url.as_str(), "wss://example.com/");
+        assert_eq!(actual.log_filter, "info");
+    }
 }
