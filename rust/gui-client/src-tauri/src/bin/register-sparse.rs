@@ -1,46 +1,18 @@
 //! WiX deferred custom actions that register / deregister the
 //! Firezone sparse MSIX package against the installed binaries.
 //!
-//! Invoked as one of three subcommands, each from a different MSI
-//! custom action with a different security context. Listed in the
-//! order they fire during MSI execution:
+//! Two subcommands, each fired from its own MSI custom action; see
+//! `win_files/sparse-package.wxs` for the wiring:
 //!
-//! - `provision` — runs as **`LocalSystem`**, calls
-//!   `StagePackageByUriAsync` to put the package into the all-users
-//!   staged state in `C:\Program Files\WindowsApps`, then
-//!   `ProvisionPackageForAllUsersAsync` so every account (including
-//!   `LocalSystem`, so the tunnel service inherits the package SID)
-//!   auto-registers on next logon. Must run before `add` —
-//!   per-user `AddPackageByUriAsync` does NOT produce the all-users
-//!   staged state Provision needs, so calling Provision after Add
-//!   returns `ERROR_NOT_FOUND` / `0x80070490`.
-//! - `add` — runs **impersonated** as the user invoking `msiexec`,
-//!   calls `AddPackageByUriAsync` to register the package for that
-//!   user immediately (Provision would otherwise defer their
-//!   registration until next logon). Must run as a real user, not
-//!   `LocalSystem`: the AppX deployment service rejects per-user
-//!   adds from `S-1-5-18` (`0x80073CF9` / "Local System account is
-//!   not allowed to perform this operation").
-//! - `deprovision` — runs as **`LocalSystem`** on uninstall, the
-//!   inverse of `provision`. We deliberately do NOT enumerate and
-//!   remove per-user package instances: that would require pulling
-//!   in `Foundation_Collections` (`IIterable<Package>`) for one
-//!   custom-action helper. Per-user instances are reaped by the next
-//!   major Windows servicing cycle.
+//! - [`imp::provision`] — stage + provision for all users.
+//! - [`imp::deprovision`] — uninstall counterpart.
 //!
-//! WiX wires this up in `win_files/sparse-package.wxs`. The install
-//! directory (needed by `provision` and `add`) is derived from the
-//! exe's own location (`current_exe().parent()`) rather than piped
-//! in via `CustomActionData`: MSI only exposes that property to
-//! DLL/script deferred CAs, not to direct EXE CAs.
-//!
-//! Failure mode: registration is best-effort. On older Windows builds
-//! (pre-21H2 hardened images, AppX disabled by GP) the call returns
-//! an HRESULT and we exit `0` so the MSI install isn't bricked. The
+//! Both run as `LocalSystem` (the AppX provisioning APIs require it)
+//! and both exit `0` on failure: registration is best-effort, and the
 //! runtime SDDL builder in `ipc/windows.rs` falls back to the legacy
-//! `BU` ACE in that case (graceful degradation: less secure but
-//! functional).
+//! `BU` ACE on legacy / hardened Windows where MSIX isn't available.
 
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::{fmt, process::ExitCode};
 
@@ -52,11 +24,9 @@ struct Cli {
 
 #[derive(clap::ValueEnum, Clone, Copy)]
 enum Action {
-    /// Stage + provision the package for all users. Run as `LocalSystem`.
+    /// Stage + provision the package for all users.
     Provision,
-    /// Register the package for the current user. Run impersonated.
-    Add,
-    /// Deprovision the package for all users. Run as `LocalSystem`.
+    /// Deprovision the package for all users.
     Deprovision,
 }
 
@@ -64,14 +34,23 @@ impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Action::Provision => "provision",
-            Action::Add => "add",
             Action::Deprovision => "deprovision",
         })
     }
 }
 
 fn main() -> ExitCode {
-    init_tracing();
+    let _log_handle = match init_tracing() {
+        Ok(h) => h,
+        #[expect(
+            clippy::print_stderr,
+            reason = "Without `tracing`, we need to manually print to stderr."
+        )]
+        Err(e) => {
+            eprintln!("register-sparse: failed to init tracing: {e:#}");
+            return ExitCode::SUCCESS;
+        }
+    };
 
     let Cli { action } = Cli::parse();
 
@@ -85,7 +64,6 @@ fn main() -> ExitCode {
     let started = std::time::Instant::now();
     let result = match action {
         Action::Provision => imp::provision(),
-        Action::Add => imp::add(),
         Action::Deprovision => imp::deprovision(),
     };
     let elapsed = started.elapsed();
@@ -109,22 +87,31 @@ fn main() -> ExitCode {
     }
 }
 
-/// `tracing_subscriber` configured to write to stderr in a compact,
-/// no-ANSI format. `msiexec /l*v install.log` captures stderr so each
-/// event lands in the MSI install log; setting `RUST_LOG` in the WiX
-/// CA environment lets an operator widen or narrow the filter.
-fn init_tracing() {
-    use tracing_subscriber::{EnvFilter, fmt};
+/// Sets up tracing for `register-sparse`:
+///
+/// - File: `<tunnel_service_logs>/register-sparse.<timestamp>.log`
+///   (and a `latest` link). This is the authoritative source during
+///   MSI installs, because MSI discards stdout/stderr from deferred
+///   EXE custom actions — they don't land in `install.log`.
+/// - Stdout: useful only when invoking `register-sparse.exe`
+///   manually for diagnosis.
+///
+/// Returns the file-appender handle; the caller must keep it alive
+/// until exit so the background writer can flush.
+fn init_tracing() -> Result<logging::file::Handle> {
+    let log_dir =
+        known_dirs::tunnel_service_logs().context("`tunnel_service_logs` not configured")?;
+    std::fs::create_dir_all(&log_dir)
+        .with_context(|| format!("creating log dir `{}`", log_dir.display()))?;
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("register_sparse=debug"));
-    fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .with_target(false)
-        .with_ansi(false)
-        .compact()
-        .init();
+    let (file_layer, file_handle) = logging::file::layer(&log_dir, "register-sparse");
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".to_string());
+    logging::setup_global_subscriber(directives, file_layer, false)
+        .context("setup_global_subscriber")?;
+
+    tracing::info!(log_dir = %log_dir.display(), "logging initialized");
+
+    Ok(file_handle)
 }
 
 #[cfg(windows)]
@@ -133,23 +120,22 @@ mod imp {
     use std::{path::PathBuf, time::Instant};
     use windows::{
         Foundation::Uri,
-        Management::Deployment::{
-            AddPackageOptions, DeploymentResult, PackageManager, StagePackageOptions,
-        },
+        Management::Deployment::{DeploymentResult, PackageManager, StagePackageOptions},
         core::HSTRING,
     };
 
     /// Stages the sparse MSIX in the system store and provisions it
     /// for all users, so every account (including `LocalSystem` and
     /// future logons) gets package identity attached when launching
-    /// `Firezone.exe` / `firezone-client-tunnel.exe`.
+    /// `Firezone.exe` / `firezone-client-tunnel.exe`. The invoking
+    /// admin is auto-registered by AppX as part of provision via
+    /// `OnDemandRegisterOperation`, so no separate per-user
+    /// registration call is needed.
     ///
-    /// Both steps must run as `LocalSystem`. Staging first is
-    /// required: `ProvisionPackageForAllUsersAsync` only sees packages
-    /// in the "staged for all users" state, which per-user
-    /// `AddPackageByUriAsync` does not produce (despite copying files
-    /// into `C:\Program Files\WindowsApps`). Skipping the explicit
-    /// stage call returns `ERROR_NOT_FOUND` / `0x80070490`.
+    /// `StagePackageByUriAsync` must run before
+    /// `ProvisionPackageForAllUsersAsync`: the latter only acts on
+    /// packages already in the all-users staged state and returns
+    /// `ERROR_NOT_FOUND` / `0x80070490` otherwise.
     pub fn provision() -> Result<()> {
         let install_path = install_dir()?;
         let msix = install_path.join("firezone.msix");
@@ -197,49 +183,13 @@ mod imp {
         check_deployment_result(&result, "provision")
     }
 
-    /// Registers the sparse MSIX for the current user, telling Windows
-    /// where the external binaries live (the MSI install dir). Must
-    /// run impersonated: `AddPackageByUriAsync` is per-user and the
-    /// AppX deployment service rejects it under `LocalSystem`.
-    /// Sequenced after [`provision`] so the package is already in the
-    /// all-users staged state by the time this runs.
-    pub fn add() -> Result<()> {
-        let install_path = install_dir()?;
-        let msix = install_path.join("firezone.msix");
-
-        let msix_meta = std::fs::metadata(&msix)
-            .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
-        tracing::info!(
-            install_dir = %install_path.display(),
-            msix_path = %msix.display(),
-            msix_size_bytes = msix_meta.len(),
-            "found MSIX payload"
-        );
-
-        let pm = package_manager()?;
-        let opts = AddPackageOptions::new().context("AddPackageOptions::new failed")?;
-        let external_uri = file_uri(install_path.as_path())?;
-        opts.SetExternalLocationUri(&external_uri)
-            .context("SetExternalLocationUri failed")?;
-        let msix_uri = file_uri(msix.as_path())?;
-        tracing::info!(
-            external_uri = %external_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            msix_uri = %msix_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            "calling AddPackageByUriAsync"
-        );
-        let started = Instant::now();
-        let result = pm
-            .AddPackageByUriAsync(&msix_uri, &opts)
-            .context("AddPackageByUriAsync call failed")?
-            .get()
-            .context("AddPackageByUriAsync await failed")?;
-        log_deployment_result("add", &result, started);
-        check_deployment_result(&result, "add")
-    }
-
     /// Inverse of [`provision`]. Stops new logons from inheriting the
     /// package and lets the next major Windows servicing cycle reap
-    /// the per-user package instances.
+    /// the per-user package instances. Enumerating + explicitly
+    /// removing each instance would require pulling in the
+    /// `Foundation_Collections` (`IIterable<Package>`) feature for
+    /// one custom-action helper, which isn't worth the binary-size
+    /// hit.
     pub fn deprovision() -> Result<()> {
         let pm = package_manager()?;
         let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
@@ -324,10 +274,6 @@ mod imp {
     use anyhow::{Result, bail};
 
     pub fn provision() -> Result<()> {
-        bail!("`register-sparse` is only supported on Windows");
-    }
-
-    pub fn add() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 

@@ -1,40 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  WiX fragment for the Firezone sparse MSIX package.
-
-  Pulled into the main MSI via `tauri.conf.json:fragmentPaths`. Two
-  components ship the sparse-MSIX payload (`firezone.msix`) and the
-  custom-action helper (`register-sparse.exe`) into INSTALLDIR.
-
-  Three deferred custom actions, sequenced from `main.wxs`:
-
-  - `ProvisionSparsePackage` — runs as `LocalSystem`, calls
-    `StagePackageByUriAsync` then `ProvisionPackageForAllUsersAsync`.
-    Stage puts the package in the all-users staged state in
-    `C:\Program Files\WindowsApps`; provision enables auto-register
-    for all current and future user accounts (including
-    `LocalSystem`, so the tunnel service inherits the package SID).
-    Must run BEFORE `AddSparsePackage` — per-user `Add` doesn't
-    produce the all-users staged state that Provision requires.
-  - `AddSparsePackage` — runs **impersonated** as the user invoking
-    `msiexec`, calls `AddPackageByUriAsync` to register the package
-    for that user immediately (Provision-only would defer
-    registration until next logon). The AppX deployment service
-    rejects per-user adds from `LocalSystem` (`0x80073CF9` / "Local
-    System account is not allowed to perform this operation"), so
-    this CA must NOT use `Impersonate="no"`.
-  - `DeprovisionSparsePackage` — runs as `LocalSystem` on uninstall,
-    the inverse of `ProvisionSparsePackage`.
-
-  All three CAs never fail the MSI: `register-sparse.exe` exits 0 on
-  legacy Windows where MSIX provisioning isn't available, and the
-  runtime SDDL builder in `ipc/windows.rs` falls back to the legacy
-  `BU` ACE via `GetCurrentPackageFullName -> APPMODEL_ERROR_NO_PACKAGE`.
-
-  `register-sparse.exe` derives INSTALLDIR from its own
-  `current_exe().parent()` rather than reading the MSI
-  `CustomActionData` property: MSI only exposes that property to
-  DLL/script-based deferred CAs, not to direct EXE CAs.
+  WiX fragment for the Firezone sparse MSIX package. Pulled into the
+  main MSI via `tauri.conf.json:fragmentPaths`. Ships the sparse-MSIX
+  payload and the `register-sparse.exe` custom-action helper into
+  INSTALLDIR, then fires three deferred CAs against it. See the
+  `register-sparse.rs` module doc for what each subcommand does to the
+  AppX deployment service; this fragment only deals with the MSI side.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
@@ -57,13 +28,6 @@
                   Impersonate="no"
                   Return="ignore" />
 
-    <CustomAction Id="AddSparsePackage"
-                  FileKey="RegisterSparseExeFile"
-                  ExeCommand="add"
-                  Execute="deferred"
-                  Impersonate="yes"
-                  Return="ignore" />
-
     <CustomAction Id="DeprovisionSparsePackage"
                   FileKey="RegisterSparseExeFile"
                   ExeCommand="deprovision"
@@ -73,15 +37,10 @@
 
     <InstallExecuteSequence>
       <!--
-        `Provision` (LocalSystem) must run first: it stages the package
-        in `C:\Program Files\WindowsApps` so that `Add` (impersonated)
-        and the tunnel service launch both see the package identity.
-        Both CAs must run before `StartServices` so the tunnel service
-        is launched with the package SID already attached.
+        Provision must complete before `StartServices` so the tunnel
+        service is launched with the package SID already attached.
       -->
       <Custom Action="ProvisionSparsePackage"
-              Before="AddSparsePackage">NOT REMOVE</Custom>
-      <Custom Action="AddSparsePackage"
               Before="StartServices">NOT REMOVE</Custom>
 
       <Custom Action="DeprovisionSparsePackage"
