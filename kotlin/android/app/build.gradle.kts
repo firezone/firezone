@@ -263,6 +263,35 @@ val cargoTargetDir: String by lazy {
         )
 }
 
+// Resolve the target Android ABI from the `android.injected.build.abi` Gradle property,
+// injected by Android Studio when launching on a connected device (comma-separated, preferred
+// ABI first) and passed explicitly by `mise-tasks/install-phone.sh`. When unset (e.g. plain
+// `assembleDebug` or CI), build all ABIs.
+val targetAndroidAbi: String? =
+    providers.gradleProperty("android.injected.build.abi").orNull
+        ?.split(",")
+        ?.firstOrNull()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+fun androidAbiToCargoTarget(abi: String): String =
+    when (abi) {
+        "arm64-v8a" -> "arm64"
+        "armeabi-v7a" -> "arm"
+        "x86" -> "x86"
+        "x86_64" -> "x86_64"
+        else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
+    }
+
+fun androidAbiToRustTriple(abi: String): String =
+    when (abi) {
+        "arm64-v8a" -> "aarch64-linux-android"
+        "armeabi-v7a" -> "armv7-linux-androideabi"
+        "x86" -> "i686-linux-android"
+        "x86_64" -> "x86_64-linux-android"
+        else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
+    }
+
 cargo {
     if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
         profile = "release"
@@ -275,12 +304,8 @@ cargo {
     module = "../../../rust/client-ffi"
     libname = "connlib"
     targets =
-        listOf(
-            "arm64",
-            "x86_64",
-            "x86",
-            "arm",
-        )
+        targetAndroidAbi?.let { listOf(androidAbiToCargoTarget(it)) }
+            ?: listOf("arm64", "x86_64", "x86", "arm")
     targetDirectory = cargoTargetDir
 }
 
@@ -304,17 +329,10 @@ val generateUniffiBindings =
         val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
 
         // UniFFI bindings are identical across ABIs, so we only need one libconnlib.so as input.
-        // Callers (e.g. install-phone.sh) may skip building ABIs they don't need; pass
-        // -PdeviceAbi=<android-abi> to point this task at an ABI that actually gets built.
-        // Defaults to x86_64 so the all-ABI build keeps working unchanged.
+        // Point this task at an ABI that actually gets built when callers narrow the target list
+        // via `android.injected.build.abi`. Defaults to x86_64 so the all-ABI build keeps working.
         val rustTargetTriple =
-            when (val deviceAbi = providers.gradleProperty("deviceAbi").orNull) {
-                null, "x86_64" -> "x86_64-linux-android"
-                "arm64-v8a" -> "aarch64-linux-android"
-                "armeabi-v7a" -> "armv7-linux-androideabi"
-                "x86" -> "i686-linux-android"
-                else -> throw GradleException("Unsupported deviceAbi '$deviceAbi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
-            }
+            targetAndroidAbi?.let { androidAbiToRustTriple(it) } ?: "x86_64-linux-android"
         val inputFile = file("$cargoTargetDir/$rustTargetTriple/$profile/libconnlib.so")
 
         inputs.file(inputFile)

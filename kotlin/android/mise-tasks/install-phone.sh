@@ -28,39 +28,13 @@ fi
 
 DEVICE_ABI="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
 
-# Map the device ABI to the cargo build tasks we can skip. The Gradle task names
-# come from the targets list in app/build.gradle.kts.
-case "$DEVICE_ABI" in
-arm64-v8a)
-    SKIP_CARGO_TASKS=(cargoBuildArm cargoBuildX86 cargoBuildX86_64)
-    ;;
-armeabi-v7a)
-    SKIP_CARGO_TASKS=(cargoBuildArm64 cargoBuildX86 cargoBuildX86_64)
-    ;;
-x86_64)
-    SKIP_CARGO_TASKS=(cargoBuildArm cargoBuildArm64 cargoBuildX86)
-    ;;
-x86)
-    SKIP_CARGO_TASKS=(cargoBuildArm cargoBuildArm64 cargoBuildX86_64)
-    ;;
-*)
-    echo "==> Unknown device ABI '${DEVICE_ABI}', falling back to all-ABI build."
-    SKIP_CARGO_TASKS=()
-    DEVICE_ABI=""
-    ;;
-esac
-
-echo "==> Installing debug APK (device ABI: ${DEVICE_ABI:-unknown, building all ABIs})..."
+echo "==> Installing debug APK (device ABI: ${DEVICE_ABI})..."
 # Kill any running instance so the next launch is a clean cold start (and so
 # Android doesn't keep the old process alive across install).
 echo "==> Force-stopping any running instance of dev.firezone.android..."
 adb shell am force-stop dev.firezone.android
 
-gradle_args=()
-[ -n "$DEVICE_ABI" ] && gradle_args+=("-PdeviceAbi=$DEVICE_ABI")
-for task in "${SKIP_CARGO_TASKS[@]}"; do
-    gradle_args+=(-x "$task")
-done
+gradle_args=("-Pandroid.injected.build.abi=$DEVICE_ABI")
 
 install_log="$(mktemp "${TMPDIR:-/tmp}/install-phone.XXXXXX")"
 trap 'rm -f "$install_log"' EXIT
