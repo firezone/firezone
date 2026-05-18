@@ -1,0 +1,52 @@
+# AppArmor profile for the Firezone Tunnel service.
+#
+# This profile's only job is to enforce that connections to the Tunnel
+# service's Unix domain socket (/run/dev.firezone.client/tunnel.sock) come
+# from a process labeled `firezone-client-gui`. Everything else the tunnel
+# does is intentionally left unrestricted.
+
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile firezone-client-tunnel /usr/bin/firezone-client-tunnel
+    flags=(attach_disconnected) {
+
+  include <abstractions/base>
+
+  # Permissive on everything that isn't a unix socket; unix sockets are
+  # enumerated below so the peer-restricted rule for the IPC socket isn't
+  # shadowed by a broader allow.
+  capability,
+  network inet,
+  network inet6,
+  network netlink,
+  network unix,
+  signal,
+  ptrace,
+  dbus,
+  mount,
+  umount,
+  pivot_root,
+
+  /** mrwlkix,
+
+  # The IPC socket: bind/listen are unrestricted, accept is restricted to
+  # peers confined by the `firezone-client-gui` profile.
+  unix (bind, listen, getattr, getopt, setopt, shutdown)
+    type=stream
+    addr="/run/dev.firezone.client/tunnel.sock",
+  unix (accept, send, receive)
+    type=stream
+    addr="/run/dev.firezone.client/tunnel.sock"
+    peer=(label=firezone-client-gui),
+
+  # All other unix sockets the tunnel uses (sd_notify, dbus, internal tokio
+  # sockets, etc.) - matched by peer address or anonymous local address, so
+  # they cannot match the server-side accept on the IPC socket above.
+  unix peer=(addr="@*"),
+  unix peer=(addr="/{,var/}run/**"),
+  unix peer=(addr="/tmp/**"),
+  unix peer=(addr=none),
+  unix addr=none,
+}

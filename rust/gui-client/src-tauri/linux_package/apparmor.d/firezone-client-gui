@@ -1,0 +1,11 @@
+# AppArmor label-only profile for the Firezone GUI client.
+#
+# Loaded so the GUI process gets the `firezone-client-gui` label that the
+# Tunnel service checks for in its UDS accept rule. The GUI is otherwise
+# unconfined: `flags=(complain)` makes the kernel allow every action this
+# profile doesn't explicitly permit (denials are logged but not enforced).
+
+abi <abi/3.0>,
+
+profile firezone-client-gui /usr/bin/firezone-client-gui flags=(complain) {
+}

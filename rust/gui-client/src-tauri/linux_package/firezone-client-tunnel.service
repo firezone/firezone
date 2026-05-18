@@ -5,6 +5,13 @@ Wants=systemd-resolved.service
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
+# Apply the `firezone-client-tunnel` AppArmor profile (defined in
+# /etc/apparmor.d/firezone-client-tunnel), which restricts the IPC socket
+# peer to the firezone-client-gui binary. The leading `-` makes systemd
+# silently ignore this directive when AppArmor isn't enabled or the profile
+# hasn't been loaded; without it, the unit would fail to start on those
+# systems.
+AppArmorProfile=-firezone-client-tunnel
 CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 LockPersonality=true

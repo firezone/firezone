@@ -14,3 +14,9 @@ fi
 
 sudo systemctl disable "$SERVICE_NAME"
 sudo systemctl stop "$SERVICE_NAME"
+
+# Unload the AppArmor profiles from the running kernel. Failures (no AppArmor,
+# parser missing, profiles already unloaded) are tolerated so uninstall always
+# succeeds.
+sudo apparmor_parser -R /etc/apparmor.d/firezone-client-tunnel 2>/dev/null || true
+sudo apparmor_parser -R /etc/apparmor.d/firezone-client-gui 2>/dev/null || true

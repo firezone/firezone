@@ -49,6 +49,15 @@ if ! id -nG "$INVOKING_USER" | grep -qw "firezone-client"; then
     echo ""
 fi
 
+# Load the AppArmor profiles into the running kernel. Dropping the files into
+# /etc/apparmor.d/ is not enough on its own: apparmor.service only reads that
+# directory at boot, so without an explicit `apparmor_parser -r` the profile
+# wouldn't take effect until the next reboot. Failures (no AppArmor, parser
+# missing, kernel without AppArmor) are tolerated; the profile is a defence
+# in depth and the tunnel must still work without it.
+apparmor_parser -r -W /etc/apparmor.d/firezone-client-tunnel 2>/dev/null || true
+apparmor_parser -r -W /etc/apparmor.d/firezone-client-gui 2>/dev/null || true
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
