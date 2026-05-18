@@ -41,7 +41,12 @@ fn view(_app: &App) -> Element<'_, Message> {
             text("iced migration in progress")
                 .size(14)
                 .color(theme::LIGHT.text_secondary),
-            fz_button("Sign in", Variant::Primary, Message::SignInPressed, theme::LIGHT),
+            fz_button(
+                "Sign in",
+                Variant::Primary,
+                Message::SignInPressed,
+                theme::LIGHT
+            ),
         ]
         .spacing(16)
         .align_x(Center),

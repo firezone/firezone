@@ -44,19 +44,25 @@ fn style_for(variant: Variant, status: Status, tokens: Tokens) -> button::Style 
         Variant::Primary if hovered => (tokens.brand_hover, Color::WHITE, tokens.brand_hover),
         Variant::Primary => (tokens.brand, Color::WHITE, tokens.brand),
 
-        Variant::Secondary if hovered => {
-            (tokens.surface_raised, tokens.text_primary, tokens.text_muted)
-        }
+        Variant::Secondary if hovered => (
+            tokens.surface_raised,
+            tokens.text_primary,
+            tokens.text_muted,
+        ),
         Variant::Secondary => (tokens.surface, tokens.text_primary, tokens.text_muted),
 
-        Variant::Ghost if hovered => {
-            (tokens.surface_raised, tokens.text_primary, Color::TRANSPARENT)
-        }
+        Variant::Ghost if hovered => (
+            tokens.surface_raised,
+            tokens.text_primary,
+            Color::TRANSPARENT,
+        ),
         Variant::Ghost => (Color::TRANSPARENT, tokens.text_primary, Color::TRANSPARENT),
 
-        Variant::Danger if hovered => {
-            (darken(tokens.status_danger), Color::WHITE, tokens.status_danger)
-        }
+        Variant::Danger if hovered => (
+            darken(tokens.status_danger),
+            Color::WHITE,
+            tokens.status_danger,
+        ),
         Variant::Danger => (tokens.status_danger, Color::WHITE, tokens.status_danger),
     };
 
