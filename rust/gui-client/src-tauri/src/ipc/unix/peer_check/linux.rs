@@ -5,27 +5,15 @@ use std::path::{Path, PathBuf};
 
 use tokio::net::UnixStream;
 
-#[cfg(not(test))]
-use super::allowlist_file;
 use super::{Allowlist, PeerRejected};
 
 #[cfg(not(test))]
-const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
-
-#[cfg(not(test))]
-pub fn load_default() -> Allowlist {
-    Allowlist::with_paths(allowlist_file::read(Path::new(ALLOWLIST_PATH)))
-}
-
-/// Test variant: trust the running test binary. Controller tests connect
-/// from a cargo-built test binary that lives under `target/.../deps/` and
-/// is owned by the test runner, so it can never be on a real root-managed
-/// allowlist.
-#[cfg(test)]
-pub fn load_default() -> Allowlist {
-    let exe = std::env::current_exe().expect("test binary must have an exe path");
-    let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
-    Allowlist::with_paths(vec![canonical])
+impl Allowlist {
+    pub fn load_default() -> Self {
+        Allowlist::with_paths(super::allowlist::read(Path::new(
+            "/etc/firezone/allowed-clients.conf",
+        )))
+    }
 }
 
 /// Verify that the peer connected to `stream` is running a binary on the
@@ -106,7 +94,7 @@ mod tests {
     #[test]
     fn allowlist_contains_canonicalised_path() {
         let canonical = std::fs::canonicalize("/usr/bin/true").unwrap();
-        let allowlist = Allowlist::from_paths(vec![canonical.clone()]);
+        let allowlist = Allowlist::with_paths(vec![canonical.clone()]);
 
         assert!(allowlist.contains(&canonical));
         assert!(!allowlist.contains(Path::new("/usr/bin/false")));
@@ -145,7 +133,7 @@ mod tests {
         }
 
         let own_exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
-        let allowlist = Allowlist::from_paths(vec![own_exe.clone()]);
+        let allowlist = Allowlist::with_paths(vec![own_exe.clone()]);
 
         assert_eq!(verify_peer(&b, &allowlist).unwrap(), own_exe);
 

@@ -4,8 +4,10 @@ use tokio::net::UnixStream;
 
 use super::{Allowlist, PeerRejected};
 
-pub fn load_default() -> Allowlist {
-    Allowlist::default()
+impl Allowlist {
+    pub fn load_default() -> Self {
+        Alowlist::default()
+    }
 }
 
 pub fn verify_peer(_stream: &UnixStream, _allowlist: &Allowlist) -> Result<PathBuf, PeerRejected> {

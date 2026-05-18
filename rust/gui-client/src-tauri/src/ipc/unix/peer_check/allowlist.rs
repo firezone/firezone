@@ -1,5 +1,4 @@
-//! Load and parse the root-managed allowlist file at
-//! `/etc/firezone/allowed-clients.conf`.
+//! Load and parse the root-managed allowlist file at.
 //!
 //! The file's own ownership/mode are validated to prevent a confused-deputy
 //! attack: without that check, an attacker with write access to the file
@@ -12,24 +11,23 @@ use std::io;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
-/// Read and parse the allowlist file. Returns the canonicalised entries
-/// that pass `target_safe`; logs and skips anything that doesn't.
+/// Read and parse the allowlist file.
+#[tracing::instrument(level = "debug", skip_all, fields(path = %path.display()))]
 pub fn read(path: &Path) -> Vec<PathBuf> {
     let metadata = match std::fs::metadata(path) {
         Ok(meta) => meta,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            tracing::info!(path = %path.display(), "Allowlist file is missing; no peers will be accepted");
+            tracing::debug!("Allowlist file is missing; no peers will be accepted");
             return Vec::new();
         }
         Err(error) => {
-            tracing::debug!(path = %path.display(), "Couldn't stat allowlist: {error}");
+            tracing::debug!("Couldn't stat allowlist: {error}");
             return Vec::new();
         }
     };
 
     if metadata.uid() != 0 || metadata.gid() != 0 {
         tracing::debug!(
-            path = %path.display(),
             uid = metadata.uid(),
             gid = metadata.gid(),
             "Allowlist must be owned by root:root; ignoring"
@@ -40,7 +38,6 @@ pub fn read(path: &Path) -> Vec<PathBuf> {
     let mode = metadata.mode() & 0o777;
     if mode != 0o644 && mode != 0o640 {
         tracing::debug!(
-            path = %path.display(),
             mode = format_args!("{mode:#o}"),
             "Allowlist must have mode 0644 or 0640; ignoring"
         );
@@ -50,7 +47,7 @@ pub fn read(path: &Path) -> Vec<PathBuf> {
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(error) => {
-            tracing::debug!(path = %path.display(), "Couldn't read allowlist: {error}");
+            tracing::debug!("Couldn't read allowlist: {error}");
             return Vec::new();
         }
     };
@@ -58,7 +55,7 @@ pub fn read(path: &Path) -> Vec<PathBuf> {
     contents
         .lines()
         .filter_map(parse_line)
-        .filter_map(|raw| canonicalise_entry(&raw))
+        .filter_map(canonicalise_entry)
         .collect()
 }
 
@@ -70,24 +67,24 @@ fn parse_line(line: &str) -> Option<PathBuf> {
     }
 
     if !Path::new(trimmed).is_absolute() {
-        tracing::info!(entry = %trimmed, "Ignoring non-absolute allowlist entry");
+        tracing::debug!(entry = %trimmed, "Ignoring non-absolute allowlist entry");
         return None;
     }
 
     Some(PathBuf::from(trimmed))
 }
 
-fn canonicalise_entry(raw: &Path) -> Option<PathBuf> {
-    let canonical = match std::fs::canonicalize(raw) {
+fn canonicalise_entry(raw: PathBuf) -> Option<PathBuf> {
+    let canonical = match std::fs::canonicalize(&raw) {
         Ok(p) => p,
         Err(error) => {
-            tracing::info!(entry = %raw.display(), "Ignoring allowlist entry: {error}");
+            tracing::debug!(entry = %raw.display(), "Ignoring allowlist entry: {error}");
             return None;
         }
     };
 
     if !target_safe(&canonical) {
-        tracing::info!(entry = %canonical.display(), "Ignoring allowlist entry: target or ancestor not root-owned, or is group/world-writable");
+        tracing::debug!(entry = %canonical.display(), "Ignoring allowlist entry: target or ancestor not root-owned, or is group/world-writable");
         return None;
     }
 
@@ -104,6 +101,7 @@ fn canonicalise_entry(raw: &Path) -> Option<PathBuf> {
 /// allowlisted file if they're not root.
 fn target_safe(path: &Path) -> bool {
     let mut current = Some(path);
+
     while let Some(p) = current {
         let Ok(meta) = std::fs::metadata(p) else {
             return false;
@@ -119,6 +117,7 @@ fn target_safe(path: &Path) -> bool {
 
         current = p.parent();
     }
+
     true
 }
 

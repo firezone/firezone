@@ -87,10 +87,20 @@ impl Server {
             sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
+        #[cfg(not(test))]
+        let allowlist = peer_check::Allowlist::load_default();
+
+        #[cfg(test)]
+        let allowlist = {
+            let exe = std::env::current_exe().expect("test binary must have an exe path");
+            let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
+            peer_check::Allowlist::with_paths(vec![canonical])
+        };
+
         Ok(Self {
             listener,
             id,
-            allowlist: peer_check::Allowlist::load_default(),
+            allowlist,
         })
     }
 

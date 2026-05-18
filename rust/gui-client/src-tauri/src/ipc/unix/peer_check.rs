@@ -21,9 +21,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "linux")]
-#[path = "peer_check/allowlist_file.rs"]
-mod allowlist_file;
+#[path = "peer_check/allowlist.rs"]
+mod allowlist;
 
 #[cfg(target_os = "linux")]
 #[path = "peer_check/linux.rs"]
@@ -45,24 +44,12 @@ pub struct Allowlist {
 }
 
 impl Allowlist {
-    /// Load the platform-appropriate allowlist. On Linux this reads
-    /// `/etc/firezone/allowed-clients.conf`; on macOS it returns an empty
-    /// allowlist because the Rust path is only used by tests there.
-    pub fn load_default() -> Self {
-        imp::load_default()
-    }
-
     pub fn contains(&self, exe: &Path) -> bool {
         self.paths.iter().any(|allowed| allowed == exe)
     }
 
-    pub(super) fn with_paths(paths: Vec<PathBuf>) -> Self {
+    pub fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self { paths }
-    }
-
-    #[cfg(test)]
-    pub fn from_paths(paths: Vec<PathBuf>) -> Self {
-        Self::with_paths(paths)
     }
 }
 
