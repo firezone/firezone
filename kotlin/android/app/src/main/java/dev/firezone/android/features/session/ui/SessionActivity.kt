@@ -25,7 +25,9 @@ import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class SessionActivity : AppCompatActivity(), ResourceDetailsBottomSheet.InternetResourceToggleCallback {
+class SessionActivity :
+    AppCompatActivity(),
+    ResourceDetailsBottomSheet.InternetResourceToggleCallback {
     private lateinit var binding: ActivitySessionBinding
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
