@@ -5,14 +5,14 @@ use std::path::PathBuf;
 
 use tokio::net::UnixStream;
 
-use super::{Allowlist, PeerRejected};
+use super::{AllowedPeer, PeerRejected};
 
 /// The single binary path the daemon will accept as a peer. Matches the
 /// install location used by the deb/rpm package.
 #[cfg(not(test))]
 const ALLOWED_EXE: &str = "/usr/bin/firezone-client-gui";
 
-impl Allowlist {
+impl AllowedPeer {
     #[cfg(not(test))]
     pub fn load_default() -> Self {
         Self::new(PathBuf::from(ALLOWED_EXE))
@@ -30,9 +30,9 @@ impl Allowlist {
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
     ///      it `(deleted)`.
-    ///   4. Canonicalise the exe path and compare it against the
-    ///      allowlisted path.
-    pub fn verify_peer(&self, stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
+    ///   4. Canonicalise the exe path and compare it against the expected
+    ///      path.
+    pub fn verify(&self, stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
         let pidfd = match peer_pidfd(stream.as_raw_fd()) {
             Ok(fd) => fd,
             Err(error) if error.raw_os_error() == Some(libc::ENOPROTOOPT) => {
@@ -52,7 +52,7 @@ impl Allowlist {
 
         let canonical = std::fs::canonicalize(&target).map_err(PeerRejected::ExeUnreadable)?;
 
-        if canonical != self.allowed {
+        if canonical != self.exe {
             return Err(PeerRejected::NotAllowlisted { exe: canonical });
         }
 
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn verify_self_against_allowlist_round_trip() {
+    async fn verify_self_against_expected_exe_round_trip() {
         let (a, b) = tokio::net::UnixStream::pair().expect("UnixStream::pair failed");
 
         let probe = peer_pidfd(a.as_raw_fd());
@@ -129,12 +129,12 @@ mod tests {
         }
 
         let own_exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
-        let allowlist = Allowlist::new(own_exe.clone());
+        let expected = AllowedPeer::new(own_exe.clone());
 
-        assert_eq!(allowlist.verify_peer(&b).unwrap(), own_exe);
+        assert_eq!(expected.verify(&b).unwrap(), own_exe);
 
-        let other = Allowlist::new(PathBuf::from("/nonexistent/binary"));
-        match other.verify_peer(&b) {
+        let other = AllowedPeer::new(PathBuf::from("/nonexistent/binary"));
+        match other.verify(&b) {
             Err(PeerRejected::NotAllowlisted { exe }) => assert_eq!(exe, own_exe),
             other => panic!("expected NotAllowlisted, got {other:?}"),
         }

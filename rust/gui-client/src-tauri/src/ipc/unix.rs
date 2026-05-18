@@ -15,7 +15,7 @@ use tokio::net::{UnixListener, UnixStream};
 pub struct Server {
     listener: UnixListener,
     id: SocketId,
-    allowlist: peer_check::Allowlist,
+    allowed_peer: peer_check::AllowedPeer,
 }
 
 impl Drop for Server {
@@ -88,19 +88,19 @@ impl Server {
         }
 
         #[cfg(not(test))]
-        let allowlist = peer_check::Allowlist::load_default();
+        let allowed_peer = peer_check::AllowedPeer::load_default();
 
         #[cfg(test)]
-        let allowlist = {
+        let allowed_peer = {
             let exe = std::env::current_exe().expect("test binary must have an exe path");
             let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
-            peer_check::Allowlist::new(canonical)
+            peer_check::AllowedPeer::new(canonical)
         };
 
         Ok(Self {
             listener,
             id,
-            allowlist,
+            allowed_peer,
         })
     }
 
@@ -109,7 +109,7 @@ impl Server {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
 
-            match self.allowlist.verify_peer(&stream) {
+            match self.allowed_peer.verify(&stream) {
                 Ok(exe) => {
                     tracing::info!(
                         uid = cred.uid(),

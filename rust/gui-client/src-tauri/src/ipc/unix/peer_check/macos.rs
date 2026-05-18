@@ -2,14 +2,14 @@ use std::path::PathBuf;
 
 use tokio::net::UnixStream;
 
-use super::{Allowlist, PeerRejected};
+use super::{AllowedPeer, PeerRejected};
 
-impl Allowlist {
+impl AllowedPeer {
     pub fn load_default() -> Self {
         Self::new(PathBuf::new())
     }
 
-    pub fn verify_peer(&self, _stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
+    pub fn verify(&self, _stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
         Err(PeerRejected::Unverifiable)
     }
 }

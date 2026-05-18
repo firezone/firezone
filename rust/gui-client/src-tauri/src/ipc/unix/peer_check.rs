@@ -7,13 +7,13 @@
 //! (`/usr/bin/firezone-client-gui`) so even processes running as the same
 //! UID as the GUI cannot impersonate it.
 //!
-//! On kernels (or platforms) lacking `SO_PEERPIDFD`, `verify_peer` returns
+//! On kernels (or platforms) lacking `SO_PEERPIDFD`, `verify` returns
 //! `PeerRejected::Unverifiable`; the caller decides what to do (production
 //! today accepts the connection and logs that enforcement is unavailable).
 
 // macOS uses the Swift extension in production; the Rust path is test-only
-// and `verify_peer` always returns `Unverifiable`, so the non-Unverifiable
-// variants and the `Allowlist::allowed` field are never read there.
+// and `verify` always returns `Unverifiable`, so the non-Unverifiable
+// variants and the `AllowedPeer::exe` field are never read there.
 #![cfg_attr(target_os = "macos", allow(dead_code))]
 
 use std::io;
@@ -26,14 +26,15 @@ mod linux;
 #[path = "peer_check/macos.rs"]
 mod macos;
 
+/// The single binary the daemon is willing to accept as a peer.
 #[derive(Debug)]
-pub struct Allowlist {
-    allowed: PathBuf,
+pub struct AllowedPeer {
+    exe: PathBuf,
 }
 
-impl Allowlist {
-    pub fn new(allowed: PathBuf) -> Self {
-        Self { allowed }
+impl AllowedPeer {
+    pub fn new(exe: PathBuf) -> Self {
+        Self { exe }
     }
 }
 
