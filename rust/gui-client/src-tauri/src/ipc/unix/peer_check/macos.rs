@@ -1,3 +1,7 @@
+// Stub module: `verify` always accepts, so no `PeerRejected` variants are
+// ever constructed and the per-variant methods are dead on this target.
+#![allow(dead_code, clippy::unused_self)]
+
 use tokio::net::UnixStream;
 
 use super::PeerRejected;
@@ -13,7 +17,6 @@ impl AllowedPeer {
         Self
     }
 
-    #[allow(clippy::unused_self)]
     pub fn verify(&self, stream: UnixStream) -> Result<UnixStream, PeerRejected> {
         Ok(stream)
     }
