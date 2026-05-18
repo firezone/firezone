@@ -11,6 +11,54 @@ license = { workspace = true }
 [package.metadata.tslink]
 enum_representation = "discriminated"
 
+# Wires the `firezone-gui-client` binary into `cargo-deb`. Produces the same
+# package layout that `tauri-bundler` does (binary at /usr/bin/firezone-client-gui,
+# tunnel at /usr/bin/firezone-client-tunnel, systemd unit, sysusers config,
+# desktop file, hicolor icons). Build with `cargo build --release` first, then
+# `cargo deb --package firezone-gui-client --no-build --no-strip`.
+[package.metadata.deb]
+name = "firezone-client-gui"
+maintainer = "Firezone, Inc. <support@firezone.dev>"
+copyright = "2026 Firezone, Inc."
+maintainer-scripts = "debian/"
+extended-description = ""
+revision = ""
+section = "Network"
+assets = [
+    ["target/release/firezone-gui-client", "usr/bin/firezone-client-gui", "755"],
+    ["target/release/firezone-client-tunnel", "usr/bin/firezone-client-tunnel", "755"],
+    ["debian/firezone-client-tunnel.service", "usr/lib/systemd/system/firezone-client-tunnel.service", "644"],
+    ["debian/sysusers.conf", "usr/lib/sysusers.d/firezone-client-tunnel.conf", "644"],
+    ["debian/firezone-client-gui.desktop", "usr/share/applications/firezone-client-gui.desktop", "644"],
+    ["icons/32x32.png", "usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png", "644"],
+    ["icons/128x128.png", "usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", "644"],
+    ["icons/128x128@2x.png", "usr/share/icons/hicolor/256x256@2/apps/firezone-client-gui.png", "644"],
+    ["icons/icon.png", "usr/share/icons/hicolor/scalable/apps/firezone-client-gui.png", "644"],
+]
+
+# Wires the `firezone-gui-client` binary into `cargo-generate-rpm`. Same
+# layout as the cargo-deb metadata above, but RPM's prerm has different
+# upgrade semantics (RPM runs prerm of the old package after installing the
+# new one), so it points at debian/prerm_rpm rather than debian/prerm.
+# Build with `cargo build --release` first, then `cargo generate-rpm
+# --package firezone-gui-client`.
+[package.metadata.generate-rpm]
+name = "firezone-client-gui"
+summary = "Firezone"
+assets = [
+    { source = "target/release/firezone-gui-client", dest = "/usr/bin/firezone-client-gui", mode = "755" },
+    { source = "target/release/firezone-client-tunnel", dest = "/usr/bin/firezone-client-tunnel", mode = "755" },
+    { source = "debian/firezone-client-tunnel.service", dest = "/usr/lib/systemd/system/firezone-client-tunnel.service", mode = "644" },
+    { source = "debian/sysusers.conf", dest = "/usr/lib/sysusers.d/firezone-client-tunnel.conf", mode = "644" },
+    { source = "debian/firezone-client-gui.desktop", dest = "/usr/share/applications/firezone-client-gui.desktop", mode = "644" },
+    { source = "icons/32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/128x128@2x.png", dest = "/usr/share/icons/hicolor/256x256@2/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/icon.png", dest = "/usr/share/icons/hicolor/scalable/apps/firezone-client-gui.png", mode = "644" },
+]
+post_install_script = "debian/postinst"
+pre_uninstall_script = "debian/prerm_rpm"
+
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
