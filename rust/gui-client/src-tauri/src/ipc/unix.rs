@@ -96,6 +96,7 @@ impl Server {
             pid = pid,
             "Accepted an IPC connection"
         );
+        #[cfg(target_os = "linux")]
         if let Some(pid) = pid {
             authorize_peer(pid).inspect_err(|error| {
                 tracing::warn!(pid, "Rejecting IPC peer: {error:#}");
@@ -121,6 +122,9 @@ impl Server {
 /// socket (`root:firezone-client 0660`) remain the only gate. This preserves
 /// behaviour on distros without AppArmor and on systems where the install
 /// hasn't completed yet.
+///
+/// macOS doesn't have AppArmor; production macOS uses the native Swift
+/// implementation in `swift/apple/`, so this function only exists on Linux.
 #[cfg(target_os = "linux")]
 fn authorize_peer(pid: i32) -> Result<()> {
     const TUNNEL_LABEL: &str = "firezone-client-tunnel";
@@ -136,14 +140,6 @@ fn authorize_peer(pid: i32) -> Result<()> {
         peer_label == GUI_LABEL,
         "Peer AppArmor label {peer_label:?} is not {GUI_LABEL:?}",
     );
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn authorize_peer(_pid: i32) -> Result<()> {
-    // macOS doesn't have AppArmor; the production macOS client uses the
-    // native Swift implementation in `swift/apple/` and this code path only
-    // runs from controller tests.
     Ok(())
 }
 
