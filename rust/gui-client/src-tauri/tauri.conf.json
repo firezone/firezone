@@ -9,25 +9,25 @@
     "shortDescription": "Firezone",
     "linux": {
       "deb": {
-        "preInstallScript": "./linux_package/preinst",
-        "postInstallScript": "./linux_package/postinst",
-        "preRemoveScript": "./linux_package/prerm_deb",
+        "preInstallScript": "./debian/preinst",
+        "postInstallScript": "./debian/postinst",
+        "preRemoveScript": "./debian/prerm",
         "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
+          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./debian/firezone-client-tunnel.service",
+          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./debian/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
         },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
+        "desktopTemplate": "./debian/firezone-client-gui.desktop"
       },
       "rpm": {
-        "postInstallScript": "./linux_package/postinst",
-        "preRemoveScript": "./linux_package/prerm_rpm",
+        "postInstallScript": "./debian/postinst",
+        "preRemoveScript": "./debian/prerm_rpm",
         "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
+          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./debian/firezone-client-tunnel.service",
+          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./debian/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
         },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
+        "desktopTemplate": "./debian/firezone-client-gui.desktop"
       }
     },
     "targets": ["deb", "msi", "rpm"],
