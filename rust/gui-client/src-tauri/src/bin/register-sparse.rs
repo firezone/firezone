@@ -2,9 +2,11 @@
 //! Firezone sparse MSIX package against the installed binaries.
 //!
 //! Invoked as `LocalSystem` with one positional argument
-//! (`install` / `uninstall`) and one `CustomActionData` environment
-//! variable that holds the install directory. WiX wires this up in
-//! `win_files/sparse-package.wxs`.
+//! (`install` / `uninstall`). WiX wires this up in
+//! `win_files/sparse-package.wxs`. The install directory is derived
+//! from the exe's own location (`current_exe().parent()`) rather than
+//! piped in via `CustomActionData`: MSI only exposes that property to
+//! DLL/script-based deferred CAs, not to direct EXE CAs.
 //!
 //! Failure mode: registration is best-effort. On older Windows builds
 //! (pre-21H2 hardened images, AppX disabled by GP) the call returns
@@ -14,21 +16,13 @@
 //! functional).
 
 use clap::Parser;
-use std::{fmt, process::ExitCode, time::Duration};
+use std::{fmt, process::ExitCode};
 
-/// `register-sparse` is a WiX deferred custom action: WiX passes the
-/// `INSTALLDIR` property via the `CustomActionData` environment
-/// variable (`clap`'s `env` feature reads it directly), and the
-/// install/uninstall mode comes in as the first positional arg from
-/// the WiX `ExeCommand` attribute.
 #[derive(Parser)]
 #[command(disable_version_flag = true)]
 struct Cli {
     #[arg(default_value = "install")]
     action: Action,
-    /// Filled by WiX via `CustomActionData` on deferred CAs.
-    #[arg(env = "CustomActionData", default_value = "")]
-    install_dir: String,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy)]
@@ -46,36 +40,13 @@ impl fmt::Display for Action {
     }
 }
 
-/// Hard ceiling on total run-time, regardless of which AppX call is
-/// stuck. The MSI install will see the CA complete and proceed.
-const WATCHDOG_TIMEOUT: Duration = Duration::from_secs(120);
-
 fn main() -> ExitCode {
     init_tracing();
 
-    // Watchdog: if anything below hangs (e.g. the AppX Deployment
-    // Service wedging on Server SKUs has been observed to turn an MSI
-    // install into a multi-hour stall), self-terminate with exit 0
-    // so MSI sees the CA complete and proceeds. The runtime SDDL
-    // builder in `ipc/windows.rs` falls back to the legacy ACE when
-    // package identity isn't attached.
-    std::thread::spawn(|| {
-        std::thread::sleep(WATCHDOG_TIMEOUT);
-        tracing::error!(
-            timeout = ?WATCHDOG_TIMEOUT,
-            "watchdog fired, exiting 0 to let MSI continue"
-        );
-        std::process::exit(0);
-    });
-
-    let Cli {
-        action,
-        install_dir,
-    } = Cli::parse();
+    let Cli { action } = Cli::parse();
 
     tracing::info!(
         %action,
-        install_dir = %install_dir,
         pfn = %firezone_gui_client::PACKAGE_FAMILY_NAME,
         sid = %firezone_gui_client::PACKAGE_SID,
         "register-sparse invoked"
@@ -83,7 +54,7 @@ fn main() -> ExitCode {
 
     let started = std::time::Instant::now();
     let result = match action {
-        Action::Install => imp::register(&install_dir),
+        Action::Install => imp::register(),
         Action::Uninstall => imp::deregister(),
     };
     let elapsed = started.elapsed();
@@ -138,16 +109,14 @@ mod imp {
     /// Provisions the sparse MSIX for all users (so future logons
     /// inherit the package identity) and registers the in-package
     /// applications against the externally installed binaries.
-    pub fn register(install_dir: &str) -> Result<()> {
-        if install_dir.is_empty() {
-            return Err(anyhow!("INSTALLDIR was empty"));
-        }
-        let install_path = PathBuf::from(install_dir);
+    pub fn register() -> Result<()> {
+        let install_path = install_dir()?;
         let msix = install_path.join("firezone.msix");
 
         let msix_meta = std::fs::metadata(&msix)
             .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
         tracing::info!(
+            install_dir = %install_path.display(),
             msix_path = %msix.display(),
             msix_size_bytes = msix_meta.len(),
             "found MSIX payload"
@@ -218,6 +187,17 @@ mod imp {
         Ok(())
     }
 
+    /// Derives INSTALLDIR from the exe's own location: WiX installs
+    /// `register-sparse.exe` next to `firezone.msix` in INSTALLDIR, so
+    /// the parent directory of our binary is the value MSI would have
+    /// otherwise piped in via `CustomActionData`.
+    fn install_dir() -> Result<PathBuf> {
+        let exe = std::env::current_exe().context("current_exe")?;
+        exe.parent()
+            .map(PathBuf::from)
+            .ok_or_else(|| anyhow!("current_exe `{}` has no parent", exe.display()))
+    }
+
     /// Logs the fields of a `DeploymentResult` after an AppX async op
     /// returns. `ExtendedErrorCode` is the HRESULT the deployment
     /// service captured (0 means success); `ErrorText` is the
@@ -268,7 +248,7 @@ mod imp {
 mod imp {
     use anyhow::{Result, bail};
 
-    pub fn register(_install_dir: &str) -> Result<()> {
+    pub fn register() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 

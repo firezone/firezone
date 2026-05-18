@@ -17,6 +17,11 @@
   Windows where MSIX provisioning isn't available, and the runtime
   SDDL builder in `ipc/windows.rs` falls back to the legacy `BU` ACE
   via `GetCurrentPackageFullName -> APPMODEL_ERROR_NO_PACKAGE`.
+
+  `register-sparse.exe` derives INSTALLDIR from its own
+  `current_exe().parent()` rather than reading the MSI
+  `CustomActionData` property: MSI only exposes that property to
+  DLL/script-based deferred CAs, not to direct EXE CAs.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
@@ -32,12 +37,6 @@
       </Component>
     </DirectoryRef>
 
-    <!--
-      Deferred CAs receive their argument via the `CustomActionData`
-      property, which we populate from `INSTALLDIR` via the matching
-      `SetProperty` immediate CAs declared inside `main.wxs`'s
-      `<InstallExecuteSequence>`.
-    -->
     <CustomAction Id="RegisterSparsePackage"
                   FileKey="RegisterSparseExeFile"
                   ExeCommand="install"
@@ -52,31 +51,15 @@
                   Impersonate="no"
                   Return="ignore" />
 
-    <CustomAction Id="SetRegisterSparsePackageData"
-                  Property="RegisterSparsePackage"
-                  Value="[INSTALLDIR]" />
-
-    <CustomAction Id="SetDeregisterSparsePackageData"
-                  Property="DeregisterSparsePackage"
-                  Value="[INSTALLDIR]" />
-
     <InstallExecuteSequence>
       <!--
-        `SetProperty` immediate CAs run during costing; the deferred
-        CAs they target then receive `[INSTALLDIR]` via
-        `CustomActionData` at execution time.
-
         `RegisterSparsePackage` MUST happen before `StartServices` so
         the tunnel service is launched with the package SID already
         attached.
       -->
-      <Custom Action="SetRegisterSparsePackageData"
-              Before="RegisterSparsePackage">NOT REMOVE</Custom>
       <Custom Action="RegisterSparsePackage"
               Before="StartServices">NOT REMOVE</Custom>
 
-      <Custom Action="SetDeregisterSparsePackageData"
-              Before="DeregisterSparsePackage">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="DeregisterSparsePackage"
               Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>
