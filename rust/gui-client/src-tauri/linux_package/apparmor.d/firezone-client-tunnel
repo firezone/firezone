@@ -1,9 +1,11 @@
 # AppArmor profile for the Firezone Tunnel service.
 #
-# This profile's only job is to enforce that connections to the Tunnel
-# service's Unix domain socket (/run/dev.firezone.client/tunnel.sock) come
-# from a process labeled `firezone-client-gui`. Everything else the tunnel
-# does is intentionally left unrestricted.
+# The profile's role is to attach the `firezone-client-tunnel` label so the
+# Tunnel service can authenticate IPC peers in code (see
+# `rust/gui-client/src-tauri/src/ipc/unix.rs::authorize_peer`). AppArmor's
+# unix `peer=(label=...)` mediation for path-based sockets isn't reliably
+# enforced on kernels older than 6.17, so we don't try to gate at the
+# AppArmor layer.
 
 abi <abi/3.0>,
 
@@ -14,37 +16,19 @@ profile firezone-client-tunnel /usr/bin/firezone-client-tunnel
 
   include <abstractions/base>
 
-  # Permissive on everything except unix-socket operations, which are
-  # enumerated below.
+  # The tunnel runs as root and is intentionally not confined beyond getting
+  # an AppArmor label - peer authentication on the IPC socket happens in
+  # userspace, and the rest of the tunnel's behaviour is bounded by the
+  # systemd unit (CapabilityBoundingSet, RestrictAddressFamilies, ...).
   capability,
-  network inet,
-  network inet6,
-  network netlink,
-  network unix,
+  network,
   signal,
   ptrace,
   dbus,
   mount,
   umount,
   pivot_root,
+  unix,
 
   /** mrwlkix,
-
-  # The IPC socket lives at /run/dev.firezone.client/tunnel.sock. AppArmor's
-  # unix rule grammar doesn't accept path-based `addr=` values, so the per-
-  # path restriction is handled by filesystem permissions on the socket
-  # (root:firezone-client 0660); the peer-label rule below is what the
-  # kernel actually enforces.
-  #
-  # Local-only operations (`bind`, `listen`, `getattr`, `getopt`, `setopt`,
-  # `shutdown`, `create`) must live in a separate rule from peer-involved
-  # ops - AppArmor 4.x rejects combining them with `peer=` conditionals.
-  unix (bind, listen) type=stream,
-  unix (accept, send, receive) type=stream
-    peer=(label=firezone-client-gui),
-
-  # Outgoing client connections (sd_notify, dbus, etc.). `accept` is
-  # deliberately omitted so this can't shadow the peer-restricted accept
-  # above. Local-only ops are already provided by `abstractions/base`.
-  unix (connect, send, receive),
 }
