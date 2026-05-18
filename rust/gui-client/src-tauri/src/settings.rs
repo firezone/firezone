@@ -217,4 +217,3 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
 }
-
