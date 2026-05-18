@@ -666,6 +666,78 @@ defmodule PortalWeb.ResourcesTest do
       assert is_nil(Repo.get_by(Policy, resource_id: resource.id, group_id: group.id))
     end
 
+    test "shows flash and refreshes group list when remove_group_access loses race", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Ops Team")
+      policy = policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      Repo.delete!(policy)
+
+      render_click(lv, "confirm_remove_group", %{"group_id" => group.id})
+      html = render_click(lv, "remove_group_access", %{"group_id" => group.id})
+
+      assert html =~ "Group access no longer exists."
+      assert html =~ "No groups have access yet."
+    end
+
+    test "shows flash when disable_policy loses race", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Ops Team")
+      policy = policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      Repo.delete!(policy)
+
+      html = render_click(lv, "disable_policy", %{"group_id" => group.id})
+
+      assert html =~ "Group access state has changed."
+    end
+
+    test "shows flash when enable_policy loses race", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Ops Team")
+
+      policy =
+        policy_fixture(
+          account: account,
+          resource: resource,
+          group: group,
+          disabled_at: DateTime.utc_now()
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      Repo.delete!(policy)
+
+      html = render_click(lv, "enable_policy", %{"group_id" => group.id})
+
+      assert html =~ "Group access state has changed."
+    end
+
     test "internet resource ignores edit and delete actions", %{
       conn: conn,
       account: account,

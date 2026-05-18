@@ -1655,13 +1655,18 @@ defmodule PortalWeb.Actors do
     end
 
     @spec remove_group_member(Ecto.UUID.t(), Portal.Actor.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Portal.Membership.t()} | {:error, any()}
+            {:ok, Portal.Membership.t()} | {:error, any()} | nil
     def remove_group_member(group_id, actor, subject) do
+      with %Portal.Membership{} = membership <- fetch_membership(group_id, actor, subject) do
+        Safe.scoped(membership, subject) |> Safe.delete()
+      end
+    end
+
+    defp fetch_membership(group_id, actor, subject) do
       from(m in Portal.Membership, as: :memberships)
       |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
       |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
+      |> Safe.one()
     end
   end
 end
