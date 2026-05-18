@@ -109,7 +109,7 @@ impl Server {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
 
-            match peer_check::verify_peer(&stream, &self.allowlist) {
+            match self.allowlist.verify_peer(&stream) {
                 Ok(exe) => {
                     tracing::info!(
                         uid = cred.uid(),

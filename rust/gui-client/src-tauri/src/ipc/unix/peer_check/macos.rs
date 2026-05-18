@@ -6,10 +6,10 @@ use super::{Allowlist, PeerRejected};
 
 impl Allowlist {
     pub fn load_default() -> Self {
-        Alowlist::default()
+        Allowlist::default()
     }
-}
 
-pub fn verify_peer(_stream: &UnixStream, _allowlist: &Allowlist) -> Result<PathBuf, PeerRejected> {
-    Err(PeerRejected::Unverifiable)
+    pub fn verify_peer(&self, _stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
+        Err(PeerRejected::Unverifiable)
+    }
 }

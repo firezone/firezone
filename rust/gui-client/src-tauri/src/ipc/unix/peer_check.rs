@@ -21,22 +21,12 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-#[path = "peer_check/allowlist.rs"]
-mod allowlist;
-
 #[cfg(target_os = "linux")]
 #[path = "peer_check/linux.rs"]
 mod linux;
 #[cfg(target_os = "macos")]
 #[path = "peer_check/macos.rs"]
 mod macos;
-
-#[cfg(target_os = "linux")]
-use linux as imp;
-#[cfg(target_os = "macos")]
-use macos as imp;
-
-pub use imp::verify_peer;
 
 #[derive(Debug, Default)]
 pub struct Allowlist {
