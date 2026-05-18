@@ -13,6 +13,7 @@ impl AllowedPeer {
         Self
     }
 
+    #[allow(clippy::unused_self)]
     pub fn verify(&self, stream: UnixStream) -> Result<UnixStream, PeerRejected> {
         Ok(stream)
     }
