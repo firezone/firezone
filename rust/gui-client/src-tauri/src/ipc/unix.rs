@@ -131,8 +131,7 @@ fn authorize_peer(pid: i32) -> Result<()> {
         return Ok(());
     }
 
-    let peer_label =
-        read_apparmor_label(pid).context("Failed to read peer's AppArmor label")?;
+    let peer_label = read_apparmor_label(pid).context("Failed to read peer's AppArmor label")?;
     anyhow::ensure!(
         peer_label == GUI_LABEL,
         "Peer AppArmor label {peer_label:?} is not {GUI_LABEL:?}",
