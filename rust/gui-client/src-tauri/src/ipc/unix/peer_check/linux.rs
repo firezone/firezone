@@ -1,22 +1,25 @@
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt as _;
-#[cfg(not(test))]
-use std::os::unix::fs::MetadataExt as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tokio::net::UnixStream;
 
 use super::{Allowlist, PeerRejected};
 
+/// The single binary path the daemon will accept as a peer. Matches the
+/// install location used by the deb/rpm package.
+#[cfg(not(test))]
+const ALLOWED_EXE: &str = "/usr/bin/firezone-client-gui";
+
 impl Allowlist {
     #[cfg(not(test))]
     pub fn load_default() -> Self {
-        Allowlist::with_paths(read_file(Path::new("/etc/firezone/allowed-clients.conf")))
+        Self::new(PathBuf::from(ALLOWED_EXE))
     }
 
-    /// Verify that the peer connected to `stream` is running a binary on
-    /// this allowlist.
+    /// Verify that the peer connected to `stream` is the allowlisted GUI
+    /// binary.
     ///
     /// Steps:
     ///   1. `getsockopt(SO_PEERPIDFD)` to obtain a pidfd pinned to the peer
@@ -27,7 +30,8 @@ impl Allowlist {
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
     ///      it `(deleted)`.
-    ///   4. Canonicalise the exe path and check it against the allowlist.
+    ///   4. Canonicalise the exe path and compare it against the
+    ///      allowlisted path.
     pub fn verify_peer(&self, stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
         let pidfd = match peer_pidfd(stream.as_raw_fd()) {
             Ok(fd) => fd,
@@ -48,7 +52,7 @@ impl Allowlist {
 
         let canonical = std::fs::canonicalize(&target).map_err(PeerRejected::ExeUnreadable)?;
 
-        if !self.contains(&canonical) {
+        if canonical != self.allowed {
             return Err(PeerRejected::NotAllowlisted { exe: canonical });
         }
 
@@ -88,139 +92,9 @@ fn read_pid_from_fdinfo(pidfd: RawFd) -> io::Result<libc::pid_t> {
         .ok_or_else(|| io::Error::other("missing or unparsable `Pid:` field in fdinfo"))
 }
 
-/// Read and parse the root-managed allowlist file.
-///
-/// The file's own ownership/mode are validated to prevent a
-/// confused-deputy attack: without that check, an attacker with write
-/// access to the file alone could allowlist a root-owned interpreter like
-/// `/usr/bin/bash` (which passes `target_safe`) and connect via
-/// `bash -c "..."` so `/proc/<bash-pid>/exe` matches. Requiring the
-/// allowlist itself to be root-owned closes that path.
-#[cfg(not(test))]
-#[tracing::instrument(level = "debug", skip_all, fields(path = %path.display()))]
-fn read_file(path: &Path) -> Vec<PathBuf> {
-    let metadata = match std::fs::metadata(path) {
-        Ok(meta) => meta,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            tracing::debug!("Allowlist file is missing; no peers will be accepted");
-            return Vec::new();
-        }
-        Err(error) => {
-            tracing::debug!("Couldn't stat allowlist: {error}");
-            return Vec::new();
-        }
-    };
-
-    if metadata.uid() != 0 || metadata.gid() != 0 {
-        tracing::debug!(
-            uid = metadata.uid(),
-            gid = metadata.gid(),
-            "Allowlist must be owned by root:root; ignoring"
-        );
-        return Vec::new();
-    }
-
-    let mode = metadata.mode() & 0o777;
-    if mode != 0o644 && mode != 0o640 {
-        tracing::debug!(
-            mode = format_args!("{mode:#o}"),
-            "Allowlist must have mode 0644 or 0640; ignoring"
-        );
-        return Vec::new();
-    }
-
-    let contents = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(error) => {
-            tracing::debug!("Couldn't read allowlist: {error}");
-            return Vec::new();
-        }
-    };
-
-    contents
-        .lines()
-        .filter_map(parse_line)
-        .filter_map(canonicalise_entry)
-        .collect()
-}
-
-#[cfg(not(test))]
-fn parse_line(line: &str) -> Option<PathBuf> {
-    let trimmed = line.split('#').next()?.trim();
-
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if !Path::new(trimmed).is_absolute() {
-        tracing::debug!(entry = %trimmed, "Ignoring non-absolute allowlist entry");
-        return None;
-    }
-
-    Some(PathBuf::from(trimmed))
-}
-
-#[cfg(not(test))]
-fn canonicalise_entry(raw: PathBuf) -> Option<PathBuf> {
-    let canonical = match std::fs::canonicalize(&raw) {
-        Ok(p) => p,
-        Err(error) => {
-            tracing::debug!(entry = %raw.display(), "Ignoring allowlist entry: {error}");
-            return None;
-        }
-    };
-
-    if !target_safe(&canonical) {
-        tracing::debug!(entry = %canonical.display(), "Ignoring allowlist entry: target or ancestor not root-owned, or is group/world-writable");
-        return None;
-    }
-
-    Some(canonical)
-}
-
-/// True iff `path` and every ancestor up to the root are owned by uid 0
-/// and not group- or world-writable.
-///
-/// Owner check (`uid == 0`) is what prevents a non-root user from
-/// substituting the allowlisted binary by recreating it after the daemon
-/// loads the allowlist: even if a `0755` directory along the path happens
-/// to be writable only by its owner, that owner could replace the
-/// allowlisted file if they're not root.
-#[cfg(not(test))]
-fn target_safe(path: &Path) -> bool {
-    let mut current = Some(path);
-
-    while let Some(p) = current {
-        let Ok(meta) = std::fs::metadata(p) else {
-            return false;
-        };
-
-        if meta.uid() != 0 {
-            return false;
-        }
-
-        if meta.mode() & 0o022 != 0 {
-            return false;
-        }
-
-        current = p.parent();
-    }
-
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn allowlist_contains_canonicalised_path() {
-        let canonical = std::fs::canonicalize("/usr/bin/true").unwrap();
-        let allowlist = Allowlist::with_paths(vec![canonical.clone()]);
-
-        assert!(allowlist.contains(&canonical));
-        assert!(!allowlist.contains(Path::new("/usr/bin/false")));
-    }
 
     #[test]
     fn rejected_reason_strings_are_stable() {
@@ -255,12 +129,12 @@ mod tests {
         }
 
         let own_exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
-        let allowlist = Allowlist::with_paths(vec![own_exe.clone()]);
+        let allowlist = Allowlist::new(own_exe.clone());
 
         assert_eq!(allowlist.verify_peer(&b).unwrap(), own_exe);
 
-        let empty = Allowlist::default();
-        match empty.verify_peer(&b) {
+        let other = Allowlist::new(PathBuf::from("/nonexistent/binary"));
+        match other.verify_peer(&b) {
             Err(PeerRejected::NotAllowlisted { exe }) => assert_eq!(exe, own_exe),
             other => panic!("expected NotAllowlisted, got {other:?}"),
         }

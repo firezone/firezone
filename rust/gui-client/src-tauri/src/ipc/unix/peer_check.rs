@@ -1,22 +1,20 @@
-// On macOS the production client uses the Swift network extension; the
-// Rust path is test-only and `verify_peer` always returns `Unverifiable`,
-// so the non-Unverifiable variants and the `Allowlist::paths` field are
-// never constructed on that target. Allow them rather than gating each
-// variant individually.
-#![cfg_attr(target_os = "macos", allow(dead_code))]
-
-//! Verify that the peer of a connected Unix Domain Socket is one of the
-//! binaries on a root-managed allowlist.
+//! Verify that the peer of a connected Unix Domain Socket is a Firezone
+//! GUI binary installed at the canonical location.
 //!
 //! Linux 6.5+ exposes `SO_PEERPIDFD` on `AF_UNIX` sockets which yields a
-//! `pidfd` pinned to a specific process incarnation. Combined with the
-//! `/proc/<pid>/exe` symlink and a canonicalised path allowlist, the daemon
-//! can refuse calls from any process whose binary is not a Firezone-published
-//! binary, even processes running as the same UID.
+//! `pidfd` pinned to a specific process incarnation. We resolve the peer's
+//! `/proc/<pid>/exe` symlink against a compile-time path
+//! (`/usr/bin/firezone-client-gui`) so even processes running as the same
+//! UID as the GUI cannot impersonate it.
 //!
 //! On kernels (or platforms) lacking `SO_PEERPIDFD`, `verify_peer` returns
 //! `PeerRejected::Unverifiable`; the caller decides what to do (production
 //! today accepts the connection and logs that enforcement is unavailable).
+
+// macOS uses the Swift extension in production; the Rust path is test-only
+// and `verify_peer` always returns `Unverifiable`, so the non-Unverifiable
+// variants and the `Allowlist::allowed` field are never read there.
+#![cfg_attr(target_os = "macos", allow(dead_code))]
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,18 +26,14 @@ mod linux;
 #[path = "peer_check/macos.rs"]
 mod macos;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Allowlist {
-    paths: Vec<PathBuf>,
+    allowed: PathBuf,
 }
 
 impl Allowlist {
-    pub fn contains(&self, exe: &Path) -> bool {
-        self.paths.iter().any(|allowed| allowed == exe)
-    }
-
-    pub fn with_paths(paths: Vec<PathBuf>) -> Self {
-        Self { paths }
+    pub fn new(allowed: PathBuf) -> Self {
+        Self { allowed }
     }
 }
 
@@ -54,7 +48,7 @@ pub enum PeerRejected {
     ExeUnreadable(#[source] io::Error),
     #[error("Peer's executable has been deleted: {0}")]
     ExeDeleted(PathBuf),
-    #[error("Peer's executable `{}` is not on the allowlist", exe.display())]
+    #[error("Peer's executable `{}` is not the expected GUI binary", exe.display())]
     NotAllowlisted { exe: PathBuf },
 }
 

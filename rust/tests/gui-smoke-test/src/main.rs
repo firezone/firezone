@@ -17,16 +17,12 @@ const FZ_GROUP: &str = "firezone-client";
 const GUI_NAME: &str = "firezone-gui-client";
 const TUNNEL_NAME: &str = "firezone-client-tunnel";
 
-/// The tunnel daemon allowlists peers by canonical executable path, and the
-/// path must live on a root-owned, non-user-writable filesystem (`target_safe`
-/// in `peer_check.rs` walks every ancestor). `/usr/local/*` is `0o775
-/// root:staff` on Ubuntu runners and fails the check; `/usr/bin` is the
-/// canonical `0o755 root:root` directory. The `-smoke` suffix avoids
-/// clashing with any deb-installed firezone-client-gui on dev machines.
+/// The tunnel daemon only accepts peers whose `/proc/<pid>/exe` resolves
+/// to this hardcoded path. The deb/rpm package installs the GUI there;
+/// the smoke test installs the cargo-built GUI to the same location so
+/// the kernel reports a matching exe.
 #[cfg(target_os = "linux")]
-const INSTALLED_GUI_PATH: &str = "/usr/bin/firezone-client-gui-smoke";
-#[cfg(target_os = "linux")]
-const ALLOWLIST_PATH: &str = "/etc/firezone/allowed-clients.conf";
+const INSTALLED_GUI_PATH: &str = "/usr/bin/firezone-client-gui";
 
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
@@ -188,7 +184,7 @@ impl App {
             .join()?
             .fz_exit_ok()?;
 
-        install_gui_for_allowlist()?;
+        install_gui_at_canonical_path()?;
 
         Ok(Self { username })
     }
@@ -225,14 +221,11 @@ impl App {
     }
 }
 
-/// Copy the cargo-built GUI binary to a root-owned location and write the
-/// peer-allowlist file the tunnel daemon reads.
-///
-/// Both files must be owned by `root:root` and have no group/world-writable
-/// ancestors — see `target_safe` in `peer_check.rs`. Logs every step so a
-/// CI failure here is debuggable without re-running.
+/// Copy the cargo-built GUI binary to the canonical `/usr/bin` path the
+/// tunnel daemon expects. Without this, `/proc/<gui-pid>/exe` would point
+/// at `target/debug/...` and the daemon would reject the connection.
 #[cfg(target_os = "linux")]
-fn install_gui_for_allowlist() -> Result<()> {
+fn install_gui_at_canonical_path() -> Result<()> {
     let built_gui = gui_path()
         .canonicalize()
         .context("Couldn't canonicalize built GUI binary path")?;
@@ -260,91 +253,8 @@ fn install_gui_for_allowlist() -> Result<()> {
         ])
         .join()?
         .fz_exit_ok()
-        .context("Failed to install GUI binary for allowlist")?;
+        .context("Failed to install GUI binary")?;
 
-    let tempdir = tempfile::tempdir().context("Couldn't create tempdir")?;
-    let staged_allowlist = tempdir.path().join("allowed-clients.conf");
-    std::fs::write(&staged_allowlist, format!("{INSTALLED_GUI_PATH}\n"))
-        .context("Couldn't write staged allowlist")?;
-    let staged_str = staged_allowlist
-        .to_str()
-        .context("Staged allowlist path is not valid UTF-8")?;
-    tracing::info!(
-        src = staged_str,
-        dst = ALLOWLIST_PATH,
-        "Installing allowlist"
-    );
-
-    Exec::cmd("sudo")
-        .args([
-            "install",
-            "-D",
-            "-o",
-            "root",
-            "-g",
-            "root",
-            "-m",
-            "0644",
-            staged_str,
-            ALLOWLIST_PATH,
-        ])
-        .join()?
-        .fz_exit_ok()
-        .context("Failed to install allowlist file")?;
-
-    // Diagnostic: print mode/ownership of the installed path and each
-    // ancestor so CI logs show whether `target_safe` will accept the entry.
-    for path in [
-        INSTALLED_GUI_PATH,
-        "/usr/bin",
-        "/usr",
-        "/",
-        ALLOWLIST_PATH,
-        "/etc/firezone",
-        "/etc",
-    ] {
-        Exec::cmd("stat")
-            .args(["-c", "%a %U:%G %n", path])
-            .join()?
-            .fz_exit_ok()
-            .with_context(|| format!("stat {path}"))?;
-    }
-
-    // Fail fast if `target_safe` won't accept the entry. Mirrors the rules
-    // in `peer_check::target_safe` so a misconfiguration here surfaces as a
-    // clear error instead of a silent IPC rejection that times out.
-    verify_path_will_pass_target_safe(Path::new(INSTALLED_GUI_PATH))
-        .context("Installed GUI path will not pass peer_check::target_safe")?;
-
-    Ok(())
-}
-
-/// Replicates `peer_check::target_safe`: every ancestor must be owned by
-/// uid 0 and have neither group- nor world-writable bits set.
-#[cfg(target_os = "linux")]
-fn verify_path_will_pass_target_safe(path: &Path) -> Result<()> {
-    use std::os::unix::fs::MetadataExt as _;
-
-    let mut current = Some(path);
-    while let Some(p) = current {
-        let meta = std::fs::metadata(p)
-            .with_context(|| format!("Couldn't stat {} during target_safe check", p.display()))?;
-        if meta.uid() != 0 {
-            bail!(
-                "{} is owned by uid {}, not root (target_safe rejects)",
-                p.display(),
-                meta.uid()
-            );
-        }
-        if meta.mode() & 0o022 != 0 {
-            bail!(
-                "{} has group- or world-writable bits ({:#o}); target_safe rejects",
-                p.display(),
-                meta.mode() & 0o777
-            );
-        }
-        current = p.parent();
-    }
     Ok(())
 }
 

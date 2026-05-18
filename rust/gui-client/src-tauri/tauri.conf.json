@@ -15,8 +15,7 @@
         "files": {
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
-          "/etc/firezone/allowed-clients.conf": "./linux_package/allowed-clients.conf"
+          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
         },
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
       },
@@ -26,8 +25,7 @@
         "files": {
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
-          "/etc/firezone/allowed-clients.conf": "./linux_package/allowed-clients.conf"
+          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
         },
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
       }

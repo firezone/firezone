@@ -3032,7 +3032,6 @@ dependencies = [
  "anyhow-ext",
  "clap",
  "subprocess",
- "tempfile",
  "tracing",
  "tracing-subscriber",
 ]

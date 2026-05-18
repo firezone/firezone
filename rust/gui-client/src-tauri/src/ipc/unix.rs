@@ -94,7 +94,7 @@ impl Server {
         let allowlist = {
             let exe = std::env::current_exe().expect("test binary must have an exe path");
             let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
-            peer_check::Allowlist::with_paths(vec![canonical])
+            peer_check::Allowlist::new(canonical)
         };
 
         Ok(Self {

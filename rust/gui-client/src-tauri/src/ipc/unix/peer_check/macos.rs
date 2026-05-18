@@ -6,7 +6,7 @@ use super::{Allowlist, PeerRejected};
 
 impl Allowlist {
     pub fn load_default() -> Self {
-        Allowlist::default()
+        Self::new(PathBuf::new())
     }
 
     pub fn verify_peer(&self, _stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
