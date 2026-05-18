@@ -12,11 +12,6 @@
 //! runtime SDDL builder in `ipc/windows.rs` falls back to the legacy
 //! `BU` ACE in that case (graceful degradation: less secure but
 //! functional).
-//!
-//! Logging: `tracing` events go to stderr. `msiexec /l*v install.log`
-//! captures stderr from deferred custom actions, so each event lands
-//! in the MSI install log. Set `RUST_LOG=trace` to widen the filter
-//! (default is `debug`).
 
 use clap::Parser;
 use std::{fmt, process::ExitCode, time::Duration};
@@ -67,7 +62,7 @@ fn main() -> ExitCode {
     std::thread::spawn(|| {
         std::thread::sleep(WATCHDOG_TIMEOUT);
         tracing::error!(
-            timeout_secs = WATCHDOG_TIMEOUT.as_secs(),
+            timeout = ?WATCHDOG_TIMEOUT,
             "watchdog fired, exiting 0 to let MSI continue"
         );
         std::process::exit(0);
@@ -91,11 +86,11 @@ fn main() -> ExitCode {
         Action::Install => imp::register(&install_dir),
         Action::Uninstall => imp::deregister(),
     };
-    let elapsed_ms = started.elapsed().as_millis();
+    let elapsed = started.elapsed();
 
     match result {
         Ok(()) => {
-            tracing::info!(%action, elapsed_ms, "completed");
+            tracing::info!(%action, ?elapsed, "completed");
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -103,7 +98,7 @@ fn main() -> ExitCode {
             // sparse-package registration isn't available.
             tracing::warn!(
                 %action,
-                elapsed_ms,
+                ?elapsed,
                 error = format!("{e:#}"),
                 "completed with error (non-fatal); MSI will proceed"
             );
@@ -162,7 +157,7 @@ mod imp {
         let pm = PackageManager::new().context("PackageManager::new failed")?;
         let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
         tracing::debug!(
-            elapsed_ms = pm_started.elapsed().as_millis(),
+            elapsed = ?pm_started.elapsed(),
             "PackageManager created"
         );
 
@@ -229,7 +224,7 @@ mod imp {
     /// human-readable companion (often empty on success); `ActivityId`
     /// helps correlate with the AppX trace channel.
     fn log_deployment_result(op: &str, result: &DeploymentResult, started: Instant) {
-        let elapsed_ms = started.elapsed().as_millis();
+        let elapsed = started.elapsed();
         let hr = result.ExtendedErrorCode().ok();
         let error_text = result
             .ErrorText()
@@ -239,7 +234,7 @@ mod imp {
         let activity_id = result.ActivityId().ok().map(|g| format!("{g:?}"));
         tracing::info!(
             op,
-            elapsed_ms,
+            ?elapsed,
             hr = ?hr,
             error_text,
             activity_id,
