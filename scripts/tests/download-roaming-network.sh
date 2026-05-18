@@ -3,11 +3,11 @@
 source "./scripts/tests/lib.sh"
 
 # Download 10MB at a max rate of 1MB/s. The first two UDP socket writes will fail as checksum offload is disabled.
-# This means it will take 13 seconds + the resent STUN binding request round trip time.
+# Budget: 10s for the download + 5s pre-roam wait + ~7s reconnect overhead + buffer.
 client sh -c \
     "curl \
         --fail \
-        --max-time 16 \
+        --max-time 25 \
         --keepalive-time 1 \
         --limit-rate 1000000 \
         --output download.file \
@@ -41,6 +41,16 @@ computed_checksum=$(client sha256sum download.file | awk '{ print $1 }')
 
 if [[ "$computed_checksum" != "$known_checksum" ]]; then
     echo "Checksum of downloaded file does not match"
+    exit 1
+fi
+
+# Assert the roam itself was fast. The download budget above is generous to
+# accommodate TCP slow-start after the disconnect, but the Firezone-side
+# recovery (ICE renegotiation + TURN allocate + WireGuard handshake) should
+# stay well under a second. Catch regressions here, not via the curl timeout.
+handshake_ms=$(last_wg_handshake_ms)
+if [ "$handshake_ms" -gt 2000 ]; then
+    echo "Roam took too long: WireGuard handshake completed ${handshake_ms}ms after intent (budget: 2000ms)"
     exit 1
 fi
 
