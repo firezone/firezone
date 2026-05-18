@@ -238,6 +238,12 @@ impl App {
         Ok(Exec::cmd(gui_path())
             .arg("--no-deep-links")
             .arg("--no-elevation-check")
+            // The smoke test runs the Tunnel binary as an unprivileged
+            // subprocess instead of as a `LocalSystem` Windows service, so the
+            // pipe it creates legitimately has no `LocalSystem` owner. Tell
+            // the GUI to skip that check. The flag only exists in debug
+            // builds; release builds reject it.
+            .arg("--skip-tunnel-pipe-owner-check")
             .args(args))
     }
 }

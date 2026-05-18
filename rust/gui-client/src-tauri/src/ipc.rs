@@ -28,6 +28,16 @@ pub(crate) mod platform;
 #[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
 
+/// Disables the Windows Tunnel-pipe owner pinning + check used by the
+/// `gui-smoke-test`. See `ipc::windows::enable_skip_tunnel_pipe_owner_check`
+/// for details. No-op on unix where the check doesn't exist. Debug-only so
+/// production code cannot reach it.
+#[cfg(debug_assertions)]
+pub fn enable_skip_tunnel_pipe_owner_check() {
+    #[cfg(target_os = "windows")]
+    platform::enable_skip_tunnel_pipe_owner_check();
+}
+
 /// A name that both the server and client can use to find each other
 ///
 /// In the platform-specific code, this is translated to a Unix Domain Socket
