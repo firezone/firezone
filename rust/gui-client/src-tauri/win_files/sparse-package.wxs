@@ -50,18 +50,18 @@
       </Component>
     </DirectoryRef>
 
-    <CustomAction Id="AddSparsePackage"
-                  FileKey="RegisterSparseExeFile"
-                  ExeCommand="add"
-                  Execute="deferred"
-                  Impersonate="yes"
-                  Return="ignore" />
-
     <CustomAction Id="ProvisionSparsePackage"
                   FileKey="RegisterSparseExeFile"
                   ExeCommand="provision"
                   Execute="deferred"
                   Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="AddSparsePackage"
+                  FileKey="RegisterSparseExeFile"
+                  ExeCommand="add"
+                  Execute="deferred"
+                  Impersonate="yes"
                   Return="ignore" />
 
     <CustomAction Id="DeprovisionSparsePackage"

@@ -2,16 +2,25 @@
 //! Firezone sparse MSIX package against the installed binaries.
 //!
 //! Invoked as one of three subcommands, each from a different MSI
-//! custom action with a different security context:
+//! custom action with a different security context. Listed in the
+//! order they fire during MSI execution:
 //!
+//! - `provision` — runs as **`LocalSystem`**, calls
+//!   `StagePackageByUriAsync` to put the package into the all-users
+//!   staged state in `C:\Program Files\WindowsApps`, then
+//!   `ProvisionPackageForAllUsersAsync` so every account (including
+//!   `LocalSystem`, so the tunnel service inherits the package SID)
+//!   auto-registers on next logon. Must run before `add` —
+//!   per-user `AddPackageByUriAsync` does NOT produce the all-users
+//!   staged state Provision needs, so calling Provision after Add
+//!   returns `ERROR_NOT_FOUND` / `0x80070490`.
 //! - `add` — runs **impersonated** as the user invoking `msiexec`,
 //!   calls `AddPackageByUriAsync` to register the package for that
-//!   user. Must run as a real user (not `LocalSystem`); the AppX
-//!   deployment service rejects per-user adds from `S-1-5-18`.
-//! - `provision` — runs as **`LocalSystem`**, calls
-//!   `ProvisionPackageForAllUsersAsync` so future logons inherit the
-//!   package. Requires the package to already be staged, which `add`
-//!   takes care of, so it must be sequenced after `add`.
+//!   user immediately (Provision would otherwise defer their
+//!   registration until next logon). Must run as a real user, not
+//!   `LocalSystem`: the AppX deployment service rejects per-user
+//!   adds from `S-1-5-18` (`0x80073CF9` / "Local System account is
+//!   not allowed to perform this operation").
 //! - `deprovision` — runs as **`LocalSystem`** on uninstall, the
 //!   inverse of `provision`. We deliberately do NOT enumerate and
 //!   remove per-user package instances: that would require pulling
@@ -20,10 +29,10 @@
 //!   major Windows servicing cycle.
 //!
 //! WiX wires this up in `win_files/sparse-package.wxs`. The install
-//! directory (needed by `add`) is derived from the exe's own location
-//! (`current_exe().parent()`) rather than piped in via
-//! `CustomActionData`: MSI only exposes that property to DLL/script
-//! deferred CAs, not to direct EXE CAs.
+//! directory (needed by `provision` and `add`) is derived from the
+//! exe's own location (`current_exe().parent()`) rather than piped
+//! in via `CustomActionData`: MSI only exposes that property to
+//! DLL/script deferred CAs, not to direct EXE CAs.
 //!
 //! Failure mode: registration is best-effort. On older Windows builds
 //! (pre-21H2 hardened images, AppX disabled by GP) the call returns
@@ -43,10 +52,10 @@ struct Cli {
 
 #[derive(clap::ValueEnum, Clone, Copy)]
 enum Action {
+    /// Stage + provision the package for all users. Run as `LocalSystem`.
+    Provision,
     /// Register the package for the current user. Run impersonated.
     Add,
-    /// Provision the package for all users. Run as `LocalSystem`.
-    Provision,
     /// Deprovision the package for all users. Run as `LocalSystem`.
     Deprovision,
 }
@@ -54,8 +63,8 @@ enum Action {
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Action::Add => "add",
             Action::Provision => "provision",
+            Action::Add => "add",
             Action::Deprovision => "deprovision",
         })
     }
@@ -75,8 +84,8 @@ fn main() -> ExitCode {
 
     let started = std::time::Instant::now();
     let result = match action {
-        Action::Add => imp::add(),
         Action::Provision => imp::provision(),
+        Action::Add => imp::add(),
         Action::Deprovision => imp::deprovision(),
     };
     let elapsed = started.elapsed();
@@ -129,44 +138,6 @@ mod imp {
         },
         core::HSTRING,
     };
-
-    /// Registers the sparse MSIX for the current user, telling Windows
-    /// where the external binaries live (the MSI install dir). Must
-    /// run impersonated: `AddPackageByUriAsync` is per-user and the
-    /// AppX deployment service rejects it under `LocalSystem`.
-    pub fn add() -> Result<()> {
-        let install_path = install_dir()?;
-        let msix = install_path.join("firezone.msix");
-
-        let msix_meta = std::fs::metadata(&msix)
-            .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
-        tracing::info!(
-            install_dir = %install_path.display(),
-            msix_path = %msix.display(),
-            msix_size_bytes = msix_meta.len(),
-            "found MSIX payload"
-        );
-
-        let pm = package_manager()?;
-        let opts = AddPackageOptions::new().context("AddPackageOptions::new failed")?;
-        let external_uri = file_uri(install_path.as_path())?;
-        opts.SetExternalLocationUri(&external_uri)
-            .context("SetExternalLocationUri failed")?;
-        let msix_uri = file_uri(msix.as_path())?;
-        tracing::info!(
-            external_uri = %external_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            msix_uri = %msix_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            "calling AddPackageByUriAsync"
-        );
-        let started = Instant::now();
-        let result = pm
-            .AddPackageByUriAsync(&msix_uri, &opts)
-            .context("AddPackageByUriAsync call failed")?
-            .get()
-            .context("AddPackageByUriAsync await failed")?;
-        log_deployment_result("add", &result, started);
-        check_deployment_result(&result, "add")
-    }
 
     /// Stages the sparse MSIX in the system store and provisions it
     /// for all users, so every account (including `LocalSystem` and
@@ -224,6 +195,46 @@ mod imp {
             .context("ProvisionPackageForAllUsersAsync await failed")?;
         log_deployment_result("provision", &result, started);
         check_deployment_result(&result, "provision")
+    }
+
+    /// Registers the sparse MSIX for the current user, telling Windows
+    /// where the external binaries live (the MSI install dir). Must
+    /// run impersonated: `AddPackageByUriAsync` is per-user and the
+    /// AppX deployment service rejects it under `LocalSystem`.
+    /// Sequenced after [`provision`] so the package is already in the
+    /// all-users staged state by the time this runs.
+    pub fn add() -> Result<()> {
+        let install_path = install_dir()?;
+        let msix = install_path.join("firezone.msix");
+
+        let msix_meta = std::fs::metadata(&msix)
+            .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
+        tracing::info!(
+            install_dir = %install_path.display(),
+            msix_path = %msix.display(),
+            msix_size_bytes = msix_meta.len(),
+            "found MSIX payload"
+        );
+
+        let pm = package_manager()?;
+        let opts = AddPackageOptions::new().context("AddPackageOptions::new failed")?;
+        let external_uri = file_uri(install_path.as_path())?;
+        opts.SetExternalLocationUri(&external_uri)
+            .context("SetExternalLocationUri failed")?;
+        let msix_uri = file_uri(msix.as_path())?;
+        tracing::info!(
+            external_uri = %external_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
+            msix_uri = %msix_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
+            "calling AddPackageByUriAsync"
+        );
+        let started = Instant::now();
+        let result = pm
+            .AddPackageByUriAsync(&msix_uri, &opts)
+            .context("AddPackageByUriAsync call failed")?
+            .get()
+            .context("AddPackageByUriAsync await failed")?;
+        log_deployment_result("add", &result, started);
+        check_deployment_result(&result, "add")
     }
 
     /// Inverse of [`provision`]. Stops new logons from inheriting the
@@ -312,11 +323,11 @@ mod imp {
 mod imp {
     use anyhow::{Result, bail};
 
-    pub fn add() -> Result<()> {
+    pub fn provision() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 
-    pub fn provision() -> Result<()> {
+    pub fn add() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 
