@@ -20,7 +20,12 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull={13286}>
+          Fixes a bug where the app crashed when rotated whilst a
+          resource-detail sheet was open.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-04-28")}>
         <ChangeItem pull={12416}>
           Does not send a notification in case the user explicitly signs out.
