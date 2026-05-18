@@ -4,7 +4,7 @@
 //! admin portal so the visual language is consistent across the product.
 
 use iced::widget::button::{self, Button, Status};
-use iced::{Background, Border, Color, Element, Padding};
+use iced::{Background, Border, Color, Element, padding};
 
 use crate::theme::Tokens;
 
@@ -32,7 +32,7 @@ pub fn fz_button<'a, Message: 'a + Clone>(
     tokens: Tokens,
 ) -> Element<'a, Message> {
     Button::new(iced::widget::text(label.into()))
-        .padding(Padding::from([10, 16]))
+        .padding(padding::vertical(10).horizontal(16))
         .on_press(on_press)
         .style(move |_theme, status| style_for(variant, status, tokens))
         .into()
