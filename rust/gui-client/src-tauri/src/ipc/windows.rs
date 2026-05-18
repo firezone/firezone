@@ -13,11 +13,7 @@ use windows::Win32::{
 };
 use windows_security::SecurityDescriptor;
 
-/// SDDL applied to every Firezone named pipe.
-///
-/// The Tunnel pipe is created by the LocalSystem-privileged tunnel service and
-/// must be reachable by the user-mode GUI; the GUI pipe is created by the GUI
-/// itself but uses the same DACL for uniformity.
+/// DACL shared by both Firezone named pipes.
 ///
 /// - `D:P` — protected DACL (don't inherit ACEs).
 /// - `(A;;FA;;;SY)` — Full Access for `LocalSystem` (the tunnel service).
@@ -26,10 +22,20 @@ use windows_security::SecurityDescriptor;
 ///   for `BUILTIN\Users`. This is the alias the non-admin GUI runs under and
 ///   excludes `NETWORK SERVICE`, `LOCAL SERVICE`, `ANONYMOUS LOGON`, IIS app
 ///   pool identities, and arbitrary new service accounts (unlike `AU`).
-const PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
+///
+/// The Tunnel pipe additionally pins its owner with `O:SY`. Without that, the
+/// kernel falls back to the creating token's default owner; for the LocalSystem
+/// token that is `BUILTIN\Administrators` (S-1-5-32-544), which would cause the
+/// client-side check in [`ensure_pipe_owner_is_local_system`] to reject the
+/// legitimate pipe. The GUI pipe omits `O:SY` because the non-admin GUI lacks
+/// `SeRestorePrivilege` and cannot assign an owner outside its own token; its
+/// owner is not validated by clients.
+const TUNNEL_PIPE_SDDL: &str = "O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
+const GUI_PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
 
 pub struct Server {
     pipe_path: String,
+    sddl: &'static str,
 }
 
 /// Alias for the client's half of a platform-specific IPC stream
@@ -136,7 +142,17 @@ impl Server {
     #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
     pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
-        Ok(Self { pipe_path })
+        let sddl = match id {
+            // Created by the LocalSystem tunnel service; pin owner so the
+            // client-side LocalSystem check passes.
+            SocketId::Tunnel => TUNNEL_PIPE_SDDL,
+            // Created by the non-admin GUI; cannot pin owner.
+            SocketId::Gui => GUI_PIPE_SDDL,
+            // Tests run unprivileged.
+            #[cfg(test)]
+            SocketId::Test(_) => GUI_PIPE_SDDL,
+        };
+        Ok(Self { pipe_path, sddl })
     }
 
     // `&mut self` needed to match the Linux signature
@@ -177,7 +193,7 @@ impl Server {
         const NUM_ITERS: usize = 100;
         const RETRY_INTERVAL: Duration = Duration::from_millis(100);
         for i in 0..NUM_ITERS {
-            match create_pipe_server(&self.pipe_path) {
+            match create_pipe_server(&self.pipe_path, self.sddl) {
                 Ok(server) => return Ok(server),
                 Err(PipeError::AccessDenied) => {
                     tracing::debug!("PipeError::AccessDenied, sleeping... (loop {i})");
@@ -198,14 +214,17 @@ enum PipeError {
     Other(#[from] anyhow::Error),
 }
 
-fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, PipeError> {
+fn create_pipe_server(
+    pipe_path: &str,
+    sddl: &str,
+) -> Result<named_pipe::NamedPipeServer, PipeError> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
     // Build a `SECURITY_ATTRIBUTES` that grants the non-admin GUI (running as
     // `BUILTIN\Users`) read/write access to the pipe while keeping it shut to
     // `NETWORK SERVICE`, anonymous logons, and other unintended principals.
-    let sd = SecurityDescriptor::from_sddl(PIPE_SDDL).map_err(PipeError::Other)?;
+    let sd = SecurityDescriptor::from_sddl(sddl).map_err(PipeError::Other)?;
     let mut sa = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: sd.as_raw().0,
@@ -283,7 +302,7 @@ mod tests {
         let (_rx, _tx) =
             crate::ipc::connect::<(), ()>(ID, crate::ipc::ConnectOptions::default()).await?;
 
-        match super::create_pipe_server(&pipe_path) {
+        match super::create_pipe_server(&pipe_path, super::GUI_PIPE_SDDL) {
             Err(super::PipeError::AccessDenied) => {}
             Err(error) => {
                 Err(error).context("Expected `PipeError::AccessDenied` but got another error")?
