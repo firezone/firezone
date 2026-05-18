@@ -713,7 +713,9 @@ impl<I: GuiIntegration> Controller<I> {
                 };
                 match result {
                     Ok(()) => {
-                        tracing::info!("Migrated legacy advanced_settings.json into protected store");
+                        tracing::info!(
+                            "Migrated legacy advanced_settings.json into protected store"
+                        );
                         if let Err(e) = std::fs::remove_file(&path) {
                             tracing::warn!(
                                 path = %path.display(),
@@ -731,7 +733,9 @@ impl<I: GuiIntegration> Controller<I> {
                         }
                     }
                     Err(msg) => {
-                        tracing::warn!("Tunnel service refused to migrate advanced_settings: {msg}");
+                        tracing::warn!(
+                            "Tunnel service refused to migrate advanced_settings: {msg}"
+                        );
                     }
                 }
             }
@@ -1091,7 +1095,7 @@ async fn request_legacy_advanced_settings_migration(
         Err(e) => {
             tracing::warn!(
                 path = %path.display(),
-                "Legacy advanced_settings.json is unparseable; skipping migration: {e:#}"
+                "Legacy advanced_settings.json is unparsable; skipping migration: {e:#}"
             );
             return;
         }

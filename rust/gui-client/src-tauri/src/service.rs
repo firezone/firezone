@@ -24,13 +24,7 @@ use ip_network::IpNetwork;
 use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    io, mem,
-    panic::AssertUnwindSafe,
-    pin::pin,
-    sync::Arc,
-    time::Duration,
-};
+use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
 use telemetry::{Telemetry, analytics, otel};
 use tokio::time::Instant;
 use tracing::Instrument as _;
@@ -375,7 +369,9 @@ impl<'a> Handler<'a> {
             .boxed();
 
         let advanced_settings = advanced_settings::load()
-            .inspect_err(|e| tracing::warn!("Failed to load advanced settings, using defaults: {e:#}"))
+            .inspect_err(|e| {
+                tracing::warn!("Failed to load advanced settings, using defaults: {e:#}")
+            })
             .ok()
             .flatten()
             .unwrap_or_default();
@@ -651,7 +647,8 @@ impl<'a> Handler<'a> {
                         Err(format!("{e:#}"))
                     }
                 };
-                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response)).await?;
+                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
+                    .await?;
             }
             ClientMsg::MigrateAdvancedSettings(legacy) => {
                 let path = advanced_settings::path()?;
@@ -675,7 +672,8 @@ impl<'a> Handler<'a> {
                         }
                     }
                 };
-                self.send_ipc(ServerMsg::AdvancedSettingsMigrated(response)).await?;
+                self.send_ipc(ServerMsg::AdvancedSettingsMigrated(response))
+                    .await?;
             }
             ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {
