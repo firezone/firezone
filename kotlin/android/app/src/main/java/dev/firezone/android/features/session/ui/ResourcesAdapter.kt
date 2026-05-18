@@ -10,9 +10,10 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 
-internal class ResourcesAdapter : ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
-    ResourceDiffCallback(),
-) {
+internal class ResourcesAdapter :
+    ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
+        ResourceDiffCallback(),
+    ) {
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,

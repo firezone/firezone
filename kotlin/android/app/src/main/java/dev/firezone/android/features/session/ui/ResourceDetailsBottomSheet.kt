@@ -84,8 +84,9 @@ class ResourceDetailsBottomSheet : BottomSheetDialogFragment() {
 
         resourceHeader()
 
-        if (!resource.sites.isNullOrEmpty()) {
-            val site = resource.sites.first()
+        val sites = resource.sites
+        if (!sites.isNullOrEmpty()) {
+            val site = sites.first()
             siteNameTextView.text = site.name
             siteNameLayout.visibility = View.VISIBLE
 
