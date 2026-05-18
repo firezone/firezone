@@ -14,9 +14,8 @@ profile firezone-client-tunnel /usr/bin/firezone-client-tunnel
 
   include <abstractions/base>
 
-  # Permissive on everything that isn't a unix socket; unix sockets are
-  # enumerated below so the peer-restricted rule for the IPC socket isn't
-  # shadowed by a broader allow.
+  # Permissive on everything except unix-socket operations, which are
+  # enumerated below.
   capability,
   network inet,
   network inet6,
@@ -31,22 +30,23 @@ profile firezone-client-tunnel /usr/bin/firezone-client-tunnel
 
   /** mrwlkix,
 
-  # The IPC socket: bind/listen are unrestricted, accept is restricted to
-  # peers confined by the `firezone-client-gui` profile.
-  unix (bind, listen, getattr, getopt, setopt, shutdown)
-    type=stream
-    addr="/run/dev.firezone.client/tunnel.sock",
-  unix (accept, send, receive)
-    type=stream
-    addr="/run/dev.firezone.client/tunnel.sock"
+  # The IPC socket lives at /run/dev.firezone.client/tunnel.sock. Path-based
+  # `addr=` in unix rules isn't accepted by AppArmor 3.x (Ubuntu 22.04 / 24.04
+  # ship 3.x), so the per-path restriction is handled by filesystem
+  # permissions (root:firezone-client 0660); the peer-label rule below is
+  # what the kernel actually enforces.
+  unix (bind, listen, getattr, getopt, setopt, shutdown) type=stream,
+  unix (accept, send, receive) type=stream
     peer=(label=firezone-client-gui),
 
-  # All other unix sockets the tunnel uses (sd_notify, dbus, internal tokio
-  # sockets, etc.) - matched by peer address or anonymous local address, so
-  # they cannot match the server-side accept on the IPC socket above.
-  unix peer=(addr="@*"),
-  unix peer=(addr="/{,var/}run/**"),
-  unix peer=(addr="/tmp/**"),
-  unix peer=(addr=none),
-  unix addr=none,
+  # All other unix socket use (sd_notify, dbus, internal tokio sockets, etc.).
+  # Operations are listed explicitly so `accept`, `bind` and `listen` aren't
+  # in the set - otherwise these rules would shadow the peer-restricted accept
+  # above and any peer could connect (the bypass Copilot flagged on review).
+  unix (create, connect, send, receive, shutdown, getattr, getopt, setopt)
+    peer=(addr="@*"),
+  unix (create, connect, send, receive, shutdown, getattr, getopt, setopt)
+    peer=(addr="/{,var/}run/**"),
+  unix (create, send, receive, shutdown, getattr, getopt, setopt)
+    addr=none,
 }

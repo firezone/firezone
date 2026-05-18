@@ -52,11 +52,15 @@ fi
 # Load the AppArmor profiles into the running kernel. Dropping the files into
 # /etc/apparmor.d/ is not enough on its own: apparmor.service only reads that
 # directory at boot, so without an explicit `apparmor_parser -r` the profile
-# wouldn't take effect until the next reboot. Failures (no AppArmor, parser
-# missing, kernel without AppArmor) are tolerated; the profile is a defence
-# in depth and the tunnel must still work without it.
-apparmor_parser -r -W /etc/apparmor.d/firezone-client-tunnel 2>/dev/null || true
-apparmor_parser -r -W /etc/apparmor.d/firezone-client-gui 2>/dev/null || true
+# wouldn't take effect until the next reboot. Failures (no AppArmor, kernel
+# without AppArmor, profile syntax bug) are tolerated; the profile is a
+# defence in depth and the tunnel must still work without it. Parser output
+# is intentionally not suppressed so problems are visible in install logs
+# (e.g. `/var/log/apt/term.log`).
+if command -v apparmor_parser >/dev/null 2>&1; then
+    apparmor_parser -r -W /etc/apparmor.d/firezone-client-tunnel || true
+    apparmor_parser -r -W /etc/apparmor.d/firezone-client-gui || true
+fi
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"

@@ -30,3 +30,34 @@ firezone-client-gui --help | grep "Usage: firezone-client-gui"
 
 # Make sure the Tunnel service is running
 systemctl status "$SERVICE_NAME" || debug_exit
+
+# Verify the AppArmor profiles loaded and the tunnel is actually confined.
+# The whole point of the profile is to refuse IPC connections from peers that
+# aren't labeled `firezone-client-gui`; check that property end-to-end.
+SOCKET=/run/dev.firezone.client/tunnel.sock
+
+sudo aa-status
+sudo aa-status | grep -q firezone-client-tunnel
+sudo aa-status | grep -q firezone-client-gui
+sudo aa-status --enforced | grep -q firezone-client-tunnel
+
+# Positive: a process with the `firezone-client-gui` label is accepted.
+sudo aa-exec -p firezone-client-gui -- python3 -c "
+import socket
+s = socket.socket(socket.AF_UNIX)
+s.connect('$SOCKET')
+s.close()
+"
+
+# Negative: an unconfined process is refused by the tunnel's AppArmor profile
+# even though it runs as root (POSIX permissions would let it through).
+if sudo python3 -c "
+import socket
+s = socket.socket(socket.AF_UNIX)
+s.connect('$SOCKET')
+s.close()
+" 2>/dev/null
+then
+    echo "FAIL: unconfined process was allowed to connect to the IPC socket"
+    exit 1
+fi
