@@ -57,7 +57,7 @@ importers:
         version: 5.7.3
       flowbite-react:
         specifier: ^0.12.17
-        version: 0.12.17(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(tailwindcss@4.2.4)
+        version: 0.12.17(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(tailwindcss@4.3.0)
       framer-motion:
         specifier: ^12.38.0
         version: 12.38.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -125,8 +125,8 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       tailwindcss:
-        specifier: 4.2.4
-        version: 4.2.4
+        specifier: 4.3.0
+        version: 4.3.0
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.3.5
@@ -2998,9 +2998,6 @@ packages:
   tailwind-merge@3.4.0:
     resolution: {integrity: sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g==}
 
-  tailwindcss@4.2.4:
-    resolution: {integrity: sha512-HhKppgO81FQof5m6TEnuBWCZGgfRAWbaeOaGT00KOy/Pf/j6oUihdvBpA7ltCeAvZpFhW3j0PTclkxsd4IXYDA==}
-
   tailwindcss@4.3.0:
     resolution: {integrity: sha512-y6nxMGB1nMW9R6k96e5gdIFzcfL/gTJRNaqGes1YvkLnPVXzWgbqFF2yLC0T8G774n24cx3Pe8XrKoniCOAH+Q==}
 
@@ -4987,7 +4984,7 @@ snapshots:
 
   flatted@3.4.2: {}
 
-  flowbite-react@0.12.17(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(tailwindcss@4.2.4):
+  flowbite-react@0.12.17(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(tailwindcss@4.3.0):
     dependencies:
       '@floating-ui/core': 1.7.4
       '@floating-ui/react': 0.27.17(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -5004,7 +5001,7 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
       tailwind-merge-v2: tailwind-merge@2.6.1
       tailwind-merge-v3: tailwind-merge@3.4.0
-      tailwindcss: 4.2.4
+      tailwindcss: 4.3.0
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -6688,8 +6685,6 @@ snapshots:
   tailwind-merge@2.6.1: {}
 
   tailwind-merge@3.4.0: {}
-
-  tailwindcss@4.2.4: {}
 
   tailwindcss@4.3.0: {}
 

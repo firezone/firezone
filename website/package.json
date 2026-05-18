@@ -53,7 +53,7 @@
     "remark-gfm": "^4.0.1",
     "remark-mdx-frontmatter": "^5.2.0",
     "remark-parse": "^11.0.0",
-    "tailwindcss": "4.2.4"
+    "tailwindcss": "4.3.0"
   },
   "pnpm": {
     "overrides": {
