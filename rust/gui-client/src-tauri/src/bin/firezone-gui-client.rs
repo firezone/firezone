@@ -14,7 +14,6 @@ use settings::AdvancedSettings;
 use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
-use tracing_subscriber::EnvFilter;
 
 #[expect(
     dead_code,
@@ -108,31 +107,28 @@ fn try_main(
         fail_with: cli.fail_on_purpose(),
     };
 
-    let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
-
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
-    // Now that we know the real api_url, switch the Sentry session out of
-    // entrypoint mode. `Telemetry::start` notices the env change and stops
-    // the previous session before initialising a new one.
+    // The authoritative advanced settings (with the user's stored values
+    // applied) live in the protected service-side file and arrive via the
+    // `Hello` IPC message. Until that happens we fall back to MDM overrides
+    // and compile-time defaults; once `Hello` lands, the controller updates
+    // both telemetry context (via `StartTelemetry`) and the GUI log filter.
+    let defaults = AdvancedSettings::default();
+
     let api_url = mdm_settings
         .api_url
         .as_ref()
-        .unwrap_or(&advanced_settings.api_url)
-        .to_string();
+        .map(|u| u.to_string())
+        .unwrap_or_else(|| defaults.api_url.to_string());
     telemetry.start(&api_url, firezone_gui_client::RELEASE, telemetry::GUI_DSN);
-
-    // Don't fix the log filter for smoke tests because we can't show a dialog there.
-    if !config.smoke_test {
-        fix_log_filter(&mut advanced_settings)?;
-    }
 
     let log_filter = std::env::var("RUST_LOG")
         .ok()
         .or(mdm_settings.log_filter.clone())
-        .unwrap_or_else(|| advanced_settings.log_filter.clone());
+        .unwrap_or(defaults.log_filter);
 
     *log_guard = None;
 
@@ -191,7 +187,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, config, mdm_settings, advanced_settings, reloader)?;
+            gui::run(rt, config, mdm_settings, reloader)?;
 
             return Ok(());
         }
@@ -199,7 +195,7 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, config, mdm_settings, advanced_settings, reloader) {
+    match gui::run(rt, config, mdm_settings, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {
@@ -260,20 +256,6 @@ fn try_main(
             return Err(anyhow);
         }
     };
-
-    Ok(())
-}
-
-/// Parse the log filter from settings, showing an error and fixing it if needed
-fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
-    if EnvFilter::try_new(&settings.log_filter).is_ok() {
-        return Ok(());
-    }
-    settings.log_filter = AdvancedSettings::default().log_filter;
-
-    firezone_gui_client::dialog::error(
-        "The custom log filter is not parsable. Using the default log filter.",
-    )?;
 
     Ok(())
 }

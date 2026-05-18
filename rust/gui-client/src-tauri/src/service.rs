@@ -1,9 +1,10 @@
 use crate::{
+    advanced_settings,
     ipc::{self, SocketId},
     logging,
+    settings::AdvancedSettings,
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
-use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
@@ -20,12 +21,11 @@ use futures::{
     task::{Context, Poll},
 };
 use ip_network::IpNetwork;
-use logging::{FilterReloadHandle, err_with_src};
+use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
-    io::{self, Write},
-    mem,
+    io, mem,
     panic::AssertUnwindSafe,
     pin::pin,
     sync::Arc,
@@ -54,15 +54,23 @@ pub use platform::{elevation_check, install, run};
 pub enum ClientMsg {
     ClearLogs,
     Connect {
+        // TODO: remove once MDM ownership moves to the Tunnel service. At
+        // that point the service has the only authoritative `api_url` (the
+        // merge of stored settings and machine-scope MDM policy) and the
+        // GUI no longer needs to pass it in `Connect`.
         api_url: String,
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
     },
     Disconnect,
-    ApplyLogFilter {
-        directives: String,
-    },
+    /// Persist new advanced settings to the protected on-disk file owned by
+    /// the Tunnel service and reload the log filter.
+    ApplyAdvancedSettings(AdvancedSettings),
+    /// One-shot migration of the legacy user-side `advanced_settings.json`
+    /// into the protected file. Refused if the protected file already exists.
+    // TODO: remove once all clients have migrated.
+    MigrateAdvancedSettings(AdvancedSettings),
     SetInternetResourceState(bool),
     StartTelemetry {
         environment: String,
@@ -85,11 +93,12 @@ where
 pub enum ServerMsg {
     /// First message sent on every IPC connection.
     ///
-    /// Includes the Firezone ID so the GUI can use it for telemetry without
-    /// having to read the on-disk file (which is locked-down to System and
-    /// Administrators on Windows).
+    /// Includes both the Firezone ID and the current advanced settings so
+    /// the GUI doesn't need to read the protected on-disk files itself —
+    /// those are owned exclusively by the privileged Tunnel service.
     Hello {
         firezone_id: String,
+        advanced_settings: AdvancedSettings,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -106,6 +115,13 @@ pub enum ServerMsg {
         resource_id: ResourceId,
     },
     OnUpdateResources(ResourceList),
+    /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
+    /// persisted struct so the GUI is certain about what landed.
+    AdvancedSettingsApplied(Result<AdvancedSettings, String>),
+    /// Result of a `MigrateAdvancedSettings`. The GUI uses this to decide
+    /// whether to delete the legacy user-side file.
+    // TODO: remove once all clients have migrated.
+    AdvancedSettingsMigrated(Result<(), String>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -154,6 +170,13 @@ async fn ipc_listen(
         let dir = path.parent().context("No parent path")?;
         std::os::unix::fs::chown(dir, None, Some(group_id))
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
+    }
+
+    advanced_settings::migrate_legacy_log_filter_file();
+    if let Ok(Some(stored)) = advanced_settings::load()
+        && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
+    {
+        tracing::warn!("Failed to apply stored log filter: {e:#}");
     }
 
     let mut server = ipc::Server::new(socket_id)?;
@@ -215,6 +238,7 @@ struct Handler<'a> {
     ipc_rx: ipc::ServerRead<ClientMsg>,
     ipc_tx: ipc::ServerWrite<ServerMsg>,
     log_filter_reloader: &'a FilterReloadHandle,
+    advanced_settings: AdvancedSettings,
     session: Session,
     telemetry: Telemetry,
     tun_device: TunDeviceManager,
@@ -350,9 +374,16 @@ impl<'a> Handler<'a> {
             .context("Failed to initialize network change monitor")?
             .boxed();
 
+        let advanced_settings = advanced_settings::load()
+            .inspect_err(|e| tracing::warn!("Failed to load advanced settings, using defaults: {e:#}"))
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
+                advanced_settings: advanced_settings.clone(),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
@@ -363,6 +394,7 @@ impl<'a> Handler<'a> {
             ipc_rx,
             ipc_tx,
             log_filter_reloader,
+            advanced_settings,
             session: Session::None,
             telemetry,
             tun_device,
@@ -602,16 +634,48 @@ impl<'a> Handler<'a> {
                 // so this will be idempotent.
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
-            ClientMsg::ApplyLogFilter { directives } => {
-                self.log_filter_reloader.reload(&directives)?;
-
-                let path = known_dirs::tunnel_log_filter()?;
-
-                if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
-                    .write(|f| f.write_all(directives.as_bytes()))
-                {
-                    tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
-                }
+            ClientMsg::ApplyAdvancedSettings(new) => {
+                let response = match advanced_settings::save(&new) {
+                    Ok(()) => {
+                        if let Err(e) = self.log_filter_reloader.reload(&new.log_filter) {
+                            tracing::warn!(
+                                log_filter = %new.log_filter,
+                                "Failed to reload log filter: {e:#}"
+                            );
+                        }
+                        self.advanced_settings = new.clone();
+                        Ok(new)
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to save advanced settings: {e:#}");
+                        Err(format!("{e:#}"))
+                    }
+                };
+                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response)).await?;
+            }
+            ClientMsg::MigrateAdvancedSettings(legacy) => {
+                let path = advanced_settings::path()?;
+                let response = if path.exists() {
+                    Err("advanced_settings.json already present; skipping migration".to_string())
+                } else {
+                    match advanced_settings::save(&legacy) {
+                        Ok(()) => {
+                            if let Err(e) = self.log_filter_reloader.reload(&legacy.log_filter) {
+                                tracing::warn!(
+                                    log_filter = %legacy.log_filter,
+                                    "Failed to reload log filter after migration: {e:#}"
+                                );
+                            }
+                            self.advanced_settings = legacy;
+                            Ok(())
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to migrate advanced settings: {e:#}");
+                            Err(format!("{e:#}"))
+                        }
+                    }
+                };
+                self.send_ipc(ServerMsg::AdvancedSettingsMigrated(response)).await?;
             }
             ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {

@@ -76,10 +76,6 @@ pub trait GuiIntegration {
 
     fn save_general_settings(&self, settings: &GeneralSettings)
     -> impl Future<Output = Result<()>>;
-    fn save_advanced_settings(
-        &self,
-        settings: &AdvancedSettings,
-    ) -> impl Future<Output = Result<()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -181,7 +177,6 @@ impl<I: GuiIntegration> Controller<I> {
         ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
         mdm_settings: MdmSettings,
-        advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
@@ -189,15 +184,23 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
+        let (mut ipc_rx, mut ipc_client) =
+            ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        let firezone_id = receive_hello(&mut ipc_rx)
+        let (firezone_id, advanced_settings) = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
 
         Telemetry::set_firezone_id(firezone_id).await;
 
         let auth = auth::Auth::new()?;
+
+        // Best-effort migration of the legacy user-side advanced_settings.json
+        // into the protected service-side file. The service refuses to
+        // overwrite an existing protected file; the GUI deletes the legacy
+        // file when it gets `Ok` back (handled in `handle_service_ipc_msg`).
+        // TODO: remove once all clients have migrated.
+        request_legacy_advanced_settings_migration(&mut ipc_client).await;
 
         let controller = Controller {
             general_settings,
@@ -421,32 +424,11 @@ impl<I: GuiIntegration> Controller<I> {
 
         match req {
             ApplyAdvancedSettings(settings) => {
-                self.log_filter_reloader
-                    .reload(&settings.log_filter)
-                    .context("Couldn't reload log filter")?;
-
-                self.advanced_settings = *settings;
-
-                // Save to disk
-                self.integration
-                    .save_advanced_settings(&self.advanced_settings)
+                // The Tunnel service owns the on-disk file. We send the new
+                // values and wait for `AdvancedSettingsApplied` to land in
+                // `handle_service_ipc_msg` before updating local state.
+                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(*settings))
                     .await?;
-
-                // Tell tunnel about new log level
-                self.send_ipc(&service::ClientMsg::ApplyLogFilter {
-                    directives: self.advanced_settings.log_filter.clone(),
-                })
-                .await?;
-
-                // Notify GUI that settings have changed
-                self.notify_settings_changed()?;
-
-                tracing::debug!("Applied new settings. Log level will take effect immediately.");
-
-                // Refresh the menu in case the favorites were reset.
-                self.refresh_ui_state();
-
-                let _ = self.integration.show_notification("Settings saved", "")?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -703,6 +685,56 @@ impl<I: GuiIntegration> Controller<I> {
                 return Ok(ControlFlow::Break(()));
             }
             service::ServerMsg::Hello { .. } => {}
+            service::ServerMsg::AdvancedSettingsApplied(Ok(new)) => {
+                self.advanced_settings = new;
+                if let Err(e) = self
+                    .log_filter_reloader
+                    .reload(&self.advanced_settings.log_filter)
+                {
+                    tracing::warn!("Failed to reload GUI log filter: {e:#}");
+                }
+                self.notify_settings_changed()?;
+                self.refresh_ui_state();
+                let _ = self.integration.show_notification("Settings saved", "")?;
+            }
+            service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
+                tracing::error!("Tunnel service failed to save advanced settings: {err}");
+                let _ = self
+                    .integration
+                    .show_notification("Failed to save settings", &err)?;
+            }
+            service::ServerMsg::AdvancedSettingsMigrated(result) => {
+                let path = match legacy_user_advanced_settings_path() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!("Cannot compute legacy advanced_settings path: {e:#}");
+                        return Ok(ControlFlow::Continue(()));
+                    }
+                };
+                match result {
+                    Ok(()) => {
+                        tracing::info!("Migrated legacy advanced_settings.json into protected store");
+                        if let Err(e) = std::fs::remove_file(&path) {
+                            tracing::warn!(
+                                path = %path.display(),
+                                "Failed to delete legacy advanced_settings.json after migration: {e}"
+                            );
+                        }
+                    }
+                    Err(msg) if msg.contains("already present") => {
+                        // Protected file wins. Drop the dead legacy file.
+                        if let Err(e) = std::fs::remove_file(&path) {
+                            tracing::warn!(
+                                path = %path.display(),
+                                "Failed to delete redundant legacy advanced_settings.json: {e}"
+                            );
+                        }
+                    }
+                    Err(msg) => {
+                        tracing::warn!("Tunnel service refused to migrate advanced_settings: {msg}");
+                    }
+                }
+            }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
 
@@ -1001,7 +1033,9 @@ impl<I: GuiIntegration> Controller<I> {
     }
 }
 
-async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
+async fn receive_hello(
+    ipc_rx: &mut ipc::ClientRead<service::ServerMsg>,
+) -> Result<(String, AdvancedSettings)> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -1012,11 +1046,62 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
         .context("No message received from tunnel service")?
         .context("Failed to receive message from tunnel service")?;
 
-    let service::ServerMsg::Hello { firezone_id } = server_msg else {
+    let service::ServerMsg::Hello {
+        firezone_id,
+        advanced_settings,
+    } = server_msg
+    else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
     };
 
-    Ok(firezone_id)
+    Ok((firezone_id, advanced_settings))
+}
+
+/// Path of the legacy user-writable `advanced_settings.json`. Used only by
+/// the migration step that moves it into the protected service-side file.
+// TODO: remove once all clients have migrated.
+fn legacy_user_advanced_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("advanced_settings.json"))
+}
+
+/// If the legacy user-side `advanced_settings.json` exists, ask the Tunnel
+/// service to import it. The GUI deletes the legacy file once it gets a
+/// successful (or "already present") reply.
+// TODO: remove once all clients have migrated.
+async fn request_legacy_advanced_settings_migration(
+    ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
+) {
+    let Ok(path) = legacy_user_advanced_settings_path() else {
+        return;
+    };
+    if !path.exists() {
+        return;
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), "Failed to read legacy advanced_settings: {e:#}");
+            return;
+        }
+    };
+    let legacy: AdvancedSettings = match serde_json::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                "Legacy advanced_settings.json is unparseable; skipping migration: {e:#}"
+            );
+            return;
+        }
+    };
+    if let Err(e) = ipc_client
+        .send(&service::ClientMsg::MigrateAdvancedSettings(legacy))
+        .await
+    {
+        tracing::warn!("Failed to send legacy advanced_settings migration: {e:#}");
+    }
 }
 
 #[cfg(test)]
@@ -1368,10 +1453,6 @@ mod tests {
         async fn save_general_settings(&self, _: &GeneralSettings) -> Result<()> {
             Ok(())
         }
-
-        async fn save_advanced_settings(&self, _: &AdvancedSettings) -> Result<()> {
-            Ok(())
-        }
     }
 
     struct MockTunnel {
@@ -1384,6 +1465,7 @@ mod tests {
             self.tx
                 .send(&service::ServerMsg::Hello {
                     firezone_id: "test-firezone-id".to_owned(),
+                    advanced_settings: AdvancedSettings::default(),
                 })
                 .await
                 .unwrap();
@@ -1455,7 +1537,6 @@ mod tests {
                 ctrl_rx,
                 GeneralSettings::default(),
                 MdmSettings::default(),
-                AdvancedSettings::default(),
                 log_filter_reloader,
                 true,
                 updates_rx,
