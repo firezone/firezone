@@ -32,7 +32,10 @@ pub fn load() -> Result<Option<AdvancedSettings>> {
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
         Err(e) => {
             return Err(e).with_context(|| {
-                format!("Failed to read advanced_settings file at `{}`", path.display())
+                format!(
+                    "Failed to read advanced_settings file at `{}`",
+                    path.display()
+                )
             });
         }
     };
@@ -48,9 +51,8 @@ pub fn save(settings: &AdvancedSettings) -> Result<()> {
     let dir = path
         .parent()
         .context("advanced_settings path should have a parent")?;
-    fs::create_dir_all(dir).with_context(|| {
-        format!("Failed to create advanced_settings dir `{}`", dir.display())
-    })?;
+    fs::create_dir_all(dir)
+        .with_context(|| format!("Failed to create advanced_settings dir `{}`", dir.display()))?;
     set_dir_permissions(dir).with_context(|| {
         format!(
             "Failed to set permissions on Tunnel service config dir `{}`",
@@ -62,7 +64,10 @@ pub fn save(settings: &AdvancedSettings) -> Result<()> {
     AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
         .write(|f| f.write_all(content.as_bytes()))
         .with_context(|| {
-            format!("Failed to write advanced_settings file `{}`", path.display())
+            format!(
+                "Failed to write advanced_settings file `{}`",
+                path.display()
+            )
         })?;
     set_file_permissions(&path).with_context(|| {
         format!(
