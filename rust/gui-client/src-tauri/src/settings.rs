@@ -38,7 +38,7 @@ pub struct MdmSettings {
     pub support_url: Option<Url>,
 }
 
-#[derive(Clone, Deserialize, Serialize, specta::Type)]
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct AdvancedSettings {
     pub auth_url: Url,
     pub api_url: Url,
@@ -156,31 +156,10 @@ impl Default for AdvancedSettings {
     }
 }
 
-pub fn advanced_settings_path() -> Result<PathBuf> {
-    Ok(known_dirs::settings()
-        .context("`known_dirs::settings` failed")?
-        .join("advanced_settings.json"))
-}
-
 pub fn general_settings_path() -> Result<PathBuf> {
     Ok(known_dirs::settings()
         .context("`known_dirs::settings` failed")?
         .join("general_settings.json"))
-}
-
-/// Saves the advanced settings to disk
-pub async fn save_advanced(settings: &AdvancedSettings) -> Result<()> {
-    let path = advanced_settings_path()?;
-    let dir = path
-        .parent()
-        .context("settings path should have a parent")?;
-
-    tokio::fs::create_dir_all(dir).await?;
-    tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
-
-    tracing::debug!(?path, "Saved settings");
-
-    Ok(())
 }
 
 /// Saves the general settings to disk
@@ -196,16 +175,6 @@ pub async fn save_general(settings: &GeneralSettings) -> Result<()> {
     tracing::debug!(?path, "Saved settings");
 
     Ok(())
-}
-
-/// Return advanced settings if they're stored on disk
-///
-/// Uses std::fs, so stick it in `spawn_blocking` for async contexts
-pub fn load_advanced_settings() -> Result<AdvancedSettings> {
-    let path = advanced_settings_path()?;
-    let text = std::fs::read_to_string(path)?;
-    let settings = serde_json::from_str(&text)?;
-    Ok(settings)
 }
 
 /// Return general settings if they're stored on disk

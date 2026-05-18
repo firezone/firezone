@@ -129,7 +129,7 @@ pub fn setup_tunnel(
     std::fs::create_dir_all(&log_path)
         .context("We should have permissions to create our log dir")?;
 
-    let directives = get_log_filter().context("Couldn't read log filter")?;
+    let directives = get_log_filter();
 
     let (file_filter, file_reloader) = logging::try_filter(&directives)?;
     let (stdout_filter, stdout_reloader) = logging::try_filter(&directives)?;
@@ -161,7 +161,7 @@ pub fn setup_tunnel(
 
 /// Sets up logging for stdout only, with INFO level by default
 pub fn setup_stdout() -> Result<FilterReloadHandle> {
-    let directives = get_log_filter().context("Can't read log filter")?;
+    let directives = get_log_filter();
     let (filter, reloader) = logging::try_filter(&directives)?;
     let layer = tracing_subscriber::fmt::layer()
         .event_format(logging::Format::new())
@@ -177,28 +177,25 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 ///
 /// Reads from:
 /// 1. `RUST_LOG` env var
-/// 2. `known_dirs::tunnel_log_filter()` file
-/// 3. Hard-coded default `SERVICE_RUST_LOG`
-///
-/// Errors if something is badly wrong, e.g. the directory for the config file
-/// can't be computed
-pub(crate) fn get_log_filter() -> Result<String> {
+/// 2. `advanced_settings::load()` (the protected on-disk settings file)
+/// 3. Hard-coded default `DEFAULT_LOG_FILTER`
+pub(crate) fn get_log_filter() -> String {
     #[cfg(not(debug_assertions))]
     const DEFAULT_LOG_FILTER: &str = "info";
     #[cfg(debug_assertions)]
     const DEFAULT_LOG_FILTER: &str = "debug";
 
     if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
-        return Ok(filter);
+        return filter;
     }
 
-    if let Ok(filter) =
-        std::fs::read_to_string(known_dirs::tunnel_log_filter()?).map(|s| s.trim().to_string())
+    if let Ok(Some(settings)) = crate::advanced_settings::load()
+        && EnvFilter::try_new(&settings.log_filter).is_ok()
     {
-        return Ok(filter);
+        return settings.log_filter;
     }
 
-    Ok(DEFAULT_LOG_FILTER.to_string())
+    DEFAULT_LOG_FILTER.to_string()
 }
 
 #[cfg(target_os = "linux")]

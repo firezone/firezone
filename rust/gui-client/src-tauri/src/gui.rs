@@ -216,12 +216,6 @@ impl GuiIntegration for TauriIntegration {
 
         Ok(())
     }
-
-    async fn save_advanced_settings(&self, settings: &AdvancedSettings) -> Result<()> {
-        settings::save_advanced(settings).await?;
-
-        Ok(())
-    }
 }
 
 pub struct RunConfig {
@@ -255,7 +249,6 @@ pub fn run(
     rt: &Runtime,
     config: RunConfig,
     mdm_settings: MdmSettings,
-    advanced_settings: AdvancedSettings,
     reloader: logging::FilterReloadHandle,
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
@@ -370,7 +363,6 @@ pub fn run(
             ctlr_rx,
             general_settings,
             mdm_settings,
-            advanced_settings,
             reloader,
             config.telemetry_allowed,
             updates_rx,
@@ -529,11 +521,16 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
         .map_err(|s| anyhow::anyhow!(s))
         .context("`ClearLogs` failed")?;
 
+    // Round-trip a settings save through the Tunnel service so we exercise
+    // the protected-storage IPC path. The reply lands in the controller's
+    // `AdvancedSettingsApplied` arm; we just need to give it time to land.
+    ctrl_tx
+        .send(ControllerRequest::ApplyAdvancedSettings(Box::default()))
+        .await
+        .context("Failed to send `ApplyAdvancedSettings` request")?;
+
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
-
-    // Write the settings so we can check the path for those
-    settings::save_advanced(&AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
@@ -548,8 +545,8 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
         .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
-    // Check that settings file and at least one log file were written
-    anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
+    // Check that the protected settings file was written by the Tunnel service.
+    anyhow::ensure!(tokio::fs::try_exists(crate::advanced_settings::path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctrl_tx
