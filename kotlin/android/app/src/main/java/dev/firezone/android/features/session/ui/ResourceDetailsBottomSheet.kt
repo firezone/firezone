@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -48,19 +49,27 @@ class ResourceDetailsBottomSheet : BottomSheetDialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        @Suppress("DEPRECATION")
+        val arguments = requireArguments()
         val resourceArg =
-            checkNotNull(requireArguments().getParcelable<Resource>(ARG_RESOURCE)) {
+            checkNotNull(getResourceArgument(arguments)) {
                 "Missing required argument: $ARG_RESOURCE"
             }
         val stateArg =
             ResourceState.valueOf(
-                checkNotNull(requireArguments().getString(ARG_STATE)) {
+                checkNotNull(arguments.getString(ARG_STATE)) {
                     "Missing required argument: $ARG_STATE"
                 },
             )
         resource = ResourceViewModel(resourceArg, stateArg)
     }
+
+    private fun getResourceArgument(arguments: Bundle): Resource? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arguments.getParcelable(ARG_RESOURCE, Resource::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            arguments.getParcelable(ARG_RESOURCE) as? Resource
+        }
 
     override fun onCreateView(
         inflater: LayoutInflater,
