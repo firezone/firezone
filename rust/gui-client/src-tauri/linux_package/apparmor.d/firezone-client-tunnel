@@ -30,23 +30,21 @@ profile firezone-client-tunnel /usr/bin/firezone-client-tunnel
 
   /** mrwlkix,
 
-  # The IPC socket lives at /run/dev.firezone.client/tunnel.sock. Path-based
-  # `addr=` in unix rules isn't accepted by AppArmor 3.x (Ubuntu 22.04 / 24.04
-  # ship 3.x), so the per-path restriction is handled by filesystem
-  # permissions (root:firezone-client 0660); the peer-label rule below is
-  # what the kernel actually enforces.
-  unix (bind, listen, getattr, getopt, setopt, shutdown) type=stream,
+  # The IPC socket lives at /run/dev.firezone.client/tunnel.sock. AppArmor's
+  # unix rule grammar doesn't accept path-based `addr=` values, so the per-
+  # path restriction is handled by filesystem permissions on the socket
+  # (root:firezone-client 0660); the peer-label rule below is what the
+  # kernel actually enforces.
+  #
+  # Local-only operations (`bind`, `listen`, `getattr`, `getopt`, `setopt`,
+  # `shutdown`, `create`) must live in a separate rule from peer-involved
+  # ops - AppArmor 4.x rejects combining them with `peer=` conditionals.
+  unix (bind, listen) type=stream,
   unix (accept, send, receive) type=stream
     peer=(label=firezone-client-gui),
 
-  # All other unix socket use (sd_notify, dbus, internal tokio sockets, etc.).
-  # Operations are listed explicitly so `accept`, `bind` and `listen` aren't
-  # in the set - otherwise these rules would shadow the peer-restricted accept
-  # above and any peer could connect (the bypass Copilot flagged on review).
-  unix (create, connect, send, receive, shutdown, getattr, getopt, setopt)
-    peer=(addr="@*"),
-  unix (create, connect, send, receive, shutdown, getattr, getopt, setopt)
-    peer=(addr="/{,var/}run/**"),
-  unix (create, send, receive, shutdown, getattr, getopt, setopt)
-    addr=none,
+  # Outgoing client connections (sd_notify, dbus, etc.). `accept` is
+  # deliberately omitted so this can't shadow the peer-restricted accept
+  # above. Local-only ops are already provided by `abstractions/base`.
+  unix (connect, send, receive),
 }
