@@ -9,6 +9,10 @@
 // Same Windows subsystem trick as the Tauri binary so release builds don't
 // flash a console window.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// The iced binary is being built up incrementally — most of the token table
+// and the Secondary / Ghost / Danger button variants don't have a caller
+// yet. Re-enable dead_code once the screens and integration land.
+#![allow(dead_code)]
 
 mod theme;
 mod ui;
@@ -52,7 +56,8 @@ fn theme(_app: &App) -> Theme {
 }
 
 fn main() -> iced::Result {
-    iced::application("Firezone", update, view)
+    iced::application(App::default, update, view)
+        .title("Firezone")
         .theme(theme)
         .run()
 }

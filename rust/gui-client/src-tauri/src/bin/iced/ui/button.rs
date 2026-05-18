@@ -39,22 +39,25 @@ pub fn fz_button<'a, Message: 'a + Clone>(
 }
 
 fn style_for(variant: Variant, status: Status, tokens: Tokens) -> button::Style {
-    let (background, text, border) = match (variant, status) {
-        (Variant::Primary, Status::Hovered) => (tokens.brand_hover, white(), tokens.brand_hover),
-        (Variant::Primary, _) => (tokens.brand, white(), tokens.brand),
+    let hovered = matches!(status, Status::Hovered);
+    let (background, text, border) = match variant {
+        Variant::Primary if hovered => (tokens.brand_hover, Color::WHITE, tokens.brand_hover),
+        Variant::Primary => (tokens.brand, Color::WHITE, tokens.brand),
 
-        (Variant::Secondary, Status::Hovered) => {
+        Variant::Secondary if hovered => {
             (tokens.surface_raised, tokens.text_primary, tokens.text_muted)
         }
-        (Variant::Secondary, _) => (tokens.surface, tokens.text_primary, tokens.text_muted),
+        Variant::Secondary => (tokens.surface, tokens.text_primary, tokens.text_muted),
 
-        (Variant::Ghost, Status::Hovered) => {
-            (tokens.surface_raised, tokens.text_primary, transparent())
+        Variant::Ghost if hovered => {
+            (tokens.surface_raised, tokens.text_primary, Color::TRANSPARENT)
         }
-        (Variant::Ghost, _) => (transparent(), tokens.text_primary, transparent()),
+        Variant::Ghost => (Color::TRANSPARENT, tokens.text_primary, Color::TRANSPARENT),
 
-        (Variant::Danger, Status::Hovered) => (darken(tokens.status_danger), white(), tokens.status_danger),
-        (Variant::Danger, _) => (tokens.status_danger, white(), tokens.status_danger),
+        Variant::Danger if hovered => {
+            (darken(tokens.status_danger), Color::WHITE, tokens.status_danger)
+        }
+        Variant::Danger => (tokens.status_danger, Color::WHITE, tokens.status_danger),
     };
 
     button::Style {
@@ -67,14 +70,6 @@ fn style_for(variant: Variant, status: Status, tokens: Tokens) -> button::Style 
         },
         ..button::Style::default()
     }
-}
-
-const fn white() -> Color {
-    Color::WHITE
-}
-
-const fn transparent() -> Color {
-    Color::TRANSPARENT
 }
 
 fn darken(c: Color) -> Color {
