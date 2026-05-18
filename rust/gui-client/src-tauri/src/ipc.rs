@@ -28,6 +28,9 @@ pub(crate) mod platform;
 #[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
 
+#[cfg(debug_assertions)]
+pub use platform::skip_tunnel_pipe_owner_check;
+
 /// A name that both the server and client can use to find each other
 ///
 /// In the platform-specific code, this is translated to a Unix Domain Socket
@@ -48,7 +51,7 @@ pub struct NotFound(String);
 ///
 /// Because the paths are so different (and Windows actually uses a `String`),
 /// we have this [`SocketId`] abstraction instead of just a `PathBuf`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SocketId {
     /// The IPC socket used by Firezone GUI Client in production to connect to the tunnel service.
     ///

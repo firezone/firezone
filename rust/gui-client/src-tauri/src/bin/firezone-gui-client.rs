@@ -63,6 +63,11 @@ fn try_main(
     bootstrap_log_guard: &mut Option<DefaultGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
+    #[cfg(debug_assertions)]
+    if cli.skip_tunnel_pipe_owner_check {
+        firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
@@ -296,6 +301,13 @@ struct Cli {
         hide = true
     )]
     no_telemetry: bool,
+
+    /// Windows-only smoke-test escape hatch: skip the LocalSystem owner check
+    /// on the Tunnel named pipe. Only exists in debug builds, so release
+    /// binaries can't disable the check.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    skip_tunnel_pipe_owner_check: bool,
 }
 
 impl Cli {
