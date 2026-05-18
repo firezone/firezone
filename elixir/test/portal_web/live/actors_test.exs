@@ -826,6 +826,238 @@ defmodule PortalWeb.ActorsTest do
                :service_account
     end
 
+    test "prompts for confirmation before clearing identities on email change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      identity = identity_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      html =
+        lv
+        |> form("form[phx-submit='save']",
+          actor: %{
+            name: other_actor.name,
+            email: "changed-#{other_actor.email}",
+            type: "account_user",
+            allow_email_otp_sign_in: "true"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Changing this actor&#39;s email will remove ALL external identities"
+      assert has_element?(lv, "button[phx-click='confirm_email_change']")
+      assert has_element?(lv, "button[phx-click='cancel_email_change']")
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).email ==
+               other_actor.email
+
+      assert Portal.Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "cancel from confirmation returns to edit form without saving", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      identity = identity_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: "changed-#{other_actor.email}",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      html = render_click(lv, "cancel_email_change")
+
+      refute html =~ "Changing this actor&#39;s email will remove ALL external identities"
+      assert has_element?(lv, "button[type='submit']", "Save Changes")
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).email ==
+               other_actor.email
+
+      assert Portal.Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "clears external identities when email change is confirmed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      identity1 = identity_fixture(account: account, actor: other_actor)
+      identity2 = identity_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: "changed-#{other_actor.email}",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      render_click(lv, "confirm_email_change")
+
+      assert render(lv) =~ "All external identities, active sessions, and client tokens for this actor were removed"
+
+      refute Portal.Repo.get_by(Portal.ExternalIdentity, id: identity1.id, account_id: account.id)
+      refute Portal.Repo.get_by(Portal.ExternalIdentity, id: identity2.id, account_id: account.id)
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).email ==
+               "changed-#{other_actor.email}"
+    end
+
+    test "re-runs role validation on confirmation (rejects if state changed mid-flow)", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{account_admin_users_count: 5}})
+
+      target = actor_with_email_fixture(account: account, type: :account_user)
+      identity_fixture(account: account, actor: target)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{target}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: target.name,
+          email: "changed-#{target.email}",
+          type: "account_admin_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      assert render(lv) =~ "Changing this actor&#39;s email will remove ALL external identities"
+
+      update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      html = render_click(lv, "confirm_email_change")
+
+      assert html =~ "Admin user limit reached for your account"
+
+      reloaded = Portal.Repo.get_by!(Portal.Actor, id: target.id, account_id: account.id)
+      assert reloaded.type == :account_user
+      assert reloaded.email == target.email
+    end
+
+    test "saves email change without confirmation when actor has no identities", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      html =
+        lv
+        |> form("form[phx-submit='save']",
+          actor: %{
+            name: other_actor.name,
+            email: "changed-#{other_actor.email}",
+            type: "account_user",
+            allow_email_otp_sign_in: "true"
+          }
+        )
+        |> render_submit()
+
+      refute html =~ "Changing this actor&#39;s email will remove ALL external identities"
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).email ==
+               "changed-#{other_actor.email}"
+    end
+
+    test "does not clear identities when email is unchanged", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      identity = identity_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: "Renamed Actor",
+          email: other_actor.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      assert render(lv) =~ "Actor updated successfully."
+      refute render(lv) =~ "All external identities, active sessions, and client tokens for this actor were removed"
+      assert Portal.Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "does not clear identities when only whitespace differs in email", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      identity = identity_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: "  #{other_actor.email}  ",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      refute render(lv) =~ "All external identities, active sessions, and client tokens for this actor were removed"
+      assert Portal.Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
     test "saves edited actor name and group membership changes", %{
       conn: conn,
       account: account,

@@ -694,7 +694,7 @@ defmodule PortalWeb.ServiceAccounts do
     |> Map.merge(Map.new(overrides))
   end
 
-  defp actor_form_state(form \\ nil), do: %{form: form}
+  defp actor_form_state(form \\ nil), do: %{form: form, pending_email_change: nil}
 
   defp actor_related_state(overrides \\ []) do
     %{identities: [], groups: [], tokens: [], sessions: [], created_token: nil}

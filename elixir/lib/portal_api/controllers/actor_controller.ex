@@ -132,6 +132,26 @@ defmodule PortalAPI.ActorController do
 
   operation :update,
     summary: "Update an Actor",
+    description: """
+    Updates an Actor.
+
+    **IMPORTANT — Email changes clear external identities and revoke sessions.**
+
+    If the request body changes the Actor's `email` to a value that differs
+    from the current email after `String.trim/1` is applied to both
+    (whitespace-only differences are ignored), then **all `external_identities`
+    associated with the Actor are deleted in the same database transaction**
+    as the update. Deleting those identities also revokes the Actor's
+    `client_tokens` and `portal_sessions` tied to the corresponding IdP
+    issuers, so the Actor is signed out immediately and must re-link each
+    identity by signing in through their IdP again.
+
+    This is a security/consistency safeguard: identities that were linked
+    based on the previous email may no longer belong to the same human.
+
+    If the request does not change `email`, or only changes surrounding
+    whitespace, no identities are deleted.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -205,6 +225,8 @@ defmodule PortalAPI.ActorController do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.Actor
+    alias Portal.ExternalIdentity
     alias Portal.Safe
 
     def list_actors(subject, opts \\ []) do
@@ -238,15 +260,38 @@ defmodule PortalAPI.ActorController do
     end
 
     def update_actor(changeset, subject) do
-      changeset
-      |> Safe.scoped(subject)
-      |> Safe.update()
+      if Actor.email_meaningfully_changed?(changeset) do
+        Safe.transact(fn -> update_actor_and_clear_identities(changeset, subject) end)
+      else
+        update_actor_changeset(changeset, subject)
+      end
     end
 
     def delete_actor(actor, subject) do
       actor
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+
+    defp update_actor_changeset(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    defp update_actor_and_clear_identities(changeset, subject) do
+      actor_id = changeset.data.id
+
+      with {:ok, actor} <- update_actor_changeset(changeset, subject),
+           {_count, _} <- clear_identities_for_actor(actor_id, subject) do
+        {:ok, actor}
+      end
+    end
+
+    defp clear_identities_for_actor(actor_id, subject) do
+      from(i in ExternalIdentity, where: i.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
     end
   end
 end

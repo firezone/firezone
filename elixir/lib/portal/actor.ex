@@ -60,6 +60,13 @@ defmodule Portal.Actor do
     |> check_constraint(:type, name: :type_is_valid)
   end
 
+  def email_meaningfully_changed?(%Ecto.Changeset{} = changeset) do
+    case fetch_change(changeset, :email) do
+      {:ok, new_email} -> trim_or_empty(new_email) != trim_or_empty(changeset.data.email)
+      :error -> false
+    end
+  end
+
   defp validate_type_transition(changeset) do
     old_type = changeset.data.type
     new_type = get_change(changeset, :type)
@@ -85,6 +92,10 @@ defmodule Portal.Actor do
         changeset
     end
   end
+
+  defp trim_or_empty(nil), do: ""
+  defp trim_or_empty(value) when is_binary(value), do: String.trim(value)
+
 
   defp normalize_email(changeset, field) do
     update_change(changeset, field, fn
