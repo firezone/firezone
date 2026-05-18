@@ -48,6 +48,19 @@ jobs:
       - run: pnpm install
       - run: pnpm eslint .
 
+  apparmor-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Validate AppArmor profiles parse
+        run: |
+          # `-Q` runs the full parser/compiler but skips the kernel load,
+          # so we catch syntax bugs (like the path-based `addr=` that's
+          # rejected by AppArmor 3.x) without needing root or a running
+          # AppArmor LSM.
+          apparmor_parser -Q src-tauri/linux_package/apparmor.d/firezone-client-tunnel
+          apparmor_parser -Q src-tauri/linux_package/apparmor.d/firezone-client-gui
+
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   smoke-test:
