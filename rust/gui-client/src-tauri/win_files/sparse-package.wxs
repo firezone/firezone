@@ -8,16 +8,21 @@
 
   Three deferred custom actions, sequenced from `main.wxs`:
 
+  - `ProvisionSparsePackage` — runs as `LocalSystem`, calls
+    `StagePackageByUriAsync` then `ProvisionPackageForAllUsersAsync`.
+    Stage puts the package in the all-users staged state in
+    `C:\Program Files\WindowsApps`; provision enables auto-register
+    for all current and future user accounts (including
+    `LocalSystem`, so the tunnel service inherits the package SID).
+    Must run BEFORE `AddSparsePackage` — per-user `Add` doesn't
+    produce the all-users staged state that Provision requires.
   - `AddSparsePackage` — runs **impersonated** as the user invoking
     `msiexec`, calls `AddPackageByUriAsync` to register the package
-    for that user. The AppX deployment service rejects per-user adds
-    from `LocalSystem` (`0x80073CF9` / "Local System account is not
-    allowed to perform this operation"), so this CA must NOT use
-    `Impersonate="no"`.
-  - `ProvisionSparsePackage` — runs as `LocalSystem`, calls
-    `ProvisionPackageForAllUsersAsync` so future logons inherit the
-    package. Requires the package to already be staged, which
-    `AddSparsePackage` takes care of, so it must be sequenced after.
+    for that user immediately (Provision-only would defer
+    registration until next logon). The AppX deployment service
+    rejects per-user adds from `LocalSystem` (`0x80073CF9` / "Local
+    System account is not allowed to perform this operation"), so
+    this CA must NOT use `Impersonate="no"`.
   - `DeprovisionSparsePackage` — runs as `LocalSystem` on uninstall,
     the inverse of `ProvisionSparsePackage`.
 
@@ -68,15 +73,15 @@
 
     <InstallExecuteSequence>
       <!--
-        `Add` must run impersonated (rejected for `LocalSystem`),
-        `Provision` must run elevated and after `Add` (package must
-        already be staged). Both must run before `StartServices` so
-        the tunnel service is launched with the package SID already
-        attached.
+        `Provision` (LocalSystem) must run first: it stages the package
+        in `C:\Program Files\WindowsApps` so that `Add` (impersonated)
+        and the tunnel service launch both see the package identity.
+        Both CAs must run before `StartServices` so the tunnel service
+        is launched with the package SID already attached.
       -->
-      <Custom Action="AddSparsePackage"
-              Before="ProvisionSparsePackage">NOT REMOVE</Custom>
       <Custom Action="ProvisionSparsePackage"
+              Before="AddSparsePackage">NOT REMOVE</Custom>
+      <Custom Action="AddSparsePackage"
               Before="StartServices">NOT REMOVE</Custom>
 
       <Custom Action="DeprovisionSparsePackage"

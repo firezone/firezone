@@ -124,7 +124,9 @@ mod imp {
     use std::{path::PathBuf, time::Instant};
     use windows::{
         Foundation::Uri,
-        Management::Deployment::{AddPackageOptions, DeploymentResult, PackageManager},
+        Management::Deployment::{
+            AddPackageOptions, DeploymentResult, PackageManager, StagePackageOptions,
+        },
         core::HSTRING,
     };
 
@@ -166,14 +168,53 @@ mod imp {
         check_deployment_result(&result, "add")
     }
 
-    /// Provisions the already-staged package for all users, so future
-    /// logons inherit the package identity. Must run as `LocalSystem`
-    /// and after [`add`] (provisioning an unstaged package returns
-    /// `ERROR_NOT_FOUND` / 0x80070490).
+    /// Stages the sparse MSIX in the system store and provisions it
+    /// for all users, so every account (including `LocalSystem` and
+    /// future logons) gets package identity attached when launching
+    /// `Firezone.exe` / `firezone-client-tunnel.exe`.
+    ///
+    /// Both steps must run as `LocalSystem`. Staging first is
+    /// required: `ProvisionPackageForAllUsersAsync` only sees packages
+    /// in the "staged for all users" state, which per-user
+    /// `AddPackageByUriAsync` does not produce (despite copying files
+    /// into `C:\Program Files\WindowsApps`). Skipping the explicit
+    /// stage call returns `ERROR_NOT_FOUND` / `0x80070490`.
     pub fn provision() -> Result<()> {
-        let pm = package_manager()?;
-        let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
+        let install_path = install_dir()?;
+        let msix = install_path.join("firezone.msix");
 
+        let msix_meta = std::fs::metadata(&msix)
+            .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
+        tracing::info!(
+            install_dir = %install_path.display(),
+            msix_path = %msix.display(),
+            msix_size_bytes = msix_meta.len(),
+            "found MSIX payload"
+        );
+
+        let pm = package_manager()?;
+        let msix_uri = file_uri(msix.as_path())?;
+        let external_uri = file_uri(install_path.as_path())?;
+
+        let stage_opts = StagePackageOptions::new().context("StagePackageOptions::new failed")?;
+        stage_opts
+            .SetExternalLocationUri(&external_uri)
+            .context("SetExternalLocationUri failed")?;
+        tracing::info!(
+            external_uri = %external_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
+            msix_uri = %msix_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
+            "calling StagePackageByUriAsync"
+        );
+        let started = Instant::now();
+        let stage_result = pm
+            .StagePackageByUriAsync(&msix_uri, &stage_opts)
+            .context("StagePackageByUriAsync call failed")?
+            .get()
+            .context("StagePackageByUriAsync await failed")?;
+        log_deployment_result("stage", &stage_result, started);
+        check_deployment_result(&stage_result, "stage")?;
+
+        let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
         let started = Instant::now();
         let result = pm
