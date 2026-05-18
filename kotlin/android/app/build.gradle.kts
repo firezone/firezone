@@ -268,7 +268,9 @@ val cargoTargetDir: String by lazy {
 // ABI first) and passed explicitly by `mise-tasks/install-phone.sh`. When unset (e.g. plain
 // `assembleDebug` or CI), build all ABIs.
 val targetAndroidAbi: String? =
-    providers.gradleProperty("android.injected.build.abi").orNull
+    providers
+        .gradleProperty("android.injected.build.abi")
+        .orNull
         ?.split(",")
         ?.firstOrNull()
         ?.trim()
