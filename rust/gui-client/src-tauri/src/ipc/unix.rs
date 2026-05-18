@@ -87,15 +87,11 @@ impl Server {
             sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
-        #[cfg(not(test))]
+        #[cfg(any(not(test), target_os = "macos"))]
         let allowed_peer = peer_check::AllowedPeer::load_default();
 
-        #[cfg(test)]
-        let allowed_peer = {
-            let exe = std::env::current_exe().expect("test binary must have an exe path");
-            let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
-            peer_check::AllowedPeer::new(canonical)
-        };
+        #[cfg(all(test, target_os = "linux"))]
+        let allowed_peer = peer_check::AllowedPeer::for_current_exe();
 
         Ok(Self {
             listener,
@@ -109,24 +105,13 @@ impl Server {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
 
-            match self.allowed_peer.verify(&stream) {
-                Ok(exe) => {
+            match self.allowed_peer.verify(stream) {
+                Ok(stream) => {
                     tracing::info!(
                         uid = cred.uid(),
                         gid = cred.gid(),
                         pid = cred.pid(),
-                        exe = %exe.display(),
                         "Accepted an IPC connection"
-                    );
-                    return Ok(stream);
-                }
-                Err(peer_check::PeerRejected::Unverifiable) => {
-                    tracing::info!(
-                        uid = cred.uid(),
-                        gid = cred.gid(),
-                        pid = cred.pid(),
-                        reason = "unverifiable",
-                        "Accepted an IPC connection without binary verification"
                     );
                     return Ok(stream);
                 }
@@ -139,7 +124,7 @@ impl Server {
                         exe = rejected.exe().map(|p| p.display().to_string()),
                         "Rejected an IPC connection: {rejected}"
                     );
-                    // Drop `stream` and loop to the next accept().
+                    // `verify` consumed `stream`; loop to the next accept().
                 }
             }
         }

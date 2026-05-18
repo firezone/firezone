@@ -27,9 +27,9 @@ export default function GUI({ os }: { os: OS }) {
         )}
         {os == OS.Linux && (
           <ChangeItem pull={13323}>
-            Restricts the tunnel service IPC socket to the packaged GUI
-            binary using SO_PEERPIDFD, so other processes running as the
-            same user can no longer drive the tunnel.
+            Restricts the tunnel service IPC socket to the packaged GUI binary
+            using SO_PEERPIDFD, so other processes running as the same user can
+            no longer drive the tunnel.
           </ChangeItem>
         )}
       </Unreleased>

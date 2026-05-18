@@ -1,15 +1,19 @@
-use std::path::PathBuf;
-
 use tokio::net::UnixStream;
 
-use super::{AllowedPeer, PeerRejected};
+use super::PeerRejected;
+
+/// Stub for macOS where production uses the Swift network extension and
+/// the Rust path is exercised only by controller tests. `verify` is a
+/// no-op that always accepts.
+#[derive(Debug)]
+pub struct AllowedPeer;
 
 impl AllowedPeer {
     pub fn load_default() -> Self {
-        Self::new(PathBuf::new())
+        Self
     }
 
-    pub fn verify(&self, _stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
-        Err(PeerRejected::Unverifiable)
+    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream, PeerRejected> {
+        Ok(stream)
     }
 }

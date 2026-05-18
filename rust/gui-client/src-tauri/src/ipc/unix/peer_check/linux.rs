@@ -5,38 +5,57 @@ use std::path::PathBuf;
 
 use tokio::net::UnixStream;
 
-use super::{AllowedPeer, PeerRejected};
+use super::PeerRejected;
 
 /// The single binary path the daemon will accept as a peer. Matches the
 /// install location used by the deb/rpm package.
 #[cfg(not(test))]
-const ALLOWED_EXE: &str = "/usr/bin/firezone-client-gui";
+const FIREZONE_GUI_CLIENT: &str = "/usr/bin/firezone-client-gui";
+
+#[derive(Debug)]
+pub struct AllowedPeer {
+    exe: PathBuf,
+}
 
 impl AllowedPeer {
     #[cfg(not(test))]
     pub fn load_default() -> Self {
-        Self::new(PathBuf::from(ALLOWED_EXE))
+        Self {
+            exe: PathBuf::from(FIREZONE_GUI_CLIENT),
+        }
     }
 
-    /// Verify that the peer connected to `stream` is the allowlisted GUI
-    /// binary.
+    /// Allowlist the currently-running test binary so the controller tests
+    /// can connect to themselves.
+    #[cfg(test)]
+    pub fn for_current_exe() -> Self {
+        let exe = std::env::current_exe().expect("test binary must have an exe path");
+        let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
+        Self { exe: canonical }
+    }
+
+    /// Verify the peer of `stream` and return the stream on accept, or a
+    /// `PeerRejected` describing why on reject.
     ///
     /// Steps:
     ///   1. `getsockopt(SO_PEERPIDFD)` to obtain a pidfd pinned to the peer
-    ///      process; on `ENOPROTOOPT` the kernel doesn't support pidfds and
-    ///      we return `Unverifiable`, leaving the accept/reject choice to
-    ///      the caller.
+    ///      process. On `ENOPROTOOPT` the kernel is too old to support
+    ///      pidfds; we log a debug line and accept anyway since there is
+    ///      no better signal.
     ///   2. Read the peer's `Pid` from `/proc/self/fdinfo/<pidfd>` — the
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
     ///      it `(deleted)`.
-    ///   4. Canonicalise the exe path and compare it against the expected
+    ///   4. Canonicalise the exe path and compare against the allowlisted
     ///      path.
-    pub fn verify(&self, stream: &UnixStream) -> Result<PathBuf, PeerRejected> {
+    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream, PeerRejected> {
         let pidfd = match peer_pidfd(stream.as_raw_fd()) {
             Ok(fd) => fd,
             Err(error) if error.raw_os_error() == Some(libc::ENOPROTOOPT) => {
-                return Err(PeerRejected::Unverifiable);
+                tracing::debug!(
+                    "Kernel does not support SO_PEERPIDFD; accepting peer without binary verification"
+                );
+                return Ok(stream);
             }
             Err(error) => return Err(PeerRejected::ExeUnreadable(error)),
         };
@@ -56,7 +75,7 @@ impl AllowedPeer {
             return Err(PeerRejected::NotAllowlisted { exe: canonical });
         }
 
-        Ok(canonical)
+        Ok(stream)
     }
 }
 
@@ -98,7 +117,6 @@ mod tests {
 
     #[test]
     fn rejected_reason_strings_are_stable() {
-        assert_eq!(PeerRejected::Unverifiable.reason(), "unverifiable");
         assert_eq!(
             PeerRejected::NotAllowlisted {
                 exe: PathBuf::from("/x")
@@ -117,7 +135,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn verify_self_against_expected_exe_round_trip() {
+    async fn verify_accepts_matching_peer_and_rejects_others() {
         let (a, b) = tokio::net::UnixStream::pair().expect("UnixStream::pair failed");
 
         let probe = peer_pidfd(a.as_raw_fd());
@@ -129,13 +147,15 @@ mod tests {
         }
 
         let own_exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
-        let expected = AllowedPeer::new(own_exe.clone());
+        let expected = AllowedPeer { exe: own_exe };
 
-        assert_eq!(expected.verify(&b).unwrap(), own_exe);
+        let b = expected.verify(b).expect("self should verify");
 
-        let other = AllowedPeer::new(PathBuf::from("/nonexistent/binary"));
-        match other.verify(&b) {
-            Err(PeerRejected::NotAllowlisted { exe }) => assert_eq!(exe, own_exe),
+        let other = AllowedPeer {
+            exe: PathBuf::from("/nonexistent/binary"),
+        };
+        match other.verify(b) {
+            Err(PeerRejected::NotAllowlisted { .. }) => {}
             other => panic!("expected NotAllowlisted, got {other:?}"),
         }
     }

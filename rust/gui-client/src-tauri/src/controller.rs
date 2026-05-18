@@ -983,12 +983,9 @@ impl<I: GuiIntegration> Controller<I> {
 async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
-    #[cfg(target_os = "linux")]
-    const CLOSED_BEFORE_HELLO: &str = "Tunnel service closed the connection without sending a message; this typically means \
-         it rejected our binary against /etc/firezone/allowed-clients.conf — see \
-         `journalctl -u firezone-client-tunnel` for the reason";
-    #[cfg(not(target_os = "linux"))]
-    const CLOSED_BEFORE_HELLO: &str = "No message received from tunnel service";
+    const CLOSED_BEFORE_HELLO: &str = "Tunnel service closed the connection before sending a message; check its logs \
+         (e.g. `journalctl -u firezone-client-tunnel` on Linux) for the reason — \
+         typically it rejected our binary as an unexpected peer";
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
         .await
