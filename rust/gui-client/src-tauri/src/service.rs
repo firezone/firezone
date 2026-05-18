@@ -792,7 +792,7 @@ pub fn run_smoke_test() -> Result<()> {
     // test runner — not as a Windows service under LocalSystem. Tell the IPC
     // layer to skip pinning/checking LocalSystem ownership on the Tunnel pipe;
     // otherwise `CreateNamedPipeW` fails with `ERROR_INVALID_OWNER` on Windows.
-    ipc::enable_skip_tunnel_pipe_owner_check();
+    ipc::skip_tunnel_pipe_owner_check();
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {

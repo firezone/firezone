@@ -9,6 +9,11 @@ use anyhow::{Context as _, Result};
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
+/// No-op twin of the Windows function. Unix IPC uses filesystem permissions
+/// instead of an owner-SID check, so there is nothing to skip.
+#[cfg(debug_assertions)]
+pub fn skip_tunnel_pipe_owner_check() {}
+
 pub struct Server {
     listener: UnixListener,
     id: SocketId,

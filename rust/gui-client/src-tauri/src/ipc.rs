@@ -28,15 +28,8 @@ pub(crate) mod platform;
 #[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
 
-/// Disables the Windows Tunnel-pipe owner pinning + check used by the
-/// `gui-smoke-test`. See `ipc::windows::enable_skip_tunnel_pipe_owner_check`
-/// for details. No-op on unix where the check doesn't exist. Debug-only so
-/// production code cannot reach it.
 #[cfg(debug_assertions)]
-pub fn enable_skip_tunnel_pipe_owner_check() {
-    #[cfg(target_os = "windows")]
-    platform::enable_skip_tunnel_pipe_owner_check();
-}
+pub use platform::skip_tunnel_pipe_owner_check;
 
 /// A name that both the server and client can use to find each other
 ///
@@ -58,7 +51,7 @@ pub fn enable_skip_tunnel_pipe_owner_check() {
 ///
 /// Because the paths are so different (and Windows actually uses a `String`),
 /// we have this [`SocketId`] abstraction instead of just a `PathBuf`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SocketId {
     /// The IPC socket used by Firezone GUI Client in production to connect to the tunnel service.
     ///

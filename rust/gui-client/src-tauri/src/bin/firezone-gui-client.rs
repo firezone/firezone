@@ -65,7 +65,7 @@ fn try_main(
 ) -> Result<()> {
     #[cfg(debug_assertions)]
     if cli.skip_tunnel_pipe_owner_check {
-        firezone_gui_client::ipc::enable_skip_tunnel_pipe_owner_check();
+        firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
     }
 
     if cli.test_error_dialog {

@@ -1,8 +1,8 @@
 use super::{NotFound, SocketId};
-use anyhow::{Context as _, Result, bail, ensure};
-use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
+use anyhow::{Context as _, Result, bail};
 #[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
     Foundation::{HANDLE, HLOCAL, LocalFree},
@@ -43,40 +43,16 @@ use windows_security::SecurityDescriptor;
 const TUNNEL_PIPE_SDDL: &str = "O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
 const GUI_PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
 
-/// In debug builds only, lets the `gui-smoke-test` opt out of the LocalSystem
-/// owner check on the Tunnel pipe (and the matching `O:SY` server-side SDDL),
-/// because that test runs the Tunnel binary as an unprivileged subprocess
-/// instead of as a Windows service.
-///
-/// Release builds don't define this static or its setter, so production code
-/// has no way to disable the check.
+/// Whether to skip the tunnel pipe owner check.
 #[cfg(debug_assertions)]
 static SKIP_TUNNEL_PIPE_OWNER_CHECK: AtomicBool = AtomicBool::new(false);
 
-/// Enable [`SKIP_TUNNEL_PIPE_OWNER_CHECK`]. Call this once at process startup,
-/// before any `Server::new(SocketId::Tunnel, ...)` or `connect_to_socket`.
+/// Set [`SKIP_TUNNEL_PIPE_OWNER_CHECK`].
 ///
-/// Exposed only in debug builds. The `firezone-gui-client` CLI wires this to
-/// its `--skip-tunnel-pipe-owner-check` flag (which is itself debug-only); the
-/// Tunnel binary's `run_smoke_test` entry point (already debug-only) calls
-/// this directly.
+/// Call once at process startup, before any `Server::new(SocketId::Tunnel)` or `connect_to_socket`.
 #[cfg(debug_assertions)]
-pub fn enable_skip_tunnel_pipe_owner_check() {
+pub fn skip_tunnel_pipe_owner_check() {
     SKIP_TUNNEL_PIPE_OWNER_CHECK.store(true, Ordering::Relaxed);
-    tracing::warn!(
-        "Tunnel pipe owner check disabled (debug build only); pipe will be created and accepted without `O:SY`"
-    );
-}
-
-fn skip_tunnel_pipe_owner_check() -> bool {
-    #[cfg(debug_assertions)]
-    {
-        SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed)
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        false
-    }
 }
 
 pub struct Server {
@@ -106,15 +82,7 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
         .context("Couldn't connect to named pipe")?;
     let handle = HANDLE(stream.as_raw_handle());
 
-    // Skip the owner check only when [`enable_skip_tunnel_pipe_owner_check`]
-    // has been called, which is reachable only in debug builds via the
-    // `gui-smoke-test`. That test launches the Tunnel binary as a subprocess of
-    // the test runner instead of as a Windows service running under
-    // `LocalSystem`, so the legit pipe legitimately has no `LocalSystem` owner.
-    if !skip_tunnel_pipe_owner_check() && matches!(id, SocketId::Tunnel) {
-        ensure_pipe_owner_is_local_system(handle)
-            .context("Refusing to talk to non-LocalSystem Tunnel pipe server")?;
-    }
+    enforce_pipe_ownership(id, handle)?;
 
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
@@ -126,7 +94,7 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
     Ok(stream)
 }
 
-/// Verifies that the connected named pipe was created by `LocalSystem`, the
+/// Checks if the connected named pipe was created by `LocalSystem`, the
 /// account the Tunnel service runs as.
 ///
 /// `first_pipe_instance(true)` ensures nobody else can create another instance
@@ -141,7 +109,7 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 /// rather than the server's current process token. The latter is racy if the
 /// server process exits and its PID is recycled between
 /// `GetNamedPipeServerProcessId` and `OpenProcess`.
-fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
+fn is_pipe_owned_by_local_system(handle: HANDLE) -> Result<bool> {
     let mut owner_sid = PSID::default();
     let mut sd = PSECURITY_DESCRIPTOR::default();
 
@@ -175,10 +143,23 @@ fn ensure_pipe_owner_is_local_system(handle: HANDLE) -> Result<()> {
         let _ = LocalFree(Some(HLOCAL(sd.0)));
     }
 
-    ensure!(
-        is_local_system,
-        "Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack"
-    );
+    Ok(is_local_system)
+}
+
+fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
+    if id != SocketId::Tunnel {
+        return Ok(());
+    }
+
+    #[cfg(debug_assertions)]
+    if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) {
+        return Ok(());
+    }
+
+    if !is_pipe_owned_by_local_system(handle)? {
+        bail!("Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack")
+    }
+
     Ok(())
 }
 
@@ -188,13 +169,11 @@ impl Server {
     pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         let sddl = match id {
-            // Created by the LocalSystem tunnel service; pin owner so the
-            // client-side LocalSystem check passes. The smoke test runs the
-            // Tunnel binary unprivileged and opts out of `O:SY` via
-            // [`enable_skip_tunnel_pipe_owner_check`] — otherwise
-            // `CreateNamedPipeW` would fail with `ERROR_INVALID_OWNER`.
-            SocketId::Tunnel if !skip_tunnel_pipe_owner_check() => TUNNEL_PIPE_SDDL,
-            SocketId::Tunnel => GUI_PIPE_SDDL,
+            #[cfg(debug_assertions)]
+            SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => {
+                GUI_PIPE_SDDL
+            }
+            SocketId::Tunnel => TUNNEL_PIPE_SDDL,
             // Created by the non-admin GUI; cannot pin owner.
             SocketId::Gui => GUI_PIPE_SDDL,
             // Tests run unprivileged.
