@@ -17,6 +17,17 @@ enum_representation = "discriminated"
 # TODO: We can probably remove this, per <https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.0.0-beta.8>
 # I don't know how to verify this change, so I won't do it right now.
 custom-protocol = ["tauri/custom-protocol"]
+# Opt-in feature for the in-progress iced-based GUI binary. While the
+# migration is in flight, the Tauri binary is the default; the iced binary
+# lives behind this feature so a `cargo build` of the crate doesn't drag
+# in iced + wgpu deps unless asked. Builds via:
+#   cargo build -p firezone-gui-client --bin firezone-client-gui-iced --features iced-binary
+iced-binary = ["dep:iced"]
+
+[[bin]]
+name = "firezone-client-gui-iced"
+path = "src/bin/iced/main.rs"
+required-features = ["iced-binary"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -33,6 +44,7 @@ fd-lock = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
+iced = { workspace = true, optional = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }
