@@ -1,12 +1,29 @@
-//! WiX deferred custom action that registers (or deregisters) the
+//! WiX deferred custom actions that register / deregister the
 //! Firezone sparse MSIX package against the installed binaries.
 //!
-//! Invoked as `LocalSystem` with one positional argument
-//! (`install` / `uninstall`). WiX wires this up in
-//! `win_files/sparse-package.wxs`. The install directory is derived
-//! from the exe's own location (`current_exe().parent()`) rather than
-//! piped in via `CustomActionData`: MSI only exposes that property to
-//! DLL/script-based deferred CAs, not to direct EXE CAs.
+//! Invoked as one of three subcommands, each from a different MSI
+//! custom action with a different security context:
+//!
+//! - `add` — runs **impersonated** as the user invoking `msiexec`,
+//!   calls `AddPackageByUriAsync` to register the package for that
+//!   user. Must run as a real user (not `LocalSystem`); the AppX
+//!   deployment service rejects per-user adds from `S-1-5-18`.
+//! - `provision` — runs as **`LocalSystem`**, calls
+//!   `ProvisionPackageForAllUsersAsync` so future logons inherit the
+//!   package. Requires the package to already be staged, which `add`
+//!   takes care of, so it must be sequenced after `add`.
+//! - `deprovision` — runs as **`LocalSystem`** on uninstall, the
+//!   inverse of `provision`. We deliberately do NOT enumerate and
+//!   remove per-user package instances: that would require pulling
+//!   in `Foundation_Collections` (`IIterable<Package>`) for one
+//!   custom-action helper. Per-user instances are reaped by the next
+//!   major Windows servicing cycle.
+//!
+//! WiX wires this up in `win_files/sparse-package.wxs`. The install
+//! directory (needed by `add`) is derived from the exe's own location
+//! (`current_exe().parent()`) rather than piped in via
+//! `CustomActionData`: MSI only exposes that property to DLL/script
+//! deferred CAs, not to direct EXE CAs.
 //!
 //! Failure mode: registration is best-effort. On older Windows builds
 //! (pre-21H2 hardened images, AppX disabled by GP) the call returns
@@ -21,21 +38,25 @@ use std::{fmt, process::ExitCode};
 #[derive(Parser)]
 #[command(disable_version_flag = true)]
 struct Cli {
-    #[arg(default_value = "install")]
     action: Action,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy)]
 enum Action {
-    Install,
-    Uninstall,
+    /// Register the package for the current user. Run impersonated.
+    Add,
+    /// Provision the package for all users. Run as `LocalSystem`.
+    Provision,
+    /// Deprovision the package for all users. Run as `LocalSystem`.
+    Deprovision,
 }
 
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Action::Install => "install",
-            Action::Uninstall => "uninstall",
+            Action::Add => "add",
+            Action::Provision => "provision",
+            Action::Deprovision => "deprovision",
         })
     }
 }
@@ -54,8 +75,9 @@ fn main() -> ExitCode {
 
     let started = std::time::Instant::now();
     let result = match action {
-        Action::Install => imp::register(),
-        Action::Uninstall => imp::deregister(),
+        Action::Add => imp::add(),
+        Action::Provision => imp::provision(),
+        Action::Deprovision => imp::deprovision(),
     };
     let elapsed = started.elapsed();
 
@@ -106,10 +128,11 @@ mod imp {
         core::HSTRING,
     };
 
-    /// Provisions the sparse MSIX for all users (so future logons
-    /// inherit the package identity) and registers the in-package
-    /// applications against the externally installed binaries.
-    pub fn register() -> Result<()> {
+    /// Registers the sparse MSIX for the current user, telling Windows
+    /// where the external binaries live (the MSI install dir). Must
+    /// run impersonated: `AddPackageByUriAsync` is per-user and the
+    /// AppX deployment service rejects it under `LocalSystem`.
+    pub fn add() -> Result<()> {
         let install_path = install_dir()?;
         let msix = install_path.join("firezone.msix");
 
@@ -122,27 +145,7 @@ mod imp {
             "found MSIX payload"
         );
 
-        let pm_started = Instant::now();
-        let pm = PackageManager::new().context("PackageManager::new failed")?;
-        let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
-        tracing::debug!(
-            elapsed = ?pm_started.elapsed(),
-            "PackageManager created"
-        );
-
-        // Provision so new users get the package on first logon.
-        tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
-        let started = Instant::now();
-        let provision_result = pm
-            .ProvisionPackageForAllUsersAsync(&pfn)
-            .context("ProvisionPackageForAllUsersAsync call failed")?
-            .get()
-            .context("ProvisionPackageForAllUsersAsync await failed")?;
-        log_deployment_result("provision", &provision_result, started);
-        check_deployment_result(&provision_result, "provision")?;
-
-        // Add the package itself, telling Windows where the actual
-        // binaries live (the MSI install dir).
+        let pm = package_manager()?;
         let opts = AddPackageOptions::new().context("AddPackageOptions::new failed")?;
         let external_uri = file_uri(install_path.as_path())?;
         opts.SetExternalLocationUri(&external_uri)
@@ -154,37 +157,57 @@ mod imp {
             "calling AddPackageByUriAsync"
         );
         let started = Instant::now();
-        let add_result = pm
+        let result = pm
             .AddPackageByUriAsync(&msix_uri, &opts)
             .context("AddPackageByUriAsync call failed")?
             .get()
             .context("AddPackageByUriAsync await failed")?;
-        log_deployment_result("add", &add_result, started);
-        check_deployment_result(&add_result, "add")?;
-        Ok(())
+        log_deployment_result("add", &result, started);
+        check_deployment_result(&result, "add")
     }
 
-    /// Inverse of [`register`]. Deprovisioning the package family is
-    /// enough for our purposes: it stops new logons from inheriting
-    /// the package and lets the next major Windows servicing cycle
-    /// reap the per-user package instances. Enumerating + explicitly
-    /// removing each instance would require pulling in the
-    /// `Foundation_Collections` (`IIterable<Package>`) feature for one
-    /// custom-action helper, which isn't worth the binary-size hit.
-    pub fn deregister() -> Result<()> {
-        let pm = PackageManager::new().context("PackageManager::new failed")?;
+    /// Provisions the already-staged package for all users, so future
+    /// logons inherit the package identity. Must run as `LocalSystem`
+    /// and after [`add`] (provisioning an unstaged package returns
+    /// `ERROR_NOT_FOUND` / 0x80070490).
+    pub fn provision() -> Result<()> {
+        let pm = package_manager()?;
+        let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
+
+        tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
+        let started = Instant::now();
+        let result = pm
+            .ProvisionPackageForAllUsersAsync(&pfn)
+            .context("ProvisionPackageForAllUsersAsync call failed")?
+            .get()
+            .context("ProvisionPackageForAllUsersAsync await failed")?;
+        log_deployment_result("provision", &result, started);
+        check_deployment_result(&result, "provision")
+    }
+
+    /// Inverse of [`provision`]. Stops new logons from inheriting the
+    /// package and lets the next major Windows servicing cycle reap
+    /// the per-user package instances.
+    pub fn deprovision() -> Result<()> {
+        let pm = package_manager()?;
         let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
 
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
         let started = Instant::now();
-        let deprov_result = pm
+        let result = pm
             .DeprovisionPackageForAllUsersAsync(&pfn)
             .context("DeprovisionPackageForAllUsersAsync call failed")?
             .get()
             .context("DeprovisionPackageForAllUsersAsync await failed")?;
-        log_deployment_result("deprovision", &deprov_result, started);
-        check_deployment_result(&deprov_result, "deprovision")?;
-        Ok(())
+        log_deployment_result("deprovision", &result, started);
+        check_deployment_result(&result, "deprovision")
+    }
+
+    fn package_manager() -> Result<PackageManager> {
+        let started = Instant::now();
+        let pm = PackageManager::new().context("PackageManager::new failed")?;
+        tracing::debug!(elapsed = ?started.elapsed(), "PackageManager created");
+        Ok(pm)
     }
 
     /// Derives INSTALLDIR from the exe's own location: WiX installs
@@ -248,11 +271,15 @@ mod imp {
 mod imp {
     use anyhow::{Result, bail};
 
-    pub fn register() -> Result<()> {
+    pub fn add() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 
-    pub fn deregister() -> Result<()> {
+    pub fn provision() -> Result<()> {
+        bail!("`register-sparse` is only supported on Windows");
+    }
+
+    pub fn deprovision() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 }

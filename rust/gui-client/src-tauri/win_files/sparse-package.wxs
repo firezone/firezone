@@ -6,17 +6,25 @@
   components ship the sparse-MSIX payload (`firezone.msix`) and the
   custom-action helper (`register-sparse.exe`) into INSTALLDIR.
 
-  Two deferred custom actions, sequenced from `main.wxs`, register the
-  sparse package after install (so the kernel attaches our package SID
-  to `Firezone.exe` and `firezone-client-tunnel.exe` for the next
-  launch) and deregister it before uninstall.
+  Three deferred custom actions, sequenced from `main.wxs`:
 
-  The custom actions run as `LocalSystem` (Execute="deferred"
-  Impersonate="no") so `ProvisionPackageForAllUsersAsync` can succeed.
-  They never fail the MSI: `register-sparse.exe` exits 0 on legacy
-  Windows where MSIX provisioning isn't available, and the runtime
-  SDDL builder in `ipc/windows.rs` falls back to the legacy `BU` ACE
-  via `GetCurrentPackageFullName -> APPMODEL_ERROR_NO_PACKAGE`.
+  - `AddSparsePackage` — runs **impersonated** as the user invoking
+    `msiexec`, calls `AddPackageByUriAsync` to register the package
+    for that user. The AppX deployment service rejects per-user adds
+    from `LocalSystem` (`0x80073CF9` / "Local System account is not
+    allowed to perform this operation"), so this CA must NOT use
+    `Impersonate="no"`.
+  - `ProvisionSparsePackage` — runs as `LocalSystem`, calls
+    `ProvisionPackageForAllUsersAsync` so future logons inherit the
+    package. Requires the package to already be staged, which
+    `AddSparsePackage` takes care of, so it must be sequenced after.
+  - `DeprovisionSparsePackage` — runs as `LocalSystem` on uninstall,
+    the inverse of `ProvisionSparsePackage`.
+
+  All three CAs never fail the MSI: `register-sparse.exe` exits 0 on
+  legacy Windows where MSIX provisioning isn't available, and the
+  runtime SDDL builder in `ipc/windows.rs` falls back to the legacy
+  `BU` ACE via `GetCurrentPackageFullName -> APPMODEL_ERROR_NO_PACKAGE`.
 
   `register-sparse.exe` derives INSTALLDIR from its own
   `current_exe().parent()` rather than reading the MSI
@@ -37,30 +45,41 @@
       </Component>
     </DirectoryRef>
 
-    <CustomAction Id="RegisterSparsePackage"
+    <CustomAction Id="AddSparsePackage"
                   FileKey="RegisterSparseExeFile"
-                  ExeCommand="install"
+                  ExeCommand="add"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
+    <CustomAction Id="ProvisionSparsePackage"
+                  FileKey="RegisterSparseExeFile"
+                  ExeCommand="provision"
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
-    <CustomAction Id="DeregisterSparsePackage"
+    <CustomAction Id="DeprovisionSparsePackage"
                   FileKey="RegisterSparseExeFile"
-                  ExeCommand="uninstall"
+                  ExeCommand="deprovision"
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
     <InstallExecuteSequence>
       <!--
-        `RegisterSparsePackage` MUST happen before `StartServices` so
+        `Add` must run impersonated (rejected for `LocalSystem`),
+        `Provision` must run elevated and after `Add` (package must
+        already be staged). Both must run before `StartServices` so
         the tunnel service is launched with the package SID already
         attached.
       -->
-      <Custom Action="RegisterSparsePackage"
+      <Custom Action="AddSparsePackage"
+              Before="ProvisionSparsePackage">NOT REMOVE</Custom>
+      <Custom Action="ProvisionSparsePackage"
               Before="StartServices">NOT REMOVE</Custom>
 
-      <Custom Action="DeregisterSparsePackage"
+      <Custom Action="DeprovisionSparsePackage"
               Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>
   </Fragment>
