@@ -28,8 +28,7 @@ use windows_security::SecurityDescriptor;
 /// The Tunnel pipe pins its owner with `O:SY`. Without that, the kernel fills
 /// in the owner from the creating token's `TokenOwner`; for the LocalSystem
 /// token that is `BUILTIN\Administrators` (S-1-5-32-544, not S-1-5-18), which
-/// would cause the client-side check in [`ensure_pipe_owner_is_local_system`]
-/// to reject the legitimate pipe.
+/// would cause the client-side check in to reject the legitimate pipe.
 ///
 /// The GUI pipe omits `O:SY` because the non-admin GUI lacks
 /// `SeRestorePrivilege` and cannot assign an owner outside its own token; its
