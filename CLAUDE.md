@@ -48,5 +48,7 @@ For example, for Rust code, check `rust/AGENT.md`; for Elixir code, check `elixi
   - Do not include links to the Claude session.
   - Link relevant PRs / issues using `Related: #XXXX`
   - Take inspiration from https://cbea.ms/git-commit; the squash-merged PRs will have the PR description as a commit message on main.
+    However, do not add hard line-breaks to the PR description itself.
+    GitHub will take care of that when merging.
 - Run static analysis locally before committing.
 - If a required tool is missing, check whether `mise.toml` declares it and install it via `mise` rather than through another package manager.
