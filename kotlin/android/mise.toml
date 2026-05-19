@@ -16,10 +16,6 @@ ANDROID_CMD_TOOLS_VERSION = "11076708"
 [task_config]
 includes = ["mise-tasks"]
 
-[tasks.build]
-description = "Build debug APK"
-run = "./gradlew assembleDebug"
-
 [tasks.test]
 description = "Run unit tests"
 run = "./gradlew test"
