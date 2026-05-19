@@ -115,6 +115,14 @@ runs:
         & "C:\mise\bin\mise.exe" reshim
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+    # Scan all mise-installed tools with trivy for security vulnerabilities.
+    # This is a best-effort approach and has a few short-comings:
+    #
+    # 1. The tools themselves must either embed an SBOM (typical for `go`-based, less typical for everything else)
+    #    or be installed with something that has a manifest, like `npm`.
+    # 2. The tools must actually be installed via mise. We sometimes have `setup` scripts that install tools.
+    #    Those are not scanned with this approach.
+
     - name: Scan mise installs with Trivy
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
