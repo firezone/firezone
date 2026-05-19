@@ -1,6 +1,7 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Portal.{Authentication, ClientSession, Device, Version}
+  alias Portal.{Authentication, ClientSession, Device, PG, Version}
+  alias Portal.Repo.Batch
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -10,6 +11,17 @@ defmodule PortalAPI.Client.Socket do
   ## Channels
 
   channel "client", PortalAPI.Client.Channel
+
+  @doc false
+  def client_session_queue_opts do
+    [
+      name: :client_session_queue,
+      flush_interval: :timer.seconds(5),
+      flush_threshold: 1_000,
+      label: "client session",
+      on_flush: &flush_client_sessions/1
+    ]
+  end
 
   ## Authentication
 
@@ -52,7 +64,7 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
       session = build_session(client, token_id, public_key, subject, version)
-      Portal.ClientSession.Buffer.insert(session)
+      Portal.Queue.enqueue(:client_session_queue, session_attrs(session))
       set_connect_attributes(token_id, client, subject, version)
       {:ok, assign_connect(socket, subject, client, session, version)}
     else
@@ -74,6 +86,7 @@ defmodule PortalAPI.Client.Socket do
 
   defp build_session(client, token_id, public_key, subject, version) do
     %ClientSession{
+      id: Ecto.UUID.generate(),
       device_id: client.id,
       account_id: client.account_id,
       client_token_id: token_id,
@@ -86,6 +99,68 @@ defmodule PortalAPI.Client.Socket do
       remote_ip_location_lon: subject.context.remote_ip_location_lon,
       version: version
     }
+  end
+
+  defp session_attrs(%ClientSession{} = session) do
+    session
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :account, :device, :client_token])
+  end
+
+  defp flush_client_sessions(entries) do
+    {inserted, failed} =
+      Batch.insert_all(ClientSession, entries,
+        label: "client session",
+        fk_partitions: %{
+          "client_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
+          "client_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
+          "client_sessions_client_token_id_fkey" =>
+            {:composite, :client_token_id, Portal.ClientToken}
+        }
+      )
+
+    for {attrs, _metadata} <- failed do
+      dispatch_queue_callback("client session", :on_failed, attrs, fn ->
+        PG.deliver(attrs.device_id, :disconnect)
+      end)
+    end
+
+    dispatch_client_session_confirmed(entries, failed)
+
+    if failed != [] do
+      Logger.info(
+        "Skipped #{length(failed)} client session entries during flush due to missing references"
+      )
+    end
+
+    inserted
+  end
+
+  defp dispatch_client_session_confirmed(entries, failed) do
+    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+      dispatch_queue_callback("client session", :on_confirmed, attrs, fn ->
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
+      end)
+    end
+  end
+
+  defp dispatch_queue_callback(label, callback, attrs, fun) do
+    fun.()
+    :ok
+  rescue
+    error ->
+      Logger.error(
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:id])}: " <>
+          Exception.message(error)
+      )
+  catch
+    kind, reason ->
+      Logger.error(
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:id])}: " <>
+          inspect(reason)
+      )
   end
 
   defp set_connect_attributes(token_id, client, subject, version) do

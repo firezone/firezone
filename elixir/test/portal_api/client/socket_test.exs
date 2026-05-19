@@ -14,12 +14,15 @@ defmodule PortalAPI.Client.SocketTest do
 
   describe "connect/3" do
     setup do
-      buffer =
+      queue =
         start_supervised!(
-          {Portal.ClientSession.Buffer, name: Portal.ClientSession.Buffer, callers: [self()]}
+          {Portal.Queue,
+           Keyword.merge(Socket.client_session_queue_opts(),
+             callers: [self()]
+           )}
         )
 
-      %{buffer: buffer}
+      %{queue: queue}
     end
 
     test "returns error when token is missing" do
@@ -144,10 +147,11 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.session.public_key == attrs["public_key"]
       assert socket.assigns.client_version == "1.3.0"
 
-      Portal.ClientSession.Buffer.flush()
+      Portal.Queue.flush(:client_session_queue)
 
       # Verify session was created with session data
       [session] = Repo.all(Portal.ClientSession)
+      assert session.id == socket.assigns.session.id
       assert session.device_id == client.id
       assert session.user_agent == connect_info.user_agent
       assert session.remote_ip.address == @client_remote_ip
@@ -184,7 +188,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.session.public_key == attrs["public_key"]
       assert socket.assigns.client_version == "1.3.0"
 
-      Portal.ClientSession.Buffer.flush()
+      Portal.Queue.flush(:client_session_queue)
 
       # Verify session was created with session data
       [session] = Repo.all(Portal.ClientSession)
@@ -235,7 +239,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing_client.id
 
-      Portal.ClientSession.Buffer.flush()
+      Portal.Queue.flush(:client_session_queue)
 
       # Verify session was created with location data
       [session] = Repo.all(Portal.ClientSession)
@@ -296,7 +300,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing_client.id
 
-      Portal.ClientSession.Buffer.flush()
+      Portal.Queue.flush(:client_session_queue)
 
       # Verify session was created with region-derived coordinates
       [session] = Repo.all(Portal.ClientSession)
@@ -475,7 +479,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       client = socket.assigns.client
 
-      Portal.ClientSession.Buffer.flush()
+      Portal.Queue.flush(:client_session_queue)
 
       sessions = Repo.all(Portal.ClientSession)
       assert length(sessions) == 1

@@ -70,8 +70,9 @@ defmodule Portal.Application do
     # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
     # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
-      client_session_buffer() ++
-      gateway_session_buffer() ++
+      client_session_queue() ++
+      gateway_session_queue() ++
+      policy_authorization_queue() ++
       rate_limit() ++
       telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
   end
@@ -109,21 +110,26 @@ defmodule Portal.Application do
     end
   end
 
-  defp client_session_buffer do
-    config = Portal.Config.get_env(:portal, Portal.ClientSession.Buffer, [])
-
-    if Keyword.get(config, :enabled, true) do
-      [Portal.ClientSession.Buffer]
-    else
-      []
-    end
+  defp client_session_queue do
+    queue_child(:client_session_queue, PortalAPI.Client.Socket.client_session_queue_opts())
   end
 
-  defp gateway_session_buffer do
-    config = Portal.Config.get_env(:portal, Portal.GatewaySession.Buffer, [])
+  defp gateway_session_queue do
+    queue_child(:gateway_session_queue, PortalAPI.Gateway.Socket.gateway_session_queue_opts())
+  end
+
+  defp policy_authorization_queue do
+    queue_child(
+      :policy_authorization_queue,
+      PortalAPI.Client.Channel.policy_authorization_queue_opts()
+    )
+  end
+
+  defp queue_child(config_key, opts) do
+    config = Portal.Config.get_env(:portal, config_key, [])
 
     if Keyword.get(config, :enabled, true) do
-      [Portal.GatewaySession.Buffer]
+      [{Portal.Queue, opts}]
     else
       []
     end
