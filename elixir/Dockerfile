@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.19.5-erlang-28.4.1-alpine-3.23.3 AS compiler
+FROM hexpm/elixir:1.19.5-erlang-28.5-alpine-3.23.4 AS compiler
 
 ENV LANG=C.UTF-8
 
@@ -9,7 +9,8 @@ WORKDIR /app
 #   - git: required for git-sourced mix deps (openid_connect, opentelemetry_*_experimental)
 #   - build-base: required for argon2_elixir's C NIF (provides gcc + make)
 #   - nodejs/npm: required to install pnpm, which installs assets/package.json deps
-RUN apk --no-cache upgrade \
+RUN apk --no-cache update \
+    && apk --no-cache upgrade \
     && apk add --no-cache \
     git \
     build-base \
@@ -76,7 +77,8 @@ ENV LANG=C.UTF-8
 # Install Erlang/OTP runtime deps + Firezone runtime deps
 #   - curl, jq: used by rel/env.sh.eex for GCP/ECS metadata lookup
 #   - tini: PID 1 zombie reaper for the BEAM
-RUN apk --no-cache upgrade \
+RUN apk --no-cache update \
+    && apk --no-cache upgrade \
     && apk add --no-cache \
     libstdc++ \
     ca-certificates \
