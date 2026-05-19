@@ -2685,6 +2685,7 @@ dependencies = [
  "native-dialog",
  "nix",
  "notify-rust",
+ "open",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",

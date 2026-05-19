@@ -39,6 +39,7 @@ hex = { workspace = true }
 humantime = { workspace = true }
 iced = { workspace = true }
 ip-packet = { workspace = true }
+open = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }
 known-dirs = { workspace = true }
