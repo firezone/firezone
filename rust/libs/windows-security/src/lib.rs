@@ -11,6 +11,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg(windows)]
 
+pub mod pipe_dacl;
+
 use anyhow::{Context as _, Result, ensure};
 use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows::{

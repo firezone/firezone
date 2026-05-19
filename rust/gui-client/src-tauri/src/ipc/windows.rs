@@ -13,34 +13,50 @@ use windows::Win32::{
     },
     System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
-use windows_security::SecurityDescriptor;
+use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 
-/// DACL shared by both Firezone named pipes.
+/// Security descriptor for the Tunnel pipe.
 ///
-/// - `D:P` — protected DACL (don't inherit ACEs).
-/// - `(A;;FA;;;SY)` — Full Access for `LocalSystem` (the tunnel service).
-/// - `(A;;FA;;;BA)` — Full Access for `BUILTIN\Administrators`.
-/// - `(A;;FRFW;;;BU)` — `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE`
-///   for `BUILTIN\Users`. This is the alias the non-admin GUI runs under and
-///   excludes `NETWORK SERVICE`, `LOCAL SERVICE`, `ANONYMOUS LOGON`, IIS app
-///   pool identities, and arbitrary new service accounts (unlike `AU`).
+/// - Owner is pinned to `LocalSystem`. Without that the kernel fills
+///   in the owner from the creating token's `TokenOwner`; for the
+///   LocalSystem token that is `BUILTIN\Administrators`
+///   (S-1-5-32-544, not S-1-5-18), which would cause the client-side
+///   check in [`is_pipe_owned_by_local_system`] to reject the
+///   legitimate pipe.
+/// - ACEs: Full Access for `LocalSystem` and `BUILTIN\Administrators`;
+///   `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE` for
+///   `BUILTIN\Users`. The `BU` alias is the one the non-admin GUI
+///   runs under and excludes `NETWORK SERVICE`, `LOCAL SERVICE`,
+///   `ANONYMOUS LOGON`, IIS app pool identities, and arbitrary new
+///   service accounts (unlike `AU`).
 ///
-/// The Tunnel pipe pins its owner with `O:SY`. Without that, the kernel fills
-/// in the owner from the creating token's `TokenOwner`; for the LocalSystem
-/// token that is `BUILTIN\Administrators` (S-1-5-32-544, not S-1-5-18), which
-/// would cause the client-side check to reject the legitimate pipe.
+/// In debug builds the Tunnel pipe may also be opened without the
+/// `Owner` pin — see [`skip_tunnel_pipe_owner_check`] — so the
+/// `gui-smoke-test`, which launches the Tunnel binary as a
+/// subprocess of the test runner (not as a service running under
+/// LocalSystem), doesn't fail `CreateNamedPipeW` with
+/// `ERROR_INVALID_OWNER` (1307). Smoke tests fall back to
+/// [`gui_pipe_dacl`] for that reason.
+fn tunnel_pipe_dacl() -> PipeDacl {
+    PipeDacl::new()
+        .owner(Trustee::local_system())
+        .allow(FileRights::FullAccess, Trustee::local_system())
+        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
+        .allow(FileRights::ReadWrite, Trustee::builtin_users())
+}
+
+/// Security descriptor for the GUI pipe.
 ///
-/// The GUI pipe omits `O:SY` because the non-admin GUI lacks
-/// `SeRestorePrivilege` and cannot assign an owner outside its own token; its
-/// owner is not validated by clients.
-///
-/// In debug builds the Tunnel pipe may also be opened without `O:SY` — see
-/// [`skip_tunnel_pipe_owner_check`] — so the `gui-smoke-test`, which launches
-/// the Tunnel binary as a subprocess of the test runner (not as a service
-/// running under LocalSystem), doesn't fail `CreateNamedPipeW` with
-/// `ERROR_INVALID_OWNER` (1307).
-const TUNNEL_PIPE_SDDL: &str = "O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
-const GUI_PIPE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)";
+/// Same ACEs as [`tunnel_pipe_dacl`], but no `Owner` clause: the
+/// non-admin GUI lacks `SeRestorePrivilege` and cannot pin an owner
+/// outside its own token. The GUI pipe's owner isn't validated by
+/// clients, so leaving it at the token default is fine.
+fn gui_pipe_dacl() -> PipeDacl {
+    PipeDacl::new()
+        .allow(FileRights::FullAccess, Trustee::local_system())
+        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
+        .allow(FileRights::ReadWrite, Trustee::builtin_users())
+}
 
 /// Whether to skip the tunnel pipe owner check.
 #[cfg(debug_assertions)]
@@ -56,7 +72,7 @@ pub fn skip_tunnel_pipe_owner_check() {
 
 pub struct Server {
     pipe_path: String,
-    sddl: &'static str,
+    dacl: PipeDacl,
 }
 
 /// Alias for the client's half of a platform-specific IPC stream
@@ -167,19 +183,17 @@ impl Server {
     #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
     pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
-        let sddl = match id {
+        let dacl = match id {
             #[cfg(debug_assertions)]
             SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => {
-                GUI_PIPE_SDDL
+                gui_pipe_dacl()
             }
-            SocketId::Tunnel => TUNNEL_PIPE_SDDL,
-            // Created by the non-admin GUI; cannot pin owner.
-            SocketId::Gui => GUI_PIPE_SDDL,
-            // Tests run unprivileged.
+            SocketId::Tunnel => tunnel_pipe_dacl(),
+            SocketId::Gui => gui_pipe_dacl(),
             #[cfg(test)]
-            SocketId::Test(_) => GUI_PIPE_SDDL,
+            SocketId::Test(_) => gui_pipe_dacl(),
         };
-        Ok(Self { pipe_path, sddl })
+        Ok(Self { pipe_path, dacl })
     }
 
     // `&mut self` needed to match the Linux signature
@@ -220,7 +234,7 @@ impl Server {
         const NUM_ITERS: usize = 100;
         const RETRY_INTERVAL: Duration = Duration::from_millis(100);
         for i in 0..NUM_ITERS {
-            match create_pipe_server(&self.pipe_path, self.sddl) {
+            match create_pipe_server(&self.pipe_path, &self.dacl) {
                 Ok(server) => return Ok(server),
                 Err(PipeError::AccessDenied) => {
                     tracing::debug!("PipeError::AccessDenied, sleeping... (loop {i})");
@@ -243,7 +257,7 @@ enum PipeError {
 
 fn create_pipe_server(
     pipe_path: &str,
-    sddl: &str,
+    dacl: &PipeDacl,
 ) -> Result<named_pipe::NamedPipeServer, PipeError> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
@@ -251,7 +265,7 @@ fn create_pipe_server(
     // Build a `SECURITY_ATTRIBUTES` that grants the non-admin GUI (running as
     // `BUILTIN\Users`) read/write access to the pipe while keeping it shut to
     // `NETWORK SERVICE`, anonymous logons, and other unintended principals.
-    let sd = SecurityDescriptor::from_sddl(sddl).map_err(PipeError::Other)?;
+    let sd = dacl.build().map_err(PipeError::Other)?;
     let mut sa = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: sd.as_raw().0,
@@ -329,7 +343,7 @@ mod tests {
         let (_rx, _tx) =
             crate::ipc::connect::<(), ()>(ID, crate::ipc::ConnectOptions::default()).await?;
 
-        match super::create_pipe_server(&pipe_path, super::GUI_PIPE_SDDL) {
+        match super::create_pipe_server(&pipe_path, &super::gui_pipe_dacl()) {
             Err(super::PipeError::AccessDenied) => {}
             Err(error) => {
                 Err(error).context("Expected `PipeError::AccessDenied` but got another error")?
