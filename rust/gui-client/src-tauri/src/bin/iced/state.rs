@@ -12,6 +12,9 @@ pub enum Route {
     AdvancedSettings,
     Diagnostics,
     About,
+    /// Debug-only color palette page; only shown in the sidebar in
+    /// debug builds, matching the React app's `isDev` gate.
+    ColorPalette,
 }
 
 impl Route {
@@ -22,6 +25,7 @@ impl Route {
             Route::AdvancedSettings => "Advanced Settings",
             Route::Diagnostics => "Diagnostics",
             Route::About => "About",
+            Route::ColorPalette => "Color Palette",
         }
     }
 }

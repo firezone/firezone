@@ -6,6 +6,7 @@
 // the Controller wiring lands.
 #![allow(dead_code)]
 
+mod assets;
 mod state;
 mod theme;
 mod ui;
@@ -106,6 +107,7 @@ fn view(app: &App) -> Element<'_, Message> {
         Route::AdvancedSettings => ui::advanced_settings::view(app),
         Route::Diagnostics => ui::diagnostics::view(app),
         Route::About => ui::about::view(app),
+        Route::ColorPalette => ui::color_palette::view(app),
     };
 
     let main_area = container(body)

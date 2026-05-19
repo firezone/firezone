@@ -8,32 +8,36 @@ use crate::state::Route;
 use crate::theme;
 
 pub fn view<'a>(current: Route) -> Element<'a, Message> {
-    container(
-        column![
-            section_header("Navigation"),
-            nav_item("Overview", Route::Overview, current),
-            section_header("Settings"),
-            nav_item("General", Route::GeneralSettings, current),
-            nav_item("Advanced", Route::AdvancedSettings, current),
-            Space::new().height(8),
-            nav_item("Diagnostics", Route::Diagnostics, current),
-            nav_item("About", Route::About, current),
-        ]
-        .spacing(2)
-        .padding(Padding::from([12, 8])),
-    )
-    .width(Length::Fixed(208.0))
-    .height(Length::Fill)
-    .style(|_theme: &Theme| container::Style {
-        background: Some(Background::Color(theme::LIGHT.surface)),
-        border: Border {
-            color: theme::LIGHT.text_muted,
-            width: 0.0,
-            ..Border::default()
-        },
-        ..container::Style::default()
-    })
-    .into()
+    let mut items = column![
+        section_header("Navigation"),
+        nav_item("Overview", Route::Overview, current),
+        section_header("Settings"),
+        nav_item("General", Route::GeneralSettings, current),
+        nav_item("Advanced", Route::AdvancedSettings, current),
+        Space::new().height(8),
+        nav_item("Diagnostics", Route::Diagnostics, current),
+        nav_item("About", Route::About, current),
+    ]
+    .spacing(2)
+    .padding(Padding::from([12, 8]));
+    if cfg!(debug_assertions) {
+        items = items.push(Space::new().height(8));
+        items = items.push(section_header("Debug"));
+        items = items.push(nav_item("Color Palette", Route::ColorPalette, current));
+    }
+    container(items)
+        .width(Length::Fixed(208.0))
+        .height(Length::Fill)
+        .style(|_theme: &Theme| container::Style {
+            background: Some(Background::Color(theme::LIGHT.surface)),
+            border: Border {
+                color: theme::LIGHT.text_muted,
+                width: 0.0,
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 fn section_header<'a>(label: &'a str) -> Element<'a, Message> {

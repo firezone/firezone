@@ -1,9 +1,10 @@
 //! Overview screen — sign in / sign out flow.
 
-use iced::widget::{Space, column, container, text};
+use iced::widget::{Space, column, container, image, text};
 use iced::{Center, Element, Length};
 
 use crate::Message;
+use crate::assets;
 use crate::state::{App, Session};
 use crate::theme;
 use crate::ui::button::{Variant, fz_button};
@@ -20,12 +21,13 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
     container(
         column![
+            image(assets::logo()).width(160).height(160),
             text("Firezone").size(48).color(theme::LIGHT.text_primary),
-            Space::new().height(24),
+            Space::new().height(16),
             session,
         ]
         .align_x(Center)
-        .spacing(16),
+        .spacing(8),
     )
     .center_x(Length::Fill)
     .center_y(Length::Fill)
