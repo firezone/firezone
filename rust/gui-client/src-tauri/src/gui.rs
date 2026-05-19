@@ -451,7 +451,6 @@ pub fn run(
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .build(tauri::generate_context!())
         .context("Failed to build Tauri app instance")?
