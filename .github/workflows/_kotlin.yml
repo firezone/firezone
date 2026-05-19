@@ -30,7 +30,7 @@ jobs:
       # mark:next-android-version
       RELEASE_NAME: android-client-1.5.11
     steps:
-      - uses: release-drafter/release-drafter@563bf132657a13ded0b01fcb723c5a58cdd824e2 # v7.2.1
+      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
