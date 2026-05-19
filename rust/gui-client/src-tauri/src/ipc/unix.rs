@@ -120,7 +120,7 @@ impl Server {
                         uid = cred.uid(),
                         gid = cred.gid(),
                         pid = cred.pid(),
-                        "Rejected an IPC connection: {rejected}"
+                        "Rejected an IPC connection: {rejected:#}"
                     );
                     // `verify` consumed `stream`; loop to the next accept().
                 }

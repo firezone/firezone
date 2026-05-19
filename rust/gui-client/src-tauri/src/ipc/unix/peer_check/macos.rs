@@ -1,10 +1,8 @@
-// Stub module: `verify` always accepts, so no `PeerRejected` variants are
-// ever constructed and the per-variant methods are dead on this target.
-#![allow(dead_code, clippy::unused_self, clippy::unnecessary_wraps)]
+// Stub module: `verify` always accepts.
+#![allow(dead_code, clippy::unused_self)]
 
+use anyhow::Result;
 use tokio::net::UnixStream;
-
-use super::PeerRejected;
 
 /// Stub for macOS where production uses the Swift network extension and
 /// the Rust path is exercised only by controller tests. `verify` is a
@@ -17,7 +15,7 @@ impl AllowedPeer {
         Self
     }
 
-    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream, PeerRejected> {
+    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream> {
         Ok(stream)
     }
 }

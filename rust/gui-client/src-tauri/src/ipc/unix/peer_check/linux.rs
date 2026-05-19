@@ -3,9 +3,8 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
+use anyhow::{Context as _, Result, bail};
 use tokio::net::UnixStream;
-
-use super::PeerRejected;
 
 #[derive(Debug)]
 pub struct AllowedPeer {
@@ -31,8 +30,8 @@ impl AllowedPeer {
         Self { exe: canonical }
     }
 
-    /// Verify the peer of `stream` and return the stream on accept, or a
-    /// `PeerRejected` describing why on reject.
+    /// Verify the peer of `stream` and return the stream on accept, or an
+    /// `anyhow::Error` describing why on reject.
     ///
     /// Steps:
     ///   1. `getsockopt(SO_PEERPIDFD)` to obtain a pidfd pinned to the peer
@@ -42,10 +41,10 @@ impl AllowedPeer {
     ///   2. Read the peer's `Pid` from `/proc/self/fdinfo/<pidfd>` — the
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
-    ///      it `(deleted)`.
+    ///      it `(deleted)` (surfaced as `io::ErrorKind::NotFound`).
     ///   4. Canonicalise the exe path and compare against the allowlisted
     ///      path.
-    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream, PeerRejected> {
+    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream> {
         let pidfd = match peer_pidfd(stream.as_raw_fd()) {
             Ok(fd) => fd,
             Err(error) if error.raw_os_error() == Some(libc::ENOPROTOOPT) => {
@@ -54,25 +53,31 @@ impl AllowedPeer {
                 );
                 return Ok(stream);
             }
-            Err(error) => return Err(PeerRejected::ExeUnreadable(error)),
+            Err(error) => return Err(error).context("Couldn't read peer's executable"),
         };
 
         let peer_pid =
-            read_pid_from_fdinfo(pidfd.as_raw_fd()).map_err(PeerRejected::ExeUnreadable)?;
+            read_pid_from_fdinfo(pidfd.as_raw_fd()).context("Couldn't read peer's executable")?;
         let exe_link = format!("/proc/{peer_pid}/exe");
-        let target = std::fs::read_link(&exe_link).map_err(PeerRejected::ExeUnreadable)?;
+        let target = std::fs::read_link(&exe_link).context("Couldn't read peer's executable")?;
 
         if target.as_os_str().as_bytes().ends_with(b" (deleted)") {
-            return Err(PeerRejected::ExeDeleted(target));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("peer's exe `{}` is marked deleted", target.display()),
+            ))
+            .context("Couldn't read peer's executable");
         }
 
-        let canonical = std::fs::canonicalize(&target).map_err(PeerRejected::ExeUnreadable)?;
+        let canonical =
+            std::fs::canonicalize(&target).context("Couldn't read peer's executable")?;
 
         if canonical != self.exe {
-            return Err(PeerRejected::NotAllowlisted {
-                exe: canonical,
-                expected: self.exe.clone(),
-            });
+            bail!(
+                "Peer's executable `{}` does not match the expected GUI binary `{}`",
+                canonical.display(),
+                self.exe.display(),
+            );
         }
 
         Ok(stream)
@@ -127,17 +132,16 @@ mod tests {
             return;
         }
 
-        let own_exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
-        let expected = AllowedPeer { exe: own_exe };
-
+        let expected = AllowedPeer::for_current_exe();
         let b = expected.verify(b).expect("self should verify");
 
         let other = AllowedPeer {
             exe: PathBuf::from("/nonexistent/binary"),
         };
-        match other.verify(b) {
-            Err(PeerRejected::NotAllowlisted { .. }) => {}
-            other => panic!("expected NotAllowlisted, got {other:?}"),
-        }
+        let err = other.verify(b).expect_err("expected rejection");
+        assert!(
+            format!("{err:#}").contains("does not match the expected GUI binary"),
+            "unexpected error message: {err:#}"
+        );
     }
 }
