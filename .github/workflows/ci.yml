@@ -53,17 +53,21 @@ jobs:
             exit 0;
           fi
 
-          # For merge group, run all jobs
-          if [ "${{ github.event_name }}" = "merge_group" ]; then
-            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
-
-            exit 0;
-          fi
-
-          # Fetch base ref for PRs
+          # Fetch base ref for PRs and merge group
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin ${{ github.base_ref }} --depth=1
             git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
+
+            echo "Changed files:"
+            cat changed_files.txt
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            base_sha="${{ github.event.merge_group.base_sha }}"
+            git fetch origin "$base_sha" --depth=1
+            if ! git cat-file -e "${base_sha}^{commit}"; then
+              echo "::error::merge_group base SHA $base_sha not available after fetch" >&2
+              exit 1
+            fi
+            git diff --name-only "$base_sha" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
