@@ -10,7 +10,7 @@ use crate::{
     launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, GeneralSettings,
+        self, AdvancedSettings, AdvancedSettingsViewModel, GeneralSettings,
         GeneralSettingsViewModel, MdmSettings,
     },
     updates,
@@ -260,7 +260,7 @@ pub fn run(
     rt: &Runtime,
     config: RunConfig,
     mdm_settings: MdmSettings,
-    advanced_settings: AdvancedSettingsLegacy,
+    advanced_settings: AdvancedSettings,
     reloader: logging::FilterReloadHandle,
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
@@ -270,8 +270,7 @@ pub fn run(
         SingleInstance::SecondHandedOff => bail!(AlreadyRunning),
     };
 
-    let (general_settings, advanced_settings) =
-        rt.block_on(settings::migrate_legacy_settings(advanced_settings));
+    let general_settings = settings::load_general_settings().unwrap_or_default();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let req_tx = ctlr_tx.clone();

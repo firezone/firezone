@@ -10,7 +10,7 @@ use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging, settings};
-use settings::AdvancedSettingsLegacy;
+use settings::AdvancedSettings;
 use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
@@ -93,8 +93,7 @@ fn try_main(
         fake_controller,
     };
 
-    let mut advanced_settings =
-        settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
+    let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
@@ -237,11 +236,11 @@ fn try_main(
 }
 
 /// Parse the log filter from settings, showing an error and fixing it if needed
-fn fix_log_filter(settings: &mut AdvancedSettingsLegacy) -> Result<()> {
+fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
     if EnvFilter::try_new(&settings.log_filter).is_ok() {
         return Ok(());
     }
-    settings.log_filter = AdvancedSettingsLegacy::default().log_filter;
+    settings.log_filter = AdvancedSettings::default().log_filter;
 
     firezone_gui_client::dialog::error(
         "The custom log filter is not parsable. Using the default log filter.",
