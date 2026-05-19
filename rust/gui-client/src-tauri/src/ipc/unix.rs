@@ -94,7 +94,7 @@ impl Server {
         let allowed_peer = peer_check::AllowedPeer::for_current_exe();
 
         #[cfg(target_os = "macos")]
-        let allowed_peer = peer_check::AllowedPeer::default();
+        let allowed_peer = peer_check::AllowedPeer::stub();
 
         Ok(Self {
             listener,
