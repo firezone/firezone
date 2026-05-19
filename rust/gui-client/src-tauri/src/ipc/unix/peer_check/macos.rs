@@ -1,5 +1,5 @@
 // Stub module: `verify` always accepts.
-#![allow(dead_code, clippy::unused_self)]
+#![allow(dead_code, clippy::unused_self, clippy::unnecessary_wraps)]
 
 use anyhow::Result;
 use tokio::net::UnixStream;
