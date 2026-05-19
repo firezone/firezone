@@ -53,24 +53,26 @@ impl AllowedPeer {
                 );
                 return Ok(stream);
             }
-            Err(error) => return Err(error).context("Couldn't read peer's executable"),
+            Err(error) => {
+                return Err(error).context("Couldn't get peer pidfd via SO_PEERPIDFD");
+            }
         };
 
-        let peer_pid =
-            read_pid_from_fdinfo(pidfd.as_raw_fd()).context("Couldn't read peer's executable")?;
+        let peer_pid = read_pid_from_fdinfo(pidfd.as_raw_fd())
+            .context("Couldn't read peer PID from /proc/self/fdinfo")?;
         let exe_link = format!("/proc/{peer_pid}/exe");
-        let target = std::fs::read_link(&exe_link).context("Couldn't read peer's executable")?;
+        let target = std::fs::read_link(&exe_link)
+            .with_context(|| format!("Couldn't readlink {exe_link}"))?;
 
         if target.as_os_str().as_bytes().ends_with(b" (deleted)") {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("peer's exe `{}` is marked deleted", target.display()),
-            ))
-            .context("Couldn't read peer's executable");
+            bail!(
+                "Peer's executable `{}` has been deleted from disk",
+                target.display()
+            );
         }
 
-        let canonical =
-            std::fs::canonicalize(&target).context("Couldn't read peer's executable")?;
+        let canonical = std::fs::canonicalize(&target)
+            .with_context(|| format!("Couldn't canonicalise peer's exe `{}`", target.display()))?;
 
         if canonical != self.exe {
             bail!(
