@@ -7,21 +7,18 @@ use tokio::net::UnixStream;
 
 use super::PeerRejected;
 
-/// The single binary path the daemon will accept as a peer. Matches the
-/// install location used by the deb/rpm package.
-#[cfg(not(test))]
-const FIREZONE_GUI_CLIENT: &str = "/usr/bin/firezone-client-gui";
-
 #[derive(Debug)]
 pub struct AllowedPeer {
     exe: PathBuf,
 }
 
 impl AllowedPeer {
+    /// The packaged GUI binary — the only peer the tunnel daemon accepts
+    /// in production.
     #[cfg(not(test))]
-    pub fn load_default() -> Self {
+    pub fn firezone_gui_client() -> Self {
         Self {
-            exe: PathBuf::from(FIREZONE_GUI_CLIENT),
+            exe: PathBuf::from("/usr/bin/firezone-client-gui"),
         }
     }
 
@@ -72,7 +69,10 @@ impl AllowedPeer {
         let canonical = std::fs::canonicalize(&target).map_err(PeerRejected::ExeUnreadable)?;
 
         if canonical != self.exe {
-            return Err(PeerRejected::NotAllowlisted { exe: canonical });
+            return Err(PeerRejected::NotAllowlisted {
+                exe: canonical,
+                expected: self.exe.clone(),
+            });
         }
 
         Ok(stream)
@@ -119,7 +119,8 @@ mod tests {
     fn rejected_reason_strings_are_stable() {
         assert_eq!(
             PeerRejected::NotAllowlisted {
-                exe: PathBuf::from("/x")
+                exe: PathBuf::from("/x"),
+                expected: PathBuf::from("/y"),
             }
             .reason(),
             "not_allowlisted",

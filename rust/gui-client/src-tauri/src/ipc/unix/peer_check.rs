@@ -37,8 +37,12 @@ pub enum PeerRejected {
     ExeUnreadable(#[source] io::Error),
     #[error("Peer's executable has been deleted: {0}")]
     ExeDeleted(PathBuf),
-    #[error("Peer's executable `{}` is not the expected GUI binary", exe.display())]
-    NotAllowlisted { exe: PathBuf },
+    #[error(
+        "Peer's executable `{}` does not match the expected GUI binary `{}`; reconfigure or upgrade the GUI client so its binary lives at the expected path",
+        exe.display(),
+        expected.display()
+    )]
+    NotAllowlisted { exe: PathBuf, expected: PathBuf },
 }
 
 impl PeerRejected {
@@ -53,7 +57,7 @@ impl PeerRejected {
     pub fn exe(&self) -> Option<&Path> {
         match self {
             Self::ExeUnreadable(_) => None,
-            Self::ExeDeleted(path) | Self::NotAllowlisted { exe: path } => Some(path),
+            Self::ExeDeleted(path) | Self::NotAllowlisted { exe: path, .. } => Some(path),
         }
     }
 }
