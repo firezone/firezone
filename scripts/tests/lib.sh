@@ -138,3 +138,29 @@ function get_flow_field() {
 
     echo "$flow_log" | grep -oP "${field_name}=\K[^ ]+" || echo ""
 }
+
+# Get the `duration_since_intent` (in milliseconds) of the most recent
+# "Completed wireguard handshake" client log line. Use after a roam to
+# bound how long the tunnel took to come back up, independent of any TCP
+# recovery that happens afterwards.
+function last_wg_handshake_ms() {
+    local raw
+    raw=$(docker compose logs client --since 60s 2>/dev/null |
+        grep "Completed wireguard handshake" |
+        tail -n 1 |
+        grep -oP 'duration_since_intent=\K[^ ]+')
+
+    # Rust's Duration debug-format is one of: 350.9ms, 1.5s, 350µs, 350ns.
+    # Convert whichever shows up to integer milliseconds.
+    if [[ "$raw" == *ms ]]; then
+        awk -v n="${raw%ms}" 'BEGIN { printf("%.0f\n", n) }'
+    elif [[ "$raw" == *µs ]]; then
+        awk -v n="${raw%µs}" 'BEGIN { printf("%.0f\n", n / 1000) }'
+    elif [[ "$raw" == *ns ]]; then
+        echo 0
+    elif [[ "$raw" == *s ]]; then
+        awk -v n="${raw%s}" 'BEGIN { printf("%.0f\n", n * 1000) }'
+    else
+        echo 999999 # No handshake log line found — treat as failure.
+    fi
+}
