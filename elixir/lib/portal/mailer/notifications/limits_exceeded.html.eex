@@ -85,7 +85,7 @@
                   </p>
                   <ul style="margin: 0; padding-left: 24px; line-height: 24px">
                     <li>Your existing connections will continue to work</li>
-                    <li>New client sign-ins will be blocked until limits are resolved</li>
+                    <li>New client sign ins may be blocked until limits are resolved</li>
                     <li>Account administrators can still access the admin portal</li>
                   </ul>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>

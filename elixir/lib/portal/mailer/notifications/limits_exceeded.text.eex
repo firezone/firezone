@@ -6,7 +6,7 @@ Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has exceeded t
 
 What happens next?
 - Your existing connections will continue to work
-- New client sign-ins will be blocked until limits are resolved
+- New client sign ins may be blocked until limits are resolved
 - Account administrators can still access the admin portal
 
 <%= case @plan_type do %>
