@@ -983,14 +983,12 @@ impl<I: GuiIntegration> Controller<I> {
 async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
-    const CLOSED_BEFORE_HELLO: &str = "No message received from tunnel service";
-
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
         .await
         .with_context(|| {
             format!("Timeout while waiting for message from tunnel service for {TIMEOUT:?}")
         })?
-        .context(CLOSED_BEFORE_HELLO)?
+        .context("No message received from tunnel service")?
         .context("Failed to receive message from tunnel service")?;
 
     let service::ServerMsg::Hello { firezone_id } = server_msg else {
