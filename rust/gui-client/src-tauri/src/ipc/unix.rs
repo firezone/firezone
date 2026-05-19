@@ -122,7 +122,6 @@ impl Server {
                         pid = cred.pid(),
                         "Rejected an IPC connection: {rejected:#}"
                     );
-                    // `verify` consumed `stream`; loop to the next accept().
                 }
             }
         }
