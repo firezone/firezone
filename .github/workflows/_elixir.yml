@@ -110,7 +110,7 @@ jobs:
         run: mix hex.audit
 
       - name: Check For Vulnerable Packages
-        run: mix deps.audit --ignore-advisory-ids CVE-2026-43969
+        run: mix deps.audit --ignore-advisory-ids GHSA-g2wm-735q-3f56
 
       - name: Run Sobelow vulnerability scanner
         working-directory: ./elixir
