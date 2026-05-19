@@ -70,6 +70,10 @@ fn main() -> Result<()> {
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
+    // Confirm a GUI launched from a non-allowlisted path is rejected.
+    #[cfg(target_os = "linux")]
+    binary_allowlist_rejection_test(&app)?;
+
     // Launch-lock hand-off smoke test. No tunnel service or display
     // server required — the subcommand only drives the lock + GUI IPC
     // pipe.
@@ -78,6 +82,50 @@ fn main() -> Result<()> {
     if cli.manual_tests {
         manual_tests(&app)?;
     }
+
+    Ok(())
+}
+
+/// Launch the GUI from its cargo-built `target/debug/` path (not the
+/// allowlisted `/usr/bin/firezone-client-gui`) and assert that the tunnel
+/// daemon rejects the connection. The GUI exits non-zero after its first
+/// read returns EOF.
+#[cfg(target_os = "linux")]
+fn binary_allowlist_rejection_test(app: &App) -> Result<()> {
+    tracing::info!("Running peer-binary allowlist rejection smoke test");
+
+    let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
+    std::thread::sleep(Duration::from_millis(500));
+
+    let built_gui = gui_path()
+        .canonicalize()
+        .context("Couldn't canonicalize built GUI binary path")?;
+    let built_gui_str = built_gui
+        .to_str()
+        .context("Built GUI path is not valid UTF-8")?;
+
+    let gui = app
+        .gui_command_from(built_gui_str, &["smoke-test"])?
+        .start()?;
+    let exit_status = gui.wait()?;
+    if exit_status.success() {
+        bail!(
+            "GUI launched from non-allowlisted path `{}` exited 0; expected non-zero (connection rejected)",
+            built_gui_str
+        );
+    }
+    tracing::info!(
+        path = built_gui_str,
+        "Confirmed: tunnel rejected GUI from non-allowlisted path"
+    );
+
+    // The tunnel never accepted a valid peer, so `run-smoke-test` is
+    // still in its accept loop. Kill it so the next test can bind the
+    // socket.
+    ipc_service
+        .kill()
+        .context("Failed to kill tunnel service")?;
+    let _ = ipc_service.wait();
 
     Ok(())
 }
@@ -191,11 +239,15 @@ impl App {
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
+        // Launch the root-installed copy so `/proc/<pid>/exe` matches the
+        // allowlisted path the tunnel daemon enforces.
+        self.gui_command_from(INSTALLED_GUI_PATH, args)
+    }
+
+    fn gui_command_from(&self, gui_path: &str, args: &[&str]) -> Result<Exec> {
         let args: Vec<_> = [
             "--auto-servernum",
-            // Launch the root-installed copy so `/proc/<pid>/exe` matches
-            // the allowlisted path the tunnel daemon enforces.
-            INSTALLED_GUI_PATH,
+            gui_path,
             "--no-deep-links",
             "--no-elevation-check",
         ]
