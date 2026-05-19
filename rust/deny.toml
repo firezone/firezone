@@ -280,6 +280,7 @@ skip = [
     "hashbrown",
     "heck",
     "indexmap",
+    "itertools", # iced's image feature uses itertools 0.14; existing copy on 0.12.
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
     "libloading",
@@ -294,6 +295,7 @@ skip = [
     "object",
     "png",
     "proc-macro-crate",
+    "quick-error", # iced's image feature pulls quick-error 2.0; rusttype dep still on 1.2.
     "quick-xml",
     "rand",
     "rand_chacha",
