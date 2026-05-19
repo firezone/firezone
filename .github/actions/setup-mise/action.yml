@@ -20,7 +20,12 @@ runs:
       run: echo "MISE_DEBUG=1" >> "$GITHUB_ENV"
     - shell: bash
       if: ${{ runner.os == 'Windows' }}
-      run: echo "MISE_INSTALLS_DIR=C:\.mise-installs" >> "$GITHUB_ENV"
+      run: |
+        echo "MISE_INSTALLS_DIR=C:\.mise-installs" >> "$GITHUB_ENV"
+        echo "MISE_SCAN_PATH=C:\.mise-installs" >> "$GITHUB_ENV"
+    - shell: bash
+      if: ${{ runner.os != 'Windows' }}
+      run: echo "MISE_SCAN_PATH=$HOME/.local/share/mise/installs" >> "$GITHUB_ENV"
 
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
       if: ${{ runner.os != 'Windows' }}
@@ -114,7 +119,7 @@ runs:
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-type: fs
-        scan-ref: ${{ env.HOME }}/.local/share/mise/installs
+        scan-ref: ${{ env.MISE_SCAN_PATH }}
         scanners: vuln # secrets/misconfig produce noise on bundled stdlib trees
         severity: HIGH,CRITICAL
         ignore-unfixed: true
