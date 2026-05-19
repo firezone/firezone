@@ -41,7 +41,7 @@ impl AllowedPeer {
     ///   2. Read the peer's `Pid` from `/proc/self/fdinfo/<pidfd>` — the
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
-    ///      it `(deleted)` (surfaced as `io::ErrorKind::NotFound`).
+    ///      it `(deleted)`.
     ///   4. Canonicalise the exe path and compare against the allowlisted
     ///      path.
     pub fn verify(&self, stream: UnixStream) -> Result<UnixStream> {
