@@ -87,14 +87,11 @@ impl Server {
             sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
-        #[cfg(all(target_os = "linux", not(test)))]
-        let allowed_peer = peer_check::AllowedPeer::firezone_gui_client();
-
-        #[cfg(all(target_os = "linux", test))]
-        let allowed_peer = peer_check::AllowedPeer::for_current_exe();
-
-        #[cfg(target_os = "macos")]
-        let allowed_peer = peer_check::AllowedPeer::stub();
+        let allowed_peer = cfg_select! {
+            all(target_os = "linux", test) => peer_check::AllowedPeer::for_current_exe(),
+            target_os = "linux" => peer_check::AllowedPeer::firezone_gui_client(),
+            target_os = "macos" => peer_check::AllowedPeer::stub(),
+        };
 
         Ok(Self {
             listener,
