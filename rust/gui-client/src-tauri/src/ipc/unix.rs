@@ -120,8 +120,6 @@ impl Server {
                         uid = cred.uid(),
                         gid = cred.gid(),
                         pid = cred.pid(),
-                        reason = rejected.reason(),
-                        exe = rejected.exe().map(|p| p.display().to_string()),
                         "Rejected an IPC connection: {rejected}"
                     );
                     // `verify` consumed `stream`; loop to the next accept().

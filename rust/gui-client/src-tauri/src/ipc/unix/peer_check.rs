@@ -17,7 +17,7 @@
 #![cfg_attr(target_os = "macos", allow(dead_code))]
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
 #[path = "peer_check/linux.rs"]
@@ -38,26 +38,9 @@ pub enum PeerRejected {
     #[error("Peer's executable has been deleted: {0}")]
     ExeDeleted(PathBuf),
     #[error(
-        "Peer's executable `{}` does not match the expected GUI binary `{}`; reconfigure or upgrade the GUI client so its binary lives at the expected path",
+        "Peer's executable `{}` does not match the expected GUI binary `{}`",
         exe.display(),
         expected.display()
     )]
     NotAllowlisted { exe: PathBuf, expected: PathBuf },
-}
-
-impl PeerRejected {
-    pub fn reason(&self) -> &'static str {
-        match self {
-            Self::ExeUnreadable(_) => "exe_unreadable",
-            Self::ExeDeleted(_) => "exe_deleted",
-            Self::NotAllowlisted { .. } => "not_allowlisted",
-        }
-    }
-
-    pub fn exe(&self) -> Option<&Path> {
-        match self {
-            Self::ExeUnreadable(_) => None,
-            Self::ExeDeleted(path) | Self::NotAllowlisted { exe: path, .. } => Some(path),
-        }
-    }
 }

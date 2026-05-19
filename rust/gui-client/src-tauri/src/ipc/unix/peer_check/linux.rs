@@ -115,26 +115,6 @@ fn read_pid_from_fdinfo(pidfd: RawFd) -> io::Result<libc::pid_t> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn rejected_reason_strings_are_stable() {
-        assert_eq!(
-            PeerRejected::NotAllowlisted {
-                exe: PathBuf::from("/x"),
-                expected: PathBuf::from("/y"),
-            }
-            .reason(),
-            "not_allowlisted",
-        );
-        assert_eq!(
-            PeerRejected::ExeDeleted(PathBuf::from("/x")).reason(),
-            "exe_deleted",
-        );
-        assert_eq!(
-            PeerRejected::ExeUnreadable(io::Error::other("x")).reason(),
-            "exe_unreadable",
-        );
-    }
-
     #[tokio::test]
     async fn verify_accepts_matching_peer_and_rejects_others() {
         let (a, b) = tokio::net::UnixStream::pair().expect("UnixStream::pair failed");
