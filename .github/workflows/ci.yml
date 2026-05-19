@@ -94,7 +94,17 @@ jobs:
           jobs=""
 
           if grep -q '^rust/' changed_files.txt; then
-            jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,loadtest"
+            jobs="${jobs},rust,control-plane,data-plane,loadtest"
+          fi
+
+          # Swift and Kotlin only build rust/client-ffi (the FFI shim) and its
+          # workspace dependencies, which are platform-agnostic and already
+          # covered by the `rust` job. The mobile builds exist to guard the FFI
+          # boundary, so only run them when client-ffi itself changes. For
+          # riskier changes elsewhere, trigger _swift.yml / _kotlin.yml manually
+          # via workflow_dispatch.
+          if grep -q '^rust/client-ffi/' changed_files.txt; then
+            jobs="${jobs},kotlin,swift"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
