@@ -25,6 +25,13 @@ export default function GUI({ os }: { os: OS }) {
             {"Restricts access to Firezone's configuration directory."}
           </ChangeItem>
         )}
+        {os == OS.Linux && (
+          <ChangeItem pull={13323}>
+            Restricts the tunnel service IPC socket to the packaged GUI binary
+            using SO_PEERPIDFD, so other processes running as the same user can
+            no longer drive the tunnel.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>

@@ -4,6 +4,9 @@
 //! Swift implementation in `swift/apple/`; this enables running controller
 //! tests on macOS.
 
+#[path = "unix/peer_check.rs"]
+mod peer_check;
+
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
@@ -17,6 +20,7 @@ pub fn skip_tunnel_pipe_owner_check() {}
 pub struct Server {
     listener: UnixListener,
     id: SocketId,
+    allowed_peer: peer_check::AllowedPeer,
 }
 
 impl Drop for Server {
@@ -88,19 +92,44 @@ impl Server {
             sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
-        Ok(Self { listener, id })
+        let allowed_peer = cfg_select! {
+            all(target_os = "linux", test) => peer_check::AllowedPeer::for_current_exe(),
+            target_os = "linux" => peer_check::AllowedPeer::firezone_gui_client(),
+            target_os = "macos" => peer_check::AllowedPeer::stub(),
+        };
+
+        Ok(Self {
+            listener,
+            id,
+            allowed_peer,
+        })
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
-        let (stream, _) = self.listener.accept().await?;
-        let cred = stream.peer_cred()?;
-        tracing::info!(
-            uid = cred.uid(),
-            gid = cred.gid(),
-            pid = cred.pid(),
-            "Accepted an IPC connection"
-        );
-        Ok(stream)
+        loop {
+            let (stream, _) = self.listener.accept().await?;
+            let cred = stream.peer_cred()?;
+
+            match self.allowed_peer.verify(stream) {
+                Ok(stream) => {
+                    tracing::info!(
+                        uid = cred.uid(),
+                        gid = cred.gid(),
+                        pid = cred.pid(),
+                        "Accepted an IPC connection"
+                    );
+                    return Ok(stream);
+                }
+                Err(rejected) => {
+                    tracing::info!(
+                        uid = cred.uid(),
+                        gid = cred.gid(),
+                        pid = cred.pid(),
+                        "Rejected an IPC connection: {rejected:#}"
+                    );
+                }
+            }
+        }
     }
 }
 

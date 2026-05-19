@@ -17,6 +17,13 @@ const FZ_GROUP: &str = "firezone-client";
 const GUI_NAME: &str = "firezone-gui-client";
 const TUNNEL_NAME: &str = "firezone-client-tunnel";
 
+/// The tunnel daemon only accepts peers whose `/proc/<pid>/exe` resolves
+/// to this hardcoded path. The deb/rpm package installs the GUI there;
+/// the smoke test installs the cargo-built GUI to the same location so
+/// the kernel reports a matching exe.
+#[cfg(target_os = "linux")]
+const INSTALLED_GUI_PATH: &str = "/usr/bin/firezone-client-gui";
+
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
 
@@ -69,6 +76,10 @@ fn main() -> Result<()> {
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
     tracing::info!("=== crash test complete: the expected SIGSEGV was handled ===");
 
+    // Confirm a GUI launched from a non-allowlisted path is rejected.
+    #[cfg(target_os = "linux")]
+    binary_allowlist_rejection_test(&app)?;
+
     // Launch-lock hand-off smoke test. No tunnel service or display
     // server required — the subcommand only drives the lock + GUI IPC
     // pipe.
@@ -77,6 +88,50 @@ fn main() -> Result<()> {
     if cli.manual_tests {
         manual_tests(&app)?;
     }
+
+    Ok(())
+}
+
+/// Launch the GUI from its cargo-built `target/debug/` path (not the
+/// allowlisted `/usr/bin/firezone-client-gui`) and assert that the tunnel
+/// daemon rejects the connection. The GUI exits non-zero after its first
+/// read returns EOF.
+#[cfg(target_os = "linux")]
+fn binary_allowlist_rejection_test(app: &App) -> Result<()> {
+    tracing::info!("Running peer-binary allowlist rejection smoke test");
+
+    let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
+    std::thread::sleep(Duration::from_millis(500));
+
+    let built_gui = gui_path()
+        .canonicalize()
+        .context("Couldn't canonicalize built GUI binary path")?;
+    let built_gui_str = built_gui
+        .to_str()
+        .context("Built GUI path is not valid UTF-8")?;
+
+    let gui = app
+        .gui_command_from(built_gui_str, &["smoke-test"])?
+        .start()?;
+    let exit_status = gui.wait()?;
+    if exit_status.success() {
+        bail!(
+            "GUI launched from non-allowlisted path `{}` exited 0; expected non-zero (connection rejected)",
+            built_gui_str
+        );
+    }
+    tracing::info!(
+        path = built_gui_str,
+        "Confirmed: tunnel rejected GUI from non-allowlisted path"
+    );
+
+    // The tunnel never accepted a valid peer, so `run-smoke-test` is
+    // still in its accept loop. Kill it so the next test can bind the
+    // socket.
+    ipc_service
+        .kill()
+        .context("Failed to kill tunnel service")?;
+    let _ = ipc_service.wait();
 
     Ok(())
 }
@@ -189,17 +244,22 @@ impl App {
             .join()?
             .fz_exit_ok()?;
 
+        install_gui_at_canonical_path()?;
+
         Ok(Self { username })
     }
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        let gui_path = gui_path().canonicalize()?;
+        // Launch the root-installed copy so `/proc/<pid>/exe` matches the
+        // allowlisted path the tunnel daemon enforces.
+        self.gui_command_from(INSTALLED_GUI_PATH, args)
+    }
+
+    fn gui_command_from(&self, gui_path: &str, args: &[&str]) -> Result<Exec> {
         let args: Vec<_> = [
             "--auto-servernum",
-            gui_path
-                .to_str()
-                .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
+            gui_path,
             "--no-deep-links",
             "--no-elevation-check",
         ]
@@ -223,6 +283,43 @@ impl App {
             .env("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); // Might help with CI
         Ok(cmd)
     }
+}
+
+/// Copy the cargo-built GUI binary to the canonical `/usr/bin` path the
+/// tunnel daemon expects. Without this, `/proc/<gui-pid>/exe` would point
+/// at `target/debug/...` and the daemon would reject the connection.
+#[cfg(target_os = "linux")]
+fn install_gui_at_canonical_path() -> Result<()> {
+    let built_gui = gui_path()
+        .canonicalize()
+        .context("Couldn't canonicalize built GUI binary path")?;
+    let built_gui_str = built_gui
+        .to_str()
+        .context("Built GUI path is not valid UTF-8")?;
+    tracing::info!(
+        src = built_gui_str,
+        dst = INSTALLED_GUI_PATH,
+        "Installing GUI binary"
+    );
+
+    Exec::cmd("sudo")
+        .args([
+            "install",
+            "-D",
+            "-o",
+            "root",
+            "-g",
+            "root",
+            "-m",
+            "0755",
+            built_gui_str,
+            INSTALLED_GUI_PATH,
+        ])
+        .join()?
+        .fz_exit_ok()
+        .context("Failed to install GUI binary")?;
+
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]

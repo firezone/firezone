@@ -2325,6 +2325,7 @@ dependencies = [
  "ip_network",
  "keyring-core",
  "known-dirs",
+ "libc",
  "logging",
  "native-dialog",
  "nix",
