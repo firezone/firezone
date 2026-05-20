@@ -65,30 +65,34 @@ public class Configuration: ObservableObject {
   // additionally honor an MDM forced value (UserDefaults.objectIsForced) for the
   // is*Forced properties below, regardless of whether the key is forwarded to
   // the network extension.
-  struct ProviderEntry: Sendable {
-    let key: String
-    let defaultString: String
-    let isBool: Bool
+  enum ProviderEntry: Sendable {
+    case string(key: String, default: String)
+    case bool(key: String, default: Bool)
+
+    var key: String {
+      switch self {
+      case .string(let key, _), .bool(let key, _): return key
+      }
+    }
+
+    var defaultString: String {
+      switch self {
+      case .string(_, let value): return value
+      case .bool(_, let value): return Configuration.string(value)
+      }
+    }
   }
 
   nonisolated static let providerEntries: [ProviderEntry] = [
-    ProviderEntry(key: Keys.authURL, defaultString: ConfigurationDefaults.authURL, isBool: false),
-    ProviderEntry(key: Keys.apiURL, defaultString: ConfigurationDefaults.apiURL, isBool: false),
-    ProviderEntry(
-      key: Keys.logFilter, defaultString: ConfigurationDefaults.logFilter, isBool: false),
-    ProviderEntry(
-      key: Keys.accountSlug, defaultString: ConfigurationDefaults.accountSlug, isBool: false),
-    ProviderEntry(
-      key: Keys.actorName, defaultString: ConfigurationDefaults.actorName, isBool: false),
-    ProviderEntry(
-      key: Keys.connectOnStart, defaultString: string(ConfigurationDefaults.connectOnStart),
-      isBool: true),
-    ProviderEntry(
-      key: Keys.startOnLogin, defaultString: string(ConfigurationDefaults.startOnLogin),
-      isBool: true),
-    ProviderEntry(
-      key: Keys.internetResourceEnabled,
-      defaultString: string(ConfigurationDefaults.internetResourceEnabled), isBool: true),
+    .string(key: Keys.authURL, default: ConfigurationDefaults.authURL),
+    .string(key: Keys.apiURL, default: ConfigurationDefaults.apiURL),
+    .string(key: Keys.logFilter, default: ConfigurationDefaults.logFilter),
+    .string(key: Keys.accountSlug, default: ConfigurationDefaults.accountSlug),
+    .string(key: Keys.actorName, default: ConfigurationDefaults.actorName),
+    .bool(key: Keys.connectOnStart, default: ConfigurationDefaults.connectOnStart),
+    .bool(key: Keys.startOnLogin, default: ConfigurationDefaults.startOnLogin),
+    .bool(
+      key: Keys.internetResourceEnabled, default: ConfigurationDefaults.internetResourceEnabled),
   ]
 
   // Subset of provider entries whose MDM forced values are cached in
@@ -206,10 +210,13 @@ public class Configuration: ObservableObject {
     var result: [String: String] = [:]
     for entry in Self.providerEntries where Self.forwardedForcedKeys.contains(entry.key) {
       guard defaults.objectIsForced(forKey: entry.key) else { continue }
-      if entry.isBool {
-        result[entry.key] = Self.string(defaults.bool(forKey: entry.key))
-      } else if let value = defaults.string(forKey: entry.key) {
-        result[entry.key] = value
+      switch entry {
+      case .bool(let key, _):
+        result[key] = Self.string(defaults.bool(forKey: key))
+      case .string(let key, _):
+        if let value = defaults.string(forKey: key) {
+          result[key] = value
+        }
       }
     }
     return result

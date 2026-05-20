@@ -26,12 +26,15 @@ enum ConfigurationMigrator {
       userDefaultsDomain.flatMap { userDefaults.persistentDomain(forName: $0) } ?? [:]
 
     for entry in Configuration.providerEntries {
-      if entry.isBool, let value = userDomain[entry.key] as? Bool {
-        configuration.setProviderValue(value, forKey: entry.key)
-      } else if !entry.isBool,
-        let value = userDomain[entry.key] as? String, !value.isEmpty
-      {
-        configuration.setProviderValue(value, forKey: entry.key)
+      switch entry {
+      case .bool(let key, _):
+        if let value = userDomain[key] as? Bool {
+          configuration.setProviderValue(value, forKey: key)
+        }
+      case .string(let key, _):
+        if let value = userDomain[key] as? String, !value.isEmpty {
+          configuration.setProviderValue(value, forKey: key)
+        }
       }
     }
 
