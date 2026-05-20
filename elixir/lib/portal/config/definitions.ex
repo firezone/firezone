@@ -662,8 +662,6 @@ defmodule Portal.Config.Definitions do
 
   @doc """
   Enable or disable the Firezone telemetry collection.
-
-  For more details see https://docs.firezone.dev/reference/telemetry/.
   """
   defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
 
