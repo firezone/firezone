@@ -25,6 +25,11 @@ export default function Android() {
           Fixes a bug where the app crashed when rotated whilst a
           resource-detail sheet was open.
         </ChangeItem>
+        <ChangeItem pull={13354}>
+          Retries portal DNS lookups over TCP when the configured resolvers
+          return no usable IPs over UDP, improving connectivity on networks
+          with broken UDP DNS forwarders.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-04-28")}>
         <ChangeItem pull={12416}>

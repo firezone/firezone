@@ -16,6 +16,11 @@ export default function Headless({ os }: { os: OS }) {
             WiFi.
           </ChangeItem>
         )}
+        <ChangeItem pull={13354}>
+          Retries portal DNS lookups over TCP when the configured resolvers
+          return no usable IPs over UDP, improving connectivity on networks
+          with broken UDP DNS forwarders.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>
