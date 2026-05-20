@@ -582,13 +582,14 @@ defmodule PortalAPI.ActorControllerTest do
       target = actor_fixture(account: account, type: :api_client)
 
       for type <- ["account_user", "account_admin_user", "service_account"] do
-        conn =
+        request_conn =
           conn
+          |> recycle()
           |> authorize_conn(api_actor)
           |> put_req_header("content-type", "application/json")
           |> put("/actors/#{target.id}", actor: %{"type" => type})
 
-        assert resp = json_response(conn, 422)
+        assert resp = json_response(request_conn, 422)
         assert resp["error"]["validation_errors"]["type"] ==
                  ["cannot change the type of an API client"]
       end
@@ -605,13 +606,14 @@ defmodule PortalAPI.ActorControllerTest do
       target = actor_fixture(account: account, type: :service_account)
 
       for type <- ["account_user", "account_admin_user", "api_client"] do
-        conn =
+        request_conn =
           conn
+          |> recycle()
           |> authorize_conn(api_actor)
           |> put_req_header("content-type", "application/json")
           |> put("/actors/#{target.id}", actor: %{"type" => type})
 
-        assert resp = json_response(conn, 422)
+        assert resp = json_response(request_conn, 422)
         assert resp["error"]["validation_errors"]["type"] ==
                  ["cannot change the type of a service account"]
       end
