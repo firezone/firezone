@@ -52,16 +52,35 @@ defmodule PortalAPI.ClientTokenControllerTest do
       end)
     end
 
-    test "returns bad request for non-service-account actor", %{conn: conn, account: account, actor: actor} do
+    test "lists client token metadata for an account_user", %{conn: conn, account: account, actor: actor} do
       user_actor = actor_fixture(account: account, type: :account_user)
+      tokens = for _ <- 1..3, do: client_token_fixture(account: account, actor: user_actor)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> get("/actors/#{user_actor.id}/client_tokens")
 
+      assert %{
+               "data" => data,
+               "metadata" => %{"count" => 3, "limit" => 50}
+             } = json_response(conn, 200)
+
+      data_ids = Enum.map(data, & &1["id"])
+      token_ids = Enum.map(tokens, & &1.id)
+      assert equal_ids?(data_ids, token_ids)
+    end
+
+    test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+      api_client_actor = actor_fixture(account: account, type: :api_client)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{api_client_actor.id}/client_tokens")
+
       assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account"}}
+               %{"error" => %{"reason" => "Actor must be a service account or user actor"}}
     end
   end
 

@@ -30,7 +30,7 @@ defmodule PortalAPI.ClientTokenController do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- service_account_actor?(actor),
+         :ok <- revocable_actor?(actor),
          {:ok, tokens, metadata} <- Database.list_tokens(actor, subject, list_opts) do
       render(conn, :index, tokens: tokens, metadata: metadata)
     else
