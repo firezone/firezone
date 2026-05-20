@@ -30,6 +30,12 @@ export default function Apple() {
           the portal) to the user via a modal alert instead of silently
           cancelling the tunnel.
         </ChangeItem>
+        <ChangeItem pull={13282}>
+          Moves user-editable settings from UserDefaults into the VPN provider
+          configuration so they can only be modified by Firezone, not by other
+          processes running as the user. MDM-pushed values continue to override
+          these settings.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.15" date={new Date("2026-04-27")}>
         <ChangeItem pull={12849}>

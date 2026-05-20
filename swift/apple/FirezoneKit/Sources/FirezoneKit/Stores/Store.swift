@@ -57,6 +57,13 @@ public final class Store: ObservableObject {
   private var stateUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
   private var lastSyncedSnapshot: ConfigurationSnapshot?
+  // Serialization for `syncConfiguration`. The MainActor is reentrant at `await`
+  // points, so without a guard a second sink invocation could observe a stale
+  // `lastSyncedSnapshot` mid-flight. Treat `Store` as a single-method serial
+  // actor: while one sync is running, later callers just flip `pending` and the
+  // running pass loops until the latest target is durable.
+  private var syncInFlight = false
+  private var syncPending = false
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
   private let tunnelManagerFactory: TunnelProviderManagerFactory
@@ -368,8 +375,7 @@ public final class Store: ObservableObject {
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.loadConfiguration(into: configuration, userDefaults: userDefaults)
       actorName = configuration.actorName
-      lastSyncedSnapshot = currentSnapshot()
-      await syncStartOnLogin()
+      await seedInitialSyncedSnapshot()
       self.vpnConfigurationManager = manager
       SharedAccess.markAppRunning()
     } else {
@@ -395,8 +401,7 @@ public final class Store: ObservableObject {
 
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
     actorName = configuration.actorName
-    lastSyncedSnapshot = currentSnapshot()
-    await syncStartOnLogin()
+    await seedInitialSyncedSnapshot()
 
     try await setupTunnelObservers()
     SharedAccess.markAppRunning()
@@ -411,13 +416,21 @@ public final class Store: ObservableObject {
     return vpnConfigurationManager
   }
 
-  private func syncStartOnLogin() async {
+  /// Establishes `lastSyncedSnapshot` after the VPN configuration is loaded and
+  /// performs the one-shot reconciliation of OS-level state (LoginItem) that
+  /// isn't covered by simply mirroring `providerConfiguration` to disk.
+  ///
+  /// If the LoginItem sync fails we deliberately leave `startOnLogin` inverted
+  /// in the snapshot so the next `syncConfiguration` pass diffs and retries.
+  private func seedInitialSyncedSnapshot() async {
+    var snapshot = currentSnapshot()
     do {
       try await LoginItemManager.syncStartOnLogin(startOnLogin: configuration.startOnLogin)
-      lastSyncedSnapshot = currentSnapshot()
     } catch {
       Log.error(error)
+      snapshot.startOnLogin.toggle()
     }
+    lastSyncedSnapshot = snapshot
   }
 
   private func currentSnapshot() -> ConfigurationSnapshot {
@@ -429,6 +442,20 @@ public final class Store: ObservableObject {
   }
 
   private func syncConfiguration() async {
+    if syncInFlight {
+      syncPending = true
+      return
+    }
+    syncInFlight = true
+    defer { syncInFlight = false }
+
+    repeat {
+      syncPending = false
+      await runSyncOnce()
+    } while syncPending
+  }
+
+  private func runSyncOnce() async {
     let target = currentSnapshot()
     // initVPNConfiguration / installVPNConfiguration seed lastSyncedSnapshot
     // before the configuration sink can fire, so this is expected to be non-nil.
