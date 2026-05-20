@@ -66,9 +66,9 @@ defmodule PortalAPI.ClientTokenControllerTest do
                "metadata" => %{"count" => 3, "limit" => 50}
              } = json_response(conn, 200)
 
-      data_ids = Enum.map(data, & &1["id"])
-      token_ids = Enum.map(created_tokens, & &1.id)
-      assert equal_ids?(data_ids, token_ids)
+      response_token_ids = Enum.map(data, & &1["id"])
+      created_token_ids = Enum.map(created_tokens, & &1.id)
+      assert equal_ids?(response_token_ids, created_token_ids)
 
       Enum.each(data, fn token ->
         assert is_binary(token["actor_id"])
