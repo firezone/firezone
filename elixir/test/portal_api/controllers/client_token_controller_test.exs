@@ -194,12 +194,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors/#{service_account.id}/client_tokens", %{expires_at: expires_at})
 
-      assert %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{"client_token" => ["can't be blank"]}
-               }
-             } = json_response(conn, 422)
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Bad Request"}}
     end
 
     test "returns validation error when expires_at is in the past", %{

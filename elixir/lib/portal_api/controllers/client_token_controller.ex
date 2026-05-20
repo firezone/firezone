@@ -69,12 +69,7 @@ defmodule PortalAPI.ClientTokenController do
   end
 
   def create(conn, %{"actor_id" => _actor_id}) do
-    changeset =
-      {%{}, %{client_token: :map}}
-      |> Ecto.Changeset.cast(%{}, [:client_token])
-      |> Ecto.Changeset.validate_required([:client_token])
-
-    Error.handle(conn, {:error, changeset})
+    Error.handle(conn, {:error, :bad_request})
   end
 
   operation :delete,
@@ -143,6 +138,7 @@ defmodule PortalAPI.ClientTokenController do
     alias Portal.Actor
     alias Portal.ClientToken
     alias Portal.Safe
+    @revocable_actor_types [:service_account, :account_user, :account_admin_user]
 
     def fetch_service_account_actor(id, subject) do
       fetch_actor_by_allowed_types(id, [:service_account], "Actor must be a service account", subject)
@@ -151,7 +147,7 @@ defmodule PortalAPI.ClientTokenController do
     def fetch_revocable_actor(id, subject) do
       fetch_actor_by_allowed_types(
         id,
-        [:service_account, :account_user, :account_admin_user],
+        @revocable_actor_types,
         "Actor must be a service account or user actor",
         subject
       )
@@ -194,7 +190,11 @@ defmodule PortalAPI.ClientTokenController do
     def delete_token_by_id(id, actor, subject) do
       result =
         from(t in ClientToken,
-          where: t.id == ^id and t.actor_id == ^actor.id,
+          join: a in Actor,
+          on: a.id == t.actor_id,
+          where:
+            t.id == ^id and t.actor_id == ^actor.id and
+              a.type in ^@revocable_actor_types,
           select: %{
             id: t.id,
             actor_id: t.actor_id,
@@ -219,7 +219,11 @@ defmodule PortalAPI.ClientTokenController do
     end
 
     def delete_all_tokens(actor, subject) do
-      from(t in ClientToken, where: t.actor_id == ^actor.id)
+      from(t in ClientToken,
+        join: a in Actor,
+        on: a.id == t.actor_id,
+        where: t.actor_id == ^actor.id and a.type in ^@revocable_actor_types
+      )
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end
