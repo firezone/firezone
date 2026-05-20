@@ -38,10 +38,12 @@ class ConnectedDevicesBottomSheet(
         val inflater = LayoutInflater.from(view.context)
         devices.forEach { device ->
             val item = inflater.inflate(R.layout.list_item_connected_device, container, false)
+            val ipv4Text: TextView = item.findViewById(R.id.tvDeviceIpv4)
             val idText: TextView = item.findViewById(R.id.tvDeviceId)
             val poolsLabel: TextView = item.findViewById(R.id.tvDevicePoolsLabel)
             val poolsText: TextView = item.findViewById(R.id.tvDevicePools)
 
+            ipv4Text.text = device.tunneledIpv4
             idText.text = device.id
 
             if (device.pools.isNotEmpty()) {
