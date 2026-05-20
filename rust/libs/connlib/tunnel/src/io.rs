@@ -10,6 +10,7 @@ pub use device::{Device, TunChannelClosed};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
+use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
@@ -63,7 +64,7 @@ pub struct Io {
 
     dns_queries: FuturesTupleSet<Result<dns_types::Response>, DnsQueryMetaData>,
 
-    udp_dns_client: l4_udp_dns_client::UdpDnsClient,
+    bootstrap_dns_client: BootstrapDnsClient,
     doh_clients: BTreeMap<DoHUrl, HttpClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
@@ -170,8 +171,9 @@ impl Io {
                 tcp_socket_factory.clone(),
                 udp_socket_factory.clone(),
             ),
-            udp_dns_client: l4_udp_dns_client::UdpDnsClient::new(
+            bootstrap_dns_client: BootstrapDnsClient::new(
                 udp_socket_factory.clone(),
+                tcp_socket_factory.clone(),
                 Vec::default(),
             ),
             reval_nameserver_interval: tokio::time::interval(RE_EVALUATE_NAMESERVER_INTERVAL),
@@ -239,10 +241,13 @@ impl Io {
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) {
-        tracing::debug!(servers = ?resolvers, "Re-configuring UDP DNS client with new upstreams");
+        tracing::debug!(servers = ?resolvers, "Re-configuring bootstrap DNS client with new upstreams");
 
-        self.udp_dns_client =
-            l4_udp_dns_client::UdpDnsClient::new(self.udp_socket_factory.clone(), resolvers)
+        self.bootstrap_dns_client = BootstrapDnsClient::new(
+            self.udp_socket_factory.clone(),
+            self.tcp_socket_factory.clone(),
+            resolvers,
+        )
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -560,7 +565,7 @@ impl Io {
         }
 
         let socket_factory = self.tcp_socket_factory.clone();
-        let addresses = self.udp_dns_client.resolve(server.host());
+        let addresses = self.bootstrap_dns_client.resolve(server.host());
 
         let _ = self
             .doh_clients_bootstrap

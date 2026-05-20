@@ -12,6 +12,7 @@ divan = ["dep:divan"]
 anyhow = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 bimap = { workspace = true }
+bootstrap-dns-client = { workspace = true }
 boringtun = { workspace = true }
 bufferpool = { workspace = true }
 bytes = { workspace = true, features = ["std"] }
@@ -34,7 +35,6 @@ ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-udp-dns-client = { workspace = true }
 l4-tcp-dns-server = { workspace = true }
-l4-udp-dns-client = { workspace = true }
 l4-udp-dns-server = { workspace = true }
 logging = { workspace = true }
 lru = { workspace = true }

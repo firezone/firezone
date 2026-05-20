@@ -1,7 +1,7 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
+use bootstrap_dns_client::BootstrapDnsClient;
 use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceList};
-use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -120,7 +120,7 @@ impl Eventloop {
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
         let mut tunnel = ClientTunnel::new(
-            tcp_socket_factory,
+            tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
@@ -133,6 +133,7 @@ impl Eventloop {
             portal_event_tx,
             portal_cmd_rx,
             udp_socket_factory.clone(),
+            tcp_socket_factory,
             dns_servers,
         ));
 
@@ -713,20 +714,25 @@ async fn phoenix_channel_event_loop(
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     dns_servers: Vec<IpAddr>,
 ) {
     use futures::future::Either;
     use futures::future::select;
     use std::future::poll_fn;
 
-    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
+    let mut bootstrap_dns_client = BootstrapDnsClient::new(
+        udp_socket_factory.clone(),
+        tcp_socket_factory.clone(),
+        dns_servers,
+    );
 
-    let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+    let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
-        // This allows `Hiccup` events to use the updated `UdpDnsClient` to resolve the domain.
+        // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
         match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
             Either::Left((Some(PortalCommand::Send(msg)), _)) => {
                 match portal.send(PHOENIX_TOPIC, msg) {
@@ -739,11 +745,15 @@ async fn phoenix_channel_event_loop(
             Either::Left((Some(PortalCommand::Connect(new_public_key)), _)) => {
                 public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
 
-                let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+                let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
-                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
+                bootstrap_dns_client = BootstrapDnsClient::new(
+                    udp_socket_factory.clone(),
+                    tcp_socket_factory.clone(),
+                    servers,
+                );
             }
             Either::Left((None, _)) => {
                 tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
@@ -774,7 +784,7 @@ async fn phoenix_channel_event_loop(
                     "Hiccup in portal connection: {error:#}"
                 );
 
-                let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+                let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
@@ -791,16 +801,19 @@ async fn phoenix_channel_event_loop(
 ///
 /// We combine the result of two sources here:
 ///
-/// - We make UDP DNS queries to our configured system resolvers.
+/// - We make DNS queries to our configured system resolvers.
 /// - We read `/etc/hosts`.
 ///
 /// If any of these fail, we simply default to an empty list of IPs.
 /// This is fine as this routine will be triggered again if we ever run out of IPs to use.
-async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) -> Vec<IpAddr> {
-    let udp_ips = udp_dns_client
+async fn resolve_portal_host_ips(
+    bootstrap_dns_client: &BootstrapDnsClient,
+    host: String,
+) -> Vec<IpAddr> {
+    let dns_ips = bootstrap_dns_client
         .resolve(host.clone())
         .await
-        .context("Failed to lookup portal host via UDP DNS")
+        .context("Failed to lookup portal host via DNS")
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
@@ -810,7 +823,7 @@ async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) ->
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    iter::empty().chain(udp_ips).chain(etc_hosts_ips).collect()
+    iter::empty().chain(dns_ips).chain(etc_hosts_ips).collect()
 }
 
 fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
