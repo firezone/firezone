@@ -119,6 +119,8 @@ pub enum Resource {
 #[derive(uniffi::Record)]
 pub struct ConnectedDevice {
     pub id: String,
+    /// Tunnel IPv4 address the device is reachable on.
+    pub tunneled_ipv4: String,
     /// Names of the device-pool resources this peer is a member of
     /// (typically one, but can be multiple). Empty if unknown.
     pub pools: Vec<String>,
@@ -728,6 +730,7 @@ impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
     fn from(device: connlib_model::ConnectedDeviceView) -> Self {
         ConnectedDevice {
             id: device.id.to_string(),
+            tunneled_ipv4: device.tunneled_ipv4.to_string(),
             pools: device.pools,
         }
     }
