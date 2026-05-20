@@ -3,7 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // The iced binary is being built up incrementally — a lot of design tokens
 // and component variants don't have a caller yet. Re-enable dead_code once
-// the Controller wiring lands.
+// the rest of the migration lands.
 #![allow(dead_code)]
 
 mod assets;
@@ -11,10 +11,16 @@ mod state;
 mod theme;
 mod ui;
 
-use iced::widget::{container, row};
-use iced::{Element, Fill, Length, Theme};
+use std::path::PathBuf;
 
-use state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
+use firezone_gui_client::logging;
+use firezone_gui_client::settings::{
+    self, AdvancedSettings, AdvancedSettingsLegacy, GeneralSettings,
+};
+use iced::widget::{container, row};
+use iced::{Element, Fill, Length, Task, Theme};
+
+use state::{AdvancedSettingsState, App, GeneralSettingsState, LogCount, Route, Session};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -30,6 +36,7 @@ pub enum Message {
     GeneralSettingsStartOnLoginToggled(bool),
     GeneralSettingsConnectOnStartToggled(bool),
     GeneralSettingsSave,
+    GeneralSettingsSaved(Result<(), String>),
     GeneralSettingsReset,
 
     // Advanced settings
@@ -37,65 +44,181 @@ pub enum Message {
     AdvancedSettingsApiUrlChanged(String),
     AdvancedSettingsLogFilterChanged(String),
     AdvancedSettingsSave,
+    AdvancedSettingsSaved(Result<(), String>),
     AdvancedSettingsReset,
 
     // Diagnostics
     DiagnosticsExportLogs,
+    DiagnosticsExportLogsDone(Result<(), String>),
     DiagnosticsClearLogs,
+    DiagnosticsClearLogsDone(Result<(), String>),
+    DiagnosticsLogCountRecounted(LogCount),
 
     // About
     AboutOpenDocs,
 }
 
-fn update(app: &mut App, message: Message) {
+fn legacy_to_modern(legacy: &AdvancedSettingsLegacy) -> AdvancedSettings {
+    AdvancedSettings {
+        auth_url: legacy.auth_base_url.clone(),
+        api_url: legacy.api_url.clone(),
+        log_filter: legacy.log_filter.clone(),
+    }
+}
+
+fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
-        Message::Navigate(route) => app.route = route,
+        Message::Navigate(route) => {
+            app.route = route;
+            Task::none()
+        }
 
         Message::SignInPressed => {
+            // No full Controller-driven flow yet; open the auth URL in
+            // the user's browser and park the screen in Loading. The
+            // deep-link callback that completes the sign-in lives in
+            // the Tauri binary today; the iced binary will pick it up
+            // when `GuiIntegration` is implemented.
+            let base = app.advanced_settings.auth_url.trim_end_matches('/');
+            let target = if app.general_settings.account_slug.is_empty() {
+                base.to_owned()
+            } else {
+                format!("{base}/{}", app.general_settings.account_slug)
+            };
+            let _ = open::that_detached(target);
             app.session = Session::Loading;
+            Task::none()
         }
         Message::SignOutPressed => {
             app.session = Session::SignedOut;
+            Task::none()
         }
 
         Message::GeneralSettingsAccountSlugChanged(v) => {
             app.general_settings.account_slug = v;
+            Task::none()
         }
         Message::GeneralSettingsStartMinimizedToggled(v) => {
             app.general_settings.start_minimized = v;
+            Task::none()
         }
         Message::GeneralSettingsStartOnLoginToggled(v) => {
             app.general_settings.start_on_login = v;
+            Task::none()
         }
         Message::GeneralSettingsConnectOnStartToggled(v) => {
             app.general_settings.connect_on_start = v;
+            Task::none()
         }
         Message::GeneralSettingsSave => {
-            // Controller wiring will land in a follow-up commit.
+            let next = app.general_settings.to_settings(&app.general_settings_disk);
+            app.general_settings_disk = next.clone();
+            Task::perform(
+                async move {
+                    settings::save_general(&next)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                Message::GeneralSettingsSaved,
+            )
         }
+        Message::GeneralSettingsSaved(Err(e)) => {
+            tracing::warn!("failed to save general settings: {e}");
+            Task::none()
+        }
+        Message::GeneralSettingsSaved(Ok(())) => Task::none(),
         Message::GeneralSettingsReset => {
-            app.general_settings = GeneralSettingsState::default();
+            app.general_settings =
+                GeneralSettingsState::from_settings(&app.mdm_settings, &GeneralSettings::default());
+            app.general_settings_disk = GeneralSettings::default();
+            let next = app.general_settings_disk.clone();
+            Task::perform(
+                async move {
+                    settings::save_general(&next)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                Message::GeneralSettingsSaved,
+            )
         }
 
         Message::AdvancedSettingsAuthUrlChanged(v) => {
             app.advanced_settings.auth_url = v;
+            Task::none()
         }
         Message::AdvancedSettingsApiUrlChanged(v) => {
             app.advanced_settings.api_url = v;
+            Task::none()
         }
         Message::AdvancedSettingsLogFilterChanged(v) => {
             app.advanced_settings.log_filter = v;
+            Task::none()
         }
-        Message::AdvancedSettingsSave => {}
+        Message::AdvancedSettingsSave => match app.advanced_settings.to_settings() {
+            Some(next) => Task::perform(
+                async move {
+                    settings::save_advanced(&next)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                Message::AdvancedSettingsSaved,
+            ),
+            None => {
+                tracing::warn!("advanced settings save: one of the URLs failed to parse");
+                Task::none()
+            }
+        },
+        Message::AdvancedSettingsSaved(Err(e)) => {
+            tracing::warn!("failed to save advanced settings: {e}");
+            Task::none()
+        }
+        Message::AdvancedSettingsSaved(Ok(())) => Task::none(),
         Message::AdvancedSettingsReset => {
-            app.advanced_settings = AdvancedSettingsState::default();
+            let advanced = legacy_to_modern(&AdvancedSettingsLegacy::default());
+            app.advanced_settings =
+                AdvancedSettingsState::from_settings(&app.mdm_settings, &advanced);
+            Task::perform(
+                async move {
+                    settings::save_advanced(&advanced)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                Message::AdvancedSettingsSaved,
+            )
         }
 
-        Message::DiagnosticsExportLogs => {}
-        Message::DiagnosticsClearLogs => {}
+        Message::DiagnosticsExportLogs => {
+            Task::perform(export_logs(), Message::DiagnosticsExportLogsDone)
+        }
+        Message::DiagnosticsExportLogsDone(Err(e)) => {
+            tracing::warn!("failed to export logs: {e}");
+            Task::none()
+        }
+        Message::DiagnosticsExportLogsDone(Ok(())) => Task::none(),
+        Message::DiagnosticsClearLogs => Task::perform(
+            async {
+                let gui = logging::clear_gui_logs().await.map_err(|e| e.to_string());
+                let svc = logging::clear_service_logs()
+                    .await
+                    .map_err(|e| e.to_string());
+                gui.and(svc)
+            },
+            Message::DiagnosticsClearLogsDone,
+        ),
+        Message::DiagnosticsClearLogsDone(result) => {
+            if let Err(e) = result {
+                tracing::warn!("failed to clear logs: {e}");
+            }
+            Task::perform(recount_logs(), Message::DiagnosticsLogCountRecounted)
+        }
+        Message::DiagnosticsLogCountRecounted(count) => {
+            app.log_count = count;
+            Task::none()
+        }
 
         Message::AboutOpenDocs => {
             let _ = open::that_detached("https://docs.firezone.dev");
+            Task::none()
         }
     }
 }
@@ -131,8 +254,66 @@ fn theme(_app: &App) -> Theme {
     theme::light()
 }
 
+/// Load settings from disk synchronously, surface any failure as a warning
+/// but keep going with defaults so the UI still boots.
+fn boot() -> (App, Task<Message>) {
+    let mdm_settings = settings::load_mdm_settings()
+        .inspect_err(|e| tracing::debug!("Failed to load MDM settings: {e:#}"))
+        .unwrap_or_default();
+    let general_disk = settings::load_general_settings().unwrap_or_default();
+    let advanced_legacy =
+        settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
+    let advanced = legacy_to_modern(&advanced_legacy);
+
+    let app = App {
+        general_settings: GeneralSettingsState::from_settings(&mdm_settings, &general_disk),
+        advanced_settings: AdvancedSettingsState::from_settings(&mdm_settings, &advanced),
+        general_settings_disk: general_disk,
+        mdm_settings,
+        ..App::default()
+    };
+
+    (
+        app,
+        Task::perform(recount_logs(), Message::DiagnosticsLogCountRecounted),
+    )
+}
+
+async fn recount_logs() -> LogCount {
+    logging::count_logs()
+        .await
+        .map(LogCount::from)
+        .unwrap_or_default()
+}
+
+/// Pop a native save-file dialog (off the iced runtime, since
+/// `native-dialog` is blocking), then hand the chosen path to
+/// `logging::export_logs_to`.
+async fn export_logs() -> Result<(), String> {
+    let chosen = tokio::task::spawn_blocking(|| {
+        native_dialog::DialogBuilder::file()
+            .set_title("Export Firezone logs")
+            .set_filename("firezone-logs.zip")
+            .save_single_file()
+            .show()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let Some(path) = chosen else {
+        return Ok(());
+    };
+    let stem = path
+        .file_stem()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("firezone-logs"));
+    logging::export_logs_to(path, stem)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 fn main() -> iced::Result {
-    iced::application(App::default, update, view)
+    iced::application(boot, update, view)
         .title("Firezone")
         .theme(theme)
         .default_font(assets::font())
