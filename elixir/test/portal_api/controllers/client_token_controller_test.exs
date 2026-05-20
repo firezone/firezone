@@ -79,6 +79,37 @@ defmodule PortalAPI.ClientTokenControllerTest do
       end)
     end
 
+    test "lists client token metadata for an account_admin_user", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      admin_user_actor = actor_fixture(account: account, type: :account_admin_user)
+      created_tokens = for _ <- 1..3, do: client_token_fixture(account: account, actor: admin_user_actor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{admin_user_actor.id}/client_tokens")
+
+      assert %{
+               "data" => data,
+               "metadata" => %{"count" => 3, "limit" => 50}
+             } = json_response(conn, 200)
+
+      response_token_ids = Enum.map(data, & &1["id"])
+      created_token_ids = Enum.map(created_tokens, & &1.id)
+      assert equal_ids?(response_token_ids, created_token_ids)
+
+      Enum.each(data, fn token ->
+        assert is_binary(token["actor_id"])
+        assert is_binary(token["expires_at"])
+        assert is_binary(token["inserted_at"])
+        assert is_binary(token["updated_at"])
+        refute Map.has_key?(token, "token")
+      end)
+    end
+
     test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
       api_client_actor = actor_fixture(account: account, type: :api_client)
 

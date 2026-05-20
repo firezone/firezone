@@ -9,7 +9,7 @@ defmodule PortalAPI.ClientTokenController do
   tags ["Client Tokens"]
 
   operation :index,
-    summary: "List Client Tokens for a Service Account or User Actor",
+    summary: "List Client Tokens for service_account, account_user, or account_admin_user actors",
     parameters: [
       actor_id: [
         in: :path,
@@ -29,8 +29,7 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- revocable_actor?(actor),
+    with {:ok, actor} <- Database.fetch_revocable_actor(actor_id, subject),
          {:ok, tokens, metadata} <- Database.list_tokens(actor, subject, list_opts) do
       render(conn, :index, tokens: tokens, metadata: metadata)
     else
@@ -59,8 +58,7 @@ defmodule PortalAPI.ClientTokenController do
   def create(conn, %{"actor_id" => actor_id, "client_token" => attrs}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- service_account_actor?(actor),
+    with {:ok, actor} <- Database.fetch_service_account_actor(actor_id, subject),
          {:ok, token} <- Authentication.create_headless_client_token(actor, attrs, subject) do
       conn
       |> put_status(:created)
@@ -103,8 +101,7 @@ defmodule PortalAPI.ClientTokenController do
   def delete(conn, %{"actor_id" => actor_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- revocable_actor?(actor),
+    with {:ok, actor} <- Database.fetch_revocable_actor(actor_id, subject),
          {:ok, token} <- Database.delete_token_by_id(token_id, actor, subject) do
       render(conn, :deleted, token: token)
     else
@@ -113,7 +110,8 @@ defmodule PortalAPI.ClientTokenController do
   end
 
   operation :delete_all,
-    summary: "Delete all Client Tokens for a Service Account or User Actor",
+    summary:
+      "Delete all Client Tokens for service_account, account_user, or account_admin_user actors",
     parameters: [
       actor_id: [
         in: :path,
@@ -132,27 +130,12 @@ defmodule PortalAPI.ClientTokenController do
   def delete_all(conn, %{"actor_id" => actor_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- revocable_actor?(actor),
+    with {:ok, actor} <- Database.fetch_revocable_actor(actor_id, subject),
          {deleted_count, _} <- Database.delete_all_tokens(actor, subject) do
       render(conn, :deleted_all, count: deleted_count)
     else
       error -> Error.handle(conn, error)
     end
-  end
-
-  defp service_account_actor?(%Portal.Actor{type: :service_account}), do: :ok
-
-  defp service_account_actor?(_actor) do
-    {:error, :bad_request, reason: "Actor must be a service account"}
-  end
-
-  defp revocable_actor?(%Portal.Actor{type: type})
-       when type in [:service_account, :account_user, :account_admin_user],
-       do: :ok
-
-  defp revocable_actor?(_actor) do
-    {:error, :bad_request, reason: "Actor must be a service account or user actor"}
   end
 
   defmodule Database do
@@ -161,16 +144,33 @@ defmodule PortalAPI.ClientTokenController do
     alias Portal.ClientToken
     alias Portal.Safe
 
-    def fetch_actor(id, subject) do
+    def fetch_service_account_actor(id, subject) do
+      fetch_actor_by_allowed_types(id, [:service_account], "Actor must be a service account", subject)
+    end
+
+    def fetch_revocable_actor(id, subject) do
+      fetch_actor_by_allowed_types(
+        id,
+        [:service_account, :account_user, :account_admin_user],
+        "Actor must be a service account or user actor",
+        subject
+      )
+    end
+
+    defp fetch_actor_by_allowed_types(id, allowed_types, type_error_reason, subject) do
       result =
-        from(a in Actor, where: a.id == ^id)
+        from(a in Actor,
+          where: a.id == ^id,
+          select: %{actor: a, allowed_type?: a.type in ^allowed_types}
+        )
         |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
-        actor -> {:ok, actor}
+        %{allowed_type?: true, actor: actor} -> {:ok, actor}
+        %{allowed_type?: false} -> {:error, :bad_request, reason: type_error_reason}
       end
     end
 
