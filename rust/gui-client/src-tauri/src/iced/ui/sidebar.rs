@@ -1,6 +1,6 @@
 //! Left navigation sidebar.
 
-use iced::widget::{Space, button, column, container, text};
+use iced::widget::{button, column, container, text};
 use iced::{Background, Border, Element, Length, Padding, Theme};
 
 use crate::Message;
@@ -9,24 +9,19 @@ use crate::theme;
 
 pub fn view<'a>(current: Route) -> Element<'a, Message> {
     let mut items = column![
-        section_header("Navigation"),
         nav_item("Overview", Route::Overview, current),
-        section_header("Settings"),
-        nav_item("General", Route::GeneralSettings, current),
-        nav_item("Advanced", Route::AdvancedSettings, current),
-        Space::new().height(8),
+        nav_item("General settings", Route::GeneralSettings, current),
+        nav_item("Advanced settings", Route::AdvancedSettings, current),
         nav_item("Diagnostics", Route::Diagnostics, current),
         nav_item("About", Route::About, current),
     ]
     .spacing(2)
-    .padding(Padding::from([12, 8]));
+    .padding(Padding::from([16, 12]));
     if cfg!(debug_assertions) {
-        items = items.push(Space::new().height(8));
-        items = items.push(section_header("Debug"));
-        items = items.push(nav_item("Color Palette", Route::ColorPalette, current));
+        items = items.push(nav_item("Color palette", Route::ColorPalette, current));
     }
     container(items)
-        .width(Length::Fixed(208.0))
+        .width(Length::Fixed(200.0))
         .height(Length::Fill)
         .style(|_theme: &Theme| container::Style {
             background: Some(Background::Color(theme::LIGHT.surface)),
@@ -37,12 +32,6 @@ pub fn view<'a>(current: Route) -> Element<'a, Message> {
             },
             ..container::Style::default()
         })
-        .into()
-}
-
-fn section_header<'a>(label: &'a str) -> Element<'a, Message> {
-    container(text(label).size(11).color(theme::LIGHT.text_tertiary))
-        .padding(Padding::from([8, 8]))
         .into()
 }
 

@@ -17,19 +17,6 @@ pub enum Route {
     ColorPalette,
 }
 
-impl Route {
-    pub fn title(self) -> &'static str {
-        match self {
-            Route::Overview => "Firezone",
-            Route::GeneralSettings => "General Settings",
-            Route::AdvancedSettings => "Advanced Settings",
-            Route::Diagnostics => "Diagnostics",
-            Route::About => "About",
-            Route::ColorPalette => "Color Palette",
-        }
-    }
-}
-
 /// Same three-state machine as `gui-client/src-tauri/src/view.rs:SessionViewModel`.
 #[derive(Clone, Debug, Default)]
 pub enum Session {

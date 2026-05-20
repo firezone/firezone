@@ -20,7 +20,7 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [[bin]]
 name = "firezone-client-gui-iced"
-path = "src/bin/iced/main.rs"
+path = "src/iced/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }

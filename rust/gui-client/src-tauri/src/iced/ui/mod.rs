@@ -8,4 +8,3 @@ pub mod diagnostics;
 pub mod general_settings;
 pub mod overview;
 pub mod sidebar;
-pub mod titlebar;

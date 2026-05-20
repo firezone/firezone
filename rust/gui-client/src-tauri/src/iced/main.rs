@@ -11,7 +11,7 @@ mod state;
 mod theme;
 mod ui;
 
-use iced::widget::{Space, column, container, row};
+use iced::widget::{container, row};
 use iced::{Element, Fill, Length, Theme};
 
 use state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
@@ -119,15 +119,11 @@ fn view(app: &App) -> Element<'_, Message> {
             ..container::Style::default()
         });
 
-    column![
-        ui::titlebar::view(app.route),
-        row![
-            ui::sidebar::view(app.route),
-            container(main_area).width(Fill).height(Fill),
-        ]
-        .height(Fill),
-        Space::new().height(0),
+    row![
+        ui::sidebar::view(app.route),
+        container(main_area).width(Fill).height(Fill),
     ]
+    .height(Fill)
     .into()
 }
 
