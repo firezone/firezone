@@ -260,7 +260,6 @@ impl StatsEvent {
     }
 
     /// Time the XDP program spent processing this packet.
-    #[cfg(feature = "std")]
     pub fn processing_duration(&self) -> core::time::Duration {
         core::time::Duration::from_nanos(self.processing_duration_ns)
     }

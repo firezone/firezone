@@ -95,8 +95,8 @@ impl Program {
             .with_description("Time the eBPF XDP program spent processing one relayed packet")
             .with_unit("ns")
             .with_boundaries(vec![
-                50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0,
-                50_000.0, 100_000.0,
+                50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0, 50_000.0,
+                100_000.0,
             ])
             .build();
 
@@ -156,8 +156,7 @@ impl Program {
                             };
 
                             data_relayed.add(stats.relayed_data, &[]);
-                            processing_duration
-                                .record(stats.processing_duration().as_nanos() as u64, &[]);
+                            processing_duration.record(stats.processing_duration_ns, &[]);
                         }
                     }
                 }

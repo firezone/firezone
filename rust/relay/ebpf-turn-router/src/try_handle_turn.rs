@@ -55,7 +55,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         Ok(EtherType::Ipv6) => try_handle_turn_ipv6(ctx)?,
         _ => return Err(Error::NotIp),
     };
-    stats::emit_packet_stats(ctx, num_bytes, start.elapsed());
+    stats::emit(ctx, num_bytes, start.elapsed());
 
     Ok(())
 }

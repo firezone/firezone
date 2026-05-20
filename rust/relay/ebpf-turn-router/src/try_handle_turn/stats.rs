@@ -5,7 +5,7 @@ use ebpf_shared::StatsEvent;
 #[map]
 static STATS: PerfEventArray<StatsEvent> = PerfEventArray::new(0);
 
-pub fn emit_packet_stats(ctx: &XdpContext, bytes: impl Into<u64>, processing_duration: Duration) {
+pub fn emit(ctx: &XdpContext, bytes: impl Into<u64>, processing_duration: Duration) {
     STATS.output(
         ctx,
         StatsEvent {
