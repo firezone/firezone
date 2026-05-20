@@ -105,9 +105,6 @@ defmodule PortalAPI.Client.Channel do
 
     {:noreply, socket} = register(socket)
 
-    # Must follow register/1: the queue's on_confirmed callback uses
-    # PG.deliver, which silently drops if no pid is registered for the
-    # device_id.
     PortalAPI.Client.Socket.enqueue_session(socket.assigns.session)
 
     init(socket, resources, relays)

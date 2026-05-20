@@ -24,10 +24,9 @@ defmodule PortalAPI.Gateway.Socket do
     ]
   end
 
-  # Buffer a session for batched INSERT. Called from the channel's `:after_join`
-  # after `register/1` so the channel pid is in `Portal.PG` before the queue can
-  # flush — otherwise the `:confirm_session_durability` PG.deliver lands on no
-  # members and the durability timer fires a spurious disconnect.
+  # Must run from the channel's `:after_join` after `register/1`; the queue's
+  # on-confirmed delivery via `Portal.PG` silently drops if the channel pid
+  # isn't registered yet.
   def enqueue_session(%GatewaySession{} = session) do
     Portal.Queue.enqueue(:gateway_session_queue, session_attrs(session))
   end
