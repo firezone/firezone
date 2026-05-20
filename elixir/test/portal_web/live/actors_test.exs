@@ -753,6 +753,79 @@ defmodule PortalWeb.ActorsTest do
                :account_admin_user
     end
 
+    test "prevents changing a user to a service account via forged save event", %{
+      conn: conn,
+      account: account,
+      actor: admin
+    } do
+      target = actor_fixture(account: account, type: :account_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin)
+        |> live(~p"/#{account}/actors/#{target}/edit")
+
+      render_click(lv, "save", %{
+        "actor" => %{
+          "name" => target.name,
+          "email" => target.email,
+          "type" => "service_account",
+          "allow_email_otp_sign_in" => "true"
+        }
+      })
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: target.id, account_id: account.id).type ==
+               :account_user
+    end
+
+    test "prevents changing a user to an api_client via forged save event", %{
+      conn: conn,
+      account: account,
+      actor: admin
+    } do
+      target = actor_fixture(account: account, type: :account_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin)
+        |> live(~p"/#{account}/actors/#{target}/edit")
+
+      render_click(lv, "save", %{
+        "actor" => %{
+          "name" => target.name,
+          "email" => target.email,
+          "type" => "api_client",
+          "allow_email_otp_sign_in" => "true"
+        }
+      })
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: target.id, account_id: account.id).type ==
+               :account_user
+    end
+
+    test "prevents changing a service account via forged save event", %{
+      conn: conn,
+      account: account,
+      actor: admin
+    } do
+      target = actor_fixture(account: account, type: :service_account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin)
+        |> live(~p"/#{account}/actors/#{target}/edit")
+
+      render_click(lv, "save", %{
+        "actor" => %{
+          "name" => target.name,
+          "type" => "account_admin_user"
+        }
+      })
+
+      assert Portal.Repo.get_by!(Portal.Actor, id: target.id, account_id: account.id).type ==
+               :service_account
+    end
+
     test "saves edited actor name and group membership changes", %{
       conn: conn,
       account: account,

@@ -50,12 +50,39 @@ defmodule Portal.Actor do
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
+    |> validate_type_transition()
     |> normalize_email(:email)
     |> validate_email(:email)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory, name: :actors_created_by_directory_id_fkey)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
+  end
+
+  defp validate_type_transition(changeset) do
+    old_type = changeset.data.type
+    new_type = get_change(changeset, :type)
+
+    cond do
+      is_nil(new_type) ->
+        changeset
+
+      is_nil(old_type) ->
+        changeset
+
+      old_type == :api_client ->
+        add_error(changeset, :type, "cannot change the type of an API client")
+
+      old_type == :service_account ->
+        add_error(changeset, :type, "cannot change the type of a service account")
+
+      old_type in [:account_user, :account_admin_user] and
+          new_type in [:api_client, :service_account] ->
+        add_error(changeset, :type, "cannot change a user to a service account or API client")
+
+      true ->
+        changeset
+    end
   end
 
   defp normalize_email(changeset, field) do
