@@ -971,7 +971,7 @@ defmodule PortalWeb.ActorsTest do
       assert reloaded.email == target.email
     end
 
-    test "saves email change without confirmation when actor has no identities", %{
+    test "prompts for confirmation on email change even when actor has no identities", %{
       conn: conn,
       account: account,
       actor: actor
@@ -995,10 +995,11 @@ defmodule PortalWeb.ActorsTest do
         )
         |> render_submit()
 
-      refute html =~ "Changing this actor&#39;s email will remove ALL external identities"
+      assert html =~ "Changing this actor&#39;s email will remove ALL external identities"
+      assert has_element?(lv, "button[phx-click='confirm_email_change']")
 
       assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id, account_id: account.id).email ==
-               "changed-#{other_actor.email}"
+               other_actor.email
     end
 
     test "does not clear identities when email is unchanged", %{

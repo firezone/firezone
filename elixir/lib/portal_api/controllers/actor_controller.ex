@@ -135,22 +135,20 @@ defmodule PortalAPI.ActorController do
     description: """
     Updates an Actor.
 
-    **IMPORTANT — Email changes clear external identities and revoke sessions.**
+    **Warning: changing an Actor's email signs them out and unlinks their identity providers.**
 
-    If the request body changes the Actor's `email` to a value that differs
-    from the current email after `String.trim/1` is applied to both
-    (whitespace-only differences are ignored), then **all `external_identities`
-    associated with the Actor are deleted in the same database transaction**
-    as the update. Deleting those identities also revokes the Actor's
-    `client_tokens` and `portal_sessions` tied to the corresponding IdP
-    issuers, so the Actor is signed out immediately and must re-link each
-    identity by signing in through their IdP again.
+    If the `email` field is changed to a different address, Firezone will:
 
-    This is a security/consistency safeguard: identities that were linked
-    based on the previous email may no longer belong to the same human.
+    - Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.
+    - End all active sessions for this Actor, both in the admin portal and on
+      connected Client devices. The user will be signed out immediately.
 
-    If the request does not change `email`, or only changes surrounding
-    whitespace, no identities are deleted.
+    The Actor will need to sign in again through their identity provider, which
+    re-links it under the new email.
+
+    Email comparison ignores case and surrounding whitespace, so changes like
+    `User@Example.com` → `user@example.com` are not treated as a real change
+    and will not unlink identities.
     """,
     parameters: [
       id: [

@@ -843,11 +843,6 @@ defmodule PortalWeb.Actors do
   defp maybe_clear_identities_assign(socket, false), do: socket
   defp maybe_clear_identities_assign(socket, true), do: merge_state(socket, :actor_related, identities: [])
 
-  defp email_change_needs_confirmation?(changeset, socket) do
-    Actor.email_meaningfully_changed?(changeset) and
-      socket.assigns.actor_related.identities != []
-  end
-
   defp process_actor_save(attrs, socket, opts) do
     actor = socket.assigns.selected_actor
     changeset = changeset(actor, attrs)
@@ -855,7 +850,7 @@ defmodule PortalWeb.Actors do
 
     with :ok <- validate_role_change(changeset, actor, socket),
          :ok <- validate_otp_change(changeset, actor, socket) do
-      if not skip_confirmation? and email_change_needs_confirmation?(changeset, socket) do
+      if not skip_confirmation? and Actor.email_meaningfully_changed?(changeset) do
         {:noreply,
          assign(socket,
            actor_form: actor_form_state(to_form(changeset), pending_email_change: attrs)
