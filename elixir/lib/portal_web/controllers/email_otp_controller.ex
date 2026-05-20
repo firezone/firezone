@@ -238,7 +238,7 @@ defmodule PortalWeb.EmailOTPController do
           expires_at: expires_at
         }
 
-        Authentication.create_gui_client_token(attrs)
+        Authentication.create_interactive_client_token(attrs)
 
       :headless_client ->
         attrs = %{
@@ -251,7 +251,7 @@ defmodule PortalWeb.EmailOTPController do
           expires_at: expires_at
         }
 
-        Authentication.create_gui_client_token(attrs)
+        Authentication.create_interactive_client_token(attrs)
     end
   end
 

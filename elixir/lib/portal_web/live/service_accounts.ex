@@ -832,7 +832,11 @@ defmodule PortalWeb.ServiceAccounts do
         {:error, :invalid_date}
 
       expires_at ->
-        case Authentication.create_headless_client_token(actor, %{"expires_at" => expires_at}, subject) do
+        case Authentication.create_non_interactive_client_token(
+               actor,
+               %{"expires_at" => expires_at},
+               subject
+             ) do
           {:ok, token} ->
             {:ok, {token, Authentication.encode_fragment!(token)}}
 

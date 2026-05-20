@@ -13,8 +13,10 @@ defmodule Portal.Authentication do
 
   # Client Tokens
 
-  # GUI client token - called from auth controllers
-  def create_gui_client_token(attrs) do
+  # Interactive client token - created during an interactive sign-in flow
+  # (OIDC, Email/OTP, userpass). Carries an auth_provider_id. Used by both GUI
+  # and headless client sign-ins.
+  def create_interactive_client_token(attrs) do
     changeset =
       %ClientToken{}
       |> cast(attrs, ~w[secret_nonce account_id actor_id auth_provider_id expires_at]a)
@@ -32,12 +34,15 @@ defmodule Portal.Authentication do
     |> Database.insert_token()
   end
 
-  # Headless client token - used with service accounts
-  def create_headless_client_token(
-        %Portal.Actor{type: :service_account, account_id: account_id} = actor,
+  # Non-interactive client token - issued directly by an admin (no sign-in flow,
+  # no auth_provider_id). Available for service accounts and regular users alike.
+  # api_client actors must use create_api_token/3 instead.
+  def create_non_interactive_client_token(
+        %Portal.Actor{type: type, account_id: account_id} = actor,
         attrs,
         %Subject{account: %{id: account_id}} = subject
-      ) do
+      )
+      when type in [:service_account, :account_user, :account_admin_user] do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
     %ClientToken{
