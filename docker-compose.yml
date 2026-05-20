@@ -497,13 +497,9 @@ services:
         condition: "service_healthy"
       client-1-router:
         condition: "service_healthy"
-      client-2-router:
-        condition: "service_healthy"
       gateway:
         condition: "service_healthy"
       client-1:
-        condition: "service_healthy"
-      client-2:
         condition: "service_healthy"
 
   otel:
