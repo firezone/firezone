@@ -178,9 +178,8 @@ public class Configuration: ObservableObject {
   }
 
   func loadProviderConfiguration(_ providerConfiguration: [String: String]) {
-    if self.providerConfiguration != providerConfiguration {
-      self.providerConfiguration = providerConfiguration
-    }
+    guard self.providerConfiguration != providerConfiguration else { return }
+    self.providerConfiguration = providerConfiguration
     handleConfigurationChanged()
   }
 
