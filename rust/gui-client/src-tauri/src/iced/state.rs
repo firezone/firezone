@@ -188,4 +188,8 @@ pub struct App {
     /// MDM settings loaded at startup. Managed fields stay
     /// non-editable in the form.
     pub mdm_settings: MdmSettings,
+    /// Id of the main window; learnt from the first close-request
+    /// event (or via `iced::window::oldest()`). Held so the tray can
+    /// raise the window after the user closes it with the X.
+    pub window_id: Option<iced::window::Id>,
 }

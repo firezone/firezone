@@ -19,7 +19,8 @@ use firezone_gui_client::settings::{
     self, AdvancedSettings, GeneralSettings,
 };
 use iced::widget::{container, row};
-use iced::{Element, Fill, Length, Task, Theme};
+use iced::window::{self, Mode};
+use iced::{Element, Fill, Length, Subscription, Task, Theme};
 
 use state::{AdvancedSettingsState, App, GeneralSettingsState, LogCount, Route, Session};
 
@@ -64,6 +65,10 @@ pub enum Message {
     TrayAdminPortalClicked,
     TrayQuitClicked,
     OpenExternalUrl(&'static str),
+
+    // Window lifecycle
+    WindowCloseRequested(window::Id),
+    WindowOpened(Option<window::Id>),
 }
 
 fn legacy_to_modern(legacy: &AdvancedSettingsLegacy) -> AdvancedSettings {
@@ -230,13 +235,22 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::TrayShowWindow => {
-            // TODO: iced 0.14's window-management API takes a `window::Id`
-            // we don't currently track. The main window is already visible
-            // when the app boots, so this is a no-op until we add an
-            // explicit window registry.
-            Task::none()
+        Message::TrayShowWindow => match app.window_id {
+            Some(id) => window::set_mode(id, Mode::Windowed),
+            None => window::oldest().map(Message::WindowOpened),
+        },
+        Message::WindowCloseRequested(id) => {
+            // X / Cmd-W / Alt-F4: hide instead of exit. The user
+            // brings the window back via the tray's "Sign In" /
+            // "Settings" / etc. items, or by clicking the tray icon.
+            app.window_id = Some(id);
+            window::set_mode(id, Mode::Hidden)
         }
+        Message::WindowOpened(Some(id)) => {
+            app.window_id = Some(id);
+            window::set_mode(id, Mode::Windowed)
+        }
+        Message::WindowOpened(None) => Task::none(),
         Message::TraySignInClicked => update(app, Message::SignInPressed),
         Message::TrayAdminPortalClicked => {
             let _ = open::that_detached(&app.advanced_settings.auth_url);
@@ -381,7 +395,13 @@ fn main() -> iced::Result {
         .default_font(assets::font())
         .font(assets::ROBOTO_REGULAR)
         .font(assets::ROBOTO_BOLD)
-        .subscription(|_app| tray::subscription())
+        .subscription(|_app| {
+            Subscription::batch([
+                tray::subscription(),
+                window::close_requests().map(Message::WindowCloseRequested),
+            ])
+        })
+        .exit_on_close_request(false)
         .window_size((900.0, 500.0))
         .resizable(false)
         .run()
