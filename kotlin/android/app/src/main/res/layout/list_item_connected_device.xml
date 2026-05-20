@@ -8,10 +8,29 @@
     android:paddingBottom="@dimen/spacing_small">
 
     <TextView
-        android:id="@+id/tvDeviceId"
+        android:id="@+id/tvDeviceIpv4"
         style="@style/AppTheme.Base.Body1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:textIsSelectable="true"
+        tools:text="100.64.0.1" />
+
+    <TextView
+        android:id="@+id/tvDeviceIdLabel"
+        style="@style/AppTheme.Base.Caption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textStyle="bold"
+        android:paddingTop="@dimen/spacing_small"
+        android:text="@string/connected_devices_client_id_label" />
+
+    <TextView
+        android:id="@+id/tvDeviceId"
+        style="@style/AppTheme.Base.Caption"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/neutral_600"
         android:fontFamily="monospace"
         android:textIsSelectable="true"
         tools:text="11111111-1111-1111-1111-111111111111" />
