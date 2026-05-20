@@ -195,7 +195,13 @@ defmodule PortalAPI.ClientTokenController do
       result =
         from(t in ClientToken,
           where: t.id == ^id and t.actor_id == ^actor.id,
-          select: map(t, [:id, :actor_id, :expires_at, :inserted_at, :updated_at])
+          select: %{
+            id: t.id,
+            actor_id: t.actor_id,
+            expires_at: t.expires_at,
+            inserted_at: t.inserted_at,
+            updated_at: t.updated_at
+          }
         )
         |> Safe.scoped(subject)
         |> Safe.delete_all()
@@ -207,7 +213,7 @@ defmodule PortalAPI.ClientTokenController do
         {0, _} ->
           {:error, :not_found}
 
-        {_count, [token | _]} ->
+        {1, [token]} ->
           {:ok, struct(ClientToken, token)}
       end
     end
