@@ -18,7 +18,7 @@ defmodule Portal.OIDC.AuthProviderTest do
         :discovery_document_uri,
         :issuer,
         :is_verified,
-        :require_email_verified
+        :email_verification_method
       ]
     )
     |> AuthProvider.changeset()
@@ -131,13 +131,18 @@ defmodule Portal.OIDC.AuthProviderTest do
       assert %{issuer: ["should be at most 2000 character(s)"]} = errors_on(changeset)
     end
 
-    test "defaults require_email_verified to true" do
-      assert %AuthProvider{require_email_verified: true} = %AuthProvider{}
+    test "defaults email_verification_method to claim" do
+      assert %AuthProvider{email_verification_method: :claim} = %AuthProvider{}
     end
 
-    test "allows disabling require_email_verified" do
-      provider = oidc_provider_fixture(require_email_verified: false)
-      refute provider.require_email_verified
+    test "allows proof email verification" do
+      provider = oidc_provider_fixture(email_verification_method: :proof)
+      assert provider.email_verification_method == :proof
+    end
+
+    test "allows disabling email verification" do
+      provider = oidc_provider_fixture(email_verification_method: :none)
+      assert provider.email_verification_method == :none
     end
   end
 end

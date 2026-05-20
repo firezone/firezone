@@ -620,8 +620,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Discovery Document URI"
       assert html =~ "Client ID"
       assert html =~ "Client Secret"
-      assert html =~ "Require verified email"
-      assert html =~ "Enforces the email_verified claim to be true on sign in."
+      assert html =~ "Email Verification"
+      assert html =~ "Do not require the identity provider to confirm email ownership"
+      assert html =~ "email_verified=true"
+      assert html =~ "Send a one-time passcode to the claimed email address"
       assert html =~ "Redirect URI"
       assert html =~ "Verify Now"
     end
@@ -1053,8 +1055,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Discovery Document URI"
       assert html =~ "Client ID"
       assert html =~ "Client Secret"
-      assert html =~ "Require verified email"
-      assert html =~ "Enforces the email_verified claim to be true on sign in."
+      assert html =~ "Email Verification"
+      assert html =~ "Do not require the identity provider to confirm email ownership"
+      assert html =~ "email_verified=true"
+      assert html =~ "Send a one-time passcode to the claimed email address"
       assert html =~ "Verification"
     end
 
@@ -1084,12 +1088,12 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Verify Now"
     end
 
-    test "clears verification when require_email_verified changes", %{
+    test "clears verification when email_verification_method changes", %{
       account: account,
       actor: actor,
       conn: conn
     } do
-      provider = oidc_provider_fixture(account: account, require_email_verified: true)
+      provider = oidc_provider_fixture(account: account, email_verification_method: :claim)
 
       {:ok, lv, html} =
         conn
@@ -1101,7 +1105,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       html =
         lv
         |> form("#auth-provider-form", %{
-          auth_provider: %{require_email_verified: "false"}
+          auth_provider: %{email_verification_method: "none"}
         })
         |> render_change()
 
@@ -2491,7 +2495,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Verify Now" or html =~ "error"
     end
 
-    test "passes require_email_verified from oidc form into pending verification", %{
+    test "passes email_verification_method from oidc form into pending verification", %{
       account: account,
       actor: actor,
       conn: conn
@@ -2510,7 +2514,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
           client_id: "test-client",
           client_secret: "test-secret",
-          require_email_verified: "false"
+          email_verification_method: "none"
         }
       })
       |> render_change()
@@ -2525,7 +2529,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert is_binary(verifier)
     end
 
-    test "clears pending oidc verification when require_email_verified changes", %{
+    test "clears pending oidc verification when email_verification_method changes", %{
       account: account,
       actor: actor,
       conn: conn
@@ -2542,7 +2546,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
         client_id: "test-client",
         client_secret: "test-secret",
-        require_email_verified: "false"
+        email_verification_method: "none"
       }
 
       lv
@@ -2553,7 +2557,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       lv
       |> form("#auth-provider-form", %{
-        auth_provider: %{attrs | require_email_verified: "true"}
+        auth_provider: %{attrs | email_verification_method: "claim"}
       })
       |> render_change()
 
@@ -2562,7 +2566,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:pending_verification, nil}
     end
 
-    test "ignores stale oidc verification completion after require_email_verified changes", %{
+    test "ignores stale oidc verification completion after email_verification_method changes", %{
       account: account,
       actor: actor,
       conn: conn
@@ -2579,7 +2583,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
         client_id: "test-client",
         client_secret: "test-secret",
-        require_email_verified: "false"
+        email_verification_method: "none"
       }
 
       lv
@@ -2596,7 +2600,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       html =
         lv
         |> form("#auth-provider-form", %{
-          auth_provider: %{attrs | require_email_verified: "true"}
+          auth_provider: %{attrs | email_verification_method: "claim"}
         })
         |> render_change()
 
@@ -2629,7 +2633,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
         client_id: "test-client",
         client_secret: "test-secret",
-        require_email_verified: "false"
+        email_verification_method: "none"
       }
 
       lv
@@ -2643,7 +2647,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:pending_verification,
                       %{require_email_verified: false, verification_ref: stale_ref}}
 
-      updated_attrs = %{attrs | require_email_verified: "true"}
+      updated_attrs = %{attrs | email_verification_method: "claim"}
 
       lv
       |> form("#auth-provider-form", %{auth_provider: updated_attrs})

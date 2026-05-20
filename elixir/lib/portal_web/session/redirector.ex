@@ -97,7 +97,7 @@ defmodule PortalWeb.Session.Redirector do
         state: state
       }
 
-      redirect_url = ~p"/#{account.slug}/sign_in/client_redirect"
+      redirect_url = ~p"/#{account}/sign_in/client_redirect"
 
       conn
       |> PortalWeb.Cookie.ClientAuth.put(client_auth_cookie)
