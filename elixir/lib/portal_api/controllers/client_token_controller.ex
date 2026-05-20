@@ -105,7 +105,7 @@ defmodule PortalAPI.ClientTokenController do
 
     with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
          :ok <- revocable_actor?(actor),
-         {:ok, token} <- Database.delete_token(token_id, actor, subject) do
+         {:ok, token} <- Database.delete_token_by_id(token_id, actor, subject) do
       render(conn, :deleted, token: token)
     else
       error -> Error.handle(conn, error)
@@ -191,7 +191,7 @@ defmodule PortalAPI.ClientTokenController do
       ]
     end
 
-    def delete_token(id, actor, subject) do
+    def delete_token_by_id(id, actor, subject) do
       result =
         from(t in ClientToken,
           where: t.id == ^id and t.actor_id == ^actor.id,
