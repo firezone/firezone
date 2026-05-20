@@ -10,7 +10,10 @@ defmodule PortalWeb.SignIn.Email do
         session,
         socket
       ) do
-    redirect_params = PortalWeb.Authentication.take_sign_in_params(params)
+    redirect_params =
+      params
+      |> PortalWeb.Authentication.take_sign_in_params()
+      |> Map.merge(PortalWeb.Authentication.take_sign_in_params(session))
 
     account = Database.get_account_by_id_or_slug(account_id_or_slug)
 

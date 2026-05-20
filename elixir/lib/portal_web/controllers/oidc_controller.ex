@@ -350,6 +350,7 @@ defmodule PortalWeb.OIDCController do
 
   defp start_owner_verification(conn, account, provider, actor, identity_profile, params) do
     pending_identity_id = Ecto.UUID.generate()
+    sign_in_params = sanitize(params)
 
     case create_pending_identity_verification(
            conn,
@@ -358,17 +359,20 @@ defmodule PortalWeb.OIDCController do
            actor,
            pending_identity_id,
            identity_profile,
-           params
+           sign_in_params
          ) do
       {:ok, _pending_identity, _passcode} ->
-        cookie = %Cookie.PendingIdentity{pending_identity_id: pending_identity_id}
+        cookie = %Cookie.PendingIdentity{
+          pending_identity_id: pending_identity_id,
+          params: sign_in_params
+        }
 
         conn =
           conn
           |> Cookie.PendingIdentity.put(cookie)
           |> redirect(
             to:
-              ~p"/#{account}/sign_in/oidc/#{provider.id}/verify_identity?#{verification_params(pending_identity_id, params)}"
+              ~p"/#{account}/sign_in/oidc/#{provider.id}/verify_identity?#{verification_params(pending_identity_id, sign_in_params)}"
           )
 
         {:ok, conn}
@@ -399,7 +403,7 @@ defmodule PortalWeb.OIDCController do
          actor,
          pending_identity_id,
          identity_profile,
-         params
+         sign_in_params
        ) do
     with {:ok, passcode} <- Database.create_one_time_passcode(account, actor) do
       with {:ok, pending_identity} <-
@@ -418,7 +422,7 @@ defmodule PortalWeb.OIDCController do
                provider,
                pending_identity_id,
                passcode.code,
-               params
+               sign_in_params
              ) do
         {:ok, pending_identity, passcode}
       else
@@ -429,8 +433,15 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp send_identity_verification_email(conn, actor, provider, pending_identity_id, code, params) do
-    context = authentication_context(conn, context_type(params))
+  defp send_identity_verification_email(
+         conn,
+         actor,
+         provider,
+         pending_identity_id,
+         code,
+         sign_in_params
+       ) do
+    context = authentication_context(conn, context_type(sign_in_params))
 
     Portal.Mailer.AuthEmail.oidc_identity_verification_email(
       actor,
@@ -439,7 +450,7 @@ defmodule PortalWeb.OIDCController do
       pending_identity_id,
       code,
       context,
-      sanitize(params)
+      sign_in_params
     )
     |> Portal.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:oidc_identity_verification, actor.email},
@@ -453,7 +464,7 @@ defmodule PortalWeb.OIDCController do
       {:ok, context} ->
         run_pending_identity_verification(context, entered_code)
 
-      {:error, _reason} = error ->
+      error ->
         error
     end
   end
@@ -463,8 +474,8 @@ defmodule PortalWeb.OIDCController do
       %Cookie.PendingIdentity{} = cookie ->
         account = Database.get_account_by_id_or_slug!(params["account_id_or_slug"])
         provider = Database.get_provider!(account.id, "oidc", params["auth_provider_id"])
-        sign_in_params = sanitize(params)
-        conn = put_pending_identity_error_context(conn, account, params)
+        sign_in_params = sanitize(cookie.params)
+        conn = put_pending_identity_error_context(conn, account, provider.id, sign_in_params)
 
         {:ok,
          %{
@@ -481,12 +492,12 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp put_pending_identity_error_context(conn, account, params) do
+  defp put_pending_identity_error_context(conn, account, auth_provider_id, sign_in_params) do
     Plug.Conn.assign(conn, :oidc_error_context, %{
       account_id: account.id,
       account_slug: account.slug,
-      params: sanitize(params),
-      auth_provider_id: params["auth_provider_id"]
+      params: sign_in_params,
+      auth_provider_id: auth_provider_id
     })
   end
 
@@ -562,10 +573,23 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp redirect_pending_identity_error(conn, error, params) do
+    context = pending_identity_error_context(conn, params)
+
     path =
-      ~p"/#{params["account_id_or_slug"]}/sign_in/oidc/#{params["auth_provider_id"]}/verify_identity?#{verification_params(params)}"
+      ~p"/#{context.account_slug}/sign_in/oidc/#{context.auth_provider_id}/verify_identity?#{verification_params(params["pending_identity_id"], context.params)}"
 
     redirect_for_error(conn, error, path)
+  end
+
+  defp pending_identity_error_context(conn, params) do
+    Map.merge(
+      %{
+        account_slug: params["account_id_or_slug"],
+        auth_provider_id: params["auth_provider_id"],
+        params: sanitize(params)
+      },
+      conn.assigns[:oidc_error_context] || %{}
+    )
   end
 
   defp check_admin(
@@ -1028,13 +1052,6 @@ defmodule PortalWeb.OIDCController do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
 
-  defp verification_params(%{"pending_identity_id" => pending_identity_id} = params)
-       when is_binary(pending_identity_id) do
-    verification_params(pending_identity_id, params)
-  end
-
-  defp verification_params(params), do: sanitize(params)
-
   defp verification_params(pending_identity_id, params) do
     params
     |> sanitize()
@@ -1136,7 +1153,14 @@ defmodule PortalWeb.OIDCController do
       end
     end
 
-    def insert_pending_identity(account, actor, provider, pending_identity_id, passcode, identity_profile) do
+    def insert_pending_identity(
+          account,
+          actor,
+          provider,
+          pending_identity_id,
+          passcode,
+          identity_profile
+        ) do
       attrs =
         identity_profile.profile_attrs
         |> atomize_profile_attrs()

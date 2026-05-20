@@ -16,16 +16,18 @@ defmodule PortalWeb.Cookie.PendingIdentityTest do
   end
 
   describe "put/2 and fetch/1" do
-    test "stores and retrieves only the pending identity id", %{conn: conn} do
+    test "stores and retrieves pending identity id and params", %{conn: conn} do
       pending_identity_id = Ecto.UUID.generate()
-      cookie = %PendingIdentity{pending_identity_id: pending_identity_id}
+      params = %{"as" => "gui-client", "state" => "client-state"}
+      cookie = %PendingIdentity{pending_identity_id: pending_identity_id, params: params}
 
       conn =
         conn
         |> PendingIdentity.put(cookie)
         |> recycle_conn(pending_identity_id)
 
-      assert %PendingIdentity{pending_identity_id: ^pending_identity_id} = PendingIdentity.fetch(conn)
+      assert %PendingIdentity{pending_identity_id: ^pending_identity_id, params: ^params} =
+               PendingIdentity.fetch(conn)
     end
 
     test "returns nil when the requested id does not match the cookie name", %{conn: conn} do
@@ -56,9 +58,20 @@ defmodule PortalWeb.Cookie.PendingIdentityTest do
         |> PendingIdentity.put(cookie)
         |> recycle_conn(pending_identity_id)
 
-      assert PendingIdentity.fetch_state(conn) == %{
-               "pending_identity_id" => pending_identity_id
-             }
+      assert PendingIdentity.fetch_state(conn) == %{"pending_identity_id" => pending_identity_id}
+    end
+
+    test "returns pending identity params in map format", %{conn: conn} do
+      pending_identity_id = Ecto.UUID.generate()
+      params = %{"as" => "gui-client", "state" => "client-state"}
+      cookie = %PendingIdentity{pending_identity_id: pending_identity_id, params: params}
+
+      conn =
+        conn
+        |> PendingIdentity.put(cookie)
+        |> recycle_conn(pending_identity_id)
+
+      assert PendingIdentity.fetch_state(conn) == Map.put(params, "pending_identity_id", pending_identity_id)
     end
 
     test "returns empty map when cookie is not present", %{conn: conn} do

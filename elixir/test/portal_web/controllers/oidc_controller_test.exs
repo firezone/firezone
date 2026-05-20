@@ -1155,6 +1155,7 @@ defmodule PortalWeb.OIDCControllerTest do
       pending_cookie = pending_identity_cookie_from_response(conn)
 
       assert redirect_query["pending_identity_id"] == pending_cookie.pending_identity_id
+      assert pending_cookie.params == %{"redirect_to" => "/#{ctx.account.slug}/actors"}
 
       assert %Portal.PendingIdentity{} = pending_identity =
                Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
@@ -1190,7 +1191,7 @@ defmodule PortalWeb.OIDCControllerTest do
         |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
           "secret" => code,
           "pending_identity_id" => pending_cookie.pending_identity_id,
-          "redirect_to" => "/#{ctx.account.slug}/actors"
+          "redirect_to" => "/#{ctx.account.slug}/sites"
         })
 
       assert redirected_to(conn) == "/#{ctx.account.slug}/actors"
@@ -1206,6 +1207,64 @@ defmodule PortalWeb.OIDCControllerTest do
       assert identity.actor_id == actor.id
       refute Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
       refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
+    end
+
+    test "proof email verification uses original client params after valid code", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false, sub: "regular-user-123")
+
+      auth_state =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{
+            "as" => "gui-client",
+            "state" => "original-client-state",
+            "nonce" => "original-client-nonce"
+          }
+        )
+
+      conn = perform_callback(ctx.conn, auth_state)
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      assert pending_cookie.params == %{
+               "as" => "gui-client",
+               "state" => "original-client-state",
+               "nonce" => "original-client-nonce"
+             }
+
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "as" => "headless-client",
+          "state" => "submitted-client-state",
+          "nonce" => "submitted-client-nonce"
+        })
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
+      refute conn.resp_body =~ "Copy to clipboard"
+
+      client_auth =
+        conn
+        |> recycle()
+        |> with_endpoint_key_base()
+        |> Cookie.ClientAuth.fetch()
+
+      assert client_auth.state == "original-client-state"
     end
 
     test "proof email verification treats concurrent external identity insert as success", ctx do
@@ -1363,10 +1422,10 @@ defmodule PortalWeb.OIDCControllerTest do
         |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
           "secret" => "wrong",
           "pending_identity_id" => pending_cookie.pending_identity_id,
-          "as" => "gui-client",
-          "state" => "client-state",
-          "nonce" => "client-nonce",
-          "redirect_to" => "/#{ctx.account.slug}/actors"
+          "as" => "headless-client",
+          "state" => "submitted-state",
+          "nonce" => "submitted-nonce",
+          "redirect_to" => "/#{ctx.account.slug}/sites"
         })
 
       location = redirected_to(conn)
@@ -1376,6 +1435,10 @@ defmodule PortalWeb.OIDCControllerTest do
       assert location =~ "nonce=client-nonce"
       assert location =~ "redirect_to=%2F#{ctx.account.slug}%2Factors"
       assert location =~ "pending_identity_id=#{pending_cookie.pending_identity_id}"
+      refute location =~ "headless-client"
+      refute location =~ "submitted-state"
+      refute location =~ "submitted-nonce"
+      refute location =~ "sites"
       assert flash(conn, :error) == "The verification code is invalid or expired."
     end
 

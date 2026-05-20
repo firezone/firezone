@@ -4,10 +4,11 @@ defmodule PortalWeb.Cookie.PendingIdentity do
   """
 
   @enforce_keys [:pending_identity_id]
-  defstruct [:pending_identity_id]
+  defstruct [:pending_identity_id, params: %{}]
 
   @type t :: %__MODULE__{
-          pending_identity_id: Ecto.UUID.t()
+          pending_identity_id: Ecto.UUID.t(),
+          params: map()
         }
 
   @cookie_key_prefix "pending_identity_"
@@ -50,9 +51,7 @@ defmodule PortalWeb.Cookie.PendingIdentity do
   def fetch_state(conn) do
     case fetch(conn) do
       %__MODULE__{} = cookie ->
-        %{
-          "pending_identity_id" => cookie.pending_identity_id
-        }
+        Map.put(cookie.params, "pending_identity_id", cookie.pending_identity_id)
 
       nil ->
         %{}
@@ -73,21 +72,35 @@ defmodule PortalWeb.Cookie.PendingIdentity do
   defp cookie_key(pending_identity_id), do: @cookie_key_prefix <> pending_identity_id
 
   defp to_binary(%__MODULE__{} = cookie) do
-    Ecto.UUID.dump!(cookie.pending_identity_id)
+    {Ecto.UUID.dump!(cookie.pending_identity_id), cookie.params || %{}}
     |> :erlang.term_to_binary()
   end
 
   defp from_binary(binary) when is_binary(binary) do
-    with pending_identity_id_bytes when is_binary(pending_identity_id_bytes) <-
-           safe_binary_to_term(binary),
-         {:ok, pending_identity_id} <- Ecto.UUID.load(pending_identity_id_bytes) do
-      %__MODULE__{pending_identity_id: pending_identity_id}
-    else
-      _ -> nil
+    case safe_binary_to_term(binary) do
+      {pending_identity_id_bytes, params} when is_binary(pending_identity_id_bytes) ->
+        with {:ok, pending_identity_id} <- Ecto.UUID.load(pending_identity_id_bytes) do
+          %__MODULE__{pending_identity_id: pending_identity_id, params: normalize_params(params)}
+        else
+          _ -> nil
+        end
+
+      pending_identity_id_bytes when is_binary(pending_identity_id_bytes) ->
+        with {:ok, pending_identity_id} <- Ecto.UUID.load(pending_identity_id_bytes) do
+          %__MODULE__{pending_identity_id: pending_identity_id}
+        else
+          _ -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 
   defp from_binary(_), do: nil
+
+  defp normalize_params(params) when is_map(params), do: params
+  defp normalize_params(_params), do: %{}
 
   # sobelow_skip ["Misc.BinToTerm"]
   defp safe_binary_to_term(binary) do
