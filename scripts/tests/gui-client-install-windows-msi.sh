@@ -17,10 +17,15 @@ sc query FirezoneClientTunnelService | grep RUNNING
 OS_BUILD=$(powershell.exe -NoProfile -Command \
     "[Environment]::OSVersion.Version.Build" | tr -d '\r\n')
 
+# `Get-AppxPackage -Name X` matches against PackageFamilyName, not
+# the manifest `Identity.Name`. Use the positional argument with a
+# wildcard suffix so we match by family-name prefix. Poll for up to
+# ~30s because the package store settles asynchronously after
+# `ProvisionPackageForAllUsersAsync` returns.
 KERNEL_SID=""
 for i in $(seq 1 15); do
     KERNEL_SID=$(powershell.exe -NoProfile -Command \
-        "(Get-AppxPackage -AllUsers -Name Firezone.Client.GUI | Select-Object -First 1).Sid" \
+        "(Get-AppxPackage -AllUsers Firezone.Client.GUI_* | Select-Object -First 1).Sid" \
         | tr -d '\r\n')
     if [ -n "$KERNEL_SID" ]; then
         echo "==> Get-AppxPackage settled after ${i} probe(s) (~$((i * 2))s)"
@@ -32,20 +37,10 @@ done
 if [ -z "$KERNEL_SID" ]; then
     if [ -n "$OS_BUILD" ] && [ "$OS_BUILD" -ge 19044 ]; then
         echo "Sparse MSIX did not register on supported Windows (build $OS_BUILD ≥ 19044)" >&2
-        echo "Get-AppxPackage -AllUsers -Name Firezone.Client.GUI returned nothing after 30s." >&2
-        # Widen the investigation: dump what AppX *does* think about
-        # Firezone, both per-user and machine-provisioned. If the
-        # provision succeeded but `-Name` filtering returns nothing,
-        # one of these will show the package.
-        echo "==> Get-AppxPackage Firezone* (no -AllUsers):" >&2
-        powershell.exe -NoProfile -Command \
-            "Get-AppxPackage Firezone* | Format-List Name, PackageFullName, PackageFamilyName, Status, IsFramework, SignatureKind" >&2
-        echo "==> Get-AppxPackage -AllUsers Firezone* :" >&2
+        echo "Get-AppxPackage -AllUsers Firezone.Client.GUI_* returned nothing after 30s." >&2
+        echo "==> Get-AppxPackage Firezone* :" >&2
         powershell.exe -NoProfile -Command \
             "Get-AppxPackage -AllUsers Firezone* | Format-List Name, PackageFullName, PackageFamilyName, Status" >&2
-        echo "==> Get-AppxProvisionedPackage -Online (filtered):" >&2
-        powershell.exe -NoProfile -Command \
-            "Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like 'Firezone*' | Format-List DisplayName, PackageName, PublisherId" >&2
         exit 1
     fi
     echo "Skipping SID canary on legacy Windows (build $OS_BUILD < 19044)"
