@@ -2,10 +2,12 @@ defmodule Portal.Authentication.Credential do
   @moduledoc """
   Represents the authentication credential used to create a Subject.
 
-  There are three credential types:
-  - `:api_token` - API tokens for api_client actors (no auth_provider_id)
-  - `:token` - Client tokens for service accounts and users (has auth_provider_id)
-  - `:portal_session` - Portal sessions for web users (has auth_provider_id)
+  Two `type` values are used:
+  - `:api_token` - API tokens for api_client actors. `auth_provider_id` is always nil.
+  - `:client_token` - Client tokens. `auth_provider_id` is set when the token was
+    minted from an interactive sign-in flow (OIDC, Email/OTP, userpass) and nil
+    when the token was issued directly by an admin (no sign-in flow).
+  - `:portal_session` - Portal sessions for web users. `auth_provider_id` is always set.
   """
 
   @type api_token :: %__MODULE__{type: :api_token, id: Ecto.UUID.t()}
