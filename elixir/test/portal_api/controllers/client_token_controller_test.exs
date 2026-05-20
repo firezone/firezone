@@ -54,7 +54,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
     test "lists client token metadata for an account_user", %{conn: conn, account: account, actor: actor} do
       user_actor = actor_fixture(account: account, type: :account_user)
-      tokens = for _ <- 1..3, do: client_token_fixture(account: account, actor: user_actor)
+      created_tokens = for _ <- 1..3, do: client_token_fixture(account: account, actor: user_actor)
 
       conn =
         conn
@@ -67,7 +67,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
              } = json_response(conn, 200)
 
       data_ids = Enum.map(data, & &1["id"])
-      token_ids = Enum.map(tokens, & &1.id)
+      token_ids = Enum.map(created_tokens, & &1.id)
       assert equal_ids?(data_ids, token_ids)
 
       Enum.each(data, fn token ->
