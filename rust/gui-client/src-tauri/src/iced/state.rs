@@ -3,8 +3,10 @@
 //! conversions so the iced binary can persist via the existing
 //! `settings::save_general` / `save_advanced` helpers.
 
+use firezone_gui_client::controller::ControllerRequest;
 use firezone_gui_client::logging::FileCount;
 use firezone_gui_client::settings::{AdvancedSettings, GeneralSettings, MdmSettings};
+use tokio::sync::mpsc;
 use url::Url;
 
 /// Top-level navigation route. Mirrors the React router's path set.
@@ -192,4 +194,7 @@ pub struct App {
     /// event (or via `iced::window::oldest()`). Held so the tray can
     /// raise the window after the user closes it with the X.
     pub window_id: Option<iced::window::Id>,
+    /// Sender into the Controller's request channel. Populated by
+    /// `try_main` before the iced runtime starts.
+    pub ctrl_tx: Option<mpsc::Sender<ControllerRequest>>,
 }

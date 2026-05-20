@@ -2,9 +2,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
 mod fake_controller;
-mod updates;
+pub mod updates;
 mod uptime;
 mod view;
+// Just the view-model types the iced binary's `IcedIntegration` needs;
+// keeping the full `view` module private so the Tauri-flavoured commands
+// (which take `tauri::State<Managed>` parameters) don't have to lift their
+// visibility.
+pub use view::{GeneralSettingsForm, SessionViewModel};
 
 // TODO: See how many of these we can make private.
 pub mod auth;

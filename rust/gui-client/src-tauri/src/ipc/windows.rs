@@ -181,7 +181,7 @@ fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
 impl Server {
     /// Platform-specific setup
     #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
-    pub(crate) fn new(id: SocketId) -> Result<Self> {
+    pub fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         let dacl = match id {
             #[cfg(debug_assertions)]
