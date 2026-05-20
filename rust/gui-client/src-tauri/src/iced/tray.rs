@@ -16,6 +16,11 @@
 
 use crate::Message;
 
+/// URLs used by both tray backends. Match the `utm_url(...)` calls in
+/// the Tauri client's `system_tray::add_bottom_section`.
+pub(crate) const DOCS_URL: &str = "https://www.firezone.dev/kb?utm_source=gui-client";
+pub(crate) const SUPPORT_URL: &str = "https://www.firezone.dev/support?utm_source=gui-client";
+
 /// Build the tray. Idempotent on the platforms where it can be — on
 /// Linux it spawns a ksni service; on Windows/macOS it constructs a
 /// `TrayIcon` and leaks it.
@@ -156,6 +161,7 @@ mod backend {
                 .unwrap_or_default()
         }
         fn menu(&self) -> Vec<MenuItem<Self>> {
+            use ksni::menu::SubMenu;
             let send = |msg: Message| {
                 let sender = self.sender.clone();
                 Box::new(move |_: &mut Self| {
@@ -164,15 +170,40 @@ mod backend {
             };
             vec![
                 StandardItem {
-                    label: "Show Firezone".into(),
-                    activate: send(Message::TrayShowWindow),
+                    label: "Sign In".into(),
+                    activate: send(Message::TraySignInClicked),
                     ..Default::default()
                 }
                 .into(),
                 MenuItem::Separator,
                 StandardItem {
-                    label: "Overview".into(),
-                    activate: send(Message::Navigate(Route::Overview)),
+                    label: "About Firezone".into(),
+                    activate: send(Message::Navigate(Route::About)),
+                    ..Default::default()
+                }
+                .into(),
+                StandardItem {
+                    label: "Admin Portal...".into(),
+                    activate: send(Message::TrayAdminPortalClicked),
+                    ..Default::default()
+                }
+                .into(),
+                SubMenu {
+                    label: "Help".into(),
+                    submenu: vec![
+                        StandardItem {
+                            label: "Documentation...".into(),
+                            activate: send(Message::OpenExternalUrl(super::DOCS_URL)),
+                            ..Default::default()
+                        }
+                        .into(),
+                        StandardItem {
+                            label: "Support...".into(),
+                            activate: send(Message::OpenExternalUrl(super::SUPPORT_URL)),
+                            ..Default::default()
+                        }
+                        .into(),
+                    ],
                     ..Default::default()
                 }
                 .into(),
@@ -182,21 +213,9 @@ mod backend {
                     ..Default::default()
                 }
                 .into(),
-                StandardItem {
-                    label: "Diagnostics".into(),
-                    activate: send(Message::Navigate(Route::Diagnostics)),
-                    ..Default::default()
-                }
-                .into(),
-                StandardItem {
-                    label: "About Firezone".into(),
-                    activate: send(Message::Navigate(Route::About)),
-                    ..Default::default()
-                }
-                .into(),
                 MenuItem::Separator,
                 StandardItem {
-                    label: "Quit".into(),
+                    label: "Quit Firezone".into(),
                     activate: send(Message::TrayQuitClicked),
                     ..Default::default()
                 }
@@ -253,51 +272,31 @@ mod backend {
     use iced::stream;
     use tray_icon::{
         Icon, TrayIconBuilder,
-        menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem},
+        menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu},
     };
 
     use crate::Message;
     use crate::assets;
     use crate::state::Route;
 
-    const ID_SHOW: &str = "fz.show";
-    const ID_OVERVIEW: &str = "fz.overview";
-    const ID_SETTINGS: &str = "fz.settings";
-    const ID_DIAGNOSTICS: &str = "fz.diagnostics";
+    const ID_SIGN_IN: &str = "fz.sign_in";
     const ID_ABOUT: &str = "fz.about";
+    const ID_ADMIN_PORTAL: &str = "fz.admin_portal";
+    const ID_DOCS: &str = "fz.docs";
+    const ID_SUPPORT: &str = "fz.support";
+    const ID_SETTINGS: &str = "fz.settings";
     const ID_QUIT: &str = "fz.quit";
 
     pub fn install() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let menu = Menu::new();
         menu.append(&MenuItem::with_id(
-            MenuId::new(ID_SHOW),
-            "Show Firezone",
+            MenuId::new(ID_SIGN_IN),
+            "Sign In",
             true,
             None,
         ))
         .ok();
         menu.append(&PredefinedMenuItem::separator()).ok();
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_OVERVIEW),
-            "Overview",
-            true,
-            None,
-        ))
-        .ok();
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_SETTINGS),
-            "Settings",
-            true,
-            None,
-        ))
-        .ok();
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_DIAGNOSTICS),
-            "Diagnostics",
-            true,
-            None,
-        ))
-        .ok();
         menu.append(&MenuItem::with_id(
             MenuId::new(ID_ABOUT),
             "About Firezone",
@@ -305,9 +304,46 @@ mod backend {
             None,
         ))
         .ok();
+        menu.append(&MenuItem::with_id(
+            MenuId::new(ID_ADMIN_PORTAL),
+            "Admin Portal...",
+            true,
+            None,
+        ))
+        .ok();
+
+        let help = Submenu::new("Help", true);
+        help.append(&MenuItem::with_id(
+            MenuId::new(ID_DOCS),
+            "Documentation...",
+            true,
+            None,
+        ))
+        .ok();
+        help.append(&MenuItem::with_id(
+            MenuId::new(ID_SUPPORT),
+            "Support...",
+            true,
+            None,
+        ))
+        .ok();
+        menu.append(&help).ok();
+
+        menu.append(&MenuItem::with_id(
+            MenuId::new(ID_SETTINGS),
+            "Settings",
+            true,
+            None,
+        ))
+        .ok();
         menu.append(&PredefinedMenuItem::separator()).ok();
-        menu.append(&MenuItem::with_id(MenuId::new(ID_QUIT), "Quit", true, None))
-            .ok();
+        menu.append(&MenuItem::with_id(
+            MenuId::new(ID_QUIT),
+            "Quit Firezone",
+            true,
+            None,
+        ))
+        .ok();
 
         let tray = TrayIconBuilder::new()
             .with_tooltip("Firezone")
@@ -371,11 +407,12 @@ mod backend {
     fn to_message(event: &MenuEvent) -> Option<Message> {
         match event.id.as_ref() {
             ID_QUIT => Some(Message::TrayQuitClicked),
-            ID_SHOW => Some(Message::TrayShowWindow),
-            ID_OVERVIEW => Some(Message::Navigate(Route::Overview)),
-            ID_SETTINGS => Some(Message::Navigate(Route::GeneralSettings)),
-            ID_DIAGNOSTICS => Some(Message::Navigate(Route::Diagnostics)),
+            ID_SIGN_IN => Some(Message::TraySignInClicked),
             ID_ABOUT => Some(Message::Navigate(Route::About)),
+            ID_ADMIN_PORTAL => Some(Message::TrayAdminPortalClicked),
+            ID_DOCS => Some(Message::OpenExternalUrl(super::DOCS_URL)),
+            ID_SUPPORT => Some(Message::OpenExternalUrl(super::SUPPORT_URL)),
+            ID_SETTINGS => Some(Message::Navigate(Route::GeneralSettings)),
             _ => None,
         }
     }

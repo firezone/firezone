@@ -76,7 +76,8 @@ where
 {
     let input = text_input("", value)
         .on_input_maybe(if managed { None } else { Some(on_input) })
-        .padding(8);
+        .padding([8, 12])
+        .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT));
 
     column![
         text(label).size(13).color(theme::LIGHT.text_secondary),

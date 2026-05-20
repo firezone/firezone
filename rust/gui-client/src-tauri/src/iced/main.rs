@@ -60,7 +60,10 @@ pub enum Message {
 
     // Tray
     TrayShowWindow,
+    TraySignInClicked,
+    TrayAdminPortalClicked,
     TrayQuitClicked,
+    OpenExternalUrl(&'static str),
 }
 
 fn legacy_to_modern(legacy: &AdvancedSettingsLegacy) -> AdvancedSettings {
@@ -79,18 +82,19 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::SignInPressed => {
-            // No full Controller-driven flow yet; open the auth URL in
-            // the user's browser and park the screen in Loading. The
-            // deep-link callback that completes the sign-in lives in
-            // the Tauri binary today; the iced binary will pick it up
-            // when `GuiIntegration` is implemented.
-            let base = app.advanced_settings.auth_url.trim_end_matches('/');
-            let target = if app.general_settings.account_slug.is_empty() {
-                base.to_owned()
-            } else {
-                format!("{base}/{}", app.general_settings.account_slug)
-            };
-            let _ = open::that_detached(target);
+            // Build the same URL the Tauri client does:
+            // `<auth_base_url>/<account_slug>?as=gui-client&nonce=<32-byte hex>&state=<32-byte hex>`
+            // The nonce + state are CSRF tokens that the auth server
+            // includes in its deep-link callback. We currently don't
+            // have a Controller running to receive that callback in
+            // the iced binary, so the values are thrown away — they
+            // just need to be present and well-formed so the auth
+            // server doesn't reject the request.
+            let auth_url = sign_in_url(
+                &app.advanced_settings.auth_url,
+                &app.general_settings.account_slug,
+            );
+            let _ = open::that_detached(auth_url);
             app.session = Session::Loading;
             Task::none()
         }
@@ -233,6 +237,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             // explicit window registry.
             Task::none()
         }
+        Message::TraySignInClicked => update(app, Message::SignInPressed),
+        Message::TrayAdminPortalClicked => {
+            let _ = open::that_detached(&app.advanced_settings.auth_url);
+            Task::none()
+        }
+        Message::OpenExternalUrl(url) => {
+            let _ = open::that_detached(url);
+            Task::none()
+        }
         Message::TrayQuitClicked => iced::exit(),
     }
 }
@@ -298,6 +311,33 @@ async fn recount_logs() -> LogCount {
         .await
         .map(LogCount::from)
         .unwrap_or_default()
+}
+
+/// Build the sign-in URL that the auth server expects. Mirrors
+/// `Request::to_url` in `gui-client/src-tauri/src/auth.rs`.
+fn sign_in_url(auth_base_url: &str, account_slug: &str) -> String {
+    let base = match url::Url::parse(auth_base_url) {
+        Ok(mut u) => {
+            if !account_slug.is_empty() {
+                u.set_path(account_slug);
+            }
+            u.to_string()
+        }
+        Err(_) => format!(
+            "{}{}{}",
+            auth_base_url.trim_end_matches('/'),
+            if account_slug.is_empty() { "" } else { "/" },
+            account_slug
+        ),
+    };
+
+    let mut nonce_buf = [0u8; 32];
+    let mut state_buf = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_buf);
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut state_buf);
+    let nonce = hex::encode(nonce_buf);
+    let state = hex::encode(state_buf);
+    format!("{base}?as=gui-client&nonce={nonce}&state={state}")
 }
 
 /// Pop a native save-file dialog (off the iced runtime, since

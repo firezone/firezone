@@ -20,7 +20,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 } else {
                     Some(Message::GeneralSettingsAccountSlugChanged)
                 })
-                .padding(8),
+                .padding([8, 12])
+                .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT)),
             managed_hint(s.account_slug_is_managed),
             Space::new().height(16),
             toggle_row(

@@ -6,5 +6,6 @@ pub mod button;
 pub mod color_palette;
 pub mod diagnostics;
 pub mod general_settings;
+pub mod input;
 pub mod overview;
 pub mod sidebar;
