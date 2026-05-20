@@ -114,7 +114,9 @@ defmodule PortalAPI.Gateway.Channel do
 
     {:noreply, socket} = register(socket)
 
-    PortalAPI.Gateway.Socket.enqueue_session(socket.assigns.session)
+    # Must follow register/1; the queue's on-confirmed delivery via Portal.PG
+    # silently drops if the channel pid isn't registered yet.
+    Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session))
 
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
@@ -1077,6 +1079,12 @@ defmodule PortalAPI.Gateway.Channel do
 
         assign(socket, presence_monitors: monitors)
     end
+  end
+
+  defp session_attrs(%Portal.GatewaySession{} = session) do
+    session
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :account, :device, :gateway_token])
   end
 
   defmodule Database do

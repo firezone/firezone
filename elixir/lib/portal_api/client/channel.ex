@@ -105,7 +105,9 @@ defmodule PortalAPI.Client.Channel do
 
     {:noreply, socket} = register(socket)
 
-    PortalAPI.Client.Socket.enqueue_session(socket.assigns.session)
+    # Must follow register/1; the queue's on-confirmed delivery via Portal.PG
+    # silently drops if the channel pid isn't registered yet.
+    Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session))
 
     init(socket, resources, relays)
 
@@ -2398,6 +2400,12 @@ defmodule PortalAPI.Client.Channel do
 
         assign(socket, presence_monitors: monitors)
     end
+  end
+
+  defp session_attrs(%Portal.ClientSession{} = session) do
+    session
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :account, :device, :client_token])
   end
 
   defmodule Database do

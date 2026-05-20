@@ -39,6 +39,7 @@ defmodule PortalAPI.Client.ChannelTest do
       id: session_id,
       device_id: client.id,
       account_id: client.account_id,
+      client_token_id: subject.credential.id,
       public_key: Portal.DeviceFixtures.generate_public_key(),
       user_agent: subject.context.user_agent,
       remote_ip: subject.context.remote_ip,
@@ -286,6 +287,41 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
+    end
+
+    test "after_join enqueues the session and a flush persists it", %{
+      client: client,
+      subject: subject
+    } do
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(client, subject, session_id: session_id)
+      assert_push "init", _init_payload
+
+      Portal.Queue.flush(:client_session_queue)
+
+      persisted = Portal.Repo.get_by!(Portal.ClientSession, id: session_id)
+      assert persisted.device_id == client.id
+      assert persisted.account_id == client.account_id
+      assert persisted.client_token_id == subject.credential.id
+      assert persisted.public_key == socket.assigns.session.public_key
+      assert persisted.user_agent == socket.assigns.session.user_agent
+      assert persisted.version == socket.assigns.session.version
+    end
+
+    test "session_durability timer is cancelled by the queue's confirm message", %{
+      client: client,
+      subject: subject
+    } do
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(client, subject, session_id: session_id)
+      assert_push "init", _init_payload
+
+      assert {^session_id, _generation, _timer_ref} =
+               :sys.get_state(socket.channel_pid).assigns.session_durability
+
+      Portal.Queue.flush(:client_session_queue)
+
+      refute :sys.get_state(socket.channel_pid).assigns.session_durability
     end
 
     test "channel crash takes down the transport", %{client: client, subject: subject} do

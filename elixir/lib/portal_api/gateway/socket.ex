@@ -24,13 +24,6 @@ defmodule PortalAPI.Gateway.Socket do
     ]
   end
 
-  # Must run from the channel's `:after_join` after `register/1`; the queue's
-  # on-confirmed delivery via `Portal.PG` silently drops if the channel pid
-  # isn't registered yet.
-  def enqueue_session(%GatewaySession{} = session) do
-    Portal.Queue.enqueue(:gateway_session_queue, session_attrs(session))
-  end
-
   ## Authentication
 
   @impl true
@@ -136,12 +129,6 @@ defmodule PortalAPI.Gateway.Socket do
       remote_ip_location_lon: context.remote_ip_location_lon,
       version: version
     }
-  end
-
-  defp session_attrs(%GatewaySession{} = session) do
-    session
-    |> Map.from_struct()
-    |> Map.drop([:__meta__, :account, :device, :gateway_token])
   end
 
   defp flush_gateway_sessions(entries) do
