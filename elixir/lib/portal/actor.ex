@@ -62,7 +62,7 @@ defmodule Portal.Actor do
 
   def email_meaningfully_changed?(%Ecto.Changeset{} = changeset) do
     case fetch_change(changeset, :email) do
-      {:ok, new_email} -> trim_or_empty(new_email) != trim_or_empty(changeset.data.email)
+      {:ok, new_email} -> normalize_for_compare(new_email) != normalize_for_compare(changeset.data.email)
       :error -> false
     end
   end
@@ -93,9 +93,10 @@ defmodule Portal.Actor do
     end
   end
 
-  defp trim_or_empty(nil), do: ""
-  defp trim_or_empty(value) when is_binary(value), do: String.trim(value)
+  defp normalize_for_compare(nil), do: ""
 
+  defp normalize_for_compare(value) when is_binary(value),
+    do: value |> String.trim() |> String.downcase()
 
   defp normalize_email(changeset, field) do
     update_change(changeset, field, fn

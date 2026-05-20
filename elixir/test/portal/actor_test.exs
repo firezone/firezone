@@ -244,6 +244,13 @@ defmodule Portal.ActorTest do
       refute Actor.email_meaningfully_changed?(changeset)
     end
 
+    test "returns false when only case differs" do
+      changeset =
+        cast(%Actor{email: "user@example.com"}, %{email: "User@Example.COM"}, [:email])
+
+      refute Actor.email_meaningfully_changed?(changeset)
+    end
+
     test "returns true when email value differs after trim" do
       changeset =
         cast(%Actor{email: "user@example.com"}, %{email: "other@example.com"}, [:email])
