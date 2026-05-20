@@ -22,6 +22,9 @@ x-health-check: &health-check
   retries: 15
   timeout: 1s
 
+# Shared by the client-2 container (FIREZONE_ID) and the seeds (POOL_MEMBER_FIREZONE_ID).
+x-pool-member-firezone-id: &pool-member-firezone-id "68511a32d29b4c81591877beea18d3c95e4d12c52314b1aa2f5a568eccc0e6ad"
+
 services:
   portal:
     extends:
@@ -110,12 +113,13 @@ services:
       # Mix env should be set to prod to use secrets declared above,
       # otherwise seeds will generate invalid tokens
       MIX_ENV: "prod"
+      POOL_MEMBER_FIREZONE_ID: *pool-member-firezone-id
     depends_on:
       postgres:
         condition: "service_healthy"
 
   # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
-  client:
+  client-1:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
       <<: *health-check
@@ -124,7 +128,7 @@ services:
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://portal:8081
-      FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
+      FIREZONE_ID: 2606a54a327020a1285cc141aeceb5737a91625e5e1a85c234682266f45820bf
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
       - sh
@@ -160,19 +164,19 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
-      client-router:
+      client-1-router:
         condition: "service_healthy"
       portal:
         condition: "service_healthy"
     networks:
-      client-internal:
+      client-1-internal:
         ipv4_address: 172.30.0.100
         ipv6_address: 172:30:0::100
     extra_hosts:
       - "portal:203.0.113.10"
       - "portal:203:0:113::10"
 
-  client-router:
+  client-1-router:
     extends:
       file: scripts/compose/router.yml
       service: router
@@ -180,9 +184,81 @@ services:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
       NETWORK_LATENCY_MS: 10
     networks:
-      client-internal:
+      client-1-internal:
         ipv4_address: 172.30.0.254
         ipv6_address: 172:30:0::254
+        interface_name: internal
+      internet:
+        interface_name: internet
+
+  client-2:
+    healthcheck:
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+      <<: *health-check
+    environment:
+      FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
+      FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkZmUyYmYyMmQtMDk4Ni00MzNhLTg1ZWQtYThmMzdjOTBhMzRibQAAADg5SE00QTZSRE03UUxEVjhOMUMwRFFEMThKVEpOVUpJQ0Y0QThWUklKODM0SkhDTjA5NFIwPT09PW4GACphrxmeAWIAAVGA.LHufO50MaDTncVMV1CBGr3pnpemR-__n8RSbh9xwB3Y"
+      RUST_LOG: ${RUST_LOG:-wire=trace,debug}
+      FIREZONE_API_URL: ws://portal:8081
+      FIREZONE_ID: *pool-member-firezone-id
+      FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to internet subnet via router
+        ip -4 route add 203.0.113.0/24 via 172.32.0.254
+        ip -6 route add 203:0:113::/64 via 172:32:0::254
+
+        # Disable checksum offloading so that checksums are correct when they reach the relay
+        apk add --no-cache ethtool iproute2
+        ethtool -K eth0 tx off
+
+        ip link set dev eth0 txqueuelen 100000
+
+        exec firezone-headless-client
+    init: true
+    build:
+      target: ${DOCKER_BUILD_TARGET:-debug}
+      context: rust
+      dockerfile: Dockerfile
+      args:
+        PACKAGE: firezone-headless-client
+    image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
+    privileged: true # Needed to tune `sysctl` inside container.
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      client-2-router:
+        condition: "service_healthy"
+      portal:
+        condition: "service_healthy"
+    networks:
+      client-2-internal:
+        ipv4_address: 172.32.0.100
+        ipv6_address: 172:32:0::100
+    extra_hosts:
+      - "portal:203.0.113.10"
+      - "portal:203:0:113::10"
+
+  client-2-router:
+    extends:
+      file: scripts/compose/router.yml
+      service: router
+    environment:
+      MASQUERADE_TYPE: ${POOL_MEMBER_MASQUERADE:-}
+      NETWORK_LATENCY_MS: 10
+    networks:
+      client-2-internal:
+        ipv4_address: 172.32.0.254
+        ipv6_address: 172:32:0::254
         interface_name: internal
       internet:
         interface_name: internet
@@ -196,7 +272,7 @@ services:
       RUST_LOG: ${RUST_LOG:-wire=trace,debug,flow_logs=trace}
       FIREZONE_FLOW_LOGS: true
       FIREZONE_API_URL: ws://portal:8081
-      FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
+      FIREZONE_ID: c9cc2a8a01f9d3d6b2c26719965709196ae2c79214a837e28f0a751af1e2f2ca
     command:
       - sh
       - -c
@@ -419,11 +495,11 @@ services:
         condition: "service_healthy"
       gateway-router:
         condition: "service_healthy"
-      client-router:
+      client-1-router:
         condition: "service_healthy"
       gateway:
         condition: "service_healthy"
-      client:
+      client-1:
         condition: "service_healthy"
 
   otel:
@@ -461,12 +537,19 @@ networks:
         - subnet: 172.29.2.0/24
         - subnet: 172:29:2::/64
 
-  client-internal:
+  client-1-internal:
     enable_ipv6: true
     ipam:
       config:
         - subnet: 172.30.0.0/24
         - subnet: 172:30:0::/64
+
+  client-2-internal:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+        - subnet: 172:32:0::/64
 
   gateway-internal:
     enable_ipv6: true
