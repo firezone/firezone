@@ -9,20 +9,18 @@ PACKAGE="dev.firezone.android"
 AVD_NAME="${AVD_NAME:-firezone}"
 DEVICE_PROFILE="${DEVICE_PROFILE:-pixel_7}"
 
-# Pick a system image and matching cargo skip-list based on host arch.
+# Pick a system image based on host arch.
 # x86_64 hosts (Linux, Intel Mac) use the x86_64 image; arm64 hosts (Apple Silicon)
 # use arm64-v8a. Running an x86_64 image on Apple Silicon works only via slow translation.
 case "$(uname -m)" in
 x86_64 | amd64)
     HOST_ABI="x86_64"
-    SKIP_CARGO_TASKS=(cargoBuildArm cargoBuildArm64 cargoBuildX86)
     ;;
 arm64 | aarch64)
     HOST_ABI="arm64-v8a"
-    SKIP_CARGO_TASKS=(cargoBuildArm cargoBuildX86 cargoBuildX86_64)
     ;;
 *)
-    echo "Unsupported host arch: $(uname -m). Set SYSTEM_IMAGE and SKIP_CARGO_TASKS manually." >&2
+    echo "Unsupported host arch: $(uname -m). Set SYSTEM_IMAGE manually." >&2
     exit 1
     ;;
 esac
@@ -101,13 +99,8 @@ echo "==> Installing debug APK (${HOST_ABI} only)..."
 echo "==> Force-stopping any running instance of ${PACKAGE}..."
 adb shell am force-stop "$PACKAGE"
 
-# Skip cargo builds for ABIs the emulator can't use; the resulting APK contains only
-# the matching .so, which saves ~4x build time vs the default all-ABI build.
-gradle_skip_args=()
-for task in "${SKIP_CARGO_TASKS[@]}"; do
-    gradle_skip_args+=(-x "$task")
-done
-./gradlew installDebug "${gradle_skip_args[@]}"
+# Build only the ABI the emulator uses; saves ~4x build time vs the default all-ABI build.
+./gradlew installDebug "-Pandroid.injected.build.abi=$HOST_ABI"
 
 echo "==> Launching ${PACKAGE}..."
 adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null
