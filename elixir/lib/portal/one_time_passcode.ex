@@ -11,6 +11,7 @@ defmodule Portal.OneTimePasscode do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     belongs_to :actor, Portal.Actor
+    has_many :pending_identities, Portal.PendingIdentity, references: :id
 
     field :code_hash, :string, redact: true
     field :code, :string, virtual: true, redact: true

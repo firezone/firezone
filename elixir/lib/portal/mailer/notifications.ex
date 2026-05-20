@@ -13,7 +13,7 @@ defmodule Portal.Mailer.Notifications do
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, recipients) do
     params = %{clients_order_by: "latest_session:asc:version"}
-    outdated_clients_url = url(~p"/#{account.id}/clients?#{params}")
+    outdated_clients_url = url(~p"/#{account}/clients?#{params}")
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")
@@ -29,7 +29,7 @@ defmodule Portal.Mailer.Notifications do
   end
 
   def limits_exceeded_email(account, warning, recipients) do
-    billing_url = url(~p"/#{account.id}/settings/account")
+    billing_url = url(~p"/#{account}/settings/account")
     plan_type = Portal.Billing.plan_type(account)
 
     default_email()

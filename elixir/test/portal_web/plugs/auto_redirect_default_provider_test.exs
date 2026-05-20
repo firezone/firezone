@@ -209,7 +209,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     } do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
-      conn = get(conn, ~p"/#{account.slug}/sign_in?as=client&nonce=test-nonce&state=test-state")
+      conn = get(conn, ~p"/#{account}/sign_in?as=client&nonce=test-nonce&state=test-state")
 
       location = redirected_to(conn)
       assert location =~ "/sign_in/oidc/#{provider.id}"
@@ -224,7 +224,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     } do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
-      conn = get(conn, ~p"/#{account.slug}/sign_in?as=headless-client&state=test-state")
+      conn = get(conn, ~p"/#{account}/sign_in?as=headless-client&state=test-state")
 
       location = redirected_to(conn)
       assert location =~ "/sign_in/oidc/#{provider.id}"
@@ -239,7 +239,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
       conn =
-        get(conn, ~p"/#{account.slug}/sign_in?as=gui-client&nonce=test-nonce&state=test-state")
+        get(conn, ~p"/#{account}/sign_in?as=gui-client&nonce=test-nonce&state=test-state")
 
       location = redirected_to(conn)
       assert location =~ "/sign_in/oidc/#{provider.id}"
@@ -251,7 +251,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
     test "does not redirect when no default provider", %{conn: conn, account: account} do
       _provider = oidc_provider_fixture(account: account, is_default: false)
 
-      conn = get(conn, ~p"/#{account.slug}/sign_in?as=client&state=test-state")
+      conn = get(conn, ~p"/#{account}/sign_in?as=client&state=test-state")
 
       assert html_response(conn, 200) =~ "Sign In"
     end

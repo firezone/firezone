@@ -44,7 +44,7 @@ defmodule PortalWeb.Settings.Authentication do
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
       @common_fields ++
-        ~w[discovery_document_uri client_id client_secret require_email_verified is_verified is_legacy]a
+        ~w[discovery_document_uri client_id client_secret email_verification_method is_verified is_legacy]a
   }
 
   def mount(_params, _session, socket) do
@@ -183,7 +183,8 @@ defmodule PortalWeb.Settings.Authentication do
             config: config,
             verification_ref: Ecto.UUID.generate(),
             verifier: verifier,
-            require_email_verified: type == "oidc" and get_field(changeset, :require_email_verified) == true
+            require_email_verified:
+              type == "oidc" and get_field(changeset, :email_verification_method) == :claim
           }
         )
 
@@ -533,7 +534,7 @@ defmodule PortalWeb.Settings.Authentication do
         [:client_id, :client_secret, :okta_domain]
 
       OIDC.AuthProvider ->
-        [:client_id, :client_secret, :discovery_document_uri, :require_email_verified]
+        [:client_id, :client_secret, :discovery_document_uri, :email_verification_method]
 
       _ ->
         []
@@ -1351,17 +1352,88 @@ defmodule PortalWeb.Settings.Authentication do
             </div>
           </div>
 
-          <div :if={@type == "oidc"}>
-            <.input
-              field={@form[:require_email_verified]}
-              type="checkbox"
-              label="Require verified email"
-              unchecked_value="false"
-            />
-            <p class="mt-1 ml-7 text-xs text-[var(--text-tertiary)]">
-              Enforces the email_verified claim to be true on sign in.
-            </p>
-          </div>
+          <fieldset :if={@type == "oidc"}>
+            <legend class="block text-xs font-medium text-[var(--text-secondary)] mb-3">
+              Email Verification <span class="text-[var(--status-error)]">*</span>
+            </legend>
+            <% email_verification_method = get_field(@form.source, :email_verification_method) %>
+            <div class="grid gap-3 md:grid-cols-3">
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :none,
+                  do: "border-[var(--brand)] bg-[var(--surface-raised)]",
+                  else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="none"
+                  checked={email_verification_method == :none}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+                  None
+                </span>
+                <span class="text-xs text-[var(--text-secondary)]">
+                  Do not require the identity provider to confirm email ownership before linking an identity.
+                  <strong class="block mt-1">Not recommended.</strong>
+                </span>
+              </label>
+
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :claim,
+                  do: "border-[var(--brand)] bg-[var(--surface-raised)]",
+                  else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="claim"
+                  checked={email_verification_method == :claim}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+                  Claim
+                </span>
+                <span class="text-xs text-[var(--text-secondary)]">
+                  Trust the email address only when the identity provider returns
+                  <code class="text-xs"><strong>email_verified=true</strong></code>.
+                  Authentication fails when the claim is missing or false.
+                  <strong class="block mt-1">Default.</strong>
+                </span>
+              </label>
+
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :proof,
+                  do: "border-[var(--brand)] bg-[var(--surface-raised)]",
+                  else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="proof"
+                  checked={email_verification_method == :proof}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+                  Proof
+                </span>
+                <span class="text-xs text-[var(--text-secondary)]">
+                  Send a one-time passcode to the claimed email address before linking a new OIDC identity.
+                  Use this when the provider cannot reliably send
+                  <code class="text-xs"><strong>email_verified=true</strong></code>.
+                </span>
+              </label>
+            </div>
+          </fieldset>
 
           <%!-- Redirect URI --%>
           <div>

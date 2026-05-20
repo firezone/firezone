@@ -31,6 +31,7 @@ defmodule Portal.Account do
 
     has_many :auth_providers, Portal.AuthProvider
     has_many :external_identities, Portal.ExternalIdentity
+    has_many :pending_identities, Portal.PendingIdentity
 
     has_many :policies, Portal.Policy
 

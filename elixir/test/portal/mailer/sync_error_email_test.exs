@@ -16,7 +16,7 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
   end
 
   describe "sync_error_email/2" do
-    test "should contain sync error info", %{directory: directory} do
+    test "should contain sync error info", %{account: account, directory: directory} do
       admin_email = "admin@foo.local"
       expected_msg = "403 - Forbidden"
 
@@ -31,6 +31,8 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
 
       assert email_body.text_body =~ expected_msg
       assert email_body.text_body =~ directory.name
+      assert email_body.text_body =~ "/#{account.slug}/settings/directory_sync"
+      refute email_body.text_body =~ "/#{account.id}/settings/directory_sync"
     end
 
     test "email is addressed to the admin email", %{directory: directory} do

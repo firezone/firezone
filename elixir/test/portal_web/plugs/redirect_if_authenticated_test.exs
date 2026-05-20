@@ -26,7 +26,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
         |> RedirectIfAuthenticated.call([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/#{account.slug}/sites"
+      assert redirected_to(conn) == ~p"/#{account}/sites"
     end
 
     test "does not redirect authenticated user when as=client param is set", %{
@@ -101,7 +101,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/#{account.slug}/sign_in?as=client&nonce=test-nonce&state=test-state")
+        |> get(~p"/#{account}/sign_in?as=client&nonce=test-nonce&state=test-state")
 
       # Should render the sign-in page (200)
       assert html_response(conn, 200) =~ "Sign In"
@@ -115,7 +115,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/#{account.slug}/sign_in?as=headless-client&state=test-state")
+        |> get(~p"/#{account}/sign_in?as=headless-client&state=test-state")
 
       assert html_response(conn, 200) =~ "Sign In"
     end
@@ -128,7 +128,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/#{account.slug}/sign_in?as=gui-client&nonce=test-nonce&state=test-state")
+        |> get(~p"/#{account}/sign_in?as=gui-client&nonce=test-nonce&state=test-state")
 
       assert html_response(conn, 200) =~ "Sign In"
     end
@@ -143,10 +143,10 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/#{account.slug}/sign_in")
+        |> get(~p"/#{account}/sign_in")
 
       # Should redirect to /sites (portal)
-      assert redirected_to(conn) == ~p"/#{account.slug}/sites"
+      assert redirected_to(conn) == ~p"/#{account}/sites"
     end
 
     test "integration: authenticated user with default provider and as=client auto-redirects to provider",
@@ -164,7 +164,7 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticatedTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/#{account.slug}/sign_in?as=client&nonce=test-nonce&state=test-state")
+        |> get(~p"/#{account}/sign_in?as=client&nonce=test-nonce&state=test-state")
 
       # With a default provider and as=client, should redirect to the provider-specific URL with params intact
       location = redirected_to(conn)
