@@ -99,13 +99,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     let apiURL =
-      providerConfiguration.effectiveValue(forKey: Configuration.Keys.apiURL)
+      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.apiURL)
       ?? ConfigurationDefaults.apiURL
     let logFilter =
-      providerConfiguration.effectiveValue(forKey: Configuration.Keys.logFilter)
+      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.logFilter)
       ?? ConfigurationDefaults.logFilter
     let accountSlug =
-      providerConfiguration.effectiveValue(forKey: Configuration.Keys.accountSlug)
+      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
       ?? ConfigurationDefaults.accountSlug
     let internetResourceEnabled = Configuration.bool(
       providerConfiguration[Configuration.Keys.internetResourceEnabled],

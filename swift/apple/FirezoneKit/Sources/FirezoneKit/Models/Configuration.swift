@@ -283,8 +283,13 @@ public class Configuration: ObservableObject {
 }
 
 extension Dictionary where Key == String, Value == String {
-  /// Returns the forced override for `key` if present, else the plain value.
-  public func effectiveValue(forKey key: String) -> String? {
+  /// Returns the MDM-forced override for `key` if cached, else the plain value.
+  ///
+  /// Only keys in `Configuration.forwardedForcedKeys` ever have a cached
+  /// override — user-controlled values like `internetResourceEnabled` must be
+  /// read directly via `self[key]`, since calling this would silently fall
+  /// through to the same lookup and obscure intent at the call site.
+  public func withMDMOverride(forKey key: String) -> String? {
     self[Configuration.forcedKey(for: key)] ?? self[key]
   }
 }
