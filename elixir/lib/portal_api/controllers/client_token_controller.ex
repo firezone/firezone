@@ -9,7 +9,7 @@ defmodule PortalAPI.ClientTokenController do
   tags ["Client Tokens"]
 
   operation :index,
-    summary: "List Client Tokens for an Actor",
+    summary: "List Client Tokens for a Service Account or User Actor",
     parameters: [
       actor_id: [
         in: :path,
@@ -56,9 +56,8 @@ defmodule PortalAPI.ClientTokenController do
     ]
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def create(conn, %{"actor_id" => actor_id} = params) do
+  def create(conn, %{"actor_id" => actor_id, "client_token" => attrs}) do
     subject = conn.assigns.subject
-    attrs = Map.get(params, "client_token", params)
 
     with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
          :ok <- service_account_actor?(actor),
@@ -69,6 +68,15 @@ defmodule PortalAPI.ClientTokenController do
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  def create(conn, %{"actor_id" => _actor_id}) do
+    changeset =
+      {%{}, %{client_token: :map}}
+      |> Ecto.Changeset.cast(%{}, [:client_token])
+      |> Ecto.Changeset.validate_required([:client_token])
+
+    Error.handle(conn, {:error, changeset})
   end
 
   operation :delete,
@@ -97,8 +105,7 @@ defmodule PortalAPI.ClientTokenController do
 
     with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
          :ok <- revocable_actor?(actor),
-         {:ok, token} <- Database.fetch_token(token_id, actor, subject),
-         {:ok, token} <- Database.delete_token(token, subject) do
+         {:ok, token} <- Database.delete_token(token_id, actor, subject) do
       render(conn, :deleted, token: token)
     else
       error -> Error.handle(conn, error)
@@ -106,7 +113,7 @@ defmodule PortalAPI.ClientTokenController do
   end
 
   operation :delete_all,
-    summary: "Delete all Client Tokens for an Actor",
+    summary: "Delete all Client Tokens for a Service Account or User Actor",
     parameters: [
       actor_id: [
         in: :path,
@@ -184,23 +191,28 @@ defmodule PortalAPI.ClientTokenController do
       ]
     end
 
-    def fetch_token(id, actor, subject) do
+    def delete_token(id, actor, subject) do
       result =
-        from(t in ClientToken, where: t.id == ^id and t.actor_id == ^actor.id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one()
+        from(t in ClientToken,
+          where: t.id == ^id and t.actor_id == ^actor.id,
+          select: map(t, [:id])
+        )
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        token -> {:ok, token}
-      end
-    end
+        {:error, :unauthorized} ->
+          {:error, :unauthorized}
 
-    def delete_token(token, subject) do
-      token
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+        {0, _} ->
+          {:error, :not_found}
+
+        {_count, [%{id: deleted_id} | _]} ->
+          {:ok, %ClientToken{id: deleted_id}}
+
+        {_count, _} ->
+          {:ok, %ClientToken{id: id}}
+      end
     end
 
     def delete_all_tokens(actor, subject) do

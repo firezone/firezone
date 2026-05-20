@@ -146,6 +146,28 @@ defmodule PortalAPI.ClientTokenControllerTest do
                  "reason" => "Unprocessable Content",
                  "validation_errors" => %{"expires_at" => ["can't be blank"]}
                }
+              } = json_response(conn, 422)
+    end
+
+    test "returns validation error when client_token wrapper is missing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+      expires_at = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{service_account.id}/client_tokens", %{expires_at: expires_at})
+
+      assert %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{"client_token" => ["can't be blank"]}
+               }
              } = json_response(conn, 422)
     end
 
@@ -220,6 +242,24 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert %{"data" => %{"id" => id}} = json_response(conn, 200)
       assert id == token.id
       refute Repo.get_by(ClientToken, id: token.id)
+    end
+
+    test "returns not found when client token does not exist for actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      user_actor = actor_fixture(account: account, type: :account_user)
+      token = client_token_fixture(account: account, actor: user_actor)
+      another_user_actor = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/actors/#{another_user_actor.id}/client_tokens/#{token.id}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert Repo.get_by(ClientToken, id: token.id)
     end
 
     test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do

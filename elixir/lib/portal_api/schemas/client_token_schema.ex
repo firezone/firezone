@@ -129,7 +129,25 @@ defmodule PortalAPI.Schemas.ClientToken do
       type: :object,
       properties: %{
         data: %Schema{description: "Client Token metadata", type: :array, items: ClientToken.Schema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: %Schema{
+          description: "Pagination metadata",
+          type: :object,
+          properties: %{
+            count: %Schema{type: :integer, description: "Total number of matching records"},
+            limit: %Schema{type: :integer, description: "Page size"},
+            next_page: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Cursor to fetch the next page"
+            },
+            prev_page: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Cursor to fetch the previous page"
+            }
+          },
+          required: [:count, :limit, :next_page, :prev_page]
+        }
       },
       example: %{
         "data" => [
@@ -143,7 +161,7 @@ defmodule PortalAPI.Schemas.ClientToken do
         ],
         "metadata" => %{
           "limit" => 10,
-          "total" => 1,
+          "count" => 1,
           "prev_page" => nil,
           "next_page" => nil
         }
