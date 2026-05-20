@@ -244,15 +244,25 @@ impl PortAndPeerV6 {
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct StatsEvent {
     pub relayed_data: u64,
+    pub processing_duration_ns: u64,
 }
 
 impl StatsEvent {
     #[cfg(feature = "std")]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let (chunk, _) = bytes.split_first_chunk()?;
-        let relayed_data = u64::from_ne_bytes(*chunk);
+        let (relayed_chunk, rest) = bytes.split_first_chunk::<8>()?;
+        let (duration_chunk, _) = rest.split_first_chunk::<8>()?;
 
-        Some(Self { relayed_data })
+        Some(Self {
+            relayed_data: u64::from_ne_bytes(*relayed_chunk),
+            processing_duration_ns: u64::from_ne_bytes(*duration_chunk),
+        })
+    }
+
+    /// Time the XDP program spent processing this packet.
+    #[cfg(feature = "std")]
+    pub fn processing_duration(&self) -> core::time::Duration {
+        core::time::Duration::from_nanos(self.processing_duration_ns)
     }
 }
 
