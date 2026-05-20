@@ -9,6 +9,7 @@
 mod assets;
 mod state;
 mod theme;
+mod tray;
 mod ui;
 
 use std::path::PathBuf;
@@ -56,6 +57,10 @@ pub enum Message {
 
     // About
     AboutOpenDocs,
+
+    // Tray
+    TrayShowWindow,
+    TrayQuitClicked,
 }
 
 fn legacy_to_modern(legacy: &AdvancedSettingsLegacy) -> AdvancedSettings {
@@ -220,6 +225,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             let _ = open::that_detached("https://docs.firezone.dev");
             Task::none()
         }
+
+        Message::TrayShowWindow => {
+            // TODO: iced 0.14's window-management API takes a `window::Id`
+            // we don't currently track. The main window is already visible
+            // when the app boots, so this is a no-op until we add an
+            // explicit window registry.
+            Task::none()
+        }
+        Message::TrayQuitClicked => iced::exit(),
     }
 }
 
@@ -313,12 +327,20 @@ async fn export_logs() -> Result<(), String> {
 }
 
 fn main() -> iced::Result {
+    if let Err(e) = tray::install() {
+        // Tray is best-effort — on Linux without an AppIndicator
+        // extension installed, this just means the user won't see an
+        // icon. Log and carry on.
+        tracing::warn!("failed to install system tray: {e}");
+    }
+
     iced::application(boot, update, view)
         .title("Firezone")
         .theme(theme)
         .default_font(assets::font())
         .font(assets::ROBOTO_REGULAR)
         .font(assets::ROBOTO_BOLD)
+        .subscription(|_app| tray::subscription())
         .window_size((900.0, 500.0))
         .resizable(false)
         .run()
