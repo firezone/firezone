@@ -69,6 +69,14 @@ defmodule PortalAPI.ClientTokenControllerTest do
       data_ids = Enum.map(data, & &1["id"])
       token_ids = Enum.map(tokens, & &1.id)
       assert equal_ids?(data_ids, token_ids)
+
+      Enum.each(data, fn token ->
+        assert is_binary(token["actor_id"])
+        assert is_binary(token["expires_at"])
+        assert is_binary(token["inserted_at"])
+        assert is_binary(token["updated_at"])
+        refute Map.has_key?(token, "token")
+      end)
     end
 
     test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
