@@ -96,7 +96,7 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- service_account_actor?(actor),
+         :ok <- revocable_actor?(actor),
          {:ok, token} <- Database.fetch_token(token_id, actor, subject),
          {:ok, token} <- Database.delete_token(token, subject) do
       render(conn, :deleted, token: token)
@@ -106,7 +106,7 @@ defmodule PortalAPI.ClientTokenController do
   end
 
   operation :delete_all,
-    summary: "Delete all Client Tokens for a Service Account",
+    summary: "Delete all Client Tokens for an Actor",
     parameters: [
       actor_id: [
         in: :path,
@@ -126,7 +126,7 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.fetch_actor(actor_id, subject),
-         :ok <- service_account_actor?(actor),
+         :ok <- revocable_actor?(actor),
          {deleted_count, _} <- Database.delete_all_tokens(actor, subject) do
       render(conn, :deleted_all, count: deleted_count)
     else
@@ -138,6 +138,14 @@ defmodule PortalAPI.ClientTokenController do
 
   defp service_account_actor?(_actor) do
     {:error, :bad_request, reason: "Actor must be a service account"}
+  end
+
+  defp revocable_actor?(%Portal.Actor{type: type})
+       when type in [:service_account, :account_user, :account_admin_user],
+       do: :ok
+
+  defp revocable_actor?(_actor) do
+    {:error, :bad_request, reason: "Actor must be a service account or user actor"}
   end
 
   defmodule Database do

@@ -181,7 +181,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       refute Repo.get_by(ClientToken, id: token.id)
     end
 
-    test "returns bad request for non-service-account actor", %{conn: conn, account: account, actor: actor} do
+    test "deletes client token for account_user actor", %{conn: conn, account: account, actor: actor} do
       user_actor = actor_fixture(account: account, type: :account_user)
       token = client_token_fixture(account: account, actor: user_actor)
 
@@ -190,8 +190,22 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/actors/#{user_actor.id}/client_tokens/#{token.id}")
 
+      assert %{"data" => %{"id" => id}} = json_response(conn, 200)
+      assert id == token.id
+      refute Repo.get_by(ClientToken, id: token.id)
+    end
+
+    test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+      api_client_actor = actor_fixture(account: account, type: :api_client)
+      token = client_token_fixture(account: account, actor: api_client_actor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/actors/#{api_client_actor.id}/client_tokens/#{token.id}")
+
       assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account"}}
+               %{"error" => %{"reason" => "Actor must be a service account or user actor"}}
 
       assert Repo.get_by(ClientToken, id: token.id)
     end
@@ -221,17 +235,37 @@ defmodule PortalAPI.ClientTokenControllerTest do
       end)
     end
 
-    test "returns bad request for non-service-account actor", %{conn: conn, account: account, actor: actor} do
-      user_actor = actor_fixture(account: account, type: :account_user)
-      token = client_token_fixture(account: account, actor: user_actor)
+    test "deletes all client tokens for account_admin_user actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      admin_user_actor = actor_fixture(account: account, type: :account_admin_user)
+      tokens = for _ <- 1..3, do: client_token_fixture(account: account, actor: admin_user_actor)
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> delete("/actors/#{user_actor.id}/client_tokens")
+        |> delete("/actors/#{admin_user_actor.id}/client_tokens")
+
+      assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
+
+      Enum.each(tokens, fn token ->
+        refute Repo.get_by(ClientToken, id: token.id)
+      end)
+    end
+
+    test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+      api_client_actor = actor_fixture(account: account, type: :api_client)
+      token = client_token_fixture(account: account, actor: api_client_actor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/actors/#{api_client_actor.id}/client_tokens")
 
       assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account"}}
+               %{"error" => %{"reason" => "Actor must be a service account or user actor"}}
 
       assert Repo.get_by(ClientToken, id: token.id)
     end
