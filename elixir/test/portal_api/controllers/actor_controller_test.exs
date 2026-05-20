@@ -479,6 +479,146 @@ defmodule PortalAPI.ActorControllerTest do
 
       assert json_response(conn, 201)
     end
+
+    test "rejects changing account_user to service_account", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_user)
+
+      attrs = %{"type" => "service_account"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["error"]["validation_errors"]["type"] ==
+               ["cannot change a user to a service account or API client"]
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
+               :account_user
+    end
+
+    test "rejects changing account_user to api_client", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_user)
+
+      attrs = %{"type" => "api_client"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["error"]["validation_errors"]["type"] ==
+               ["cannot change a user to a service account or API client"]
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
+               :account_user
+    end
+
+    test "rejects changing account_admin_user to service_account", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_admin_user)
+      _other_admin = actor_fixture(account: account, type: :account_admin_user)
+
+      attrs = %{"type" => "service_account"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["error"]["validation_errors"]["type"] ==
+               ["cannot change a user to a service account or API client"]
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
+               :account_admin_user
+    end
+
+    test "rejects changing account_admin_user to api_client", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = actor_fixture(account: account, type: :account_admin_user)
+      _other_admin = actor_fixture(account: account, type: :account_admin_user)
+
+      attrs = %{"type" => "api_client"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["error"]["validation_errors"]["type"] ==
+               ["cannot change a user to a service account or API client"]
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
+               :account_admin_user
+    end
+
+    test "rejects changing api_client to any other type", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_fixture(account: account, type: :api_client)
+
+      for type <- ["account_user", "account_admin_user", "service_account"] do
+        conn =
+          conn
+          |> authorize_conn(api_actor)
+          |> put_req_header("content-type", "application/json")
+          |> put("/actors/#{target.id}", actor: %{"type" => type})
+
+        assert resp = json_response(conn, 422)
+        assert resp["error"]["validation_errors"]["type"] ==
+                 ["cannot change the type of an API client"]
+      end
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: target.id).type ==
+               :api_client
+    end
+
+    test "rejects changing service_account to any other type", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_fixture(account: account, type: :service_account)
+
+      for type <- ["account_user", "account_admin_user", "api_client"] do
+        conn =
+          conn
+          |> authorize_conn(api_actor)
+          |> put_req_header("content-type", "application/json")
+          |> put("/actors/#{target.id}", actor: %{"type" => type})
+
+        assert resp = json_response(conn, 422)
+        assert resp["error"]["validation_errors"]["type"] ==
+                 ["cannot change the type of a service account"]
+      end
+
+      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: target.id).type ==
+               :service_account
+    end
   end
 
   describe "delete/2" do

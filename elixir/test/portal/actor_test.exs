@@ -37,6 +37,110 @@ defmodule Portal.ActorTest do
     end
   end
 
+  describe "changeset/1 type transitions" do
+    test "allows setting type on a new actor" do
+      changeset =
+        %Actor{}
+        |> cast(%{name: "Alice", type: :account_user}, [:name, :type])
+        |> Actor.changeset()
+
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :type)
+    end
+
+    test "allows account_user to account_admin_user transition" do
+      changeset =
+        %Actor{type: :account_user, name: "Alice"}
+        |> cast(%{type: :account_admin_user}, [:type])
+        |> Actor.changeset()
+
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :type)
+    end
+
+    test "allows account_admin_user to account_user transition" do
+      changeset =
+        %Actor{type: :account_admin_user, name: "Alice"}
+        |> cast(%{type: :account_user}, [:type])
+        |> Actor.changeset()
+
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :type)
+    end
+
+    test "rejects account_user to service_account transition" do
+      changeset =
+        %Actor{type: :account_user, name: "Alice"}
+        |> cast(%{type: :service_account}, [:type])
+        |> Actor.changeset()
+
+      assert %{type: ["cannot change a user to a service account or API client"]} =
+               errors_on(changeset)
+    end
+
+    test "rejects account_user to api_client transition" do
+      changeset =
+        %Actor{type: :account_user, name: "Alice"}
+        |> cast(%{type: :api_client}, [:type])
+        |> Actor.changeset()
+
+      assert %{type: ["cannot change a user to a service account or API client"]} =
+               errors_on(changeset)
+    end
+
+    test "rejects account_admin_user to service_account transition" do
+      changeset =
+        %Actor{type: :account_admin_user, name: "Alice"}
+        |> cast(%{type: :service_account}, [:type])
+        |> Actor.changeset()
+
+      assert %{type: ["cannot change a user to a service account or API client"]} =
+               errors_on(changeset)
+    end
+
+    test "rejects account_admin_user to api_client transition" do
+      changeset =
+        %Actor{type: :account_admin_user, name: "Alice"}
+        |> cast(%{type: :api_client}, [:type])
+        |> Actor.changeset()
+
+      assert %{type: ["cannot change a user to a service account or API client"]} =
+               errors_on(changeset)
+    end
+
+    test "rejects api_client to any other type" do
+      for new_type <- [:account_user, :account_admin_user, :service_account] do
+        changeset =
+          %Actor{type: :api_client, name: "Bot"}
+          |> cast(%{type: new_type}, [:type])
+          |> Actor.changeset()
+
+        assert %{type: ["cannot change the type of an API client"]} = errors_on(changeset)
+      end
+    end
+
+    test "rejects service_account to any other type" do
+      for new_type <- [:account_user, :account_admin_user, :api_client] do
+        changeset =
+          %Actor{type: :service_account, name: "Svc"}
+          |> cast(%{type: new_type}, [:type])
+          |> Actor.changeset()
+
+        assert %{type: ["cannot change the type of a service account"]} = errors_on(changeset)
+      end
+    end
+
+    test "allows no-op when type field is set but unchanged" do
+      changeset =
+        %Actor{type: :api_client, name: "Bot"}
+        |> cast(%{type: :api_client}, [:type])
+        |> Actor.changeset()
+
+      assert changeset.valid?
+      refute Keyword.has_key?(changeset.errors, :type)
+    end
+  end
+
   describe "changeset/1 association constraints" do
     test "enforces account association constraint" do
       {:error, changeset} =
