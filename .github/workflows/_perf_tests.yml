@@ -56,7 +56,7 @@ jobs:
             echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
           fi
 
-          docker compose build client-router gateway-router relay-1-router relay-2-router portal-router
+          docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router
 
           # Start services in the same order each time for the tests
           # Retries are used because network I/O is flaky in GitHub Actions runners
@@ -64,7 +64,7 @@ jobs:
           retry docker compose up -d portal --no-build
           retry docker compose up -d relay-1 relay-2 --no-build
           retry docker compose up -d gateway --no-build
-          retry docker compose up -d client --no-build
+          retry docker compose up -d client-1 --no-build
           retry docker compose up -d network-config
       - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
@@ -81,7 +81,7 @@ jobs:
           path: ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
       - name: Show Client logs
         if: "!cancelled()"
-        run: docker compose logs client
+        run: docker compose logs client-1
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
@@ -101,7 +101,7 @@ jobs:
       - name: Ensure no warnings are logged
         if: "!cancelled()"
         run: |
-          docker compose logs client |
+          docker compose logs client-1 |
             grep "WARN" && exit 1 || exit 0
 
           docker compose logs gateway |
@@ -118,7 +118,7 @@ jobs:
       - name: Ensure no UDP socket errors
         if: "!cancelled() && startsWith(matrix.test, 'tcp')"
         run: |
-          docker compose exec client /bin/sh -c 'nstat -s' |
+          docker compose exec client-1 /bin/sh -c 'nstat -s' |
             grep -i "error" && exit 1 || exit 0
 
           docker compose exec gateway /bin/sh -c 'nstat -s' |

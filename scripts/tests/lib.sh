@@ -149,7 +149,7 @@ function get_flow_field() {
 # recovery that happens afterwards.
 function last_wg_handshake_ms() {
     local raw
-    raw=$(docker compose logs client --since 60s 2>/dev/null |
+    raw=$(docker compose logs client-1 --since 60s 2>/dev/null |
         grep "Completed wireguard handshake" |
         tail -n 1 |
         grep -oP 'duration_since_intent=\K[^ ]+')
