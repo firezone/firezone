@@ -12,15 +12,14 @@ defmodule PortalAPI.Gateway.SocketTest do
 
   describe "connect/3" do
     setup do
-      queue =
-        start_supervised!(
-          {Portal.Queue,
-           Keyword.merge(Socket.gateway_session_queue_opts(),
-             callers: [self()]
-           )}
-        )
+      start_supervised!(
+        {Portal.Queue,
+         Keyword.merge(Socket.gateway_session_queue_opts(),
+           callers: [self()]
+         )}
+      )
 
-      %{queue: queue}
+      :ok
     end
 
     test "returns error when token is missing" do
@@ -109,6 +108,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert session.remote_ip_location_lon == 30.5167
       assert session.version == @connlib_version
 
+      Socket.enqueue_session(socket.assigns.session)
       Portal.Queue.flush(:gateway_session_queue)
 
       [persisted_session] = Repo.all(Portal.GatewaySession)
@@ -170,6 +170,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.gateway.id == gateway.id
 
+      Socket.enqueue_session(socket.assigns.session)
       Portal.Queue.flush(:gateway_session_queue)
 
       import Ecto.Query

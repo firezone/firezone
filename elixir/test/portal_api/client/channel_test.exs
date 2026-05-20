@@ -90,6 +90,13 @@ defmodule PortalAPI.Client.ChannelTest do
        )}
     )
 
+    start_supervised!(
+      {Portal.Queue,
+       Keyword.merge(PortalAPI.Client.Socket.client_session_queue_opts(),
+         callers: [self()]
+       )}
+    )
+
     account =
       account_fixture(
         config: %{

@@ -62,6 +62,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   setup do
+    start_supervised!(
+      {Portal.Queue,
+       Keyword.merge(PortalAPI.Gateway.Socket.gateway_session_queue_opts(),
+         callers: [self()]
+       )}
+    )
+
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
     group = group_fixture(account: account)

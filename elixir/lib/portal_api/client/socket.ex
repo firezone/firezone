@@ -23,6 +23,14 @@ defmodule PortalAPI.Client.Socket do
     ]
   end
 
+  # Buffer a session for batched INSERT. Called from the channel's `:after_join`
+  # after `register/1` so the channel pid is in `Portal.PG` before the queue can
+  # flush — otherwise the `:confirm_session_durability` PG.deliver lands on no
+  # members and the durability timer fires a spurious disconnect.
+  def enqueue_session(%ClientSession{} = session) do
+    Portal.Queue.enqueue(:client_session_queue, session_attrs(session))
+  end
+
   ## Authentication
 
   @impl true
@@ -64,7 +72,6 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
       session = build_session(client, token_id, public_key, subject, version)
-      Portal.Queue.enqueue(:client_session_queue, session_attrs(session))
       set_connect_attributes(token_id, client, subject, version)
       {:ok, assign_connect(socket, subject, client, session, version)}
     else

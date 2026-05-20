@@ -114,6 +114,11 @@ defmodule PortalAPI.Gateway.Channel do
 
     {:noreply, socket} = register(socket)
 
+    # Must follow register/1: the queue's on_confirmed callback uses
+    # PG.deliver, which silently drops if no pid is registered for the
+    # device_id.
+    PortalAPI.Gateway.Socket.enqueue_session(socket.assigns.session)
+
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.Global.subscribe()
