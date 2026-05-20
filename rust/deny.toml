@@ -156,6 +156,7 @@ allow = [
     "CDLA-Permissive-2.0",
     "NCSA",
     "CC0-1.0", # Public domain dedication, pulled in by hexf-parse via iced/wgpu.
+    "Unlicense", # Public domain dedication, pulled in by ksni (used for the Linux tray).
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

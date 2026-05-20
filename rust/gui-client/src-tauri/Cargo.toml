@@ -40,7 +40,6 @@ humantime = { workspace = true }
 iced = { workspace = true }
 ip-packet = { workspace = true }
 open = { workspace = true }
-tray-icon = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }
 known-dirs = { workspace = true }
@@ -84,6 +83,7 @@ zip = { workspace = true, features = ["deflate", "time"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
+ksni = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 notify-rust = { workspace = true }
@@ -91,10 +91,12 @@ sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+tray-icon = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
 tauri-winrt-notification = "0.7.2"
+tray-icon = { workspace = true }
 windows-native-keyring-store = { workspace = true }
 windows-security = { workspace = true }
 windows-service = { workspace = true }

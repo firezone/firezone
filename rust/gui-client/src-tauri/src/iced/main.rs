@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 use firezone_gui_client::logging;
 use firezone_gui_client::settings::{
-    self, AdvancedSettings, AdvancedSettingsLegacy, GeneralSettings,
+    self, AdvancedSettings, GeneralSettings,
 };
 use iced::widget::{container, row};
 use iced::{Element, Fill, Length, Task, Theme};
@@ -328,9 +328,10 @@ async fn export_logs() -> Result<(), String> {
 
 fn main() -> iced::Result {
     if let Err(e) = tray::install() {
-        // Tray is best-effort — on Linux without an AppIndicator
-        // extension installed, this just means the user won't see an
-        // icon. Log and carry on.
+        // Tray is best-effort. On Linux it lives or dies by whether
+        // the user's desktop environment exposes SNI (GNOME needs the
+        // AppIndicator extension); on Windows/macOS the OS always has
+        // a tray.
         tracing::warn!("failed to install system tray: {e}");
     }
 
