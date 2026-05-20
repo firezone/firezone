@@ -2,7 +2,7 @@ defmodule Portal.Authentication.Credential do
   @moduledoc """
   Represents the authentication credential used to create a Subject.
 
-  Two `type` values are used:
+  The `type` field takes one of three values:
   - `:api_token` - API tokens for api_client actors. `auth_provider_id` is always nil.
   - `:client_token` - Client tokens. `auth_provider_id` is set when the token was
     minted from an interactive sign-in flow (OIDC, Email/OTP, userpass) and nil
