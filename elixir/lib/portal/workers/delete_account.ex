@@ -44,6 +44,9 @@ defmodule Portal.Workers.DeleteAccount do
     alias Portal.Workers.AccountDeletionCompleted
     alias Portal.Workers.DeleteSubscription
 
+    # Safe.all/1 return type cannot be narrowed through Ecto query macros by dialyzer
+    @dialyzer {:nowarn_function, get_account_admin_emails: 1}
+
     @spec transact_delete(binary()) ::
             {:ok, {:deleted, Account.t()} | :noop} | {:error, term()}
     def transact_delete(account_id) do

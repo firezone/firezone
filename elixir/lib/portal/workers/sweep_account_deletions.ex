@@ -34,6 +34,9 @@ defmodule Portal.Workers.SweepAccountDeletions do
     alias Portal.Account
     alias Portal.Safe
 
+    # Safe.all/1 return type cannot be narrowed through Ecto query macros by dialyzer
+    @dialyzer {:nowarn_function, fetch_accounts_due_for_deletion: 0}
+
     @spec fetch_accounts_due_for_deletion() :: [binary()]
     def fetch_accounts_due_for_deletion do
       now = DateTime.utc_now()
