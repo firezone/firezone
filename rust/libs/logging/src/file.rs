@@ -242,7 +242,7 @@ mod tests {
         tracing::info!("Write after delete");
         std::thread::sleep(Duration::from_millis(1000)); // Wait a bit until background thread has flushed the log.
 
-        let content = std::fs::read_to_string(dir.path().join("latest")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("connlib.latest")).unwrap();
 
         assert!(content.contains("Write after delete"))
     }
