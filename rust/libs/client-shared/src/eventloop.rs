@@ -23,7 +23,8 @@ use tunnel::messages::client::{
     ClientAccessAuthorizationExpiryUpdated, ClientDeviceAccessAuthorized, ClientDeviceAccessDenied,
     ClientIceCandidates, ClientRejectAccess, DevicePoolDomainResolutionFailed,
     DevicePoolDomainResolved, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
-    GatewayIceCandidates, IngressMessages, InitClient, ResourceFiltersUpdated,
+    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
+    ResourceFiltersUpdated,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -558,8 +559,18 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
-                authorization,
+                resource,
+                authorization_expires_at,
             }) => {
+                // The portal only sends a resource to the target device; the
+                // initiating side receives `None` and relies on conntrack to
+                // admit return traffic.
+                let authorization = resource.map(|resource| ResourceAuthorization {
+                    resource_id: resource.id,
+                    filters: resource.filters,
+                    expires_at: authorization_expires_at,
+                });
+
                 match tunnel.state_mut().handle_client_device_access_authorized(
                     client_id,
                     PublicKey::from(client_public_key.0),

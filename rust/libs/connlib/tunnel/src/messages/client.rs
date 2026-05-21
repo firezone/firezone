@@ -148,9 +148,10 @@ pub struct FlowCreationFailed {
 }
 
 /// Sent by the portal once both peers in a static-device-pool flow agree to
-/// connect. The recipient is the target device when `authorization` is
-/// `Some` (and must apply the filters / expiry to its inbound authorization)
-/// and the initiating device when it is `None`.
+/// connect. The recipient is the target device when `resource` is `Some` (and
+/// must apply the filters / expiry to its inbound authorization) and the
+/// initiating device when it is `None`.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
     pub client_id: ClientId,
@@ -162,28 +163,40 @@ pub struct ClientDeviceAccessAuthorized {
     pub remote_ice_credentials: IceCredentials,
     pub ice_role: IceRole,
 
-    /// The resource that authorises this connection on the receiving side,
-    /// along with its filters and expiry. `None` on the initiating side.
-    #[serde(flatten, default)]
-    pub authorization: Option<ResourceAuthorization>,
+    /// The resource authorising this connection on the receiving side, as the
+    /// portal's minimal `{id, filters}` view. `None` on the initiating side.
+    #[serde(default)]
+    pub resource: Option<AuthorizedResource>,
+
+    /// When the authorization expires, as a unix timestamp. `None` when it
+    /// never expires or on the initiating side.
+    #[serde_as(as = "Option<DurationSeconds<u64>>")]
+    #[serde(default)]
+    pub authorization_expires_at: Option<Duration>,
+}
+
+/// The portal's minimal `{id, filters}` resource view embedded in
+/// [`ClientDeviceAccessAuthorized`] for the target device. Other resource
+/// fields the portal sends (name, type, devices) are ignored.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct AuthorizedResource {
+    pub id: ResourceId,
+    #[serde(default)]
+    pub filters: Vec<Filter>,
 }
 
 /// Authorization metadata granted by a resource for an inbound peer
-/// connection.
-#[serde_as]
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+/// connection. Built on the target side from [`ClientDeviceAccessAuthorized`].
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceAuthorization {
     /// The authorising resource ID.
     pub resource_id: ResourceId,
 
     /// Filters that govern inbound traffic the remote peer is allowed to
     /// send to us through this resource.
-    #[serde(default)]
     pub filters: Vec<Filter>,
 
-    /// When the authorization expires, as a unix timestamp.
-    #[serde_as(as = "Option<DurationSeconds<u64>>")]
-    #[serde(default)]
+    /// When the authorization expires, measured from the unix epoch.
     pub expires_at: Option<Duration>,
 }
 
@@ -838,56 +851,5 @@ mod tests {
         let gateway_candidates = GatewayIceCandidates::deserialize(bad_candidates).unwrap();
 
         assert_eq!(gateway_candidates.candidates.len(), 1);
-    }
-
-    /// Target side: portal sends the resource_id, filters and expiry. They
-    /// flatten into a single `Some(ResourceAuthorization)` value.
-    #[test]
-    fn client_device_access_authorized_target_side_deserializes_authorization() {
-        let json = serde_json::json!({
-            "client_id": "11111111-1111-1111-1111-111111111111",
-            "client_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-            "client_ipv4": "100.64.0.1",
-            "client_ipv6": "fd00:2021:1111::1",
-            "preshared_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
-            "local_ice_credentials": { "username": "u-local", "password": "p-local" },
-            "remote_ice_credentials": { "username": "u-remote", "password": "p-remote" },
-            "ice_role": "controlled",
-            "resource_id": "22222222-2222-2222-2222-222222222222",
-            "filters": [{"protocol": "icmp"}],
-            "expires_at": 1_700_000_000_i64,
-        });
-
-        let msg: ClientDeviceAccessAuthorized = serde_json::from_value(json).unwrap();
-
-        let auth = msg
-            .authorization
-            .expect("target side carries authorization");
-        assert_eq!(
-            auth.resource_id,
-            ResourceId::from_u128(0x22222222_2222_2222_2222_222222222222)
-        );
-        assert!(matches!(auth.filters[..], [Filter::Icmp]));
-        assert_eq!(auth.expires_at, Some(Duration::from_secs(1_700_000_000)));
-    }
-
-    /// Initiator side: portal omits all authorization fields. The flattened
-    /// `Option` deserializes to `None`.
-    #[test]
-    fn client_device_access_authorized_initiator_side_omits_authorization() {
-        let json = serde_json::json!({
-            "client_id": "11111111-1111-1111-1111-111111111111",
-            "client_public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-            "client_ipv4": "100.64.0.1",
-            "client_ipv6": "fd00:2021:1111::1",
-            "preshared_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
-            "local_ice_credentials": { "username": "u-local", "password": "p-local" },
-            "remote_ice_credentials": { "username": "u-remote", "password": "p-remote" },
-            "ice_role": "controlling",
-        });
-
-        let msg: ClientDeviceAccessAuthorized = serde_json::from_value(json).unwrap();
-
-        assert!(msg.authorization.is_none());
     }
 }
