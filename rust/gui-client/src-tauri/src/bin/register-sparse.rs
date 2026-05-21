@@ -134,8 +134,6 @@ fn main() -> ExitCode {
                 error = format!("{e:#}"),
                 "register-sparse failed"
             );
-            // `telemetry` drops as we return from `main`, flushing the
-            // `tracing::error!` above to Sentry.
             ExitCode::FAILURE
         }
     }
