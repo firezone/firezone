@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 set -euox pipefail
 
-# Make sure the install log lands in CI output even when msiexec
-# itself fails (with `set -e`, the `cat install.log` line below
-# would otherwise never run). Useful for every install, not just
-# failure cases — keeps it in CI permanently.
-trap 'if [ -f install.log ]; then echo "==> install.log:"; cat install.log; fi' EXIT
-
-# Test-install the MSI package, since it already exists here
+# Test-install the MSI package, since it already exists here. The
+# install log lands in `install.log`, which the parent CI workflow
+# dumps via a separate `if: always()` step so we get the verbose
+# MSI trace on every run — even when `msiexec` itself returns
+# non-zero.
 msiexec //i "$BINARY_DEST_PATH.msi" //log install.log //qn
 # Make sure the Tunnel service is running
 sc query FirezoneClientTunnelService | grep RUNNING

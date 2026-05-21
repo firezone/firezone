@@ -189,6 +189,20 @@ jobs:
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}
 
+      - name: Dump install.log
+        # `always()` so the MSI's verbose log surfaces even when
+        # `Test installation` itself failed (and `set -e` killed
+        # the script before it could `cat` the log).
+        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        shell: bash
+        run: |
+          if [ -f install.log ]; then
+            echo "==> install.log:"
+            cat install.log
+          else
+            echo "install.log not found"
+          fi
+
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         run: |
