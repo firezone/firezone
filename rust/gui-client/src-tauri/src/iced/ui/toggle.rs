@@ -53,13 +53,15 @@ where
     let now = Instant::now();
     let progress = anim.interpolate(0.0, 1.0, now);
 
-    let off = theme.surface_raised;
+    // Off-state track is `text_muted` (a medium grey) rather than
+    // `surface_raised` (near-white) so a white thumb has visible
+    // contrast against the canvas background; on-state is the brand
+    // orange. Disabled toggles drop alpha to half on the same lerp.
+    let off = theme.text_muted;
     let on = theme.brand;
     let track_color = if enabled {
         lerp_color(off, on, progress)
     } else {
-        // Greyed-out look — keep the same brightness regardless of
-        // current state.
         Color {
             a: 0.5,
             ..lerp_color(off, on, progress)
