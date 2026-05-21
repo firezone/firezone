@@ -124,8 +124,7 @@ defmodule PortalAPI.ClientTokenController do
   def delete(conn, %{"actor_id" => actor_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_revocable_actor(actor_id, subject),
-         {:ok, token} <- Database.delete_token_by_id(token_id, actor, subject) do
+    with {:ok, token} <- Database.delete_token_by_id(token_id, actor_id, subject) do
       render(conn, :deleted, token: token)
     else
       error -> Error.handle(conn, error)
@@ -153,8 +152,7 @@ defmodule PortalAPI.ClientTokenController do
   def delete_all(conn, %{"actor_id" => actor_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_revocable_actor(actor_id, subject),
-         {deleted_count, _} <- Database.delete_all_tokens(actor, subject) do
+    with {deleted_count, _} <- Database.delete_all_tokens(actor_id, subject) do
       render(conn, :deleted_all, count: deleted_count)
     else
       error -> Error.handle(conn, error)
@@ -217,13 +215,13 @@ defmodule PortalAPI.ClientTokenController do
       ]
     end
 
-    def delete_token_by_id(id, actor, subject) do
+    def delete_token_by_id(id, actor_id, subject) do
       result =
         from(t in ClientToken,
           join: a in Actor,
           on: a.id == t.actor_id,
           where:
-            t.id == ^id and t.actor_id == ^actor.id and
+            t.id == ^id and t.actor_id == ^actor_id and
               a.type in ^@revocable_actor_types,
           select: %{
             id: t.id,
@@ -269,11 +267,11 @@ defmodule PortalAPI.ClientTokenController do
       end
     end
 
-    def delete_all_tokens(actor, subject) do
+    def delete_all_tokens(actor_id, subject) do
       from(t in ClientToken,
         join: a in Actor,
         on: a.id == t.actor_id,
-        where: t.actor_id == ^actor.id and a.type in ^@revocable_actor_types
+        where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types
       )
       |> Safe.scoped(subject)
       |> Safe.delete_all()

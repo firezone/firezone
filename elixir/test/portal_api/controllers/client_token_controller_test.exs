@@ -339,7 +339,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert Repo.get_by(ClientToken, id: token.id)
     end
 
-    test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+    test "returns not found for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
       api_client_actor = actor_fixture(account: account, type: :api_client)
       token = client_token_fixture(account: account, actor: api_client_actor)
 
@@ -348,8 +348,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/actors/#{api_client_actor.id}/client_tokens/#{token.id}")
 
-      assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account or user actor"}}
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
 
       assert Repo.get_by(ClientToken, id: token.id)
     end
@@ -399,7 +398,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       end)
     end
 
-    test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+    test "returns deleted_count 0 for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
       api_client_actor = actor_fixture(account: account, type: :api_client)
       token = client_token_fixture(account: account, actor: api_client_actor)
 
@@ -408,8 +407,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/actors/#{api_client_actor.id}/client_tokens")
 
-      assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account or user actor"}}
+      assert json_response(conn, 200) == %{"data" => %{"deleted_count" => 0}}
 
       assert Repo.get_by(ClientToken, id: token.id)
     end
