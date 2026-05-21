@@ -871,7 +871,7 @@ defmodule Portal.Repo.Seeds do
         @ua_macos
       )
 
-    pool_member_firezone_id = System.fetch_env!("POOL_MEMBER_FIREZONE_ID")
+    pool_member_firezone_id = System.get_env("POOL_MEMBER_FIREZONE_ID", Ecto.UUID.generate())
 
     {:ok, pool_member_device} =
       create_client(
