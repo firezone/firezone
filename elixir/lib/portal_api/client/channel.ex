@@ -107,7 +107,7 @@ defmodule PortalAPI.Client.Channel do
 
     init(socket, resources, relays)
 
-    {:noreply, arm_session_durability_timer(socket)}
+    {:noreply, socket}
   end
 
   ####################################
@@ -2353,7 +2353,16 @@ defmodule PortalAPI.Client.Channel do
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.client.id)
         :ok = PG.join(socket.assigns.subject.credential.id)
-        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+        socket = assign(socket, :pg_scope_pid, new_pid)
+
+        # Only enqueue + arm on the first successful registration; re-registrations
+        # after a PG scope crash share the same channel and session row.
+        if is_nil(current_pid) do
+          Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session))
+          {:noreply, arm_session_durability_timer(socket)}
+        else
+          {:noreply, socket}
+        end
     end
   end
 
@@ -2396,6 +2405,12 @@ defmodule PortalAPI.Client.Channel do
 
         assign(socket, presence_monitors: monitors)
     end
+  end
+
+  defp session_attrs(%Portal.ClientSession{} = session) do
+    session
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :account, :device, :client_token])
   end
 
   defmodule Database do

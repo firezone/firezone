@@ -59,7 +59,6 @@ defmodule PortalAPI.Gateway.Socket do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       session = build_session(gateway, gateway_token.id, public_key, context, version)
-      Portal.Queue.enqueue(:gateway_session_queue, session_attrs(session))
 
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
@@ -130,12 +129,6 @@ defmodule PortalAPI.Gateway.Socket do
       remote_ip_location_lon: context.remote_ip_location_lon,
       version: version
     }
-  end
-
-  defp session_attrs(%GatewaySession{} = session) do
-    session
-    |> Map.from_struct()
-    |> Map.drop([:__meta__, :account, :device, :gateway_token])
   end
 
   defp flush_gateway_sessions(entries) do

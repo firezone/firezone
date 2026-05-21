@@ -64,7 +64,6 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
       session = build_session(client, token_id, public_key, subject, version)
-      Portal.Queue.enqueue(:client_session_queue, session_attrs(session))
       set_connect_attributes(token_id, client, subject, version)
       {:ok, assign_connect(socket, subject, client, session, version)}
     else
@@ -99,12 +98,6 @@ defmodule PortalAPI.Client.Socket do
       remote_ip_location_lon: subject.context.remote_ip_location_lon,
       version: version
     }
-  end
-
-  defp session_attrs(%ClientSession{} = session) do
-    session
-    |> Map.from_struct()
-    |> Map.drop([:__meta__, :account, :device, :client_token])
   end
 
   defp flush_client_sessions(entries) do
