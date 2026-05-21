@@ -10,19 +10,15 @@
 //! unrepresentable, so a typo or shape error can't make it to
 //! runtime.
 
-use crate::SecurityDescriptor;
+use crate::{SecurityDescriptor, sid_to_string};
 use anyhow::{Context as _, Result, anyhow, ensure};
-use std::{borrow::Cow, fmt, ptr};
+use std::{borrow::Cow, fmt};
 use windows::{
     Win32::{
         Foundation::{
             APPMODEL_ERROR_NO_PACKAGE, ERROR_INSUFFICIENT_BUFFER, HLOCAL, LocalFree, WIN32_ERROR,
         },
-        Security::{
-            Authorization::ConvertSidToStringSidW,
-            Isolation::DeriveAppContainerSidFromAppContainerName,
-            PSID,
-        },
+        Security::Isolation::DeriveAppContainerSidFromAppContainerName,
         Storage::Packaging::Appx::GetCurrentPackageFamilyName,
     },
     core::{HSTRING, PCWSTR, PWSTR},
@@ -168,27 +164,6 @@ fn derive_package_sid(pfn: &str) -> Result<String> {
     }
 
     sid_string
-}
-
-fn sid_to_string(sid: PSID) -> Result<String> {
-    let mut out = PWSTR(ptr::null_mut());
-    // SAFETY: `sid` is a valid SID from a Windows API; `&mut out` is a valid
-    // out-pointer. On success Windows allocates a wide string with
-    // `LocalAlloc`, which we release with `LocalFree`.
-    unsafe { ConvertSidToStringSidW(sid, &mut out) }.context("ConvertSidToStringSidW failed")?;
-    ensure!(!out.0.is_null(), "ConvertSidToStringSidW returned NULL");
-
-    // SAFETY: `out.0` points to a null-terminated wide string allocated by
-    // Windows; we copy it into an owned `String` before freeing.
-    let s = unsafe { out.to_string() }
-        .context("ConvertSidToStringSidW returned invalid UTF-16")?;
-
-    // SAFETY: `out` is the LocalAlloc-allocated buffer; release it.
-    unsafe {
-        let _ = LocalFree(Some(HLOCAL(out.0 as *mut _)));
-    }
-
-    Ok(s)
 }
 
 /// A security descriptor for a Firezone named pipe: an optional

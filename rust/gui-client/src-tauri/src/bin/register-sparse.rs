@@ -80,11 +80,6 @@ impl fmt::Display for NotSupported {
 impl std::error::Error for NotSupported {}
 
 fn main() -> ExitCode {
-    // Sentry first, so any tracing::error event from `init_tracing` or
-    // the deployment code below is captured. `Telemetry` drops at end
-    // of `main` and `sentry::ClientInitGuard::Drop` flushes events
-    // synchronously (2s default timeout), so we don't need an async
-    // `stop()` here.
     let mut telemetry = Telemetry::new();
     telemetry.start(
         "entrypoint",
