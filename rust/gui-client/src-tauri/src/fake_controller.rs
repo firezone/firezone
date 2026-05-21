@@ -2,8 +2,10 @@
 //!
 //! Spawned in place of the real `Controller` when `firezone-gui-client debug
 //! fake-controller` is run. Builds a hardcoded `AppState::SignedIn` with
-//! sample resources and connected device peers, then listens for tray events
-//! so favorite toggles re-render the menu live. Other clicks (Sign Out,
+//! sample resources and connected device peers, then listens for tray events:
+//! favorite toggles re-render the menu live, and "Settings"/"About" open and
+//! populate the UI with fake view-models so every page can be
+//! eyeballed without a portal, auth, or tunnel. Other clicks (Sign Out,
 //! Internet toggle, etc.) are no-ops in fake mode — there's no real backend.
 //! `Event::Quit` breaks the loop so the demo can be torn down by the tray
 //! menu, `--quit-after`, or `smoke-test`.
@@ -22,10 +24,14 @@ use tokio::sync::mpsc;
 
 use crate::controller::{ControllerRequest, GuiIntegration as _};
 use crate::gui::TauriIntegration;
-use crate::gui::system_tray::{AppState, ConnlibState, Event, SignedIn};
+use crate::gui::system_tray::{AppState, ConnlibState, Event, SignedIn, Window};
+use crate::logging::FileCount;
+use crate::settings::{AdvancedSettings, GeneralSettings, MdmSettings};
+use crate::view::SessionViewModel;
 
 /// Drives a hardcoded fake `AppState::SignedIn` onto the tray and re-renders
-/// in response to favorite-toggle clicks.
+/// in response to favorite-toggle clicks; opens and populates the UI
+/// windows in response to "Settings"/"About" and the frontend's `UpdateState`.
 pub(crate) async fn run(
     mut integration: TauriIntegration,
     mut ctlr_rx: mpsc::Receiver<ControllerRequest>,
@@ -37,7 +43,7 @@ pub(crate) async fn run(
     while let Some(req) = ctlr_rx.recv().await {
         #[allow(
             clippy::wildcard_enum_match_arm,
-            reason = "fake-controller intentionally only acts on favorite toggles and Quit; everything else is a no-op"
+            reason = "fake-controller only acts on favorite toggles, window-opening, UpdateState, and Quit; everything else is a no-op"
         )]
         match req {
             ControllerRequest::SystemTrayMenu(Event::AddFavorite(id)) => {
@@ -47,6 +53,16 @@ pub(crate) async fn run(
             ControllerRequest::SystemTrayMenu(Event::RemoveFavorite(id)) => {
                 favorites.remove(&id);
                 tracing::info!(%id, "unfavorited resource");
+            }
+            ControllerRequest::SystemTrayMenu(Event::ShowWindow(window)) => {
+                show_window(&integration, window);
+                continue;
+            }
+            ControllerRequest::UpdateState => {
+                if let Err(error) = push_fake_state(&integration) {
+                    tracing::error!("fake-controller failed to push state: {error:#}");
+                }
+                continue;
             }
             ControllerRequest::SystemTrayMenu(Event::Quit) => {
                 tracing::info!("Quit requested; shutting down fake-controller");
@@ -147,4 +163,66 @@ fn fake_connected_devices() -> Vec<ConnectedDeviceView> {
                 .collect(),
         })
         .collect()
+}
+
+/// Opens the requested window, mirroring the real `Controller`'s `ShowWindow`
+/// handling but with fake settings fixtures.
+fn show_window(integration: &TauriIntegration, window: Window) {
+    let result = match window {
+        Window::About => integration.show_about_page(),
+        Window::Settings => integration.show_settings_page(
+            fake_mdm_settings(),
+            fake_general_settings(),
+            AdvancedSettings::default(),
+        ),
+    };
+    if let Err(error) = result {
+        tracing::error!("fake-controller failed to open window: {error:#}");
+    }
+}
+
+/// Emits the fake session, settings, and log count the frontend requests on
+/// mount (`UpdateState`), so every page renders populated.
+fn push_fake_state(integration: &TauriIntegration) -> Result<()> {
+    integration.notify_session_changed(&fake_session())?;
+    integration.notify_settings_changed(
+        fake_mdm_settings(),
+        fake_general_settings(),
+        AdvancedSettings::default(),
+    )?;
+    integration.notify_logs_recounted(&fake_file_count())?;
+
+    Ok(())
+}
+
+fn fake_session() -> SessionViewModel {
+    SessionViewModel::SignedIn {
+        account_slug: "demo-co".into(),
+        actor_name: "Demo User".into(),
+    }
+}
+
+fn fake_general_settings() -> GeneralSettings {
+    GeneralSettings {
+        start_minimized: true,
+        start_on_login: Some(true),
+        account_slug: Some("demo-co".into()),
+        ..Default::default()
+    }
+}
+
+/// Marks `account_slug` MDM-managed so the settings UI's locked-field rendering
+/// (the `*_is_managed` flags) gets exercised in the demo.
+fn fake_mdm_settings() -> MdmSettings {
+    MdmSettings {
+        account_slug: Some("demo-co".into()),
+        ..Default::default()
+    }
+}
+
+fn fake_file_count() -> FileCount {
+    FileCount {
+        files: 12,
+        bytes: 3 * 1024 * 1024,
+    }
 }

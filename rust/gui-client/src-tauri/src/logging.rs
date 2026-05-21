@@ -216,8 +216,8 @@ fn system_layer() -> Result<tracing_subscriber::layer::Identity> {
 
 #[derive(Clone, Default, Serialize, specta::Type)]
 pub struct FileCount {
-    bytes: u64,
-    files: u64,
+    pub bytes: u64,
+    pub files: u64,
 }
 
 pub async fn clear_gui_logs() -> Result<()> {
