@@ -264,7 +264,6 @@ defmodule PortalAPI.ClientTokenController do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         %ClientToken{} = token -> {:ok, token}
-        _ -> {:error, :not_found}
       end
     end
 
