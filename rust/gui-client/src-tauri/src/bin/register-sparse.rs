@@ -28,6 +28,14 @@ use std::{fmt, process::ExitCode};
 use telemetry::Telemetry;
 
 fn main() -> ExitCode {
+    // `reqwest` (via Sentry's transport) uses rustls; rustls 0.23+
+    // panics on first use unless a crypto provider is installed in
+    // the process. Other Firezone binaries do the same at the top of
+    // `main`.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install default crypto provider");
+
     let mut telemetry = Telemetry::new();
     telemetry.start(
         "entrypoint",
