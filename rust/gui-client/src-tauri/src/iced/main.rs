@@ -59,12 +59,7 @@ struct BootResources {
 
 static BOOT_RESOURCES: Mutex<Option<BootResources>> = Mutex::new(None);
 
-/// Fixed window dimensions. Used as the initial `size` and as both
-/// `min_size` and `max_size` (so the WM can't grow the window), and
-/// as the snap-back target if a `Resized` event ever delivers
-/// something different — defends against Wayland compositors that
-/// ignore `resizable: false` and still let the user maximize via
-/// keyboard shortcut or title-bar double-click.
+/// Initial window dimensions.
 const WINDOW_SIZE: iced::Size = iced::Size {
     width: 900.0,
     height: 500.0,
@@ -113,11 +108,6 @@ pub enum Message {
     // Window lifecycle
     WindowCloseRequested(window::Id),
     WindowOpened(Option<window::Id>),
-    /// Defensive snap-back: if a `Resized` event arrives with a size
-    /// that isn't [`WINDOW_SIZE`] we treat it as a stray maximize /
-    /// tile attempt from the compositor and force the window back to
-    /// fixed dimensions.
-    WindowResized(window::Id, iced::Size),
 
     /// Emitted after the async `initialize` task finishes wiring up
     /// the GUI IPC server, deep-link handler, tray, and Controller.
@@ -288,18 +278,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             window::set_mode(id, Mode::Windowed)
         }
         Message::WindowOpened(None) => Task::none(),
-        Message::WindowResized(id, size) => {
-            // Tolerate a small delta (sub-pixel scaling rounding) but
-            // snap back on any meaningful change.
-            if (size.width - WINDOW_SIZE.width).abs() < 1.0
-                && (size.height - WINDOW_SIZE.height).abs() < 1.0
-            {
-                Task::none()
-            } else {
-                tracing::debug!(?id, current = ?size, "snapping window back to fixed size");
-                Task::batch([window::maximize(id, false), window::resize(id, WINDOW_SIZE)])
-            }
-        }
         Message::Initialized => Task::none(),
         Message::AnimationTick => Task::none(),
 
@@ -651,15 +629,15 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
     // `deep_link::register`, `tray::install`, `Controller::start` —
     // all run as tokio tasks on that single runtime, so there are no
     // cross-runtime tracing-subscriber races.
-    // Pin both `min_size` and `max_size` to the same value as the
-    // initial `size`. Some compositors (notably GNOME on Wayland)
-    // ignore the `resizable: false` hint; equal min/max forces the
-    // issue regardless. A subscription snaps the window back if a
-    // resize event ever delivers a different size.
+    // `resizable: false` removes drag-to-resize and hides the
+    // maximize button in iced's enabled_buttons mapping. We don't
+    // pin min/max size: combining them with maximize was making
+    // the window visibly jump and zoom back on double-click. If
+    // the compositor lets the user maximize anyway (Wayland often
+    // does), let it — fighting it from userland produced worse UX
+    // than just accepting the maximized state.
     let window_settings = iced::window::Settings {
         size: WINDOW_SIZE,
-        min_size: Some(WINDOW_SIZE),
-        max_size: Some(WINDOW_SIZE),
         resizable: false,
         exit_on_close_request: false,
         ..iced::window::Settings::default()
@@ -675,7 +653,6 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
             let mut subs = vec![
                 tray::subscription(),
                 window::close_requests().map(Message::WindowCloseRequested),
-                window::resize_events().map(|(id, size)| Message::WindowResized(id, size)),
                 Subscription::run(ui_update_stream),
             ];
             // Only drive per-frame redraws while a toggle is mid-
