@@ -8,16 +8,11 @@ cat install.log
 # Make sure the Tunnel service is running
 sc query FirezoneClientTunnelService | grep RUNNING
 
-# Probe whether the sparse MSIX got registered. The DACL hardening in
-# the follow-up PR uses `Trustee::current_package()` to read the SID
-# *from the kernel* at runtime, so there's no build-time SID to assert
-# parity against any more — the kernel computes both sides, by
-# definition matching. All we want from this canary is: the package
-# is registered. `Get-AppxPackage`'s positional filter is opaque, so
-# pipe through `Where-Object Name -eq` for predictable matching.
-#
-# Poll for up to ~30s because the package store settles
-# asynchronously after `ProvisionPackageForAllUsersAsync` returns.
+# Probe whether the sparse MSIX got registered. `Get-AppxPackage`'s
+# positional filter is opaque, so pipe through `Where-Object Name -eq`
+# for predictable matching. Poll for up to ~30s because the package
+# store settles asynchronously after `ProvisionPackageForAllUsersAsync`
+# returns.
 OS_BUILD=$(powershell.exe -NoProfile -Command \
     "[Environment]::OSVersion.Version.Build" | tr -d '\r\n')
 
