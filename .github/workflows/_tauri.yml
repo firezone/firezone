@@ -185,7 +185,7 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Test installation
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ runner.os == 'Windows' }}"
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}
 
@@ -193,7 +193,7 @@ jobs:
         # `always()` so the MSI's verbose log surfaces even when
         # `Test installation` itself failed (and `set -e` killed
         # the script before it could `cat` the log).
-        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        if: "${{ always() && runner.os == 'Windows' }}"
         shell: bash
         run: |
           if [ -f install.log ]; then
@@ -208,7 +208,7 @@ jobs:
         # the "MSI failed to open" failure mode: a tampered or
         # unsigned MSI shows up here as `Status: HashMismatch` /
         # `NotSigned`.
-        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        if: "${{ always() && runner.os == 'Windows' }}"
         shell: bash
         run: |
           MSI="$BINARY_DEST_PATH.msi"
@@ -227,7 +227,7 @@ jobs:
         # `MsiInstaller`. These cover failure modes that
         # `install.log` doesn't (AV quarantine, signature
         # verification failure, ACL-blocked file copy, etc.).
-        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        if: "${{ always() && runner.os == 'Windows' }}"
         shell: bash
         run: |
           powershell.exe -NoProfile -Command "
@@ -244,7 +244,7 @@ jobs:
         # sparse.*.log`. MSI deferred CAs have stdout/stderr
         # redirected away from the install log, so this is the only
         # place to see what the CA did.
-        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        if: "${{ always() && runner.os == 'Windows' }}"
         shell: bash
         run: |
           LOG_DIR="$PROGRAMDATA/dev.firezone.client/data/logs"
