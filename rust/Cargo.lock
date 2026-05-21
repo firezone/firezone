@@ -3138,9 +3138,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hex-display"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aff0d38c2092a1b040ece0bf627721867378fb2a4bf6c37dcad0c4f92f8bf7d1"
+checksum = "eb645e05a99f3bd36c60436ced4a873c9f9334c0d0fedfba0cee048111d72ea0"
 
 [[package]]
 name = "hex-literal"
