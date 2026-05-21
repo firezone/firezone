@@ -481,7 +481,14 @@ fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
 
     // Bootstrap logging early so any failures during setup are visible.
-    let _bootstrap = logging::setup_bootstrap()
+    // Held in an `Option` so we can `.take()` and drop it before the
+    // real subscriber is installed in `try_main` — keeping the
+    // bootstrap subscriber alive past `setup_gui` leaves the main
+    // thread with a different (thread-local) subscriber than tokio
+    // workers (global), which makes tracing-subscriber's Registry
+    // panic with "tried to drop a ref to Id(N), but no such span
+    // exists" the first time a span hops threads.
+    let mut bootstrap_log_guard = logging::setup_bootstrap()
         .inspect_err(|e| tracing::warn!("bootstrap log setup failed: {e:#}"))
         .ok();
 
@@ -498,7 +505,7 @@ fn main() -> std::process::ExitCode {
         };
     }
 
-    match try_main() {
+    match try_main(bootstrap_log_guard.take()) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("iced GUI failed: {e:#}");
@@ -515,7 +522,7 @@ fn deep_link_cli(url: String) -> anyhow::Result<()> {
     })
 }
 
-fn try_main() -> anyhow::Result<()> {
+fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> anyhow::Result<()> {
     // Load settings off disk (synchronous; no runtime needed).
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings: {e:#}"))
@@ -523,12 +530,18 @@ fn try_main() -> anyhow::Result<()> {
     let general_settings = settings::load_general_settings().unwrap_or_default();
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
-    // Real logging — replaces the bootstrap logger.
+    // Real logging — replaces the bootstrap logger. The bootstrap
+    // guard must be dropped **before** `setup_gui` installs the real
+    // global subscriber, otherwise the main thread keeps the bootstrap
+    // subscriber as its thread-local default while tokio workers see
+    // the global one, and spans that hop threads make
+    // tracing-subscriber's Registry panic.
     let log_filter = mdm_settings
         .log_filter
         .as_deref()
         .unwrap_or(&advanced_settings.log_filter)
         .to_owned();
+    drop(bootstrap_log_guard);
     let logging::Handles {
         logger: _logger,
         reloader,
