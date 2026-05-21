@@ -306,7 +306,6 @@ public final class Store: ObservableObject {
   /// idempotent, so retrying is safe.
   private func startupSequence() async {
     let maxAttempts = 4
-    var telemetryConfigured = false
 
     for attempt in 0..<maxAttempts {
       do {
@@ -314,10 +313,7 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
-        if !telemetryConfigured {
-          Telemetry.setEnvironmentOrClose(configuration.apiURL)
-          telemetryConfigured = true
-        }
+        Telemetry.setEnvironmentOrClose(configuration.apiURL)
         Log.debug("Startup: setupTunnelObservers")
         try await setupTunnelObservers()
         Log.debug("Startup: maybeAutoConnect")

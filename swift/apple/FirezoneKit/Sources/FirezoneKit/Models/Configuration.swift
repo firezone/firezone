@@ -239,7 +239,7 @@ public class Configuration: ObservableObject {
   }
 
   private func providerBool(_ key: String, default defaultValue: Bool) -> Bool {
-    Self.bool(providerConfiguration[key], default: defaultValue)
+    Self.parseBool(providerConfiguration[key], default: defaultValue)
   }
 
   private func managedBool(_ key: String) -> Bool {
@@ -271,7 +271,7 @@ public class Configuration: ObservableObject {
     }
   }
 
-  nonisolated public static func bool(_ value: String?, default defaultValue: Bool) -> Bool {
+  nonisolated public static func parseBool(_ value: String?, default defaultValue: Bool) -> Bool {
     switch value {
     case "true": return true
     case "false": return false

@@ -107,7 +107,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let accountSlug =
       providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
       ?? ConfigurationDefaults.accountSlug
-    let internetResourceEnabled = Configuration.bool(
+    let internetResourceEnabled = Configuration.parseBool(
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
