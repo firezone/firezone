@@ -185,7 +185,6 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Test installation
-        if: "${{ runner.os == 'Windows' }}"
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}
 
