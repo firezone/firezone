@@ -65,6 +65,29 @@ const WINDOW_SIZE: iced::Size = iced::Size {
     height: 500.0,
 };
 
+fn window_settings() -> iced::window::Settings {
+    iced::window::Settings {
+        size: WINDOW_SIZE,
+        resizable: false,
+        ..iced::window::Settings::default()
+    }
+}
+
+/// Show the main window. If one is already open, raise it; otherwise
+/// open a new one and remember its id. We run as an `iced::daemon`,
+/// so closing the last window doesn't exit the process — the tray
+/// can always reopen.
+fn show_window(app: &mut App) -> Task<Message> {
+    match app.window_id {
+        Some(id) => window::set_mode(id, Mode::Windowed),
+        None => {
+            let (id, open_task) = window::open(window_settings());
+            app.window_id = Some(id);
+            open_task.map(|id| Message::WindowOpened(Some(id)))
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum Message {
     Navigate(Route),
@@ -269,13 +292,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::WindowCloseRequested(id) => {
-            tracing::debug!(?id, "WindowCloseRequested: hiding");
-            app.window_id = Some(id);
-            window::set_mode(id, Mode::Hidden)
+            // Daemon mode: closing the only window keeps the app
+            // alive. `window::close` actually destroys the surface
+            // (cross-platform, including Wayland where
+            // `Mode::Hidden` was a no-op); tray clicks reopen via
+            // `show_window`.
+            app.window_id = None;
+            window::close(id)
         }
         Message::WindowOpened(Some(id)) => {
             app.window_id = Some(id);
-            window::set_mode(id, Mode::Windowed)
+            Task::none()
         }
         Message::WindowOpened(None) => Task::none(),
         Message::Initialized => Task::none(),
@@ -317,19 +344,19 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             app.log_count = fc.into();
             Task::none()
         }
-        Message::ControllerSetWindowVisible(visible) => match (app.window_id, visible) {
-            (Some(id), true) => window::set_mode(id, Mode::Windowed),
-            (Some(id), false) => window::set_mode(id, Mode::Hidden),
-            (None, true) => window::oldest().map(Message::WindowOpened),
-            (None, false) => Task::none(),
-        },
+        Message::ControllerSetWindowVisible(visible) => {
+            if visible {
+                show_window(app)
+            } else if let Some(id) = app.window_id.take() {
+                window::close(id)
+            } else {
+                Task::none()
+            }
+        }
         Message::ControllerShowOverview(view) => {
             set_session(app, view);
             app.route = Route::Overview;
-            match app.window_id {
-                Some(id) => window::set_mode(id, Mode::Windowed),
-                None => window::oldest().map(Message::WindowOpened),
-            }
+            show_window(app)
         }
         Message::ControllerShowSettings {
             mdm,
@@ -338,17 +365,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         } => {
             apply_settings(app, *mdm, *general, *advanced);
             app.route = Route::GeneralSettings;
-            match app.window_id {
-                Some(id) => window::set_mode(id, Mode::Windowed),
-                None => window::oldest().map(Message::WindowOpened),
-            }
+            show_window(app)
         }
         Message::ControllerShowAbout => {
             app.route = Route::About;
-            match app.window_id {
-                Some(id) => window::set_mode(id, Mode::Windowed),
-                None => window::oldest().map(Message::WindowOpened),
-            }
+            show_window(app)
         }
     }
 }
@@ -379,7 +400,7 @@ fn apply_settings(
     app.advanced_settings = AdvancedSettingsState::from_settings(&app.mdm_settings, &advanced);
 }
 
-fn view(app: &App) -> Element<'_, Message> {
+fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
     let body: Element<'_, Message> = match app.route {
         Route::Overview => ui::overview::view(app),
         Route::GeneralSettings => ui::general_settings::view(app),
@@ -408,8 +429,12 @@ fn view(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-fn theme(_app: &App) -> Theme {
+fn theme(_app: &App, _window: window::Id) -> Theme {
     theme::light()
+}
+
+fn title(_app: &App, _window: window::Id) -> String {
+    "Firezone".to_owned()
 }
 
 /// True while any of the General-Settings toggles is mid-animation.
@@ -629,22 +654,15 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
     // `deep_link::register`, `tray::install`, `Controller::start` —
     // all run as tokio tasks on that single runtime, so there are no
     // cross-runtime tracing-subscriber races.
-    // `resizable: false` removes drag-to-resize and hides the
-    // maximize button in iced's enabled_buttons mapping. We don't
-    // pin min/max size: combining them with maximize was making
-    // the window visibly jump and zoom back on double-click. If
-    // the compositor lets the user maximize anyway (Wayland often
-    // does), let it — fighting it from userland produced worse UX
-    // than just accepting the maximized state.
-    let window_settings = iced::window::Settings {
-        size: WINDOW_SIZE,
-        resizable: false,
-        exit_on_close_request: false,
-        ..iced::window::Settings::default()
-    };
-
-    iced::application(boot, update, view)
-        .title("Firezone")
+    //
+    // We use `iced::daemon` rather than `iced::application` so the
+    // process doesn't exit when the last window closes. The X button
+    // calls `window::close`, which on Linux actually destroys the
+    // surface (cross-platform — `Mode::Hidden` only mapped to
+    // `set_visible(false)`, which is a no-op on Wayland), and a
+    // subsequent tray click opens a fresh window.
+    iced::daemon(boot, update, view)
+        .title(title)
         .theme(theme)
         .default_font(assets::font())
         .font(assets::ROBOTO_REGULAR)
@@ -665,7 +683,6 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
             }
             Subscription::batch(subs)
         })
-        .window(window_settings)
         .run()?;
     Ok(())
 }
@@ -687,15 +704,25 @@ fn boot() -> (App, Task<Message>) {
     // is sitting at the front.
     let _ = res.ctrl_tx.try_send(ControllerRequest::UpdateState);
 
+    // Daemon mode opens no windows by default — open the main one
+    // ourselves and stash the id so `show_window` can raise it.
+    let (window_id, open_task) = window::open(window_settings());
+
     let app = App {
         ctrl_tx: Some(res.ctrl_tx.clone()),
+        window_id: Some(window_id),
         ..App::default()
     };
 
-    let task = Task::future(async move {
+    let init_task = Task::future(async move {
         initialize(res);
         Message::Initialized
     });
+
+    let task = Task::batch([
+        open_task.map(|id| Message::WindowOpened(Some(id))),
+        init_task,
+    ]);
 
     (app, task)
 }
