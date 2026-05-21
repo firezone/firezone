@@ -27,58 +27,6 @@ use clap::Parser;
 use std::{fmt, process::ExitCode};
 use telemetry::Telemetry;
 
-/// `{Identity.Name}_{publisher_id(Identity.Publisher)}` from
-/// `win_files/AppxManifest.xml`, hard-coded because `register-sparse`
-/// needs to pass it to `ProvisionPackageForAllUsersAsync` *before*
-/// the package is registered — at which point Windows' own
-/// `GetCurrentPackageFamilyName` would answer "no package identity".
-///
-/// If the manifest's `Identity.Publisher` or `Name` ever changes, this
-/// string has to be updated to match. The install canary catches drift:
-/// `ProvisionPackageForAllUsersAsync` fails with "package not found"
-/// when the PFN doesn't match the package the kernel staged.
-const PACKAGE_FAMILY_NAME: &str = "Firezone.Client.GUI_r4567a5vks0bt";
-
-#[derive(Parser)]
-#[command(disable_version_flag = true)]
-struct Cli {
-    action: Action,
-}
-
-#[derive(clap::ValueEnum, Clone, Copy)]
-enum Action {
-    /// Stage + provision the package for all users.
-    Provision,
-    /// Deprovision the package for all users.
-    Deprovision,
-}
-
-impl fmt::Display for Action {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Action::Provision => "provision",
-            Action::Deprovision => "deprovision",
-        })
-    }
-}
-
-/// Marker attached (via `anyhow::Error::new`) to a deployment error
-/// when the AppX deployment service reports
-/// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED` — pre-21H2 / hardened
-/// images that don't support external-location sparse MSIX. `main`
-/// downcasts on this to choose between graceful skip (exit 0) and
-/// loud failure (exit 1, Sentry event).
-#[derive(Debug)]
-struct NotSupported;
-
-impl fmt::Display for NotSupported {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("sparse MSIX not supported on this Windows build")
-    }
-}
-
-impl std::error::Error for NotSupported {}
-
 fn main() -> ExitCode {
     let mut telemetry = Telemetry::new();
     telemetry.start(
@@ -103,7 +51,7 @@ fn main() -> ExitCode {
 
     tracing::info!(
         %action,
-        pfn = %crate::PACKAGE_FAMILY_NAME,
+        pfn = %PACKAGE_FAMILY_NAME,
         "register-sparse invoked"
     );
 
@@ -168,6 +116,58 @@ fn init_tracing() -> Result<logging::file::Handle> {
     Ok(file_handle)
 }
 
+#[derive(Parser)]
+#[command(disable_version_flag = true)]
+struct Cli {
+    action: Action,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy)]
+enum Action {
+    /// Stage + provision the package for all users.
+    Provision,
+    /// Deprovision the package for all users.
+    Deprovision,
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Action::Provision => "provision",
+            Action::Deprovision => "deprovision",
+        })
+    }
+}
+
+/// Marker attached (via `anyhow::Error::new`) to a deployment error
+/// when the AppX deployment service reports
+/// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED` — pre-21H2 / hardened
+/// images that don't support external-location sparse MSIX. `main`
+/// downcasts on this to choose between graceful skip (exit 0) and
+/// loud failure (exit 1, Sentry event).
+#[derive(Debug)]
+struct NotSupported;
+
+impl fmt::Display for NotSupported {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("sparse MSIX not supported on this Windows build")
+    }
+}
+
+impl std::error::Error for NotSupported {}
+
+/// `{Identity.Name}_{publisher_id(Identity.Publisher)}` from
+/// `win_files/AppxManifest.xml`, hard-coded because `register-sparse`
+/// needs to pass it to `ProvisionPackageForAllUsersAsync` *before*
+/// the package is registered — at which point Windows' own
+/// `GetCurrentPackageFamilyName` would answer "no package identity".
+///
+/// If the manifest's `Identity.Publisher` or `Name` ever changes, this
+/// string has to be updated to match. The install canary catches drift:
+/// `ProvisionPackageForAllUsersAsync` fails with "package not found"
+/// when the PFN doesn't match the package the kernel staged.
+const PACKAGE_FAMILY_NAME: &str = "Firezone.Client.GUI_r4567a5vks0bt";
+
 #[cfg(windows)]
 mod imp {
     use super::NotSupported;
@@ -178,27 +178,6 @@ mod imp {
         Management::Deployment::{DeploymentResult, PackageManager, StagePackageOptions},
         core::HSTRING,
     };
-
-    /// Calls a `PackageManager::*Async` deployment method, awaits it,
-    /// logs its outcome via [`log_deployment_result`], and propagates
-    /// either a [`NotSupported`] (graceful skip in `main`) or a
-    /// regular error via [`check_deployment_result`]. The closure
-    /// returns `Result<DeploymentResult>` so callers can use the `?`
-    /// operator on the underlying `windows_core::Result`s.
-    fn run_deployment(
-        op_name: &str,
-        do_op: impl FnOnce() -> Result<DeploymentResult>,
-    ) -> Result<()> {
-        let started = Instant::now();
-        let result = do_op().with_context(|| format!("{op_name} failed"))?;
-        log_deployment_result(op_name, &result, started);
-        check_deployment_result(&result, op_name)
-    }
-
-    /// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED`. Returned by AppX deployment
-    /// when the package's `MinVersion` floor isn't met or the OS image
-    /// has external-location-sparse-MSIX support disabled.
-    const APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED: u32 = 0x80073D54;
 
     /// Stages the sparse MSIX in the system store and provisions it
     /// for all users, so every account (including `LocalSystem` and
@@ -266,6 +245,53 @@ mod imp {
         })
     }
 
+    /// Calls a `PackageManager::*Async` deployment method, awaits
+    /// it, logs the `DeploymentResult` fields (timing + AppX
+    /// `ExtendedErrorCode` + `ErrorText` + `ActivityId`), and
+    /// propagates either a [`NotSupported`] (graceful skip in
+    /// `main`) or a regular error. The closure returns
+    /// `Result<DeploymentResult>` so callers use `?` on the
+    /// underlying `windows_core::Result`s.
+    fn run_deployment(
+        op_name: &str,
+        do_op: impl FnOnce() -> Result<DeploymentResult>,
+    ) -> Result<()> {
+        /// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED`. Returned by AppX
+        /// when the package's `MinVersion` floor isn't met or the OS
+        /// image has external-location-sparse-MSIX support disabled.
+        const APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED: u32 = 0x80073D54;
+
+        let started = Instant::now();
+        let result = do_op().with_context(|| format!("{op_name} failed"))?;
+        let elapsed = started.elapsed();
+
+        let hr = result.ExtendedErrorCode().context("ExtendedErrorCode")?;
+        let error_text = result
+            .ErrorText()
+            .ok()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default();
+        let activity_id = result.ActivityId().ok().map(|g| format!("{g:?}"));
+        tracing::info!(
+            op = op_name,
+            ?elapsed,
+            hr = ?hr,
+            error_text,
+            activity_id,
+            "deployment result"
+        );
+
+        if hr.is_ok() {
+            return Ok(());
+        }
+        if hr.0 as u32 == APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED {
+            return Err(anyhow::Error::new(NotSupported));
+        }
+        Err(anyhow!(
+            "deployment {op_name} failed: {hr:?} ({error_text})"
+        ))
+    }
+
     fn package_manager() -> Result<PackageManager> {
         let started = Instant::now();
         let pm = PackageManager::new().context("PackageManager::new failed")?;
@@ -282,45 +308,6 @@ mod imp {
         exe.parent()
             .map(PathBuf::from)
             .ok_or_else(|| anyhow!("current_exe `{}` has no parent", exe.display()))
-    }
-
-    /// Logs the fields of a `DeploymentResult` after an AppX async op
-    /// returns. `ExtendedErrorCode` is the HRESULT the deployment
-    /// service captured (0 means success); `ErrorText` is the
-    /// human-readable companion (often empty on success); `ActivityId`
-    /// helps correlate with the AppX trace channel.
-    fn log_deployment_result(op: &str, result: &DeploymentResult, started: Instant) {
-        let elapsed = started.elapsed();
-        let hr = result.ExtendedErrorCode().ok();
-        let error_text = result
-            .ErrorText()
-            .ok()
-            .map(|s| s.to_string_lossy())
-            .unwrap_or_default();
-        let activity_id = result.ActivityId().ok().map(|g| format!("{g:?}"));
-        tracing::info!(
-            op,
-            ?elapsed,
-            hr = ?hr,
-            error_text,
-            activity_id,
-            "deployment result"
-        );
-    }
-
-    fn check_deployment_result(result: &DeploymentResult, op: &str) -> Result<()> {
-        let hr = result.ExtendedErrorCode().context("ExtendedErrorCode")?;
-        if hr.is_ok() {
-            return Ok(());
-        }
-        if hr.0 as u32 == APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED {
-            return Err(anyhow::Error::new(NotSupported));
-        }
-        let msg = result
-            .ErrorText()
-            .map(|s| s.to_string_lossy())
-            .unwrap_or_default();
-        Err(anyhow!("deployment {op} failed: {hr:?} ({msg})"))
     }
 
     fn file_uri(path: &std::path::Path) -> Result<Uri> {
