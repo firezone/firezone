@@ -18,16 +18,29 @@ use crate::theme::Tokens;
 pub fn style(_theme: &Theme, status: Status, tokens: Tokens) -> Style {
     let is_focused = matches!(status, Status::Focused { .. });
     let is_hovered = matches!(status, Status::Hovered);
-    let border_color = if is_focused {
+    let is_disabled = matches!(status, Status::Disabled);
+    let border_color = if is_disabled {
+        tokens.text_muted
+    } else if is_focused {
         tokens.brand
     } else if is_hovered {
         tokens.text_tertiary
     } else {
         tokens.text_muted
     };
+    let bg = if is_disabled {
+        tokens.surface_raised
+    } else {
+        tokens.surface
+    };
+    let value = if is_disabled {
+        tokens.text_tertiary
+    } else {
+        tokens.text_primary
+    };
 
     Style {
-        background: Background::Color(tokens.surface),
+        background: Background::Color(bg),
         border: Border {
             color: border_color,
             width: 1.0,
@@ -35,7 +48,7 @@ pub fn style(_theme: &Theme, status: Status, tokens: Tokens) -> Style {
         },
         icon: tokens.text_muted,
         placeholder: tokens.text_muted,
-        value: tokens.text_primary,
+        value,
         selection: tokens.brand,
     }
 }

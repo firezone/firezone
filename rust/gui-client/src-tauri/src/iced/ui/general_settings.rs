@@ -40,7 +40,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
     container(
         column![
-            field_label("Account slug"),
+            field_label("Account slug", s.account_slug_is_managed),
             text_input("", &s.account_slug)
                 .on_input_maybe(if s.account_slug_is_managed {
                     None
@@ -75,11 +75,13 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-fn field_label<'a>(label: &'a str) -> Element<'a, Message> {
-    text(label)
-        .size(13)
-        .color(theme::LIGHT.text_secondary)
-        .into()
+fn field_label<'a>(label: &'a str, managed: bool) -> Element<'a, Message> {
+    let color = if managed {
+        theme::LIGHT.text_muted
+    } else {
+        theme::LIGHT.text_secondary
+    };
+    text(label).size(13).color(color).into()
 }
 
 fn managed_hint(is_managed: bool) -> Element<'static, Message> {
@@ -103,8 +105,13 @@ fn toggle_row<'a, F>(
 where
     F: 'a + Fn(bool) -> Message,
 {
+    let label_color = if managed {
+        theme::LIGHT.text_muted
+    } else {
+        theme::LIGHT.text_primary
+    };
     row![
-        text(label).size(14).color(theme::LIGHT.text_primary),
+        text(label).size(14).color(label_color),
         Space::new().width(Length::Fill),
         animated_toggle(anim, value, !managed, on_toggle, theme::LIGHT),
     ]

@@ -19,7 +19,7 @@ use std::sync::Mutex;
 use clap::Parser;
 use firezone_gui_client::controller::{Controller, ControllerRequest};
 use firezone_gui_client::gui::system_tray;
-use firezone_gui_client::ipc::{Server, SocketId};
+use firezone_gui_client::ipc::SocketId;
 use firezone_gui_client::logging::{self, FileCount, FilterReloadHandle};
 use firezone_gui_client::settings::{
     self, AdvancedSettings, GeneralSettings, MdmSettings,
@@ -69,6 +69,13 @@ fn window_settings() -> iced::window::Settings {
     iced::window::Settings {
         size: WINDOW_SIZE,
         resizable: false,
+        // Required: when iced auto-closes the window (the default),
+        // the `CloseRequested` event isn't pushed to the subscription
+        // queue, so our `WindowCloseRequested` handler never runs and
+        // `app.window_id` stays stale `Some(...)`. The next tray
+        // click then thinks the window's still up and tries to raise
+        // it instead of opening a new one.
+        exit_on_close_request: false,
         ..iced::window::Settings::default()
     }
 }
@@ -715,7 +722,7 @@ fn boot() -> (App, Task<Message>) {
     };
 
     let init_task = Task::future(async move {
-        initialize(res);
+        initialize(res).await;
         Message::Initialized
     });
 
@@ -727,18 +734,27 @@ fn boot() -> (App, Task<Message>) {
     (app, task)
 }
 
-/// Runtime-dependent setup: bind the GUI IPC pipe, register the URI
-/// scheme handler, install the tray, and spawn the Controller. Called
-/// from inside iced's `Task::future`, so the ambient tokio runtime is
-/// already set — `Server::new` (which binds a `UnixListener` / named
-/// pipe) and `tokio::spawn` (used by `tray::install` and to launch
-/// the Controller) both pick it up.
-fn initialize(res: BootResources) {
-    let gui_ipc_server = match Server::new(SocketId::Gui) {
-        Ok(s) => s,
+/// Runtime-dependent setup: acquire the launch lock, bind the GUI
+/// IPC pipe (or hand off to a running instance), register the URI
+/// scheme handler, install the tray, and spawn the Controller. Runs
+/// from inside iced's `Task::future`, so the ambient tokio runtime
+/// is already set.
+async fn initialize(res: BootResources) {
+    use firezone_gui_client::gui::{SingleInstance, establish_single_instance};
+
+    let (gui_ipc_server, _launch_lock) = match establish_single_instance().await {
+        Ok(SingleInstance::First { server, lock }) => (server, lock),
+        Ok(SingleInstance::SecondHandedOff) => {
+            // The first instance was already running; the handshake
+            // told it to surface its own window. We've done our job
+            // — bail out cleanly. Bypass iced's teardown because
+            // nothing here owns any resources iced cares about.
+            tracing::info!("another Firezone instance is already running; handed off");
+            std::process::exit(0);
+        }
         Err(e) => {
-            tracing::error!("failed to bind GUI IPC server: {e:#}");
-            return;
+            tracing::error!("failed to acquire single-instance lock: {e:#}");
+            std::process::exit(1);
         }
     };
 
@@ -760,6 +776,10 @@ fn initialize(res: BootResources) {
         mpsc::channel::<Option<firezone_gui_client::updates::Notification>>(16);
 
     tokio::spawn(async move {
+        // `_launch_lock` rides into the spawned task so its lifetime
+        // matches the Controller's; dropping it earlier would let a
+        // second instance start up.
+        let _launch_lock = _launch_lock;
         if let Err(e) = Controller::start(
             SocketId::Tunnel,
             res.integration,

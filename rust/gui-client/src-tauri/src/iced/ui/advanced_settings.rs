@@ -78,8 +78,14 @@ where
         .padding([8, 12])
         .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT));
 
+    let label_color = if managed {
+        theme::LIGHT.text_muted
+    } else {
+        theme::LIGHT.text_secondary
+    };
+
     column![
-        text(label).size(13).color(theme::LIGHT.text_secondary),
+        text(label).size(13).color(label_color),
         input,
         if managed {
             text("Managed by your administrator")
