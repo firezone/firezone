@@ -23,6 +23,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -52,8 +53,8 @@ fun SessionScreen(
     onSignOut: () -> Unit,
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
-    var selectedTab by rememberSaveable { mutableStateOf(TAB_FAVORITES) }
-    // No favourites -> always show "All" (mirrors SessionViewModel.forceTab()).
+    var selectedTab by rememberSaveable { mutableIntStateOf(TAB_FAVORITES) }
+    // No favorites -> always show "All".
     val effectiveTab = if (!hasFavorites) TAB_ALL else selectedTab
 
     val displayed =
