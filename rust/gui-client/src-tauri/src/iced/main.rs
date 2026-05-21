@@ -515,7 +515,10 @@ fn try_main(rt: tokio::runtime::Runtime) -> anyhow::Result<()> {
 
     // GUI IPC server — receives forwarded deep-links from secondary
     // launches (`open-deep-link <URL>` mode above) and "I'm a duplicate"
-    // pings.
+    // pings. `Server::new` binds a `tokio::net::UnixListener` (Linux) or
+    // named pipe (Windows) under the hood, both of which require an
+    // active tokio runtime context — hence the `_rt_guard`.
+    let _rt_guard = rt.enter();
     let gui_ipc_server = Server::new(SocketId::Gui)?;
 
     // Register the firezone:// URI scheme handler. On Linux this writes
