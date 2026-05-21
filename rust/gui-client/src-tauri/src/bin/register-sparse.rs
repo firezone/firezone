@@ -12,9 +12,10 @@
 //!
 //! - `0` on success.
 //! - `0` if the AppX deployment service reports the package as not
-//!   supported on this Windows build (pre-21H2 / hardened images).
-//!   The MSI install proceeds; the runtime SDDL builder in
-//!   `ipc/windows.rs` falls back to the legacy `BU` ACE.
+//!   supported on this Windows build. The MSI `LaunchCondition` in
+//!   `sparse-package.wxs` should make this unreachable, but we
+//!   handle it as defence-in-depth (e.g. someone bypasses the
+//!   condition via `msiexec /q` flags).
 //! - **non-zero** on every other failure. Wrong PFN, AppX service
 //!   wedged, missing payload, permissions — these all surface
 //!   loudly via the `Return="check"` MSI CA wiring + a Sentry event
@@ -154,10 +155,10 @@ impl fmt::Display for Action {
 
 /// Marker attached (via `anyhow::Error::new`) to a deployment error
 /// when the AppX deployment service reports
-/// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED` — pre-21H2 / hardened
-/// images that don't support external-location sparse MSIX. `main`
-/// downcasts on this to choose between graceful skip (exit 0) and
-/// loud failure (exit 1, Sentry event).
+/// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED`. The MSI `LaunchCondition`
+/// in `sparse-package.wxs` requires Win10 21H2 / build 19044+, so
+/// this shouldn't fire in practice; `main` still downcasts on it for
+/// graceful skip rather than failing the install if it somehow does.
 #[derive(Debug)]
 struct NotSupported;
 

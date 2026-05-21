@@ -8,13 +8,48 @@
   AppX deployment service; this fragment only deals with the MSI side.
 
   `Return="check"` makes a non-zero exit from `register-sparse` fail
-  the install transaction. The binary itself only exits non-zero on
-  *unexpected* failures — pre-21H2 / hardened images that don't
-  support sparse MSIX exit 0 with a log line, so the MSI install
-  still completes there.
+  the install transaction. The `LaunchCondition` below guarantees we
+  only ever reach the CA on a Windows build that actually supports
+  external-location sparse-MSIX packages (Win10 21H2 / build 19044).
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
+    <!--
+      Reads `HKLM\…\CurrentVersion\CurrentMajorVersionNumber`
+      (REG_DWORD, added in Win10 and reports `10` on both Win10 and
+      Win11) and `CurrentBuild` (REG_SZ, the kernel build number).
+      `Type="raw"` keeps the DWORD's `#` prefix so the comparison
+      below is unambiguous. Lexicographic compare on 5-digit Win10/11
+      build numbers (all >= 10240) is equivalent to numeric.
+    -->
+    <Property Id="WIN_MAJOR_RAW" Secure="yes">
+      <RegistrySearch Id="WinMajorVer"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentMajorVersionNumber"
+                      Type="raw" />
+    </Property>
+    <Property Id="WIN_BUILD" Secure="yes">
+      <RegistrySearch Id="WinBuildNum"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentBuild"
+                      Type="raw" />
+    </Property>
+
+    <!--
+      Refuse install on anything older than Win10 21H2. The MSIX
+      sparse-package subsystem (`AddPackageByUriAsync` with
+      `ExternalLocationUri`) ships there; on earlier builds
+      registration silently no-ops and the tunnel pipe DACL grants
+      access to a SID no process carries, making the app
+      unreachable. The `Installed` clause lets uninstall still work
+      even if the OS was somehow downgraded.
+    -->
+    <Condition Message="Firezone requires Windows 10 version 21H2 (build 19044) or later, or Windows 11.">
+      <![CDATA[Installed OR (WIN_MAJOR_RAW = "#10" AND WIN_BUILD >= "19044")]]>
+    </Condition>
+
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="SparsePackageMsix" Guid="34cca6d3-7b27-4d5e-b86b-3a3b4ee4dbe6">
         <File Id="FirezoneMsix" Name="firezone.msix"
