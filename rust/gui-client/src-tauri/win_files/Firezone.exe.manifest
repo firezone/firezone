@@ -3,10 +3,11 @@
   Side-by-side / fusion manifest embedded into Firezone.exe so the
   Windows kernel can attach the Firezone sparse-MSIX package
   identity to the process at `CreateProcess` time. Without this
-  the `<msix>` linkage is absent, the kernel doesn't know the EXE
-  belongs to the registered package, and `GetCurrentPackageFamilyName`
-  returns `APPMODEL_ERROR_NO_PACKAGE` — which silently degrades the
-  pipe DACL story to the legacy `BUILTIN\Users` fallback.
+  the kernel doesn't link the EXE back to the registered package,
+  `GetCurrentPackageFamilyName` returns
+  `APPMODEL_ERROR_NO_PACKAGE`, and no Firezone process carries the
+  package SID the tunnel pipe DACL grants -- so the GUI can't open
+  the tunnel pipe and the app is unreachable.
 
   `publisher` + `packageName` must match the `Identity` element in
   `AppxManifest.xml`; `applicationId` must match the `Id` attribute
