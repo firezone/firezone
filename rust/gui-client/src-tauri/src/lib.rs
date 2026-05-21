@@ -42,12 +42,6 @@ pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 /// provision/deprovision the sparse package family.
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
 
-/// Kernel-tracked Package SID, baked in at build time from the
-/// manifest identity. Identical to
-/// `(Get-AppxPackage Firezone.Client.GUI).SID` once the sparse MSIX
-/// has registered. The install-time canary asserts parity.
-pub const PACKAGE_SID: &str = env!("FIREZONE_PACKAGE_SID");
-
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
 #[cfg(target_os = "linux")]

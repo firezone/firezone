@@ -57,7 +57,6 @@ fn main() -> ExitCode {
     tracing::info!(
         %action,
         pfn = %firezone_gui_client::PACKAGE_FAMILY_NAME,
-        sid = %firezone_gui_client::PACKAGE_SID,
         "register-sparse invoked"
     );
 

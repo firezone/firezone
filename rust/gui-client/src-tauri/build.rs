@@ -9,23 +9,25 @@ fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=../website/public/policy-templates/windows/firezone.admx");
     println!("cargo:rerun-if-changed=win_files/AppxManifest.xml");
 
-    emit_package_identity_env()?;
+    emit_package_family_name_env()?;
 
     Ok(())
 }
 
 /// Reads the sparse MSIX manifest, derives the resulting Package
-/// Family Name + kernel-tracked package SID, and emits the values as
-/// `cargo:rustc-env=` so the constants in `src/lib.rs` are baked into
-/// the binary at compile time.
+/// Family Name (`{Identity.Name}_{Crockford13(SHA256(Identity.Publisher))}`)
+/// and emits it as `cargo:rustc-env` so `PACKAGE_FAMILY_NAME` in
+/// `src/lib.rs` is baked into the binary at compile time.
 ///
-/// The Windows kernel computes the same SID at runtime via
-/// `DeriveAppContainerSidFromAppContainerName(PFN)` once the sparse
-/// package has been registered. The CI canary in
-/// `scripts/tests/gui-client-install-windows-msi.sh` confirms parity
-/// between this build-time computation and the runtime kernel
-/// values for both PFN and SID.
-fn emit_package_identity_env() -> Result<()> {
+/// `register-sparse.exe` needs the PFN at runtime to call
+/// `ProvisionPackageForAllUsersAsync` *before* the package is
+/// registered (i.e., before `GetCurrentPackageFamilyName` can
+/// answer), so the PFN has to come from somewhere static. Post-
+/// registration, callers that need the package SID call
+/// `windows_security::pipe_dacl::Trustee::current_package()`, which
+/// reads the kernel-attached PFN and hashes it the same way Windows
+/// does — that's the authoritative path; this is just a bootstrap.
+fn emit_package_family_name_env() -> Result<()> {
     let manifest = std::fs::read_to_string("win_files/AppxManifest.xml")
         .context("Failed to read win_files/AppxManifest.xml")?;
 
@@ -35,10 +37,7 @@ fn emit_package_identity_env() -> Result<()> {
         .context("Failed to extract Identity.Name from AppxManifest.xml")?;
 
     let pfn = format!("{name}_{}", publisher_id(&publisher));
-    let sid = package_sid_from_pfn(&pfn);
-
     println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");
-    println!("cargo:rustc-env=FIREZONE_PACKAGE_SID={sid}");
 
     Ok(())
 }
@@ -118,17 +117,6 @@ fn publisher_id(publisher: &str) -> String {
     crockford13(&buf)
 }
 
-/// Derives the package SID from the Package Family Name
-/// (`{Name}_{publisher_id}`, lowercased). Five 32-bit subauthorities
-/// are little-endian-decoded from the first 20 bytes of
-/// `SHA256(UTF16LE(lowercased PFN))`.
-fn package_sid_from_pfn(pfn: &str) -> String {
-    let h = sha256_utf16le(&pfn.to_ascii_lowercase());
-    let p =
-        |i: usize| u32::from_le_bytes(h[i..i + 4].try_into().expect("4-byte slice fits in u32"));
-    format!("S-1-15-2-{}-{}-{}-{}-{}", p(0), p(4), p(8), p(12), p(16))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,27 +131,6 @@ mod tests {
             ),
             "8wekyb3d8bbwe",
         );
-    }
-
-    /// Round-trips the full PFN -> SID transform on a known sample.
-    /// Microsoft.WindowsCalculator's PFN is a stable Win10/Win11
-    /// inbox app, useful for regression-testing the second hash + LE
-    /// decode.
-    #[test]
-    fn microsoft_calculator_sid() {
-        let sid = package_sid_from_pfn("Microsoft.WindowsCalculator_8wekyb3d8bbwe");
-        assert!(sid.starts_with("S-1-15-2-"));
-        assert_eq!(sid.split('-').count(), 8);
-    }
-
-    #[test]
-    fn pfn_lowercasing_matters() {
-        // SID derivation uses the lowercased PFN; if we forgot to
-        // lowercase, the second hash would diverge from the kernel's
-        // value.
-        let upper = package_sid_from_pfn("Microsoft.WindowsCalculator_8WEKYB3D8BBWE");
-        let lower = package_sid_from_pfn("Microsoft.WindowsCalculator_8wekyb3d8bbwe");
-        assert_eq!(upper, lower);
     }
 
     #[test]

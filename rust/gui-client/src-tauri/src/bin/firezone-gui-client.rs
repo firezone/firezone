@@ -169,23 +169,6 @@ fn try_main(
 
             return Ok(());
         }
-        Some(Cmd::Debug {
-            command: DebugCommand::PrintPackageSid,
-        }) => {
-            // Same canary pattern: the install script compares this
-            // against `(Get-AppxPackage … | %% Sid)` to verify the
-            // build-time SID derivation matches the kernel's runtime
-            // value.
-            #[allow(
-                clippy::print_stdout,
-                reason = "stdout is the contract for the CI canary"
-            )]
-            {
-                println!("{}", firezone_gui_client::PACKAGE_SID);
-            }
-
-            return Ok(());
-        }
         Some(Cmd::OpenDeepLink(deep_link)) => {
             tracing::info!("Opening deep-link");
 
@@ -385,9 +368,6 @@ enum DebugCommand {
     ///   sends `NewInstance`, awaits the `Ack`, prints
     ///   `second-instance: …`, and exits.
     SingleInstance,
-    /// Print the build-time-baked Package SID. Used by the install
-    /// canary to assert parity with `(Get-AppxPackage …).Sid`.
-    PrintPackageSid,
 }
 
 #[derive(clap::Parser)]
