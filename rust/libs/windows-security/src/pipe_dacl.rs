@@ -11,17 +11,14 @@
 //! runtime.
 
 use crate::{SecurityDescriptor, sid_to_string};
-use anyhow::{Context as _, Result, anyhow, ensure};
+use anyhow::{Context as _, Result};
 use std::{borrow::Cow, fmt};
 use windows::{
     Win32::{
-        Foundation::{
-            APPMODEL_ERROR_NO_PACKAGE, ERROR_INSUFFICIENT_BUFFER, HLOCAL, LocalFree, WIN32_ERROR,
-        },
+        Foundation::{HLOCAL, LocalFree},
         Security::Isolation::DeriveAppContainerSidFromAppContainerName,
-        Storage::Packaging::Appx::GetCurrentPackageFamilyName,
     },
-    core::{HSTRING, PCWSTR, PWSTR},
+    core::{HSTRING, PCWSTR},
 };
 
 /// File-system rights expressible in a Firezone pipe ACE. Encoded
@@ -67,32 +64,24 @@ impl Trustee {
         Self(Cow::Borrowed("BU"))
     }
 
-    /// SID for the current process's MSIX package identity, computed
-    /// by Windows from the kernel-attached Package Family Name.
+    /// SID for the given MSIX Package Family Name (`Name_publisherId`
+    /// — the deterministic Crockford-base32 hash Windows derives from
+    /// the cert Subject DN). Use this in pipe DACLs to pin access to
+    /// processes the kernel activated from that package: the kernel
+    /// attaches this SID to those processes' tokens, so an ACE
+    /// granting access to it is effectively a cert-rooted access
+    /// check (Windows enforces that the package's `Publisher` match
+    /// the signing cert's Subject DN at registration time).
     ///
-    /// Use this in pipe DACLs to pin access to processes launched
-    /// from the Firezone MSIX package: the kernel attaches this SID
-    /// to those processes' tokens, so an ACE granting access to it
-    /// is effectively a cert-rooted access check (the package SID is
-    /// a hash of `Name + Publisher`, and Windows enforces that
-    /// `Publisher` match the signing cert's Subject DN).
-    ///
-    /// Defense-in-depth: the PFN must start with
-    /// `Firezone.Client.GUI_`, otherwise the caller is somehow
-    /// executing inside someone else's package, and we'd rather fail
-    /// than pin a foreign SID into our DACL.
-    ///
-    /// Returns an error in contexts without package identity (the
-    /// MSI install canary covers the supported-Windows positive
-    /// case; pre-21H2 / hardened images fall through here so callers
-    /// can choose a fallback).
-    pub fn current_package() -> Result<Self> {
-        let pfn = current_package_family_name()?;
-        ensure!(
-            pfn.starts_with("Firezone.Client.GUI_"),
-            "current package family name `{pfn}` is not Firezone's"
-        );
-        let sid = derive_package_sid(&pfn)?;
+    /// The PFN is just a string; the caller owns picking the right
+    /// one (typically a `pub const` next to the AppxManifest it
+    /// originates from). This function doesn't verify the package is
+    /// registered — it just runs the SID-derivation hash — so the
+    /// returned SID is safe to bake into a DACL even when the
+    /// package isn't yet provisioned (the ACE would simply match no
+    /// process).
+    pub fn from_package_family_name(pfn: &str) -> Result<Self> {
+        let sid = derive_package_sid(pfn)?;
         Ok(Self(Cow::Owned(sid)))
     }
 
@@ -101,46 +90,6 @@ impl Trustee {
     pub fn as_sddl_str(&self) -> &str {
         &self.0
     }
-}
-
-/// Reads the Package Family Name the kernel has attached to the
-/// current process. Returns `Err` (with a "no package identity"
-/// hint) when the process has no package identity.
-fn current_package_family_name() -> Result<String> {
-    // First call probes the required buffer size; the documented
-    // pattern is to pass a 0 length and rely on the returned size.
-    let mut len: u32 = 0;
-    // SAFETY: NULL buffer + 0 length is the documented sizing call;
-    // Windows writes only to `len`.
-    let rc: WIN32_ERROR = unsafe { GetCurrentPackageFamilyName(&mut len, None) };
-    if rc == APPMODEL_ERROR_NO_PACKAGE {
-        return Err(anyhow!(
-            "current process has no MSIX package identity (rc={:#x})",
-            rc.0
-        ));
-    }
-    // Per docs, "first call" returns `ERROR_INSUFFICIENT_BUFFER` (122)
-    // when there *is* a name but the buffer was too small. Anything
-    // else here is unexpected.
-    ensure!(
-        rc == ERROR_INSUFFICIENT_BUFFER,
-        "GetCurrentPackageFamilyName sizing call returned unexpected rc={:#x}",
-        rc.0
-    );
-
-    let mut buf = vec![0u16; len as usize];
-    // SAFETY: `buf` has `len` u16 capacity; Windows writes up to that.
-    let rc: WIN32_ERROR =
-        unsafe { GetCurrentPackageFamilyName(&mut len, Some(PWSTR(buf.as_mut_ptr()))) };
-    ensure!(
-        rc.0 == 0,
-        "GetCurrentPackageFamilyName retrieval call returned rc={:#x}",
-        rc.0
-    );
-
-    // `len` includes the null terminator; trim it before converting.
-    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-    String::from_utf16(&buf[..end]).context("GetCurrentPackageFamilyName returned invalid UTF-16")
 }
 
 /// Wraps `DeriveAppContainerSidFromAppContainerName` and
@@ -296,18 +245,20 @@ mod tests {
             .expect("kernel should accept GUI-shape SDDL");
     }
 
-    /// `current_package` requires a registered Firezone MSIX in the
-    /// caller's process token — which CI's `cargo test` doesn't have
-    /// (the test binary isn't itself MSIX-activated). Assert only
-    /// that the call returns `Err` here; the install canary covers
-    /// the positive case end-to-end.
+    /// `from_package_family_name` is a deterministic SID hash —
+    /// always succeeds for any non-empty PFN, regardless of whether
+    /// the package is registered on this machine. The exact SID is
+    /// documented by Microsoft's
+    /// [`8wekyb3d8bbwe`](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/appxmanifestschema/element-identity)
+    /// example for `Microsoft.WindowsCalculator`.
     #[test]
-    fn current_package_errors_without_package_identity() {
-        let result = Trustee::current_package();
+    fn from_package_family_name_returns_sid() {
+        let trustee =
+            Trustee::from_package_family_name("Microsoft.WindowsCalculator_8wekyb3d8bbwe").unwrap();
         assert!(
-            result.is_err(),
-            "expected `Err` outside MSIX, got: {:?}",
-            result.map(|t| t.as_sddl_str().to_owned())
+            trustee.as_sddl_str().starts_with("S-1-15-2-"),
+            "expected S-1-15-2-… SID, got `{}`",
+            trustee.as_sddl_str()
         );
     }
 }

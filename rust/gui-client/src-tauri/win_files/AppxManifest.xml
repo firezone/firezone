@@ -2,10 +2,15 @@
 <!--
   Sparse MSIX manifest for Firezone.
 
-  This package does NOT carry the Firezone payload binaries; it merely
+  This package does NOT carry the Firezone payload binary; it merely
   registers a kernel-tracked package identity for the existing
-  `Firezone.exe` and `firezone-client-tunnel.exe` at the MSI install
-  location (an "external location" sparse package).
+  `Firezone.exe` at the MSI install location (an "external location"
+  sparse package). The tunnel-service binary is intentionally absent
+  from the `<Applications>` list: SCM-launched services with an
+  embedded `<msix>` identity claim hang on startup, and we don't need
+  the tunnel service to *have* the identity — only to grant access on
+  its pipe to processes that do (via `Trustee::from_package_family_name`
+  at runtime).
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -48,17 +53,6 @@
       <uap:VisualElements
         DisplayName="Firezone"
         Description="Firezone GUI Client"
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png"
-        AppListEntry="none"/>
-    </Application>
-    <Application Id="FirezoneClientTunnel"
-                 Executable="firezone-client-tunnel.exe"
-                 EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="Firezone Client Tunnel"
-        Description="Firezone Tunnel service"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"

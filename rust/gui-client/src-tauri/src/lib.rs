@@ -38,6 +38,15 @@ pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
+/// `Name_publisherId` derived from `win_files/AppxManifest.xml`. The
+/// `publisherId` half is the Crockford-base32 hash of the cert
+/// Subject DN that signs the sparse MSIX, so this value only
+/// changes when the cert rotates. Used as a runtime input to
+/// `windows_security::pipe_dacl::Trustee::from_package_family_name`
+/// for the pipe DACL ACEs that pin access to the
+/// MSIX-registered Firezone binaries.
+pub const PACKAGE_FAMILY_NAME: &str = "Firezone.Client.GUI_r4567a5vks0bt";
+
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
     use anyhow::Context as _;

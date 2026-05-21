@@ -39,7 +39,7 @@ if [ -z "$PACKAGE_FOUND" ]; then
     exit 0
 fi
 
-echo "==> Verifying tunnel service has package identity attached..."
+echo "==> Verifying Firezone.exe gets package identity attached when launched..."
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-powershell.exe -NoProfile -File "$SCRIPT_DIR/check-tunnel-package-identity.ps1"
-echo "==> Package identity attached to tunnel service"
+powershell.exe -NoProfile -File "$SCRIPT_DIR/check-gui-package-identity.ps1"
+echo "==> Package identity attached to Firezone.exe"

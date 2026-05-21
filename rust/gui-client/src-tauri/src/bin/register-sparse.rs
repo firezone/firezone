@@ -24,6 +24,7 @@
 
 use anyhow::{Context, ErrorExt, Result};
 use clap::Parser;
+use firezone_gui_client::PACKAGE_FAMILY_NAME;
 use std::{fmt, process::ExitCode};
 use telemetry::Telemetry;
 
@@ -168,22 +169,11 @@ impl fmt::Display for NotSupported {
 
 impl std::error::Error for NotSupported {}
 
-/// `{Identity.Name}_{publisher_id(Identity.Publisher)}` from
-/// `win_files/AppxManifest.xml`, hard-coded because `register-sparse`
-/// needs to pass it to `ProvisionPackageForAllUsersAsync` *before*
-/// the package is registered — at which point Windows' own
-/// `GetCurrentPackageFamilyName` would answer "no package identity".
-///
-/// If the manifest's `Identity.Publisher` or `Name` ever changes, this
-/// string has to be updated to match. The install canary catches drift:
-/// `ProvisionPackageForAllUsersAsync` fails with "package not found"
-/// when the PFN doesn't match the package the kernel staged.
-const PACKAGE_FAMILY_NAME: &str = "Firezone.Client.GUI_r4567a5vks0bt";
-
 #[cfg(windows)]
 mod imp {
     use super::NotSupported;
     use anyhow::{Context, Result, anyhow};
+    use firezone_gui_client::PACKAGE_FAMILY_NAME;
     use std::{path::PathBuf, time::Instant};
     use windows::{
         ApplicationModel::Package,
@@ -410,7 +400,7 @@ mod imp {
     /// callers grab one and pass it to the AppX deployment APIs which
     /// take `&HSTRING`.
     fn package_family_name() -> HSTRING {
-        HSTRING::from(super::PACKAGE_FAMILY_NAME)
+        HSTRING::from(PACKAGE_FAMILY_NAME)
     }
 
     /// Renders a `Windows.Foundation.Uri` as its raw `file:///…`
