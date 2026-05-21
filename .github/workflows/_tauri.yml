@@ -203,6 +203,40 @@ jobs:
             echo "install.log not found"
           fi
 
+      - name: Inspect MSI
+        # Authenticode signature status + size + SHA256. Pin-points
+        # the "MSI failed to open" failure mode: a tampered or
+        # unsigned MSI shows up here as `Status: HashMismatch` /
+        # `NotSigned`.
+        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        shell: bash
+        run: |
+          MSI="$BINARY_DEST_PATH.msi"
+          if [ ! -f "$MSI" ]; then
+            echo "MSI not found at $MSI"
+            exit 0
+          fi
+          powershell.exe -NoProfile -Command "
+            Get-Item '$MSI' | Select-Object Name, Length, LastWriteTimeUtc | Format-List;
+            Get-FileHash -Algorithm SHA256 -Path '$MSI' | Format-List;
+            Get-AuthenticodeSignature -FilePath '$MSI' | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+          "
+
+      - name: Dump MsiInstaller event log
+        # Pulls the last 50 events Windows itself recorded for
+        # `MsiInstaller`. These cover failure modes that
+        # `install.log` doesn't (AV quarantine, signature
+        # verification failure, ACL-blocked file copy, etc.).
+        if: "${{ always() && runner.os == 'Windows' && github.event_name == 'workflow_dispatch' }}"
+        shell: bash
+        run: |
+          powershell.exe -NoProfile -Command "
+            Get-WinEvent -ProviderName 'MsiInstaller' -MaxEvents 50 -ErrorAction SilentlyContinue |
+              Sort-Object TimeCreated |
+              Select-Object TimeCreated, Id, LevelDisplayName, Message |
+              Format-List
+          "
+
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         run: |
