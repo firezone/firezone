@@ -20,12 +20,11 @@ use clap::Parser;
 use firezone_gui_client::controller::{Controller, ControllerRequest};
 use firezone_gui_client::gui::system_tray;
 use firezone_gui_client::ipc::{Server, SocketId};
-use firezone_gui_client::logging::FileCount;
+use firezone_gui_client::logging::{self, FileCount, FilterReloadHandle};
 use firezone_gui_client::settings::{
     self, AdvancedSettings, GeneralSettings, MdmSettings,
 };
-use firezone_gui_client::{GeneralSettingsForm, SessionViewModel};
-use firezone_gui_client::{deep_link, logging};
+use firezone_gui_client::{GeneralSettingsForm, SessionViewModel, deep_link};
 use iced::futures::SinkExt as _;
 use iced::widget::{container, row};
 use iced::window::{self, Mode};
@@ -40,6 +39,25 @@ use state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
 /// I can't capture the receiver in a closure — stuff it in a static
 /// instead and take it on first poll.
 static UI_RX_SLOT: Mutex<Option<mpsc::UnboundedReceiver<UiUpdate>>> = Mutex::new(None);
+
+/// Boot-time resources that the iced `boot` closure consumes once.
+///
+/// iced calls boot via a `Fn` (so it can in principle re-boot), which
+/// prevents moving non-`Clone` resources directly through closure
+/// captures. We stash everything here and `.take()` it on first call;
+/// any subsequent call returns a no-op `App` (iced never does this in
+/// practice — boot fires once).
+struct BootResources {
+    ctrl_tx: mpsc::Sender<ControllerRequest>,
+    ctrl_rx: mpsc::Receiver<ControllerRequest>,
+    integration: IcedIntegration,
+    reloader: FilterReloadHandle,
+    general_settings: GeneralSettings,
+    mdm_settings: MdmSettings,
+    advanced_settings: AdvancedSettings,
+}
+
+static BOOT_RESOURCES: Mutex<Option<BootResources>> = Mutex::new(None);
 
 #[derive(Clone)]
 pub enum Message {
@@ -84,6 +102,11 @@ pub enum Message {
     // Window lifecycle
     WindowCloseRequested(window::Id),
     WindowOpened(Option<window::Id>),
+
+    /// Emitted after the async `initialize` task finishes wiring up
+    /// the GUI IPC server, deep-link handler, tray, and Controller.
+    /// Currently informational only.
+    Initialized,
 
     // Inbound state updates from the Controller. One variant per
     // `UiUpdate` shape so each can carry its own owned payload without
@@ -234,6 +257,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             window::set_mode(id, Mode::Windowed)
         }
         Message::WindowOpened(None) => Task::none(),
+        Message::Initialized => Task::none(),
 
         // The Controller handles every `Event` variant the Tauri tray
         // emits — favorites, clipboard, internet-resource toggle, URL
@@ -461,21 +485,11 @@ fn main() -> std::process::ExitCode {
         .inspect_err(|e| tracing::warn!("bootstrap log setup failed: {e:#}"))
         .ok();
 
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => {
-            tracing::error!("failed to build tokio runtime: {e:#}");
-            return std::process::ExitCode::FAILURE;
-        }
-    };
-
-    // CLI mode: forward a deep-link URL to the running primary instance.
+    // CLI mode: forward a deep-link URL to the running primary
+    // instance. iced isn't involved, so build a one-shot tokio runtime
+    // for the single async call.
     if let Some(Cmd::OpenDeepLink { url }) = cli.command {
-        let result = rt.block_on(async move {
-            let url = url::Url::parse(&url)?;
-            deep_link::open(url).await
-        });
-        return match result {
+        return match deep_link_cli(url) {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(e) => {
                 tracing::error!("failed to forward deep-link: {e:#}");
@@ -484,7 +498,7 @@ fn main() -> std::process::ExitCode {
         };
     }
 
-    match try_main(rt) {
+    match try_main() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("iced GUI failed: {e:#}");
@@ -493,8 +507,16 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-fn try_main(rt: tokio::runtime::Runtime) -> anyhow::Result<()> {
-    // Load settings off disk.
+fn deep_link_cli(url: String) -> anyhow::Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        let url = url::Url::parse(&url)?;
+        deep_link::open(url).await
+    })
+}
+
+fn try_main() -> anyhow::Result<()> {
+    // Load settings off disk (synchronous; no runtime needed).
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings: {e:#}"))
         .unwrap_or_default();
@@ -513,69 +535,29 @@ fn try_main(rt: tokio::runtime::Runtime) -> anyhow::Result<()> {
         cleanup: _cleanup,
     } = logging::setup_gui(&log_filter)?;
 
-    // GUI IPC server — receives forwarded deep-links from secondary
-    // launches (`open-deep-link <URL>` mode above) and "I'm a duplicate"
-    // pings. `Server::new` binds a `tokio::net::UnixListener` (Linux) or
-    // named pipe (Windows) under the hood, both of which require an
-    // active tokio runtime context — hence the `_rt_guard`.
-    let _rt_guard = rt.enter();
-    let gui_ipc_server = Server::new(SocketId::Gui)?;
-
-    // Register the firezone:// URI scheme handler. On Linux this writes
-    // a `.desktop` file pointing at our binary; on Windows it sets a
-    // registry key; on macOS it's a no-op (handled via Info.plist).
-    if let Ok(exe) = std::env::current_exe()
-        && let Err(e) = deep_link::register(exe)
-    {
-        tracing::warn!("failed to register deep-link scheme: {e:#}");
-    }
-
-    // System tray. On Linux this spawns the ksni service as a tokio
-    // task on the runtime we just entered (so it shares one tokio
-    // executor + tracing subscriber with the Controller; a separate
-    // runtime races with zbus's spans and panics tracing-subscriber).
-    // On Win/Mac it stashes the `TrayIcon` in a `thread_local` on the
-    // current thread (the main thread, where iced will run its event
-    // loop). Must happen before iced takes over.
-    if let Err(e) = tray::install() {
-        tracing::warn!("failed to install system tray: {e}");
-    }
-
-    // Channels: iced → Controller (ControllerRequest), Controller → iced
-    // (UiUpdate via IcedIntegration), and an unused updates channel
-    // since we don't run the in-app updater for the iced binary yet.
+    // Synchronous channel creation (mpsc::channel doesn't need a
+    // runtime, just allocates).
     let (ctrl_tx, ctrl_rx) = mpsc::channel::<ControllerRequest>(16);
-    let (_updates_tx, updates_rx) =
-        mpsc::channel::<Option<firezone_gui_client::updates::Notification>>(16);
     let (integration, ui_rx) = IcedIntegration::new();
     *UI_RX_SLOT.lock().unwrap_or_else(|p| p.into_inner()) = Some(ui_rx);
-
-    // Spawn the Controller on the tokio runtime we own. iced spins up
-    // its own runtime for its `Task`s; the two communicate via the
-    // channels above.
-    let ctrl_tx_for_controller = ctrl_tx.clone();
-    rt.spawn(async move {
-        if let Err(e) = Controller::start(
-            SocketId::Tunnel,
-            integration,
-            ctrl_tx_for_controller,
-            ctrl_rx,
-            general_settings,
-            mdm_settings,
-            advanced_settings,
-            reloader,
-            true, // telemetry_allowed
-            updates_rx,
-            gui_ipc_server,
-        )
-        .await
-        {
-            tracing::error!("Controller exited: {e:#}");
-        }
+    *BOOT_RESOURCES.lock().unwrap_or_else(|p| p.into_inner()) = Some(BootResources {
+        ctrl_tx,
+        ctrl_rx,
+        integration,
+        reloader,
+        general_settings,
+        mdm_settings,
+        advanced_settings,
     });
 
-    // Run iced (blocks the main thread).
-    iced::application(move || boot(ctrl_tx.clone()), update, view)
+    // Hand control to iced. iced creates one (and only one) tokio
+    // runtime under the hood (`iced_futures::backend::default::Executor =
+    // tokio::runtime::Runtime`) and drives every async `Task` /
+    // `Subscription` on it. The async init in `boot` — `Server::new`,
+    // `deep_link::register`, `tray::install`, `Controller::start` —
+    // all run as tokio tasks on that single runtime, so there are no
+    // cross-runtime tracing-subscriber races.
+    iced::application(boot, update, view)
         .title("Firezone")
         .theme(theme)
         .default_font(assets::font())
@@ -592,20 +574,86 @@ fn try_main(rt: tokio::runtime::Runtime) -> anyhow::Result<()> {
         .window_size((900.0, 500.0))
         .resizable(false)
         .run()?;
-
-    drop(rt);
     Ok(())
 }
 
-fn boot(ctrl_tx: mpsc::Sender<ControllerRequest>) -> (App, Task<Message>) {
+fn boot() -> (App, Task<Message>) {
+    let Some(res) = BOOT_RESOURCES
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+    else {
+        tracing::error!("boot called twice; no resources to consume");
+        return (App::default(), Task::none());
+    };
+
     // Ask the Controller to push the current state to us so we don't
-    // start with empty forms.
-    let _ = ctrl_tx.try_send(ControllerRequest::UpdateState);
-    (
-        App {
-            ctrl_tx: Some(ctrl_tx),
-            ..App::default()
-        },
-        Task::none(),
-    )
+    // start with empty forms. The send happens before the Controller
+    // is spawned, but the channel buffers 16 messages — by the time
+    // the Controller drains its `ctrl_rx`, the `UpdateState` request
+    // is sitting at the front.
+    let _ = res.ctrl_tx.try_send(ControllerRequest::UpdateState);
+
+    let app = App {
+        ctrl_tx: Some(res.ctrl_tx.clone()),
+        ..App::default()
+    };
+
+    let task = Task::future(async move {
+        initialize(res);
+        Message::Initialized
+    });
+
+    (app, task)
+}
+
+/// Runtime-dependent setup: bind the GUI IPC pipe, register the URI
+/// scheme handler, install the tray, and spawn the Controller. Called
+/// from inside iced's `Task::future`, so the ambient tokio runtime is
+/// already set — `Server::new` (which binds a `UnixListener` / named
+/// pipe) and `tokio::spawn` (used by `tray::install` and to launch
+/// the Controller) both pick it up.
+fn initialize(res: BootResources) {
+    let gui_ipc_server = match Server::new(SocketId::Gui) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("failed to bind GUI IPC server: {e:#}");
+            return;
+        }
+    };
+
+    if let Ok(exe) = std::env::current_exe()
+        && let Err(e) = deep_link::register(exe)
+    {
+        tracing::warn!("failed to register deep-link scheme: {e:#}");
+    }
+
+    if let Err(e) = tray::install() {
+        tracing::warn!("failed to install system tray: {e}");
+    }
+
+    // No in-app updater yet for the iced binary — give the Controller
+    // an updates channel that nothing ever sends to.
+    let (_updates_tx, updates_rx) =
+        mpsc::channel::<Option<firezone_gui_client::updates::Notification>>(16);
+
+    tokio::spawn(async move {
+        if let Err(e) = Controller::start(
+            SocketId::Tunnel,
+            res.integration,
+            res.ctrl_tx,
+            res.ctrl_rx,
+            res.general_settings,
+            res.mdm_settings,
+            res.advanced_settings,
+            res.reloader,
+            true, // telemetry_allowed
+            updates_rx,
+            gui_ipc_server,
+        )
+        .await
+        {
+            tracing::error!("Controller exited: {e:#}");
+        }
+    });
 }
