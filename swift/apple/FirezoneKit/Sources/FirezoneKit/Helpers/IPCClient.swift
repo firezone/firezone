@@ -32,30 +32,17 @@ enum IPCClient {
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
-  // Auto-connect
+  // Auto-connect: the GUI must save providerConfiguration before calling this so
+  // any MDM forced overrides are available to the provider.
   @MainActor
-  static func start(
-    session: NETunnelProviderSession, configuration: TunnelConfiguration
-  ) throws {
-    let configData = try encoder.encode(configuration)
-    let options: [String: NSObject] = [
-      "configuration": configData as NSObject
-    ]
-    try session.startTunnel(options: options)
+  static func start(session: NETunnelProviderSession) throws {
+    try session.startTunnel()
   }
 
   // Sign in
   @MainActor
-  static func start(
-    session: NETunnelProviderSession, token: String, configuration: TunnelConfiguration
-  ) throws {
-    let configData = try encoder.encode(configuration)
-    let options: [String: NSObject] = [
-      "token": token as NSObject,
-      "configuration": configData as NSObject,
-    ]
-
-    try session.startTunnel(options: options)
+  static func start(session: NETunnelProviderSession, token: String) throws {
+    try session.startTunnel(options: ["token": token as NSObject])
   }
 
   @MainActor
@@ -77,10 +64,11 @@ enum IPCClient {
   }
 
   @MainActor
-  static func setConfiguration(
-    session: NETunnelProviderSession, _ configuration: TunnelConfiguration
+  static func setInternetResourceEnabled(
+    session: NETunnelProviderSession,
+    _ enabled: Bool
   ) async throws {
-    let message = ProviderMessage.setConfiguration(configuration)
+    let message = ProviderMessage.setInternetResourceEnabled(enabled)
     _ = try await sendProviderMessage(session: session, message: message)
   }
 

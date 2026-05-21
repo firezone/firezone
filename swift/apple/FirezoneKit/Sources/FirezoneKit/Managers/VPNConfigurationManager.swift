@@ -50,11 +50,14 @@ public final class NETunnelProviderManagerFactory: TunnelProviderManagerFactory 
 
 enum VPNConfigurationManagerError: Error {
   case managerNotInitialized
+  case savedProtocolConfigurationIsInvalid
 
   var localizedDescription: String {
     switch self {
     case .managerNotInitialized:
       return "NETunnelProviderManager is not yet initialized. Race condition?"
+    case .savedProtocolConfigurationIsInvalid:
+      return "Saved protocol configuration is invalid. Check types?"
     }
   }
 }
@@ -74,7 +77,10 @@ public final class VPNConfigurationManager {
   init(manager: any TunnelProviderManager) async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
 
-    protocolConfiguration.providerConfiguration = nil
+    // Seed with defaults (and any forced overrides) but don't mark migrated;
+    // the migrator runs separately and is responsible for flipping the flag.
+    protocolConfiguration.providerConfiguration =
+      Configuration().toProviderConfiguration(markUserDefaultsMigrated: false)
     protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
     protocolConfiguration.serverAddress = "Firezone"  // can be any non-empty string
     manager.localizedDescription = VPNConfigurationManager.bundleDescription
@@ -88,22 +94,6 @@ public final class VPNConfigurationManager {
 
   init(from manager: any TunnelProviderManager) {
     self.manager = manager
-  }
-
-  // Pure function - doesn't access actor-isolated state.
-  nonisolated public static func legacyConfiguration(
-    protocolConfiguration: NETunnelProviderProtocol?
-  )
-    // swiftlint:disable:next discouraged_optional_collection - nil means no legacy config exists
-    -> [String: String]?
-  {
-    guard let protocolConfiguration = protocolConfiguration,
-      let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
-    else {
-      return nil
-    }
-
-    return providerConfiguration
   }
 
   static func load(using factory: TunnelProviderManagerFactory) async throws
@@ -132,58 +122,79 @@ public final class VPNConfigurationManager {
     return manager.connection as? NETunnelProviderSession
   }
 
-  // Firezone 1.4.14 and below stored some app configuration in the VPN provider configuration fields. This has since
-  // been moved to a dedicated UserDefaults-backed persistent store.
-  func maybeMigrateConfiguration() async throws {
-    guard
-      let legacyConfiguration = Self.legacyConfiguration(
-        protocolConfiguration: manager.protocolConfiguration as? NETunnelProviderProtocol
-      ),
-      let session = session()
+  func loadConfiguration(into configuration: Configuration, userDefaults: UserDefaults) async throws
+  {
+    try await ConfigurationMigrator.migrateUserDefaultsIfNeeded(
+      userDefaults: userDefaults,
+      vpnConfigurationManager: self
+    )
+
+    // Pick up stored config and refresh cached forced overrides if MDM changed
+    // since the last GUI launch. When the migrator just ran this is a no-op.
+    let stored = try providerConfiguration()
+    configuration.loadProviderConfiguration(stored)
+
+    let refreshed = configuration.toProviderConfiguration()
+    if stored != refreshed {
+      try await save(providerConfiguration: refreshed)
+    }
+  }
+
+  func save(
+    configuration: Configuration,
+    markUserDefaultsMigrated: Bool = true
+  ) async throws {
+    try await save(
+      providerConfiguration: configuration.toProviderConfiguration(
+        markUserDefaultsMigrated: markUserDefaultsMigrated
+      )
+    )
+  }
+
+  func providerConfiguration() throws -> [String: String] {
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
+    }
+
+    guard let rawProviderConfiguration = protocolConfiguration.providerConfiguration else {
+      return [:]
+    }
+
+    guard let providerConfiguration = rawProviderConfiguration as? [String: String] else {
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
+    }
+
+    return providerConfiguration
+  }
+
+  func save(providerConfiguration newProviderConfiguration: [String: String]) async throws {
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
+    else {
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
+    }
+
+    let providerConfiguration: [String: String]
+    if let rawProviderConfiguration = protocolConfiguration.providerConfiguration {
+      guard let typedProviderConfiguration = rawProviderConfiguration as? [String: String] else {
+        throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
+      }
+      providerConfiguration = typedProviderConfiguration
+    } else {
+      providerConfiguration = [:]
+    }
+
+    if providerConfiguration == newProviderConfiguration
+      && protocolConfiguration.serverAddress == "Firezone"
+    {
       return
     }
 
-    let configuration = Configuration.shared
+    protocolConfiguration.providerConfiguration = newProviderConfiguration
+    protocolConfiguration.serverAddress = "Firezone"
+    manager.protocolConfiguration = protocolConfiguration
 
-    if let actorName = legacyConfiguration["actorName"] {
-      // swiftlint:disable:next no_userdefaults_standard - legacy migration, runs before DI is available
-      UserDefaults.standard.set(actorName, forKey: "actorName")
-    }
-
-    if let apiURL = legacyConfiguration["apiURL"] {
-      configuration.apiURL = apiURL
-    }
-
-    if let authURL = legacyConfiguration["authBaseURL"] {
-      configuration.authURL = authURL
-    }
-
-    if let accountSlug = legacyConfiguration["accountSlug"] {
-      configuration.accountSlug = accountSlug
-    }
-
-    if let logFilter = legacyConfiguration["logFilter"],
-      !logFilter.isEmpty
-    {
-      configuration.logFilter = logFilter
-    }
-
-    if let internetResourceEnabled = legacyConfiguration["internetResourceEnabled"],
-      ["false", "true"].contains(internetResourceEnabled)
-    {
-      configuration.internetResourceEnabled = internetResourceEnabled == "true"
-    }
-
-    try await IPCClient.setConfiguration(session: session, configuration.toTunnelConfiguration())
-
-    // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
-    if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {
-      protocolConfiguration.providerConfiguration = nil
-      protocolConfiguration.serverAddress = "Firezone"
-      manager.protocolConfiguration = protocolConfiguration
-      try await manager.saveToPreferences()
-      try await manager.loadFromPreferences()
-    }
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
   }
 }

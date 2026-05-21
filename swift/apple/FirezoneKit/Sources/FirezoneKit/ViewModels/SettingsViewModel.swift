@@ -47,6 +47,7 @@ class SettingsViewModel: ObservableObject {
       .receive(on: RunLoop.main)
       .debounce(for: .seconds(0.3), scheduler: RunLoop.main)
       .sink(receiveValue: { [weak self] _ in
+        self?.syncForcedValuesFromConfiguration()
         self?.updateDerivedState()
       })
       .store(in: &cancellables)
@@ -65,27 +66,25 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reset() {
-    if !configuration.isAuthURLForced { authURL = Configuration.defaultAuthURL }
-    if !configuration.isApiURLForced { apiURL = Configuration.defaultApiURL }
-    if !configuration.isLogFilterForced { logFilter = Configuration.defaultLogFilter }
-    if !configuration.isAccountSlugForced { accountSlug = Configuration.defaultAccountSlug }
+    if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
+    if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
+    if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
+    if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
     if !configuration.isConnectOnStartForced {
-      connectOnStart = Configuration.defaultConnectOnStart
+      connectOnStart = ConfigurationDefaults.connectOnStart
     }
-    if !configuration.isStartOnLoginForced { startOnLogin = Configuration.defaultStartOnLogin }
+    if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
 
     updateDerivedState()
   }
 
   func save() async throws {
-    configuration.authURL = authURL
-    configuration.apiURL = apiURL
-    configuration.logFilter = logFilter
-    configuration.accountSlug = accountSlug
-    configuration.connectOnStart = connectOnStart
-    configuration.startOnLogin = startOnLogin
-
-    try await LoginItemManager.syncStartOnLogin(startOnLogin: startOnLogin)
+    if !configuration.isAuthURLForced { configuration.authURL = authURL }
+    if !configuration.isApiURLForced { configuration.apiURL = apiURL }
+    if !configuration.isLogFilterForced { configuration.logFilter = logFilter }
+    if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
+    if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
+    if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
 
     updateDerivedState()
   }
@@ -124,13 +123,14 @@ class SettingsViewModel: ObservableObject {
 
   func isDefault() -> Bool {
     return
-      ((configuration.isAuthURLForced || authURL == Configuration.defaultAuthURL)
-      && (configuration.isApiURLForced || apiURL == Configuration.defaultApiURL)
-      && (configuration.isLogFilterForced || logFilter == Configuration.defaultLogFilter)
-      && (configuration.isAccountSlugForced || accountSlug == Configuration.defaultAccountSlug)
+      ((configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
+      && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
+      && (configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter)
+      && (configuration.isAccountSlugForced || accountSlug == ConfigurationDefaults.accountSlug)
       && (configuration.isConnectOnStartForced
-        || connectOnStart == Configuration.defaultConnectOnStart)
-      && (configuration.isStartOnLoginForced || startOnLogin == Configuration.defaultStartOnLogin))
+        || connectOnStart == ConfigurationDefaults.connectOnStart)
+      && (configuration.isStartOnLoginForced
+        || startOnLogin == ConfigurationDefaults.startOnLogin))
   }
 
   func isSaved() -> Bool {
@@ -145,5 +145,14 @@ class SettingsViewModel: ObservableObject {
     shouldDisableApplyButton = (isAllForced() || isSaved() || !isValid())
 
     shouldDisableResetButton = (isAllForced() || isDefault())
+  }
+
+  private func syncForcedValuesFromConfiguration() {
+    if configuration.isAuthURLForced { authURL = configuration.authURL }
+    if configuration.isApiURLForced { apiURL = configuration.apiURL }
+    if configuration.isLogFilterForced { logFilter = configuration.logFilter }
+    if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
+    if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
+    if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
   }
 }
