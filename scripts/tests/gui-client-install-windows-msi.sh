@@ -17,17 +17,17 @@ sc query FirezoneClientTunnelService | grep RUNNING
 OS_BUILD=$(powershell.exe -NoProfile -Command \
     "[Environment]::OSVersion.Version.Build" | tr -d '\r\n')
 
-# `Get-AppxPackage -Name X` matches against the manifest `Name`
-# attribute (not the PackageFamilyName), and only with wildcard
-# semantics — `-Name Firezone.Client.GUI_*` would require `Name` to
-# end in `_…` and finds nothing, whereas `-Name Firezone.Client.GUI*`
-# (no underscore) matches. Use the latter form. Poll for up to ~30s
-# because the package store settles asynchronously after
-# `ProvisionPackageForAllUsersAsync` returns.
+# `Get-AppxPackage`'s positional/`-Name` parameter does opaque
+# matching that doesn't behave like a normal `-like` pattern — even
+# `Firezone.Client.GUI*` returns nothing for our package whose Name
+# is `Firezone.Client.GUI`. Skip the cmdlet-level filter and pipe
+# through `Where-Object` on the `Name` property for an exact match
+# we control. Poll for up to ~30s because the package store settles
+# asynchronously after `ProvisionPackageForAllUsersAsync` returns.
 KERNEL_SID=""
 for i in $(seq 1 15); do
     KERNEL_SID=$(powershell.exe -NoProfile -Command \
-        "(Get-AppxPackage -AllUsers Firezone.Client.GUI* | Select-Object -First 1).Sid" \
+        "(Get-AppxPackage -AllUsers | Where-Object Name -eq 'Firezone.Client.GUI' | Select-Object -First 1).Sid" \
         | tr -d '\r\n')
     if [ -n "$KERNEL_SID" ]; then
         echo "==> Get-AppxPackage settled after ${i} probe(s) (~$((i * 2))s)"
@@ -39,7 +39,7 @@ done
 if [ -z "$KERNEL_SID" ]; then
     if [ -n "$OS_BUILD" ] && [ "$OS_BUILD" -ge 19044 ]; then
         echo "Sparse MSIX did not register on supported Windows (build $OS_BUILD ≥ 19044)" >&2
-        echo "Get-AppxPackage -AllUsers Firezone.Client.GUI* returned nothing after 30s." >&2
+        echo "Get-AppxPackage -AllUsers (filtered by Name) returned nothing after 30s." >&2
         echo "==> Get-AppxPackage Firezone* :" >&2
         powershell.exe -NoProfile -Command \
             "Get-AppxPackage -AllUsers Firezone* | Format-List Name, PackageFullName, PackageFamilyName, Status" >&2
