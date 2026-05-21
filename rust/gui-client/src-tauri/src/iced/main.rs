@@ -530,10 +530,13 @@ fn try_main(rt: tokio::runtime::Runtime) -> anyhow::Result<()> {
         tracing::warn!("failed to register deep-link scheme: {e:#}");
     }
 
-    // System tray. On Linux this spawns a ksni service thread; on
-    // Win/Mac it stashes the TrayIcon in a `thread_local` on the
-    // current thread (which is the main thread, where iced will run
-    // its event loop). Must happen before iced takes over.
+    // System tray. On Linux this spawns the ksni service as a tokio
+    // task on the runtime we just entered (so it shares one tokio
+    // executor + tracing subscriber with the Controller; a separate
+    // runtime races with zbus's spans and panics tracing-subscriber).
+    // On Win/Mac it stashes the `TrayIcon` in a `thread_local` on the
+    // current thread (the main thread, where iced will run its event
+    // loop). Must happen before iced takes over.
     if let Err(e) = tray::install() {
         tracing::warn!("failed to install system tray: {e}");
     }

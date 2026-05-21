@@ -93,38 +93,32 @@ mod backend {
             menu: Menu::default(),
             icon: Icon::default(),
         };
-        std::thread::spawn(move || {
-            let rt = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(rt) => rt,
+        // Run on the caller's tokio runtime via `tokio::spawn`. Using a
+        // separate `new_current_thread` runtime here triggers a
+        // tracing-subscriber panic ("tried to drop a ref to Id(N), but
+        // no such span exists") because zbus (used by ksni) emits
+        // spans that race with the Controller's runtime through the
+        // global subscriber.
+        tokio::spawn(async move {
+            use ksni::TrayMethods as _;
+            let handle = match tray.spawn().await {
+                Ok(handle) => handle,
                 Err(e) => {
-                    tracing::warn!("failed to build tokio runtime for tray: {e}");
+                    tracing::warn!("ksni tray failed to spawn: {e}");
                     return;
                 }
             };
-            rt.block_on(async move {
-                use ksni::TrayMethods as _;
-                let handle = match tray.spawn().await {
-                    Ok(handle) => handle,
-                    Err(e) => {
-                        tracing::warn!("ksni tray failed to spawn: {e}");
-                        return;
+            loop {
+                tokio::select! {
+                    Some(menu) = menu_rx.recv() => {
+                        handle.update(|t| { t.menu = menu; }).await;
                     }
-                };
-                loop {
-                    tokio::select! {
-                        Some(menu) = menu_rx.recv() => {
-                            handle.update(|t| { t.menu = menu; }).await;
-                        }
-                        Some(icon) = icon_rx.recv() => {
-                            handle.update(|t| { t.icon = icon; }).await;
-                        }
-                        else => break,
+                    Some(icon) = icon_rx.recv() => {
+                        handle.update(|t| { t.icon = icon; }).await;
                     }
+                    else => break,
                 }
-            });
+            }
         });
         Ok(())
     }
