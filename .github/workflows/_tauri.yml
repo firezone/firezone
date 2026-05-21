@@ -229,24 +229,7 @@ jobs:
       - name: Dump register-sparse logs
         if: "${{ always() && runner.os == 'Windows' }}"
         shell: bash
-        run: |
-          LOG_DIR="C:/ProgramData/dev.firezone.client/data/logs"
-          if [ ! -d "$LOG_DIR" ]; then
-            echo "register-sparse log dir not present at $LOG_DIR"
-            exit 0
-          fi
-          shopt -s nullglob
-          logs=("$LOG_DIR"/register-sparse.*.log)
-          if [ "${#logs[@]}" -eq 0 ]; then
-            echo "No register-sparse logs in $LOG_DIR"
-            ls -la "$LOG_DIR"
-            exit 0
-          fi
-          for f in "${logs[@]}"; do
-            echo "==> $f:"
-            cat "$f"
-            echo
-          done
+        run: cat 'C:/ProgramData/dev.firezone.client/data/logs/register-sparse.latest' || true
 
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
