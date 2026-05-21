@@ -15,6 +15,7 @@ plugins {
 
     kotlin("android")
     kotlin("kapt")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 spotless {
@@ -147,6 +148,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        compose = true
     }
 
     testOptions {
@@ -234,6 +236,17 @@ dependencies {
 
     // Sentry
     implementation("io.sentry:sentry-android:8.40.0")
+
+    // Compose
+    val composeBom = platform("androidx.compose:compose-bom:2025.05.00")
+    implementation(composeBom)
+    androidTestImplementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
