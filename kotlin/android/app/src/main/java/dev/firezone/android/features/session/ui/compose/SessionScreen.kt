@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -51,7 +52,7 @@ fun SessionScreen(
     onSignOut: () -> Unit,
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
-    var selectedTab by rememberSaveable { mutableStateOf(TAB_ALL) }
+    var selectedTab by rememberSaveable { mutableStateOf(TAB_FAVORITES) }
     // No favourites -> always show "All" (mirrors SessionViewModel.forceTab()).
     val effectiveTab = if (!hasFavorites) TAB_ALL else selectedTab
 
@@ -95,11 +96,13 @@ fun SessionScreen(
                         selected = effectiveTab == TAB_FAVORITES,
                         onClick = { selectedTab = TAB_FAVORITES },
                         text = { Text(stringResource(R.string.resources_favorites)) },
+                        icon = { Icon(painterResource(R.drawable.baseline_star_24), contentDescription = null) },
                     )
                     Tab(
                         selected = effectiveTab == TAB_ALL,
                         onClick = { selectedTab = TAB_ALL },
                         text = { Text(stringResource(R.string.resources_all)) },
+                        icon = { Icon(painterResource(R.drawable.all_resources), contentDescription = null) },
                     )
                 }
             }
