@@ -123,6 +123,9 @@ features = [
 anyhow = { workspace = true }
 tauri-build = { workspace = true, features = [] }
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource = { workspace = true }
+
 [dev-dependencies]
 bin-shared = { workspace = true, features = ["test"] }
 tempfile = { workspace = true }

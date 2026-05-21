@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Side-by-side / fusion manifest embedded into Firezone.exe so the
+  Windows kernel can attach the Firezone sparse-MSIX package
+  identity to the process at `CreateProcess` time. Without this
+  the `<msix>` linkage is absent, the kernel doesn't know the EXE
+  belongs to the registered package, and `GetCurrentPackageFamilyName`
+  returns `APPMODEL_ERROR_NO_PACKAGE` — which silently degrades the
+  pipe DACL story to the legacy `BUILTIN\Users` fallback.
+
+  `publisher` + `packageName` must match the `Identity` element in
+  `AppxManifest.xml`; `applicationId` must match the `Id` attribute
+  of an `<Application>` in that manifest. See
+  https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/grant-identity-to-nonpackaged-apps
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!-- mark:next-gui-version -->
+  <assemblyIdentity version="1.5.13.0" name="Firezone.Client.GUI" />
+  <!-- Preserves tauri-build's default Common-Controls dependency
+       (themed dialogs / modern UI controls). -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32"
+                        name="Microsoft.Windows.Common-Controls"
+                        version="6.0.0.0"
+                        processorArchitecture="*"
+                        publicKeyToken="6595b64144ccf1df"
+                        language="*" />
+    </dependentAssembly>
+  </dependency>
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1"
+        publisher="CN=&quot;Firezone, Inc.&quot;, O=&quot;Firezone, Inc.&quot;, STREET=&quot;2261 Market Street, Suite 4574&quot;, L=San Francisco, S=California, C=US, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, SERIALNUMBER=6383880, OID.2.5.4.15=Private Organization"
+        packageName="Firezone.Client.GUI"
+        applicationId="Firezone" />
+</assembly>

@@ -88,6 +88,7 @@ dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1.15.0"
+embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 etherparse = { version = "0.20.1", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }

@@ -2307,6 +2307,7 @@ dependencies = [
  "dbus-secret-service-keyring-store",
  "derive_more",
  "dirs",
+ "embed-resource",
  "fd-lock",
  "futures",
  "hex",
