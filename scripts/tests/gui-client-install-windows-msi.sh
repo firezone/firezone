@@ -75,11 +75,11 @@ if (-not $svcPid) {
 }
 
 Add-Type -MemberDefinition @"
-[DllImport(\"kernel32.dll\", CharSet = CharSet.Unicode, SetLastError = true)]
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 public static extern int GetPackageFullName(IntPtr hProcess, ref int len, System.Text.StringBuilder buf);
-[DllImport(\"kernel32.dll\", SetLastError = true)]
+[DllImport("kernel32.dll", SetLastError = true)]
 public static extern IntPtr OpenProcess(int desiredAccess, bool inheritHandle, int processId);
-[DllImport(\"kernel32.dll\", SetLastError = true)]
+[DllImport("kernel32.dll", SetLastError = true)]
 public static extern bool CloseHandle(IntPtr hObject);
 "@ -Name PInvoke -Namespace W32
 
