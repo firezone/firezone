@@ -62,6 +62,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   setup do
+    start_supervised!(
+      {Portal.Queue,
+       Keyword.merge(PortalAPI.Gateway.Socket.gateway_session_queue_opts(),
+         callers: [self()]
+       )}
+    )
+
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
     group = group_fixture(account: account)
@@ -120,6 +127,43 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
+    end
+
+    test "after_join enqueues the session and a flush persists it", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(gateway, site, token, session_id: session_id)
+      assert_push "init", _init_payload
+
+      Portal.Queue.flush(:gateway_session_queue)
+
+      persisted = Portal.Repo.get_by!(Portal.GatewaySession, id: session_id)
+      assert persisted.device_id == gateway.id
+      assert persisted.account_id == gateway.account_id
+      assert persisted.gateway_token_id == token.id
+      assert persisted.public_key == socket.assigns.session.public_key
+      assert persisted.user_agent == socket.assigns.session.user_agent
+      assert persisted.version == socket.assigns.session.version
+    end
+
+    test "session_durability timer is cancelled by the queue's confirm message", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      session_id = Ecto.UUID.generate()
+      socket = join_channel(gateway, site, token, session_id: session_id)
+      assert_push "init", _init_payload
+
+      assert {^session_id, _generation, _timer_ref} =
+               :sys.get_state(socket.channel_pid).assigns.session_durability
+
+      Portal.Queue.flush(:gateway_session_queue)
+
+      refute :sys.get_state(socket.channel_pid).assigns.session_durability
     end
 
     test "channel crash takes down the transport", %{gateway: gateway, site: site, token: token} do
