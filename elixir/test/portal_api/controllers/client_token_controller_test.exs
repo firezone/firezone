@@ -110,16 +110,66 @@ defmodule PortalAPI.ClientTokenControllerTest do
       end)
     end
 
-    test "returns bad request for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+    test "returns empty list for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
       api_client_actor = actor_fixture(account: account, type: :api_client)
+      _token = client_token_fixture(account: account, actor: api_client_actor)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> get("/actors/#{api_client_actor.id}/client_tokens")
 
-      assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account or user actor"}}
+      assert %{"data" => [], "metadata" => %{"count" => 0, "limit" => 50}} = json_response(conn, 200)
+    end
+  end
+
+  describe "show/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+      conn = get(conn, "/actors/#{service_account.id}/client_tokens/#{token.id}")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns client token metadata", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{service_account.id}/client_tokens/#{token.id}")
+
+      response = json_response(conn, 200)
+
+      assert %{
+               "data" => %{
+                 "id" => id,
+                 "actor_id" => actor_id,
+                 "expires_at" => expires_at,
+                 "inserted_at" => inserted_at,
+                 "updated_at" => updated_at
+               }
+             } = response
+
+      assert id == token.id
+      assert actor_id == service_account.id
+      assert is_binary(expires_at)
+      assert is_binary(inserted_at)
+      assert is_binary(updated_at)
+      refute Map.has_key?(response["data"], "token")
+    end
+
+    test "does not return token for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+      api_client_actor = actor_fixture(account: account, type: :api_client)
+      token = client_token_fixture(account: account, actor: api_client_actor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{api_client_actor.id}/client_tokens/#{token.id}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 

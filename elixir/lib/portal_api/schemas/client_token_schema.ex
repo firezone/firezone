@@ -118,6 +118,29 @@ defmodule PortalAPI.Schemas.ClientToken do
     })
   end
 
+  defmodule ShowResponse do
+    require OpenApiSpex
+    alias PortalAPI.Schemas.ClientToken
+
+    OpenApiSpex.schema(%{
+      title: "ClientTokenResponse",
+      description: "Response schema for Client Token metadata",
+      type: :object,
+      properties: %{
+        data: ClientToken.Schema
+      },
+      example: %{
+        "data" => %{
+          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "expires_at" => "2025-01-15T12:34:56.789Z",
+          "inserted_at" => "2025-01-15T12:34:56.789Z",
+          "updated_at" => "2025-01-15T12:34:56.789Z"
+        }
+      }
+    })
+  end
+
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema

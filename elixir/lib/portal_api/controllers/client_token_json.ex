@@ -8,11 +8,17 @@ defmodule PortalAPI.ClientTokenJSON do
     }
   end
 
-  def show(%{token: token, encoded_token: encoded_token}) do
+  def show_secret(%{token: token, encoded_token: encoded_token}) do
     %{
       data:
         data(token)
         |> Map.put(:token, encoded_token)
+    }
+  end
+
+  def show_metadata(%{token: token}) do
+    %{
+      data: data(token)
     }
   end
 

@@ -29,9 +29,37 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor} <- Database.fetch_revocable_actor(actor_id, subject),
-         {:ok, tokens, metadata} <- Database.list_tokens(actor, subject, list_opts) do
+    with {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
       render(conn, :index, tokens: tokens, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  operation :show,
+    summary: "Show a Client Token for service_account, account_user, or account_admin_user actors",
+    parameters: [
+      actor_id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      id: [
+        in: :path,
+        description: "Client Token ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.ShowResponse}
+    ]
+
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def show(conn, %{"actor_id" => actor_id, "id" => token_id}) do
+    with {:ok, token} <- Database.fetch_token_by_id(actor_id, token_id, conn.assigns.subject) do
+      render(conn, :show_metadata, token: token)
     else
       error -> Error.handle(conn, error)
     end
@@ -62,7 +90,7 @@ defmodule PortalAPI.ClientTokenController do
          {:ok, token} <- Authentication.create_headless_client_token(actor, attrs, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> render(:show_secret, token: token, encoded_token: Authentication.encode_fragment!(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -170,10 +198,12 @@ defmodule PortalAPI.ClientTokenController do
       end
     end
 
-    def list_tokens(actor, subject, opts \\ []) do
+    def list_tokens(actor_id, subject, opts \\ []) do
       from(t in ClientToken,
         as: :client_tokens,
-        where: t.actor_id == ^actor.id,
+        join: a in Actor,
+        on: a.id == t.actor_id,
+        where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types,
         order_by: [desc: t.inserted_at]
       )
       |> Safe.scoped(subject, :replica)
@@ -215,6 +245,25 @@ defmodule PortalAPI.ClientTokenController do
 
         {1, [token]} ->
           {:ok, struct(ClientToken, token)}
+      end
+    end
+
+    def fetch_token_by_id(actor_id, token_id, subject) do
+      result =
+        from(t in ClientToken,
+          join: a in Actor,
+          on: a.id == t.actor_id,
+          where:
+            t.id == ^token_id and t.actor_id == ^actor_id and
+              a.type in ^@revocable_actor_types
+        )
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        token -> {:ok, token}
       end
     end
 
