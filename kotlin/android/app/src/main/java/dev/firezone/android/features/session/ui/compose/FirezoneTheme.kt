@@ -22,22 +22,23 @@ fun FirezoneTheme(content: @Composable () -> Unit) {
             onSurfaceVariant = colorResource(R.color.neutral_600),
         )
 
-    val sourceSans =
-        FontFamily(
-            Font(R.font.source_sans_pro, FontWeight.Normal),
-            Font(R.font.source_sans_pro_bold, FontWeight.Bold),
-        )
-
-    val baseTypography = Typography()
-    val typography =
-        baseTypography.copy(
-            headlineSmall = baseTypography.headlineSmall.copy(fontFamily = sourceSans, fontWeight = FontWeight.Bold),
-            titleLarge = baseTypography.titleLarge.copy(fontFamily = sourceSans, fontWeight = FontWeight.Bold),
-            bodyLarge = baseTypography.bodyLarge.copy(fontFamily = sourceSans),
-            bodyMedium = baseTypography.bodyMedium.copy(fontFamily = sourceSans),
-            bodySmall = baseTypography.bodySmall.copy(fontFamily = sourceSans),
-            labelSmall = baseTypography.labelSmall.copy(fontFamily = sourceSans),
-        )
-
-    MaterialTheme(colorScheme = colorScheme, typography = typography, content = content)
+    MaterialTheme(colorScheme = colorScheme, typography = FirezoneTypography, content = content)
 }
+
+private val SourceSans =
+    FontFamily(
+        Font(R.font.source_sans_pro, FontWeight.Normal),
+        Font(R.font.source_sans_pro_bold, FontWeight.Bold),
+    )
+
+private val FirezoneTypography =
+    Typography().let { base ->
+        base.copy(
+            headlineSmall = base.headlineSmall.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
+            titleLarge = base.titleLarge.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
+            bodyLarge = base.bodyLarge.copy(fontFamily = SourceSans),
+            bodyMedium = base.bodyMedium.copy(fontFamily = SourceSans),
+            bodySmall = base.bodySmall.copy(fontFamily = SourceSans),
+            labelSmall = base.labelSmall.copy(fontFamily = SourceSans),
+        )
+    }
