@@ -24,9 +24,22 @@
 use crate::Message;
 use firezone_gui_client::gui::system_tray::{Icon, Menu};
 
-/// Build the tray. Must be called once, before iced starts.
+/// Set up the tray's static state and (on Win/Mac) the `TrayIcon`.
+/// Must be called from the main thread *before* iced takes it over —
+/// the Win/Mac `TrayIcon` lives in a `thread_local` on the thread it
+/// was created on, and we want the event-channel statics initialised
+/// before iced first polls our subscription (otherwise the
+/// subscription stream sees `EVENT_RX = None`, returns immediately,
+/// and iced never restarts it).
 pub fn install() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     backend::install()
+}
+
+/// Linux only: spawn the ksni service onto the ambient tokio
+/// runtime. Must be called from inside a tokio context (i.e. an iced
+/// `Task::future`). No-op on Win/Mac.
+pub fn spawn_service() {
+    backend::spawn_service();
 }
 
 /// Push a new menu IR into the running tray.
@@ -64,16 +77,27 @@ mod backend {
     use crate::Message;
     use firezone_gui_client::gui::system_tray::{self, Entry, Event, Icon, Item, Menu};
 
-    /// Sender into the ksni service thread. Each menu click pushes an
+    /// Sender into the ksni service. Each menu click pushes an
     /// `Event` here; the iced subscription drains it into Messages.
     static EVENT_TX: OnceLock<mpsc::UnboundedSender<Event>> = OnceLock::new();
     /// Receiver, taken by the iced subscription on first poll.
     static EVENT_RX: OnceLock<parking_lot::Mutex<Option<mpsc::UnboundedReceiver<Event>>>> =
         OnceLock::new();
-    /// Sender for menu updates from iced → tray thread.
+    /// Sender for menu updates from iced → ksni service.
     static MENU_TX: OnceLock<mpsc::UnboundedSender<Menu>> = OnceLock::new();
-    /// Sender for icon updates from iced → tray thread.
+    /// Sender for icon updates from iced → ksni service.
     static ICON_TX: OnceLock<mpsc::UnboundedSender<Icon>> = OnceLock::new();
+    /// Pending receivers handed off from `install` to `spawn_service`.
+    /// Stuffed in a `Mutex<Option<_>>` because the receivers aren't
+    /// `Clone` and can only be owned by the ksni service task.
+    static SERVICE_RECEIVERS: OnceLock<parking_lot::Mutex<Option<ServiceReceivers>>> =
+        OnceLock::new();
+
+    struct ServiceReceivers {
+        menu_rx: mpsc::UnboundedReceiver<Menu>,
+        icon_rx: mpsc::UnboundedReceiver<Icon>,
+        event_tx: mpsc::UnboundedSender<Event>,
+    }
 
     #[allow(clippy::unnecessary_wraps)]
     pub fn install() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -81,24 +105,45 @@ mod backend {
             return Ok(());
         }
         let (event_tx, event_rx) = mpsc::unbounded_channel::<Event>();
-        let (menu_tx, mut menu_rx) = mpsc::unbounded_channel::<Menu>();
-        let (icon_tx, mut icon_rx) = mpsc::unbounded_channel::<Icon>();
+        let (menu_tx, menu_rx) = mpsc::unbounded_channel::<Menu>();
+        let (icon_tx, icon_rx) = mpsc::unbounded_channel::<Icon>();
         let _ = EVENT_TX.set(event_tx.clone());
         let _ = EVENT_RX.set(parking_lot::Mutex::new(Some(event_rx)));
         let _ = MENU_TX.set(menu_tx);
         let _ = ICON_TX.set(icon_tx);
+        let _ = SERVICE_RECEIVERS.set(parking_lot::Mutex::new(Some(ServiceReceivers {
+            menu_rx,
+            icon_rx,
+            event_tx,
+        })));
+        Ok(())
+    }
+
+    pub fn spawn_service() {
+        let Some(slot) = SERVICE_RECEIVERS.get() else {
+            tracing::warn!("tray::spawn_service called before tray::install");
+            return;
+        };
+        let Some(ServiceReceivers {
+            mut menu_rx,
+            mut icon_rx,
+            event_tx,
+        }) = slot.lock().take()
+        else {
+            // Already spawned — idempotent.
+            return;
+        };
 
         let tray = FzTray {
             sender: event_tx,
             menu: Menu::default(),
             icon: Icon::default(),
         };
-        // Run on the caller's tokio runtime via `tokio::spawn`. Using a
-        // separate `new_current_thread` runtime here triggers a
-        // tracing-subscriber panic ("tried to drop a ref to Id(N), but
-        // no such span exists") because zbus (used by ksni) emits
-        // spans that race with the Controller's runtime through the
-        // global subscriber.
+        // `tokio::spawn` onto the caller's runtime (iced's, in
+        // practice). Using a separate `new_current_thread` runtime
+        // here used to race with zbus's spans on the global tracing
+        // subscriber; running on the same runtime keeps everything
+        // on one executor.
         tokio::spawn(async move {
             use ksni::TrayMethods as _;
             let handle = match tray.spawn().await {
@@ -120,7 +165,6 @@ mod backend {
                 }
             }
         });
-        Ok(())
     }
 
     pub fn set_menu(menu: Menu) {
@@ -297,6 +341,11 @@ mod backend {
         });
         Ok(())
     }
+
+    /// No-op on Win/Mac; the `TrayIcon` is set up synchronously in
+    /// `install()` and muda's global `MenuEvent::receiver()` doesn't
+    /// need a service task.
+    pub fn spawn_service() {}
 
     pub fn set_menu(menu: Menu) {
         TRAY.with(|cell| {

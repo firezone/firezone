@@ -65,6 +65,27 @@ pub(crate) struct Tray {
     last_menu_set: Option<Menu>,
 }
 
+/// The tray-icon variant that corresponds to a given [`AppState`].
+/// Shared with the iced binary so both UIs derive the icon the same
+/// way — the Controller only ever calls `set_tray_menu(AppState)` on
+/// state transitions (it never sends a separate `set_tray_icon`), so
+/// each UI is responsible for picking the right icon from the state.
+pub fn icon_from_state(state: &AppState) -> Icon {
+    let base = match &state.connlib {
+        ConnlibState::Loading
+        | ConnlibState::Quitting
+        | ConnlibState::WaitingForBrowser
+        | ConnlibState::WaitingForPortal
+        | ConnlibState::WaitingForTunnel => IconBase::Busy,
+        ConnlibState::SignedOut => IconBase::SignedOut,
+        ConnlibState::SignedIn { .. } => IconBase::SignedIn,
+    };
+    Icon {
+        base,
+        update_ready: state.release.is_some(),
+    }
+}
+
 /// Composite the layered PNGs that make up the tray icon for a given
 /// [`Icon`] state. Shared with the iced binary so both UIs render the
 /// same artwork.
@@ -122,19 +143,7 @@ impl Tray {
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
-        let base = match &state.connlib {
-            ConnlibState::Loading
-            | ConnlibState::Quitting
-            | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => IconBase::Busy,
-            ConnlibState::SignedOut => IconBase::SignedOut,
-            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
-        };
-        let new_icon = Icon {
-            base,
-            update_ready: state.release.is_some(),
-        };
+        let new_icon = icon_from_state(&state);
 
         let menu = state.into_menu();
         let menu_clone = menu.clone();

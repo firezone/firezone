@@ -249,6 +249,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
 
         Message::WindowCloseRequested(id) => {
+            tracing::debug!(?id, "WindowCloseRequested: hiding");
             app.window_id = Some(id);
             window::set_mode(id, Mode::Hidden)
         }
@@ -436,10 +437,18 @@ fn ui_update_stream() -> impl iced::futures::Stream<Item = Message> {
                     UiUpdate::LogsRecounted(fc) => Message::LogsRecounted(fc),
                     UiUpdate::TrayIcon(icon) => Message::TrayIcon(icon),
                     UiUpdate::TrayMenu(app_state) => {
-                        // Convert `AppState` → `Menu` IR here in the
-                        // stream task (the conversion consumes
-                        // `AppState`, which isn't `Clone`). `Menu` is
-                        // `Clone`, so it rides safely in a `Message`.
+                        // The Controller only ever pushes `AppState`
+                        // on state transitions; it doesn't separately
+                        // call `set_tray_icon`. Derive the icon from
+                        // the state here (matching what the Tauri
+                        // `Tray::update` does internally) and emit a
+                        // `TrayIcon` message alongside the `TrayMenu`
+                        // one so the bar icon tracks Loading /
+                        // SignedIn / SignedOut + UpdateReady.
+                        let icon = system_tray::icon_from_state(&app_state);
+                        if output.send(Message::TrayIcon(icon)).await.is_err() {
+                            break;
+                        }
                         Message::TrayMenu((*app_state).into_menu())
                     }
                     UiUpdate::SetWindowVisible(v) => Message::ControllerSetWindowVisible(v),
@@ -563,6 +572,23 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
         advanced_settings,
     });
 
+    // Tray statics must be initialised *before* iced takes over the
+    // main thread — otherwise:
+    //   * On Win/Mac, the `TrayIcon`'s `thread_local` would end up on
+    //     a tokio worker (where the deferred init would run) rather
+    //     than the main thread, and subsequent `set_menu`/`set_icon`
+    //     calls from iced's `update` (on main) wouldn't see it.
+    //   * On Linux, iced polls our subscription on its first frame.
+    //     If `EVENT_RX` hadn't been allocated yet, the stream would
+    //     return immediately and iced would treat the subscription
+    //     as completed, dropping every subsequent tray click on the
+    //     floor.
+    // The ksni service itself is spawned later from `initialize`,
+    // where the tokio runtime is available.
+    if let Err(e) = tray::install() {
+        tracing::warn!("failed to install system tray: {e}");
+    }
+
     // Hand control to iced. iced creates one (and only one) tokio
     // runtime under the hood (`iced_futures::backend::default::Executor =
     // tokio::runtime::Runtime`) and drives every async `Task` /
@@ -570,6 +596,20 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
     // `deep_link::register`, `tray::install`, `Controller::start` —
     // all run as tokio tasks on that single runtime, so there are no
     // cross-runtime tracing-subscriber races.
+    // Pin both `min_size` and `max_size` to the same value as the
+    // initial `size`. Some compositors (notably GNOME on Wayland)
+    // ignore the `resizable: false` hint; equal min/max forces the
+    // issue regardless.
+    let window_size = iced::Size::new(900.0, 500.0);
+    let window_settings = iced::window::Settings {
+        size: window_size,
+        min_size: Some(window_size),
+        max_size: Some(window_size),
+        resizable: false,
+        exit_on_close_request: false,
+        ..iced::window::Settings::default()
+    };
+
     iced::application(boot, update, view)
         .title("Firezone")
         .theme(theme)
@@ -583,9 +623,7 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
                 Subscription::run(ui_update_stream),
             ])
         })
-        .exit_on_close_request(false)
-        .window_size((900.0, 500.0))
-        .resizable(false)
+        .window(window_settings)
         .run()?;
     Ok(())
 }
@@ -641,9 +679,11 @@ fn initialize(res: BootResources) {
         tracing::warn!("failed to register deep-link scheme: {e:#}");
     }
 
-    if let Err(e) = tray::install() {
-        tracing::warn!("failed to install system tray: {e}");
-    }
+    // On Linux this spawns the ksni service onto the ambient tokio
+    // runtime (us). On Win/Mac it's a no-op — the `TrayIcon` was set
+    // up synchronously in `install()` and muda's global event
+    // receiver doesn't need a service task.
+    tray::spawn_service();
 
     // No in-app updater yet for the iced binary — give the Controller
     // an updates channel that nothing ever sends to.
