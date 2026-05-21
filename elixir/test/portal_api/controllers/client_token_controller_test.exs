@@ -112,7 +112,8 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
     test "returns empty list for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
       api_client_actor = actor_fixture(account: account, type: :api_client)
-      _token = client_token_fixture(account: account, actor: api_client_actor)
+      ignored_token = client_token_fixture(account: account, actor: api_client_actor)
+      assert ignored_token.actor_id == api_client_actor.id
 
       conn =
         conn

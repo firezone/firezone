@@ -264,6 +264,7 @@ defmodule PortalAPI.ClientTokenController do
         nil -> {:error, :not_found}
         {:error, :unauthorized} -> {:error, :unauthorized}
         %ClientToken{} = token -> {:ok, token}
+        unexpected -> raise "unexpected result from Safe.one/1: #{inspect(unexpected)}"
       end
     end
 
