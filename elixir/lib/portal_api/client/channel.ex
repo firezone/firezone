@@ -105,13 +105,9 @@ defmodule PortalAPI.Client.Channel do
 
     {:noreply, socket} = register(socket)
 
-    # Must follow register/1; the queue's on-confirmed delivery via Portal.PG
-    # silently drops if the channel pid isn't registered yet.
-    Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session))
-
     init(socket, resources, relays)
 
-    {:noreply, arm_session_durability_timer(socket)}
+    {:noreply, socket}
   end
 
   ####################################
@@ -2357,7 +2353,16 @@ defmodule PortalAPI.Client.Channel do
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.client.id)
         :ok = PG.join(socket.assigns.subject.credential.id)
-        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+        socket = assign(socket, :pg_scope_pid, new_pid)
+
+        # Only enqueue + arm on the first successful registration; re-registrations
+        # after a PG scope crash share the same channel and session row.
+        if is_nil(current_pid) do
+          Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session))
+          {:noreply, arm_session_durability_timer(socket)}
+        else
+          {:noreply, socket}
+        end
     end
   end
 

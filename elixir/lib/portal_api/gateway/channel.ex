@@ -114,10 +114,6 @@ defmodule PortalAPI.Gateway.Channel do
 
     {:noreply, socket} = register(socket)
 
-    # Must follow register/1; the queue's on-confirmed delivery via Portal.PG
-    # silently drops if the channel pid isn't registered yet.
-    Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session))
-
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.Global.subscribe()
@@ -129,7 +125,7 @@ defmodule PortalAPI.Gateway.Channel do
     # Cache relay IDs and stamp secrets for tracking
     socket = cache_relays(socket, relays)
 
-    {:noreply, arm_session_durability_timer(socket)}
+    {:noreply, socket}
   end
 
   def handle_info(:prune_cache, socket) do
@@ -1039,7 +1035,16 @@ defmodule PortalAPI.Gateway.Channel do
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.gateway.id)
         :ok = PG.join(socket.assigns.token_id)
-        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+        socket = assign(socket, :pg_scope_pid, new_pid)
+
+        # Only enqueue + arm on the first successful registration; re-registrations
+        # after a PG scope crash share the same channel and session row.
+        if is_nil(current_pid) do
+          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session))
+          {:noreply, arm_session_durability_timer(socket)}
+        else
+          {:noreply, socket}
+        end
     end
   end
 
