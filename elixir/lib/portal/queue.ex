@@ -30,6 +30,9 @@ defmodule Portal.Queue do
     * `:label` — short string used in log lines
     * `:callers` — pids to copy into `$callers` so the GenServer inherits
       sandbox ownership in tests.
+    * `:flush_on_terminate` — when `true` (default), `terminate/2` attempts a
+      best-effort flush of buffered entries and logs a warning. Tests can set
+      this to `false` to drop the buffer silently on supervisor shutdown.
   """
 
   use GenServer
@@ -45,7 +48,8 @@ defmodule Portal.Queue do
       :flush_interval,
       :flush_threshold,
       :label,
-      :on_flush
+      :on_flush,
+      :flush_on_terminate
     ]
     defstruct @enforce_keys
   end
@@ -110,7 +114,8 @@ defmodule Portal.Queue do
       flush_interval: Keyword.fetch!(opts, :flush_interval),
       flush_threshold: Keyword.fetch!(opts, :flush_threshold),
       label: Keyword.get(opts, :label, inspect(name)),
-      on_flush: Keyword.fetch!(opts, :on_flush)
+      on_flush: Keyword.fetch!(opts, :on_flush),
+      flush_on_terminate: Keyword.get(opts, :flush_on_terminate, true)
     }
 
     schedule_flush(config.flush_interval)
@@ -158,14 +163,15 @@ defmodule Portal.Queue do
 
   @impl true
   def terminate(_reason, %{buffer: buffer, config: config} = state) do
-    if buffer != [] do
+    if buffer != [] and config.flush_on_terminate do
       Logger.warning(
         "Queue #{config.label} terminating with #{length(buffer)} buffered entries; " <>
           "attempting best-effort flush"
       )
+
+      _ = do_flush(state)
     end
 
-    _ = do_flush(state)
     :ok
   end
 

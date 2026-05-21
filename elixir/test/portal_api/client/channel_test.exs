@@ -32,7 +32,7 @@ defmodule PortalAPI.Client.ChannelTest do
     # Fetch the Device row matching the client — the channel now expects Device structs
     device = fetch_device!(client)
 
-    session_id = Keyword.get(opts, :session_id)
+    session_id = Keyword.get_lazy(opts, :session_id, &Ecto.UUID.generate/0)
 
     # Build a ClientSession struct to match what Socket.connect does
     session = %Portal.ClientSession{
@@ -87,14 +87,16 @@ defmodule PortalAPI.Client.ChannelTest do
     start_supervised!(
       {Portal.Queue,
        Keyword.merge(PortalAPI.Client.Channel.policy_authorization_queue_opts(),
-         callers: [self()]
+         callers: [self()],
+         flush_on_terminate: false
        )}
     )
 
     start_supervised!(
       {Portal.Queue,
        Keyword.merge(PortalAPI.Client.Socket.client_session_queue_opts(),
-         callers: [self()]
+         callers: [self()],
+         flush_on_terminate: false
        )}
     )
 
