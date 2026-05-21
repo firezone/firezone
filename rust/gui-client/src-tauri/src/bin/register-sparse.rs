@@ -184,7 +184,9 @@ mod imp {
     use windows::{
         ApplicationModel::Package,
         Foundation::Uri,
-        Management::Deployment::{DeploymentResult, PackageManager, StagePackageOptions},
+        Management::Deployment::{
+            DeploymentResult, PackageManager, RemovalOptions, StagePackageOptions,
+        },
         core::HSTRING,
     };
 
@@ -248,11 +250,10 @@ mod imp {
         })
     }
 
-    /// Inverse of [`provision`]. Stops new logons from inheriting the
-    /// package and removes every per-user package instance the kernel
-    /// knows about. `RemovePackageAsync` works on the all-users
-    /// staged copy when invoked from `LocalSystem`, so a single pass
-    /// per `PackageFullName` is enough.
+    /// Inverse of [`provision`]. Removes every per-user package
+    /// instance (across every user, including ones currently logged
+    /// off) and clears the all-users provisioning record so new
+    /// logons don't re-register the package.
     pub fn deprovision() -> Result<()> {
         let pm = package_manager()?;
         let pfn = package_family_name();
@@ -266,10 +267,20 @@ mod imp {
     }
 
     /// Enumerates every package the kernel has registered under our
-    /// PFN and removes each one. No-op when nothing's registered.
-    /// Used by both [`provision`] (to clear a stale external-location
-    /// registration before re-staging at a new path) and
-    /// [`deprovision`] (as the actual uninstall step).
+    /// PFN and removes each one with `RemoveForAllUsers`. No-op when
+    /// nothing's registered.
+    ///
+    /// `RemoveForAllUsers` (instead of the default `None`) is what
+    /// actually clears per-user registrations for users other than
+    /// `LocalSystem` (the calling user). Without it, registrations
+    /// for already-logged-in users linger in the package store and
+    /// trip `0x80073D0B`
+    /// (`ERROR_INSTALL_PACKAGE_NOT_SUPPORTED_ON_FILESYSTEM`) the
+    /// next time we try to stage at a different external location.
+    ///
+    /// Used by both [`provision`] (to clear stale registrations
+    /// before re-staging at a new path) and [`deprovision`] (as the
+    /// actual uninstall step).
     fn remove_existing_packages(pm: &PackageManager, pfn: &HSTRING) -> Result<()> {
         let packages: Vec<Package> = pm
             .FindPackagesByPackageFamilyName(pfn)
@@ -292,9 +303,11 @@ mod imp {
             run_deployment("remove", || {
                 tracing::info!(
                     package = %full_name.to_string_lossy(),
-                    "calling RemovePackageAsync"
+                    "calling RemovePackageWithOptionsAsync(RemoveForAllUsers)"
                 );
-                Ok(pm.RemovePackageAsync(&full_name)?.get()?)
+                Ok(pm
+                    .RemovePackageWithOptionsAsync(&full_name, RemovalOptions::RemoveForAllUsers)?
+                    .get()?)
             })?;
         }
 
