@@ -3,6 +3,7 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::net::Ipv4Addr;
 
 use crate::ClientId;
 use crate::ResourceId;
@@ -127,10 +128,12 @@ pub struct CidrResourceView {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ConnectedDeviceView {
     pub id: ClientId,
-    /// Names of the device pool resources this client is a member of
-    /// (typically one, but can be multiple).
+    /// Tunnel IPv4 address the device is reachable on.
     ///
-    /// Empty if pool membership for this client is unknown.
+    /// Sourced from the live snownet connection state, so it is always known
+    /// for a connected device regardless of pool membership.
+    pub tunneled_ipv4: Ipv4Addr,
+    /// Names of the static device pools the device belongs to, sorted.
     pub pools: Vec<String>,
 }
 

@@ -29,7 +29,7 @@ use crate::messages::{
     IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
 };
-use crate::peer_store::PeerStore;
+use crate::peer_store::{Peer, PeerStore};
 use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
@@ -237,25 +237,54 @@ impl ClientState {
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers, joined against
-    /// static-pool resource memberships so each entry knows which pool(s) it
-    /// belongs to.
+    /// Builds the list of currently-connected device peers. The tunnel IPv4 is
+    /// taken from the live connection state; static-pool resources are joined in
+    /// only to label which pool(s) each device belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
         self.connected_pool_clients
             .iter()
-            .map(|client_id| {
-                let pool_names = pools
-                    .iter()
-                    .filter(|p| p.devices.iter().any(|d| d.id == *client_id))
-                    .map(|p| p.name.clone())
-                    .sorted()
-                    .collect_vec();
-                ConnectedDeviceView {
-                    id: *client_id,
-                    pools: pool_names,
+            .filter_map(|client_id| {
+                let Some(peer) = self.clients.peer_by_id(client_id) else {
+                    tracing::debug!(
+                        %client_id,
+                        "Connected client has no peer in the connection store"
+                    );
+                    return None;
+                };
+                let tunneled_ipv4 = peer.tun_ipv4();
+
+                let mut pool_names = Vec::new();
+                for pool in &pools {
+                    if let Some(device) = pool.devices.iter().find(|d| d.id == *client_id) {
+                        if device.ipv4.network_address() != tunneled_ipv4 {
+                            tracing::debug!(
+                                %client_id,
+                                pool = %pool.name,
+                                pool_ipv4 = %device.ipv4.network_address(),
+                                %tunneled_ipv4,
+                                "Pool-provided IPv4 disagrees with the connection's tunnel IPv4"
+                            );
+                        }
+                        pool_names.push(pool.name.clone());
+                    }
                 }
+
+                pool_names.sort();
+
+                if pool_names.is_empty() {
+                    tracing::debug!(
+                        %client_id,
+                        "Connected client is not a member of any pool"
+                    );
+                }
+
+                Some(ConnectedDeviceView {
+                    id: *client_id,
+                    tunneled_ipv4,
+                    pools: pool_names,
+                })
             })
             .collect_vec()
     }

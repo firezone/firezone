@@ -13,6 +13,7 @@
 //! Lives behind a debug subcommand (not behind `cfg(debug_assertions)`) so it
 //! can be exercised against release builds when needed.
 use std::collections::HashSet;
+use std::net::Ipv4Addr;
 
 use anyhow::Result;
 use connlib_model::{
@@ -150,16 +151,16 @@ fn fake_connected_devices() -> Vec<ConnectedDeviceView> {
     const POOL_PATTERNS: &[&[&str]] = &[
         &["Engineering Pool"],
         &["Engineering Pool", "QA Pool"],
-        &[],
         &["QA Pool"],
         &["Sales Pool"],
     ];
     (0..22u128)
         .map(|i| ConnectedDeviceView {
             id: ClientId::from_u128(i + 1),
+            tunneled_ipv4: Ipv4Addr::new(100, 96, 0, (i as u8) + 1),
             pools: POOL_PATTERNS[(i as usize) % POOL_PATTERNS.len()]
                 .iter()
-                .map(|s| (*s).to_string())
+                .map(|name| (*name).to_string())
                 .collect(),
         })
         .collect()
