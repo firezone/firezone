@@ -158,11 +158,14 @@ impl ClientOnClient {
         self.resources.handle_timeout(now);
 
         let mut any_expired = false;
-        while let Some(crate::expiring_map::Event::EntryExpired { key, .. }) =
-            self.resources.poll_event()
-        {
-            tracing::info!(rid = %key, "Resource authorization expired, revoking");
-            any_expired = true;
+
+        while let Some(event) = self.resources.poll_event() {
+            match event {
+                crate::expiring_map::Event::EntryExpired { key, .. } => {
+                    tracing::info!(rid = %key, "Resource authorization expired, revoking");
+                    any_expired = true;
+                }
+            }
         }
 
         if any_expired {
