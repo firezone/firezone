@@ -90,6 +90,16 @@ impl Program {
             .with_unit("b")
             .build();
 
+        let processing_duration = opentelemetry::global::meter("relay")
+            .u64_histogram("xdp_processing_duration_ns")
+            .with_description("Time the eBPF XDP program spent processing one relayed packet")
+            .with_unit("ns")
+            .with_boundaries(vec![
+                50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0, 50_000.0,
+                100_000.0,
+            ])
+            .build();
+
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
             .context("Failed to determine number of CPUs")?
@@ -103,6 +113,7 @@ impl Program {
             // process each perf buffer in a separate task
             tokio::task::spawn({
                 let data_relayed = data_relayed.clone();
+                let processing_duration = processing_duration.clone();
 
                 async move {
                     let mut buffers = (0..PAGE_COUNT)
@@ -144,7 +155,9 @@ impl Program {
                                 continue;
                             };
 
-                            data_relayed.add(stats.relayed_data, &[]);
+                            data_relayed.add(stats.relayed_data(), &[]);
+                            processing_duration
+                                .record(stats.processing_duration().as_nanos() as u64, &[]);
                         }
                     }
                 }
