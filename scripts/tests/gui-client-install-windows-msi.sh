@@ -6,7 +6,13 @@ set -euox pipefail
 # dumps via a separate `if: always()` step so we get the verbose
 # MSI trace on every run — even when `msiexec` itself returns
 # non-zero.
-msiexec //i "$BINARY_DEST_PATH.msi" //log install.log //qn
+#
+# `-l*v!`: verbose log, flush after each line — picks up the
+# CustomAction / Component-level detail that's missing from the
+# non-verbose `/log` flag. The `-` prefix (instead of `/`) avoids
+# MSYS interpreting the leading slashes as a UNC path. The single
+# quotes keep bash from globbing the `*`.
+msiexec //i "$BINARY_DEST_PATH.msi" '-l*v!' install.log //qn
 # Make sure the Tunnel service is running
 sc query FirezoneClientTunnelService | grep RUNNING
 
