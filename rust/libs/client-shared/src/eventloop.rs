@@ -20,9 +20,11 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
-    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
-    FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ClientAccessAuthorizationExpiryUpdated, ClientDeviceAccessAuthorized, ClientDeviceAccessDenied,
+    ClientIceCandidates, ClientRejectAccess, DevicePoolDomainResolutionFailed,
+    DevicePoolDomainResolved, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
+    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
+    ResourceFiltersUpdated,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -557,7 +559,18 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
+                resource,
+                authorization_expires_at,
             }) => {
+                // The portal only sends a resource to the target device; the
+                // initiating side receives `None` and relies on conntrack to
+                // admit return traffic.
+                let authorization = resource.map(|resource| ResourceAuthorization {
+                    resource_id: resource.id,
+                    filters: resource.filters,
+                    expires_at: authorization_expires_at,
+                });
+
                 match tunnel.state_mut().handle_client_device_access_authorized(
                     client_id,
                     PublicKey::from(client_public_key.0),
@@ -569,6 +582,7 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
+                    authorization,
                     Instant::now(),
                 ) {
                     Ok(()) => {}
@@ -584,6 +598,35 @@ impl Eventloop {
                             .context("Failed to connect phoenix-channel")?;
                     }
                 };
+            }
+            IngressMessages::ResourceFiltersUpdated(ResourceFiltersUpdated { id, filters }) => {
+                tunnel
+                    .state_mut()
+                    .handle_resource_filters_updated(id, filters);
+            }
+            IngressMessages::RejectAccess(ClientRejectAccess {
+                client_id,
+                resource_id,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_reject_client_device_access(client_id, resource_id);
+            }
+            IngressMessages::AccessAuthorizationExpiryUpdated(
+                ClientAccessAuthorizationExpiryUpdated {
+                    client_id,
+                    resource_id,
+                    expires_at,
+                },
+            ) => {
+                tunnel
+                    .state_mut()
+                    .handle_client_device_access_authorization_expiry_updated(
+                        client_id,
+                        resource_id,
+                        expires_at,
+                        Instant::now(),
+                    );
             }
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,

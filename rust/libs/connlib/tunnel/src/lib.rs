@@ -31,6 +31,7 @@ use std::{
 use tun::Tun;
 
 mod client;
+mod conn_track;
 mod dns;
 mod expiring_map;
 mod filter_engine;

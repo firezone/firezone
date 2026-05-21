@@ -6,7 +6,9 @@ use crate::messages::{
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, serde_as};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Duration;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -145,6 +147,11 @@ pub struct FlowCreationFailed {
     pub violated_properties: Vec<ViolatedProperty>,
 }
 
+/// Sent by the portal once both peers in a static-device-pool flow agree to
+/// connect. The recipient is the target device when `resource` is `Some` (and
+/// must apply the filters / expiry to its inbound authorization) and the
+/// initiating device when it is `None`.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
     pub client_id: ClientId,
@@ -155,6 +162,70 @@ pub struct ClientDeviceAccessAuthorized {
     pub local_ice_credentials: IceCredentials,
     pub remote_ice_credentials: IceCredentials,
     pub ice_role: IceRole,
+
+    /// The resource authorising this connection on the receiving side, as the
+    /// portal's minimal `{id, filters}` view. `None` on the initiating side.
+    #[serde(default)]
+    pub resource: Option<AuthorizedResource>,
+
+    /// When the authorization expires, as a unix timestamp. `None` when it
+    /// never expires or on the initiating side.
+    #[serde_as(as = "Option<DurationSeconds<u64>>")]
+    #[serde(default)]
+    pub authorization_expires_at: Option<Duration>,
+}
+
+/// The portal's minimal `{id, filters}` resource view embedded in
+/// [`ClientDeviceAccessAuthorized`] for the target device. Other resource
+/// fields the portal sends (name, type, devices) are ignored.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct AuthorizedResource {
+    pub id: ResourceId,
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+/// Authorization metadata granted by a resource for an inbound peer
+/// connection. Built on the target side from [`ClientDeviceAccessAuthorized`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceAuthorization {
+    /// The authorising resource ID.
+    pub resource_id: ResourceId,
+
+    /// Filters that govern inbound traffic the remote peer is allowed to
+    /// send to us through this resource.
+    pub filters: Vec<Filter>,
+
+    /// When the authorization expires, measured from the unix epoch.
+    pub expires_at: Option<Duration>,
+}
+
+/// Sent by the portal when a resource's filters change while access remains
+/// authorized. Receivers must update the inbound filter for any peer the
+/// resource currently authorizes.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ResourceFiltersUpdated {
+    pub id: ResourceId,
+    pub filters: Vec<Filter>,
+}
+
+/// Sent by the portal to revoke a previously-authorized client-to-client
+/// access. The receiver drops the inbound authorization keyed by
+/// `resource_id` for `client_id`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientRejectAccess {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+}
+
+/// Sent by the portal when an authorization's expiry time changes.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientAccessAuthorizationExpiryUpdated {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
 }
 
 /// Portal's denial of a `create_flow` toward a static device pool peer.
@@ -245,6 +316,16 @@ pub enum IngressMessages {
 
     DevicePoolDomainResolved(DevicePoolDomainResolved),
     DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
+
+    /// A resource's filters have changed while at least one authorization
+    /// referencing it remains active.
+    ResourceFiltersUpdated(ResourceFiltersUpdated),
+
+    /// A previously-authorized peer-to-peer access has been revoked.
+    RejectAccess(ClientRejectAccess),
+
+    /// An authorization's expiry time has changed.
+    AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
 
 #[serde_with::serde_as]

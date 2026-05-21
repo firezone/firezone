@@ -15,6 +15,7 @@ pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
 pub(crate) use resource::{InternetResource, Resource, StaticDevicePoolResource};
 
+use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
@@ -26,15 +27,16 @@ use crate::dns::{
 };
 use crate::filter_engine::FilterEngine;
 use crate::messages::{
-    IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
-use anyhow::{Context, ErrorExt, Result, bail};
+use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519;
 use connlib_model::{
     ClientId, ClientOrGatewayId, ConnectedDeviceView, GatewayId, IceCandidate, PublicKey, RelayId,
@@ -51,7 +53,7 @@ use ringbuffer::RingBuffer;
 use secrecy::ExposeSecret as _;
 use snownet::{NoTurnServers, Node, RelaySocket, Transmit};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque, hash_map};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -118,10 +120,12 @@ pub struct ClientState {
     pending_device_access: PendingDeviceAccessRequests,
 
     dns_resource_nat: DnsResourceNat,
-    /// Tracks the resources we have been authorized for and which Gateway to use to access them.
+    /// Resources we have requested access to and the path that authorises
+    /// our traffic to each.
     ///
-    /// This state persists across `reset`s so we can re-connect to the same Gateway.
-    authorized_resources: HashMap<ResourceId, GatewayId>,
+    /// This state persists across `reset`s so we can re-attach to the same
+    /// gateway / pool peers.
+    authorized_resources: HashMap<ResourceId, AccessPath>,
     /// Tracks which gateways are in a site.
     ///
     /// This state gets populated as we connect to various Gateways.
@@ -168,6 +172,8 @@ pub struct ClientState {
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
+
+    unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
 }
 
@@ -209,6 +215,7 @@ impl ClientState {
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
+            unix_ts_clock: UnixTsClock::new(now, unix_ts),
         }
     }
 
@@ -442,9 +449,11 @@ impl ClientState {
                 let gateway_id = self
                     .authorized_resources
                     .get(&resource)
-                    .context("No gateway for resource")?;
+                    .context("No gateway for resource")?
+                    .as_gateway()
+                    .context("DNS resource is on a static device pool path")?;
 
-                anyhow::Ok((*gateway_id, resource, domain.clone(), packet))
+                anyhow::Ok((gateway_id, resource, domain.clone(), packet))
             })
             .filter_map(|res| {
                 res.inspect_err(|e| tracing::debug!("Dropping buffered packet: {e}"))
@@ -465,7 +474,10 @@ impl ClientState {
             self.resource_stub_resolver
                 .resolved_resources()
                 .map(|(domain, resource, proxy_ips)| {
-                    let gateway = self.authorized_resources.get(resource);
+                    let gateway = self
+                        .authorized_resources
+                        .get(resource)
+                        .and_then(|p| p.as_gateway());
 
                     (domain, resource, proxy_ips, gateway)
                 })
@@ -479,7 +491,7 @@ impl ClientState {
             };
 
             let packets_for_domain = buffered_packets_by_gateway_domain_and_resource
-                .remove(&(*gid, domain.clone(), *rid))
+                .remove(&(gid, domain.clone(), *rid))
                 .unwrap_or_default();
 
             match self.dns_resource_nat.update(
@@ -614,11 +626,27 @@ impl ClientState {
 
         match pid {
             ClientOrGatewayId::Client(cid) => {
-                let Some(_peer) = self.clients.peer_by_id_mut(&cid) else {
+                let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
 
                     return Ok(None);
                 };
+
+                let packet = match peer.ensure_allowed_inbound(packet, now)? {
+                    InboundResult::Send(p) => p,
+                    InboundResult::Filtered(reply) => {
+                        encapsulate_and_buffer(
+                            reply,
+                            ClientOrGatewayId::Client(cid),
+                            now,
+                            &mut self.node,
+                            &mut self.buffered_transmits,
+                        );
+                        return Ok(None);
+                    }
+                };
+
+                return Ok(Some(packet));
             }
             ClientOrGatewayId::Gateway(gid) => {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
@@ -721,6 +749,12 @@ impl ClientState {
             return Ok(None);
         };
 
+        if let ClientOrGatewayId::Client(cid) = pid
+            && let Some(peer) = self.clients.peer_by_id_mut(&cid)
+        {
+            peer.record_outbound(&packet, now);
+        }
+
         if let Some((rid, domain)) = self
             .dns_routing_table
             .matches(dst, Ok(dst_proto))
@@ -750,8 +784,11 @@ impl ClientState {
 
     /// Decide which connection a packet should be encapsulated through.
     ///
-    /// Returns `Ok(Some(...))` if we have a destination ready, `Ok(None)` if we've buffered the
-    /// packet pending flow setup, and `Err(...)` if the packet is unroutable.
+    /// ## Returns
+    ///
+    /// - `Ok(Some(...))` if we have a destination ready
+    /// - `Ok(None)` if we've buffered the packet for a pending flow setup
+    /// - `Err(...)` if the packet is unroutable
     fn route_packet(
         &mut self,
         packet: IpPacket,
@@ -764,31 +801,40 @@ impl ClientState {
             return Ok(Some((ClientOrGatewayId::Gateway(gid), packet)));
         }
 
-        // Fast-path: an already-established client-to-client connection. This covers the
-        // controlled side of a static device pool flow, where the remote IP isn't in
-        // *our* `client_routing_table` but `self.clients` knows about the connection.
-        if let Some((cid, _)) = self.clients.peer_by_ip(dst) {
+        // Reply to an inbound flow from a peer whose IP is NOT in our
+        // routing table — we are a one-way *target* (the initiator
+        // installed the inbound resource on us, but our routing_table
+        // entry for them is absent).
+        if let Some((cid, peer)) = self.clients.peer_by_ip_mut(dst)
+            && peer.is_known_flow(&packet)
+        {
             return Ok(Some((ClientOrGatewayId::Client(cid), packet)));
         }
 
-        // Static device pool routing.
+        // Direct device routing. Always classify via the routing table
+        // before doing anything else so we can check whether *we* have
+        // requested access to this peer for this resource.
         if let Some(entry) = self
             .client_routing_table
             .matches(dst, Ok(dst_proto))
             .cloned()
         {
-            if entry.filter.apply(Ok(dst_proto)).is_err() {
-                bail!(UnroutablePacket::not_allowed(&packet))
-            }
+            // Whether we are already authorized to send packets to this peer.
+            let already_authorised = self
+                .authorized_resources
+                .get(&entry.resource_id)
+                .is_some_and(|p| p.has_client(entry.client_id));
 
-            if self.clients.peer_by_id(&entry.client_id).is_some() {
+            if already_authorised {
                 return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
             }
 
+            // Not yet authorized: Buffer + send intent.
             self.pending_device_access.on_not_connected_device(
                 entry.client_id,
                 entry.resource_id,
                 dst,
+                &entry.filter,
                 packet,
                 now,
             );
@@ -800,14 +846,18 @@ impl ClientState {
             .get_resource_by_destination(dst, dst_proto)
             .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
 
-        let Some((gid, _)) =
-            peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
-        else {
-            self.on_not_connected_resource(resource, packet, now);
-            return Ok(None);
-        };
+        if let Some(gid) = self
+            .authorized_resources
+            .get(&resource)
+            .and_then(|p| p.as_gateway())
+        {
+            return Ok(Some((ClientOrGatewayId::Gateway(*gid), packet)));
+        }
 
-        Ok(Some((ClientOrGatewayId::Gateway(gid), packet)))
+        // Not yet authorized: Buffer + send intent.
+        self.on_not_connected_resource(resource, packet, now);
+
+        Ok(None)
     }
 
     pub fn add_ice_candidate(
@@ -867,7 +917,8 @@ impl ClientState {
             Ok(()) => {}
             Err(e) => return Ok(Err(e)),
         };
-        self.authorized_resources.insert(rid, gid);
+        self.authorized_resources
+            .insert(rid, AccessPath::Gateway(gid));
         self.gateways_by_site
             .entry(site_id)
             .or_default()
@@ -940,6 +991,7 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
+        authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
@@ -958,10 +1010,47 @@ impl ClientState {
             now,
         )?;
 
-        self.clients.upsert(cid, || ClientOnClient::new(client_tun));
+        let authorization = authorization.map(|auth| {
+            let expires_at = auth
+                .expires_at
+                .map(|d| self.unix_ts_clock.instant_at(d, now));
+            (auth.resource_id, auth.filters, expires_at)
+        });
+
+        let peer = self.clients.upsert(cid, || ClientOnClient::new(client_tun));
+
+        // We only add the inbound resource and filters on the *target* side of the connection.
+        // The initiating side does not request connections if the filters don't allow it.
+        if let Some((resource_id, filters, expires_at)) = authorization {
+            peer.add_resource(resource_id, filters, expires_at, now);
+        }
 
         if let Some(pending_client_access) = pending_device_access {
+            // We initiated this connection — record the (resource, peer) pair
+            // as authorised so future sends in the same direction skip
+            // `pending_device_access` and route directly via the peer.
+            let resource_id = pending_client_access.resource_id();
+
+            match self
+                .authorized_resources
+                .entry(resource_id)
+                .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
+            {
+                AccessPath::Direct(set) => {
+                    set.insert(cid);
+                }
+                AccessPath::Gateway(_) => {
+                    tracing::warn!(
+                        %resource_id,
+                        "Static device pool clobbering existing gateway authorisation"
+                    );
+                    self.authorized_resources
+                        .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
+                }
+            }
+
             for packet in pending_client_access.into_buffered_packets() {
+                peer.record_outbound(&packet, now);
                 encapsulate_and_buffer(
                     packet,
                     ClientOrGatewayId::Client(cid),
@@ -973,6 +1062,42 @@ impl ClientState {
         }
 
         Ok(())
+    }
+
+    /// Update the inbound filter for any peer whose authorization references
+    /// `resource_id`.
+    pub fn handle_resource_filters_updated(
+        &mut self,
+        resource_id: ResourceId,
+        filters: Vec<Filter>,
+    ) {
+        for peer in self.clients.iter_mut() {
+            peer.update_resource(resource_id, filters.clone());
+        }
+    }
+
+    /// Drop a previously-active inbound authorization for the given peer.
+    pub fn handle_reject_client_device_access(&mut self, cid: ClientId, resource_id: ResourceId) {
+        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
+            return;
+        };
+        peer.remove_resource(&resource_id);
+    }
+
+    /// Update the recorded expiry for an active authorization.
+    pub fn handle_client_device_access_authorization_expiry_updated(
+        &mut self,
+        cid: ClientId,
+        resource_id: ResourceId,
+        expires_at: Duration,
+        now: Instant,
+    ) {
+        let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
+        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
+            tracing::debug!(%cid, "Unknown peer for expiry update");
+            return;
+        };
+        peer.update_resource_expiry(resource_id, new_expiry, now);
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -1032,7 +1157,9 @@ impl ClientState {
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_flows.remove(&resource);
-        let Some(disconnected_gateway) = self.authorized_resources.remove(&resource) else {
+        let Some(AccessPath::Gateway(disconnected_gateway)) =
+            self.authorized_resources.remove(&resource)
+        else {
             return;
         };
         self.cleanup_connected_gateway(&disconnected_gateway, now);
@@ -1046,15 +1173,13 @@ impl ClientState {
             .copied()
             .unique()
             .sorted_by(|left, right| {
-                let prefer_authorized = self
-                    .authorized_resources
-                    .get(&resource)
-                    .map(|g| match g {
-                        g if g == left => Ordering::Less,
-                        g if g == right => Ordering::Greater,
-                        _ => Ordering::Equal,
-                    })
-                    .unwrap_or(Ordering::Equal);
+                let prefer_authorized = match self.authorized_resources.get(&resource) {
+                    Some(AccessPath::Gateway(g)) if g == left => Ordering::Less,
+                    Some(AccessPath::Gateway(g)) if g == right => Ordering::Greater,
+                    Some(AccessPath::Gateway(_)) | Some(AccessPath::Direct(_)) | None => {
+                        Ordering::Equal
+                    }
+                };
                 let prefer_connected = match (
                     self.gateways.peer_by_id(left),
                     self.gateways.peer_by_id(right),
@@ -1075,7 +1200,9 @@ impl ClientState {
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
-        self.authorized_resources.get(resource).copied()
+        let gid = self.authorized_resources.get(resource)?.as_gateway()?;
+
+        Some(*gid)
     }
 
     fn initialise_tcp_dns_client(&mut self) {
@@ -1137,8 +1264,10 @@ impl ClientState {
     fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId, now: Instant) {
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown, now);
         self.gateways.remove(disconnected_gateway);
-        self.authorized_resources
-            .retain(|_, g| g != disconnected_gateway);
+        for _ in self
+            .authorized_resources
+            .extract_if(|_, p| p.as_gateway() == Some(disconnected_gateway))
+        {}
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
     }
 
@@ -1147,6 +1276,14 @@ impl ClientState {
         self.clients.remove(disconnected_client);
         if self.connected_pool_clients.remove(disconnected_client) {
             self.resource_list.update(self.resource_list_snapshot());
+        }
+
+        for path in self.authorized_resources.values_mut() {
+            let AccessPath::Direct(clients) = path else {
+                continue;
+            };
+
+            clients.remove(disconnected_client);
         }
     }
 
@@ -1333,6 +1470,10 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
+
+        for peer in self.clients.iter_mut() {
+            peer.handle_timeout(now);
+        }
 
         self.drain_node_events(now);
         self.drain_resource_stub_resolver_events();
@@ -1653,9 +1794,11 @@ impl ClientState {
                 });
             }
             resource_stub_resolver::ResolveStrategy::RecurseSite(resource) => {
-                let Some((_, gateway)) =
-                    peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, resource)
-                else {
+                let Some((_, gateway)) = gateway_by_resource_mut(
+                    &self.authorized_resources,
+                    &mut self.gateways,
+                    resource,
+                ) else {
                     self.on_not_connected_resource(
                         resource,
                         DnsQueryForSite {
@@ -2092,8 +2235,11 @@ impl ClientState {
             .as_ref()
             .map(|p| p.devices.iter().map(|d| (d.id, d)).collect())
             .unwrap_or_default();
-        let new_members: HashMap<ClientId, &DevicePoolMember> =
-            new_pool.devices.iter().map(|d| (d.id, d)).collect();
+        let new_members = new_pool
+            .devices
+            .iter()
+            .map(|d| (d.id, d))
+            .collect::<HashMap<_, _>>();
 
         let filter_changed = old_pool
             .as_ref()
@@ -2126,6 +2272,14 @@ impl ClientState {
             // but only if no other pool still authorises it.
             if new_member.is_none() && !self.is_client_in_other_static_device_pool(*cid, pool_id) {
                 self.pending_device_access.remove(cid);
+
+                if let hash_map::Entry::Occupied(mut entry) =
+                    self.authorized_resources.entry(pool_id)
+                    && let AccessPath::Direct(set) = entry.get_mut()
+                {
+                    set.remove(cid);
+                };
+
                 if self.clients.remove(cid).is_some() {
                     self.node.close_connection(
                         ClientOrGatewayId::Client(*cid),
@@ -2223,8 +2377,9 @@ impl ClientState {
         self.pending_flows.remove(&id);
 
         let Some((_, peer)) =
-            peer_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
+            gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
         else {
+            self.authorized_resources.remove(&id);
             return;
         };
 
@@ -2282,6 +2437,32 @@ impl RouteEntry for CidrEntry {
 
     fn resource_id(&self) -> ResourceId {
         self.resource_id
+    }
+}
+
+/// The access path to a given resource.
+#[derive(Debug, Clone)]
+enum AccessPath {
+    /// Resource lives behind a gateway.
+    Gateway(GatewayId),
+
+    /// Resources is directly accessible, i.e. the resource is the device itself.
+    Direct(BTreeSet<ClientId>),
+}
+
+impl AccessPath {
+    fn as_gateway(&self) -> Option<&GatewayId> {
+        match self {
+            AccessPath::Gateway(gateway_id) => Some(gateway_id),
+            AccessPath::Direct(_) => None,
+        }
+    }
+
+    fn has_client(&self, c: ClientId) -> bool {
+        match self {
+            AccessPath::Gateway(_) => false,
+            AccessPath::Direct(clients) => clients.contains(&c),
+        }
     }
 }
 
@@ -2354,12 +2535,14 @@ fn encapsulate_and_buffer(
     buffered_transmits.push_back(transmit);
 }
 
-fn peer_by_resource_mut<'p>(
-    resources_gateways: &HashMap<ResourceId, GatewayId>,
+fn gateway_by_resource_mut<'p>(
+    authorized_resources: &HashMap<ResourceId, AccessPath>,
     peers: &'p mut PeerStore<GatewayId, GatewayOnClient>,
     resource: ResourceId,
 ) -> Option<(GatewayId, &'p mut GatewayOnClient)> {
-    let gateway_id = resources_gateways.get(&resource)?;
+    let AccessPath::Gateway(gateway_id) = authorized_resources.get(&resource)? else {
+        return None;
+    };
     let peer = peers.peer_by_id_mut(gateway_id)?;
 
     Some((*gateway_id, peer))
@@ -2518,9 +2701,10 @@ mod tests {
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
         state.gateways.upsert(GatewayId::from_u128(30), peer);
-        state
-            .authorized_resources
-            .insert(ResourceId::from_u128(100), GatewayId::from_u128(30));
+        state.authorized_resources.insert(
+            ResourceId::from_u128(100),
+            AccessPath::Gateway(GatewayId::from_u128(30)),
+        );
 
         state.reset(Instant::now(), "test");
         let preferred_gateways = state.preferred_gateways(ResourceId::from_u128(100));
@@ -2817,7 +3001,7 @@ mod proptests {
         let first_resource = resources_online.first().unwrap();
         client_state
             .authorized_resources
-            .insert(first_resource.id(), gateway);
+            .insert(first_resource.id(), AccessPath::Gateway(gateway));
         client_state.gateways_by_site.insert(
             first_resource.sites().iter().next().unwrap().id,
             HashSet::from([gateway]),
@@ -2856,7 +3040,7 @@ mod proptests {
         let first_resources = resources.first().unwrap();
         client_state
             .authorized_resources
-            .insert(first_resources.id(), gateway);
+            .insert(first_resources.id(), AccessPath::Gateway(gateway));
         client_state.gateways_by_site.insert(
             first_resources.sites().iter().next().unwrap().id,
             HashSet::from([gateway]),

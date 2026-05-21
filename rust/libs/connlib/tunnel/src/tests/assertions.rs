@@ -184,12 +184,27 @@ fn assert_packets_properties<T, U>(
         .map(|(g, s)| (*g, &s.dns_query_timestamps))
         .collect::<BTreeMap<_, _>>();
 
+    // ICMP "destination unreachable (administratively prohibited)" replies
+    // are emitted by a peer client when its inbound filter denies a packet we
+    // sent. They aren't "expected handshakes" — the proptest tolerates them
+    // because the production code is meant to send them in that scenario, and
+    // separate assertions cover the prohibited-reply property elsewhere.
+    let received_replies_excluding_prohibited = all_received_replies_on_client
+        .iter()
+        .filter(|(_, packet)| {
+            !packet
+                .icmp_error()
+                .is_ok_and(|e| e.is_some_and(|(_, err)| err.is_unreachable_prohibited()))
+        })
+        .map(|(k, v)| (*k, v.clone()))
+        .collect::<BTreeMap<_, _>>();
+
     let unexpected_replies = find_unexpected_entries(
         &iter::empty()
             .chain(all_expected_gateway_handshakes.values().flatten())
             .chain(all_expected_client_handshakes.values().flatten())
             .collect(),
-        &all_received_replies_on_client,
+        &received_replies_excluding_prohibited,
         |(_, (_, _, t_a, u_a)), (_, b)| (*t_a, *u_a) == b.reply_to(),
     );
 

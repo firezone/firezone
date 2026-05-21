@@ -32,7 +32,6 @@ tunnel = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-chrono = { workspace = true }
 serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["macros"] }
 

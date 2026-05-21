@@ -1231,7 +1231,6 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "bimap",
- "chrono",
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
