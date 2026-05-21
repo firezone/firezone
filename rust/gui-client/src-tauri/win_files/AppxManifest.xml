@@ -10,18 +10,6 @@
   Why: package identity gives both processes a kernel-attested SID we
   can pin in named-pipe DACLs, replacing the spoofable
   `GetNamedPipeClientProcessId` -> WinVerifyTrust chain.
-
-  The `Publisher` attribute MUST match the Subject DN of the
-  code-signing certificate used to sign the .msix exactly. Adjusting
-  this requires updating the build.rs SID computation in lockstep —
-  the CI canary in scripts/tests/gui-client-install-windows-msi.sh
-  enforces parity.
-
-  The version is updated automatically by scripts/bump-versions.sh
-  via the `mark:next-gui-version` comment below — same marker as
-  Cargo.toml so the manifest stays in lockstep with the in-development
-  GUI version on every release. The trailing `.0` is preserved (MSIX
-  requires a 4-part version).
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"

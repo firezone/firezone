@@ -22,7 +22,7 @@
 //!   runtime crashes) + the `register-sparse.log` file the install
 //!   canary captures.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, ErrorExt, Result};
 use clap::Parser;
 use std::{fmt, process::ExitCode};
 use telemetry::Telemetry;
@@ -67,7 +67,7 @@ fn main() -> ExitCode {
             tracing::info!(%action, ?elapsed, "completed");
             ExitCode::SUCCESS
         }
-        Err(e) if e.is::<NotSupported>() => {
+        Err(e) if e.any_is::<NotSupported>() => {
             tracing::info!(
                 %action,
                 ?elapsed,
@@ -212,18 +212,18 @@ mod imp {
         stage_opts
             .SetExternalLocationUri(&external_uri)
             .context("SetExternalLocationUri failed")?;
-        tracing::info!(
-            external_uri = %external_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            msix_uri = %msix_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
-            "calling StagePackageByUriAsync"
-        );
         run_deployment("stage", || {
+            tracing::info!(
+                external_uri = %uri_string(&external_uri),
+                msix_uri = %uri_string(&msix_uri),
+                "calling StagePackageByUriAsync"
+            );
             Ok(pm.StagePackageByUriAsync(&msix_uri, &stage_opts)?.get()?)
         })?;
 
-        let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
-        tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
+        let pfn = package_family_name();
         run_deployment("provision", || {
+            tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
             Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.get()?)
         })
     }
@@ -237,10 +237,9 @@ mod imp {
     /// hit.
     pub fn deprovision() -> Result<()> {
         let pm = package_manager()?;
-        let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
-
-        tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
+        let pfn = package_family_name();
         run_deployment("deprovision", || {
+            tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
             Ok(pm.DeprovisionPackageForAllUsersAsync(&pfn)?.get()?)
         })
     }
@@ -317,6 +316,23 @@ mod imp {
         let s = path.to_string_lossy().replace('\\', "/");
         let uri = format!("file:///{s}");
         Uri::CreateUri(&HSTRING::from(uri.as_str())).context("Uri::CreateUri failed")
+    }
+
+    /// `HSTRING` of the manifest's Package Family Name. `HSTRING` is
+    /// heap-allocated (no `const` ctor), so each call builds a new one;
+    /// callers grab one and pass it to the AppX deployment APIs which
+    /// take `&HSTRING`.
+    fn package_family_name() -> HSTRING {
+        HSTRING::from(super::PACKAGE_FAMILY_NAME)
+    }
+
+    /// Renders a `Windows.Foundation.Uri` as its raw `file:///…`
+    /// string, swallowing the (very unlikely) read error to keep the
+    /// `tracing::info!` payloads clean.
+    fn uri_string(uri: &Uri) -> String {
+        uri.RawUri()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default()
     }
 }
 
