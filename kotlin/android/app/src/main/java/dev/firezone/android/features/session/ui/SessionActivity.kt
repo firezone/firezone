@@ -64,7 +64,7 @@ class SessionActivity : AppCompatActivity() {
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
                 val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
 
-                // Finish if the tunnel service dies (previously in setupObservers()).
+                // Finish if the tunnel service dies.
                 LaunchedEffect(serviceStatus) {
                     if (serviceStatus == TunnelService.Companion.State.DOWN) finish()
                 }
@@ -73,7 +73,7 @@ class SessionActivity : AppCompatActivity() {
 
                 // Keep the internet-resource state in sync with the service across (re)binds and
                 // server-pushed resource updates; the toggle handler updates it directly for an
-                // immediate refresh (replacing the old refreshList() pull).
+                // immediate refresh.
                 LaunchedEffect(resourcesState, tunnelService) {
                     internetState = tunnelService?.internetState() ?: ResourceState.UNSET
                 }
@@ -89,8 +89,10 @@ class SessionActivity : AppCompatActivity() {
                         }
                     }
 
+                val actorName = remember { viewModel.getActorName() }
+
                 SessionScreen(
-                    actorName = viewModel.getActorName(),
+                    actorName = actorName,
                     resources = resources,
                     favorites = favorites,
                     onToggleInternet = {

@@ -1,8 +1,6 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.session.ui.compose
 
-import android.net.Uri
-import android.widget.Toast
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,14 +27,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.features.session.ui.ResourceViewModel
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.StatusEnum
@@ -74,23 +72,18 @@ private fun NonInternetResourceDetails(
     onRemoveFavorite: () -> Unit,
 ) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
 
     SectionLabel("Resource")
 
     DetailRow(label = "Name:") {
         Text(
             text = resource.name,
-            modifier =
-                Modifier.clickable {
-                    clipboard.setText(AnnotatedString(resource.name))
-                    Toast.makeText(context, "Name copied to clipboard", Toast.LENGTH_SHORT).show()
-                },
+            modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
         )
     }
 
     val displayAddress = resource.addressDescription ?: resource.address
-    val addressUri = resource.addressDescription?.let { Uri.parse(it) }
+    val addressUri = remember(resource.addressDescription) { resource.addressDescription?.toUri() }
     val isUrl = addressUri?.scheme != null
 
     DetailRow(label = "Address:") {
@@ -103,21 +96,17 @@ private fun NonInternetResourceDetails(
                     if (isUrl) {
                         addressUri?.let { CustomTabsIntent.Builder().build().launchUrl(context, it) }
                     } else if (displayAddress != null) {
-                        clipboard.setText(AnnotatedString(displayAddress))
-                        Toast.makeText(context, "Address copied to clipboard", Toast.LENGTH_SHORT).show()
+                        ClipboardUtils.copyToClipboard(context, "Address", displayAddress)
                     }
                 },
         )
     }
 
-    if (isFavorite) {
-        OutlinedButton(onClick = onRemoveFavorite, modifier = Modifier.fillMaxWidth()) {
-            Text("Remove from Favorites")
-        }
-    } else {
-        OutlinedButton(onClick = onAddFavorite, modifier = Modifier.fillMaxWidth()) {
-            Text("Add to Favorites")
-        }
+    OutlinedButton(
+        onClick = if (isFavorite) onRemoveFavorite else onAddFavorite,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites")
     }
 }
 
@@ -146,17 +135,12 @@ private fun SiteSection(
     status: StatusEnum,
 ) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
 
     SectionLabel("Site")
     DetailRow(label = "Name:") {
         Text(
             text = siteName,
-            modifier =
-                Modifier.clickable {
-                    clipboard.setText(AnnotatedString(siteName))
-                    Toast.makeText(context, "Site name copied to clipboard", Toast.LENGTH_SHORT).show()
-                },
+            modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Site name", siteName) },
         )
     }
 
