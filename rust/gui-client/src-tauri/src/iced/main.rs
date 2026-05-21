@@ -396,10 +396,12 @@ fn view(app: &App) -> Element<'_, Message> {
         Route::ColorPalette => ui::color_palette::view(app),
     };
 
+    // Single source of outer breathing room — screens themselves
+    // shouldn't add extra padding on top of this.
     let main_area = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding(16)
+        .padding(12)
         .style(|_theme: &Theme| container::Style {
             background: Some(iced::Background::Color(theme::LIGHT.canvas)),
             ..container::Style::default()

@@ -11,6 +11,28 @@ use crate::ui::button::{Variant, fz_button};
 pub fn view(app: &App) -> Element<'_, Message> {
     let s = &app.general_settings;
 
+    let toggles = column![
+        toggle_row(
+            "Start minimized",
+            s.start_minimized,
+            Message::GeneralSettingsStartMinimizedToggled,
+            false,
+        ),
+        toggle_row(
+            "Start on login",
+            s.start_on_login,
+            Message::GeneralSettingsStartOnLoginToggled,
+            false,
+        ),
+        toggle_row(
+            "Connect on start",
+            s.connect_on_start,
+            Message::GeneralSettingsConnectOnStartToggled,
+            s.connect_on_start_is_managed,
+        ),
+    ]
+    .spacing(14);
+
     container(
         column![
             field_label("Account slug"),
@@ -23,26 +45,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 .padding([8, 12])
                 .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT)),
             managed_hint(s.account_slug_is_managed),
-            Space::new().height(16),
-            toggle_row(
-                "Start minimized",
-                s.start_minimized,
-                Message::GeneralSettingsStartMinimizedToggled,
-                false,
-            ),
-            toggle_row(
-                "Start on login",
-                s.start_on_login,
-                Message::GeneralSettingsStartOnLoginToggled,
-                false,
-            ),
-            toggle_row(
-                "Connect on start",
-                s.connect_on_start,
-                Message::GeneralSettingsConnectOnStartToggled,
-                s.connect_on_start_is_managed,
-            ),
-            Space::new().height(24),
+            Space::new().height(12),
+            toggles,
+            Space::new().height(20),
             row![
                 fz_button(
                     "Save",
@@ -62,7 +67,6 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .spacing(4),
     )
     .width(Length::Fill)
-    .padding(16)
     .into()
 }
 

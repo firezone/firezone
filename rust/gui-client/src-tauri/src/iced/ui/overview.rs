@@ -1,13 +1,20 @@
 //! Overview screen — sign in / sign out flow.
 
-use iced::widget::{Space, column, container, image, text};
-use iced::{Center, Element, Length};
+use iced::widget::{Space, column, container, image, row, text};
+use iced::{Center, Element, Font, Length};
 
 use crate::Message;
 use crate::assets;
 use crate::state::{App, Session};
 use crate::theme;
 use crate::ui::button::{Variant, fz_button};
+
+fn bold() -> Font {
+    Font {
+        weight: iced::font::Weight::Bold,
+        ..assets::font()
+    }
+}
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let session: Element<'_, Message> = match &app.session {
@@ -41,7 +48,8 @@ fn signed_out<'a>() -> Element<'a, Message> {
              or by clicking \"Sign in\" below."
         )
         .size(14)
-        .color(theme::LIGHT.text_secondary),
+        .color(theme::LIGHT.text_secondary)
+        .align_x(Center),
         Space::new().height(8),
         fz_button(
             "Sign in",
@@ -55,7 +63,8 @@ fn signed_out<'a>() -> Element<'a, Message> {
              It is always available from the taskbar."
         )
         .size(11)
-        .color(theme::LIGHT.text_tertiary),
+        .color(theme::LIGHT.text_tertiary)
+        .align_x(Center),
     ]
     .spacing(8)
     .align_x(Center)
@@ -66,14 +75,16 @@ fn loading<'a>() -> Element<'a, Message> {
     column![
         text("Signing in…")
             .size(14)
-            .color(theme::LIGHT.text_secondary),
+            .color(theme::LIGHT.text_secondary)
+            .align_x(Center),
         Space::new().height(8),
         text(
             "Firezone will continue running in the taskbar after this \
              window is closed."
         )
         .size(11)
-        .color(theme::LIGHT.text_tertiary),
+        .color(theme::LIGHT.text_tertiary)
+        .align_x(Center),
     ]
     .spacing(8)
     .align_x(Center)
@@ -81,13 +92,30 @@ fn loading<'a>() -> Element<'a, Message> {
 }
 
 fn signed_in<'a>(account_slug: &'a str, actor_name: &'a str) -> Element<'a, Message> {
+    // Use a horizontal row so just the account slug + actor name are
+    // bold; the surrounding prose stays at regular weight.
+    let label = |s: &'a str| text(s).size(14).color(theme::LIGHT.text_secondary);
+    let bold_label = |s: &'a str| {
+        text(s)
+            .size(14)
+            .font(bold())
+            .color(theme::LIGHT.text_primary)
+    };
+    let header = row![
+        label("You are currently signed into "),
+        bold_label(account_slug),
+        label(" as "),
+        bold_label(actor_name),
+        label("."),
+    ]
+    .align_y(Center);
+
     column![
-        text(format!(
-            "You are currently signed into {account_slug} as {actor_name}.\n\
-             Click the Firezone icon in the taskbar to see the list of Resources."
-        ))
-        .size(14)
-        .color(theme::LIGHT.text_secondary),
+        header,
+        text("Click the Firezone icon in the taskbar to see the list of Resources.")
+            .size(14)
+            .color(theme::LIGHT.text_secondary)
+            .align_x(Center),
         Space::new().height(8),
         fz_button(
             "Sign out",
@@ -101,7 +129,8 @@ fn signed_in<'a>(account_slug: &'a str, actor_name: &'a str) -> Element<'a, Mess
              window is closed."
         )
         .size(11)
-        .color(theme::LIGHT.text_tertiary),
+        .color(theme::LIGHT.text_tertiary)
+        .align_x(Center),
     ]
     .spacing(8)
     .align_x(Center)

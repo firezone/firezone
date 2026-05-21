@@ -61,7 +61,6 @@ pub fn view(app: &App) -> Element<'_, Message> {
         .spacing(4),
     )
     .width(Length::Fill)
-    .padding(16)
     .into()
 }
 
