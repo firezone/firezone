@@ -99,7 +99,6 @@ class SessionActivity : AppCompatActivity() {
                         val newState = internetState.toggle()
                         tunnelService?.internetResourceToggled(newState)
                         internetState = tunnelService?.internetState() ?: newState
-                        internetState
                     },
                     onAddFavorite = { id -> viewModel.addFavoriteResource(id) },
                     onRemoveFavorite = { id -> viewModel.removeFavoriteResource(id) },
