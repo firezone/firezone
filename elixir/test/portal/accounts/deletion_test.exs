@@ -10,7 +10,7 @@ defmodule Portal.Accounts.DeletionTest do
   import Portal.SubjectFixtures
 
   describe "schedule_account_deletion/3" do
-    test "enqueues both delete and reminder jobs when deletion is more than 48 hours away" do
+    test "enqueues reminder job when deletion is more than 48 hours away" do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
@@ -21,9 +21,7 @@ defmodule Portal.Accounts.DeletionTest do
 
       assert {:ok, _account} = Deletion.schedule_account_deletion(account, attrs, subject)
 
-      assert length(
-               jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
-             ) == 1
+      refute_enqueued(worker: Portal.Workers.DeleteAccount)
 
       assert length(
                jobs_for_worker_and_arg(
@@ -34,7 +32,7 @@ defmodule Portal.Accounts.DeletionTest do
              ) == 1
     end
 
-    test "only enqueues delete job when deletion is less than 48 hours away" do
+    test "does not enqueue reminder when deletion is less than 48 hours away" do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
@@ -45,9 +43,7 @@ defmodule Portal.Accounts.DeletionTest do
 
       assert {:ok, _account} = Deletion.schedule_account_deletion(account, attrs, subject)
 
-      assert length(
-               jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
-             ) == 1
+      refute_enqueued(worker: Portal.Workers.DeleteAccount)
 
       assert jobs_for_worker_and_arg(
                "Portal.Workers.AccountDeletionReminder",

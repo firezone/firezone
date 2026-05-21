@@ -92,7 +92,6 @@ defmodule Portal.Accounts.Deletion do
       Safe.transact(fn ->
         with {:ok, transition} <-
                transition_account_deletion(account, attrs, :schedule, subject),
-             {:ok, _job} <- maybe_insert_delete_job(transition),
              {:ok, _job} <- maybe_insert_reminder_job(transition) do
           {:ok, transition}
         end
@@ -161,14 +160,6 @@ defmodule Portal.Accounts.Deletion do
     end
 
     defp transition_account_deletion(_account, _attrs, _action, _subject), do: {:error, :unauthorized}
-
-    defp maybe_insert_delete_job({:transitioned, account}) do
-      %{"account_id" => account.id}
-      |> DeleteAccount.new(scheduled_at: account.scheduled_deletion_at)
-      |> Oban.insert()
-    end
-
-    defp maybe_insert_delete_job({:unchanged, _account}), do: {:ok, nil}
 
     defp maybe_insert_reminder_job({:transitioned, account}) do
       reminder_at = DateTime.add(account.scheduled_deletion_at, -48, :hour)

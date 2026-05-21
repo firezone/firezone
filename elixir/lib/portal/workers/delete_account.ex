@@ -1,6 +1,7 @@
 defmodule Portal.Workers.DeleteAccount do
   @moduledoc """
-  Oban worker that hard-deletes a single account once its scheduled deletion time is due.
+  Oban worker that hard-deletes a single account once its scheduled deletion conditions are met.
+  Enqueued by SweepAccountDeletions.
   """
 
   use Oban.Worker,
@@ -8,83 +9,31 @@ defmodule Portal.Workers.DeleteAccount do
     max_attempts: 3,
     unique: [
       period: :infinity,
-      states: [:available, :scheduled, :executing, :retryable],
+      states: [:available, :executing, :retryable],
       keys: [:account_id]
-  ]
+    ]
 
-  alias Portal.Account
-  alias Portal.Billing
-  alias Portal.Mailer
-  alias Portal.Mailer.Notifications
   alias __MODULE__.Database
   require Logger
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id}}) do
-    case Database.fetch_account(account_id) do
-      nil ->
+    case Database.transact_delete(account_id) do
+      {:ok, {:deleted, account}} ->
+        Logger.info("Hard-deleted account pending deletion", account_id: account.id)
         :ok
 
-      %Account{} = account ->
-        maybe_delete_account(account)
-    end
-  end
-
-  defp maybe_delete_account(%Account{} = account) do
-    cond do
-      is_nil(account.scheduled_deletion_at) ->
-        :ok
-
-      is_nil(account.disabled_at) ->
-        :ok
-
-      DateTime.compare(account.scheduled_deletion_at, DateTime.utc_now()) == :gt ->
-        {:snooze, DateTime.diff(account.scheduled_deletion_at, DateTime.utc_now())}
-
-      true ->
-        Logger.info("Hard-deleting account pending deletion", account_id: account.id)
-
-        delete_account_and_notify_admins(account)
-    end
-  end
-
-  defp delete_account_and_notify_admins(%Account{} = account) do
-    with :ok <- Billing.cancel_subscriptions(account) do
-      admin_emails = Database.get_account_admin_emails(account.id)
-
-      if admin_emails == [] do
-        Logger.warning("No admin actors found for account deletion completion notification",
-          account_id: account.id
-        )
-      end
-
-      account
-      |> Database.delete_account()
-      |> maybe_enqueue_email(admin_emails)
-    end
-  end
-
-  defp maybe_enqueue_email({:ok, _account}, []), do: :ok
-
-  defp maybe_enqueue_email({:ok, account}, admin_emails) do
-    email = Notifications.account_deletion_completed_email(account, admin_emails)
-
-    case Mailer.enqueue(email) do
-      {:ok, _job} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.error("Failed to enqueue account deletion notification email",
-          account_id: account.id,
-          account_slug: account.slug,
-          reason: inspect(reason)
+      {:ok, :noop} ->
+        Logger.info("DeleteAccount no-op: account already deleted or conditions cleared",
+          account_id: account_id
         )
 
         :ok
+
+      {:error, _} = error ->
+        error
     end
   end
-
-  defp maybe_enqueue_email({:error, _} = err, _), do: err
 
   defmodule Database do
     import Ecto.Query
@@ -92,13 +41,55 @@ defmodule Portal.Workers.DeleteAccount do
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Safe
+    alias Portal.Workers.AccountDeletionCompleted
+    alias Portal.Workers.DeleteSubscription
 
-    def fetch_account(account_id) do
-      from(a in Account, where: a.id == ^account_id)
-      |> Safe.unscoped()
-      |> Safe.one()
+    @spec transact_delete(binary()) ::
+            {:ok, {:deleted, Account.t()} | :noop} | {:error, term()}
+    def transact_delete(account_id) do
+      Safe.transact(fn ->
+        admin_emails = get_account_admin_emails(account_id)
+
+        case delete_account(account_id) do
+          {1, [account]} -> schedule_post_deletion_jobs(account, admin_emails)
+          {0, []} -> {:ok, :noop}
+        end
+      end)
     end
 
+    defp schedule_post_deletion_jobs(account, admin_emails) do
+      with {:ok, _} <- maybe_insert_delete_subscription_job(account),
+           {:ok, _} <- insert_completion_job(account, admin_emails) do
+        {:ok, {:deleted, account}}
+      end
+    end
+
+    defp maybe_insert_delete_subscription_job(%Account{} = account) do
+      customer_id =
+        get_in(account, [Access.key(:metadata), Access.key(:stripe), Access.key(:customer_id)])
+
+      if customer_id do
+        %{"customer_id" => customer_id}
+        |> DeleteSubscription.new()
+        |> Oban.insert()
+      else
+        {:ok, nil}
+      end
+    end
+
+    defp insert_completion_job(_account, []), do: {:ok, nil}
+
+    defp insert_completion_job(%Account{} = account, admin_emails) do
+      %{
+        "account_id" => account.id,
+        "account_slug" => account.slug,
+        "admin_emails" => admin_emails
+      }
+      |> AccountDeletionCompleted.new()
+      |> Oban.insert()
+    end
+
+    @spec get_account_admin_emails(binary()) :: [binary()]
     def get_account_admin_emails(account_id) do
       from(a in Actor,
         where: a.account_id == ^account_id,
@@ -110,10 +101,19 @@ defmodule Portal.Workers.DeleteAccount do
       |> Safe.all()
     end
 
-    def delete_account(%Account{} = account) do
-      account
+    @spec delete_account(binary()) :: {non_neg_integer(), [Account.t()]}
+    def delete_account(account_id) do
+      now = DateTime.utc_now()
+
+      from(a in Account,
+        where: a.id == ^account_id,
+        where: not is_nil(a.disabled_at),
+        where: not is_nil(a.scheduled_deletion_at),
+        where: a.scheduled_deletion_at <= ^now,
+        select: a
+      )
       |> Safe.unscoped()
-      |> Safe.delete()
+      |> Safe.delete_all()
     end
   end
 end

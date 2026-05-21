@@ -228,15 +228,6 @@ defmodule PortalWeb.Settings.AccountTest do
       assert account.disabled_at
       assert account.scheduled_deletion_at
 
-      scheduled_jobs =
-        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
-
-      assert length(scheduled_jobs) == 1
-
-      [scheduled_job] = scheduled_jobs
-      assert scheduled_job.state == "scheduled"
-      assert DateTime.compare(scheduled_job.scheduled_at, account.scheduled_deletion_at) == :eq
-
       queued_emails = collect_queued_emails(account.id)
       assert length(queued_emails) == 1
 
@@ -321,8 +312,6 @@ defmodule PortalWeb.Settings.AccountTest do
 
       assert DateTime.compare(first_account.scheduled_deletion_at, scheduled_deletion_at) == :eq
       assert DateTime.compare(second_account.scheduled_deletion_at, scheduled_deletion_at) == :eq
-      assert length(jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)) ==
-               1
       assert length(collect_queued_emails(account.id)) == 1
     end
 

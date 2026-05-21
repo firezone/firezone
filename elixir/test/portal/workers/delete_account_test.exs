@@ -3,15 +3,14 @@ defmodule Portal.Workers.DeleteAccountTest do
   use Oban.Testing, repo: Portal.Repo
 
   alias Portal.Workers.DeleteAccount
+  alias Portal.Workers.AccountDeletionCompleted
+  alias Portal.Workers.DeleteSubscription
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.OutboundEmailTestHelpers
-
-  alias Portal.Mocks.Stripe
 
   describe "perform/1" do
-    test "deletes the account and emails admins when deletion is due" do
+    test "deletes account and enqueues AccountDeletionCompleted job with admin emails" do
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
 
@@ -26,14 +25,17 @@ defmodule Portal.Workers.DeleteAccountTest do
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
 
-      [email] = collect_queued_emails(account.id)
-      assert email.subject == "Firezone Account Deletion Complete"
-      assert email.text_body =~ account.slug
-      assert email.text_body =~ account.id
-      assert Enum.map(email.bcc, fn {_name, address} -> address end) == [admin.email]
+      assert_enqueued(
+        worker: AccountDeletionCompleted,
+        args: %{
+          "account_id" => account.id,
+          "account_slug" => account.slug,
+          "admin_emails" => [admin.email]
+        }
+      )
     end
 
-    test "deletes the account without emailing when there are no admin actors" do
+    test "deletes account without enqueuing completion job when there are no admin actors" do
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
 
@@ -45,14 +47,14 @@ defmodule Portal.Workers.DeleteAccountTest do
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
-      assert collect_queued_emails(account.id) == []
+      refute_enqueued(worker: AccountDeletionCompleted)
     end
 
-    test "does nothing when the account does not exist" do
+    test "is a no-op when account already deleted (RETURNING returns 0 rows)" do
       assert :ok = perform_job(DeleteAccount, %{"account_id" => Ecto.UUID.generate()})
     end
 
-    test "does nothing when the account was unscheduled" do
+    test "is a no-op when account conditions cleared (scheduled_deletion_at nil)" do
       account =
         update_account(account_fixture(),
           disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
@@ -61,25 +63,24 @@ defmodule Portal.Workers.DeleteAccountTest do
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id)
-      assert collect_queued_emails(account.id) == []
+      refute_enqueued(worker: AccountDeletionCompleted)
     end
 
-    test "does nothing when the account is not disabled" do
+    test "is a no-op when account conditions cleared (disabled_at nil)" do
       account =
         update_account(account_fixture(),
           disabled_at: nil,
-          scheduled_deletion_at: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second)
+          scheduled_deletion_at:
+            DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second)
         )
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id)
-      assert collect_queued_emails(account.id) == []
+      refute_enqueued(worker: AccountDeletionCompleted)
     end
 
-    test "cancels the Stripe subscription before deleting the account" do
-      subscription_id = "sub_#{System.unique_integer([:positive])}"
+    test "schedules DeleteSubscription job when customer_id present" do
       customer_id = "cus_#{System.unique_integer([:positive])}"
-
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
 
@@ -90,85 +91,13 @@ defmodule Portal.Workers.DeleteAccountTest do
           metadata: %{stripe: %{customer_id: customer_id}}
         )
 
-      subscription = %{"id" => subscription_id, "object" => "subscription"}
-
-      Stripe.stub(
-        Stripe.mock_fetch_customer_subscriptions_endpoint(customer_id, [subscription]) ++
-          Stripe.mock_cancel_subscription_endpoint(subscription_id)
-      )
-
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
+
+      assert_enqueued(worker: DeleteSubscription, args: %{"customer_id" => customer_id})
     end
 
-    test "succeeds when all Stripe subscriptions are already canceled (idempotency)" do
-      subscription_id = "sub_#{System.unique_integer([:positive])}"
-      customer_id = "cus_#{System.unique_integer([:positive])}"
-
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
-
-      account =
-        update_account(account_fixture(),
-          disabled_at: disabled_at,
-          scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{customer_id: customer_id}}
-        )
-
-      subscription = %{"id" => subscription_id, "object" => "subscription"}
-
-      Stripe.stub(
-        Stripe.mock_fetch_customer_subscriptions_endpoint(customer_id, [subscription]) ++
-          Stripe.mock_cancel_subscription_endpoint(subscription_id, 404, %{})
-      )
-
-      assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
-      assert fetch_account(account.id) == nil
-    end
-
-    test "fails the job when Stripe subscription cancellation fails" do
-      subscription_id = "sub_#{System.unique_integer([:positive])}"
-      customer_id = "cus_#{System.unique_integer([:positive])}"
-
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
-
-      account =
-        update_account(account_fixture(),
-          disabled_at: disabled_at,
-          scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{customer_id: customer_id}}
-        )
-
-      subscription = %{"id" => subscription_id, "object" => "subscription"}
-
-      Stripe.stub(
-        Stripe.mock_fetch_customer_subscriptions_endpoint(customer_id, [subscription]) ++
-          Stripe.mock_cancel_subscription_endpoint(subscription_id, 500, %{})
-      )
-
-      assert {:error, _} = perform_job(DeleteAccount, %{"account_id" => account.id})
-      assert fetch_account(account.id)
-    end
-
-    test "deletes the account without calling Stripe when billing is disabled" do
-      Portal.Config.put_env_override(Portal.Billing, enabled: false)
-
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
-
-      account =
-        update_account(account_fixture(),
-          disabled_at: disabled_at,
-          scheduled_deletion_at: scheduled_deletion_at,
-          metadata: %{stripe: %{customer_id: "cus_should_not_be_called"}}
-        )
-
-      assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
-      assert fetch_account(account.id) == nil
-    end
-
-    test "deletes the account without calling Stripe when account has no customer ID" do
+    test "skips DeleteSubscription job when no customer_id" do
       disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
       scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
 
@@ -180,22 +109,8 @@ defmodule Portal.Workers.DeleteAccountTest do
 
       assert :ok = perform_job(DeleteAccount, %{"account_id" => account.id})
       assert fetch_account(account.id) == nil
-    end
 
-    test "snoozes the job until the scheduled deletion time when deletion is not yet due" do
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
-
-      account =
-        update_account(account_fixture(),
-          disabled_at: disabled_at,
-          scheduled_deletion_at: scheduled_deletion_at
-        )
-
-      assert {:snooze, snooze_seconds} = perform_job(DeleteAccount, %{"account_id" => account.id})
-      assert snooze_seconds > 0
-      assert fetch_account(account.id)
-      assert collect_queued_emails(account.id) == []
+      refute_enqueued(worker: DeleteSubscription)
     end
   end
 end
