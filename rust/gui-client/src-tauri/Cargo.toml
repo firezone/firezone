@@ -111,6 +111,12 @@ features = [
     # `register-sparse.exe` WiX custom action.
     "Foundation",
     "Management_Deployment",
+    # `Package` / `PackageId` returned by
+    # `FindPackagesByPackageFamilyName`, plus `IIterable<Package>`
+    # iteration to enumerate stale registrations before provisioning
+    # a new external location.
+    "ApplicationModel",
+    "Foundation_Collections",
 ]
 
 [build-dependencies]

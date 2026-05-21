@@ -182,6 +182,7 @@ mod imp {
     use anyhow::{Context, Result, anyhow};
     use std::{path::PathBuf, time::Instant};
     use windows::{
+        ApplicationModel::Package,
         Foundation::Uri,
         Management::Deployment::{DeploymentResult, PackageManager, StagePackageOptions},
         core::HSTRING,
@@ -199,6 +200,14 @@ mod imp {
     /// `ProvisionPackageForAllUsersAsync`: the latter only acts on
     /// packages already in the all-users staged state and returns
     /// `ERROR_NOT_FOUND` / `0x80070490` otherwise.
+    ///
+    /// Any pre-existing registration of our PFN is removed first.
+    /// An upgrade or repair install puts the binaries at a different
+    /// path than the previous install, and AppX refuses to re-stage
+    /// the same PFN at a new external location (the kernel returns
+    /// `0x80073D0B` / `ERROR_INSTALL_PACKAGE_NOT_SUPPORTED_ON_FILESYSTEM`
+    /// in that case). Removing the stale registrations first lets
+    /// the new stage/provision succeed.
     pub fn provision() -> Result<()> {
         let install_path = install_dir()?;
         let msix = install_path.join("firezone.msix");
@@ -213,6 +222,10 @@ mod imp {
         );
 
         let pm = package_manager()?;
+        let pfn = package_family_name();
+
+        remove_existing_packages(&pm, &pfn)?;
+
         let msix_uri = file_uri(msix.as_path())?;
         let external_uri = file_uri(install_path.as_path())?;
 
@@ -229,7 +242,6 @@ mod imp {
             Ok(pm.StagePackageByUriAsync(&msix_uri, &stage_opts)?.get()?)
         })?;
 
-        let pfn = package_family_name();
         run_deployment("provision", || {
             tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
             Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.get()?)
@@ -237,19 +249,56 @@ mod imp {
     }
 
     /// Inverse of [`provision`]. Stops new logons from inheriting the
-    /// package and lets the next major Windows servicing cycle reap
-    /// the per-user package instances. Enumerating + explicitly
-    /// removing each instance would require pulling in the
-    /// `Foundation_Collections` (`IIterable<Package>`) feature for
-    /// one custom-action helper, which isn't worth the binary-size
-    /// hit.
+    /// package and removes every per-user package instance the kernel
+    /// knows about. `RemovePackageAsync` works on the all-users
+    /// staged copy when invoked from `LocalSystem`, so a single pass
+    /// per `PackageFullName` is enough.
     pub fn deprovision() -> Result<()> {
         let pm = package_manager()?;
         let pfn = package_family_name();
+
+        remove_existing_packages(&pm, &pfn)?;
+
         run_deployment("deprovision", || {
             tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
             Ok(pm.DeprovisionPackageForAllUsersAsync(&pfn)?.get()?)
         })
+    }
+
+    /// Enumerates every package the kernel has registered under our
+    /// PFN and removes each one. No-op when nothing's registered.
+    /// Used by both [`provision`] (to clear a stale external-location
+    /// registration before re-staging at a new path) and
+    /// [`deprovision`] (as the actual uninstall step).
+    fn remove_existing_packages(pm: &PackageManager, pfn: &HSTRING) -> Result<()> {
+        let packages: Vec<Package> = pm
+            .FindPackagesByPackageFamilyName(pfn)
+            .context("FindPackagesByPackageFamilyName failed")?
+            .into_iter()
+            .collect();
+
+        tracing::info!(
+            pfn = %pfn.to_string_lossy(),
+            count = packages.len(),
+            "enumerated existing packages"
+        );
+
+        for pkg in packages {
+            let full_name = pkg
+                .Id()
+                .context("Package::Id failed")?
+                .FullName()
+                .context("PackageId::FullName failed")?;
+            run_deployment("remove", || {
+                tracing::info!(
+                    package = %full_name.to_string_lossy(),
+                    "calling RemovePackageAsync"
+                );
+                Ok(pm.RemovePackageAsync(&full_name)?.get()?)
+            })?;
+        }
+
+        Ok(())
     }
 
     /// Calls a `PackageManager::*Async` deployment method, awaits
