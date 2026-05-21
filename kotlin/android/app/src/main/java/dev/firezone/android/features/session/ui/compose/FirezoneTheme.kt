@@ -11,7 +11,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import dev.firezone.android.R
 
-@Suppress("ktlint:standard:function-naming")
 @Composable
 fun FirezoneTheme(content: @Composable () -> Unit) {
     val colorScheme =
