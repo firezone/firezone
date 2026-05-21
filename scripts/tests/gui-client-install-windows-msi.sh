@@ -41,5 +41,5 @@ fi
 
 echo "==> Verifying Firezone.exe gets package identity attached when launched..."
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-powershell.exe -NoProfile -File "$SCRIPT_DIR/check-gui-package-identity.ps1"
+powershell.exe -NoProfile -File "$SCRIPT_DIR/gui-package-identity-windows.ps1"
 echo "==> Package identity attached to Firezone.exe"
