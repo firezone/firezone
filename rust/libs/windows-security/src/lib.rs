@@ -161,8 +161,7 @@ pub(crate) fn sid_to_string(sid: PSID) -> Result<String> {
 
     // SAFETY: `out.0` points to a null-terminated wide string allocated by
     // Windows; we copy it into an owned `String` before freeing.
-    let s = unsafe { out.to_string() }
-        .context("ConvertSidToStringSidW returned invalid UTF-16")?;
+    let s = unsafe { out.to_string() }.context("ConvertSidToStringSidW returned invalid UTF-16")?;
 
     // SAFETY: `out` is the LocalAlloc-allocated buffer; release it.
     unsafe {
