@@ -27,11 +27,8 @@ use clap::Parser;
 use std::{fmt, process::ExitCode};
 use telemetry::Telemetry;
 
-fn main() -> ExitCode {
-    // `reqwest` (via Sentry's transport) uses rustls; rustls 0.23+
-    // panics on first use unless a crypto provider is installed in
-    // the process. Other Firezone binaries do the same at the top of
-    // `main`.
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install default crypto provider");
@@ -43,6 +40,13 @@ fn main() -> ExitCode {
         telemetry::GUI_DSN,
     );
 
+    let exit_code = run();
+
+    telemetry.stop().await;
+    exit_code
+}
+
+fn run() -> ExitCode {
     let _log_handle = match init_tracing() {
         Ok(h) => h,
         #[expect(
@@ -229,7 +233,7 @@ mod imp {
         remove_existing_packages(&pm, &pfn)?;
 
         let msix_uri = file_uri(msix.as_path())?;
-        let external_uri = file_uri(install_path.as_path())?;
+        let external_uri = dir_uri(install_path.as_path())?;
 
         let stage_opts = StagePackageOptions::new().context("StagePackageOptions::new failed")?;
         stage_opts
@@ -374,15 +378,28 @@ mod imp {
     /// otherwise piped in via `CustomActionData`.
     fn install_dir() -> Result<PathBuf> {
         let exe = std::env::current_exe().context("current_exe")?;
-        exe.parent()
-            .map(PathBuf::from)
-            .ok_or_else(|| anyhow!("current_exe `{}` has no parent", exe.display()))
+        let parent = exe.parent().context("current_exe has no parent")?;
+        Ok(parent.to_path_buf())
+    }
+
+    /// Builds a `file:///…/` URI for a directory path. Forward-slash
+    /// separators because `Windows.Foundation.Uri` would otherwise
+    /// interpret backslashes as escape sequences. **Trailing slash
+    /// is load-bearing**: the kernel resolves the manifest's
+    /// `Executable=` paths against this URI per RFC 3986 relative-
+    /// reference rules, and without the trailing `/` the last path
+    /// segment is treated as a filename and replaced — so an install
+    /// at `C:\Program Files\Firezone` ends up looking for
+    /// `file:///C:/Program Files/Firezone.exe` instead of
+    /// `file:///C:/Program Files/Firezone/Firezone.exe`, and no
+    /// EXE matches the package's identity-attachment table.
+    fn dir_uri(path: &std::path::Path) -> Result<Uri> {
+        let s = path.to_string_lossy().replace('\\', "/");
+        let uri = format!("file:///{}/", s.trim_end_matches('/'));
+        Uri::CreateUri(&HSTRING::from(uri.as_str())).context("Uri::CreateUri failed")
     }
 
     fn file_uri(path: &std::path::Path) -> Result<Uri> {
-        // `Windows.Foundation.Uri` accepts forward-slash file URIs; the
-        // backslashes in the MSI install dir would otherwise be
-        // interpreted as escape sequences.
         let s = path.to_string_lossy().replace('\\', "/");
         let uri = format!("file:///{s}");
         Uri::CreateUri(&HSTRING::from(uri.as_str())).context("Uri::CreateUri failed")

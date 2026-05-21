@@ -246,7 +246,7 @@ jobs:
         if: "${{ always() && runner.os == 'Windows' }}"
         shell: bash
         run: |
-          LOG_DIR="$PROGRAMDATA/dev.firezone.client/data/logs"
+          LOG_DIR="C:/ProgramData/dev.firezone.client/data/logs"
           if [ ! -d "$LOG_DIR" ]; then
             echo "register-sparse log dir not present at $LOG_DIR"
             exit 0

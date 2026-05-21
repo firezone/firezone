@@ -6,10 +6,6 @@
   registers a kernel-tracked package identity for the existing
   `Firezone.exe` and `firezone-client-tunnel.exe` at the MSI install
   location (an "external location" sparse package).
-
-  Why: package identity gives both processes a kernel-attested SID we
-  can pin in named-pipe DACLs, replacing the spoofable
-  `GetNamedPipeClientProcessId` -> WinVerifyTrust chain.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
