@@ -9,3 +9,4 @@ pub mod general_settings;
 pub mod input;
 pub mod overview;
 pub mod sidebar;
+pub mod toggle;

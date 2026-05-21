@@ -124,6 +124,11 @@ pub enum Message {
     /// Currently informational only.
     Initialized,
 
+    /// Fires while a toggle animation is in flight so iced re-renders
+    /// each frame; the message itself is a no-op (view samples
+    /// `Instant::now()` directly).
+    AnimationTick,
+
     // Inbound state updates from the Controller. One variant per
     // `UiUpdate` shape so each can carry its own owned payload without
     // wrapping in `Arc` and dealing with clone semantics.
@@ -181,14 +186,23 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::GeneralSettingsStartMinimizedToggled(v) => {
             app.general_settings.start_minimized = v;
+            app.general_settings
+                .start_minimized_anim
+                .go_mut(v, std::time::Instant::now());
             Task::none()
         }
         Message::GeneralSettingsStartOnLoginToggled(v) => {
             app.general_settings.start_on_login = v;
+            app.general_settings
+                .start_on_login_anim
+                .go_mut(v, std::time::Instant::now());
             Task::none()
         }
         Message::GeneralSettingsConnectOnStartToggled(v) => {
             app.general_settings.connect_on_start = v;
+            app.general_settings
+                .connect_on_start_anim
+                .go_mut(v, std::time::Instant::now());
             Task::none()
         }
         Message::GeneralSettingsSave => {
@@ -287,6 +301,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::Initialized => Task::none(),
+        Message::AnimationTick => Task::none(),
 
         // The Controller handles every `Event` variant the Tauri tray
         // emits — favorites, clipboard, internet-resource toggle, URL
@@ -417,6 +432,16 @@ fn view(app: &App) -> Element<'_, Message> {
 
 fn theme(_app: &App) -> Theme {
     theme::light()
+}
+
+/// True while any of the General-Settings toggles is mid-animation.
+/// Drives the per-frame redraw subscription.
+fn any_animating(app: &App) -> bool {
+    let now = std::time::Instant::now();
+    let g = &app.general_settings;
+    g.start_minimized_anim.is_animating(now)
+        || g.start_on_login_anim.is_animating(now)
+        || g.connect_on_start_anim.is_animating(now)
 }
 
 async fn export_logs() -> Result<(), String> {
@@ -646,13 +671,22 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
         .default_font(assets::font())
         .font(assets::ROBOTO_REGULAR)
         .font(assets::ROBOTO_BOLD)
-        .subscription(|_app| {
-            Subscription::batch([
+        .subscription(|app| {
+            let mut subs = vec![
                 tray::subscription(),
                 window::close_requests().map(Message::WindowCloseRequested),
                 window::resize_events().map(|(id, size)| Message::WindowResized(id, size)),
                 Subscription::run(ui_update_stream),
-            ])
+            ];
+            // Only drive per-frame redraws while a toggle is mid-
+            // transition; otherwise iced sleeps until the next event.
+            if any_animating(app) {
+                subs.push(
+                    iced::time::every(std::time::Duration::from_millis(16))
+                        .map(|_| Message::AnimationTick),
+                );
+            }
+            Subscription::batch(subs)
         })
         .window(window_settings)
         .run()?;

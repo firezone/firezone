@@ -6,6 +6,7 @@
 use firezone_gui_client::controller::ControllerRequest;
 use firezone_gui_client::logging::FileCount;
 use firezone_gui_client::settings::{AdvancedSettings, GeneralSettings, MdmSettings};
+use iced::animation::Animation;
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -36,6 +37,11 @@ pub enum Session {
 }
 
 /// In-memory mirror of `settings.rs:GeneralSettings` / `GeneralSettingsViewModel`.
+///
+/// Each `*_anim` field tracks the matching `bool` so the animated
+/// toggle can interpolate the thumb position; they start in the same
+/// state as their boolean counterpart (so a fresh load from disk
+/// doesn't trigger a sweep).
 #[derive(Clone, Debug)]
 pub struct GeneralSettingsState {
     pub account_slug: String,
@@ -44,17 +50,30 @@ pub struct GeneralSettingsState {
     pub connect_on_start: bool,
     pub account_slug_is_managed: bool,
     pub connect_on_start_is_managed: bool,
+    pub start_minimized_anim: Animation<bool>,
+    pub start_on_login_anim: Animation<bool>,
+    pub connect_on_start_anim: Animation<bool>,
+}
+
+fn toggle_animation(initial: bool) -> Animation<bool> {
+    Animation::new(initial).quick()
 }
 
 impl Default for GeneralSettingsState {
     fn default() -> Self {
+        let start_minimized = true;
+        let start_on_login = false;
+        let connect_on_start = false;
         Self {
             account_slug: String::new(),
-            start_minimized: true,
-            start_on_login: false,
-            connect_on_start: false,
+            start_minimized,
+            start_on_login,
+            connect_on_start,
             account_slug_is_managed: false,
             connect_on_start_is_managed: false,
+            start_minimized_anim: toggle_animation(start_minimized),
+            start_on_login_anim: toggle_animation(start_on_login),
+            connect_on_start_anim: toggle_animation(connect_on_start),
         }
     }
 }
@@ -85,20 +104,26 @@ impl Default for AdvancedSettingsState {
 
 impl GeneralSettingsState {
     pub fn from_settings(mdm: &MdmSettings, general: &GeneralSettings) -> Self {
+        let start_minimized = general.start_minimized;
+        let start_on_login = general.start_on_login.unwrap_or(false);
+        let connect_on_start = mdm
+            .connect_on_start
+            .or(general.connect_on_start)
+            .unwrap_or(false);
         Self {
             account_slug: mdm
                 .account_slug
                 .clone()
                 .or_else(|| general.account_slug.clone())
                 .unwrap_or_default(),
-            start_minimized: general.start_minimized,
-            start_on_login: general.start_on_login.unwrap_or(false),
-            connect_on_start: mdm
-                .connect_on_start
-                .or(general.connect_on_start)
-                .unwrap_or(false),
+            start_minimized,
+            start_on_login,
+            connect_on_start,
             account_slug_is_managed: mdm.account_slug.is_some(),
             connect_on_start_is_managed: mdm.connect_on_start.is_some(),
+            start_minimized_anim: toggle_animation(start_minimized),
+            start_on_login_anim: toggle_animation(start_on_login),
+            connect_on_start_anim: toggle_animation(connect_on_start),
         }
     }
 

@@ -1,12 +1,14 @@
 //! General settings screen.
 
-use iced::widget::{Space, column, container, row, text, text_input, toggler};
+use iced::animation::Animation;
+use iced::widget::{Space, column, container, row, text, text_input};
 use iced::{Element, Length};
 
 use crate::Message;
 use crate::state::App;
 use crate::theme;
 use crate::ui::button::{Variant, fz_button};
+use crate::ui::toggle::animated_toggle;
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let s = &app.general_settings;
@@ -14,18 +16,21 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let toggles = column![
         toggle_row(
             "Start minimized",
+            &s.start_minimized_anim,
             s.start_minimized,
             Message::GeneralSettingsStartMinimizedToggled,
             false,
         ),
         toggle_row(
             "Start on login",
+            &s.start_on_login_anim,
             s.start_on_login,
             Message::GeneralSettingsStartOnLoginToggled,
             false,
         ),
         toggle_row(
             "Connect on start",
+            &s.connect_on_start_anim,
             s.connect_on_start,
             Message::GeneralSettingsConnectOnStartToggled,
             s.connect_on_start_is_managed,
@@ -90,6 +95,7 @@ fn managed_hint(is_managed: bool) -> Element<'static, Message> {
 
 fn toggle_row<'a, F>(
     label: &'a str,
+    anim: &Animation<bool>,
     value: bool,
     on_toggle: F,
     managed: bool,
@@ -97,14 +103,10 @@ fn toggle_row<'a, F>(
 where
     F: 'a + Fn(bool) -> Message,
 {
-    let mut t = toggler(value).size(20);
-    if !managed {
-        t = t.on_toggle(on_toggle);
-    }
     row![
         text(label).size(14).color(theme::LIGHT.text_primary),
         Space::new().width(Length::Fill),
-        t,
+        animated_toggle(anim, value, !managed, on_toggle, theme::LIGHT),
     ]
     .align_y(iced::Center)
     .into()
