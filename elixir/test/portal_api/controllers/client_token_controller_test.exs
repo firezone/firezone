@@ -339,7 +339,11 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert Repo.get_by(ClientToken, id: token.id)
     end
 
-    test "returns not found for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+    test "returns not found when deleting token for non-revocable actor type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       api_client_actor = actor_fixture(account: account, type: :api_client)
       token = client_token_fixture(account: account, actor: api_client_actor)
 
@@ -398,7 +402,11 @@ defmodule PortalAPI.ClientTokenControllerTest do
       end)
     end
 
-    test "returns deleted_count 0 for non-revocable actor type", %{conn: conn, account: account, actor: actor} do
+    test "returns deleted_count 0 when deleting all for non-revocable actor type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       api_client_actor = actor_fixture(account: account, type: :api_client)
       token = client_token_fixture(account: account, actor: api_client_actor)
 
