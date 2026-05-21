@@ -47,7 +47,7 @@
 
   <Applications>
     <Application Id="Firezone"
-                 Executable="VFS\ProgramFilesX64\Firezone\Firezone.exe"
+                 Executable="Firezone.exe"
                  EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Firezone"
@@ -58,7 +58,7 @@
         AppListEntry="none"/>
     </Application>
     <Application Id="FirezoneClientTunnel"
-                 Executable="VFS\ProgramFilesX64\Firezone\firezone-client-tunnel.exe"
+                 Executable="firezone-client-tunnel.exe"
                  EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Firezone Client Tunnel"
