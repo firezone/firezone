@@ -17,12 +17,15 @@
 //!   `ipc/windows.rs` falls back to the legacy `BU` ACE.
 //! - **non-zero** on every other failure. Wrong PFN, AppX service
 //!   wedged, missing payload, permissions — these all surface
-//!   loudly via the `Return="check"` MSI CA wiring + the
-//!   `register-sparse.log` file the install canary captures.
+//!   loudly via the `Return="check"` MSI CA wiring + a Sentry event
+//!   (DSN = same as the GUI's, so install failures show up next to
+//!   runtime crashes) + the `register-sparse.log` file the install
+//!   canary captures.
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::{fmt, process::ExitCode};
+use telemetry::Telemetry;
 
 /// `{Identity.Name}_{publisher_id(Identity.Publisher)}` from
 /// `win_files/AppxManifest.xml`, hard-coded because `register-sparse`
@@ -59,16 +62,36 @@ impl fmt::Display for Action {
     }
 }
 
-/// Outcome of one of our AppX deployment calls. Distinguishes
-/// "the OS doesn't support sparse MSIX" — which we want to exit
-/// gracefully on — from every other failure mode.
-#[derive(Debug, Clone, Copy)]
-enum Outcome {
-    Ok,
-    NotSupported,
+/// Marker attached (via `anyhow::Error::new`) to a deployment error
+/// when the AppX deployment service reports
+/// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED` — pre-21H2 / hardened
+/// images that don't support external-location sparse MSIX. `main`
+/// downcasts on this to choose between graceful skip (exit 0) and
+/// loud failure (exit 1, Sentry event).
+#[derive(Debug)]
+struct NotSupported;
+
+impl fmt::Display for NotSupported {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("sparse MSIX not supported on this Windows build")
+    }
 }
 
+impl std::error::Error for NotSupported {}
+
 fn main() -> ExitCode {
+    // Sentry first, so any tracing::error event from `init_tracing` or
+    // the deployment code below is captured. `Telemetry` drops at end
+    // of `main` and `sentry::ClientInitGuard::Drop` flushes events
+    // synchronously (2s default timeout), so we don't need an async
+    // `stop()` here.
+    let mut telemetry = Telemetry::new();
+    telemetry.start(
+        "entrypoint",
+        firezone_gui_client::RELEASE,
+        telemetry::GUI_DSN,
+    );
+
     let _log_handle = match init_tracing() {
         Ok(h) => h,
         #[expect(
@@ -97,11 +120,11 @@ fn main() -> ExitCode {
     let elapsed = started.elapsed();
 
     match result {
-        Ok(Outcome::Ok) => {
+        Ok(()) => {
             tracing::info!(%action, ?elapsed, "completed");
             ExitCode::SUCCESS
         }
-        Ok(Outcome::NotSupported) => {
+        Err(e) if e.is::<NotSupported>() => {
             tracing::info!(
                 %action,
                 ?elapsed,
@@ -116,6 +139,8 @@ fn main() -> ExitCode {
                 error = format!("{e:#}"),
                 "register-sparse failed"
             );
+            // `telemetry` drops as we return from `main`, flushing the
+            // `tracing::error!` above to Sentry.
             ExitCode::FAILURE
         }
     }
@@ -129,6 +154,8 @@ fn main() -> ExitCode {
 ///   EXE custom actions — they don't land in `install.log`.
 /// - Stdout: useful only when invoking `register-sparse.exe`
 ///   manually for diagnosis.
+/// - Sentry: `tracing::error!` events propagate to Sentry via the
+///   `sentry-tracing` layer that `setup_global_subscriber` installs.
 ///
 /// Returns the file-appender handle; the caller must keep it alive
 /// until exit so the background writer can flush.
@@ -150,7 +177,7 @@ fn init_tracing() -> Result<logging::file::Handle> {
 
 #[cfg(windows)]
 mod imp {
-    use super::Outcome;
+    use super::NotSupported;
     use anyhow::{Context, Result, anyhow};
     use std::{path::PathBuf, time::Instant};
     use windows::{
@@ -176,7 +203,7 @@ mod imp {
     /// `ProvisionPackageForAllUsersAsync`: the latter only acts on
     /// packages already in the all-users staged state and returns
     /// `ERROR_NOT_FOUND` / `0x80070490` otherwise.
-    pub fn provision() -> Result<Outcome> {
+    pub fn provision() -> Result<()> {
         let install_path = install_dir()?;
         let msix = install_path.join("firezone.msix");
 
@@ -209,10 +236,7 @@ mod imp {
             .get()
             .context("StagePackageByUriAsync await failed")?;
         log_deployment_result("stage", &stage_result, started);
-        match check_deployment_result(&stage_result, "stage")? {
-            Outcome::NotSupported => return Ok(Outcome::NotSupported),
-            Outcome::Ok => {}
-        }
+        check_deployment_result(&stage_result, "stage")?;
 
         let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
@@ -233,7 +257,7 @@ mod imp {
     /// `Foundation_Collections` (`IIterable<Package>`) feature for
     /// one custom-action helper, which isn't worth the binary-size
     /// hit.
-    pub fn deprovision() -> Result<Outcome> {
+    pub fn deprovision() -> Result<()> {
         let pm = package_manager()?;
         let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
 
@@ -290,13 +314,13 @@ mod imp {
         );
     }
 
-    fn check_deployment_result(result: &DeploymentResult, op: &str) -> Result<Outcome> {
+    fn check_deployment_result(result: &DeploymentResult, op: &str) -> Result<()> {
         let hr = result.ExtendedErrorCode().context("ExtendedErrorCode")?;
         if hr.is_ok() {
-            return Ok(Outcome::Ok);
+            return Ok(());
         }
         if hr.0 as u32 == APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED {
-            return Ok(Outcome::NotSupported);
+            return Err(anyhow::Error::new(NotSupported));
         }
         let msg = result
             .ErrorText()
@@ -317,14 +341,13 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
-    use super::Outcome;
     use anyhow::{Result, bail};
 
-    pub fn provision() -> Result<Outcome> {
+    pub fn provision() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 
-    pub fn deprovision() -> Result<Outcome> {
+    pub fn deprovision() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 }
