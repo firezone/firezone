@@ -179,6 +179,22 @@ mod imp {
         core::HSTRING,
     };
 
+    /// Calls a `PackageManager::*Async` deployment method, awaits it,
+    /// logs its outcome via [`log_deployment_result`], and propagates
+    /// either a [`NotSupported`] (graceful skip in `main`) or a
+    /// regular error via [`check_deployment_result`]. The closure
+    /// returns `Result<DeploymentResult>` so callers can use the `?`
+    /// operator on the underlying `windows_core::Result`s.
+    fn run_deployment(
+        op_name: &str,
+        do_op: impl FnOnce() -> Result<DeploymentResult>,
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = do_op().with_context(|| format!("{op_name} failed"))?;
+        log_deployment_result(op_name, &result, started);
+        check_deployment_result(&result, op_name)
+    }
+
     /// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED`. Returned by AppX deployment
     /// when the package's `MinVersion` floor isn't met or the OS image
     /// has external-location-sparse-MSIX support disabled.
@@ -222,25 +238,15 @@ mod imp {
             msix_uri = %msix_uri.RawUri().map(|s| s.to_string_lossy()).unwrap_or_default(),
             "calling StagePackageByUriAsync"
         );
-        let started = Instant::now();
-        let stage_result = pm
-            .StagePackageByUriAsync(&msix_uri, &stage_opts)
-            .context("StagePackageByUriAsync call failed")?
-            .get()
-            .context("StagePackageByUriAsync await failed")?;
-        log_deployment_result("stage", &stage_result, started);
-        check_deployment_result(&stage_result, "stage")?;
+        run_deployment("stage", || {
+            Ok(pm.StagePackageByUriAsync(&msix_uri, &stage_opts)?.get()?)
+        })?;
 
         let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
-        let started = Instant::now();
-        let result = pm
-            .ProvisionPackageForAllUsersAsync(&pfn)
-            .context("ProvisionPackageForAllUsersAsync call failed")?
-            .get()
-            .context("ProvisionPackageForAllUsersAsync await failed")?;
-        log_deployment_result("provision", &result, started);
-        check_deployment_result(&result, "provision")
+        run_deployment("provision", || {
+            Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.get()?)
+        })
     }
 
     /// Inverse of [`provision`]. Stops new logons from inheriting the
@@ -255,14 +261,9 @@ mod imp {
         let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
 
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
-        let started = Instant::now();
-        let result = pm
-            .DeprovisionPackageForAllUsersAsync(&pfn)
-            .context("DeprovisionPackageForAllUsersAsync call failed")?
-            .get()
-            .context("DeprovisionPackageForAllUsersAsync await failed")?;
-        log_deployment_result("deprovision", &result, started);
-        check_deployment_result(&result, "deprovision")
+        run_deployment("deprovision", || {
+            Ok(pm.DeprovisionPackageForAllUsersAsync(&pfn)?.get()?)
+        })
     }
 
     fn package_manager() -> Result<PackageManager> {

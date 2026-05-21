@@ -150,9 +150,7 @@ fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
 
 /// Renders a `PSID` into its SDDL string form (`S-1-…`) by calling
 /// `ConvertSidToStringSidW` and freeing the Windows-allocated buffer
-/// with `LocalFree`. Crate-internal helper shared by the modules that
-/// surface SIDs as text (currently [`pipe_dacl`]; the SID-derivation
-/// helpers in the follow-up PR will reuse the same wrapper).
+/// with `LocalFree`.
 pub(crate) fn sid_to_string(sid: PSID) -> Result<String> {
     let mut out = PWSTR(ptr::null_mut());
     // SAFETY: `sid` is a valid SID from a Windows API; `&mut out` is a valid
