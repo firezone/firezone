@@ -15,6 +15,7 @@ buildscript {
 plugins {
     id("org.mozilla.rust-android-gradle.rust-android") version "0.9.6" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0" apply false
     id("com.android.application") version "8.13.1" apply false
     id("com.google.dagger.hilt.android") version "2.58" apply false
     id("com.google.gms.google-services") version "4.4.4" apply false
