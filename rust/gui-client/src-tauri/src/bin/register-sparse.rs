@@ -7,14 +7,34 @@
 //! - [`imp::provision`] — stage + provision for all users.
 //! - [`imp::deprovision`] — uninstall counterpart.
 //!
-//! Both run as `LocalSystem` (the AppX provisioning APIs require it)
-//! and both exit `0` on failure: registration is best-effort, and the
-//! runtime SDDL builder in `ipc/windows.rs` falls back to the legacy
-//! `BU` ACE on legacy / hardened Windows where MSIX isn't available.
+//! Both run as `LocalSystem` (the AppX provisioning APIs require it).
+//! Exit code policy:
+//!
+//! - `0` on success.
+//! - `0` if the AppX deployment service reports the package as not
+//!   supported on this Windows build (pre-21H2 / hardened images).
+//!   The MSI install proceeds; the runtime SDDL builder in
+//!   `ipc/windows.rs` falls back to the legacy `BU` ACE.
+//! - **non-zero** on every other failure. Wrong PFN, AppX service
+//!   wedged, missing payload, permissions — these all surface
+//!   loudly via the `Return="check"` MSI CA wiring + the
+//!   `register-sparse.log` file the install canary captures.
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::{fmt, process::ExitCode};
+
+/// `{Identity.Name}_{publisher_id(Identity.Publisher)}` from
+/// `win_files/AppxManifest.xml`, hard-coded because `register-sparse`
+/// needs to pass it to `ProvisionPackageForAllUsersAsync` *before*
+/// the package is registered — at which point Windows' own
+/// `GetCurrentPackageFamilyName` would answer "no package identity".
+///
+/// If the manifest's `Identity.Publisher` or `Name` ever changes, this
+/// string has to be updated to match. The install canary catches drift:
+/// `ProvisionPackageForAllUsersAsync` fails with "package not found"
+/// when the PFN doesn't match the package the kernel staged.
+const PACKAGE_FAMILY_NAME: &str = "Firezone.Client.GUI_r4567a5vks0bt";
 
 #[derive(Parser)]
 #[command(disable_version_flag = true)]
@@ -39,6 +59,15 @@ impl fmt::Display for Action {
     }
 }
 
+/// Outcome of one of our AppX deployment calls. Distinguishes
+/// "the OS doesn't support sparse MSIX" — which we want to exit
+/// gracefully on — from every other failure mode.
+#[derive(Debug, Clone, Copy)]
+enum Outcome {
+    Ok,
+    NotSupported,
+}
+
 fn main() -> ExitCode {
     let _log_handle = match init_tracing() {
         Ok(h) => h,
@@ -48,7 +77,7 @@ fn main() -> ExitCode {
         )]
         Err(e) => {
             eprintln!("register-sparse: failed to init tracing: {e:#}");
-            return ExitCode::SUCCESS;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -56,7 +85,7 @@ fn main() -> ExitCode {
 
     tracing::info!(
         %action,
-        pfn = %firezone_gui_client::PACKAGE_FAMILY_NAME,
+        pfn = %crate::PACKAGE_FAMILY_NAME,
         "register-sparse invoked"
     );
 
@@ -68,20 +97,26 @@ fn main() -> ExitCode {
     let elapsed = started.elapsed();
 
     match result {
-        Ok(()) => {
+        Ok(Outcome::Ok) => {
             tracing::info!(%action, ?elapsed, "completed");
             ExitCode::SUCCESS
         }
+        Ok(Outcome::NotSupported) => {
+            tracing::info!(
+                %action,
+                ?elapsed,
+                "sparse MSIX not supported on this Windows build; MSI will proceed without it"
+            );
+            ExitCode::SUCCESS
+        }
         Err(e) => {
-            // Don't fail the MSI on legacy / hardened Windows where
-            // sparse-package registration isn't available.
-            tracing::warn!(
+            tracing::error!(
                 %action,
                 ?elapsed,
                 error = format!("{e:#}"),
-                "completed with error (non-fatal); MSI will proceed"
+                "register-sparse failed"
             );
-            ExitCode::SUCCESS
+            ExitCode::FAILURE
         }
     }
 }
@@ -115,6 +150,7 @@ fn init_tracing() -> Result<logging::file::Handle> {
 
 #[cfg(windows)]
 mod imp {
+    use super::Outcome;
     use anyhow::{Context, Result, anyhow};
     use std::{path::PathBuf, time::Instant};
     use windows::{
@@ -122,6 +158,11 @@ mod imp {
         Management::Deployment::{DeploymentResult, PackageManager, StagePackageOptions},
         core::HSTRING,
     };
+
+    /// `APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED`. Returned by AppX deployment
+    /// when the package's `MinVersion` floor isn't met or the OS image
+    /// has external-location-sparse-MSIX support disabled.
+    const APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED: u32 = 0x80073D54;
 
     /// Stages the sparse MSIX in the system store and provisions it
     /// for all users, so every account (including `LocalSystem` and
@@ -135,7 +176,7 @@ mod imp {
     /// `ProvisionPackageForAllUsersAsync`: the latter only acts on
     /// packages already in the all-users staged state and returns
     /// `ERROR_NOT_FOUND` / `0x80070490` otherwise.
-    pub fn provision() -> Result<()> {
+    pub fn provision() -> Result<Outcome> {
         let install_path = install_dir()?;
         let msix = install_path.join("firezone.msix");
 
@@ -168,9 +209,12 @@ mod imp {
             .get()
             .context("StagePackageByUriAsync await failed")?;
         log_deployment_result("stage", &stage_result, started);
-        check_deployment_result(&stage_result, "stage")?;
+        match check_deployment_result(&stage_result, "stage")? {
+            Outcome::NotSupported => return Ok(Outcome::NotSupported),
+            Outcome::Ok => {}
+        }
 
-        let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
+        let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
         let started = Instant::now();
         let result = pm
@@ -189,9 +233,9 @@ mod imp {
     /// `Foundation_Collections` (`IIterable<Package>`) feature for
     /// one custom-action helper, which isn't worth the binary-size
     /// hit.
-    pub fn deprovision() -> Result<()> {
+    pub fn deprovision() -> Result<Outcome> {
         let pm = package_manager()?;
-        let pfn = HSTRING::from(firezone_gui_client::PACKAGE_FAMILY_NAME);
+        let pfn = HSTRING::from(crate::PACKAGE_FAMILY_NAME);
 
         tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
         let started = Instant::now();
@@ -246,10 +290,13 @@ mod imp {
         );
     }
 
-    fn check_deployment_result(result: &DeploymentResult, op: &str) -> Result<()> {
+    fn check_deployment_result(result: &DeploymentResult, op: &str) -> Result<Outcome> {
         let hr = result.ExtendedErrorCode().context("ExtendedErrorCode")?;
         if hr.is_ok() {
-            return Ok(());
+            return Ok(Outcome::Ok);
+        }
+        if hr.0 as u32 == APPMODEL_ERROR_PACKAGE_NOT_SUPPORTED {
+            return Ok(Outcome::NotSupported);
         }
         let msg = result
             .ErrorText()
@@ -270,13 +317,14 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
+    use super::Outcome;
     use anyhow::{Result, bail};
 
-    pub fn provision() -> Result<()> {
+    pub fn provision() -> Result<Outcome> {
         bail!("`register-sparse` is only supported on Windows");
     }
 
-    pub fn deprovision() -> Result<()> {
+    pub fn deprovision() -> Result<Outcome> {
         bail!("`register-sparse` is only supported on Windows");
     }
 }

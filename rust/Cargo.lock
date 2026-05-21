@@ -2334,7 +2334,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_variant",
- "sha2",
  "specta",
  "specta-typescript",
  "strum",

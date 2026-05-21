@@ -3,9 +3,15 @@
   WiX fragment for the Firezone sparse MSIX package. Pulled into the
   main MSI via `tauri.conf.json:fragmentPaths`. Ships the sparse-MSIX
   payload and the `register-sparse.exe` custom-action helper into
-  INSTALLDIR, then fires three deferred CAs against it. See the
+  INSTALLDIR, then fires two deferred CAs against it. See the
   `register-sparse.rs` module doc for what each subcommand does to the
   AppX deployment service; this fragment only deals with the MSI side.
+
+  `Return="check"` makes a non-zero exit from `register-sparse` fail
+  the install transaction. The binary itself only exits non-zero on
+  *unexpected* failures — pre-21H2 / hardened images that don't
+  support sparse MSIX exit 0 with a log line, so the MSI install
+  still completes there.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
@@ -26,14 +32,14 @@
                   ExeCommand="provision"
                   Execute="deferred"
                   Impersonate="no"
-                  Return="ignore" />
+                  Return="check" />
 
     <CustomAction Id="DeprovisionSparsePackage"
                   FileKey="RegisterSparseExeFile"
                   ExeCommand="deprovision"
                   Execute="deferred"
                   Impersonate="no"
-                  Return="ignore" />
+                  Return="check" />
 
     <InstallExecuteSequence>
       <!--

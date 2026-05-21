@@ -115,7 +115,6 @@ features = [
 
 [build-dependencies]
 anyhow = { workspace = true }
-sha2 = { workspace = true }
 tauri-build = { workspace = true, features = [] }
 
 [dev-dependencies]

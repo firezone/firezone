@@ -36,12 +36,6 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
-/// `{Name}_{PublisherId}` derived from `win_files/AppxManifest.xml` at
-/// build time. The same string Windows uses to address an installed
-/// package via `Get-AppxPackage`. Used by `register-sparse.exe` to
-/// provision/deprovision the sparse package family.
-pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
-
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
 #[cfg(target_os = "linux")]
