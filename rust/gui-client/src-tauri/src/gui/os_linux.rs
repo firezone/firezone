@@ -36,7 +36,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     clippy::unnecessary_wraps,
     reason = "Signature must match other platforms."
 )]
-pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
+pub fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (_, rx) = futures::channel::oneshot::channel();
 
     tokio::spawn(async move {

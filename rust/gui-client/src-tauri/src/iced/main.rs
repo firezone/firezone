@@ -18,6 +18,7 @@ use std::sync::Mutex;
 
 use clap::Parser;
 use firezone_gui_client::controller::{Controller, ControllerRequest};
+use firezone_gui_client::gui::system_tray;
 use firezone_gui_client::ipc::{Server, SocketId};
 use firezone_gui_client::logging::FileCount;
 use firezone_gui_client::settings::{
@@ -71,12 +72,14 @@ pub enum Message {
     // About
     AboutOpenDocs,
 
-    // Tray
-    TrayShowWindow,
-    TraySignInClicked,
-    TrayAdminPortalClicked,
-    TrayQuitClicked,
-    OpenExternalUrl(&'static str),
+    // Tray. Clicks come back as `Event` (the existing platform-neutral
+    // dispatch type used by the Tauri tray); we forward them as
+    // `ControllerRequest::SystemTrayMenu(Event)`, the same single sink
+    // the Tauri client uses, so the Controller handles every menu
+    // event variant uniformly regardless of which UI is driving.
+    TrayEvent(system_tray::Event),
+    TrayMenu(system_tray::Menu),
+    TrayIcon(system_tray::Icon),
 
     // Window lifecycle
     WindowCloseRequested(window::Id),
@@ -100,7 +103,6 @@ pub enum Message {
         advanced: Box<AdvancedSettings>,
     },
     ControllerShowAbout,
-    ControllerTraySession(tray::TraySession),
 }
 
 fn send_request(app: &App, req: ControllerRequest) {
@@ -125,7 +127,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         // browser via integration.open_url, and processes the deep-link
         // callback. The iced side just reflects the resulting state
         // changes via the `SessionChanged` message.
-        Message::SignInPressed | Message::TraySignInClicked => {
+        Message::SignInPressed => {
             send_request(app, ControllerRequest::SignIn);
             Task::none()
         }
@@ -223,18 +225,6 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             Task::none()
         }
 
-        Message::TrayShowWindow => match app.window_id {
-            Some(id) => window::set_mode(id, Mode::Windowed),
-            None => window::oldest().map(Message::WindowOpened),
-        },
-        Message::TrayAdminPortalClicked => {
-            let _ = open::that_detached(&app.advanced_settings.auth_url);
-            Task::none()
-        }
-        Message::OpenExternalUrl(url) => {
-            let _ = open::that_detached(url);
-            Task::none()
-        }
         Message::WindowCloseRequested(id) => {
             app.window_id = Some(id);
             window::set_mode(id, Mode::Hidden)
@@ -244,15 +234,29 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             window::set_mode(id, Mode::Windowed)
         }
         Message::WindowOpened(None) => Task::none(),
-        Message::TrayQuitClicked => iced::exit(),
 
-        Message::SessionChanged(view) => {
-            set_session(app, view.clone());
-            tray::set_session(session_view_to_tray(&view));
+        // The Controller handles every `Event` variant the Tauri tray
+        // emits — favorites, clipboard, internet-resource toggle, URL
+        // open, sign-in, sign-out, etc. We just forward. `Event::Quit`
+        // additionally tells iced to exit so the user actually sees
+        // the window close; the Controller still gets the Quit so it
+        // can send the Disconnect IPC on the way out.
+        Message::TrayEvent(event) => {
+            let exit = matches!(event, system_tray::Event::Quit);
+            send_request(app, ControllerRequest::SystemTrayMenu(event));
+            if exit { iced::exit() } else { Task::none() }
+        }
+        Message::TrayMenu(menu) => {
+            tray::set_menu(menu);
             Task::none()
         }
-        Message::ControllerTraySession(tray_session) => {
-            tray::set_session(tray_session);
+        Message::TrayIcon(icon) => {
+            tray::set_icon(icon);
+            Task::none()
+        }
+
+        Message::SessionChanged(view) => {
+            set_session(app, view);
             Task::none()
         }
         Message::SettingsChanged {
@@ -315,16 +319,6 @@ fn set_session(app: &mut App, view: SessionViewModel) {
         SessionViewModel::Loading => Session::Loading,
         SessionViewModel::SignedOut => Session::SignedOut,
     };
-}
-
-fn session_view_to_tray(view: &SessionViewModel) -> tray::TraySession {
-    match view {
-        SessionViewModel::SignedIn { actor_name, .. } => tray::TraySession::SignedIn {
-            actor_name: actor_name.clone(),
-        },
-        SessionViewModel::Loading => tray::TraySession::Loading,
-        SessionViewModel::SignedOut => tray::TraySession::SignedOut,
-    }
 }
 
 fn apply_settings(
@@ -416,12 +410,14 @@ fn ui_update_stream() -> impl iced::futures::Stream<Item = Message> {
                         advanced: Box::new(advanced),
                     },
                     UiUpdate::LogsRecounted(fc) => Message::LogsRecounted(fc),
-                    // Tray icon state isn't reflected yet (we don't
-                    // composite Loading/SignedOut/etc. badges); ignore.
-                    UiUpdate::TrayIcon(_) => continue,
-                    UiUpdate::TrayMenu(app_state) => Message::ControllerTraySession(
-                        tray::TraySession::from_app_state(&app_state),
-                    ),
+                    UiUpdate::TrayIcon(icon) => Message::TrayIcon(icon),
+                    UiUpdate::TrayMenu(app_state) => {
+                        // Convert `AppState` → `Menu` IR here in the
+                        // stream task (the conversion consumes
+                        // `AppState`, which isn't `Clone`). `Menu` is
+                        // `Clone`, so it rides safely in a `Message`.
+                        Message::TrayMenu((*app_state).into_menu())
+                    }
                     UiUpdate::SetWindowVisible(v) => Message::ControllerSetWindowVisible(v),
                     UiUpdate::NavigateOverview(v) => Message::ControllerShowOverview(v),
                     UiUpdate::NavigateSettings {
@@ -529,6 +525,14 @@ fn try_main(rt: tokio::runtime::Runtime) -> anyhow::Result<()> {
         && let Err(e) = deep_link::register(exe)
     {
         tracing::warn!("failed to register deep-link scheme: {e:#}");
+    }
+
+    // System tray. On Linux this spawns a ksni service thread; on
+    // Win/Mac it stashes the TrayIcon in a `thread_local` on the
+    // current thread (which is the main thread, where iced will run
+    // its event loop). Must happen before iced takes over.
+    if let Err(e) = tray::install() {
+        tracing::warn!("failed to install system tray: {e}");
     }
 
     // Channels: iced → Controller (ControllerRequest), Controller → iced

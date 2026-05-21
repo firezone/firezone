@@ -111,31 +111,7 @@ impl GuiIntegration for IcedIntegration {
         title: impl Into<String>,
         body: impl Into<String>,
     ) -> Result<NotificationHandle> {
-        let title = title.into();
-        let body = body.into();
-        // We don't wire click-feedback yet; hand back a oneshot
-        // receiver that never fires.
-        let (_click_tx, on_click) = futures::channel::oneshot::channel();
-        #[cfg(target_os = "linux")]
-        {
-            let _ = notify_rust::Notification::new()
-                .summary(&title)
-                .body(&body)
-                .show();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = tauri_winrt_notification::Toast::new(firezone_gui_client::BUNDLE_ID)
-                .title(&title)
-                .text1(&body)
-                .scenario(tauri_winrt_notification::Scenario::Reminder)
-                .show();
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let _ = (title, body);
-        }
-        Ok(NotificationHandle { on_click })
+        firezone_gui_client::gui::show_notification(title.into(), body.into())
     }
 
     fn save_general_settings(

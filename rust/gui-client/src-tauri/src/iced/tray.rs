@@ -6,64 +6,41 @@
 //!   that talks D-Bus directly. No GTK link dep. Works on KDE Plasma,
 //!   XFCE, Cinnamon, MATE, and on GNOME *if* the user has the
 //!   "AppIndicator and KStatusNotifierItem Support" GNOME Shell
-//!   extension installed.
+//!   extension installed (same desktop requirement as the Tauri
+//!   client).
 //! - **macOS / Windows**: tauri-apps's [`tray-icon`], which uses
-//!   `NSStatusItem` / Win32 directly (no GTK on those platforms).
+//!   `NSStatusItem` / Win32 directly.
 //!
-//! Both backends produce a `Stream<Message>` that the iced application
-//! consumes via [`subscription`], and both expose [`set_session`] so the
-//! menu can be rebuilt from the Controller's current state.
+//! Both backends consume the platform-neutral [`Menu`] IR produced by
+//! the existing `gui::system_tray::AppState::into_menu` (shared with
+//! the Tauri client — same favorites, devices, internet-resource
+//! toggle, update-ready download URL, etc.) and forward each menu
+//! click as an [`Event`] back to the iced application as a
+//! [`Message::TrayEvent`]. The iced `update` fn then re-emits it as
+//! [`ControllerRequest::SystemTrayMenu`], which is the same single
+//! sink the Tauri client uses — so the Controller handles all eleven
+//! event variants uniformly regardless of which UI is driving.
 
 use crate::Message;
+use firezone_gui_client::gui::system_tray::{Icon, Menu};
 
-/// Subset of `system_tray::AppState` that the iced tray actually
-/// renders. The Controller's full `AppState` carries resource lists,
-/// connected devices, update info, etc.; the iced tray ignores those
-/// for now and just reflects sign-in / loading / signed-out.
-#[derive(Clone, Debug, Default)]
-pub enum TraySession {
-    #[default]
-    Loading,
-    SignedOut,
-    SignedIn {
-        actor_name: String,
-    },
-    Quitting,
-}
-
-impl TraySession {
-    pub fn from_app_state(state: &firezone_gui_client::gui::system_tray::AppState) -> Self {
-        use firezone_gui_client::gui::system_tray::ConnlibState;
-        match &state.connlib {
-            ConnlibState::SignedOut => Self::SignedOut,
-            ConnlibState::Loading
-            | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => Self::Loading,
-            ConnlibState::SignedIn(s) => Self::SignedIn {
-                actor_name: s.actor_name.clone(),
-            },
-            ConnlibState::Quitting => Self::Quitting,
-        }
-    }
-}
-
-/// URLs used by both tray backends. Match the `utm_url(...)` calls in
-/// the Tauri client's `system_tray::add_bottom_section`.
-pub(crate) const DOCS_URL: &str = "https://www.firezone.dev/kb?utm_source=gui-client";
-pub(crate) const SUPPORT_URL: &str = "https://www.firezone.dev/support?utm_source=gui-client";
-
-/// Build the tray.
+/// Build the tray. Must be called once, before iced starts.
 pub fn install() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     backend::install()
 }
 
-/// Push a new session into the running tray; rebuilds the menu.
-pub fn set_session(session: TraySession) {
-    backend::set_session(session);
+/// Push a new menu IR into the running tray.
+pub fn set_menu(menu: Menu) {
+    backend::set_menu(menu);
 }
 
-/// A subscription that emits a [`Message`] for every tray menu click.
+/// Push a new icon state into the running tray.
+pub fn set_icon(icon: Icon) {
+    backend::set_icon(icon);
+}
+
+/// A subscription that emits a [`Message::TrayEvent`] for every tray
+/// menu click.
 pub fn subscription() -> iced::Subscription<Message> {
     backend::subscription()
 }
@@ -79,39 +56,42 @@ mod backend {
     use iced::futures::SinkExt as _;
     use iced::stream;
     use ksni::{
-        Icon,
-        menu::{MenuItem, StandardItem, SubMenu},
+        Icon as KsniIcon,
+        menu::{CheckmarkItem, MenuItem, StandardItem, SubMenu},
     };
     use tokio::sync::mpsc;
 
-    use super::TraySession;
     use crate::Message;
-    use crate::state::Route;
+    use firezone_gui_client::gui::system_tray::{self, Entry, Event, Icon, Item, Menu};
 
-    /// Sender into the ksni service thread. iced pushes Messages from
-    /// menu activations.
-    static MENU_TX: OnceLock<mpsc::UnboundedSender<Message>> = OnceLock::new();
-    /// Receiver for menu activations; taken by the iced subscription
-    /// on its first poll.
-    static MENU_RX: OnceLock<parking_lot::Mutex<Option<mpsc::UnboundedReceiver<Message>>>> =
+    /// Sender into the ksni service thread. Each menu click pushes an
+    /// `Event` here; the iced subscription drains it into Messages.
+    static EVENT_TX: OnceLock<mpsc::UnboundedSender<Event>> = OnceLock::new();
+    /// Receiver, taken by the iced subscription on first poll.
+    static EVENT_RX: OnceLock<parking_lot::Mutex<Option<mpsc::UnboundedReceiver<Event>>>> =
         OnceLock::new();
-    /// Sender for session updates from iced → tray thread.
-    static SESSION_TX: OnceLock<mpsc::UnboundedSender<TraySession>> = OnceLock::new();
+    /// Sender for menu updates from iced → tray thread.
+    static MENU_TX: OnceLock<mpsc::UnboundedSender<Menu>> = OnceLock::new();
+    /// Sender for icon updates from iced → tray thread.
+    static ICON_TX: OnceLock<mpsc::UnboundedSender<Icon>> = OnceLock::new();
 
     #[allow(clippy::unnecessary_wraps)]
     pub fn install() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if MENU_TX.get().is_some() {
+        if EVENT_TX.get().is_some() {
             return Ok(());
         }
-        let (menu_tx, menu_rx) = mpsc::unbounded_channel::<Message>();
-        let (session_tx, mut session_rx) = mpsc::unbounded_channel::<TraySession>();
-        let _ = MENU_TX.set(menu_tx.clone());
-        let _ = MENU_RX.set(parking_lot::Mutex::new(Some(menu_rx)));
-        let _ = SESSION_TX.set(session_tx);
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<Event>();
+        let (menu_tx, mut menu_rx) = mpsc::unbounded_channel::<Menu>();
+        let (icon_tx, mut icon_rx) = mpsc::unbounded_channel::<Icon>();
+        let _ = EVENT_TX.set(event_tx.clone());
+        let _ = EVENT_RX.set(parking_lot::Mutex::new(Some(event_rx)));
+        let _ = MENU_TX.set(menu_tx);
+        let _ = ICON_TX.set(icon_tx);
 
         let tray = FzTray {
-            sender: menu_tx,
-            session: TraySession::Loading,
+            sender: event_tx,
+            menu: Menu::default(),
+            icon: Icon::default(),
         };
         std::thread::spawn(move || {
             let rt = match tokio::runtime::Builder::new_current_thread()
@@ -126,27 +106,38 @@ mod backend {
             };
             rt.block_on(async move {
                 use ksni::TrayMethods as _;
-                match tray.spawn().await {
-                    Ok(handle) => {
-                        // Drain session updates and refresh the menu.
-                        while let Some(s) = session_rx.recv().await {
-                            handle
-                                .update(|t| {
-                                    t.session = s;
-                                })
-                                .await;
-                        }
+                let handle = match tray.spawn().await {
+                    Ok(handle) => handle,
+                    Err(e) => {
+                        tracing::warn!("ksni tray failed to spawn: {e}");
+                        return;
                     }
-                    Err(e) => tracing::warn!("ksni tray failed to spawn: {e}"),
+                };
+                loop {
+                    tokio::select! {
+                        Some(menu) = menu_rx.recv() => {
+                            handle.update(|t| { t.menu = menu; }).await;
+                        }
+                        Some(icon) = icon_rx.recv() => {
+                            handle.update(|t| { t.icon = icon; }).await;
+                        }
+                        else => break,
+                    }
                 }
             });
         });
         Ok(())
     }
 
-    pub fn set_session(session: TraySession) {
-        if let Some(tx) = SESSION_TX.get() {
-            let _ = tx.send(session);
+    pub fn set_menu(menu: Menu) {
+        if let Some(tx) = MENU_TX.get() {
+            let _ = tx.send(menu);
+        }
+    }
+
+    pub fn set_icon(icon: Icon) {
+        if let Some(tx) = ICON_TX.get() {
+            let _ = tx.send(icon);
         }
     }
 
@@ -158,23 +149,29 @@ mod backend {
         stream::channel(
             16,
             |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-                let mut rx = match MENU_RX.get().and_then(|m| m.lock().take()) {
+                let mut rx = match EVENT_RX.get().and_then(|m| m.lock().take()) {
                     Some(rx) => rx,
                     None => return,
                 };
-                while let Some(msg) = rx.recv().await {
-                    if output.send(msg).await.is_err() {
-                        break;
-                    }
-                }
+                while let Some(event) = rx.recv().await
+                    && output.send(Message::TrayEvent(event)).await.is_ok()
+                {}
             },
         )
     }
 
-    #[derive(Debug)]
     struct FzTray {
-        sender: mpsc::UnboundedSender<Message>,
-        session: TraySession,
+        sender: mpsc::UnboundedSender<Event>,
+        menu: Menu,
+        icon: Icon,
+    }
+
+    impl std::fmt::Debug for FzTray {
+        // ksni requires `Tray: Debug`; the inner Menu / Icon don't
+        // derive it (the IR is `Serialize`/`PartialEq` only).
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("FzTray").finish_non_exhaustive()
+        }
     }
 
     impl ksni::Tray for FzTray {
@@ -192,181 +189,76 @@ mod backend {
                 description: String::new(),
             }
         }
-        fn icon_pixmap(&self) -> Vec<Icon> {
-            decode_logo_argb()
-                .map(|(w, h, data)| {
-                    vec![Icon {
-                        width: w as i32,
-                        height: h as i32,
-                        data,
-                    }]
-                })
-                .unwrap_or_default()
+        fn icon_pixmap(&self) -> Vec<KsniIcon> {
+            let composed = system_tray::compose_icon(&self.icon);
+            // ksni wants ARGB; the compositor produces RGBA — swizzle.
+            let mut argb = Vec::with_capacity(composed.rgba.len());
+            for px in composed.rgba.chunks_exact(4) {
+                argb.push(px[3]);
+                argb.push(px[0]);
+                argb.push(px[1]);
+                argb.push(px[2]);
+            }
+            vec![KsniIcon {
+                width: composed.width as i32,
+                height: composed.height as i32,
+                data: argb,
+            }]
         }
         fn menu(&self) -> Vec<MenuItem<Self>> {
-            build_menu(&self.session, &self.sender)
+            build_menu(&self.menu, &self.sender)
         }
     }
 
-    fn build_menu(
-        session: &TraySession,
-        sender: &mpsc::UnboundedSender<Message>,
-    ) -> Vec<MenuItem<FzTray>> {
-        let send = |msg: Message| {
-            let sender = sender.clone();
-            Box::new(move |_: &mut FzTray| {
-                let _ = sender.send(msg.clone());
-            }) as Box<dyn Fn(&mut FzTray) + Send + Sync + 'static>
-        };
-        let quit_text = match session {
-            TraySession::SignedIn { .. } => "Disconnect and quit Firezone",
-            TraySession::Loading | TraySession::SignedOut | TraySession::Quitting => {
-                "Quit Firezone"
-            }
-        };
-
-        let mut items: Vec<MenuItem<FzTray>> = Vec::new();
-        match session {
-            TraySession::Loading => {
-                items.push(
-                    StandardItem {
-                        label: "Loading...".into(),
-                        enabled: false,
-                        ..Default::default()
-                    }
-                    .into(),
-                );
-            }
-            TraySession::SignedOut => {
-                items.push(
-                    StandardItem {
-                        label: "Sign In".into(),
-                        activate: send(Message::TraySignInClicked),
-                        ..Default::default()
-                    }
-                    .into(),
-                );
-            }
-            TraySession::SignedIn { actor_name } => {
-                items.push(
-                    StandardItem {
-                        label: format!("Signed in as {actor_name}"),
-                        enabled: false,
-                        ..Default::default()
-                    }
-                    .into(),
-                );
-                items.push(
-                    StandardItem {
-                        label: "Sign Out".into(),
-                        activate: send(Message::SignOutPressed),
-                        ..Default::default()
-                    }
-                    .into(),
-                );
-            }
-            TraySession::Quitting => {
-                items.push(
-                    StandardItem {
-                        label: "Quitting...".into(),
-                        enabled: false,
-                        ..Default::default()
-                    }
-                    .into(),
-                );
-            }
-        }
-
-        items.push(MenuItem::Separator);
-        items.push(
-            StandardItem {
-                label: "About Firezone".into(),
-                activate: send(Message::Navigate(Route::About)),
-                ..Default::default()
-            }
-            .into(),
-        );
-        items.push(
-            StandardItem {
-                label: "Admin Portal...".into(),
-                activate: send(Message::TrayAdminPortalClicked),
-                ..Default::default()
-            }
-            .into(),
-        );
-        items.push(
-            SubMenu {
-                label: "Help".into(),
-                submenu: vec![
-                    StandardItem {
-                        label: "Documentation...".into(),
-                        activate: send(Message::OpenExternalUrl(super::DOCS_URL)),
-                        ..Default::default()
-                    }
-                    .into(),
-                    StandardItem {
-                        label: "Support...".into(),
-                        activate: send(Message::OpenExternalUrl(super::SUPPORT_URL)),
-                        ..Default::default()
-                    }
-                    .into(),
-                ],
-                ..Default::default()
-            }
-            .into(),
-        );
-        items.push(
-            StandardItem {
-                label: "Settings".into(),
-                activate: send(Message::Navigate(Route::GeneralSettings)),
-                ..Default::default()
-            }
-            .into(),
-        );
-        items.push(MenuItem::Separator);
-        items.push(
-            StandardItem {
-                label: quit_text.into(),
-                activate: send(Message::TrayQuitClicked),
-                ..Default::default()
-            }
-            .into(),
-        );
-        items
+    fn build_menu(menu: &Menu, sender: &mpsc::UnboundedSender<Event>) -> Vec<MenuItem<FzTray>> {
+        menu.entries
+            .iter()
+            .map(|entry| build_entry(entry, sender))
+            .collect()
     }
 
-    fn decode_logo_argb() -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
-        let decoder = png::Decoder::new(std::io::Cursor::new(crate::assets::TRAY_LOGO_PNG));
-        let mut reader = decoder.read_info()?;
-        let size = reader
-            .output_buffer_size()
-            .ok_or("PNG decoder gave no buffer size")?;
-        let mut buf = vec![0u8; size];
-        let info = reader.next_frame(&mut buf)?;
-        let rgba = match info.color_type {
-            png::ColorType::Rgba => buf,
-            png::ColorType::Rgb => {
-                let mut out = Vec::with_capacity(buf.len() / 3 * 4);
-                for chunk in buf.chunks_exact(3) {
-                    out.extend_from_slice(chunk);
-                    out.push(0xff);
-                }
-                out
+    fn build_entry(entry: &Entry, sender: &mpsc::UnboundedSender<Event>) -> MenuItem<FzTray> {
+        match entry {
+            Entry::Separator => MenuItem::Separator,
+            Entry::Submenu { title, inner } => SubMenu {
+                label: title.clone(),
+                submenu: build_menu(inner, sender),
+                ..Default::default()
             }
-            png::ColorType::Grayscale
-            | png::ColorType::GrayscaleAlpha
-            | png::ColorType::Indexed => {
-                return Err(format!("unsupported PNG color type: {:?}", info.color_type).into());
-            }
-        };
-        let mut argb = Vec::with_capacity(rgba.len());
-        for px in rgba.chunks_exact(4) {
-            argb.push(px[3]);
-            argb.push(px[0]);
-            argb.push(px[1]);
-            argb.push(px[2]);
+            .into(),
+            Entry::Item(item) => build_item(item, sender),
         }
-        Ok((info.width, info.height, argb))
+    }
+
+    fn build_item(item: &Item, sender: &mpsc::UnboundedSender<Event>) -> MenuItem<FzTray> {
+        let label = item.title.clone();
+        let enabled = item.event.is_some();
+        let event = item.event.clone();
+        let sender = sender.clone();
+        let activate = Box::new(move |_: &mut FzTray| {
+            if let Some(e) = event.clone() {
+                let _ = sender.send(e);
+            }
+        });
+
+        if let Some(checked) = item.checked {
+            CheckmarkItem {
+                label,
+                enabled,
+                checked,
+                activate,
+                ..Default::default()
+            }
+            .into()
+        } else {
+            StandardItem {
+                label,
+                enabled,
+                activate,
+                ..Default::default()
+            }
+            .into()
+        }
     }
 }
 
@@ -381,36 +273,30 @@ mod backend {
     use iced::futures::SinkExt as _;
     use iced::stream;
     use tray_icon::{
-        Icon, TrayIcon, TrayIconBuilder,
-        menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu},
+        Icon as MudaIcon, TrayIcon, TrayIconBuilder,
+        menu::{
+            CheckMenuItem, IsMenuItem, Menu as MudaMenu, MenuEvent, MenuId, MenuItem,
+            PredefinedMenuItem, Submenu,
+        },
     };
 
-    use super::TraySession;
     use crate::Message;
-    use crate::assets;
-    use crate::state::Route;
-
-    const ID_SIGN_IN: &str = "fz.sign_in";
-    const ID_SIGN_OUT: &str = "fz.sign_out";
-    const ID_ABOUT: &str = "fz.about";
-    const ID_ADMIN_PORTAL: &str = "fz.admin_portal";
-    const ID_DOCS: &str = "fz.docs";
-    const ID_SUPPORT: &str = "fz.support";
-    const ID_SETTINGS: &str = "fz.settings";
-    const ID_QUIT: &str = "fz.quit";
+    use firezone_gui_client::gui::system_tray::{self, Entry, Icon, Item, Menu};
 
     thread_local! {
         /// The TrayIcon lives on the main thread (where iced's winit
         /// event loop runs). `RefCell` for interior mutability when
-        /// rebuilding the menu in `set_session`.
+        /// rebuilding the menu / swapping the icon.
         static TRAY: RefCell<Option<TrayIcon>> = const { RefCell::new(None) };
     }
 
     pub fn install() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let initial_menu = build_muda_menu(&Menu::default());
+        let initial_icon = to_muda_icon(&Icon::default())?;
         let tray = TrayIconBuilder::new()
             .with_tooltip("Firezone")
-            .with_menu(Box::new(build_menu(&TraySession::Loading)))
-            .with_icon(icon_from_png()?)
+            .with_menu(Box::new(initial_menu))
+            .with_icon(initial_icon)
             .build()?;
         TRAY.with(|t| {
             *t.borrow_mut() = Some(tray);
@@ -418,134 +304,88 @@ mod backend {
         Ok(())
     }
 
-    pub fn set_session(session: TraySession) {
+    pub fn set_menu(menu: Menu) {
         TRAY.with(|cell| {
             let mut slot = cell.borrow_mut();
             if let Some(tray) = slot.as_mut() {
-                let menu = build_menu(&session);
-                if let Err(e) = tray.set_menu(Some(Box::new(menu))) {
+                let muda_menu = build_muda_menu(&menu);
+                if let Err(e) = tray.set_menu(Some(Box::new(muda_menu))) {
                     tracing::warn!("failed to update tray menu: {e}");
                 }
             }
         });
     }
 
-    fn build_menu(session: &TraySession) -> Menu {
-        let menu = Menu::new();
-        match session {
-            TraySession::Loading => {
-                menu.append(&MenuItem::new("Loading...", false, None)).ok();
+    pub fn set_icon(icon: Icon) {
+        TRAY.with(|cell| {
+            let mut slot = cell.borrow_mut();
+            if let Some(tray) = slot.as_mut() {
+                match to_muda_icon(&icon) {
+                    Ok(muda_icon) => {
+                        if let Err(e) = tray.set_icon(Some(muda_icon)) {
+                            tracing::warn!("failed to set tray icon: {e}");
+                        }
+                    }
+                    Err(e) => tracing::warn!("failed to compose tray icon: {e}"),
+                }
             }
-            TraySession::SignedOut => {
-                menu.append(&MenuItem::with_id(
-                    MenuId::new(ID_SIGN_IN),
-                    "Sign In",
-                    true,
-                    None,
-                ))
-                .ok();
-            }
-            TraySession::SignedIn { actor_name } => {
-                menu.append(&MenuItem::new(
-                    &format!("Signed in as {actor_name}"),
-                    false,
-                    None,
-                ))
-                .ok();
-                menu.append(&MenuItem::with_id(
-                    MenuId::new(ID_SIGN_OUT),
-                    "Sign Out",
-                    true,
-                    None,
-                ))
-                .ok();
-            }
-            TraySession::Quitting => {
-                menu.append(&MenuItem::new("Quitting...", false, None)).ok();
-            }
-        }
-
-        menu.append(&PredefinedMenuItem::separator()).ok();
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_ABOUT),
-            "About Firezone",
-            true,
-            None,
-        ))
-        .ok();
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_ADMIN_PORTAL),
-            "Admin Portal...",
-            true,
-            None,
-        ))
-        .ok();
-
-        let help = Submenu::new("Help", true);
-        help.append(&MenuItem::with_id(
-            MenuId::new(ID_DOCS),
-            "Documentation...",
-            true,
-            None,
-        ))
-        .ok();
-        help.append(&MenuItem::with_id(
-            MenuId::new(ID_SUPPORT),
-            "Support...",
-            true,
-            None,
-        ))
-        .ok();
-        menu.append(&help).ok();
-
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_SETTINGS),
-            "Settings",
-            true,
-            None,
-        ))
-        .ok();
-        menu.append(&PredefinedMenuItem::separator()).ok();
-        let quit_label = match session {
-            TraySession::SignedIn { .. } => "Disconnect and quit Firezone",
-            _ => "Quit Firezone",
-        };
-        menu.append(&MenuItem::with_id(
-            MenuId::new(ID_QUIT),
-            quit_label,
-            true,
-            None,
-        ))
-        .ok();
-
-        menu
+        });
     }
 
-    fn icon_from_png() -> Result<Icon, Box<dyn std::error::Error + Send + Sync>> {
-        let decoder = png::Decoder::new(std::io::Cursor::new(assets::TRAY_LOGO_PNG));
-        let mut reader = decoder.read_info()?;
-        let size = reader
-            .output_buffer_size()
-            .ok_or("PNG decoder gave no buffer size")?;
-        let mut buf = vec![0u8; size];
-        let info = reader.next_frame(&mut buf)?;
-        let rgba = match info.color_type {
-            png::ColorType::Rgba => buf,
-            png::ColorType::Rgb => {
-                let mut out = Vec::with_capacity(buf.len() / 3 * 4);
-                for chunk in buf.chunks_exact(3) {
-                    out.extend_from_slice(chunk);
-                    out.push(0xff);
+    fn to_muda_icon(icon: &Icon) -> Result<MudaIcon, tray_icon::BadIcon> {
+        let composed = system_tray::compose_icon(icon);
+        MudaIcon::from_rgba(composed.rgba, composed.width, composed.height)
+    }
+
+    fn build_muda_menu(menu: &Menu) -> MudaMenu {
+        let muda = MudaMenu::new();
+        for entry in &menu.entries {
+            match make_entry(entry) {
+                Ok(item) => {
+                    if let Err(e) = muda.append(&*item) {
+                        tracing::warn!("failed to append tray menu entry: {e}");
+                    }
                 }
-                out
+                Err(e) => tracing::warn!("failed to build tray menu entry: {e}"),
             }
-            png::ColorType::Grayscale
-            | png::ColorType::GrayscaleAlpha
-            | png::ColorType::Indexed => {
-                return Err(format!("unsupported PNG color type: {:?}", info.color_type).into());
+        }
+        muda
+    }
+
+    fn make_entry(entry: &Entry) -> Result<Box<dyn IsMenuItem>, serde_json::Error> {
+        let item: Box<dyn IsMenuItem> = match entry {
+            Entry::Separator => Box::new(PredefinedMenuItem::separator()),
+            Entry::Submenu { title, inner } => {
+                let sub = Submenu::new(title, true);
+                for entry in &inner.entries {
+                    match make_entry(entry) {
+                        Ok(item) => {
+                            if let Err(e) = sub.append(&*item) {
+                                tracing::warn!("failed to append tray submenu entry: {e}");
+                            }
+                        }
+                        Err(e) => tracing::warn!("failed to build tray submenu entry: {e}"),
+                    }
+                }
+                Box::new(sub)
             }
+            Entry::Item(item) => make_item(item)?,
         };
-        Ok(Icon::from_rgba(rgba, info.width, info.height)?)
+        Ok(item)
+    }
+
+    fn make_item(item: &Item) -> Result<Box<dyn IsMenuItem>, serde_json::Error> {
+        let Some(event) = &item.event else {
+            // No event → disabled placeholder ("Signed in as Foo",
+            // "Loading...", "Resources" section header, etc.).
+            return Ok(Box::new(MenuItem::new(&item.title, false, None)));
+        };
+        let id = MenuId::new(serde_json::to_string(event)?);
+        let widget: Box<dyn IsMenuItem> = match item.checked {
+            Some(checked) => Box::new(CheckMenuItem::with_id(id, &item.title, true, checked, None)),
+            None => Box::new(MenuItem::with_id(id, &item.title, true, None)),
+        };
+        Ok(widget)
     }
 
     pub fn subscription() -> iced::Subscription<Message> {
@@ -564,9 +404,10 @@ mod backend {
                     })
                     .await;
                     let Ok(Ok(event)) = event else { break };
-                    if let Some(msg) = to_message(&event)
-                        && output.send(msg).await.is_err()
-                    {
+                    let Some(msg) = to_message(&event) else {
+                        continue;
+                    };
+                    if output.send(msg).await.is_err() {
                         break;
                     }
                 }
@@ -575,16 +416,10 @@ mod backend {
     }
 
     fn to_message(event: &MenuEvent) -> Option<Message> {
-        match event.id.as_ref() {
-            ID_QUIT => Some(Message::TrayQuitClicked),
-            ID_SIGN_IN => Some(Message::TraySignInClicked),
-            ID_SIGN_OUT => Some(Message::SignOutPressed),
-            ID_ABOUT => Some(Message::Navigate(Route::About)),
-            ID_ADMIN_PORTAL => Some(Message::TrayAdminPortalClicked),
-            ID_DOCS => Some(Message::OpenExternalUrl(super::DOCS_URL)),
-            ID_SUPPORT => Some(Message::OpenExternalUrl(super::SUPPORT_URL)),
-            ID_SETTINGS => Some(Message::Navigate(Route::GeneralSettings)),
-            _ => None,
-        }
+        // The menu ID is the JSON-serialized `Event` — same encoding the
+        // Tauri client uses, so disabled / placeholder items (without an
+        // ID) deserialize to `None` and are silently ignored.
+        let event: system_tray::Event = serde_json::from_str(event.id.as_ref()).ok()?;
+        Some(Message::TrayEvent(event))
     }
 }

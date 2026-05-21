@@ -7,11 +7,6 @@ use std::sync::OnceLock;
 /// Firezone logo (PNG, 512x512). Source: `src-frontend/logo.png`.
 pub const LOGO_PNG: &[u8] = include_bytes!("../../../src-frontend/logo.png");
 
-/// Tray-sized Firezone logo with a white circular background. Source:
-/// `src-tauri/icons/tray/Logo.png`. Without the white background the
-/// icon disappears against dark system tray themes.
-pub const TRAY_LOGO_PNG: &[u8] = include_bytes!("../../icons/tray/Logo.png");
-
 /// Roboto Regular TTF, matching the Elixir admin portal's `font-sans`
 /// stack (`Roboto Variable, Roboto, ...`).
 pub const ROBOTO_REGULAR: &[u8] = include_bytes!("Roboto-Regular.ttf");

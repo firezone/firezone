@@ -17,7 +17,7 @@ use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
 
 mod builder;
-mod compositor;
+pub mod compositor;
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
 type TauriMenu = tauri::menu::Menu<tauri::Wry>;
@@ -65,7 +65,10 @@ pub(crate) struct Tray {
     last_menu_set: Option<Menu>,
 }
 
-fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+/// Composite the layered PNGs that make up the tray icon for a given
+/// [`Icon`] state. Shared with the iced binary so both UIs render the
+/// same artwork.
+pub fn compose_icon(that: &Icon) -> Image {
     let layers = match that.base {
         IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
         IconBase::SignedIn => &[LOGO_BASE][..],
@@ -74,9 +77,11 @@ fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
     .iter()
     .copied()
     .chain(that.update_ready.then_some(UPDATE_READY_LAYER));
-    let composed =
-        compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs");
-    image_to_tauri_icon(composed)
+    compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs")
+}
+
+fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+    image_to_tauri_icon(compose_icon(that))
 }
 
 fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
