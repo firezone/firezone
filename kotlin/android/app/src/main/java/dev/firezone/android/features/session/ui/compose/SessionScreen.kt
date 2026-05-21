@@ -35,7 +35,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
-import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.features.session.ui.ResourceViewModel
 
 private const val TAB_FAVORITES = 0
@@ -46,7 +45,7 @@ fun SessionScreen(
     actorName: String?,
     resources: List<ResourceViewModel>,
     favorites: Favorites,
-    onToggleInternet: () -> ResourceState,
+    onToggleInternet: () -> Unit,
     onAddFavorite: (String) -> Unit,
     onRemoveFavorite: (String) -> Unit,
     onSettings: () -> Unit,
@@ -66,7 +65,8 @@ fun SessionScreen(
             }
         }
 
-    var selectedResource by remember { mutableStateOf<ResourceViewModel?>(null) }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedResource = remember(resources, selectedId) { resources.firstOrNull { it.id == selectedId } }
 
     Scaffold { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
@@ -111,7 +111,7 @@ fun SessionScreen(
             LazyColumn(Modifier.weight(1f)) {
                 itemsIndexed(displayed, key = { _, resource -> resource.id }) { index, resource ->
                     if (index > 0) HorizontalDivider()
-                    ResourceRow(resource = resource, onClick = { selectedResource = resource })
+                    ResourceRow(resource = resource, onClick = { selectedId = resource.id })
                 }
             }
 
@@ -136,7 +136,7 @@ fun SessionScreen(
             onAddFavorite = { onAddFavorite(resource.id) },
             onRemoveFavorite = { onRemoveFavorite(resource.id) },
             onToggleInternet = onToggleInternet,
-            onDismiss = { selectedResource = null },
+            onDismiss = { selectedId = null },
         )
     }
 }

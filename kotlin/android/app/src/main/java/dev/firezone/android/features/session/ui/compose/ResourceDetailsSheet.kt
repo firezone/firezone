@@ -20,10 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,7 +29,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.features.session.ui.ResourceViewModel
@@ -46,7 +42,7 @@ fun ResourceDetailsSheet(
     isFavorite: Boolean,
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
-    onToggleInternet: () -> ResourceState,
+    onToggleInternet: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -61,6 +57,23 @@ fun ResourceDetailsSheet(
                 SiteSection(siteName = site.name, status = resource.status)
             }
         }
+    }
+}
+
+@Composable
+private fun InternetResourceDetails(
+    resource: ResourceViewModel,
+    onToggleInternet: () -> Unit,
+) {
+    SectionLabel("Resource")
+    DetailRow(label = "Name:") { Text(resource.name) }
+    DetailRow(label = "Description:") { Text("All network traffic") }
+
+    OutlinedButton(
+        onClick = onToggleInternet,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (resource.state.isEnabled()) "Disable this resource" else "Enable this resource")
     }
 }
 
@@ -107,25 +120,6 @@ private fun NonInternetResourceDetails(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites")
-    }
-}
-
-@Composable
-private fun InternetResourceDetails(
-    resource: ResourceViewModel,
-    onToggleInternet: () -> ResourceState,
-) {
-    var state by remember(resource.id) { mutableStateOf(resource.state) }
-
-    SectionLabel("Resource")
-    DetailRow(label = "Name:") { Text(resource.name) }
-    DetailRow(label = "Description:") { Text("All network traffic") }
-
-    OutlinedButton(
-        onClick = { state = onToggleInternet() },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(if (state.isEnabled()) "Disable this resource" else "Enable this resource")
     }
 }
 
