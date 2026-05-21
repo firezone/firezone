@@ -50,9 +50,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 .padding([8, 12])
                 .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT)),
             managed_hint(s.account_slug_is_managed),
-            Space::new().height(12),
+            Space::new().height(18),
             toggles,
-            Space::new().height(20),
+            Space::new().height(24),
             row![
                 fz_button(
                     "Save",
@@ -69,7 +69,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             ]
             .spacing(8),
         ]
-        .spacing(4),
+        .spacing(6),
     )
     .width(Length::Fill)
     .into()

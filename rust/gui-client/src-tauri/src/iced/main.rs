@@ -416,7 +416,7 @@ fn view(app: &App) -> Element<'_, Message> {
     let main_area = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding(12)
+        .padding(20)
         .style(|_theme: &Theme| container::Style {
             background: Some(iced::Background::Color(theme::LIGHT.canvas)),
             ..container::Style::default()

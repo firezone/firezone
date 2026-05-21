@@ -58,7 +58,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             ]
             .spacing(8),
         ]
-        .spacing(4),
+        .spacing(6),
     )
     .width(Length::Fill)
     .into()
