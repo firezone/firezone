@@ -121,6 +121,33 @@ defmodule Portal.VersionTest do
       refute Portal.Version.resource_cannot_change_sites_on_client?(session)
     end
 
+    test "headless session below version cannot change sites" do
+      session = %Portal.ClientSession{
+        version: "1.5.3",
+        user_agent: "Fedora/42.0.0 headless-client/1.5.3 (arm64; 24.1.0)"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "headless session at version cannot change sites" do
+      session = %Portal.ClientSession{
+        version: "1.5.4",
+        user_agent: "Fedora/42.0.0 headless-client/1.5.4 (arm64; 24.1.0)"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
+    test "headless session above version can change sites" do
+      session = %Portal.ClientSession{
+        version: "1.5.5",
+        user_agent: "Fedora/42.0.0 headless-client/1.5.5 (arm64; 24.1.0)"
+      }
+
+      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
+    end
+
     test "nil version returns false" do
       session = %Portal.ClientSession{version: nil}
       refute Portal.Version.resource_cannot_change_sites_on_client?(session)

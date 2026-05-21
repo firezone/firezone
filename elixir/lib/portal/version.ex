@@ -57,6 +57,7 @@ defmodule Portal.Version do
       :apple -> Version.compare(session.version, "1.5.9") == :lt
       :android -> Version.compare(session.version, "1.5.5") == :lt
       :gui -> Version.compare(session.version, "1.5.9") == :lt
+      :headless -> Version.compare(session.version, "1.5.5") == :lt
     end
   end
 
