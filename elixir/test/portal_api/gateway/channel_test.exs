@@ -42,7 +42,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
   defp build_gateway_session(gateway, token, opts \\ []) do
     %Portal.GatewaySession{
-      id: Keyword.get(opts, :session_id),
+      id: Keyword.get_lazy(opts, :session_id, &Ecto.UUID.generate/0),
       device_id: gateway.id,
       account_id: gateway.account_id,
       gateway_token_id: token.id,
@@ -65,7 +65,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
     start_supervised!(
       {Portal.Queue,
        Keyword.merge(PortalAPI.Gateway.Socket.gateway_session_queue_opts(),
-         callers: [self()]
+         callers: [self()],
+         flush_on_terminate: false
        )}
     )
 
