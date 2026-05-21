@@ -243,11 +243,27 @@ impl PortAndPeerV6 {
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct StatsEvent {
-    pub relayed_data: u64,
-    pub processing_duration_ns: u64,
+    relayed_data: u64,
+    processing_duration_ns: u64,
 }
 
 impl StatsEvent {
+    pub fn new(relayed_data: u64, processing_duration: core::time::Duration) -> Self {
+        Self {
+            relayed_data,
+            processing_duration_ns: duration_as_nanos_u64(processing_duration),
+        }
+    }
+
+    pub fn relayed_data(&self) -> u64 {
+        self.relayed_data
+    }
+
+    /// Time the XDP program spent processing this packet.
+    pub fn processing_duration(&self) -> core::time::Duration {
+        core::time::Duration::from_nanos(self.processing_duration_ns)
+    }
+
     #[cfg(feature = "std")]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let (relayed_chunk, rest) = bytes.split_first_chunk::<8>()?;
@@ -258,10 +274,38 @@ impl StatsEvent {
             processing_duration_ns: u64::from_ne_bytes(*duration_chunk),
         })
     }
+}
 
-    /// Time the XDP program spent processing this packet.
-    pub fn processing_duration(&self) -> core::time::Duration {
-        core::time::Duration::from_nanos(self.processing_duration_ns)
+#[inline]
+fn duration_as_nanos_u64(d: core::time::Duration) -> u64 {
+    // Stays in u64; avoids `Duration::as_nanos`'s u128 path for the BPF target.
+    d.as_secs() * 1_000_000_000 + d.subsec_nanos() as u64
+}
+
+#[cfg(all(test, feature = "std"))]
+mod stats_event_tests {
+    use super::*;
+
+    #[test]
+    fn from_bytes_roundtrips_the_wire_format() {
+        let original = StatsEvent {
+            relayed_data: 4242,
+            processing_duration_ns: 9999,
+        };
+
+        // The kernel writes the struct's bytes verbatim into the perf buffer; lock in that the
+        // wire format matches the `#[repr(C)]` in-memory layout.
+        // SAFETY: `StatsEvent` is `#[repr(C)]` and contains only `u64`s, so every byte pattern
+        // of its size is a valid `[u8; 16]` and vice versa.
+        let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
+
+        let parsed = StatsEvent::from_bytes(&bytes).expect("size-matching slice parses");
+
+        assert_eq!(parsed.relayed_data, original.relayed_data);
+        assert_eq!(
+            parsed.processing_duration_ns,
+            original.processing_duration_ns
+        );
     }
 }
 

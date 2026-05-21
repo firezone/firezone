@@ -155,8 +155,9 @@ impl Program {
                                 continue;
                             };
 
-                            data_relayed.add(stats.relayed_data, &[]);
-                            processing_duration.record(stats.processing_duration_ns, &[]);
+                            data_relayed.add(stats.relayed_data(), &[]);
+                            processing_duration
+                                .record(stats.processing_duration().as_nanos() as u64, &[]);
                         }
                     }
                 }
