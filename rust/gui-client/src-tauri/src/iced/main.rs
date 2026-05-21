@@ -100,6 +100,7 @@ pub enum Message {
         advanced: Box<AdvancedSettings>,
     },
     ControllerShowAbout,
+    ControllerTraySession(tray::TraySession),
 }
 
 fn send_request(app: &App, req: ControllerRequest) {
@@ -246,7 +247,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::TrayQuitClicked => iced::exit(),
 
         Message::SessionChanged(view) => {
-            set_session(app, view);
+            set_session(app, view.clone());
+            tray::set_session(session_view_to_tray(&view));
+            Task::none()
+        }
+        Message::ControllerTraySession(tray_session) => {
+            tray::set_session(tray_session);
             Task::none()
         }
         Message::SettingsChanged {
@@ -309,6 +315,16 @@ fn set_session(app: &mut App, view: SessionViewModel) {
         SessionViewModel::Loading => Session::Loading,
         SessionViewModel::SignedOut => Session::SignedOut,
     };
+}
+
+fn session_view_to_tray(view: &SessionViewModel) -> tray::TraySession {
+    match view {
+        SessionViewModel::SignedIn { actor_name, .. } => tray::TraySession::SignedIn {
+            actor_name: actor_name.clone(),
+        },
+        SessionViewModel::Loading => tray::TraySession::Loading,
+        SessionViewModel::SignedOut => tray::TraySession::SignedOut,
+    }
 }
 
 fn apply_settings(
@@ -400,8 +416,12 @@ fn ui_update_stream() -> impl iced::futures::Stream<Item = Message> {
                         advanced: Box::new(advanced),
                     },
                     UiUpdate::LogsRecounted(fc) => Message::LogsRecounted(fc),
-                    // The tray menu and icon don't track app state yet.
-                    UiUpdate::TrayIcon(_) | UiUpdate::TrayMenu(_) => continue,
+                    // Tray icon state isn't reflected yet (we don't
+                    // composite Loading/SignedOut/etc. badges); ignore.
+                    UiUpdate::TrayIcon(_) => continue,
+                    UiUpdate::TrayMenu(app_state) => Message::ControllerTraySession(
+                        tray::TraySession::from_app_state(&app_state),
+                    ),
                     UiUpdate::SetWindowVisible(v) => Message::ControllerSetWindowVisible(v),
                     UiUpdate::NavigateOverview(v) => Message::ControllerShowOverview(v),
                     UiUpdate::NavigateSettings {
