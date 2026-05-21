@@ -351,10 +351,9 @@ mod backend {
         TRAY.with(|cell| {
             let mut slot = cell.borrow_mut();
             if let Some(tray) = slot.as_mut() {
-                let muda_menu = build_muda_menu(&menu);
-                if let Err(e) = tray.set_menu(Some(Box::new(muda_menu))) {
-                    tracing::warn!("failed to update tray menu: {e}");
-                }
+                // `TrayIcon::set_menu` returns `()` on all platforms
+                // — no Result to inspect.
+                tray.set_menu(Some(Box::new(build_muda_menu(&menu))));
             }
         });
     }
