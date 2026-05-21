@@ -144,7 +144,9 @@ impl Appender {
         let filename = format!("{}.{date}.{}", self.file_base_name, self.file_extension);
 
         let path = self.directory.join(&filename);
-        let latest = self.directory.join("latest");
+        let latest = self
+            .directory
+            .join(format!("{}.latest", self.file_base_name));
         let mut open_options = fs::OpenOptions::new();
         open_options.append(true).create(true);
 
