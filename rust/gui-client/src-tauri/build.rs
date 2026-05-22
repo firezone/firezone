@@ -1,6 +1,29 @@
-fn main() -> anyhow::Result<()> {
+use anyhow::Result;
+use sha2::{Digest as _, Sha256};
+
+/// `Name` half of the Package Family Name. Must match
+/// `<Identity Name="…"/>` in `win_files/AppxManifest.xml`; the
+/// install canary
+/// (`scripts/tests/tunnel-pipe-dacl-windows.ps1`) fails loudly
+/// if any of `PACKAGE_NAME`, `PUBLISHER_DN`, or the algorithms
+/// below drift from what the kernel produces.
+const PACKAGE_NAME: &str = "Firezone.Client.GUI";
+
+/// Publisher cert Subject DN (canonical form, post-XML-entity-decoding).
+/// Must match `<Identity Publisher="…"/>` in
+/// `win_files/AppxManifest.xml` after `&quot;` -> `"` decoding.
+const PUBLISHER_DN: &str = "CN=\"Firezone, Inc.\", \
+    O=\"Firezone, Inc.\", \
+    STREET=\"2261 Market Street, Suite 4574\", \
+    L=San Francisco, S=California, C=US, \
+    OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, \
+    OID.1.3.6.1.4.1.311.60.2.1.3=US, \
+    SERIALNUMBER=6383880, \
+    OID.2.5.4.15=Private Organization";
+
+fn main() -> Result<()> {
     // Skip tauri-build's default Common-Controls manifest: we embed
-    // our own SXS / fusion manifest below — only into `Firezone.exe`,
+    // our own SXS / fusion manifest below -- only into `Firezone.exe`,
     // not into the tunnel-service or register-sparse binaries (SCM-
     // launched services with an embedded `<msix>` identity claim
     // hang on startup, and the helper has no use for identity).
@@ -23,5 +46,75 @@ fn main() -> anyhow::Result<()> {
 
     println!("cargo:rerun-if-changed=../website/public/policy-templates/windows/firezone.admx");
 
+    let pfn = format!("{PACKAGE_NAME}_{}", publisher_id(PUBLISHER_DN));
+    let sid = package_sid(&pfn);
+    println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");
+    println!("cargo:rustc-env=FIREZONE_PACKAGE_SID={sid}");
+
     Ok(())
+}
+
+/// SHA-256 of the input encoded as UTF-16 LE (no null terminator).
+/// Both Windows hashes we compute -- publisher ID and package SID --
+/// feed bytes in this encoding to SHA-256.
+fn sha256_utf16le(s: &str) -> [u8; 32] {
+    let bytes: Vec<u8> = s.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    Sha256::digest(&bytes).into()
+}
+
+/// Crockford base32 alphabet Windows uses for the publisher ID half
+/// of a PFN: digits + lowercase letters minus `i`, `l`, `o`, `u`
+/// (visually-confusable chars).
+const CROCKFORD: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
+
+/// Encodes a 9-byte (72-bit) buffer as a 13-character Crockford
+/// string. The MSB of byte 0 lands in the first output char's high
+/// bits; the trailing 7 bits of byte 8 fill out the last char (the
+/// 13 * 5 = 65 output bits fit the 72 input bits with 7 to spare).
+fn crockford13(input: &[u8; 9]) -> String {
+    let mut value: u128 = 0;
+    for &b in input {
+        value = (value << 8) | u128::from(b);
+    }
+    let mut out = String::with_capacity(13);
+    for i in 0..13 {
+        let shift = (12 - i) * 5 + 7;
+        let idx = ((value >> shift) & 0x1f) as usize;
+        out.push(CROCKFORD[idx] as char);
+    }
+    out
+}
+
+/// The publisher ID is the 13-char Crockford-base32 hash of the
+/// publisher's cert Subject DN. Windows requires PFNs in the form
+/// `Name_publisherId`, so this is half of the PFN derivation.
+fn publisher_id(publisher: &str) -> String {
+    let h = sha256_utf16le(publisher);
+    let mut buf = [0u8; 9];
+    buf[..8].copy_from_slice(&h[..8]);
+    crockford13(&buf)
+}
+
+/// Reverse-engineered equivalent of
+/// `DeriveAppContainerSidFromAppContainerName`: lowercase the PFN,
+/// SHA-256 the UTF-16 LE bytes, split the first 28 bytes of the
+/// digest into 7 × u32 little-endian, and prefix with
+/// `S-1-15-2-…` (the AppPackage authority + base RID). The
+/// final 4 bytes of the 32-byte SHA-256 digest are *not* used --
+/// the kernel API truncates to 28 bytes (verified empirically
+/// against `DeriveAppContainerSidFromAppContainerName` for
+/// Firezone's PFN; the install canary catches drift).
+fn package_sid(pfn: &str) -> String {
+    let h = sha256_utf16le(&pfn.to_lowercase());
+    let dword = |i: usize| u32::from_le_bytes(h[i..i + 4].try_into().expect("4 bytes"));
+    format!(
+        "S-1-15-2-{}-{}-{}-{}-{}-{}-{}",
+        dword(0),
+        dword(4),
+        dword(8),
+        dword(12),
+        dword(16),
+        dword(20),
+        dword(24),
+    )
 }

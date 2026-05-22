@@ -32,6 +32,13 @@ export default function GUI({ os }: { os: OS }) {
             no longer drive the tunnel.
           </ChangeItem>
         )}
+        {os == OS.Windows && (
+          <ChangeItem pull={13275}>
+            Restricts the tunnel and GUI named pipes to processes carrying the
+            Firezone MSIX package SID, so other processes running as the same
+            user can no longer drive the tunnel or hijack deep links.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>
