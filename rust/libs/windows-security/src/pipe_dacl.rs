@@ -42,9 +42,9 @@ impl FileRights {
 }
 
 /// A trustee — either a fixed two-letter SDDL alias (`SY`, `BA`,
-/// `BU`) or a process-derived SID string like `S-1-15-2-…`. There is
-/// no public string-based constructor; the SID variants come from
-/// Windows APIs that read kernel state.
+/// `BU`) or a SID string like `S-1-15-2-…`. SIDs come from
+/// `from_sid_string` (compile-time-baked) or
+/// `from_package_family_name` (runtime kernel lookup).
 #[derive(Debug, Clone)]
 pub struct Trustee(Cow<'static, str>);
 

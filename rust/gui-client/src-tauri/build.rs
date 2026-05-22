@@ -2,11 +2,7 @@ use anyhow::Result;
 use sha2::{Digest as _, Sha256};
 
 /// `Name` half of the Package Family Name. Must match
-/// `<Identity Name="…"/>` in `win_files/AppxManifest.xml`; the
-/// install canary
-/// (`scripts/tests/tunnel-pipe-dacl-windows.ps1`) fails loudly
-/// if any of `PACKAGE_NAME`, `PUBLISHER_DN`, or the algorithms
-/// below drift from what the kernel produces.
+/// `<Identity Name="…"/>` in `win_files/AppxManifest.xml`.
 const PACKAGE_NAME: &str = "Firezone.Client.GUI";
 
 /// Publisher cert Subject DN (canonical form, post-XML-entity-decoding).

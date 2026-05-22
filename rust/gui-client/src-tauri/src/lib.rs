@@ -45,12 +45,7 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
 
 /// AppContainer SID for [`PACKAGE_FAMILY_NAME`], derived at build
-/// time. Baked in so the tunnel pipe DACL is deterministic. The
-/// install canary
-/// (`scripts/tests/tunnel-pipe-dacl-windows.ps1`) cross-checks
-/// this against what the kernel actually attaches to
-/// MSIX-registered processes -- any drift fails CI on the next
-/// push.
+/// time. Baked in so the tunnel pipe DACL is deterministic.
 pub const PACKAGE_SID: &str = env!("FIREZONE_PACKAGE_SID");
 
 #[cfg(target_os = "linux")]
