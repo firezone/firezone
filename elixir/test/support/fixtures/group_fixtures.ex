@@ -46,7 +46,7 @@ defmodule Portal.GroupFixtures do
 
     changeset =
       %Portal.Group{}
-      |> Ecto.Changeset.cast(group_attrs, [:name, :type, :entity_type, :idp_id, :last_synced_at])
+      |> Ecto.Changeset.cast(group_attrs, [:name, :type, :entity_type, :idp_id])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Group.changeset()
 
@@ -59,6 +59,20 @@ defmodule Portal.GroupFixtures do
       end
 
     {:ok, group} = Portal.Repo.insert(changeset)
+
+    # If synced_at was provided, create a sync state record
+    if synced_at = Map.get(attrs, :synced_at) do
+      %Portal.GroupSyncState{
+        group_id: group.id,
+        account_id: account.id,
+        synced_at: synced_at
+      }
+      |> Portal.Repo.insert!(
+        on_conflict: {:replace, [:synced_at]},
+        conflict_target: [:account_id, :group_id]
+      )
+    end
+
     group
   end
 
@@ -136,7 +150,7 @@ defmodule Portal.GroupFixtures do
       attrs
       |> Map.put(:type, :static)
       |> Map.put(:directory, directory)
-      |> Map.put_new(:last_synced_at, DateTime.utc_now())
+      |> Map.put_new(:synced_at, DateTime.utc_now())
 
     # Add idp_id if not provided
     attrs =

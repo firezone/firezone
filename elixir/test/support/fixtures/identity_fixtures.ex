@@ -72,8 +72,7 @@ defmodule Portal.IdentityFixtures do
         :preferred_username,
         :profile,
         :picture,
-        :firezone_avatar_url,
-        :last_synced_at
+        :firezone_avatar_url
       ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)
@@ -88,6 +87,20 @@ defmodule Portal.IdentityFixtures do
       end
 
     {:ok, identity} = Portal.Repo.insert(changeset)
+
+    # If synced_at was provided, create a sync state record
+    if synced_at = Map.get(attrs, :synced_at) do
+      %Portal.ExternalIdentitySyncState{
+        external_identity_id: identity.id,
+        account_id: account.id,
+        synced_at: synced_at
+      }
+      |> Portal.Repo.insert!(
+        on_conflict: {:replace, [:synced_at]},
+        conflict_target: [:account_id, :external_identity_id]
+      )
+    end
+
     identity
   end
 
@@ -129,7 +142,7 @@ defmodule Portal.IdentityFixtures do
       |> Map.put_new(:preferred_username, "preferred_#{unique_num}")
       |> Map.put_new(:profile, "https://example.com/profile/user_#{unique_num}")
       |> Map.put_new(:picture, "https://example.com/avatar/user_#{unique_num}.jpg")
-      |> Map.put_new(:last_synced_at, DateTime.utc_now())
+      |> Map.put_new(:synced_at, DateTime.utc_now())
       |> Map.put_new(:account, account)
       |> Map.put_new(:directory, directory)
 

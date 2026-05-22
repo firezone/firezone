@@ -1,6 +1,8 @@
 defmodule PortalAPI.GroupControllerTest do
   use PortalAPI.ConnCase, async: true
   alias Portal.Group
+  alias Portal.GroupSyncState
+  alias Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -107,7 +109,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "entity_type" => "group",
                  "directory_id" => nil,
                  "idp_id" => nil,
-                 "last_synced_at" => nil,
+                 "synced_at" => nil,
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
@@ -120,6 +122,8 @@ defmodule PortalAPI.GroupControllerTest do
       actor: actor
     } do
       group = synced_group_fixture(account: account)
+
+      sync_state = Repo.get_by(GroupSyncState, group_id: group.id)
 
       conn =
         conn
@@ -135,7 +139,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "entity_type" => "group",
                  "directory_id" => group.directory_id,
                  "idp_id" => group.idp_id,
-                 "last_synced_at" => DateTime.to_iso8601(group.last_synced_at),
+                 "synced_at" => DateTime.to_iso8601(sync_state.synced_at),
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
@@ -202,7 +206,7 @@ defmodule PortalAPI.GroupControllerTest do
         "idp_id" => "should-be-ignored",
         "directory_id" => "00000000-0000-0000-0000-000000000000",
         "entity_type" => "org_unit",
-        "last_synced_at" => "2024-01-01T00:00:00Z"
+        "synced_at" => "2024-01-01T00:00:00Z"
       }
 
       conn =
@@ -217,7 +221,7 @@ defmodule PortalAPI.GroupControllerTest do
       assert resp["data"]["idp_id"] == nil
       assert resp["data"]["directory_id"] == nil
       assert resp["data"]["entity_type"] == "group"
-      assert resp["data"]["last_synced_at"] == nil
+      assert resp["data"]["synced_at"] == nil
     end
   end
 
@@ -301,7 +305,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "entity_type" => "group",
                  "directory_id" => nil,
                  "idp_id" => nil,
-                 "last_synced_at" => nil,
+                 "synced_at" => nil,
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }

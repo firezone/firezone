@@ -1771,12 +1771,17 @@ defmodule PortalWeb.Groups do
         )
         |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
         |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
+        |> join(:left, [groups: g], gss in Portal.GroupSyncState,
+          on: gss.group_id == g.id and gss.account_id == g.account_id,
+          as: :sync_state
+        )
         |> preload(
           [memberships: m, actors: a, directory: d, google_directory: gd,
-           entra_directory: ed, okta_directory: od],
+           entra_directory: ed, okta_directory: od, sync_state: gss],
           memberships: m,
           actors: a,
-          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od}
+          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od},
+          sync_state: gss
         )
 
       query |> Safe.scoped(subject, repo) |> Safe.one(fallback_to_primary: true)

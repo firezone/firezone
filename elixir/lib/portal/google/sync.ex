@@ -14,7 +14,7 @@ defmodule Portal.Google.Sync do
      and upsert them in batches. Separate `fetched_user_ids` and `synced_user_ids`
      sets are threaded through traversal so users are fetched at most once even if
      they are later filtered out as suspended or archived.
-  Finally, delete everything with a stale last_synced_at.
+  Finally, delete everything whose sync_state row is missing or older than this run's synced_at.
   """
   use Oban.Worker,
     queue: :google_sync,
@@ -1067,8 +1067,8 @@ defmodule Portal.Google.Sync do
         SELECT * FROM (VALUES #{values_clause})
         AS t(idp_id, email, name, given_name, family_name, preferred_username, picture)
       ),
-      existing_identities AS (
-        SELECT ei.id, ei.actor_id, ei.idp_id
+      pre_existing_identities AS (
+        SELECT ei.id, ei.account_id, ei.actor_id, ei.idp_id
         FROM external_identities ei
         WHERE ei.account_id = $#{account_id}
           AND ei.issuer = $#{issuer}
@@ -1078,7 +1078,7 @@ defmodule Portal.Google.Sync do
         SELECT DISTINCT ON (id.idp_id) a.id AS actor_id, id.idp_id
         FROM input_data id
         JOIN actors a ON a.email = id.email AND a.account_id = $#{account_id}
-        WHERE id.idp_id NOT IN (SELECT idp_id FROM existing_identities)
+        WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
           AND id.email IS NOT NULL
         ORDER BY id.idp_id, a.inserted_at ASC
       ),
@@ -1089,7 +1089,7 @@ defmodule Portal.Google.Sync do
           id.name,
           id.email
         FROM input_data id
-        WHERE id.idp_id NOT IN (SELECT idp_id FROM existing_identities)
+        WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
           AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
       ),
       new_actors AS (
@@ -1112,48 +1112,72 @@ defmodule Portal.Google.Sync do
         JOIN input_data id ON id.idp_id = atc.idp_id
         UNION ALL
         SELECT ei.actor_id, ei.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.picture
-        FROM existing_identities ei
+        FROM pre_existing_identities ei
         JOIN input_data id ON id.idp_id = ei.idp_id
         UNION ALL
         SELECT eabe.actor_id, eabe.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.picture
         FROM existing_actors_by_email eabe
         JOIN input_data id ON id.idp_id = eabe.idp_id
+      ),
+      upserted_identities AS (
+        INSERT INTO external_identities (
+          id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username, picture,
+          account_id, inserted_at, updated_at
+        )
+        SELECT
+          COALESCE(ei.id, uuid_generate_v4()),
+          aam.actor_id,
+          $#{issuer},
+          aam.idp_id,
+          $#{directory_id},
+          aam.email,
+          aam.name,
+          aam.given_name,
+          aam.family_name,
+          aam.preferred_username,
+          aam.picture,
+          $#{account_id},
+          $#{last_synced_at},
+          $#{last_synced_at}
+        FROM all_actor_mappings aam
+        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
+        ON CONFLICT (account_id, idp_id, issuer)
+        DO UPDATE SET
+          directory_id = EXCLUDED.directory_id,
+          email = EXCLUDED.email,
+          name = EXCLUDED.name,
+          given_name = EXCLUDED.given_name,
+          family_name = EXCLUDED.family_name,
+          preferred_username = EXCLUDED.preferred_username,
+          picture = EXCLUDED.picture,
+          updated_at = EXCLUDED.updated_at
+        WHERE (external_identities.directory_id, external_identities.email, external_identities.name,
+               external_identities.given_name, external_identities.family_name,
+               external_identities.preferred_username, external_identities.picture)
+              IS DISTINCT FROM
+              (EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
+               EXCLUDED.given_name, EXCLUDED.family_name,
+               EXCLUDED.preferred_username, EXCLUDED.picture)
+          AND NOT EXISTS (
+            SELECT 1 FROM external_identity_sync_states iss
+            WHERE iss.account_id = external_identities.account_id
+              AND iss.external_identity_id = external_identities.id
+              AND iss.synced_at >= $#{last_synced_at}
+          )
+        RETURNING id, account_id, idp_id
+      ),
+      all_identity_ids AS (
+        SELECT id, account_id FROM upserted_identities
+        UNION
+        SELECT pei.id, pei.account_id
+        FROM pre_existing_identities pei
+        WHERE pei.idp_id NOT IN (SELECT idp_id FROM upserted_identities)
       )
-      INSERT INTO external_identities (
-        id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username, picture,
-        last_synced_at, account_id, inserted_at, updated_at
-      )
-      SELECT
-        COALESCE(ei.id, uuid_generate_v4()),
-        aam.actor_id,
-        $#{issuer},
-        aam.idp_id,
-        $#{directory_id},
-        aam.email,
-        aam.name,
-        aam.given_name,
-        aam.family_name,
-        aam.preferred_username,
-        aam.picture,
-        $#{last_synced_at},
-        $#{account_id},
-        $#{last_synced_at},
-        $#{last_synced_at}
-      FROM all_actor_mappings aam
-      LEFT JOIN existing_identities ei ON ei.idp_id = aam.idp_id
-      ON CONFLICT (account_id, idp_id, issuer)
-      DO UPDATE SET
-        directory_id = EXCLUDED.directory_id,
-        email = EXCLUDED.email,
-        name = EXCLUDED.name,
-        given_name = EXCLUDED.given_name,
-        family_name = EXCLUDED.family_name,
-        preferred_username = EXCLUDED.preferred_username,
-        picture = EXCLUDED.picture,
-        last_synced_at = EXCLUDED.last_synced_at,
-        updated_at = EXCLUDED.updated_at
-      WHERE external_identities.last_synced_at IS NULL
-        OR external_identities.last_synced_at < EXCLUDED.last_synced_at
+      INSERT INTO external_identity_sync_states (external_identity_id, account_id, synced_at)
+      SELECT id, account_id, $#{last_synced_at} FROM all_identity_ids
+      ON CONFLICT (account_id, external_identity_id) DO UPDATE SET
+        synced_at = EXCLUDED.synced_at
+      WHERE external_identity_sync_states.synced_at < EXCLUDED.synced_at
       RETURNING 1
       """
     end
@@ -1222,51 +1246,61 @@ defmodule Portal.Google.Sync do
       """
       WITH input_data (idp_id, name, email) AS (
         VALUES #{values_clause}
+      ),
+      pre_existing_groups AS (
+        SELECT g.id, g.account_id, g.idp_id
+        FROM groups g
+        WHERE g.account_id = $#{account_id}
+          AND g.idp_id IN (SELECT idp_id FROM input_data)
+      ),
+      upserted_groups AS (
+        INSERT INTO groups (
+          id, name, email, directory_id, idp_id, account_id,
+          inserted_at, updated_at, type, entity_type
+        )
+        SELECT
+          uuid_generate_v4(),
+          id.name,
+          id.email,
+          $#{directory_id},
+          id.idp_id,
+          $#{account_id},
+          $#{last_synced_at},
+          $#{last_synced_at},
+          'static',
+          $#{entity_type}
+        FROM input_data id
+        ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          directory_id = EXCLUDED.directory_id,
+          entity_type = EXCLUDED.entity_type,
+          updated_at = EXCLUDED.updated_at
+        WHERE (groups.name, groups.email, groups.directory_id, groups.entity_type)
+              IS DISTINCT FROM
+              (EXCLUDED.name, EXCLUDED.email, EXCLUDED.directory_id, EXCLUDED.entity_type)
+          AND NOT EXISTS (
+            SELECT 1 FROM group_sync_states gss
+            WHERE gss.account_id = groups.account_id
+              AND gss.group_id = groups.id
+              AND gss.synced_at >= $#{last_synced_at}
+          )
+        RETURNING id, account_id, idp_id
+      ),
+      all_group_ids AS (
+        SELECT id, account_id FROM upserted_groups
+        UNION
+        SELECT peg.id, peg.account_id
+        FROM pre_existing_groups peg
+        WHERE peg.idp_id NOT IN (SELECT idp_id FROM upserted_groups)
       )
-      INSERT INTO groups (
-        id, name, email, directory_id, idp_id, account_id,
-        inserted_at, updated_at, type, entity_type, last_synced_at
-      )
-      SELECT
-        uuid_generate_v4(),
-        id.name,
-        id.email,
-        $#{directory_id},
-        id.idp_id,
-        $#{account_id},
-        $#{last_synced_at},
-        $#{last_synced_at},
-        'static',
-        $#{entity_type},
-        $#{last_synced_at}
-      FROM input_data id
-      ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
-      DO UPDATE SET
-        name = CASE
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
-          THEN EXCLUDED.name
-          ELSE groups.name
-        END,
-        email = CASE
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
-          THEN EXCLUDED.email
-          ELSE groups.email
-        END,
-        directory_id = CASE
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
-          THEN EXCLUDED.directory_id
-          ELSE groups.directory_id
-        END,
-        last_synced_at = CASE
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
-          THEN EXCLUDED.last_synced_at
-          ELSE groups.last_synced_at
-        END,
-        updated_at = CASE
-          WHEN groups.last_synced_at IS NULL OR groups.last_synced_at < EXCLUDED.last_synced_at
-          THEN EXCLUDED.updated_at
-          ELSE groups.updated_at
-        END
+      INSERT INTO group_sync_states (account_id, group_id, synced_at)
+      SELECT account_id, id, $#{last_synced_at} FROM all_group_ids
+      ON CONFLICT (account_id, group_id) DO UPDATE SET
+        synced_at = EXCLUDED.synced_at
+      WHERE group_sync_states.synced_at < EXCLUDED.synced_at
+      RETURNING 1
       """
     end
 
@@ -1326,6 +1360,10 @@ defmodule Portal.Google.Sync do
       issuer = offset + 2
       last_synced_at = offset + 3
 
+      # Existing memberships are read but never re-written, so unchanged rows
+      # produce no WAL. New memberships go through a plain INSERT (no ON
+      # CONFLICT), so duplicate input tuples that don't match an existing row
+      # surface as a unique_violation — bubbled up as SyncError by the caller.
       """
       WITH membership_input AS (
         SELECT * FROM (VALUES #{values_clause})
@@ -1345,19 +1383,34 @@ defmodule Portal.Google.Sync do
           ag.idp_id = mi.group_idp_id
           AND ag.account_id = $#{account_id}
         )
+      ),
+      existing_memberships AS (
+        SELECT m.id, m.account_id, m.actor_id, m.group_id
+        FROM memberships m
+        WHERE m.account_id = $#{account_id}
+          AND (m.actor_id, m.group_id) IN (SELECT actor_id, group_id FROM resolved_memberships)
+      ),
+      new_memberships AS (
+        INSERT INTO memberships (id, actor_id, group_id, account_id)
+        SELECT
+          uuid_generate_v4(),
+          rm.actor_id,
+          rm.group_id,
+          $#{account_id} AS account_id
+        FROM resolved_memberships rm
+        WHERE (rm.actor_id, rm.group_id) NOT IN (SELECT actor_id, group_id FROM existing_memberships)
+        RETURNING id, account_id
+      ),
+      all_membership_ids AS (
+        SELECT id, account_id FROM new_memberships
+        UNION
+        SELECT id, account_id FROM existing_memberships
       )
-      INSERT INTO memberships (id, actor_id, group_id, account_id, last_synced_at)
-      SELECT
-        uuid_generate_v4(),
-        rm.actor_id,
-        rm.group_id,
-        $#{account_id} AS account_id,
-        $#{last_synced_at} AS last_synced_at
-      FROM resolved_memberships rm
-      ON CONFLICT (actor_id, group_id) DO UPDATE SET
-        last_synced_at = EXCLUDED.last_synced_at
-      WHERE memberships.last_synced_at IS NULL
-        OR memberships.last_synced_at < EXCLUDED.last_synced_at
+      INSERT INTO membership_sync_states (account_id, membership_id, synced_at)
+      SELECT account_id, id, $#{last_synced_at} FROM all_membership_ids
+      ON CONFLICT (account_id, membership_id) DO UPDATE SET
+        synced_at = EXCLUDED.synced_at
+      WHERE membership_sync_states.synced_at < EXCLUDED.synced_at
       RETURNING 1
       """
     end
@@ -1376,7 +1429,13 @@ defmodule Portal.Google.Sync do
         from(g in Portal.Group,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
-          where: g.last_synced_at < ^synced_at or is_nil(g.last_synced_at)
+          where:
+            fragment(
+              "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
+              g.id,
+              g.account_id,
+              ^synced_at
+            )
         )
 
       query |> Safe.unscoped() |> Safe.delete_all()
@@ -1387,7 +1446,13 @@ defmodule Portal.Google.Sync do
         from(i in Portal.ExternalIdentity,
           where: i.account_id == ^account_id,
           where: i.directory_id == ^directory_id,
-          where: i.last_synced_at < ^synced_at or is_nil(i.last_synced_at)
+          where:
+            fragment(
+              "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
+              i.id,
+              i.account_id,
+              ^synced_at
+            )
         )
 
       query |> Safe.unscoped() |> Safe.delete_all()
@@ -1400,7 +1465,13 @@ defmodule Portal.Google.Sync do
           on: m.group_id == g.id,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
-          where: m.last_synced_at < ^synced_at or is_nil(m.last_synced_at)
+          where:
+            fragment(
+              "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
+              m.id,
+              m.account_id,
+              ^synced_at
+            )
         )
 
       query |> Safe.unscoped() |> Safe.delete_all()
