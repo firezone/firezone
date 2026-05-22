@@ -1,14 +1,14 @@
 defmodule Portal.Workers.AccountDeletionCompletedTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
-  import Swoosh.TestAssertions
 
   alias Portal.Workers.AccountDeletionCompleted
 
   import Portal.AccountFixtures
+  import Portal.OutboundEmailTestHelpers
 
   describe "perform/1" do
-    test "sends completion email to admin emails" do
+    test "queues completion email to admin emails" do
       account = account_fixture()
       admin_email = "admin@example.com"
 
@@ -20,7 +20,8 @@ defmodule Portal.Workers.AccountDeletionCompletedTest do
 
       assert :ok = perform_job(AccountDeletionCompleted, args)
 
-      assert_email_sent(subject: "Firezone Account Deletion Complete")
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Firezone Account Deletion Complete"
     end
 
     test "does nothing when admin_emails is empty" do
@@ -33,6 +34,7 @@ defmodule Portal.Workers.AccountDeletionCompletedTest do
       }
 
       assert :ok = perform_job(AccountDeletionCompleted, args)
+      assert collect_queued_emails(account.id) == []
     end
   end
 end
