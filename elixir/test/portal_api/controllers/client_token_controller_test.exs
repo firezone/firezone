@@ -202,8 +202,12 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert is_binary(encoded_token)
       assert data["actor_id"] == service_account.id
 
-      assert db_token = Repo.get_by(ClientToken, id: id, actor_id: service_account.id)
-      assert encode_token(db_token) == encoded_token
+      assert Repo.get_by(ClientToken, id: id, actor_id: service_account.id)
+
+      context = Portal.Authentication.Context.build({127, 0, 0, 1}, "testing", [], :client)
+      assert {:ok, subject} = Portal.Authentication.authenticate(encoded_token, context)
+      assert subject.actor.id == service_account.id
+      assert subject.credential.id == id
 
       list_conn =
         build_conn()

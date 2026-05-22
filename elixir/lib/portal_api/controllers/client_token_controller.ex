@@ -87,7 +87,7 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.fetch_service_account_actor(actor_id, subject),
-         {:ok, token} <- Authentication.create_headless_client_token(actor, attrs, subject) do
+         {:ok, token} <- Authentication.create_non_interactive_client_token(actor, attrs, subject) do
       conn
       |> put_status(:created)
       |> render(:show_secret, token: token, encoded_token: Authentication.encode_fragment!(token))
