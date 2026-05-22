@@ -28,6 +28,10 @@ pub(crate) mod platform;
 #[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
 
+#[derive(Debug, thiserror::Error)]
+#[error("Firezone is already running in another logon session")]
+pub struct WrongUser;
+
 #[cfg(debug_assertions)]
 pub use platform::skip_tunnel_pipe_owner_check;
 

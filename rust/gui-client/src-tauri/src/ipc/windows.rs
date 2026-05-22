@@ -1,4 +1,4 @@
-use super::{NotFound, SocketId};
+use super::{NotFound, SocketId, WrongUser};
 use anyhow::{Context as _, Result, bail};
 #[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,7 +11,14 @@ use windows::Win32::{
         IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
         SECURITY_ATTRIBUTES, WinLocalSystemSid,
     },
-    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
+    System::{
+        Pipes::{
+            GetNamedPipeClientProcessId, GetNamedPipeClientSessionId, GetNamedPipeServerProcessId,
+            GetNamedPipeServerSessionId,
+        },
+        RemoteDesktop::ProcessIdToSessionId,
+        Threading::GetCurrentProcessId,
+    },
 };
 use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 
@@ -71,6 +78,7 @@ pub fn skip_tunnel_pipe_owner_check() {
 }
 
 pub struct Server {
+    socket_id: SocketId,
     pipe_path: String,
     dacl: PipeDacl,
 }
@@ -99,83 +107,26 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
     enforce_pipe_ownership(id, handle)?;
 
-    let mut server_pid: u32 = 0;
-    // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
-    // from Tokio, so it should be valid.
-    unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
-        .context("Couldn't get PID of named pipe server")?;
-
-    tracing::debug!(?server_pid, "Made IPC connection");
+    tracing::debug!(server_pid = pipe_server_pid(handle)?, "Made IPC connection");
     Ok(stream)
 }
 
-/// Checks if the connected named pipe was created by `LocalSystem`, the
-/// account the Tunnel service runs as.
-///
-/// `first_pipe_instance(true)` ensures nobody else can create another instance
-/// of our pipe *while the legit server is bound*, but during the brief window
-/// between teardown and re-bind (or before the service starts at all on a
-/// just-booted machine) a local user-mode process can race to be the *first*
-/// creator of the pipe name. The legit service then fails closed via
-/// `ERROR_ACCESS_DENIED`, leaving the squatter as the only server. This check
-/// catches that case before the GUI sends anything sensitive over the wire.
-///
-/// We inspect the *owner* of the kernel pipe object (set at creation time)
-/// rather than the server's current process token. The latter is racy if the
-/// server process exits and its PID is recycled between
-/// `GetNamedPipeServerProcessId` and `OpenProcess`.
-fn is_pipe_owned_by_local_system(handle: HANDLE) -> Result<bool> {
-    let mut owner_sid = PSID::default();
-    let mut sd = PSECURITY_DESCRIPTOR::default();
-
-    // SAFETY: All pointers below are out-pointers to stack locals. On success
-    // the kernel allocates `sd` (which we release via `LocalFree`) and points
-    // `owner_sid` into that allocation.
-    let err = unsafe {
-        GetSecurityInfo(
-            handle,
-            SE_KERNEL_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            Some(&mut owner_sid),
-            None,
-            None,
-            None,
-            Some(&mut sd),
-        )
-    };
-    if err.0 != 0 {
-        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
-            .context("GetSecurityInfo on pipe handle failed");
-    }
-
-    // SAFETY: `owner_sid` is a non-NULL pointer into `sd`'s buffer (still
-    // alive for this call) and `IsWellKnownSid` does not retain it.
-    let is_local_system = unsafe { IsWellKnownSid(owner_sid, WinLocalSystemSid) }.as_bool();
-
-    // SAFETY: `sd` was allocated by `GetSecurityInfo` and must be released
-    // with `LocalFree`. After this call no pointer derived from it is used.
-    unsafe {
-        let _ = LocalFree(Some(HLOCAL(sd.0)));
-    }
-
-    Ok(is_local_system)
-}
-
 fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
-    if id != SocketId::Tunnel {
-        return Ok(());
+    match id {
+        #[cfg(test)]
+        SocketId::Test(_) => Ok(()),
+        #[cfg(debug_assertions)]
+        SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => Ok(()),
+        // Refuse to connect to tunnel pipes not owned by local system
+        SocketId::Tunnel if !is_pipe_owned_by_local_system(handle)? => {
+            bail!("Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack")
+        }
+        // Refuse to connect to GUI pipes owned by a different logon session
+        SocketId::Gui if !is_pipe_server_owned_by_current_session(handle)? => {
+            bail!(WrongUser)
+        }
+        SocketId::Tunnel | SocketId::Gui => Ok(()),
     }
-
-    #[cfg(debug_assertions)]
-    if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) {
-        return Ok(());
-    }
-
-    if !is_pipe_owned_by_local_system(handle)? {
-        bail!("Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack")
-    }
-
-    Ok(())
 }
 
 impl Server {
@@ -193,7 +144,11 @@ impl Server {
             #[cfg(test)]
             SocketId::Test(_) => gui_pipe_dacl(),
         };
-        Ok(Self { pipe_path, dacl })
+        Ok(Self {
+            socket_id: id,
+            pipe_path,
+            dacl,
+        })
     }
 
     // `&mut self` needed to match the Linux signature
@@ -201,7 +156,7 @@ impl Server {
         // Fixes #5143. In the Tunnel service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
-        // we also do a loop.
+        // `bind_to_pipe` also runs its own retry loop.
         tokio::task::yield_now().await;
 
         let server = self
@@ -214,11 +169,19 @@ impl Server {
             .await
             .context("Couldn't accept IPC connection from GUI")?;
         let handle = HANDLE(server.as_raw_handle());
-        let mut client_pid: u32 = 0;
-        // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
-        // from Tokio, so it should be valid.
-        unsafe { GetNamedPipeClientProcessId(handle, &mut client_pid) }
-            .context("Couldn't get PID of named pipe client")?;
+        let client_pid = pipe_client_pid(handle)?;
+
+        // GUI pipe: refuse a client running in a different logon
+        // session (cross-user FUS/RDP). Caller-side
+        // (`controller::eventloop`) calls `next_client` again on the
+        // next iteration, so we just return an error here -- no
+        // internal retry loop.
+        if matches!(self.socket_id, SocketId::Gui)
+            && !is_pipe_client_owned_by_current_session(handle)?
+        {
+            bail!("Dropped IPC connection from PID {client_pid} -- different logon session");
+        }
+
         tracing::debug!(?client_pid, "Accepted IPC connection");
         Ok(server)
     }
@@ -285,7 +248,7 @@ fn create_pipe_server(
     }
 }
 
-/// Named pipe for an IPC connection
+/// Named pipe for an IPC connection.
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
         SocketId::Tunnel => format!("{}_tunnel.ipc", crate::BUNDLE_ID),
@@ -306,6 +269,115 @@ fn ipc_path(id: SocketId) -> String {
 /// will be de-duped into this code.
 pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{id}")
+}
+
+/// Checks if the connected named pipe was created by `LocalSystem`, the
+/// account the Tunnel service runs as.
+///
+/// `first_pipe_instance(true)` ensures nobody else can create another instance
+/// of our pipe *while the legit server is bound*, but during the brief window
+/// between teardown and re-bind (or before the service starts at all on a
+/// just-booted machine) a local user-mode process can race to be the *first*
+/// creator of the pipe name. The legit service then fails closed via
+/// `ERROR_ACCESS_DENIED`, leaving the squatter as the only server. This check
+/// catches that case before the GUI sends anything sensitive over the wire.
+///
+/// We inspect the *owner* of the kernel pipe object (set at creation time)
+/// rather than the server's current process token. The latter is racy if the
+/// server process exits and its PID is recycled between
+/// `GetNamedPipeServerProcessId` and `OpenProcess`.
+fn is_pipe_owned_by_local_system(handle: HANDLE) -> Result<bool> {
+    let mut owner_sid = PSID::default();
+    let mut sd = PSECURITY_DESCRIPTOR::default();
+
+    // SAFETY: All pointers below are out-pointers to stack locals. On success
+    // the kernel allocates `sd` (which we release via `LocalFree`) and points
+    // `owner_sid` into that allocation.
+    let err = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            Some(&mut owner_sid),
+            None,
+            None,
+            None,
+            Some(&mut sd),
+        )
+    };
+    if err.0 != 0 {
+        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
+            .context("GetSecurityInfo on pipe handle failed");
+    }
+
+    // SAFETY: `owner_sid` is a non-NULL pointer into `sd`'s buffer (still
+    // alive for this call) and `IsWellKnownSid` does not retain it.
+    let is_local_system = unsafe { IsWellKnownSid(owner_sid, WinLocalSystemSid) }.as_bool();
+
+    // SAFETY: `sd` was allocated by `GetSecurityInfo` and must be released
+    // with `LocalFree`. After this call no pointer derived from it is used.
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(sd.0)));
+    }
+
+    Ok(is_local_system)
+}
+
+/// Whether the pipe was *created* in this process's logon session.
+/// The kernel snapshots the value at `CreateNamedPipeW` time, so
+/// this is TOCTOU-safe.
+fn is_pipe_server_owned_by_current_session(handle: HANDLE) -> Result<bool> {
+    let mut server = 0u32;
+    // SAFETY: `handle` is a live pipe handle from Tokio; the kernel
+    // writes only to `&mut server` and doesn't retain the pointer.
+    unsafe { GetNamedPipeServerSessionId(handle, &mut server) }
+        .context("GetNamedPipeServerSessionId failed")?;
+
+    Ok(server == current_session_id()?)
+}
+
+/// Whether the pipe was *connected* by a process in this process's
+/// logon session. Snapshotted at connection time by the kernel.
+fn is_pipe_client_owned_by_current_session(handle: HANDLE) -> Result<bool> {
+    let mut client = 0u32;
+    // SAFETY: `handle` is a live pipe handle from Tokio; the kernel
+    // writes only to `&mut client` and doesn't retain the pointer.
+    unsafe { GetNamedPipeClientSessionId(handle, &mut client) }
+        .context("GetNamedPipeClientSessionId failed")?;
+
+    Ok(client == current_session_id()?)
+}
+
+/// The current process's logon-session ID, via
+/// `ProcessIdToSessionId(GetCurrentProcessId(), …)`.
+fn current_session_id() -> Result<u32> {
+    let mut session = 0u32;
+    // SAFETY: `GetCurrentProcessId` is infallible; `&mut session` is a
+    // valid out-pointer.
+    unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) }
+        .context("ProcessIdToSessionId failed")?;
+
+    Ok(session)
+}
+
+/// Wraps `GetNamedPipeClientProcessId`. Used only for tracing.
+fn pipe_client_pid(handle: HANDLE) -> Result<u32> {
+    let mut pid = 0u32;
+    // SAFETY: `handle` is a live pipe handle from Tokio.
+    unsafe { GetNamedPipeClientProcessId(handle, &mut pid) }
+        .context("GetNamedPipeClientProcessId failed")?;
+
+    Ok(pid)
+}
+
+/// Wraps `GetNamedPipeServerProcessId`. Used only for tracing.
+fn pipe_server_pid(handle: HANDLE) -> Result<u32> {
+    let mut pid = 0u32;
+    // SAFETY: `handle` is a live pipe handle from Tokio.
+    unsafe { GetNamedPipeServerProcessId(handle, &mut pid) }
+        .context("GetNamedPipeServerProcessId failed")?;
+
+    Ok(pid)
 }
 
 #[cfg(test)]

@@ -276,7 +276,7 @@ impl<I: GuiIntegration> Controller<I> {
                     return Err(anyhow!("GUI IPC socket closed"));
                 }
                 EventloopTick::NewInstanceLaunched(Some(Err(e))) => {
-                    tracing::warn!("Failed to accept IPC connection from new GUI instance: {e:#}");
+                    tracing::debug!("Failed to accept IPC connection from new GUI instance: {e:#}");
                 }
                 EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
                     let client_msg = read.next().await;

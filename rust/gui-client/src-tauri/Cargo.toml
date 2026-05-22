@@ -104,6 +104,8 @@ features = [
     # IPC system
     "Win32_System_Pipes",
     "Win32_System_Threading",
+    # `ProcessIdToSessionId` for the GUI-pipe cross-session check.
+    "Win32_System_RemoteDesktop",
 ]
 
 [build-dependencies]
