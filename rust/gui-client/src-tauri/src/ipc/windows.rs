@@ -31,11 +31,8 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 ///   check in [`is_pipe_owned_by_local_system`] to reject the
 ///   legitimate pipe.
 /// - ACEs: Full Access for `LocalSystem` and `BUILTIN\Administrators`;
-///   `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE` for
-///   `BUILTIN\Users`. The `BU` alias is the one the non-admin GUI
-///   runs under and excludes `NETWORK SERVICE`, `LOCAL SERVICE`,
-///   `ANONYMOUS LOGON`, IIS app pool identities, and arbitrary new
-///   service accounts (unlike `AU`).
+///   `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE` for the
+///   Firezone MSIX package SID (baked at build time by `build.rs`).
 ///
 /// In debug builds the Tunnel pipe may also be opened without the
 /// `Owner` pin — see [`skip_tunnel_pipe_owner_check`] — so the
@@ -43,13 +40,16 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 /// subprocess of the test runner (not as a service running under
 /// LocalSystem), doesn't fail `CreateNamedPipeW` with
 /// `ERROR_INVALID_OWNER` (1307). Smoke tests fall back to
-/// [`gui_pipe_dacl`] for that reason.
+/// [`test_pipe_dacl`] for that reason.
 fn tunnel_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .owner(Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::builtin_administrators())
-        .allow(FileRights::ReadWrite, Trustee::builtin_users())
+        .allow(
+            FileRights::ReadWrite,
+            Trustee::from_sid_string(crate::PACKAGE_SID),
+        )
 }
 
 /// Security descriptor for the GUI pipe.
@@ -59,6 +59,23 @@ fn tunnel_pipe_dacl() -> PipeDacl {
 /// outside its own token. The GUI pipe's owner isn't validated by
 /// clients, so leaving it at the token default is fine.
 fn gui_pipe_dacl() -> PipeDacl {
+    PipeDacl::new()
+        .allow(FileRights::FullAccess, Trustee::local_system())
+        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
+        .allow(
+            FileRights::ReadWrite,
+            Trustee::from_sid_string(crate::PACKAGE_SID),
+        )
+}
+
+/// Relaxed DACL for test contexts (gui-smoke-test, `SocketId::Test`
+/// unit tests). The production DACLs grant read/write only to
+/// processes carrying the Firezone package SID -- but a `cargo run`
+/// / `cargo test` process has no MSIX identity, so opening either
+/// pipe would fail with `ERROR_ACCESS_DENIED`. Grant `BUILTIN\Users`
+/// instead so the test process can act as both server and client.
+#[cfg(any(debug_assertions, test))]
+fn test_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .allow(FileRights::FullAccess, Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::builtin_administrators())
@@ -137,12 +154,12 @@ impl Server {
         let dacl = match id {
             #[cfg(debug_assertions)]
             SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => {
-                gui_pipe_dacl()
+                test_pipe_dacl()
             }
             SocketId::Tunnel => tunnel_pipe_dacl(),
             SocketId::Gui => gui_pipe_dacl(),
             #[cfg(test)]
-            SocketId::Test(_) => gui_pipe_dacl(),
+            SocketId::Test(_) => test_pipe_dacl(),
         };
         Ok(Self {
             socket_id: id,
@@ -248,7 +265,6 @@ fn create_pipe_server(
     }
 }
 
-/// Named pipe for an IPC connection.
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
         SocketId::Tunnel => format!("{}_tunnel.ipc", crate::BUNDLE_ID),

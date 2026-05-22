@@ -63,6 +63,14 @@ try {
     Write-Output "==> Verifying Firezone.exe has package identity attached..."
     & "$scriptDir\gui-package-identity-windows.ps1" -ProcessId $proc.Id
     Write-Output "==> Package identity attached to Firezone.exe"
+
+    Write-Output "==> Verifying tunnel pipe denies non-Firezone-signed callers..."
+    & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_tunnel.ipc'
+    Write-Output "==> Tunnel pipe DACL pinned to package SID"
+
+    Write-Output "==> Verifying GUI pipe denies non-Firezone-signed callers..."
+    & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_gui.ipc'
+    Write-Output "==> GUI pipe DACL pinned to package SID"
 }
 finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue

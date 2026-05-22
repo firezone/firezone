@@ -42,9 +42,9 @@ impl FileRights {
 }
 
 /// A trustee — either a fixed two-letter SDDL alias (`SY`, `BA`,
-/// `BU`) or a process-derived SID string like `S-1-15-2-…`. There is
-/// no public string-based constructor; the SID variants come from
-/// Windows APIs that read kernel state.
+/// `BU`) or a SID string like `S-1-15-2-…`. SIDs come from
+/// `from_sid_string` (compile-time-baked) or
+/// `from_package_family_name` (runtime kernel lookup).
 #[derive(Debug, Clone)]
 pub struct Trustee(Cow<'static, str>);
 
@@ -83,6 +83,16 @@ impl Trustee {
     pub fn from_package_family_name(pfn: &str) -> Result<Self> {
         let sid = derive_package_sid(pfn)?;
         Ok(Self(Cow::Owned(sid)))
+    }
+
+    /// Wraps a pre-computed SID string (typically a `pub const`
+    /// emitted from `build.rs`). The caller owns ensuring the input
+    /// is a well-formed SDDL SID like `S-1-5-32-544` or
+    /// `S-1-15-2-…`; we just hand it through to the SDDL builder
+    /// unchanged. Useful for baking AppContainer / Package SIDs at
+    /// compile time and skipping the runtime kernel-API call.
+    pub const fn from_sid_string(sid: &'static str) -> Self {
+        Self(Cow::Borrowed(sid))
     }
 
     /// The string Windows expects for this trustee inside an SDDL
@@ -260,5 +270,17 @@ mod tests {
             "expected S-1-15-2-… SID, got `{}`",
             trustee.as_sddl_str()
         );
+    }
+
+    /// `from_sid_string` is an infallible wrapper -- the input flows
+    /// straight to the SDDL builder. Test that it round-trips a
+    /// build-time-baked SID through `PipeDacl::Display` unchanged.
+    #[test]
+    fn from_sid_string_round_trips_through_dacl() {
+        const SID: &str = "S-1-15-2-1-2-3-4-5-6-7-8";
+        let dacl = PipeDacl::new()
+            .allow(FileRights::ReadWrite, Trustee::from_sid_string(SID))
+            .to_string();
+        assert_eq!(dacl, format!("D:P(A;;FRFW;;;{SID})"));
     }
 }
