@@ -43,31 +43,18 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 GUI_EXE='C:\Program Files\Firezone\Firezone.exe'
 
-# Launch the GUI under its `debug single-instance` subcommand so it
-# binds the GUI pipe and stays alive long enough for the identity
-# probe (and the pipe-DACL probes in #13275) to run against the
-# same instance. Wait for the `first-instance:` stdout marker --
-# Test-Path on the pipe would consume the server's accept slot.
+# Launch the GUI under its `debug single-instance` subcommand so
+# it stays alive long enough to probe. The kernel attaches the
+# package identity at `CreateProcess` time, so the identity check
+# is valid as soon as we have a PID.
 #
 # `$!` is an MSYS2 PID; `/proc/<msys-pid>/winpid` translates it to
-# the Windows PID that `OpenProcess` and friends expect.
+# the Windows PID that `OpenProcess` expects.
 echo "==> Launching Firezone.exe debug single-instance..."
-"$GUI_EXE" debug single-instance >first-instance.stdout 2>first-instance.stderr &
+"$GUI_EXE" debug single-instance &
 FIRST_MSYS_PID=$!
 FIRST_PID=$(cat "/proc/$FIRST_MSYS_PID/winpid")
 trap 'kill "$FIRST_MSYS_PID" 2>/dev/null || true' EXIT
-
-for _ in $(seq 1 30); do
-    if grep -q '^first-instance:' first-instance.stdout 2>/dev/null; then
-        break
-    fi
-    sleep 0.2
-done
-if ! grep -q '^first-instance:' first-instance.stdout 2>/dev/null; then
-    echo "first instance never reached its accept loop after 6s" >&2
-    cat first-instance.stdout first-instance.stderr >&2
-    exit 1
-fi
 
 echo "==> Verifying Firezone.exe has package identity attached..."
 powershell.exe -NoProfile -File "$SCRIPT_DIR/gui-package-identity-windows.ps1" -ProcessId "$FIRST_PID"
