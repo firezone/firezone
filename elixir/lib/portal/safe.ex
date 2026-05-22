@@ -630,7 +630,13 @@ defmodule Portal.Safe do
 
   @spec delete_all(Scoped.t(), Keyword.t()) ::
           {integer(), nil | [term()]} | {:error, :unauthorized}
-  def delete_all(%Scoped{subject: subject, queryable: queryable}, opts) do
+  def delete_all(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable
+        },
+        opts
+      ) do
     schema = get_schema_module(queryable)
 
     case permit(:delete_all, schema, subject) do
@@ -639,7 +645,8 @@ defmodule Portal.Safe do
           Repo.transact(fn ->
             emit_subject_message(subject)
 
-            {:ok, Repo.delete_all(queryable, opts)}
+            filtered_query = apply_account_filter(queryable, schema, account_id)
+            {:ok, Repo.delete_all(filtered_query, opts)}
           end)
 
         result
