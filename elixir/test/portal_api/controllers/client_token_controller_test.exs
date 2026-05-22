@@ -3,6 +3,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
   alias Portal.ClientToken
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.TokenFixtures
@@ -311,6 +312,21 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert json_response(conn, 400) ==
                %{"error" => %{"reason" => "Actor must be a service account"}}
+    end
+
+    test "does not create client token for actor in another account", %{conn: conn, actor: actor} do
+      other_account = account_fixture()
+      other_service_account = service_account_fixture(account: other_account)
+      expires_at = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{other_service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert Repo.aggregate(from(t in ClientToken, where: t.actor_id == ^other_service_account.id), :count) == 0
     end
   end
 
