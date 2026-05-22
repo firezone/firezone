@@ -113,20 +113,19 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
 fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
     match id {
+        #[cfg(test)]
+        SocketId::Test(_) => Ok(()),
         #[cfg(debug_assertions)]
         SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => Ok(()),
+        // Refuse to connect to tunnel pipes not owned by local system
         SocketId::Tunnel if !is_pipe_owned_by_local_system(handle)? => {
             bail!("Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack")
         }
-        SocketId::Tunnel => Ok(()),
-        // Cross-session GUI server -- FUS/RDP. Surfaces to the
-        // launcher as `WrongUser`.
+        // Refuse to connect to GUI pipes owned by a different logon session
         SocketId::Gui if !is_pipe_server_owned_by_current_session(handle)? => {
-            Err(anyhow::Error::new(WrongUser))
+            bail!(WrongUser)
         }
-        SocketId::Gui => Ok(()),
-        #[cfg(test)]
-        SocketId::Test(_) => Ok(()),
+        SocketId::Tunnel | SocketId::Gui => Ok(()),
     }
 }
 
@@ -333,6 +332,7 @@ fn is_pipe_server_owned_by_current_session(handle: HANDLE) -> Result<bool> {
     // writes only to `&mut server` and doesn't retain the pointer.
     unsafe { GetNamedPipeServerSessionId(handle, &mut server) }
         .context("GetNamedPipeServerSessionId failed")?;
+
     Ok(server == current_session_id()?)
 }
 
@@ -344,6 +344,7 @@ fn is_pipe_client_owned_by_current_session(handle: HANDLE) -> Result<bool> {
     // writes only to `&mut client` and doesn't retain the pointer.
     unsafe { GetNamedPipeClientSessionId(handle, &mut client) }
         .context("GetNamedPipeClientSessionId failed")?;
+
     Ok(client == current_session_id()?)
 }
 
@@ -355,6 +356,7 @@ fn current_session_id() -> Result<u32> {
     // valid out-pointer.
     unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) }
         .context("ProcessIdToSessionId failed")?;
+
     Ok(session)
 }
 
@@ -364,6 +366,7 @@ fn pipe_client_pid(handle: HANDLE) -> Result<u32> {
     // SAFETY: `handle` is a live pipe handle from Tokio.
     unsafe { GetNamedPipeClientProcessId(handle, &mut pid) }
         .context("GetNamedPipeClientProcessId failed")?;
+
     Ok(pid)
 }
 
@@ -373,6 +376,7 @@ fn pipe_server_pid(handle: HANDLE) -> Result<u32> {
     // SAFETY: `handle` is a live pipe handle from Tokio.
     unsafe { GetNamedPipeServerProcessId(handle, &mut pid) }
         .context("GetNamedPipeServerProcessId failed")?;
+
     Ok(pid)
 }
 
