@@ -27,7 +27,7 @@ defmodule Portal.Workers.AccountDeletionCompleted do
 
     account
     |> Notifications.account_deletion_completed_email(admin_emails)
-    |> Mailer.deliver()
+    |> Mailer.enqueue()
     |> case do
       {:ok, _} ->
         :ok
