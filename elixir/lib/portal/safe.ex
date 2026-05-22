@@ -743,11 +743,21 @@ defmodule Portal.Safe do
   end
 
   defp apply_account_scope_to_entries(%Ecto.Query{} = query, schema, account_id) do
-    apply_account_filter(query, schema, account_id)
+    query
+    |> apply_account_filter(schema, account_id)
+    |> force_account_id_in_select(schema, account_id)
   end
 
   defp apply_account_scope_to_entries(entries, _schema, account_id) when is_list(entries) do
     Enum.map(entries, &put_account_id(&1, account_id))
+  end
+
+  defp force_account_id_in_select(query, Portal.Account, account_id) do
+    select_merge(query, %{id: ^account_id})
+  end
+
+  defp force_account_id_in_select(query, _schema, account_id) do
+    select_merge(query, %{account_id: ^account_id})
   end
 
   defp put_account_id(entry, account_id) when is_map(entry),
