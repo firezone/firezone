@@ -560,7 +560,7 @@ defmodule Portal.Repo.Seeds do
         name: "Firezone Admin"
       })
 
-    for {actor, email} <- other_actors_with_emails do
+    for {{actor, email}, actor_index} <- Enum.with_index(other_actors_with_emails, 1) do
       {:ok, identity} =
         Repo.insert(%ExternalIdentity{
           actor_id: actor.id,
@@ -607,7 +607,10 @@ defmodule Portal.Repo.Seeds do
         version =
           user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
-        # Generate UUID first so we can use it for deterministic tunnel IPs
+        # Keep these deterministic so they cannot collide with later fixed seed fixtures.
+        ipv4 = "100.65.#{actor_index}.#{i + 1}"
+        ipv6 = "fd00:2021:1111::#{actor_index}:#{i + 1}"
+
         firezone_id = Ecto.UUID.generate()
 
         # First create the client
@@ -617,9 +620,11 @@ defmodule Portal.Repo.Seeds do
             %{
               name: "My #{client_name} #{i}",
               firezone_id: firezone_id,
-              identifier_for_vendor: Ecto.UUID.generate()
+              identifier_for_vendor: Ecto.UUID.generate(),
+              ipv4: ipv4,
+              ipv6: ipv6
             },
-            [:name, :firezone_id, :identifier_for_vendor]
+            [:name, :firezone_id, :identifier_for_vendor, :ipv4, :ipv6]
           )
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
