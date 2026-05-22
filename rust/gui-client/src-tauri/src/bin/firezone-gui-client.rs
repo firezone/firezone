@@ -205,6 +205,14 @@ fn try_main(
                 return Ok(());
             }
 
+            if anyhow.any_is::<firezone_gui_client::ipc::WrongUser>() {
+                dialog::error(
+                    "Firezone is already running in another logon session. \
+                     Sign out of that session first, then try again.",
+                )?;
+                return Ok(());
+            }
+
             if anyhow.any_is::<gui::NewInstanceHandshakeFailed>() {
                 dialog::error(
                     "Firezone is already running but not responding. Please force-stop it first.",
