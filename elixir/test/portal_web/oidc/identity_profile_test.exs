@@ -113,7 +113,7 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
         |> Map.put("email_verified", "true")
 
       assert {:ok, profile} = IdentityProfile.build(claims, %{}, @account_id)
-      refute profile.email_verified
+      assert profile.email_verified == :unverified
 
       claims = Map.delete(@valid_claims, "email_verified")
       userinfo = %{
@@ -123,7 +123,7 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
       }
 
       assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
-      refute profile.email_verified
+      assert profile.email_verified == :unverified
 
       userinfo = %{
         "sub" => @valid_claims["sub"],
@@ -132,7 +132,7 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
       }
 
       assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
-      assert profile.email_verified
+      assert profile.email_verified == :verified
     end
 
     test "does not trust userinfo when ID token email_verified is non-boolean" do
@@ -151,10 +151,10 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
                  @account_id
                )
 
-      refute profile.email_verified
+      assert profile.email_verified == :unverified
     end
 
-    test "does not trust userinfo email_verified when subjects differ" do
+    test "treats userinfo email_verified as missing when subjects differ" do
       claims = Map.delete(@valid_claims, "email_verified")
 
       userinfo = %{
@@ -164,7 +164,14 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
       }
 
       assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
-      refute profile.email_verified
+      assert profile.email_verified == :missing
+    end
+
+    test "reports :missing when neither claims nor userinfo set email_verified" do
+      claims = Map.delete(@valid_claims, "email_verified")
+
+      assert {:ok, profile} = IdentityProfile.build(claims, %{}, @account_id)
+      assert profile.email_verified == :missing
     end
 
     test "trusts userinfo email_verified when userinfo omits email and subject matches" do
@@ -176,7 +183,7 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
       }
 
       assert {:ok, profile} = IdentityProfile.build(claims, userinfo, @account_id)
-      assert profile.email_verified
+      assert profile.email_verified == :verified
     end
 
     test "ignores profile attrs from mismatched userinfo" do
@@ -189,7 +196,7 @@ defmodule PortalWeb.OIDC.IdentityProfileTest do
 
       assert {:ok, profile} = IdentityProfile.build(@valid_claims, userinfo, @account_id)
 
-      assert profile.email_verified
+      assert profile.email_verified == :verified
       assert profile.profile_attrs["name"] == @valid_claims["name"]
     end
   end

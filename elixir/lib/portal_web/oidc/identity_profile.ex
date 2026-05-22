@@ -26,7 +26,7 @@ defmodule PortalWeb.OIDC.IdentityProfile do
           idp_id: String.t() | nil,
           issuer: String.t() | nil,
           profile_attrs: map(),
-          email_verified: boolean()
+          email_verified: :verified | :unverified | :missing
         }
 
   @spec build(map(), map(), Ecto.UUID.t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
@@ -56,7 +56,7 @@ defmodule PortalWeb.OIDC.IdentityProfile do
            idp_id: idp_id,
            issuer: issuer,
            profile_attrs: profile_attrs,
-           email_verified: PortalWeb.OIDC.email_verified?(claims, userinfo)
+           email_verified: PortalWeb.OIDC.email_verified_status(claims, userinfo)
          }}
 
       changeset ->

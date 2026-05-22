@@ -12,8 +12,7 @@ defmodule PortalWeb.OIDCController do
   require Logger
 
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
-  @unverified_email_sign_in_error "Your identity provider did not confirm that your email address is verified. Please verify your email with the identity provider or contact your administrator."
-  @unverified_email_verification_error "This provider requires verified email addresses, but the identity provider did not return email_verified=true for your account."
+  @unverified_email_error "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
   @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 3000)
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -337,16 +336,21 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
+  # Google and Okta consistently return email_verified=true, so we enforce the claim
+  # to surface any misbehavior. Entra does not set email_verified, so we cannot check it.
+  # Generic OIDC providers send it inconsistently, so we let the admin choose via
+  # email_verification_method (none/claim/proof).
+  defp email_verification_method(%Portal.Google.AuthProvider{}), do: :claim
+  defp email_verification_method(%Portal.Okta.AuthProvider{}), do: :claim
+
   defp email_verification_method(%Portal.OIDC.AuthProvider{email_verification_method: method}),
     do: method
 
   defp email_verification_method(_provider), do: :none
 
-  defp enforce_verified_email(%IdentityProfile{email_verified: true}), do: :ok
-
-  defp enforce_verified_email(%IdentityProfile{email_verified: false}) do
-    {:error, :email_not_verified}
-  end
+  defp enforce_verified_email(%IdentityProfile{email_verified: :verified}), do: :ok
+  defp enforce_verified_email(%IdentityProfile{email_verified: :unverified}), do: {:error, :email_not_verified}
+  defp enforce_verified_email(%IdentityProfile{email_verified: :missing}), do: {:error, :email_verified_missing}
 
   defp start_owner_verification(conn, account, provider, actor, identity_profile, params) do
     pending_identity_id = Ecto.UUID.generate()
@@ -771,8 +775,9 @@ defmodule PortalWeb.OIDCController do
     redirect_with_error_context(conn, error)
   end
 
-  defp handle_error(conn, {:error, :email_not_verified}) do
-    redirect_with_error_context(conn, @unverified_email_sign_in_error)
+  defp handle_error(conn, {:error, reason})
+       when reason in [:email_not_verified, :email_verified_missing] do
+    redirect_with_error_context(conn, @unverified_email_error)
   end
 
   defp handle_error(conn, {:error, :invalid_callback_params}) do
@@ -900,10 +905,9 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp verify_email_verified_claim(%{require_email_verified: true}, claims, {:ok, userinfo}) do
-    if PortalWeb.OIDC.email_verified?(claims, userinfo) do
-      :ok
-    else
-      {:error, :email_not_verified}
+    case PortalWeb.OIDC.email_verified_status(claims, userinfo) do
+      :verified -> :ok
+      _ -> {:error, :email_not_verified}
     end
   end
 
@@ -954,7 +958,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp verification_error_message(:email_not_verified) do
-    @unverified_email_verification_error
+    @unverified_email_error
   end
 
   defp verification_error_message(_reason) do

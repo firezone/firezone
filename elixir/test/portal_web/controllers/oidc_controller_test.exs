@@ -398,7 +398,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert {:ok, %{ok: false, error: error}} =
                oidc_verification_result_from_redirect(redirect_url)
 
-      assert error =~ "requires verified email addresses"
+      assert error =~ "did not return email_verified=true"
     end
 
     test "accepts verified email from userinfo during OIDC verification", %{
@@ -503,7 +503,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert {:ok, %{ok: false, error: error}} =
                oidc_verification_result_from_redirect(redirect_url)
 
-      assert error =~ "requires verified email addresses"
+      assert error =~ "did not return email_verified=true"
     end
 
     test "returns userinfo fetch error when verified email is required and ID token omits claim",
@@ -555,7 +555,7 @@ defmodule PortalWeb.OIDCControllerTest do
                oidc_verification_result_from_redirect(redirect_url)
 
       assert error == "Identity provider returned a server error (HTTP 500). Please try again later."
-      refute error =~ "requires verified email addresses"
+      refute error =~ "did not return email_verified=true"
     end
 
     test "returns unverified email error when ID token claim is false and userinfo fetch fails",
@@ -606,7 +606,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert {:ok, %{ok: false, error: error}} =
                oidc_verification_result_from_redirect(redirect_url)
 
-      assert error =~ "requires verified email addresses"
+      assert error =~ "did not return email_verified=true"
       refute error =~ "server error"
     end
 
@@ -1023,7 +1023,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
 
       assert flash(conn, :error) ==
-               "Your identity provider did not confirm that your email address is verified. Please verify your email with the identity provider or contact your administrator."
+               "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
 
       refute log =~ "OIDC identity email not verified"
     end
@@ -1055,7 +1055,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
 
       assert flash(conn, :error) ==
-               "Your identity provider did not confirm that your email address is verified. Please verify your email with the identity provider or contact your administrator."
+               "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
     end
 
     test "accepts sign-in when verified email comes from matching userinfo", ctx do
@@ -1093,7 +1093,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
 
       assert flash(conn, :error) ==
-               "Your identity provider did not confirm that your email address is verified. Please verify your email with the identity provider or contact your administrator."
+               "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
     end
 
     test "successful sign-in with unverified email when verified email is not required", ctx do
