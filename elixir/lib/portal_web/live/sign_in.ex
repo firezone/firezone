@@ -146,7 +146,10 @@ defmodule PortalWeb.SignIn do
       </:item>
     </.intersperse_blocks>
 
-    <div :if={@params["as"] != "client"} class="mt-8 pt-6 border-t border-[var(--border)] text-center">
+    <div
+      :if={!PortalWeb.Authentication.client_sign_in?(@params)}
+      class="mt-8 pt-6 border-t border-[var(--border)] text-center"
+    >
       <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
         Meant to sign in from a client instead?
         <.website_link path="/kb/client-apps">Read the docs.</.website_link>

@@ -23,6 +23,7 @@ defmodule Portal.Actor do
     field :name, :string
 
     has_many :identities, Portal.ExternalIdentity, references: :id
+    has_many :pending_identities, Portal.PendingIdentity, references: :id
 
     has_many :clients, Portal.Device,
       where: [type: :client],

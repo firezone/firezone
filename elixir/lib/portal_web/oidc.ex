@@ -154,6 +154,15 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
+  Fetches userinfo using a pre-built config.
+  Useful for verification flows where the provider has not been persisted yet.
+  Returns {:ok, userinfo} or {:error, reason}.
+  """
+  def fetch_userinfo_with_config(config, access_token) do
+    OpenIDConnect.fetch_userinfo(config, access_token)
+  end
+
+  @doc """
   Fetches userinfo from the provider's userinfo endpoint.
   Returns {:ok, userinfo} or {:error, reason}.
   """
@@ -161,6 +170,37 @@ defmodule PortalWeb.OIDC do
     with {:ok, config} <- config_for_provider(provider) do
       OpenIDConnect.fetch_userinfo(config, access_token)
     end
+  end
+
+  @spec email_verified_status(map(), map()) :: :verified | :unverified | :missing
+  def email_verified_status(%{"email_verified" => true}, _userinfo), do: :verified
+  def email_verified_status(%{"email_verified" => _}, _userinfo), do: :unverified
+
+  def email_verified_status(claims, %{"email_verified" => true} = userinfo) do
+    if matching_subject?(claims, userinfo), do: :verified, else: :missing
+  end
+
+  def email_verified_status(claims, %{"email_verified" => _} = userinfo) do
+    if matching_subject?(claims, userinfo), do: :unverified, else: :missing
+  end
+
+  def email_verified_status(_claims, _userinfo), do: :missing
+
+  @spec matching_userinfo(map(), map()) :: map()
+  def matching_userinfo(claims, userinfo) do
+    if matching_subject?(claims, userinfo) do
+      userinfo
+    else
+      %{}
+    end
+  end
+
+  defp matching_subject?(%{"sub" => subject}, %{"sub" => subject}) when is_binary(subject) do
+    true
+  end
+
+  defp matching_subject?(_claims, _userinfo) do
+    false
   end
 
   @doc """
@@ -276,12 +316,12 @@ defmodule PortalWeb.OIDC do
 
   @doc """
   Performs the complete OIDC verification flow: exchange code for tokens and verify ID token.
-  Returns {:ok, claims} or {:error, reason}.
+  Returns {:ok, claims, userinfo_result} or {:error, reason}.
   """
   def verify_callback(config, code, verifier) do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
          {:ok, claims} <- verify_token_with_config(config, tokens["id_token"]) do
-      {:ok, claims}
+      {:ok, claims, fetch_userinfo_with_config(config, tokens["access_token"])}
     end
   end
 

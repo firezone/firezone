@@ -47,7 +47,7 @@ defmodule PortalWeb.EmailOTPController do
   @spec verify(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def verify(conn, %{"secret" => entered_code} = params) do
     result =
-      execute_with_constant_time(
+      Portal.Timing.execute_with_constant_time(
         fn -> do_verify(conn, params, String.downcase(entered_code)) end,
         @constant_execution_time
       )
@@ -111,7 +111,7 @@ defmodule PortalWeb.EmailOTPController do
 
   defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
     {actor_id, passcode_id, error} =
-      execute_with_constant_time(
+      Portal.Timing.execute_with_constant_time(
         fn ->
           with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
                {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
@@ -153,7 +153,7 @@ defmodule PortalWeb.EmailOTPController do
         put_flash(
           conn,
           :error,
-          "Too many sign-in attempts. Please wait a few minutes and try again."
+          "You're attempting to do that too quickly. Wait a few minutes and try again."
         )
 
       _ ->
@@ -360,36 +360,6 @@ defmodule PortalWeb.EmailOTPController do
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
-
-  # Executes a callback in constant time to prevent timing attacks.
-  # If execution is faster than constant_time, sleeps for the remainder.
-  defp execute_with_constant_time(callback, constant_time) do
-    start_time = System.monotonic_time(:millisecond)
-    result = callback.()
-    end_time = System.monotonic_time(:millisecond)
-
-    elapsed_time = end_time - start_time
-    remaining_time = max(0, constant_time - elapsed_time)
-
-    if remaining_time > 0 do
-      :timer.sleep(remaining_time)
-    else
-      log_constant_time_exceeded(constant_time, elapsed_time)
-    end
-
-    result
-  end
-
-  if Mix.env() in [:dev, :test] do
-    defp log_constant_time_exceeded(_constant_time, _elapsed_time), do: :ok
-  else
-    defp log_constant_time_exceeded(constant_time, elapsed_time) do
-      Logger.error("Execution took longer than the given constant time",
-        constant_time: constant_time,
-        elapsed_time: elapsed_time
-      )
-    end
-  end
 
   defmodule Database do
     import Ecto.Query
