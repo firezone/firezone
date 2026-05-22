@@ -205,10 +205,6 @@ jobs:
         shell: pwsh
         run: |
           $msi = "$env:BINARY_DEST_PATH.msi"
-          if (-not (Test-Path $msi)) {
-            Write-Output "MSI not found at $msi"
-            return
-          }
           Get-Item $msi | Select-Object Name, Length, LastWriteTimeUtc | Format-List
           Get-FileHash -Algorithm SHA256 -Path $msi | Format-List
           Get-AuthenticodeSignature -FilePath $msi | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
