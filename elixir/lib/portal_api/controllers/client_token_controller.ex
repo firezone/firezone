@@ -170,15 +170,6 @@ defmodule PortalAPI.ClientTokenController do
       fetch_actor_by_allowed_types(id, [:service_account], "Actor must be a service account", subject)
     end
 
-    def fetch_revocable_actor(id, subject) do
-      fetch_actor_by_allowed_types(
-        id,
-        @revocable_actor_types,
-        "Actor must be a service account or user actor",
-        subject
-      )
-    end
-
     defp fetch_actor_by_allowed_types(id, allowed_types, type_error_reason, subject) do
       result =
         from(a in Actor,
