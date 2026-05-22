@@ -181,9 +181,7 @@ impl Server {
         if matches!(self.socket_id, SocketId::Gui)
             && pipe_client_session_id(handle)? != current_session_id()?
         {
-            bail!(
-                "Dropped IPC connection from PID {client_pid} -- different logon session",
-            );
+            bail!("Dropped IPC connection from PID {client_pid} -- different logon session");
         }
 
         tracing::debug!(?client_pid, "Accepted IPC connection");
