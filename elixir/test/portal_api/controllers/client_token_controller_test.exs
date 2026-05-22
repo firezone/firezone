@@ -122,6 +122,19 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert %{"data" => [], "metadata" => %{"count" => 0, "limit" => 50}} = json_response(conn, 200)
     end
+
+    test "does not list tokens from another account", %{conn: conn, actor: actor} do
+      other_account = account_fixture()
+      other_service_account = service_account_fixture(account: other_account)
+      _other_token = client_token_fixture(account: other_account, actor: other_service_account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{other_service_account.id}/client_tokens")
+
+      assert %{"data" => [], "metadata" => %{"count" => 0, "limit" => 50}} = json_response(conn, 200)
+    end
   end
 
   describe "show/2" do
@@ -169,6 +182,19 @@ defmodule PortalAPI.ClientTokenControllerTest do
         conn
         |> authorize_conn(actor)
         |> get("/actors/#{api_client_actor.id}/client_tokens/#{token.id}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "does not return token from another account", %{conn: conn, actor: actor} do
+      other_account = account_fixture()
+      other_service_account = service_account_fixture(account: other_account)
+      other_token = client_token_fixture(account: other_account, actor: other_service_account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{other_service_account.id}/client_tokens/#{other_token.id}")
 
       assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
@@ -360,6 +386,20 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert Repo.get_by(ClientToken, id: token.id)
     end
+
+    test "does not delete client token from another account", %{conn: conn, actor: actor} do
+      other_account = account_fixture()
+      other_service_account = service_account_fixture(account: other_account)
+      other_token = client_token_fixture(account: other_account, actor: other_service_account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/actors/#{other_service_account.id}/client_tokens/#{other_token.id}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert Repo.get_by(ClientToken, id: other_token.id)
+    end
   end
 
   describe "delete_all/2" do
@@ -422,6 +462,23 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert json_response(conn, 200) == %{"data" => %{"deleted_count" => 0}}
 
       assert Repo.get_by(ClientToken, id: token.id)
+    end
+
+    test "does not delete client tokens from another account", %{conn: conn, actor: actor} do
+      other_account = account_fixture()
+      other_service_account = service_account_fixture(account: other_account)
+      other_tokens = for _ <- 1..3, do: client_token_fixture(account: other_account, actor: other_service_account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/actors/#{other_service_account.id}/client_tokens")
+
+      assert json_response(conn, 200) == %{"data" => %{"deleted_count" => 0}}
+
+      Enum.each(other_tokens, fn token ->
+        assert Repo.get_by(ClientToken, id: token.id)
+      end)
     end
   end
 end
