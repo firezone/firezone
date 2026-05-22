@@ -28,13 +28,6 @@ pub(crate) mod platform;
 #[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
 
-/// The GUI pipe's server lives in a different Windows logon session
-/// than the connecting one. Surfaced as
-/// `anyhow::Error::new(WrongUser)`; the launcher catches it via
-/// `any_is::<WrongUser>()` and shows a dialog instead of silently
-/// handing off into the wrong user's signed-in session. Cross-platform
-/// so the launcher's dispatch is platform-agnostic; only the Windows
-/// IPC layer ever constructs it.
 #[derive(Debug, thiserror::Error)]
 #[error("Firezone is already running in another logon session")]
 pub struct WrongUser;
