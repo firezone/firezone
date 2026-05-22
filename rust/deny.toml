@@ -284,6 +284,7 @@ skip = [
     "itertools", # iced's image feature uses itertools 0.14; existing copy on 0.12.
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
+    "kurbo", # iced 0.14's tiny-skia renderer pulls kurbo 0.10 directly and kurbo 0.11 transitively through resvg (SVG support); both stay until resvg or iced_tiny_skia upgrade.
     "libloading",
     "linux-raw-sys",
     "lru", # iced 0.14 uses lru 0.16; existing copy via other deps.
