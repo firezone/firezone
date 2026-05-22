@@ -103,20 +103,14 @@ jobs:
             arch: x86_64
             os: linux
             pkg-extension: deb
-            test-shell: bash
-            test-script-ext: sh
           - runs-on: ubuntu-22.04-arm
             arch: aarch64
             os: linux
             pkg-extension: deb
-            test-shell: bash
-            test-script-ext: sh
           - runs-on: windows-2022
             arch: x86_64
             os: windows
             pkg-extension: msi
-            test-shell: powershell
-            test-script-ext: ps1
     env:
       # mark:next-gui-version
       ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.13_${{ matrix.arch }}
@@ -133,7 +127,7 @@ jobs:
       # mark:next-gui-version
       FIREZONE_GUI_VERSION: 1.5.13
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
-      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}.${{ matrix.test-script-ext }}
+      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
       TARGET_DIR: ../target
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
@@ -190,9 +184,14 @@ jobs:
           name: ${{ env.ARTIFACT_DST }}-rpm
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
-      - name: Test installation
-        shell: ${{ matrix.test-shell }}
-        run: ${{ env.TEST_INSTALL_SCRIPT }}
+      - name: Test installation (Linux)
+        if: "${{ runner.os == 'Linux' }}"
+        shell: bash
+        run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
+      - name: Test installation (Windows)
+        if: "${{ runner.os == 'Windows' }}"
+        shell: powershell
+        run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
 
       - name: Dump install.log
         # `always()` so the MSI's verbose log surfaces even when
