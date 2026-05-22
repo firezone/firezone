@@ -106,11 +106,25 @@ features = [
     "Win32_System_Threading",
     # `ProcessIdToSessionId` for the GUI-pipe cross-session check.
     "Win32_System_RemoteDesktop",
+    # WinRT `Windows.Foundation.Uri` and
+    # `Windows.Management.Deployment.PackageManager` for the
+    # `register-sparse.exe` WiX custom action.
+    "Foundation",
+    "Management_Deployment",
+    # `Package` / `PackageId` returned by
+    # `FindPackagesByPackageFamilyName`, plus `IIterable<Package>`
+    # iteration to enumerate stale registrations before provisioning
+    # a new external location.
+    "ApplicationModel",
+    "Foundation_Collections",
 ]
 
 [build-dependencies]
 anyhow = { workspace = true }
 tauri-build = { workspace = true, features = [] }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource = { workspace = true }
 
 [dev-dependencies]
 bin-shared = { workspace = true, features = ["test"] }

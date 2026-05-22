@@ -10,7 +10,14 @@ anyhow = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows]
 workspace = true
-features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization"]
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    # `DeriveAppContainerSidFromAppContainerName` for the MSIX
+    # package SID factory on `Trustee`.
+    "Win32_Security_Isolation",
+]
 
 [target.'cfg(windows)'.dev-dependencies]
 tempfile = { workspace = true }

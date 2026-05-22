@@ -10,9 +10,16 @@
 //! unrepresentable, so a typo or shape error can't make it to
 //! runtime.
 
-use crate::SecurityDescriptor;
-use anyhow::Result;
-use std::fmt;
+use crate::{SecurityDescriptor, sid_to_string};
+use anyhow::{Context as _, Result};
+use std::{borrow::Cow, fmt};
+use windows::{
+    Win32::{
+        Foundation::{HLOCAL, LocalFree},
+        Security::Isolation::DeriveAppContainerSidFromAppContainerName,
+    },
+    core::{HSTRING, PCWSTR},
+};
 
 /// File-system rights expressible in a Firezone pipe ACE. Encoded
 /// SDDL strings: `FA` (full access) and `FRFW` (file generic read +
@@ -34,32 +41,78 @@ impl FileRights {
     }
 }
 
-/// A trustee — the SID alias an ACE refers to. Currently only the
-/// three two-letter aliases Firezone uses are exposed.
-#[derive(Debug, Clone, Copy)]
-pub struct Trustee(&'static str);
+/// A trustee — either a fixed two-letter SDDL alias (`SY`, `BA`,
+/// `BU`) or a process-derived SID string like `S-1-15-2-…`. There is
+/// no public string-based constructor; the SID variants come from
+/// Windows APIs that read kernel state.
+#[derive(Debug, Clone)]
+pub struct Trustee(Cow<'static, str>);
 
 impl Trustee {
     /// `SY` — the LocalSystem account.
-    pub fn local_system() -> Self {
-        Self("SY")
+    pub const fn local_system() -> Self {
+        Self(Cow::Borrowed("SY"))
     }
 
     /// `BA` — the `BUILTIN\Administrators` group.
-    pub fn builtin_administrators() -> Self {
-        Self("BA")
+    pub const fn builtin_administrators() -> Self {
+        Self(Cow::Borrowed("BA"))
     }
 
     /// `BU` — the `BUILTIN\Users` group.
-    pub fn builtin_users() -> Self {
-        Self("BU")
+    pub const fn builtin_users() -> Self {
+        Self(Cow::Borrowed("BU"))
+    }
+
+    /// SID for the given MSIX Package Family Name (`Name_publisherId`
+    /// — the deterministic Crockford-base32 hash Windows derives from
+    /// the cert Subject DN). Use this in pipe DACLs to pin access to
+    /// processes the kernel activated from that package: the kernel
+    /// attaches this SID to those processes' tokens, so an ACE
+    /// granting access to it is effectively a cert-rooted access
+    /// check (Windows enforces that the package's `Publisher` match
+    /// the signing cert's Subject DN at registration time).
+    ///
+    /// The PFN is just a string; the caller owns picking the right
+    /// one (typically a `pub const` next to the AppxManifest it
+    /// originates from). This function doesn't verify the package is
+    /// registered — it just runs the SID-derivation hash — so the
+    /// returned SID is safe to bake into a DACL even when the
+    /// package isn't yet provisioned (the ACE would simply match no
+    /// process).
+    pub fn from_package_family_name(pfn: &str) -> Result<Self> {
+        let sid = derive_package_sid(pfn)?;
+        Ok(Self(Cow::Owned(sid)))
     }
 
     /// The string Windows expects for this trustee inside an SDDL
-    /// ACE, e.g. `"SY"`.
-    pub fn as_sddl_str(&self) -> &'static str {
-        self.0
+    /// ACE — `"SY"` for an alias, `"S-1-…"` for a SID.
+    pub fn as_sddl_str(&self) -> &str {
+        &self.0
     }
+}
+
+/// Wraps `DeriveAppContainerSidFromAppContainerName` and
+/// `ConvertSidToStringSidW` to turn a Package Family Name into the
+/// SDDL string form (`S-1-15-2-…`) Windows uses for that package's
+/// AppContainer SID.
+fn derive_package_sid(pfn: &str) -> Result<String> {
+    let pfn_wide = HSTRING::from(pfn);
+    // SAFETY: `pfn_wide` is null-terminated by HSTRING. On success Windows
+    // allocates a SID we must release with `LocalFree`.
+    let sid = unsafe { DeriveAppContainerSidFromAppContainerName(PCWSTR(pfn_wide.as_ptr())) }
+        .context("DeriveAppContainerSidFromAppContainerName failed")?;
+
+    let sid_string = sid_to_string(sid);
+
+    // SAFETY: `sid` came from `DeriveAppContainerSidFromAppContainerName`
+    // (LocalAlloc-allocated). Free it now; the SDDL string is on the
+    // Rust heap and survives.
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(sid.0)));
+    }
+
+    sid_string
 }
 
 /// A security descriptor for a Firezone named pipe: an optional
@@ -190,5 +243,22 @@ mod tests {
             .allow(FileRights::ReadWrite, Trustee::builtin_users())
             .build()
             .expect("kernel should accept GUI-shape SDDL");
+    }
+
+    /// `from_package_family_name` is a deterministic SID hash —
+    /// always succeeds for any non-empty PFN, regardless of whether
+    /// the package is registered on this machine. The exact SID is
+    /// documented by Microsoft's
+    /// [`8wekyb3d8bbwe`](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/appxmanifestschema/element-identity)
+    /// example for `Microsoft.WindowsCalculator`.
+    #[test]
+    fn from_package_family_name_returns_sid() {
+        let trustee =
+            Trustee::from_package_family_name("Microsoft.WindowsCalculator_8wekyb3d8bbwe").unwrap();
+        assert!(
+            trustee.as_sddl_str().starts_with("S-1-15-2-"),
+            "expected S-1-15-2-… SID, got `{}`",
+            trustee.as_sddl_str()
+        );
     }
 }

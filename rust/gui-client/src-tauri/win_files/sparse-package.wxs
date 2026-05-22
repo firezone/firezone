@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WiX fragment for the Firezone sparse MSIX package. Pulled into the
+  main MSI via `tauri.conf.json:fragmentPaths`. Ships the sparse-MSIX
+  payload and the `register-sparse.exe` custom-action helper into
+  INSTALLDIR, then fires two deferred CAs against it. See the
+  `register-sparse.rs` module doc for what each subcommand does to the
+  AppX deployment service; this fragment only deals with the MSI side.
+
+  `Return="check"` makes a non-zero exit from `register-sparse` fail
+  the install transaction. The `LaunchCondition` below guarantees we
+  only ever reach the CA on a Windows build that actually supports
+  external-location sparse-MSIX packages (Win10 21H2 / build 19044).
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!--
+      Reads `HKLM\…\CurrentVersion\CurrentBuild` (REG_SZ, the
+      kernel build number). Build numbers are monotonic across
+      Windows 10, 11, and future major versions, so a single
+      build-number floor future-proofs the launch condition.
+    -->
+    <Property Id="WIN_BUILD" Secure="yes">
+      <RegistrySearch Id="WinBuildNum"
+                      Root="HKLM"
+                      Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentBuild"
+                      Type="raw" />
+    </Property>
+
+    <!--
+      Refuse install on anything older than Win10 21H2. The MSIX
+      sparse-package subsystem (`AddPackageByUriAsync` with
+      `ExternalLocationUri`) ships there; on earlier builds
+      registration silently no-ops and the tunnel pipe DACL grants
+      access to a SID no process carries, making the app
+      unreachable. The `Installed` clause lets uninstall still work
+      even if the OS was somehow downgraded. Both operands of `>=`
+      are pure-digit strings so MSI evaluates as integer comparison
+      and the check stays correct on future builds with more digits.
+    -->
+    <Condition Message="Firezone requires Windows 10 version 21H2 (build 19044) or later.">
+      <![CDATA[Installed OR WIN_BUILD >= "19044"]]>
+    </Condition>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="SparsePackageMsix" Guid="34cca6d3-7b27-4d5e-b86b-3a3b4ee4dbe6">
+        <File Id="FirezoneMsix" Name="firezone.msix"
+              Source="../../firezone.msix" KeyPath="yes" />
+      </Component>
+
+      <Component Id="RegisterSparseExe" Guid="92c9f54d-1ab8-4b30-93bf-94c8c0d58f0c">
+        <File Id="RegisterSparseExeFile" Name="register-sparse.exe"
+              Source="../../register-sparse.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <CustomAction Id="ProvisionSparsePackage"
+                  FileKey="RegisterSparseExeFile"
+                  ExeCommand="provision"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="DeprovisionSparsePackage"
+                  FileKey="RegisterSparseExeFile"
+                  ExeCommand="deprovision"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <!--
+        Provision must complete before `StartServices` so the tunnel
+        service is launched with the package SID already attached.
+      -->
+      <Custom Action="ProvisionSparsePackage"
+              Before="StartServices">NOT REMOVE</Custom>
+
+      <Custom Action="DeprovisionSparsePackage"
+              Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

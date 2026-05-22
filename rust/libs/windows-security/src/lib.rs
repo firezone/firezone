@@ -21,14 +21,14 @@ use windows::{
         Security::{
             ACL,
             Authorization::{
-                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-                SE_FILE_OBJECT, SetNamedSecurityInfoW,
+                ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+                SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
             DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
-            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
         },
     },
-    core::{BOOL, PCWSTR},
+    core::{BOOL, PCWSTR, PWSTR},
 };
 
 /// Owned wrapper around a `PSECURITY_DESCRIPTOR` allocated by
@@ -146,6 +146,29 @@ impl Drop for SecurityDescriptor {
 
 fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
+}
+
+/// Renders a `PSID` into its SDDL string form (`S-1-…`) by calling
+/// `ConvertSidToStringSidW` and freeing the Windows-allocated buffer
+/// with `LocalFree`.
+pub(crate) fn sid_to_string(sid: PSID) -> Result<String> {
+    let mut out = PWSTR(ptr::null_mut());
+    // SAFETY: `sid` is a valid SID from a Windows API; `&mut out` is a valid
+    // out-pointer. On success Windows allocates a wide string with
+    // `LocalAlloc`, which we release with `LocalFree`.
+    unsafe { ConvertSidToStringSidW(sid, &mut out) }.context("ConvertSidToStringSidW failed")?;
+    ensure!(!out.0.is_null(), "ConvertSidToStringSidW returned NULL");
+
+    // SAFETY: `out.0` points to a null-terminated wide string allocated by
+    // Windows; we copy it into an owned `String` before freeing.
+    let s = unsafe { out.to_string() }.context("ConvertSidToStringSidW returned invalid UTF-16")?;
+
+    // SAFETY: `out` is the LocalAlloc-allocated buffer; release it.
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(out.0 as *mut _)));
+    }
+
+    Ok(s)
 }
 
 #[cfg(test)]
