@@ -748,8 +748,8 @@ defmodule Portal.Safe do
     |> force_account_id_in_select(schema, account_id)
   end
 
-  defp apply_account_scope_to_entries(entries, _schema, account_id) when is_list(entries) do
-    Enum.map(entries, &put_account_id(&1, account_id))
+  defp apply_account_scope_to_entries(entries, schema, account_id) when is_list(entries) do
+    Enum.map(entries, &put_account_id(&1, schema, account_id))
   end
 
   defp force_account_id_in_select(query, Portal.Account, account_id) do
@@ -760,11 +760,11 @@ defmodule Portal.Safe do
     select_merge(query, %{account_id: ^account_id})
   end
 
-  defp put_account_id(entry, account_id) when is_map(entry),
-    do: Map.put(entry, :account_id, account_id)
+  defp put_account_id(entry, Portal.Account, account_id), do: put_field(entry, :id, account_id)
+  defp put_account_id(entry, _schema, account_id), do: put_field(entry, :account_id, account_id)
 
-  defp put_account_id(entry, account_id) when is_list(entry),
-    do: Keyword.put(entry, :account_id, account_id)
+  defp put_field(entry, field, value) when is_map(entry), do: Map.put(entry, field, value)
+  defp put_field(entry, field, value) when is_list(entry), do: Keyword.put(entry, field, value)
 
   defp apply_schema_changeset(changeset, schema) do
     changeset =
