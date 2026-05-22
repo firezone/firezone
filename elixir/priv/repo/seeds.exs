@@ -141,9 +141,11 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.cast(
         %{
           name: attrs["name"] || attrs[:name],
-          firezone_id: firezone_id
+          firezone_id: firezone_id,
+          ipv4: attrs["ipv4"] || attrs[:ipv4],
+          ipv6: attrs["ipv6"] || attrs[:ipv6]
         },
-        [:name, :firezone_id]
+        [:name, :firezone_id, :ipv4, :ipv6]
       )
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
@@ -805,13 +807,16 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
     IO.puts("")
 
+    # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
       create_client(
         %{
           name: "FZ User iPhone",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
+          identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.10",
+          ipv6: "fd00:2021:1111::10"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -824,7 +829,9 @@ defmodule Portal.Repo.Seeds do
           name: "FZ User Android",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}"
+          identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.11",
+          ipv6: "fd00:2021:1111::11"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -837,7 +844,9 @@ defmodule Portal.Repo.Seeds do
           name: "FZ User Surface",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          device_uuid: "WIN-#{Ecto.UUID.generate()}"
+          device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.12",
+          ipv6: "fd00:2021:1111::12"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -850,7 +859,9 @@ defmodule Portal.Repo.Seeds do
           name: "FZ User Rendering Station",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          device_uuid: "UB-#{Ecto.UUID.generate()}"
+          device_uuid: "UB-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.13",
+          ipv6: "fd00:2021:1111::13"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -864,7 +875,9 @@ defmodule Portal.Repo.Seeds do
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_serial: "FVFHF246Q72Z",
-          device_uuid: "#{Ecto.UUID.generate()}"
+          device_uuid: "#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.14",
+          ipv6: "fd00:2021:1111::14"
         },
         admin_subject,
         admin_client_token.id,
@@ -1139,14 +1152,16 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{site.name} token: #{gateway_encoded_token}")
     IO.puts("")
 
-    # Create gateway directly
+    # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, gateway1} =
       create_gateway(
         %{
           site_id: site.id,
           firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
-          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          ipv4: "100.64.0.20",
+          ipv6: "fd00:2021:1111::20"
         },
         %Authentication.Context{
           type: :gateway,
@@ -1155,14 +1170,15 @@ defmodule Portal.Repo.Seeds do
         }
       )
 
-    # Create another gateway
     {:ok, gateway2} =
       create_gateway(
         %{
           site_id: site.id,
           firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
-          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          ipv4: "100.64.0.21",
+          ipv6: "fd00:2021:1111::21"
         },
         %Authentication.Context{
           type: :gateway,
@@ -1172,14 +1188,15 @@ defmodule Portal.Repo.Seeds do
       )
 
     for i <- 1..10 do
-      # Create more gateways
       {:ok, _gateway} =
         create_gateway(
           %{
             site_id: site.id,
             firezone_id: Ecto.UUID.generate(),
             name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
-            public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+            public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+            ipv4: "100.64.0.#{30 + i}",
+            ipv6: "fd00:2021:1111::#{30 + i}"
           },
           %Authentication.Context{
             type: :gateway,
