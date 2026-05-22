@@ -21,9 +21,7 @@ use firezone_gui_client::controller::{Controller, ControllerRequest};
 use firezone_gui_client::gui::system_tray;
 use firezone_gui_client::ipc::SocketId;
 use firezone_gui_client::logging::{self, FileCount, FilterReloadHandle};
-use firezone_gui_client::settings::{
-    self, AdvancedSettings, GeneralSettings, MdmSettings,
-};
+use firezone_gui_client::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
 use firezone_gui_client::{GeneralSettingsForm, SessionViewModel, deep_link};
 use iced::futures::SinkExt as _;
 use iced::widget::{container, row};
@@ -272,7 +270,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             // ApplyAdvancedSettings.
             send_request(
                 app,
-                ControllerRequest::ApplyAdvancedSettings(Box::new(AdvancedSettings::default())),
+                ControllerRequest::ApplyAdvancedSettings(Box::default()),
             );
             Task::none()
         }
