@@ -119,10 +119,9 @@ fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
             bail!("Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack")
         }
         SocketId::Tunnel => Ok(()),
-        // Cross-session GUI server -- FUS/RDP. Surfaces to the launcher
-        // as `WrongUser`; the kernel snapshots `*SessionId` at pipe
-        // creation, so this is TOCTOU-safe.
-        SocketId::Gui if pipe_server_session_id(handle)? != current_session_id()? => {
+        // Cross-session GUI server -- FUS/RDP. Surfaces to the
+        // launcher as `WrongUser`.
+        SocketId::Gui if !is_pipe_server_owned_by_current_session(handle)? => {
             Err(anyhow::Error::new(WrongUser))
         }
         SocketId::Gui => Ok(()),
@@ -179,7 +178,7 @@ impl Server {
         // next iteration, so we just return an error here -- no
         // internal retry loop.
         if matches!(self.socket_id, SocketId::Gui)
-            && pipe_client_session_id(handle)? != current_session_id()?
+            && !is_pipe_client_owned_by_current_session(handle)?
         {
             bail!("Dropped IPC connection from PID {client_pid} -- different logon session");
         }
@@ -325,27 +324,27 @@ fn is_pipe_owned_by_local_system(handle: HANDLE) -> Result<bool> {
     Ok(is_local_system)
 }
 
-/// Wraps `GetNamedPipeServerSessionId`. Returns the logon-session
-/// ID of the process that *created* the pipe (set by the kernel at
-/// `CreateNamedPipeW` time).
-fn pipe_server_session_id(handle: HANDLE) -> Result<u32> {
-    let mut session = 0u32;
+/// Whether the pipe was *created* in this process's logon session.
+/// The kernel snapshots the value at `CreateNamedPipeW` time, so
+/// this is TOCTOU-safe.
+fn is_pipe_server_owned_by_current_session(handle: HANDLE) -> Result<bool> {
+    let mut server = 0u32;
     // SAFETY: `handle` is a live pipe handle from Tokio; the kernel
-    // writes only to `&mut session` and doesn't retain the pointer.
-    unsafe { GetNamedPipeServerSessionId(handle, &mut session) }
+    // writes only to `&mut server` and doesn't retain the pointer.
+    unsafe { GetNamedPipeServerSessionId(handle, &mut server) }
         .context("GetNamedPipeServerSessionId failed")?;
-    Ok(session)
+    Ok(server == current_session_id()?)
 }
 
-/// Wraps `GetNamedPipeClientSessionId`. Returns the logon-session
-/// ID of the process that *connected* to the pipe.
-fn pipe_client_session_id(handle: HANDLE) -> Result<u32> {
-    let mut session = 0u32;
+/// Whether the pipe was *connected* by a process in this process's
+/// logon session. Snapshotted at connection time by the kernel.
+fn is_pipe_client_owned_by_current_session(handle: HANDLE) -> Result<bool> {
+    let mut client = 0u32;
     // SAFETY: `handle` is a live pipe handle from Tokio; the kernel
-    // writes only to `&mut session` and doesn't retain the pointer.
-    unsafe { GetNamedPipeClientSessionId(handle, &mut session) }
+    // writes only to `&mut client` and doesn't retain the pointer.
+    unsafe { GetNamedPipeClientSessionId(handle, &mut client) }
         .context("GetNamedPipeClientSessionId failed")?;
-    Ok(session)
+    Ok(client == current_session_id()?)
 }
 
 /// The current process's logon-session ID, via
