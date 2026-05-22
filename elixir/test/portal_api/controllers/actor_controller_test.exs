@@ -1,9 +1,11 @@
 defmodule PortalAPI.ActorControllerTest do
   use PortalAPI.ConnCase, async: true
   alias Portal.Actor
+  alias Portal.ExternalIdentity
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.IdentityFixtures
 
   setup do
     account = account_fixture()
@@ -620,6 +622,70 @@ defmodule PortalAPI.ActorControllerTest do
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: target.id).type ==
                :service_account
+    end
+
+    test "clears external identities when email is changed", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_with_email_fixture(account: account)
+      identity1 = identity_fixture(account: account, actor: target)
+      identity2 = identity_fixture(account: account, actor: target)
+
+      attrs = %{"email" => "rotated-#{target.email}"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: attrs)
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["email"] == "rotated-#{target.email}"
+
+      refute Repo.get_by(ExternalIdentity, id: identity1.id, account_id: account.id)
+      refute Repo.get_by(ExternalIdentity, id: identity2.id, account_id: account.id)
+    end
+
+    test "does not clear identities when email is unchanged", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_with_email_fixture(account: account)
+      identity = identity_fixture(account: account, actor: target)
+
+      attrs = %{"name" => "Renamed", "email" => target.email}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: attrs)
+
+      assert json_response(conn, 200)
+      assert Repo.get_by(ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "does not clear identities when email differs only by whitespace", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_with_email_fixture(account: account)
+      identity = identity_fixture(account: account, actor: target)
+
+      attrs = %{"email" => "  #{target.email}  "}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: attrs)
+
+      assert json_response(conn, 200)
+      assert Repo.get_by(ExternalIdentity, id: identity.id, account_id: account.id)
     end
   end
 

@@ -223,4 +223,49 @@ defmodule Portal.ActorTest do
       assert actor.created_by_directory_id == directory.id
     end
   end
+
+  describe "email_meaningfully_changed?/1" do
+    test "returns false when email is absent from attrs" do
+      changeset = cast(%Actor{email: "user@example.com"}, %{name: "x"}, [:name, :email])
+      refute Actor.email_meaningfully_changed?(changeset)
+    end
+
+    test "returns false when email is identical" do
+      changeset =
+        cast(%Actor{email: "user@example.com"}, %{email: "user@example.com"}, [:email])
+
+      refute Actor.email_meaningfully_changed?(changeset)
+    end
+
+    test "returns false when only whitespace differs" do
+      changeset =
+        cast(%Actor{email: "user@example.com"}, %{email: "  user@example.com  "}, [:email])
+
+      refute Actor.email_meaningfully_changed?(changeset)
+    end
+
+    test "returns false when only case differs" do
+      changeset =
+        cast(%Actor{email: "user@example.com"}, %{email: "User@Example.COM"}, [:email])
+
+      refute Actor.email_meaningfully_changed?(changeset)
+    end
+
+    test "returns true when email value differs after trim" do
+      changeset =
+        cast(%Actor{email: "user@example.com"}, %{email: "other@example.com"}, [:email])
+
+      assert Actor.email_meaningfully_changed?(changeset)
+    end
+
+    test "returns true when email is being cleared" do
+      changeset = cast(%Actor{email: "user@example.com"}, %{email: ""}, [:email])
+      assert Actor.email_meaningfully_changed?(changeset)
+    end
+
+    test "returns true when email is being assigned to a previously nil actor" do
+      changeset = cast(%Actor{email: nil}, %{email: "new@example.com"}, [:email])
+      assert Actor.email_meaningfully_changed?(changeset)
+    end
+  end
 end

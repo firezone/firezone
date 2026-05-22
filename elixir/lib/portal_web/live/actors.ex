@@ -420,19 +420,27 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("save", %{"actor" => attrs}, socket) do
-    actor = socket.assigns.selected_actor
-    changeset = changeset(actor, attrs)
+    process_actor_save(attrs, socket, confirm_email_change?: false)
+  end
 
-    with :ok <- validate_role_change(changeset, actor, socket),
-         :ok <- validate_otp_change(changeset, actor, socket) do
-      save_actor(changeset, socket)
-    else
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
+  def handle_event("confirm_email_change", _params, socket) do
+    case socket.assigns.actor_form.pending_email_change do
+      nil ->
+        {:noreply, socket}
 
-      {:error, message} when is_binary(message) ->
-        {:noreply, put_flash(socket, :error, message)}
+      attrs ->
+        socket =
+          assign(socket, actor_form: %{socket.assigns.actor_form | pending_email_change: nil})
+
+        process_actor_save(attrs, socket, confirm_email_change?: true)
     end
+  end
+
+  def handle_event("cancel_email_change", _params, socket) do
+    {:noreply,
+     assign(socket,
+       actor_form: %{socket.assigns.actor_form | pending_email_change: nil}
+     )}
   end
 
   def handle_event("confirm_disable_actor", _params, socket) do
@@ -804,18 +812,58 @@ defmodule PortalWeb.Actors do
   end
 
   defp save_actor(changeset, socket) do
-    case Database.update(changeset, socket.assigns.subject) do
+    identities_cleared? = Actor.email_meaningfully_changed?(changeset)
+
+    case Database.update_actor(changeset, socket.assigns.subject) do
       {:ok, actor} ->
-        socket = apply_group_membership_changes(socket, actor, socket.assigns.subject)
+        socket =
+          socket
+          |> apply_group_membership_changes(actor, socket.assigns.subject)
+          |> assign(selected_actor: actor)
+          |> maybe_clear_identities_assign(identities_cleared?)
+
+        flash_message =
+          if identities_cleared? do
+            "Actor updated successfully. All external identities, active sessions, and client tokens for this actor were removed because the email changed."
+          else
+            "Actor updated successfully."
+          end
 
         {:noreply,
          socket
-         |> put_flash(:success, "Actor updated successfully.")
+         |> put_flash(:success, flash_message)
          |> reload_live_table!("actors")
          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
+    end
+  end
+
+  defp maybe_clear_identities_assign(socket, false), do: socket
+  defp maybe_clear_identities_assign(socket, true), do: merge_state(socket, :actor_related, identities: [])
+
+  defp process_actor_save(attrs, socket, opts) do
+    actor = socket.assigns.selected_actor
+    changeset = changeset(actor, attrs)
+    skip_confirmation? = Keyword.fetch!(opts, :confirm_email_change?)
+
+    with :ok <- validate_role_change(changeset, actor, socket),
+         :ok <- validate_otp_change(changeset, actor, socket) do
+      if not skip_confirmation? and Actor.email_meaningfully_changed?(changeset) do
+        {:noreply,
+         assign(socket,
+           actor_form: actor_form_state(to_form(changeset), pending_email_change: attrs)
+         )}
+      else
+        save_actor(changeset, socket)
+      end
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
+
+      {:error, message} when is_binary(message) ->
+        {:noreply, put_flash(socket, :error, message)}
     end
   end
 
@@ -1049,8 +1097,9 @@ defmodule PortalWeb.Actors do
     |> Map.merge(Map.new(overrides))
   end
 
-  defp actor_form_state(form \\ nil) do
-    %{form: form}
+  defp actor_form_state(form \\ nil, overrides \\ []) do
+    %{form: form, pending_email_change: nil}
+    |> Map.merge(Map.new(overrides))
   end
 
   defp actor_related_state(overrides \\ []) do
@@ -1607,6 +1656,35 @@ defmodule PortalWeb.Actors do
       changeset
       |> Safe.scoped(subject)
       |> Safe.update()
+    end
+
+    def update_actor(changeset, subject) do
+      if Actor.email_meaningfully_changed?(changeset) do
+        Safe.transact(fn -> update_actor_and_clear_identities(changeset, subject) end)
+      else
+        update_actor_changeset(changeset, subject)
+      end
+    end
+
+    defp update_actor_changeset(changeset, subject) do
+      changeset
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    defp update_actor_and_clear_identities(changeset, subject) do
+      actor_id = changeset.data.id
+
+      with {:ok, actor} <- update_actor_changeset(changeset, subject),
+           {_count, _} <- clear_identities_for_actor(actor_id, subject) do
+        {:ok, actor}
+      end
+    end
+
+    defp clear_identities_for_actor(actor_id, subject) do
+      from(i in ExternalIdentity, where: i.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
     end
 
     def delete(actor, subject) do
