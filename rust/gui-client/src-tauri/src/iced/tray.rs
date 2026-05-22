@@ -2,22 +2,22 @@
 //!
 //! Two backends, picked at compile time:
 //!
-//! - **Linux**: [`ksni`] — a pure-Rust StatusNotifierItem implementation
+//! - **Linux**: `ksni` — a pure-Rust StatusNotifierItem implementation
 //!   that talks D-Bus directly. No GTK link dep. Works on KDE Plasma,
 //!   XFCE, Cinnamon, MATE, and on GNOME *if* the user has the
 //!   "AppIndicator and KStatusNotifierItem Support" GNOME Shell
 //!   extension installed (same desktop requirement as the Tauri
 //!   client).
-//! - **macOS / Windows**: tauri-apps's [`tray-icon`], which uses
+//! - **macOS / Windows**: tauri-apps's `tray-icon`, which uses
 //!   `NSStatusItem` / Win32 directly.
 //!
 //! Both backends consume the platform-neutral [`Menu`] IR produced by
 //! the existing `gui::system_tray::AppState::into_menu` (shared with
 //! the Tauri client — same favorites, devices, internet-resource
 //! toggle, update-ready download URL, etc.) and forward each menu
-//! click as an [`Event`] back to the iced application as a
-//! [`Message::TrayEvent`]. The iced `update` fn then re-emits it as
-//! [`ControllerRequest::SystemTrayMenu`], which is the same single
+//! click as a `system_tray::Event` back to the iced application as a
+//! `Message::TrayEvent`. The iced `update` fn then re-emits it as
+//! `ControllerRequest::SystemTrayMenu`, which is the same single
 //! sink the Tauri client uses — so the Controller handles all eleven
 //! event variants uniformly regardless of which UI is driving.
 

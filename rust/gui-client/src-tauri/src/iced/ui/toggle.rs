@@ -1,6 +1,6 @@
 //! Animated toggle.
 //!
-//! Iced 0.14's built-in [`iced::widget::toggler`] snaps between off
+//! Iced 0.14's built-in `iced::widget::toggler` snaps between off
 //! and on with no interpolation. We render our own toggle using
 //! existing primitives — a rounded `container` for the track with a
 //! smaller circular `container` for the thumb — so we can drive the

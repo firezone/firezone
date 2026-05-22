@@ -4,7 +4,7 @@
 //! The Controller drives all sign-in / tunnel / settings logic; the iced
 //! side is the *view*, receiving state updates via the
 //! [`UiUpdate`] enum that this integration pushes into an unbounded
-//! channel. Clicks in iced flow the other way as [`ControllerRequest`]
+//! channel. Clicks in iced flow the other way as `ControllerRequest`
 //! values (see `main.rs`).
 
 use std::future::Future;
