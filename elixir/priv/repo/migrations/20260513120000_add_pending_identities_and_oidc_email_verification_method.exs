@@ -6,22 +6,13 @@ defmodule Portal.Repo.Migrations.AddPendingIdentitiesAndOidcEmailVerificationMet
       modify(:email, :citext)
     end
 
+    # Existing providers retain pre-verification behavior; new providers default to :claim.
     alter table(:oidc_auth_providers) do
-      add(:email_verification_method, :string)
+      add(:email_verification_method, :string, null: false, default: "none")
     end
-
-    execute("""
-    UPDATE oidc_auth_providers
-    SET email_verification_method =
-      CASE
-        WHEN require_email_verified THEN 'claim'
-        ELSE 'none'
-      END
-    """)
 
     alter table(:oidc_auth_providers) do
       modify(:email_verification_method, :string, null: false, default: "claim")
-      remove(:require_email_verified)
     end
 
     create(
@@ -102,19 +93,9 @@ defmodule Portal.Repo.Migrations.AddPendingIdentitiesAndOidcEmailVerificationMet
       modify(:email, :text)
     end
 
-    alter table(:oidc_auth_providers) do
-      add(:require_email_verified, :boolean)
-    end
-
-    execute("""
-    UPDATE oidc_auth_providers
-    SET require_email_verified = email_verification_method != 'none'
-    """)
-
     drop(constraint(:oidc_auth_providers, :email_verification_method_must_be_valid))
 
     alter table(:oidc_auth_providers) do
-      modify(:require_email_verified, :boolean, null: false, default: true)
       remove(:email_verification_method)
     end
   end

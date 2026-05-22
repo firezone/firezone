@@ -172,22 +172,19 @@ defmodule PortalWeb.OIDC do
     end
   end
 
-  @spec email_verified?(map(), map()) :: boolean()
-  def email_verified?(%{"email_verified" => true}, _userinfo) do
-    true
+  @spec email_verified_status(map(), map()) :: :verified | :unverified | :missing
+  def email_verified_status(%{"email_verified" => true}, _userinfo), do: :verified
+  def email_verified_status(%{"email_verified" => _}, _userinfo), do: :unverified
+
+  def email_verified_status(claims, %{"email_verified" => true} = userinfo) do
+    if matching_subject?(claims, userinfo), do: :verified, else: :missing
   end
 
-  def email_verified?(%{"email_verified" => _email_verified}, _userinfo) do
-    false
+  def email_verified_status(claims, %{"email_verified" => _} = userinfo) do
+    if matching_subject?(claims, userinfo), do: :unverified, else: :missing
   end
 
-  def email_verified?(claims, %{"email_verified" => true} = userinfo) do
-    matching_subject?(claims, userinfo)
-  end
-
-  def email_verified?(_claims, _userinfo) do
-    false
-  end
+  def email_verified_status(_claims, _userinfo), do: :missing
 
   @spec matching_userinfo(map(), map()) :: map()
   def matching_userinfo(claims, userinfo) do
