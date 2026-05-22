@@ -57,6 +57,10 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :get, "products/#{product_id}", "")
   end
 
+  def fetch_customer_subscriptions(api_token, customer_id) do
+    request(api_token, :get, "subscriptions?customer=#{customer_id}&status=active", "")
+  end
+
   def create_billing_portal_session(api_token, customer_id, return_url) do
     body = URI.encode_query(%{"customer" => customer_id, "return_url" => return_url}, :www_form)
     request(api_token, :post, "billing_portal/sessions", body)
@@ -73,6 +77,10 @@ defmodule Portal.Billing.Stripe.APIClient do
       )
 
     request(api_token, :post, "subscriptions", body)
+  end
+
+  def cancel_subscription(api_token, subscription_id) do
+    request(api_token, :delete, "subscriptions/#{subscription_id}", "")
   end
 
   def request(api_token, method, path, body) do

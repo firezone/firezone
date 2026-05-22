@@ -11,6 +11,9 @@ defmodule Portal.OpsTest do
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
   import Portal.TokenFixtures
+  import Portal.ObanJobFixtures
+
+  alias Portal.Workers.DeleteAccount
 
   describe "count_presences/0" do
     test "returns presence counts grouped by topic prefix" do
@@ -69,6 +72,53 @@ defmodule Portal.OpsTest do
       end
 
       refute Repo.one(Portal.Account)
+    end
+  end
+
+  describe "schedule_missing_account_deletion_jobs/0" do
+    test "enqueues a delete job for accounts already pending deletion without a job" do
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+
+      account =
+        update_account(account_fixture(),
+          disabled_at: disabled_at,
+          scheduled_deletion_at: scheduled_deletion_at
+        )
+
+      _active_account = account_fixture()
+
+      assert {:ok, 1} = schedule_missing_account_deletion_jobs()
+
+      scheduled_jobs =
+        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
+
+      assert length(scheduled_jobs) == 1
+
+      [scheduled_job] = scheduled_jobs
+      assert scheduled_job.state == "scheduled"
+      assert DateTime.compare(scheduled_job.scheduled_at, account.scheduled_deletion_at) == :eq
+    end
+
+    test "does not enqueue duplicate delete jobs for accounts that already have one" do
+      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+
+      account =
+        update_account(account_fixture(),
+          disabled_at: disabled_at,
+          scheduled_deletion_at: scheduled_deletion_at
+        )
+
+      assert {:ok, _job} =
+               Oban.insert(
+                 DeleteAccount.new(%{"account_id" => account.id}, scheduled_at: scheduled_deletion_at)
+               )
+
+      assert {:ok, 0} = schedule_missing_account_deletion_jobs()
+
+      assert length(jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)) ==
+               1
     end
   end
 

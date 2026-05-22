@@ -44,8 +44,77 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
+  def account_scheduled_for_deletion_email(account, recipients, context) do
+    settings_url = url(~p"/#{account}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Scheduled for Deletion")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_scheduled_for_deletion,
+      account: account,
+      settings_url: settings_url,
+      remote_ip: redact_ip(context.remote_ip),
+      location: format_location(context),
+      user_agent: context.user_agent,
+      paid_plan: Portal.Billing.paid_plan?(account)
+    )
+  end
+
+  def account_deletion_aborted_email(account, recipients, context) do
+    settings_url = url(~p"/#{account}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Deletion Aborted")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_deletion_aborted,
+      account: account,
+      settings_url: settings_url,
+      remote_ip: redact_ip(context.remote_ip),
+      location: format_location(context),
+      user_agent: context.user_agent
+    )
+  end
+
+  def account_deletion_reminder_email(account, recipients) do
+    settings_url = url(~p"/#{account}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Deletion Reminder")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_deletion_reminder,
+      account: account,
+      settings_url: settings_url,
+      paid_plan: Portal.Billing.paid_plan?(account)
+    )
+  end
+
+  def account_deletion_completed_email(account, recipients) do
+    default_email()
+    |> subject("Firezone Account Deletion Complete")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_deletion_completed, account: account)
+  end
+
   defp put_recipients(email, recipients) when is_list(recipients),
     do: bcc_recipients(email, recipients)
 
   defp put_recipients(email, recipient), do: to(email, recipient)
+
+  defp redact_ip({a, b, _, _}), do: "#{a}.#{b}.*.*"
+
+  defp redact_ip({a, b, c, d, _, _, _, _}),
+    do: "#{hex(a)}:#{hex(b)}:#{hex(c)}:#{hex(d)}:*:*:*:*"
+
+  defp hex(n), do: Integer.to_string(n, 16)
+
+  defp format_location(%{remote_ip_location_city: city, remote_ip_location_region: region}) do
+    case [city, region] |> Enum.reject(&is_nil/1) |> Enum.join(", ") do
+      "" -> "Unknown"
+      location -> location
+    end
+  end
 end
