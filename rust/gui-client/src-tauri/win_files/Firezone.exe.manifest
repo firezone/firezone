@@ -6,7 +6,7 @@
   the kernel doesn't link the EXE back to the registered package,
   `GetCurrentPackageFamilyName` returns
   `APPMODEL_ERROR_NO_PACKAGE`, and no Firezone process carries the
-  package SID the tunnel pipe DACL grants -- so the GUI can't open
+  package SID the tunnel pipe DACL grants — so the GUI can't open
   the tunnel pipe and the app is unreachable.
 
   `publisher` + `packageName` must match the `Identity` element in
