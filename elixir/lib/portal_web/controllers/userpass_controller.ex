@@ -117,7 +117,7 @@ defmodule PortalWeb.UserpassController do
           expires_at: expires_at
         }
 
-        Portal.Authentication.create_gui_client_token(attrs)
+        Portal.Authentication.create_interactive_client_token(attrs)
 
       :headless_client ->
         attrs = %{
@@ -130,7 +130,7 @@ defmodule PortalWeb.UserpassController do
           expires_at: expires_at
         }
 
-        Portal.Authentication.create_gui_client_token(attrs)
+        Portal.Authentication.create_interactive_client_token(attrs)
     end
   end
 

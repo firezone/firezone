@@ -154,7 +154,7 @@ defmodule PortalAPI.Client.SocketTest do
       in_one_minute = DateTime.utc_now() |> DateTime.add(60, :second)
 
       {:ok, token} =
-        Portal.Authentication.create_headless_client_token(
+        Portal.Authentication.create_non_interactive_client_token(
           actor,
           %{expires_at: in_one_minute},
           admin_subject

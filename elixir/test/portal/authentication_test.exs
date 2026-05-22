@@ -9,7 +9,7 @@ defmodule Portal.AuthenticationTest do
   import Portal.SiteFixtures
   alias Portal.ClientToken
 
-  describe "create_headless_client_token/3" do
+  describe "create_non_interactive_client_token/3" do
     test "returns valid client token for a given service account" do
       account = account_fixture()
       service_account = actor_fixture(account: account, type: :service_account)
@@ -18,7 +18,7 @@ defmodule Portal.AuthenticationTest do
       one_day = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
 
       assert {:ok, token} =
-               create_headless_client_token(
+               create_non_interactive_client_token(
                  service_account,
                  %{expires_at: one_day},
                  admin_subject
@@ -44,7 +44,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       assert {:ok, token} =
-               create_headless_client_token(
+               create_non_interactive_client_token(
                  service_account,
                  %{expires_at: expires_at},
                  admin_subject
@@ -65,28 +65,48 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       assert_raise FunctionClauseError, fn ->
-        create_headless_client_token(service_account, %{expires_at: expires_at}, admin_subject)
+        create_non_interactive_client_token(
+          service_account,
+          %{expires_at: expires_at},
+          admin_subject
+        )
       end
     end
 
-    test "raises an error when trying to create a token not for a service account" do
+    test "creates a token for a regular account_user" do
       account = account_fixture()
       regular_user = actor_fixture(account: account, type: :account_user)
       admin_subject = admin_subject_fixture(account: account)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
-      assert_raise FunctionClauseError, fn ->
-        create_headless_client_token(regular_user, %{}, admin_subject)
-      end
+      assert {:ok, token} =
+               create_non_interactive_client_token(
+                 regular_user,
+                 %{expires_at: expires_at},
+                 admin_subject
+               )
+
+      assert token.actor_id == regular_user.id
+      assert token.account_id == account.id
+      assert is_nil(token.auth_provider_id)
     end
 
-    test "raises for account_admin_user actor type" do
+    test "creates a token for an account_admin_user" do
       account = account_fixture()
       admin_user = actor_fixture(account: account, type: :account_admin_user)
       admin_subject = admin_subject_fixture(account: account)
+      expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
-      assert_raise FunctionClauseError, fn ->
-        create_headless_client_token(admin_user, %{}, admin_subject)
-      end
+      assert {:ok, token} =
+               create_non_interactive_client_token(
+                 admin_user,
+                 %{expires_at: expires_at},
+                 admin_subject
+               )
+
+      assert token.actor_id == admin_user.id
+      assert token.account_id == account.id
+      assert is_nil(token.auth_provider_id)
     end
 
     test "raises for api_client actor type" do
@@ -95,7 +115,7 @@ defmodule Portal.AuthenticationTest do
       admin_subject = admin_subject_fixture(account: account)
 
       assert_raise FunctionClauseError, fn ->
-        create_headless_client_token(api_client, %{}, admin_subject)
+        create_non_interactive_client_token(api_client, %{}, admin_subject)
       end
     end
   end
@@ -291,7 +311,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       assert {:ok, token} =
-               create_headless_client_token(
+               create_non_interactive_client_token(
                  service_account,
                  %{expires_at: expires_at},
                  admin_subject
@@ -451,7 +471,7 @@ defmodule Portal.AuthenticationTest do
     end
   end
 
-  describe "create_gui_client_token/1" do
+  describe "create_interactive_client_token/1" do
     test "creates a client token with required attributes" do
       account = account_fixture()
       actor = actor_fixture(account: account)
@@ -465,7 +485,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:ok, token} = create_gui_client_token(attrs)
+      assert {:ok, token} = create_interactive_client_token(attrs)
       assert token.__struct__ == ClientToken
       assert token.account_id == account.id
       assert token.actor_id == actor.id
@@ -485,7 +505,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert {:error, changeset} = create_interactive_client_token(attrs)
       assert "can't be blank" in errors_on(changeset).actor_id
     end
 
@@ -500,7 +520,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert {:error, changeset} = create_interactive_client_token(attrs)
       assert "can't be blank" in errors_on(changeset).auth_provider_id
     end
 
@@ -516,7 +536,7 @@ defmodule Portal.AuthenticationTest do
         secret_nonce: "invalid.nonce"
       }
 
-      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert {:error, changeset} = create_interactive_client_token(attrs)
       assert errors_on(changeset).secret_nonce != []
     end
 
@@ -532,7 +552,7 @@ defmodule Portal.AuthenticationTest do
         secret_nonce: String.duplicate("a", 129)
       }
 
-      assert {:error, changeset} = create_gui_client_token(attrs)
+      assert {:error, changeset} = create_interactive_client_token(attrs)
       assert errors_on(changeset).secret_nonce != []
     end
 
@@ -549,7 +569,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:ok, _token} = create_gui_client_token(attrs)
+      assert {:ok, _token} = create_interactive_client_token(attrs)
     end
 
     test "creates an api token for api_client actor" do
@@ -719,7 +739,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      assert {:ok, token} = create_gui_client_token(attrs)
+      assert {:ok, token} = create_interactive_client_token(attrs)
       assert token.secret_hash != nil
       assert token.secret_nonce == "my-custom-nonce"
     end
@@ -737,8 +757,8 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token1} = create_gui_client_token(base_attrs)
-      {:ok, token2} = create_gui_client_token(base_attrs)
+      {:ok, token1} = create_interactive_client_token(base_attrs)
+      {:ok, token2} = create_interactive_client_token(base_attrs)
 
       assert token1.secret_salt != token2.secret_salt
     end
@@ -756,8 +776,8 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token1} = create_gui_client_token(attrs)
-      {:ok, token2} = create_gui_client_token(attrs)
+      {:ok, token1} = create_interactive_client_token(attrs)
+      {:ok, token2} = create_interactive_client_token(attrs)
 
       # Same nonce but different salts/fragments should produce different hashes
       assert token1.secret_hash != token2.secret_hash
@@ -971,7 +991,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token} = create_gui_client_token(attrs)
+      {:ok, token} = create_interactive_client_token(attrs)
       encoded = encode_fragment!(token)
 
       # Fragment starts with "." - client will prepend its nonce
@@ -993,7 +1013,7 @@ defmodule Portal.AuthenticationTest do
         expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
       }
 
-      {:ok, token} = create_gui_client_token(attrs)
+      {:ok, token} = create_interactive_client_token(attrs)
       encoded = encode_fragment!(token)
 
       # Client prepends the nonce to the fragment

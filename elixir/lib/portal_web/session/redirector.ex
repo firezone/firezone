@@ -141,7 +141,7 @@ defmodule PortalWeb.Session.Redirector do
       |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
       |> Phoenix.Controller.put_root_layout(false)
       |> Phoenix.Controller.put_view(PortalWeb.SignInHTML)
-      |> Phoenix.Controller.render("headless_client_token.html",
+      |> Phoenix.Controller.render("headless_client_signed_in.html",
         token: fragment,
         actor_name: actor_name,
         account: account,

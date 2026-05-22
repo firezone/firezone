@@ -1162,7 +1162,7 @@ defmodule PortalWeb.Actors do
         # Build the token attributes
         attrs = %{"expires_at" => expires_at}
 
-        case Authentication.create_headless_client_token(actor, attrs, subject) do
+        case Authentication.create_non_interactive_client_token(actor, attrs, subject) do
           {:ok, token} ->
             encoded_token = Authentication.encode_fragment!(token)
             {:ok, {token, encoded_token}}

@@ -196,7 +196,7 @@ defmodule PortalWeb.SignInHTML do
     """
   end
 
-  def headless_client_token(assigns) do
+  def headless_client_signed_in(assigns) do
     ~H"""
     <!DOCTYPE html>
     <html lang="en" class="scrollbar-gutter-stable">
