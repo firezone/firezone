@@ -7,30 +7,7 @@
   "bundle": {
     "active": true,
     "shortDescription": "Firezone",
-    "linux": {
-      "deb": {
-        "preInstallScript": "./debian/preinst",
-        "postInstallScript": "./debian/postinst",
-        "preRemoveScript": "./debian/prerm",
-        "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./debian/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./debian/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
-        },
-        "desktopTemplate": "./debian/firezone-client-gui.desktop"
-      },
-      "rpm": {
-        "postInstallScript": "./debian/postinst",
-        "preRemoveScript": "./debian/prerm_rpm",
-        "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./debian/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./debian/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
-        },
-        "desktopTemplate": "./debian/firezone-client-gui.desktop"
-      }
-    },
-    "targets": ["deb", "msi", "rpm"],
+    "targets": ["msi"],
     "windows": {
       "wix": {
         "bannerPath": "./win_files/banner.png",
