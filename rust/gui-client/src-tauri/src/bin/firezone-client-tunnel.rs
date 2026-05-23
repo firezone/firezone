@@ -67,9 +67,6 @@ pub struct Cli {
     /// Run `run-debug` in scripted mock mode: stub out `Connect` and serve a
     /// canned resource list instead of touching connlib / the portal. Pairs
     /// with the GUI's `--skip-portal-auth`. Debug builds only.
-    ///
-    /// `global` so it can follow the subcommand (`run-debug --mock`); only
-    /// honored for `run-debug`.
     #[cfg(debug_assertions)]
     #[arg(long, hide = true, global = true)]
     mock: bool,
