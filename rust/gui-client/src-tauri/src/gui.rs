@@ -232,11 +232,6 @@ pub struct RunConfig {
     pub telemetry_allowed: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
-    /// When `true`, skip the auth/portal/tunnel stack and drive the tray with
-    /// hardcoded fake state. Used by the `debug fake-controller` subcommand
-    /// for UI iteration without needing the privileged tunnel service or a
-    /// live portal.
-    pub fake_controller: bool,
 }
 
 /// IPC messages that a newly launched instance may send to an already
@@ -365,24 +360,19 @@ pub fn run(
             tray,
         };
 
-        let ctrl_task = if config.fake_controller {
-            tokio::spawn(crate::fake_controller::run(integration, ctlr_rx))
-        } else {
-            // Spawn the controller
-            tokio::spawn(Controller::start(
-                SocketId::Tunnel,
-                integration,
-                ctlr_tx,
-                ctlr_rx,
-                general_settings,
-                mdm_settings,
-                advanced_settings,
-                reloader,
-                config.telemetry_allowed,
-                updates_rx,
-                gui_ipc,
-            ))
-        };
+        let ctrl_task = tokio::spawn(Controller::start(
+            SocketId::Tunnel,
+            integration,
+            ctlr_tx,
+            ctlr_rx,
+            general_settings,
+            mdm_settings,
+            advanced_settings,
+            reloader,
+            config.telemetry_allowed,
+            updates_rx,
+            gui_ipc,
+        ));
 
         anyhow::Ok(ctrl_task)
     });

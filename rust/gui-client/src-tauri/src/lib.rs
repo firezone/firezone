@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
-mod fake_controller;
 mod updates;
 mod uptime;
 mod view;
