@@ -56,6 +56,10 @@ pub fn stream_metrics() -> bool {
     FEATURE_FLAGS.stream_metrics()
 }
 
+pub fn connected_devices() -> bool {
+    FEATURE_FLAGS.connected_devices()
+}
+
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     if user_id.is_empty() {
         return;
@@ -172,6 +176,8 @@ struct FeatureFlagsResponse {
     icmp_error_unreachable_prohibited_create_new_flow: bool,
     #[serde(default)]
     stream_metrics: bool,
+    #[serde(default)]
+    connected_devices: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -188,6 +194,7 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: AtomicBool,
+    connected_devices: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -205,6 +212,7 @@ impl FeatureFlags {
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
+            connected_devices,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -218,6 +226,8 @@ impl FeatureFlags {
                 Ordering::Relaxed,
             );
         self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
+        self.connected_devices
+            .store(connected_devices, Ordering::Relaxed);
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -249,6 +259,10 @@ impl FeatureFlags {
     fn stream_metrics(&self) -> bool {
         self.stream_metrics.load(Ordering::Relaxed)
     }
+
+    fn connected_devices(&self) -> bool {
+        self.connected_devices.load(Ordering::Relaxed)
+    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -267,6 +281,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
+        connected_devices: env_or("FZFF_CONNECTED_DEVICES", flags.connected_devices),
     }
 }
 
@@ -286,6 +301,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         StreamLogs { result: bool },
         IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
         StreamMetrics { result: bool },
+        ConnectedDevices { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -295,6 +311,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
+        connected_devices,
     } = flags;
 
     let value = serde_json::json!({
@@ -306,6 +323,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::StreamLogs { result: stream_logs },
             SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
             SentryFlag::StreamMetrics { result: stream_metrics },
+            SentryFlag::ConnectedDevices { result: connected_devices },
         ]
     });
 
