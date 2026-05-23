@@ -1,7 +1,21 @@
 name: Build Tauri app
 on:
   workflow_call:
+    inputs:
+      stub-binaries:
+        description: >-
+          Skip the (slow) Rust build and package stub placeholder
+          binaries instead. For fast iteration on the Windows MSI /
+          packaging config only — the resulting installer is NOT
+          functional and skips code signing.
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      stub-binaries:
+        description: "Package stub binaries instead of building (packaging-config iteration only)"
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -152,18 +166,27 @@ jobs:
       - name: Install pnpm deps
         run: pnpm install
       - uses: ./.github/actions/setup-azure-sign-tool
-      # Windows still bundles its MSI through tauri-bundler; the Windows
-      # cutover to cargo-packager lands in a follow-up commit. Linux no
-      # longer uses tauri-bundler at all — it builds the binaries with
-      # cargo and packages them with cargo-deb / cargo-generate-rpm.
-      - name: Build release exe and MSI (Windows, tauri-bundler)
-        if: ${{ runner.os == 'Windows' }}
-        env:
-          CARGO_PROFILE_RELEASE_LTO: thin # Fat LTO is getting too slow / RAM-hungry on Tauri builds
-        # Signs the exe before bundling it into the MSI
-        run: pnpm build
-      - name: Build frontend assets and release binaries (Linux)
-        if: ${{ runner.os == 'Linux' }}
+      # Neither OS uses tauri-bundler anymore: Linux packages with
+      # cargo-deb / cargo-generate-rpm, Windows with cargo-wix. The
+      # binaries are still the Tauri binaries — only the bundling
+      # tooling changed.
+      #
+      # When `stub-binaries` is set we skip the (slow) Rust build and
+      # drop placeholder files where the real binaries would go, so the
+      # packaging config can be iterated on CI in ~minutes. Stub
+      # installers are non-functional and skip code signing.
+      - name: Stub binaries (packaging-config iteration)
+        if: ${{ inputs.stub-binaries }}
+        shell: bash
+        working-directory: ./rust
+        run: |
+          mkdir -p target/release
+          for bin in firezone-gui-client firezone-client-tunnel; do
+            printf 'stub binary — not a real executable\n' > "target/release/${bin}"
+            printf 'stub binary — not a real executable\n' > "target/release/${bin}.exe"
+          done
+      - name: Build frontend assets and release binaries
+        if: ${{ !inputs.stub-binaries }}
         env:
           CARGO_PROFILE_RELEASE_LTO: thin
         # `vite build` produces the web assets that `tauri-build` embeds
@@ -185,17 +208,27 @@ jobs:
         run: |
           cargo deb --package firezone-gui-client --no-build --no-strip
           cargo generate-rpm --package gui-client/src-tauri
+      - name: Install cargo-wix (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+        with:
+          tool: cargo-wix
+      - name: Build .msi via cargo-wix (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        working-directory: ./rust
+        # `--no-build`: we built (or stubbed) the binaries above.
+        # `--nocapture`: surface candle/light output in the CI log.
+        run: cargo wix --package firezone-gui-client --no-build --nocapture
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
-      # We need to sign the exe inside the MSI. Currently
-      # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
-      # But this will soon be natively supported in Tauri.
-      # TODO: Use Tauri's native MSI signing with support for EV certs
-      # See https://github.com/tauri-apps/tauri/pull/8718
+      # cargo-wix writes the MSI to `target/wix/`. Sign it in place;
+      # the rename script then moves it to the published name. Skipped
+      # for stub builds (the stub MSI wraps placeholder files and isn't
+      # signable / shippable).
       - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' }}
+        if: ${{ runner.os == 'Windows' && !inputs.stub-binaries }}
         shell: bash
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/wix/firezone-client-gui-${{ env.FIREZONE_GUI_VERSION }}-x86_64.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
@@ -213,11 +246,11 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Test installation (Linux)
-        if: "${{ runner.os == 'Linux' }}"
+        if: "${{ runner.os == 'Linux' && !inputs.stub-binaries }}"
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
       - name: Test installation (Windows)
-        if: "${{ runner.os == 'Windows' }}"
+        if: "${{ runner.os == 'Windows' && !inputs.stub-binaries }}"
         shell: powershell
         run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
 

@@ -59,6 +59,22 @@ assets = [
 post_install_script = "debian/postinst"
 pre_uninstall_script = "debian/prerm_rpm"
 
+# Wires the Windows MSI into `cargo-wix`, replacing tauri-bundler's WiX
+# integration. cargo-wix compiles our hand-authored `wix/main.wxs` with
+# the WiX v3 toolset and links WixUtilExtension (needed for the
+# `ServiceControl` elements once `service.wxs` is layered back in).
+#
+# This is being brought up incrementally on CI: the first cut installs
+# just the two binaries to validate the toolchain + stub-binary
+# harness. The `service.wxs` / `sparse-package.wxs` fragments,
+# WebView2 bootstrapper, and the `register-sparse` custom action get
+# folded in (via `include = [...]`) in follow-up iterations.
+[package.metadata.wix]
+path = "wix/main.wxs"
+# `product-name` drives `ProductName`; keep parity with the
+# tauri-bundler output so upgrades line up.
+product-name = "Firezone"
+
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
