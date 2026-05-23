@@ -245,12 +245,7 @@ pub enum ServerMsg {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
-pub fn run(
-    rt: &Runtime,
-    config: RunConfig,
-    mdm_settings: MdmSettings,
-    reloader: logging::FilterReloadHandle,
-) -> Result<()> {
+pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandle) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
     #[cfg(not(debug_assertions))]
@@ -278,18 +273,13 @@ pub fn run(
 
         let (updates_tx, updates_rx) = mpsc::channel(1);
 
-        if mdm_settings.check_for_updates.is_none_or(|check| check) {
-            // Check for updates
-            tokio::spawn(async move {
-                if let Err(error) =
-                    updates::checker_task(updates_tx, config.debug_update_check).await
-                {
-                    tracing::error!("Error in updates::checker_task: {error:#}");
-                }
-            });
-        } else {
-            tracing::info!("Update checker disabled via MDM");
-        }
+        // The checker always runs; the controller enforces the `checkForUpdates`
+        // MDM policy once it receives the authoritative settings over IPC.
+        tokio::spawn(async move {
+            if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
+                tracing::error!("Error in updates::checker_task: {error:#}");
+            }
+        });
 
         if config.smoke_test {
             let ctlr_tx = ctlr_tx.clone();
@@ -362,7 +352,6 @@ pub fn run(
             ctlr_tx,
             ctlr_rx,
             general_settings,
-            mdm_settings,
             reloader,
             config.telemetry_allowed,
             updates_rx,

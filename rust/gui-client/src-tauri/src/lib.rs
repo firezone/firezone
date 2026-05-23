@@ -1,6 +1,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
+/// One-shot migration of MDM policy from the per-user registry hive into the
+/// machine-scope hive, owned by the Tunnel service.
+// TODO: remove once all clients have migrated.
+#[cfg(target_os = "windows")]
+mod mdm_migration;
 mod updates;
 mod uptime;
 mod view;

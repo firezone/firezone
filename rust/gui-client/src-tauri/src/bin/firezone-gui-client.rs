@@ -47,8 +47,9 @@ fn main() -> ExitCode {
 
     // Start telemetry in `entrypoint` mode so that crashes during settings
     // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
-    // `try_main` will switch the env to the real api_url once it has loaded
-    // settings; on graceful exit we flush below.
+    // The GUI's telemetry stays in `entrypoint` mode; the real environment is
+    // reported to the service post-`Hello` via `StartTelemetry`. On graceful
+    // exit we flush below.
     telemetry.start(
         "entrypoint",
         firezone_gui_client::RELEASE,
@@ -107,28 +108,15 @@ fn try_main(
         fail_with: cli.fail_on_purpose(),
     };
 
-    let mdm_settings = settings::load_mdm_settings()
-        .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
-        .unwrap_or_default();
-
-    // The authoritative advanced settings (with the user's stored values
-    // applied) live in the protected service-side file and arrive via the
-    // `Hello` IPC message. Until that happens we fall back to MDM overrides
-    // and compile-time defaults; once `Hello` lands, the controller updates
-    // both telemetry context (via `StartTelemetry`) and the GUI log filter.
-    let defaults = AdvancedSettings::default();
-
-    let api_url = mdm_settings
-        .api_url
-        .as_ref()
-        .map(|u| u.to_string())
-        .unwrap_or_else(|| defaults.api_url.to_string());
-    telemetry.start(&api_url, firezone_gui_client::RELEASE, telemetry::GUI_DSN);
-
+    // The authoritative advanced settings and machine-scope MDM policy are
+    // owned by the privileged Tunnel service and arrive over the `Hello` IPC
+    // message. Telemetry stays in `entrypoint` mode (started in `main`) and the
+    // log filter uses `RUST_LOG` or the compile-time default until then; once
+    // `Hello` lands the controller re-applies the effective log filter and
+    // sends the real environment to the service via `StartTelemetry`.
     let log_filter = std::env::var("RUST_LOG")
         .ok()
-        .or(mdm_settings.log_filter.clone())
-        .unwrap_or(defaults.log_filter);
+        .unwrap_or_else(|| AdvancedSettings::default().log_filter);
 
     *log_guard = None;
 
@@ -187,7 +175,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, config, mdm_settings, reloader)?;
+            gui::run(rt, config, reloader)?;
 
             return Ok(());
         }
@@ -195,7 +183,7 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, config, mdm_settings, reloader) {
+    match gui::run(rt, config, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {

@@ -197,7 +197,6 @@ impl<I: GuiIntegration> Controller<I> {
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
-        mdm_settings: MdmSettings,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
@@ -208,9 +207,20 @@ impl<I: GuiIntegration> Controller<I> {
         let (mut ipc_rx, mut ipc_client) =
             ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        let (firezone_id, advanced_settings) = receive_hello(&mut ipc_rx)
+        let (firezone_id, advanced_settings, mdm_settings) = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
+
+        // The GUI bootstraps logging with a default filter before connecting;
+        // now that the authoritative settings have arrived, apply the effective
+        // filter (MDM policy wins over the stored value; `RUST_LOG` wins overall).
+        let effective_log_filter = std::env::var("RUST_LOG")
+            .ok()
+            .or_else(|| mdm_settings.log_filter.clone())
+            .unwrap_or_else(|| advanced_settings.log_filter.clone());
+        if let Err(e) = log_filter_reloader.reload(&effective_log_filter) {
+            tracing::warn!("Failed to apply log filter after `Hello`: {e:#}");
+        }
 
         Telemetry::set_firezone_id(firezone_id).await;
 
@@ -852,6 +862,11 @@ impl<I: GuiIntegration> Controller<I> {
         &mut self,
         notification: Option<updates::Notification>,
     ) -> Result<()> {
+        // Honor the `checkForUpdates` MDM policy. The checker always runs, but
+        // when the policy disables updates we never surface them to the user.
+        let notification =
+            notification.filter(|_| self.mdm_settings.check_for_updates.unwrap_or(true));
+
         let Some(notification) = notification else {
             self.release = None;
             self.refresh_ui_state();
@@ -1070,7 +1085,7 @@ impl<I: GuiIntegration> Controller<I> {
 
 async fn receive_hello(
     ipc_rx: &mut ipc::ClientRead<service::ServerMsg>,
-) -> Result<(String, AdvancedSettings)> {
+) -> Result<(String, AdvancedSettings, MdmSettings)> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -1084,12 +1099,13 @@ async fn receive_hello(
     let service::ServerMsg::Hello {
         firezone_id,
         advanced_settings,
+        mdm_settings,
     } = server_msg
     else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
     };
 
-    Ok((firezone_id, advanced_settings))
+    Ok((firezone_id, advanced_settings, mdm_settings))
 }
 
 /// Path of the legacy user-writable `advanced_settings.json`. Used only by
@@ -1501,6 +1517,7 @@ mod tests {
                 .send(&service::ServerMsg::Hello {
                     firezone_id: "test-firezone-id".to_owned(),
                     advanced_settings: AdvancedSettings::default(),
+                    mdm_settings: MdmSettings::default(),
                 })
                 .await
                 .unwrap();
@@ -1571,7 +1588,6 @@ mod tests {
                 ctrl_tx.clone(),
                 ctrl_rx,
                 GeneralSettings::default(),
-                MdmSettings::default(),
                 log_filter_reloader,
                 true,
                 updates_rx,
