@@ -100,6 +100,8 @@ pub struct Server {
     socket_id: SocketId,
     pipe_path: String,
     dacl: PipeDacl,
+    /// PID of the most recently accepted client, captured in [`Server::next_client`].
+    client_pid: Option<u32>,
 }
 
 /// Alias for the client's half of a platform-specific IPC stream
@@ -174,7 +176,13 @@ impl Server {
             socket_id: id,
             pipe_path,
             dacl,
+            client_pid: None,
         })
+    }
+
+    /// PID of the most recently accepted client, if any.
+    pub(crate) fn client_pid(&self) -> Option<u32> {
+        self.client_pid
     }
 
     // `&mut self` needed to match the Linux signature
@@ -209,6 +217,7 @@ impl Server {
         }
 
         tracing::debug!(?client_pid, "Accepted IPC connection");
+        self.client_pid = Some(client_pid);
         Ok(server)
     }
 

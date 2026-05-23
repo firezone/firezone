@@ -9,12 +9,14 @@ use std::{
 };
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, HANDLE},
+        Foundation::{CloseHandle, HANDLE, HLOCAL, LocalFree},
         Security::{
-            GetTokenInformation, LookupAccountSidW, SID_NAME_USE, TOKEN_ELEVATION, TOKEN_QUERY,
-            TOKEN_USER, TokenElevation, TokenUser,
+            Authorization::ConvertSidToStringSidW, GetTokenInformation, LookupAccountSidW,
+            SID_NAME_USE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation, TokenUser,
         },
-        System::Threading::{GetCurrentProcess, OpenProcessToken},
+        System::Threading::{
+            GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+        },
     },
     core::PWSTR,
 };
@@ -46,7 +48,7 @@ pub fn elevation_check() -> Result<bool> {
 }
 
 // https://stackoverflow.com/questions/8046097/how-to-check-if-a-process-has-the-administrative-rights/8196291#8196291
-struct ProcessToken {
+pub(crate) struct ProcessToken {
     inner: HANDLE,
 }
 
@@ -134,6 +136,60 @@ impl ProcessToken {
         let domain = String::from_utf16_lossy(&domain[..domain_size as usize]);
 
         Ok(format!("{name}\\{domain}"))
+    }
+
+    /// Opens the access token of another process by PID.
+    pub(crate) fn from_pid(pid: u32) -> Result<Self> {
+        // SAFETY: `OpenProcess` returns an owned handle; we close it below once
+        // the token has been opened from it.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+            .context("`OpenProcess` failed")?;
+        let mut inner = HANDLE::default();
+        // SAFETY: `process` is a valid handle and `inner` is a fresh out-param.
+        let opened = unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut inner) };
+        // SAFETY: `process` came from `OpenProcess` and is not used afterwards.
+        let _ = unsafe { CloseHandle(process) };
+        opened.context("`OpenProcessToken` failed")?;
+        Ok(Self { inner })
+    }
+
+    /// Returns the token user's SID in string form (e.g. `S-1-5-21-...`).
+    pub(crate) fn user_sid_string(&self) -> Result<String> {
+        // As in `username`, over-allocate rather than sizing with a first call.
+        let token_user_sz = 1024u32;
+        let mut token_user = vec![0u8; token_user_sz as usize];
+        let token_user = token_user.as_mut_ptr() as *mut TOKEN_USER;
+        let mut return_sz = 0;
+
+        // SAFETY: the buffer is large enough to hold a `TOKEN_USER`.
+        unsafe {
+            GetTokenInformation(
+                self.inner,
+                TokenUser,
+                Some(token_user as *mut c_void),
+                token_user_sz,
+                &mut return_sz,
+            )
+        }?;
+
+        // SAFETY: `GetTokenInformation` populated the `TOKEN_USER`.
+        let sid = unsafe { (*token_user).User.Sid };
+
+        let mut sid_str = PWSTR::null();
+        // SAFETY: `sid` is valid; `ConvertSidToStringSidW` allocates `sid_str`,
+        // which we release with `LocalFree` below.
+        unsafe { ConvertSidToStringSidW(sid, &mut sid_str) }
+            .context("`ConvertSidToStringSidW` failed")?;
+
+        // SAFETY: on success `sid_str` points at a NUL-terminated UTF-16 string.
+        let result = unsafe { sid_str.to_string() }.context("SID string was not valid UTF-16");
+
+        // SAFETY: `sid_str` was allocated by `ConvertSidToStringSidW`.
+        unsafe {
+            let _ = LocalFree(Some(HLOCAL(sid_str.0 as *mut c_void)));
+        }
+
+        result
     }
 }
 

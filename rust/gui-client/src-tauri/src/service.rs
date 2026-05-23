@@ -2,7 +2,7 @@ use crate::{
     advanced_settings,
     ipc::{self, SocketId},
     logging,
-    settings::AdvancedSettings,
+    settings::{AdvancedSettings, MdmSettings, load_mdm_settings},
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use backoff::ExponentialBackoffBuilder;
@@ -43,6 +43,9 @@ mod platform;
 mod platform;
 
 pub use platform::{elevation_check, install, run};
+
+#[cfg(target_os = "windows")]
+pub(crate) use platform::ProcessToken;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
@@ -87,12 +90,14 @@ where
 pub enum ServerMsg {
     /// First message sent on every IPC connection.
     ///
-    /// Includes both the Firezone ID and the current advanced settings so
-    /// the GUI doesn't need to read the protected on-disk files itself —
-    /// those are owned exclusively by the privileged Tunnel service.
+    /// Includes the Firezone ID, the current advanced settings, and the
+    /// machine-scope MDM settings so the GUI doesn't need to read the
+    /// protected on-disk files or the registry itself — those are owned
+    /// exclusively by the privileged Tunnel service.
     Hello {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
+        mdm_settings: MdmSettings,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -376,10 +381,22 @@ impl<'a> Handler<'a> {
             .flatten()
             .unwrap_or_default();
 
+        // Migrate any per-user MDM policy into the machine-scope location before
+        // we read it, so the read below never has to consider the legacy hive.
+        #[cfg(target_os = "windows")]
+        if let Some(client_pid) = server.client_pid() {
+            crate::mdm_migration::run(client_pid);
+        }
+
+        let mdm_settings = load_mdm_settings()
+            .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))
+            .unwrap_or_default();
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
                 advanced_settings: advanced_settings.clone(),
+                mdm_settings,
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.

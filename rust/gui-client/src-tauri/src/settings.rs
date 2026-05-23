@@ -26,7 +26,11 @@ pub use mdm::load_mdm_settings;
 /// Configuring Firezone via MDM is optional, therefore all of these are [`Option`]s.
 /// Some of the policies can simply be enabled but don't have a value themselves.
 /// Those are modelled as [`Option<()>`].
-#[derive(Clone, Default, Debug)]
+///
+/// Read exclusively by the privileged Tunnel service and delivered to the GUI
+/// over IPC in the `Hello` message, so this needs to be (de)serializable.
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(default)]
 pub struct MdmSettings {
     pub auth_url: Option<Url>,
     pub api_url: Option<Url>,

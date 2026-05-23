@@ -18,7 +18,7 @@
   <policies>
     <policy
       name="authURL"
-      class="User"
+      class="Machine"
       displayName="$(string.authURL)"
       explainText="$(string.authURL_explain)"
       key="Software\Policies\Firezone"
@@ -33,7 +33,7 @@
 
     <policy
       name="apiURL"
-      class="User"
+      class="Machine"
       displayName="$(string.apiURL)"
       explainText="$(string.apiURL_explain)"
       key="Software\Policies\Firezone"
@@ -48,7 +48,7 @@
 
     <policy
       name="logFilter"
-      class="User"
+      class="Machine"
       displayName="$(string.logFilter)"
       explainText="$(string.logFilter_explain)"
       key="Software\Policies\Firezone"
@@ -63,7 +63,7 @@
 
     <policy
       name="accountSlug"
-      class="User"
+      class="Machine"
       displayName="$(string.accountSlug)"
       explainText="$(string.accountSlug_explain)"
       key="Software\Policies\Firezone"
@@ -78,7 +78,7 @@
 
     <policy
       name="hideAdminPortalMenuItem"
-      class="User"
+      class="Machine"
       displayName="$(string.hideAdminPortalMenuItem)"
       explainText="$(string.hideAdminPortalMenuItem_explain)"
       key="Software\Policies\Firezone"
@@ -96,7 +96,7 @@
 
     <policy
       name="connectOnStart"
-      class="User"
+      class="Machine"
       displayName="$(string.connectOnStart)"
       explainText="$(string.connectOnStart_explain)"
       key="Software\Policies\Firezone"
@@ -114,7 +114,7 @@
 
     <policy
       name="checkForUpdates"
-      class="User"
+      class="Machine"
       displayName="$(string.checkForUpdates)"
       explainText="$(string.checkForUpdates_explain)"
       key="Software\Policies\Firezone"
@@ -132,7 +132,7 @@
 
     <policy
       name="supportURL"
-      class="User"
+      class="Machine"
       displayName="$(string.supportURL)"
       explainText="$(string.supportURL_explain)"
       key="Software\Policies\Firezone"
