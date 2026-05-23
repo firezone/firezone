@@ -33,7 +33,7 @@ assets = [
     ["icons/32x32.png", "usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png", "644"],
     ["icons/128x128.png", "usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", "644"],
     ["icons/128x128@2x.png", "usr/share/icons/hicolor/256x256@2/apps/firezone-client-gui.png", "644"],
-    ["icons/icon.png", "usr/share/icons/hicolor/scalable/apps/firezone-client-gui.png", "644"],
+    ["icons/icon.png", "usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png", "644"],
 ]
 
 # Wires the `firezone-gui-client` binary into `cargo-generate-rpm`. Same
@@ -54,7 +54,7 @@ assets = [
     { source = "icons/32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png", mode = "644" },
     { source = "icons/128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", mode = "644" },
     { source = "icons/128x128@2x.png", dest = "/usr/share/icons/hicolor/256x256@2/apps/firezone-client-gui.png", mode = "644" },
-    { source = "icons/icon.png", dest = "/usr/share/icons/hicolor/scalable/apps/firezone-client-gui.png", mode = "644" },
+    { source = "icons/icon.png", dest = "/usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png", mode = "644" },
 ]
 post_install_script = "debian/postinst"
 pre_uninstall_script = "debian/prerm_rpm"

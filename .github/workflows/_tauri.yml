@@ -126,6 +126,15 @@ jobs:
             os: windows
             pkg-extension: msi
     env:
+      # While this resolves to 'true', the build-gui job iterates the
+      # packaging config WITHOUT the slow Rust build: it stubs the
+      # binaries and runs only the packaging tools (cargo-deb /
+      # generate-rpm / cargo-wix). It's on for pushes to the packaging
+      # iteration branch — so plain commits give fast CI feedback — and
+      # for manual `stub-binaries` dispatches; off everywhere else
+      # (main, merge queue, releases) so real release builds are never
+      # stubbed. Remove the `head_ref` clause once packaging is stable.
+      STUB_BINARIES: ${{ inputs.stub-binaries || github.head_ref == 'claude/packaging-cargo-bundlers' }}
       # mark:next-gui-version
       ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.13_${{ matrix.arch }}
       # mark:next-gui-version
@@ -176,7 +185,7 @@ jobs:
       # packaging config can be iterated on CI in ~minutes. Stub
       # installers are non-functional and skip code signing.
       - name: Stub binaries (packaging-config iteration)
-        if: ${{ inputs.stub-binaries }}
+        if: ${{ env.STUB_BINARIES == 'true' }}
         shell: bash
         working-directory: ./rust
         run: |
@@ -186,7 +195,7 @@ jobs:
             printf 'stub binary — not a real executable\n' > "target/release/${bin}.exe"
           done
       - name: Build frontend assets and release binaries
-        if: ${{ !inputs.stub-binaries }}
+        if: ${{ env.STUB_BINARIES != 'true' }}
         env:
           CARGO_PROFILE_RELEASE_LTO: thin
         # `vite build` produces the web assets that `tauri-build` embeds
@@ -226,7 +235,7 @@ jobs:
       # for stub builds (the stub MSI wraps placeholder files and isn't
       # signable / shippable).
       - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' && !inputs.stub-binaries }}
+        if: ${{ runner.os == 'Windows' && env.STUB_BINARIES != 'true' }}
         shell: bash
         run: ../../scripts/build/sign.sh ../target/wix/firezone-client-gui-${{ env.FIREZONE_GUI_VERSION }}-x86_64.msi
       - name: Rename artifacts and compute SHA256
@@ -246,11 +255,11 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Test installation (Linux)
-        if: "${{ runner.os == 'Linux' && !inputs.stub-binaries }}"
+        if: "${{ runner.os == 'Linux' && env.STUB_BINARIES != 'true' }}"
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
       - name: Test installation (Windows)
-        if: "${{ runner.os == 'Windows' && !inputs.stub-binaries }}"
+        if: "${{ runner.os == 'Windows' && env.STUB_BINARIES != 'true' }}"
         shell: powershell
         run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
 
