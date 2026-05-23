@@ -307,7 +307,7 @@ impl ClientState {
     }
 
     fn resource_list_snapshot(&self) -> ResourceList {
-        let connected_devices = if feature_flags::connected_devices() {
+        let connected_devices = if feature_flags::show_connected_devices() {
             self.connected_devices()
         } else {
             Vec::new()
