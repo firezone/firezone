@@ -281,10 +281,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
-        show_connected_devices: env_or(
-            "FZFF_SHOW_CONNECTED_DEVICES",
-            flags.show_connected_devices,
-        ),
+        show_connected_devices: env_or("FZFF_SHOW_CONNECTED_DEVICES", flags.show_connected_devices),
     }
 }
 
