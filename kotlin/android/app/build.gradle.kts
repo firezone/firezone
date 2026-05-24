@@ -167,7 +167,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
 
     // Material
-    implementation("com.google.android.material:material:1.13.0")
+    implementation("com.google.android.material:material:1.14.0")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
