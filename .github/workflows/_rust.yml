@@ -223,7 +223,7 @@ jobs:
       - uses: ./.github/actions/setup-rust-nightly
         id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+      - uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
