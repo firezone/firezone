@@ -644,6 +644,7 @@ impl Eventloop {
                 resource_id,
                 domain,
                 ipv4,
+                ipv6,
             }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
@@ -651,7 +652,7 @@ impl Eventloop {
                 tunnel.state_mut().handle_device_pool_domain_resolved(
                     resource_id,
                     domain,
-                    Ok(ipv4),
+                    Ok((ipv4, ipv6)),
                 );
             }
             IngressMessages::DevicePoolDomainResolutionFailed(

@@ -405,7 +405,7 @@ impl ClientState {
         &mut self,
         resource_id: ResourceId,
         domain: DomainName,
-        result: Result<Ipv4Addr, FailReason>,
+        result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
     ) {
         self.device_stub_resolver
             .handle_device_domain_resolved(resource_id, domain, result);
