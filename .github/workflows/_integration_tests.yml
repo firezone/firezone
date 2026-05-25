@@ -116,7 +116,7 @@ jobs:
             rust_log: debug
           - script: download-roaming-network
             min_gateway_version: 1.4.18
-            rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
+            rust_log: info,snownet=debug,flow_logs=trace
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/ghcr-docker-login
