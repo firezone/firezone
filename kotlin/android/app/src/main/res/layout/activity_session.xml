@@ -82,10 +82,22 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="@dimen/spacing_2x"
-        android:layout_marginBottom="@dimen/spacing_2x"
-        app:layout_constraintBottom_toTopOf="@id/btSignOut"
+        app:layout_constraintBottom_toTopOf="@id/btConnectedDevices"
         app:layout_constraintTop_toBottomOf="@id/tabLayout"
         tools:layout_editor_absoluteX="16dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btConnectedDevices"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/spacing_medium"
+        android:layout_marginEnd="@dimen/spacing_medium"
+        android:layout_marginBottom="@dimen/spacing_2x"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/btSignOut"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btSettings"

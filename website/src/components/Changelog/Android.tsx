@@ -25,6 +25,10 @@ export default function Android() {
           Fixes a bug where the app crashed when rotated whilst a
           resource-detail sheet was open.
         </ChangeItem>
+        {/* TODO: replace pull with the real PR number once opened. */}
+        <ChangeItem pull={0}>
+          Shows currently connected devices on the session screen.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-04-28")}>
         <ChangeItem pull={12416}>
