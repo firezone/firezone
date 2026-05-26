@@ -9,7 +9,6 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("com.diffplug.spotless") version "8.5.1"
-    id("com.google.firebase.appdistribution")
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
 
@@ -125,13 +124,6 @@ android {
             buildConfigField("String", "AUTH_URL", "\"https://app.firezone.dev\"")
             buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
             buildConfigField("String", "LOG_FILTER", "\"info\"")
-            firebaseAppDistribution {
-                serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
-                artifactType = "AAB"
-                releaseNotes = "https://www.firezone.dev/changelog"
-                groups = "firezone-engineering"
-                artifactPath = "app/build/outputs/bundle/release/app-release.aab"
-            }
         }
     }
 
@@ -357,10 +349,6 @@ val generateUniffiBindings =
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
-}
-
-tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {
-    dependsOn("processReleaseGoogleServices")
 }
 
 kapt {

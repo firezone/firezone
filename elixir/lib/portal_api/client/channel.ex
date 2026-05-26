@@ -458,8 +458,8 @@ defmodule PortalAPI.Client.Channel do
           "Client session #{inspect(session_id)} was not confirmed durable; disconnecting"
         )
 
-        socket = cancel_session_durability_timer(socket, session_id)
-        push(socket, "disconnect", %{reason: "token_expired"})
+        # Avoid sending "token_expired" since that will tear down connlib
+        # state in the client. Instead, the client must reconnect.
         {:stop, :shutdown, socket}
 
       _ ->

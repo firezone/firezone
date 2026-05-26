@@ -477,8 +477,8 @@ defmodule PortalAPI.Gateway.Channel do
           "Gateway session #{inspect(session_id)} was not confirmed durable; disconnecting"
         )
 
-        socket = cancel_session_durability_timer(socket, session_id)
-        push(socket, "disconnect", %{reason: "token_expired"})
+        # Avoid sending "token_expired" since that will tear down connlib
+        # state in the gateway. Instead, the gateway must reconnect.
         {:stop, :shutdown, socket}
 
       _ ->

@@ -19,3 +19,6 @@ includes = ["mise-tasks"]
 [tasks.test]
 description = "Run unit tests"
 run = "./gradlew test"
+
+[tools]
+"aqua:firebase/firebase-tools" = "15.18.0"
