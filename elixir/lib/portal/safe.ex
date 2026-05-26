@@ -841,6 +841,7 @@ defmodule Portal.Safe do
   def permit(_action, Portal.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Portal.ExternalIdentity, :api_client), do: :ok
   def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
+  def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
