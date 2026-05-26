@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-# spotlessCheck only touches .kt source files; it does not pull the connlib cargo
-# build, so it needs no ABI narrowing.
+# spotlessCheck does not pull the connlib cargo build, so it needs no ABI
+# narrowing.
 echo "Checking Kotlin code style..."
 mise exec -- ./gradlew spotlessCheck
 
