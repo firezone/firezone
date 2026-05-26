@@ -1,22 +1,12 @@
-// Same Windows subsystem trick as the Tauri binary so release builds don't
-// flash a console window.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// The iced binary is being built up incrementally — a lot of design tokens
-// and component variants don't have a caller yet. Re-enable dead_code once
-// the rest of the migration lands.
-#![allow(dead_code)]
-
-mod assets;
-mod integration;
-mod state;
-mod theme;
-mod tray;
-mod ui;
+//! Experimental iced GUI, folded into the `firezone-gui-client` binary
+//! behind the `experimental-gui` feature and launched via the
+//! `--experimental-gui` flag (see `src/bin/firezone-gui-client.rs`). The
+//! `src/iced/*` modules are declared at the binary crate root, so
+//! intra-iced references resolve through `crate::` (e.g. `crate::tray`).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use clap::Parser;
 use firezone_gui_client::controller::{Controller, ControllerRequest};
 use firezone_gui_client::gui::system_tray;
 use firezone_gui_client::ipc::SocketId;
@@ -29,8 +19,8 @@ use iced::window::{self, Mode};
 use iced::{Element, Fill, Length, Subscription, Task, Theme};
 use tokio::sync::mpsc;
 
-use integration::{IcedIntegration, UiUpdate};
-use state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
+use crate::integration::{IcedIntegration, UiUpdate};
+use crate::state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
 
 /// Handed off from `try_main` into the subscription. iced's
 /// `Subscription::run(fn_pointer)` requires a stable identity, which means
@@ -325,11 +315,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if exit { iced::exit() } else { Task::none() }
         }
         Message::TrayMenu(menu) => {
-            tray::set_menu(menu);
+            crate::tray::set_menu(menu);
             Task::none()
         }
         Message::TrayIcon(icon) => {
-            tray::set_icon(icon);
+            crate::tray::set_icon(icon);
             Task::none()
         }
 
@@ -407,12 +397,12 @@ fn apply_settings(
 
 fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
     let body: Element<'_, Message> = match app.route {
-        Route::Overview => ui::overview::view(app),
-        Route::GeneralSettings => ui::general_settings::view(app),
-        Route::AdvancedSettings => ui::advanced_settings::view(app),
-        Route::Diagnostics => ui::diagnostics::view(app),
-        Route::About => ui::about::view(app),
-        Route::ColorPalette => ui::color_palette::view(app),
+        Route::Overview => crate::ui::overview::view(app),
+        Route::GeneralSettings => crate::ui::general_settings::view(app),
+        Route::AdvancedSettings => crate::ui::advanced_settings::view(app),
+        Route::Diagnostics => crate::ui::diagnostics::view(app),
+        Route::About => crate::ui::about::view(app),
+        Route::ColorPalette => crate::ui::color_palette::view(app),
     };
 
     // Single source of outer breathing room — screens themselves
@@ -422,12 +412,12 @@ fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
         .height(Length::Fill)
         .padding(20)
         .style(|_theme: &Theme| container::Style {
-            background: Some(iced::Background::Color(theme::LIGHT.canvas)),
+            background: Some(iced::Background::Color(crate::theme::LIGHT.canvas)),
             ..container::Style::default()
         });
 
     row![
-        ui::sidebar::view(app.route),
+        crate::ui::sidebar::view(app.route),
         container(main_area).width(Fill).height(Fill),
     ]
     .height(Fill)
@@ -435,7 +425,7 @@ fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
 }
 
 fn theme(_app: &App, _window: window::Id) -> Theme {
-    theme::light()
+    crate::theme::light()
 }
 
 fn title(_app: &App, _window: window::Id) -> String {
@@ -535,66 +525,11 @@ fn ui_update_stream() -> impl iced::futures::Stream<Item = Message> {
     )
 }
 
-/// CLI parser. Mirrors the Tauri client's `open-deep-link` mode so the OS
-/// can launch us with `firezone-client-gui-iced open-deep-link <url>`.
-#[derive(Parser)]
-#[command(version, about = "Firezone GUI client (iced)")]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Cmd>,
-}
-
-#[derive(clap::Subcommand)]
-enum Cmd {
-    OpenDeepLink { url: String },
-}
-
-fn main() -> std::process::ExitCode {
-    let cli = Cli::parse();
-
-    // Bootstrap logging early so any failures during setup are visible.
-    // Held in an `Option` so we can `.take()` and drop it before the
-    // real subscriber is installed in `try_main` — keeping the
-    // bootstrap subscriber alive past `setup_gui` leaves the main
-    // thread with a different (thread-local) subscriber than tokio
-    // workers (global), which makes tracing-subscriber's Registry
-    // panic with "tried to drop a ref to Id(N), but no such span
-    // exists" the first time a span hops threads.
-    let mut bootstrap_log_guard = logging::setup_bootstrap()
-        .inspect_err(|e| tracing::warn!("bootstrap log setup failed: {e:#}"))
-        .ok();
-
-    // CLI mode: forward a deep-link URL to the running primary
-    // instance. iced isn't involved, so build a one-shot tokio runtime
-    // for the single async call.
-    if let Some(Cmd::OpenDeepLink { url }) = cli.command {
-        return match deep_link_cli(url) {
-            Ok(()) => std::process::ExitCode::SUCCESS,
-            Err(e) => {
-                tracing::error!("failed to forward deep-link: {e:#}");
-                std::process::ExitCode::FAILURE
-            }
-        };
-    }
-
-    match try_main(bootstrap_log_guard.take()) {
-        Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(e) => {
-            tracing::error!("iced GUI failed: {e:#}");
-            std::process::ExitCode::FAILURE
-        }
-    }
-}
-
-fn deep_link_cli(url: String) -> anyhow::Result<()> {
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async move {
-        let url = url::Url::parse(&url)?;
-        deep_link::open(url).await
-    })
-}
-
-fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> anyhow::Result<()> {
+/// Entry point for the experimental iced GUI, invoked from
+/// `firezone-gui-client --experimental-gui`. The bootstrap log guard is
+/// handed over from the binary's `main` so it can be dropped before the
+/// real subscriber is installed (see the note below).
+pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> anyhow::Result<()> {
     // Load settings off disk (synchronous; no runtime needed).
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings: {e:#}"))
@@ -648,7 +583,7 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
     //     floor.
     // The ksni service itself is spawned later from `initialize`,
     // where the tokio runtime is available.
-    if let Err(e) = tray::install() {
+    if let Err(e) = crate::tray::install() {
         tracing::warn!("failed to install system tray: {e}");
     }
 
@@ -656,7 +591,7 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
     // runtime under the hood (`iced_futures::backend::default::Executor =
     // tokio::runtime::Runtime`) and drives every async `Task` /
     // `Subscription` on it. The async init in `boot` — `Server::new`,
-    // `deep_link::register`, `tray::install`, `Controller::start` —
+    // `deep_link::register`, `crate::tray::install`, `Controller::start` —
     // all run as tokio tasks on that single runtime, so there are no
     // cross-runtime tracing-subscriber races.
     //
@@ -669,12 +604,12 @@ fn try_main(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> a
     iced::daemon(boot, update, view)
         .title(title)
         .theme(theme)
-        .default_font(assets::font())
-        .font(assets::ROBOTO_REGULAR)
-        .font(assets::ROBOTO_BOLD)
+        .default_font(crate::assets::font())
+        .font(crate::assets::ROBOTO_REGULAR)
+        .font(crate::assets::ROBOTO_BOLD)
         .subscription(|app| {
             let mut subs = vec![
-                tray::subscription(),
+                crate::tray::subscription(),
                 window::close_requests().map(Message::WindowCloseRequested),
                 Subscription::run(ui_update_stream),
             ];
@@ -766,7 +701,7 @@ async fn initialize(res: BootResources) {
     // runtime (us). On Win/Mac it's a no-op — the `TrayIcon` was set
     // up synchronously in `install()` and muda's global event
     // receiver doesn't need a service task.
-    tray::spawn_service();
+    crate::tray::spawn_service();
 
     // No in-app updater yet for the iced binary — give the Controller
     // an updates channel that nothing ever sends to.

@@ -16,6 +16,38 @@ use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
+// Experimental iced GUI module tree (gated behind `experimental-gui`),
+// pulled in from `src/iced/`. Declared at the binary crate root so the iced
+// modules' `crate::…` paths resolve here, with `#[allow(dead_code)]` because
+// the UI is still being built up (some tokens / components have no caller yet).
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/assets.rs"]
+#[allow(dead_code)]
+mod assets;
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/integration.rs"]
+#[allow(dead_code)]
+mod integration;
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/state.rs"]
+#[allow(dead_code)]
+mod state;
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/theme.rs"]
+#[allow(dead_code)]
+mod theme;
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/tray.rs"]
+#[allow(dead_code)]
+mod tray;
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/ui/mod.rs"]
+#[allow(dead_code)]
+mod ui;
+#[cfg(feature = "experimental-gui")]
+#[path = "../iced/entry.rs"]
+mod iced_entry;
+
 fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -25,6 +57,21 @@ fn main() -> ExitCode {
         Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
+
+    // The experimental iced GUI owns its own tokio runtime (via
+    // `iced::daemon`), so hand off here — before this binary builds its own
+    // multi-thread runtime — to avoid nesting one runtime inside another.
+    #[cfg(feature = "experimental-gui")]
+    if cli.experimental_gui {
+        return match iced_entry::run(bootstrap_log_guard.take()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!("iced GUI failed: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -260,6 +307,12 @@ struct Cli {
     debug_update_check: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
+
+    /// Launch the experimental iced-based GUI instead of the Tauri UI.
+    /// Only present in builds with the `experimental-gui` feature.
+    #[cfg(feature = "experimental-gui")]
+    #[arg(long)]
+    experimental_gui: bool,
 
     /// Crash the `Controller` task to test error handling
     /// Formerly `--crash-on-purpose`
