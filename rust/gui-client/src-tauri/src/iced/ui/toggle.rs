@@ -13,8 +13,8 @@ use iced::animation::Animation;
 use iced::widget::{Space, container, mouse_area, row};
 use iced::{Background, Border, Center, Color, Element, Length, Theme};
 
-use crate::Message;
-use crate::theme::Tokens;
+use crate::iced::Message;
+use crate::iced::theme::Tokens;
 
 const TRACK_W: f32 = 38.0;
 const TRACK_H: f32 = 22.0;

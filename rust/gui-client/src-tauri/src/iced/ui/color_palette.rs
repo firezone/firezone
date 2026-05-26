@@ -4,9 +4,9 @@
 use iced::widget::{Space, column, container, row, scrollable, text};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
-use crate::Message;
-use crate::state::App;
-use crate::theme::{self, Tokens};
+use crate::iced::Message;
+use crate::iced::state::App;
+use crate::iced::theme::{self, Tokens};
 
 pub fn view(_app: &App) -> Element<'_, Message> {
     scrollable(

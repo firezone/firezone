@@ -6,7 +6,7 @@
 use iced::widget::button::{self, Button, Status};
 use iced::{Background, Border, Color, Element, padding};
 
-use crate::theme::Tokens;
+use crate::iced::theme::Tokens;
 
 /// Which variant the button should render. Maps 1:1 to the admin
 /// portal's button variants.

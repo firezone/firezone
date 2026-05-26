@@ -3,11 +3,11 @@
 use iced::widget::{Space, column, container, image, row, text};
 use iced::{Center, Element, Font, Length};
 
-use crate::Message;
-use crate::assets;
-use crate::state::{App, Session};
-use crate::theme;
-use crate::ui::button::{Variant, fz_button};
+use crate::iced::Message;
+use crate::iced::assets;
+use crate::iced::state::{App, Session};
+use crate::iced::theme;
+use crate::iced::ui::button::{Variant, fz_button};
 
 fn bold() -> Font {
     Font {

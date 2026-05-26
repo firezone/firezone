@@ -16,43 +16,6 @@ use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
-// Experimental iced GUI module tree (gated behind `experimental-gui`),
-// pulled in from `src/iced/`. Declared at the binary crate root so the iced
-// modules' `crate::…` paths resolve here, with `#[allow(dead_code)]` because
-// the UI is still being built up (some tokens / components have no caller yet).
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/assets.rs"]
-#[allow(dead_code)]
-mod assets;
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/integration.rs"]
-#[allow(dead_code)]
-mod integration;
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/state.rs"]
-#[allow(dead_code)]
-mod state;
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/theme.rs"]
-#[allow(dead_code)]
-mod theme;
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/tray.rs"]
-#[allow(dead_code)]
-mod tray;
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/ui/mod.rs"]
-#[allow(dead_code)]
-mod ui;
-#[cfg(feature = "experimental-gui")]
-#[path = "../iced/entry.rs"]
-mod iced_entry;
-// The iced submodules import the central `Message` enum as `crate::Message`
-// (it lived at the old iced binary's crate root). Re-export it from the entry
-// module so those paths keep resolving now that it's `crate::iced_entry`.
-#[cfg(feature = "experimental-gui")]
-pub(crate) use iced_entry::Message;
-
 fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -68,7 +31,7 @@ fn main() -> ExitCode {
     // multi-thread runtime — to avoid nesting one runtime inside another.
     #[cfg(feature = "experimental-gui")]
     if cli.experimental_gui {
-        return match iced_entry::run(bootstrap_log_guard.take()) {
+        return match firezone_gui_client::iced::run(bootstrap_log_guard.take()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 tracing::error!("iced GUI failed: {e:#}");

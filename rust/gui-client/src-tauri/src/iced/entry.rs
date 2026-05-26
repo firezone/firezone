@@ -1,26 +1,26 @@
-//! Experimental iced GUI, folded into the `firezone-gui-client` binary
-//! behind the `experimental-gui` feature and launched via the
-//! `--experimental-gui` flag (see `src/bin/firezone-gui-client.rs`). The
-//! `src/iced/*` modules are declared at the binary crate root, so
-//! intra-iced references resolve through `crate::` (e.g. `crate::tray`).
+//! Experimental iced GUI, gated behind the `experimental-gui` feature and
+//! launched via the `--experimental-gui` flag (see
+//! `src/bin/firezone-gui-client.rs`). The module tree lives under `crate::iced`
+//! (see `src/iced/mod.rs`), so intra-tree references resolve through
+//! `crate::iced::…` (e.g. `crate::iced::tray`).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use firezone_gui_client::controller::{Controller, ControllerRequest};
-use firezone_gui_client::gui::system_tray;
-use firezone_gui_client::ipc::SocketId;
-use firezone_gui_client::logging::{self, FileCount, FilterReloadHandle};
-use firezone_gui_client::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
-use firezone_gui_client::{GeneralSettingsForm, SessionViewModel, deep_link};
+use crate::controller::{Controller, ControllerRequest};
+use crate::gui::system_tray;
+use crate::ipc::SocketId;
+use crate::logging::{self, FileCount, FilterReloadHandle};
+use crate::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
+use crate::{GeneralSettingsForm, SessionViewModel, deep_link};
 use iced::futures::SinkExt as _;
 use iced::widget::{container, row};
 use iced::window::{self, Mode};
 use iced::{Element, Fill, Length, Subscription, Task, Theme};
 use tokio::sync::mpsc;
 
-use crate::integration::{IcedIntegration, UiUpdate};
-use crate::state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
+use crate::iced::integration::{IcedIntegration, UiUpdate};
+use crate::iced::state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
 
 /// Handed off from `try_main` into the subscription. iced's
 /// `Subscription::run(fn_pointer)` requires a stable identity, which means
@@ -315,11 +315,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if exit { iced::exit() } else { Task::none() }
         }
         Message::TrayMenu(menu) => {
-            crate::tray::set_menu(menu);
+            crate::iced::tray::set_menu(menu);
             Task::none()
         }
         Message::TrayIcon(icon) => {
-            crate::tray::set_icon(icon);
+            crate::iced::tray::set_icon(icon);
             Task::none()
         }
 
@@ -397,12 +397,12 @@ fn apply_settings(
 
 fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
     let body: Element<'_, Message> = match app.route {
-        Route::Overview => crate::ui::overview::view(app),
-        Route::GeneralSettings => crate::ui::general_settings::view(app),
-        Route::AdvancedSettings => crate::ui::advanced_settings::view(app),
-        Route::Diagnostics => crate::ui::diagnostics::view(app),
-        Route::About => crate::ui::about::view(app),
-        Route::ColorPalette => crate::ui::color_palette::view(app),
+        Route::Overview => crate::iced::ui::overview::view(app),
+        Route::GeneralSettings => crate::iced::ui::general_settings::view(app),
+        Route::AdvancedSettings => crate::iced::ui::advanced_settings::view(app),
+        Route::Diagnostics => crate::iced::ui::diagnostics::view(app),
+        Route::About => crate::iced::ui::about::view(app),
+        Route::ColorPalette => crate::iced::ui::color_palette::view(app),
     };
 
     // Single source of outer breathing room — screens themselves
@@ -412,12 +412,12 @@ fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
         .height(Length::Fill)
         .padding(20)
         .style(|_theme: &Theme| container::Style {
-            background: Some(iced::Background::Color(crate::theme::LIGHT.canvas)),
+            background: Some(iced::Background::Color(crate::iced::theme::LIGHT.canvas)),
             ..container::Style::default()
         });
 
     row![
-        crate::ui::sidebar::view(app.route),
+        crate::iced::ui::sidebar::view(app.route),
         container(main_area).width(Fill).height(Fill),
     ]
     .height(Fill)
@@ -425,7 +425,7 @@ fn view(app: &App, _window: window::Id) -> Element<'_, Message> {
 }
 
 fn theme(_app: &App, _window: window::Id) -> Theme {
-    crate::theme::light()
+    crate::iced::theme::light()
 }
 
 fn title(_app: &App, _window: window::Id) -> String {
@@ -583,7 +583,7 @@ pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> an
     //     floor.
     // The ksni service itself is spawned later from `initialize`,
     // where the tokio runtime is available.
-    if let Err(e) = crate::tray::install() {
+    if let Err(e) = crate::iced::tray::install() {
         tracing::warn!("failed to install system tray: {e}");
     }
 
@@ -591,7 +591,7 @@ pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> an
     // runtime under the hood (`iced_futures::backend::default::Executor =
     // tokio::runtime::Runtime`) and drives every async `Task` /
     // `Subscription` on it. The async init in `boot` — `Server::new`,
-    // `deep_link::register`, `crate::tray::install`, `Controller::start` —
+    // `deep_link::register`, `crate::iced::tray::install`, `Controller::start` —
     // all run as tokio tasks on that single runtime, so there are no
     // cross-runtime tracing-subscriber races.
     //
@@ -604,12 +604,12 @@ pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> an
     iced::daemon(boot, update, view)
         .title(title)
         .theme(theme)
-        .default_font(crate::assets::font())
-        .font(crate::assets::ROBOTO_REGULAR)
-        .font(crate::assets::ROBOTO_BOLD)
+        .default_font(crate::iced::assets::font())
+        .font(crate::iced::assets::ROBOTO_REGULAR)
+        .font(crate::iced::assets::ROBOTO_BOLD)
         .subscription(|app| {
             let mut subs = vec![
-                crate::tray::subscription(),
+                crate::iced::tray::subscription(),
                 window::close_requests().map(Message::WindowCloseRequested),
                 Subscription::run(ui_update_stream),
             ];
@@ -673,7 +673,7 @@ fn boot() -> (App, Task<Message>) {
 /// from inside iced's `Task::future`, so the ambient tokio runtime
 /// is already set.
 async fn initialize(res: BootResources) {
-    use firezone_gui_client::gui::{SingleInstance, establish_single_instance};
+    use crate::gui::{SingleInstance, establish_single_instance};
 
     let (gui_ipc_server, _launch_lock) = match establish_single_instance().await {
         Ok(SingleInstance::First { server, lock }) => (server, lock),
@@ -701,12 +701,11 @@ async fn initialize(res: BootResources) {
     // runtime (us). On Win/Mac it's a no-op — the `TrayIcon` was set
     // up synchronously in `install()` and muda's global event
     // receiver doesn't need a service task.
-    crate::tray::spawn_service();
+    crate::iced::tray::spawn_service();
 
     // No in-app updater yet for the iced binary — give the Controller
     // an updates channel that nothing ever sends to.
-    let (_updates_tx, updates_rx) =
-        mpsc::channel::<Option<firezone_gui_client::updates::Notification>>(16);
+    let (_updates_tx, updates_rx) = mpsc::channel::<Option<crate::updates::Notification>>(16);
 
     tokio::spawn(async move {
         // `_launch_lock` rides into the spawned task so its lifetime

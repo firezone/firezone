@@ -18,6 +18,8 @@ pub mod deep_link;
 pub mod dialog;
 pub mod elevation;
 pub mod gui;
+#[cfg(feature = "experimental-gui")]
+pub mod iced;
 pub mod ipc;
 pub mod launch_lock;
 pub mod logging;

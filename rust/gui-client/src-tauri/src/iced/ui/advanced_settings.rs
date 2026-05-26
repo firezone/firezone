@@ -3,10 +3,10 @@
 use iced::widget::{Space, column, container, row, text, text_input};
 use iced::{Element, Length};
 
-use crate::Message;
-use crate::state::App;
-use crate::theme;
-use crate::ui::button::{Variant, fz_button};
+use crate::iced::Message;
+use crate::iced::state::App;
+use crate::iced::theme;
+use crate::iced::ui::button::{Variant, fz_button};
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let s = &app.advanced_settings;
@@ -76,7 +76,7 @@ where
     let input = text_input("", value)
         .on_input_maybe(if managed { None } else { Some(on_input) })
         .padding([8, 12])
-        .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT));
+        .style(|t, st| crate::iced::ui::input::style(t, st, theme::LIGHT));
 
     let label_color = if managed {
         theme::LIGHT.text_muted

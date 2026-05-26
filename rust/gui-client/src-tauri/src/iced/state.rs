@@ -3,9 +3,9 @@
 //! conversions so the iced binary can persist via the existing
 //! `settings::save_general` / `save_advanced` helpers.
 
-use firezone_gui_client::controller::ControllerRequest;
-use firezone_gui_client::logging::FileCount;
-use firezone_gui_client::settings::{AdvancedSettings, GeneralSettings, MdmSettings};
+use crate::controller::ControllerRequest;
+use crate::logging::FileCount;
+use crate::settings::{AdvancedSettings, GeneralSettings, MdmSettings};
 use iced::animation::Animation;
 use tokio::sync::mpsc;
 use url::Url;

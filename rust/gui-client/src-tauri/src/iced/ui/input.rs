@@ -13,7 +13,7 @@
 use iced::widget::text_input::{Status, Style};
 use iced::{Background, Border, Theme};
 
-use crate::theme::Tokens;
+use crate::iced::theme::Tokens;
 
 pub fn style(_theme: &Theme, status: Status, tokens: Tokens) -> Style {
     let is_focused = matches!(status, Status::Focused { .. });

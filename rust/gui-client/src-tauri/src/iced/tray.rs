@@ -21,8 +21,8 @@
 //! sink the Tauri client uses — so the Controller handles all eleven
 //! event variants uniformly regardless of which UI is driving.
 
-use crate::Message;
-use firezone_gui_client::gui::system_tray::{Icon, Menu};
+use crate::gui::system_tray::{Icon, Menu};
+use crate::iced::Message;
 
 /// Set up the tray's static state and (on Win/Mac) the `TrayIcon`.
 /// Must be called from the main thread *before* iced takes it over —
@@ -74,8 +74,8 @@ mod backend {
     };
     use tokio::sync::mpsc;
 
-    use crate::Message;
-    use firezone_gui_client::gui::system_tray::{self, Entry, Event, Icon, Item, Menu};
+    use crate::gui::system_tray::{self, Entry, Event, Icon, Item, Menu};
+    use crate::iced::Message;
 
     /// Sender into the ksni service. Each menu click pushes an
     /// `Event` here; the iced subscription drains it into Messages.
@@ -318,8 +318,8 @@ mod backend {
         },
     };
 
-    use crate::Message;
-    use firezone_gui_client::gui::system_tray::{self, Entry, Icon, Item, Menu};
+    use crate::gui::system_tray::{self, Entry, Icon, Item, Menu};
+    use crate::iced::Message;
 
     thread_local! {
         /// The TrayIcon lives on the main thread (where iced's winit

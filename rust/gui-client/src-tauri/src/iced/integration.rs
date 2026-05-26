@@ -9,12 +9,12 @@
 
 use std::future::Future;
 
+use crate::SessionViewModel;
+use crate::controller::{GuiIntegration, NotificationHandle};
+use crate::gui::system_tray::{self, AppState, Icon};
+use crate::logging::FileCount;
+use crate::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
 use anyhow::Result;
-use firezone_gui_client::SessionViewModel;
-use firezone_gui_client::controller::{GuiIntegration, NotificationHandle};
-use firezone_gui_client::gui::system_tray::{self, AppState, Icon};
-use firezone_gui_client::logging::FileCount;
-use firezone_gui_client::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
 use tokio::sync::mpsc;
 
 /// Outbound updates from the Controller to the iced UI. Iced subscribes
@@ -111,7 +111,7 @@ impl GuiIntegration for IcedIntegration {
         title: impl Into<String>,
         body: impl Into<String>,
     ) -> Result<NotificationHandle> {
-        firezone_gui_client::gui::show_notification(title.into(), body.into())
+        crate::gui::show_notification(title.into(), body.into())
     }
 
     fn save_general_settings(

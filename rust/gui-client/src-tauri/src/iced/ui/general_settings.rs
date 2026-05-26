@@ -4,11 +4,11 @@ use iced::animation::Animation;
 use iced::widget::{Space, column, container, row, text, text_input};
 use iced::{Element, Length};
 
-use crate::Message;
-use crate::state::App;
-use crate::theme;
-use crate::ui::button::{Variant, fz_button};
-use crate::ui::toggle::animated_toggle;
+use crate::iced::Message;
+use crate::iced::state::App;
+use crate::iced::theme;
+use crate::iced::ui::button::{Variant, fz_button};
+use crate::iced::ui::toggle::animated_toggle;
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let s = &app.general_settings;
@@ -48,7 +48,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
                     Some(Message::GeneralSettingsAccountSlugChanged)
                 })
                 .padding([8, 12])
-                .style(|t, st| crate::ui::input::style(t, st, theme::LIGHT)),
+                .style(|t, st| crate::iced::ui::input::style(t, st, theme::LIGHT)),
             managed_hint(s.account_slug_is_managed),
             Space::new().height(18),
             toggles,

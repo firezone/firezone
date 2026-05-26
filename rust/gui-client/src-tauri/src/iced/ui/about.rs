@@ -3,11 +3,11 @@
 use iced::widget::{Space, column, container, image, text};
 use iced::{Center, Element, Length};
 
-use crate::Message;
-use crate::assets;
-use crate::state::App;
-use crate::theme;
-use crate::ui::button::{Variant, fz_button};
+use crate::iced::Message;
+use crate::iced::assets;
+use crate::iced::state::App;
+use crate::iced::theme;
+use crate::iced::ui::button::{Variant, fz_button};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 

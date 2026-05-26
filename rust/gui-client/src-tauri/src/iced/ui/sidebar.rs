@@ -3,10 +3,10 @@
 use iced::widget::{button, column, container, row, svg, text};
 use iced::{Background, Border, Element, Length, Padding, Theme};
 
-use crate::Message;
-use crate::assets;
-use crate::state::Route;
-use crate::theme;
+use crate::iced::Message;
+use crate::iced::assets;
+use crate::iced::state::Route;
+use crate::iced::theme;
 
 pub fn view<'a>(current: Route) -> Element<'a, Message> {
     let mut items = column![
