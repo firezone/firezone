@@ -191,7 +191,7 @@ defmodule PortalAPI.ClientTokenController do
       from(t in ClientToken,
         as: :client_tokens,
         join: a in Actor,
-        on: a.id == t.actor_id,
+        on: a.id == t.actor_id and a.account_id == t.account_id,
         where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types,
         order_by: [desc: t.inserted_at]
       )
@@ -210,7 +210,7 @@ defmodule PortalAPI.ClientTokenController do
       result =
         from(t in ClientToken,
           join: a in Actor,
-          on: a.id == t.actor_id,
+          on: a.id == t.actor_id and a.account_id == t.account_id,
           where:
             t.id == ^id and t.actor_id == ^actor_id and
               a.type in ^@revocable_actor_types,
@@ -241,7 +241,7 @@ defmodule PortalAPI.ClientTokenController do
       result =
         from(t in ClientToken,
           join: a in Actor,
-          on: a.id == t.actor_id,
+          on: a.id == t.actor_id and a.account_id == t.account_id,
           where:
             t.id == ^token_id and t.actor_id == ^actor_id and
               a.type in ^@revocable_actor_types
@@ -261,7 +261,7 @@ defmodule PortalAPI.ClientTokenController do
     def delete_all_tokens(actor_id, subject) do
       from(t in ClientToken,
         join: a in Actor,
-        on: a.id == t.actor_id,
+        on: a.id == t.actor_id and a.account_id == t.account_id,
         where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types
       )
       |> Safe.scoped(subject)
