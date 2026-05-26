@@ -392,12 +392,7 @@ defmodule Portal.Safe do
           Keyword.t()
         ) ::
           {integer(), nil | [term()]} | {:error, :unauthorized}
-  def insert_all(
-        %Scoped{subject: %Subject{account: %{id: account_id}} = subject},
-        schema_or_source,
-        entries,
-        opts
-      ) do
+  def insert_all(%Scoped{subject: subject}, schema_or_source, entries, opts) do
     schema = if is_atom(schema_or_source), do: schema_or_source, else: schema_or_source.__struct__
 
     case permit(:insert_all, schema, subject) do
@@ -406,8 +401,7 @@ defmodule Portal.Safe do
           Repo.transact(fn ->
             emit_subject_message(subject)
 
-            scoped_entries = apply_account_scope_to_entries(entries, schema, account_id)
-            {:ok, Repo.insert_all(schema_or_source, scoped_entries, opts)}
+            {:ok, Repo.insert_all(schema_or_source, entries, opts)}
           end)
 
         result
@@ -536,13 +530,7 @@ defmodule Portal.Safe do
 
   @spec update_all(Scoped.t(), Keyword.t()) ::
           {non_neg_integer(), nil | [term()]} | {:error, :unauthorized}
-  def update_all(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable
-        },
-        updates
-      ) do
+  def update_all(%Scoped{subject: subject, queryable: queryable}, updates) do
     schema = get_schema_module(queryable)
 
     case permit(:update_all, schema, subject) do
@@ -551,8 +539,7 @@ defmodule Portal.Safe do
           Repo.transact(fn ->
             emit_subject_message(subject)
 
-            filtered_query = apply_account_filter(queryable, schema, account_id)
-            {:ok, Repo.update_all(filtered_query, updates)}
+            {:ok, Repo.update_all(queryable, updates)}
           end)
 
         result
@@ -741,30 +728,6 @@ defmodule Portal.Safe do
     # For all other schemas, filter by account_id
     where(queryable, account_id: ^account_id)
   end
-
-  defp apply_account_scope_to_entries(%Ecto.Query{} = query, schema, account_id) do
-    query
-    |> apply_account_filter(schema, account_id)
-    |> force_account_id_in_select(schema, account_id)
-  end
-
-  defp apply_account_scope_to_entries(entries, schema, account_id) when is_list(entries) do
-    Enum.map(entries, &put_account_id(&1, schema, account_id))
-  end
-
-  defp force_account_id_in_select(query, Portal.Account, account_id) do
-    select_merge(query, %{id: ^account_id})
-  end
-
-  defp force_account_id_in_select(query, _schema, account_id) do
-    select_merge(query, %{account_id: ^account_id})
-  end
-
-  defp put_account_id(entry, Portal.Account, account_id), do: put_field(entry, :id, account_id)
-  defp put_account_id(entry, _schema, account_id), do: put_field(entry, :account_id, account_id)
-
-  defp put_field(entry, field, value) when is_map(entry), do: Map.put(entry, field, value)
-  defp put_field(entry, field, value) when is_list(entry), do: Keyword.put(entry, field, value)
 
   defp apply_schema_changeset(changeset, schema) do
     changeset =
