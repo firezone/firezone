@@ -72,6 +72,7 @@ fun SectionHeader(
     expanded: Boolean,
     live: Boolean,
     onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val rotation by animateFloatAsState(targetValue = if (expanded) 0f else -90f, label = "chevron")
 
@@ -86,7 +87,7 @@ fun SectionHeader(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 12.dp, horizontal = 4.dp),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
