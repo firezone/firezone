@@ -9,6 +9,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
   @commit_timestamp ~U[2026-05-26 12:00:00.123Z]
 
+  defp id_timestamp(uuid) do
+    {:ok, <<ms::48, 0b0111::4, _::76>>} = Ecto.UUID.dump(uuid)
+    DateTime.from_unix!(ms, :millisecond)
+  end
+
   setup do
     tables =
       Application.fetch_env!(:portal, Portal.ChangeLogs.ReplicationConnection)
@@ -91,7 +96,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.old_data == nil
       assert attrs.subject == nil
       assert attrs.vsn == 0
-      assert UUIDv7.timestamp(attrs.id) == @commit_timestamp
+      assert id_timestamp(attrs.id) == @commit_timestamp
     end
 
     test "adds insert operation to flush buffer for non-account tables", %{
@@ -129,7 +134,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.old_data == nil
       assert attrs.account_id == account.id
       assert attrs.vsn == 0
-      assert UUIDv7.timestamp(attrs.id) == @commit_timestamp
+      assert id_timestamp(attrs.id) == @commit_timestamp
     end
 
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do
@@ -288,7 +293,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.old_data == %{"id" => account.id, "name" => "deleted account"}
       assert attrs.subject == nil
       assert attrs.vsn == 0
-      assert UUIDv7.timestamp(attrs.id) == @commit_timestamp
+      assert id_timestamp(attrs.id) == @commit_timestamp
     end
 
     test "adds delete operation to flush buffer", %{
@@ -397,7 +402,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
         )
 
-      assert UUIDv7.timestamp(result_state.flush_buffer[12345].id) == commit_timestamp
+      assert id_timestamp(result_state.flush_buffer[12345].id) == commit_timestamp
     end
 
     test "every row in a transaction shares the same commit_timestamp in its id", %{
@@ -430,8 +435,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
         )
 
-      assert UUIDv7.timestamp(state.flush_buffer[200].id) == commit_timestamp
-      assert UUIDv7.timestamp(state.flush_buffer[201].id) == commit_timestamp
+      assert id_timestamp(state.flush_buffer[200].id) == commit_timestamp
+      assert id_timestamp(state.flush_buffer[201].id) == commit_timestamp
     end
 
     test "persists id with embedded commit_timestamp end-to-end through on_flush", %{
@@ -454,7 +459,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert state.flush_buffer == %{}
 
       change_log = Repo.one(from cl in ChangeLog, where: cl.lsn == 500)
-      assert UUIDv7.timestamp(change_log.id) == commit_timestamp
+      assert id_timestamp(change_log.id) == commit_timestamp
     end
   end
 
@@ -508,10 +513,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       [log1, log2] = change_logs
       assert log1.lsn == 100
       assert log1.op == :insert
-      assert UUIDv7.timestamp(log1.id) == committed_at
+      assert id_timestamp(log1.id) == committed_at
       assert log2.lsn == 101
       assert log2.op == :update
-      assert UUIDv7.timestamp(log2.id) == committed_at
+      assert id_timestamp(log2.id) == committed_at
     end
 
     test "calculates last_flushed_lsn correctly as max LSN", %{account: account} do
