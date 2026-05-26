@@ -11,7 +11,7 @@ defmodule Portal.Repo.OffsetList do
 
     with {:ok, paginator_opts} <- OffsetPaginator.init(query_module, order_by, paginator_opts),
          {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
-      count = repo.aggregate(queryable, :count, :id)
+      count = repo.aggregate(queryable, :count)
 
       {results, metadata} =
         queryable

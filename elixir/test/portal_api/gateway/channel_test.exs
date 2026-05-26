@@ -2772,12 +2772,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                device_os_version: "14.0"
              }
 
-      assert payload.subject == %{
-               auth_provider_id: subject.credential.auth_provider_id,
-               actor_id: subject.actor.id,
-               actor_email: subject.actor.email,
-               actor_name: subject.actor.name
-             }
+      assert payload.subject == PortalAPI.Gateway.Views.Subject.render(subject)
 
       assert payload.client_ice_credentials == ice_credentials.initiator
       assert payload.gateway_ice_credentials == ice_credentials.receiver
