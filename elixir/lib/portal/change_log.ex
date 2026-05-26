@@ -4,20 +4,16 @@ defmodule Portal.ChangeLog do
 
   @primary_key false
   @foreign_key_type :binary_id
-  @timestamps_opts [type: :utc_datetime_usec]
 
   schema "change_logs" do
-    belongs_to :account, Portal.Account
-
-    field :lsn, :integer, primary_key: true
+    belongs_to :account, Portal.Account, primary_key: true
+    field :id, Ecto.UUID, primary_key: true, autogenerate: false
+    field :lsn, :integer
     field :table, :string
     field :op, Ecto.Enum, values: [:insert, :update, :delete]
     field :old_data, :map
     field :data, :map
     field :subject, :map
     field :vsn, :integer
-    field :committed_at, :utc_datetime_usec
-
-    timestamps(updated_at: false)
   end
 end

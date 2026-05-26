@@ -138,6 +138,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     flush_buffer =
       state.flush_buffer
       |> Map.put_new(lsn, %{
+        id: Portal.UUIDv7.generate(Map.fetch!(state, :current_commit_timestamp)),
         lsn: lsn,
         op: op,
         table: table,
@@ -145,8 +146,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
         old_data: old_data,
         data: data,
         subject: subject,
-        vsn: @vsn,
-        committed_at: Map.get(state, :current_commit_timestamp)
+        vsn: @vsn
       })
 
     %{state | flush_buffer: flush_buffer}
