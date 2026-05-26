@@ -10,7 +10,6 @@ defaults:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
-  security-events: "write" # trivy SARIF upload from setup-mise
 
 jobs:
   static-analysis:
@@ -47,6 +46,7 @@ jobs:
     permissions:
       contents: write # for uploading artifacts to the release
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
     name: build-release-${{ matrix.package-type }}
     needs: update-release-draft
     if: "${{ github.event_name == 'workflow_dispatch' }}"
