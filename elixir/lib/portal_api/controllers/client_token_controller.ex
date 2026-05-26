@@ -79,7 +79,8 @@ defmodule PortalAPI.ClientTokenController do
       {"Client Token Attributes", "application/json", PortalAPI.Schemas.ClientToken.Request,
        required: true},
     responses: [
-      ok: {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.Response}
+      created:
+        {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.Response}
     ]
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
