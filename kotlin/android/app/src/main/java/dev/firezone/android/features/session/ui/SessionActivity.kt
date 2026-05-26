@@ -44,6 +44,7 @@ class SessionActivity : AppCompatActivity() {
                 tunnelService?.let {
                     it.setServiceStateMutableStateFlow(viewModel.getServiceStatusMutableStateFlow())
                     it.setResourcesMutableStateFlow(viewModel.getResourcesMutableStateFlow())
+                    it.setConnectedDevicesMutableStateFlow(viewModel.getConnectedDevicesMutableStateFlow())
                 }
             }
 
@@ -65,6 +66,7 @@ class SessionActivity : AppCompatActivity() {
         setContent {
             FirezoneTheme {
                 val resourcesState by viewModel.resourcesStateFlow.collectAsStateWithLifecycle()
+                val connectedDevicesState by viewModel.connectedDevicesStateFlow.collectAsStateWithLifecycle()
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
                 val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
 
@@ -99,6 +101,7 @@ class SessionActivity : AppCompatActivity() {
                 SessionScreen(
                     actorName = actorName,
                     resources = resources,
+                    connectedDevices = connectedDevicesState.toImmutableList(),
                     favorites = favorites,
                     onToggleInternet = {
                         val newState = internetState.toggle()

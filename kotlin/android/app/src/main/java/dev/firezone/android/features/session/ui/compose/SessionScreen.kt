@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceViewModel
+import dev.firezone.android.features.session.ui.isInternetResource
+import dev.firezone.android.tunnel.model.ConnectedDevice
 import kotlinx.collections.immutable.ImmutableList
 
 private const val TAB_FAVORITES = 0
@@ -46,6 +48,7 @@ private const val TAB_ALL = 1
 fun SessionScreen(
     actorName: String?,
     resources: ImmutableList<ResourceViewModel>,
+    connectedDevices: ImmutableList<ConnectedDevice>,
     favorites: Favorites,
     onToggleInternet: () -> Unit,
     onAddFavorite: (String) -> Unit,
@@ -63,17 +66,20 @@ fun SessionScreen(
     }
     val effectiveTab = if (!hasFavorites) TAB_ALL else selectedTab
 
-    val displayed =
-        remember(resources, favorites, effectiveTab) {
-            if (hasFavorites && effectiveTab == TAB_FAVORITES) {
-                resources.filter { favorites.inner.contains(it.id) }
-            } else {
-                resources
-            }
+    val favoriteResources =
+        remember(resources, favorites) {
+            resources.filter { favorites.inner.contains(it.id) }
         }
+    val internetResource = remember(resources) { resources.firstOrNull { it.isInternetResource() } }
+    val otherResources = remember(resources) { resources.filter { !it.isInternetResource() } }
+
+    var resourcesExpanded by rememberSaveable { mutableStateOf(true) }
+    var devicesExpanded by rememberSaveable { mutableStateOf(false) }
 
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedDeviceId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedResource = remember(resources, selectedId) { resources.firstOrNull { it.id == selectedId } }
+    val selectedDevice = remember(connectedDevices, selectedDeviceId) { connectedDevices.firstOrNull { it.id == selectedDeviceId } }
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
@@ -115,10 +121,42 @@ fun SessionScreen(
                 }
             }
 
+            val resourcesTitle = stringResource(R.string.resources)
+            val connectedDevicesTitle = stringResource(R.string.connected_devices)
+
             LazyColumn(Modifier.weight(1f)) {
-                itemsIndexed(displayed, key = { _, resource -> resource.id }) { index, resource ->
-                    if (index > 0) HorizontalDivider()
-                    ResourceRow(resource = resource, onClick = { selectedId = resource.id })
+                if (hasFavorites && effectiveTab == TAB_FAVORITES) {
+                    itemsIndexed(favoriteResources, key = { _, resource -> resource.id }) { index, resource ->
+                        if (index > 0) HorizontalDivider()
+                        ResourceRow(resource = resource, onClick = { selectedId = resource.id })
+                    }
+                } else {
+                    internetResource?.let { internet ->
+                        item(key = "internet-${internet.id}") {
+                            ResourceRow(resource = internet, onClick = { selectedId = internet.id })
+                        }
+                    }
+                    collapsibleSection(
+                        title = resourcesTitle,
+                        entries = otherResources,
+                        expanded = resourcesExpanded,
+                        onToggle = { resourcesExpanded = !resourcesExpanded },
+                        key = { "res-${it.id}" },
+                    ) { resource ->
+                        ResourceRow(resource = resource, onClick = { selectedId = resource.id })
+                    }
+                    if (connectedDevices.isNotEmpty()) {
+                        collapsibleSection(
+                            title = connectedDevicesTitle,
+                            entries = connectedDevices,
+                            expanded = devicesExpanded,
+                            onToggle = { devicesExpanded = !devicesExpanded },
+                            live = true,
+                            key = { "dev-${it.id}" },
+                        ) { device ->
+                            ConnectedDeviceRow(device = device, onClick = { selectedDeviceId = device.id })
+                        }
+                    }
                 }
             }
 
@@ -144,6 +182,13 @@ fun SessionScreen(
             onRemoveFavorite = { onRemoveFavorite(resource.id) },
             onToggleInternet = onToggleInternet,
             onDismiss = { selectedId = null },
+        )
+    }
+
+    selectedDevice?.let { device ->
+        ConnectedDeviceDetailsSheet(
+            device = device,
+            onDismiss = { selectedDeviceId = null },
         )
     }
 }
