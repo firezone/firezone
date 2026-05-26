@@ -817,6 +817,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1b08cb4ecbb540b940016b0a0f35b7e48ab0cc372ab88150c351de4cc469959"
 
 [[package]]
+name = "bootstrap-dns-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "dns-types",
+ "futures",
+ "socket-factory",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "boringtun"
 version = "0.6.1"
 source = "git+https://github.com/firezone/boringtun?branch=master#bb3034dcd12b63970ccd364ab779ce90f3561653"
@@ -852,6 +864,15 @@ checksum = "874bb8112abecc98cbd6d81ea4fa7e94fb9449648c93cc89aa40c81c24d7de03"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
+]
+
+[[package]]
+name = "bs58"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+dependencies = [
+ "tinyvec",
 ]
 
 [[package]]
@@ -1231,12 +1252,12 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "bimap",
+ "bootstrap-dns-client",
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
  "futures",
  "ip_network",
- "l4-udp-dns-client",
  "libc",
  "logging",
  "parking_lot",
@@ -2022,16 +2043,16 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "embed-resource"
-version = "3.0.2"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fbc6e0d8e0c03a655b53ca813f0463d2c956bc4db8138dbc89f120b066551e3"
+checksum = "c31a88c8d26de40ed18fe748c547845aa39de1db3afd958f8cb91579f3644bcb"
 dependencies = [
  "cc",
  "memchr",
  "rustc_version",
- "toml 0.8.22",
+ "toml 1.1.2+spec-1.1.0",
  "vswhom",
- "winreg 0.52.0",
+ "winreg 0.55.0",
 ]
 
 [[package]]
@@ -4013,18 +4034,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "l4-udp-dns-client"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "dns-types",
- "futures",
- "socket-factory",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "l4-udp-dns-server"
 version = "0.1.0"
 dependencies = [
@@ -4505,9 +4514,9 @@ dependencies = [
 
 [[package]]
 name = "notify-rust"
-version = "4.16.1"
+version = "4.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bdaf6120b9df005d37e58f6b75329be6255450453fbeba9ce4192324f921fb9"
+checksum = "50ff2e74231b72c832d82982193b417f230945be6bdb5575b251d941d31adb00"
 dependencies = [
  "futures-lite",
  "log",
@@ -6461,9 +6470,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
@@ -6534,11 +6543,12 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "3.19.0"
+version = "3.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f05839ce67618e14a09b286535c0d9c94e85ef25469b0e13cb4f844e5593eb19"
+checksum = "e72c1c2cb7b223fafb600a619537a871c2818583d619401b785e7c0b746ccde2"
 dependencies = [
  "base64 0.22.1",
+ "bs58",
  "chrono",
  "hex",
  "indexmap 1.9.3",
@@ -6553,9 +6563,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with_macros"
-version = "3.19.0"
+version = "3.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf2ebbe86054f9b45bc3881e865683ccfaccce97b9b4cb53f3039d67f355a334"
+checksum = "b90c488738ecb4fb0262f41f43bc40efc5868d9fb744319ddf5f5317f417bfac"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -8226,6 +8236,7 @@ dependencies = [
  "anyhow-ext",
  "base64 0.22.1",
  "bimap",
+ "bootstrap-dns-client",
  "boringtun",
  "bufferpool",
  "bytes",
@@ -8250,7 +8261,6 @@ dependencies = [
  "l3-tcp",
  "l3-udp-dns-client",
  "l4-tcp-dns-server",
- "l4-udp-dns-client",
  "l4-udp-dns-server",
  "logging",
  "lru",
@@ -9582,12 +9592,12 @@ dependencies = [
 
 [[package]]
 name = "winreg"
-version = "0.52.0"
+version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a277a57398d4bfa075df44f501a17cfdf8542d224f0d36095a2adc7aee4ef0a5"
+checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
 dependencies = [
  "cfg-if",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

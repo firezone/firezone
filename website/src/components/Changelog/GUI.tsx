@@ -39,6 +39,11 @@ export default function GUI({ os }: { os: OS }) {
             user can no longer drive the tunnel or hijack deep links.
           </ChangeItem>
         )}
+        <ChangeItem pull={13354}>
+          Retries portal DNS lookups over TCP when the configured resolvers
+          return no usable IPs over UDP, improving connectivity on networks with
+          broken UDP DNS forwarders.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.12" date={new Date("2026-04-27")}>
         <ChangeItem pull={12684}>

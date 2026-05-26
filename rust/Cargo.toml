@@ -9,6 +9,7 @@ members = [
     "libs/anyhow-ext",
     "libs/bin-shared",
     "libs/client-shared",
+    "libs/connlib/bootstrap-dns-client",
     "libs/connlib/bufferpool",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
@@ -18,7 +19,6 @@ members = [
     "libs/connlib/l3-tcp",
     "libs/connlib/l3-udp-dns-client",
     "libs/connlib/l4-tcp-dns-server",
-    "libs/connlib/l4-udp-dns-client",
     "libs/connlib/l4-udp-dns-server",
     "libs/connlib/model",
     "libs/connlib/phoenix-channel",
@@ -67,6 +67,7 @@ base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
+bootstrap-dns-client = { path = "libs/connlib/bootstrap-dns-client" }
 boringtun = { version = "0.6.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
@@ -125,7 +126,6 @@ known-folders = "1.4.2"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
-l4-udp-dns-client = { path = "libs/connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
 libfuzzer-sys = "0.4.12"
@@ -139,7 +139,7 @@ netlink-packet-core = "0.8.1"
 netlink-packet-route = "0.29.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.30.1"
-notify-rust = "4.16.1"
+notify-rust = "4.17.0"
 nu-ansi-term = "0.50.3"
 num_cpus = "1.17.0"
 once_cell = "1.21.4"
@@ -176,9 +176,9 @@ semver = "1.0.28"
 sentry = { version = "0.48.0", default-features = false }
 sentry-tracing = "0.48.0"
 serde = "1.0.228"
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 serde_variant = "0.1.3"
-serde_with = "3.19.0"
+serde_with = "3.20.0"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
 smallvec = "1.15.1"
