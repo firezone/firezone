@@ -1,3 +1,4 @@
+import com.google.firebase.appdistribution.gradle.firebaseAppDistribution
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import groovy.json.JsonSlurper
 import java.io.ByteArrayOutputStream
@@ -148,9 +149,41 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    // Escalate Slack's Compose lint checks (added via `lintChecks`) to build-failing
+    // errors so Compose issues block CI. Other checks keep their default severity.
+    // `ComposeM2Api` is intentionally omitted: it is opt-in in the library and this
+    // app is on Material 3.
+    lint {
+        error +=
+            setOf(
+                "ComposeCompositionLocalGetter",
+                "ComposeCompositionLocalUsage",
+                "ComposeContentEmitterReturningValues",
+                "ComposeModifierComposed",
+                "ComposeModifierMissing",
+                "ComposeModifierReused",
+                "ComposeModifierWithoutDefault",
+                "ComposeMultipleContentEmitters",
+                "ComposeMutableParameters",
+                "ComposeNamingLowercase",
+                "ComposeNamingUppercase",
+                "ComposeParameterOrder",
+                "ComposePreviewNaming",
+                "ComposePreviewPublic",
+                "ComposeRememberMissing",
+                "ComposeUnstableCollections",
+                "ComposeUnstableReceiver",
+                "ComposeViewModelForwarding",
+                "ComposeViewModelInjection",
+                "SlotReused",
+            )
+    }
 }
 
 dependencies {
+    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.2.0")
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
@@ -239,6 +272,13 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    // Immutable collections give Compose stable (skippable) parameter types.
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
+
+    // Slack's Compose lint checks. Pinned to 1.4.2: lint check JARs are versioned to
+    // the lint API (`lint = AGP + 23`), so with AGP 8.13 (lint 31.13) we need a build
+    // against an older lint. 1.4.3+/1.5.0 target lint 32.2 (AGP 9.2) and get rejected.
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.4.2")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")

@@ -44,9 +44,10 @@ fun ResourceDetailsSheet(
     onRemoveFavorite: () -> Unit,
     onToggleInternet: () -> Unit,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState()
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             if (resource.isInternetResource()) {
                 InternetResourceDetails(resource, onToggleInternet)
@@ -65,15 +66,17 @@ private fun InternetResourceDetails(
     resource: ResourceViewModel,
     onToggleInternet: () -> Unit,
 ) {
-    SectionLabel("Resource")
-    DetailRow(label = "Name:") { Text(resource.name) }
-    DetailRow(label = "Description:") { Text("All network traffic") }
+    Column {
+        SectionLabel("Resource")
+        DetailRow(label = "Name:") { Text(resource.name) }
+        DetailRow(label = "Description:") { Text("All network traffic") }
 
-    OutlinedButton(
-        onClick = onToggleInternet,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(if (resource.state.isEnabled()) "Disable this resource" else "Enable this resource")
+        OutlinedButton(
+            onClick = onToggleInternet,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (resource.state.isEnabled()) "Disable this resource" else "Enable this resource")
+        }
     }
 }
 
@@ -84,42 +87,44 @@ private fun NonInternetResourceDetails(
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
 ) {
-    val context = LocalContext.current
+    Column {
+        val context = LocalContext.current
 
-    SectionLabel("Resource")
+        SectionLabel("Resource")
 
-    DetailRow(label = "Name:") {
-        Text(
-            text = resource.name,
-            modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
-        )
-    }
+        DetailRow(label = "Name:") {
+            Text(
+                text = resource.name,
+                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
+            )
+        }
 
-    val displayAddress = resource.addressDescription ?: resource.address
-    val addressUri = remember(resource.addressDescription) { resource.addressDescription?.toUri() }
-    val isUrl = addressUri?.scheme != null
+        val displayAddress = resource.addressDescription ?: resource.address
+        val addressUri = remember(resource.addressDescription) { resource.addressDescription?.toUri() }
+        val isUrl = addressUri?.scheme != null
 
-    DetailRow(label = "Address:") {
-        Text(
-            text = displayAddress.orEmpty(),
-            color = if (isUrl) Color.Blue else MaterialTheme.colorScheme.onSurface,
-            fontStyle = if (isUrl) FontStyle.Italic else FontStyle.Normal,
-            modifier =
-                Modifier.clickable {
-                    if (isUrl) {
-                        addressUri?.let { CustomTabsIntent.Builder().build().launchUrl(context, it) }
-                    } else if (displayAddress != null) {
-                        ClipboardUtils.copyToClipboard(context, "Address", displayAddress)
-                    }
-                },
-        )
-    }
+        DetailRow(label = "Address:") {
+            Text(
+                text = displayAddress.orEmpty(),
+                color = if (isUrl) Color.Blue else MaterialTheme.colorScheme.onSurface,
+                fontStyle = if (isUrl) FontStyle.Italic else FontStyle.Normal,
+                modifier =
+                    Modifier.clickable {
+                        if (isUrl) {
+                            addressUri?.let { CustomTabsIntent.Builder().build().launchUrl(context, it) }
+                        } else if (displayAddress != null) {
+                            ClipboardUtils.copyToClipboard(context, "Address", displayAddress)
+                        }
+                    },
+            )
+        }
 
-    OutlinedButton(
-        onClick = if (isFavorite) onRemoveFavorite else onAddFavorite,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites")
+        OutlinedButton(
+            onClick = if (isFavorite) onRemoveFavorite else onAddFavorite,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites")
+        }
     }
 }
 
@@ -128,34 +133,36 @@ private fun SiteSection(
     siteName: String,
     status: StatusEnum,
 ) {
-    val context = LocalContext.current
+    Column {
+        val context = LocalContext.current
 
-    SectionLabel("Site")
-    DetailRow(label = "Name:") {
-        Text(
-            text = siteName,
-            modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Site name", siteName) },
-        )
-    }
-
-    val statusText =
-        when (status) {
-            StatusEnum.ONLINE -> "Gateway connected"
-            StatusEnum.OFFLINE -> "All Gateways offline"
-            StatusEnum.UNKNOWN -> "No activity"
-        }
-    val dotColor =
-        when (status) {
-            StatusEnum.ONLINE -> Color.Green
-            StatusEnum.OFFLINE -> Color.Red
-            StatusEnum.UNKNOWN -> Color.Gray
+        SectionLabel("Site")
+        DetailRow(label = "Name:") {
+            Text(
+                text = siteName,
+                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Site name", siteName) },
+            )
         }
 
-    DetailRow(label = "Status:") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).background(dotColor, CircleShape))
-            Spacer(Modifier.width(8.dp))
-            Text(text = statusText)
+        val statusText =
+            when (status) {
+                StatusEnum.ONLINE -> "Gateway connected"
+                StatusEnum.OFFLINE -> "All Gateways offline"
+                StatusEnum.UNKNOWN -> "No activity"
+            }
+        val dotColor =
+            when (status) {
+                StatusEnum.ONLINE -> Color.Green
+                StatusEnum.OFFLINE -> Color.Red
+                StatusEnum.UNKNOWN -> Color.Gray
+            }
+
+        DetailRow(label = "Status:") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(10.dp).background(dotColor, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Text(text = statusText)
+            }
         }
     }
 }
