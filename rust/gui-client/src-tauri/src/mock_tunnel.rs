@@ -1,6 +1,6 @@
 //! Debug-only, in-process mock of the Tunnel service.
 //!
-//! When enabled (GUI `--mock`), [`crate::ipc::connect`] for [`crate::ipc::SocketId::Tunnel`]
+//! When enabled (GUI `--mock-tunnel`), [`crate::ipc::connect`] for [`crate::ipc::SocketId::Tunnel`]
 //! hands the real `Controller` an in-memory `tokio::io::duplex` channel instead of a real
 //! socket, and [`serve`] plays the Tunnel service on the other end. It speaks the same
 //! `ClientMsg`/`ServerMsg` protocol over the same JSON codec, but never touches connlib, the
@@ -26,7 +26,7 @@ use tokio::io::DuplexStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 /// Whether the GUI should mock the Tunnel service in-process instead of connecting to the real
-/// one. Set once at startup via `--mock`. Debug builds only.
+/// one. Set once at startup via `--mock-tunnel`. Debug builds only.
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Set [`ENABLED`].
@@ -45,7 +45,7 @@ pub(crate) fn enabled() -> bool {
 ///
 /// Returns the boxed client stream; [`crate::ipc::connect`] frames it with the usual codec, so
 /// the `Controller` is none the wiser.
-pub(crate) fn client_stream() -> ipc::ClientStream {
+pub(crate) fn spawn() -> ipc::ClientStream {
     let (client_io, server_io) = tokio::io::duplex(64 * 1024);
 
     tokio::spawn(async move {

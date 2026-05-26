@@ -162,13 +162,13 @@ where
         "Connecting to IPC socket"
     );
 
-    // When the GUI is launched with `--mock`, hand the controller an in-memory
+    // When the GUI is launched with `--mock-tunnel`, hand the controller an in-memory
     // channel served by an in-process mock instead of connecting to the real
     // (root-only) Tunnel service. Debug builds only; Tunnel socket only, so the
     // deep-link `SocketId::Gui` path is unaffected.
     #[cfg(debug_assertions)]
     if id == SocketId::Tunnel && crate::mock_tunnel::enabled() {
-        let (rx, tx) = tokio::io::split(crate::mock_tunnel::client_stream());
+        let (rx, tx) = tokio::io::split(crate::mock_tunnel::spawn());
         return Ok((
             FramedRead::new(rx, Decoder::default()),
             FramedWrite::new(tx, Encoder::default()),

@@ -56,10 +56,10 @@ raw = true
 run = "cargo test tunnel_test --features proptest -- --nocapture"
 
 [tasks.tauri-mock]
-description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
+description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
 dir = "gui-client"
 raw = true
-run = "cargo tauri dev -- -- --skip-portal-auth --mock"
+run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
 
 # =============================================================================
 # Composite tasks
