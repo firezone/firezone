@@ -6,13 +6,20 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   alias Portal.ChangeLogs.ReplicationConnection
   alias Portal.ChangeLog
 
+  @commit_timestamp ~U[2026-05-26 12:00:00.123456Z]
+
   setup do
     tables =
       Application.fetch_env!(:portal, Portal.ChangeLogs.ReplicationConnection)
       |> Keyword.fetch!(:table_subscriptions)
 
     account = account_fixture()
-    %{account: account, tables: tables}
+
+    # In production every Write is preceded by a Begin that populates
+    # current_commit_timestamp, so set it up here for on_write/6 tests.
+    initial_state = %{flush_buffer: %{}, current_commit_timestamp: @commit_timestamp}
+
+    %{account: account, tables: tables, initial_state: initial_state}
   end
 
   describe "configured tables" do
@@ -60,9 +67,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "on_write/6 for inserts" do
-    test "handles account inserts", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
-
+    test "handles account inserts", %{account: account, initial_state: initial_state} do
       result_state =
         ReplicationConnection.on_write(
           initial_state,
@@ -87,13 +92,17 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
                    lsn: 12345,
                    old_data: nil,
                    subject: nil,
-                   committed_at: nil
+                   committed_at: @commit_timestamp
                  }
-               }
+               },
+               current_commit_timestamp: @commit_timestamp
              }
     end
 
-    test "adds insert operation to flush buffer for non-account tables", %{account: account} do
+    test "adds insert operation to flush buffer for non-account tables", %{
+      account: account,
+      initial_state: initial_state
+    } do
       table = "resources"
 
       data = %{
@@ -103,7 +112,6 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       }
 
       lsn = 12345
-      initial_state = %{flush_buffer: %{}}
 
       result_state =
         ReplicationConnection.on_write(
@@ -128,7 +136,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.vsn == 0
     end
 
-    test "preserves existing buffer items", %{account: account} do
+    test "preserves existing buffer items", %{account: account, initial_state: initial_state} do
       existing_lsn = 100
 
       existing_item = %{
@@ -139,10 +147,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         data: %{"id" => "existing"},
         old_data: nil,
         vsn: 0,
-        subject: nil
+        subject: nil,
+        committed_at: @commit_timestamp
       }
 
-      initial_state = %{flush_buffer: %{existing_lsn => existing_item}}
+      initial_state = %{initial_state | flush_buffer: %{existing_lsn => existing_item}}
 
       new_lsn = 101
 
@@ -161,9 +170,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert Map.has_key?(result_state.flush_buffer, new_lsn)
     end
 
-    test "ignores relay token inserts" do
-      initial_state = %{flush_buffer: %{}}
-
+    test "ignores relay token inserts", %{initial_state: initial_state} do
       result_state =
         ReplicationConnection.on_write(
           initial_state,
@@ -177,7 +184,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert result_state == initial_state
     end
 
-    test "handles complex data structures", %{account: account} do
+    test "handles complex data structures", %{account: account, initial_state: initial_state} do
       complex_data = %{
         "id" => Ecto.UUID.generate(),
         "account_id" => account.id,
@@ -186,12 +193,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         "boolean" => true
       }
 
-      state = %{flush_buffer: %{}}
       lsn = 200
 
       result_state =
         ReplicationConnection.on_write(
-          state,
+          initial_state,
           lsn,
           :insert,
           "resources",
@@ -205,12 +211,14 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "on_write/6 for updates" do
-    test "adds update operation to flush buffer", %{account: account} do
+    test "adds update operation to flush buffer", %{
+      account: account,
+      initial_state: initial_state
+    } do
       table = "resources"
       old_data = %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "old name"}
       data = %{"id" => old_data["id"], "account_id" => account.id, "name" => "new name"}
       lsn = 12346
-      initial_state = %{flush_buffer: %{}}
 
       result_state =
         ReplicationConnection.on_write(
@@ -234,11 +242,13 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.vsn == 0
     end
 
-    test "handles account updates specially", %{account: account} do
+    test "handles account updates specially", %{
+      account: account,
+      initial_state: initial_state
+    } do
       old_data = %{"id" => account.id, "name" => "old name"}
       data = %{"id" => account.id, "name" => "new name"}
       lsn = 12346
-      initial_state = %{flush_buffer: %{}}
 
       result_state =
         ReplicationConnection.on_write(
@@ -259,9 +269,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "on_write/6 for deletes" do
-    test "handles account deletes", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
-
+    test "handles account deletes", %{account: account, initial_state: initial_state} do
       result_state =
         ReplicationConnection.on_write(
           initial_state,
@@ -283,13 +291,17 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
                    lsn: 12345,
                    old_data: %{"id" => account.id, "name" => "deleted account"},
                    subject: nil,
-                   committed_at: nil
+                   committed_at: @commit_timestamp
                  }
-               }
+               },
+               current_commit_timestamp: @commit_timestamp
              }
     end
 
-    test "adds delete operation to flush buffer", %{account: account} do
+    test "adds delete operation to flush buffer", %{
+      account: account,
+      initial_state: initial_state
+    } do
       table = "resources"
 
       old_data = %{
@@ -299,7 +311,6 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       }
 
       lsn = 12347
-      initial_state = %{flush_buffer: %{}}
 
       result_state =
         ReplicationConnection.on_write(
@@ -325,9 +336,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "multiple operations and buffer accumulation" do
-    test "operations accumulate in flush buffer correctly", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
-
+    test "operations accumulate in flush buffer correctly", %{
+      account: account,
+      initial_state: initial_state
+    } do
       state1 =
         ReplicationConnection.on_write(
           initial_state,
@@ -425,20 +437,6 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       assert state.flush_buffer[200].committed_at == commit_timestamp
       assert state.flush_buffer[201].committed_at == commit_timestamp
-    end
-
-    test "buffered entry has nil committed_at when no Begin has been seen", %{account: account} do
-      result_state =
-        ReplicationConnection.on_write(
-          %{flush_buffer: %{}},
-          300,
-          :insert,
-          "resources",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
-        )
-
-      assert result_state.flush_buffer[300].committed_at == nil
     end
 
     test "persists committed_at end-to-end through on_flush", %{account: account} do
@@ -567,16 +565,14 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "edge cases" do
-    test "logs error for writes without account_id" do
+    test "logs error for writes without account_id", %{initial_state: initial_state} do
       import ExUnit.CaptureLog
-
-      state = %{flush_buffer: %{}}
 
       log =
         capture_log(fn ->
           result =
             ReplicationConnection.on_write(
-              state,
+              initial_state,
               500,
               :insert,
               "some_table",
@@ -584,19 +580,17 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
               %{"id" => Ecto.UUID.generate(), "name" => "no account_id"}
             )
 
-          assert result == state
+          assert result == initial_state
         end)
 
       assert log =~ "Unexpected write operation!"
       assert log =~ "lsn=500"
     end
 
-    test "ignores relay token updates" do
-      state = %{flush_buffer: %{}}
-
+    test "ignores relay token updates", %{initial_state: initial_state} do
       result_state1 =
         ReplicationConnection.on_write(
-          state,
+          initial_state,
           100,
           :update,
           "tokens",
@@ -604,11 +598,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           %{"id" => Ecto.UUID.generate(), "type" => "relay", "updated" => true}
         )
 
-      assert result_state1 == state
+      assert result_state1 == initial_state
 
       result_state2 =
         ReplicationConnection.on_write(
-          state,
+          initial_state,
           101,
           :update,
           "tokens",
@@ -616,16 +610,18 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           %{"id" => Ecto.UUID.generate(), "type" => "relay"}
         )
 
-      assert result_state2 == state
+      assert result_state2 == initial_state
     end
 
-    test "processes non-relay tokens normally", %{account: account} do
-      state = %{flush_buffer: %{}}
+    test "processes non-relay tokens normally", %{
+      account: account,
+      initial_state: initial_state
+    } do
       lsn = 102
 
       result_state =
         ReplicationConnection.on_write(
-          state,
+          initial_state,
           lsn,
           :insert,
           "tokens",

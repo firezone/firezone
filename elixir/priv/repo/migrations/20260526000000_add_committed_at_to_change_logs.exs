@@ -1,12 +1,12 @@
 defmodule Portal.Repo.Migrations.AddCommittedAtToChangeLogs do
   use Ecto.Migration
 
+  @disable_ddl_transaction true
+
   def up do
     alter table(:change_logs) do
-      add(:committed_at, :utc_datetime_usec)
+      add_if_not_exists(:committed_at, :utc_datetime_usec)
     end
-
-    create(index(:change_logs, [:committed_at]))
 
     execute("""
     UPDATE change_logs
@@ -21,14 +21,16 @@ defmodule Portal.Repo.Migrations.AddCommittedAtToChangeLogs do
       )
     end
 
-    drop(index(:change_logs, [:inserted_at]))
+    create_if_not_exists(index(:change_logs, [:committed_at], concurrently: true))
+
+    drop_if_exists(index(:change_logs, [:inserted_at], concurrently: true))
   end
 
   def down do
-    create(index(:change_logs, [:inserted_at]))
+    create_if_not_exists(index(:change_logs, [:inserted_at], concurrently: true))
 
     alter table(:change_logs) do
-      remove(:committed_at)
+      remove_if_exists(:committed_at)
     end
   end
 end
