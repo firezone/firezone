@@ -50,113 +50,6 @@ mod platform;
 
 pub use platform::{elevation_check, install, run};
 
-/// Whether the Tunnel service is running in scripted mock mode.
-///
-/// In mock mode, `Connect` is stubbed out (no connlib / portal session) and a
-/// canned `ResourceList` is emitted, so the GUI's real controller / IPC paths
-/// can be exercised offline. Debug builds only.
-#[cfg(debug_assertions)]
-static MOCK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Set [`MOCK`].
-///
-/// Call once at process startup, before serving any client.
-#[cfg(debug_assertions)]
-pub fn enable_mock() {
-    MOCK.store(true, std::sync::atomic::Ordering::Relaxed);
-}
-
-#[cfg(debug_assertions)]
-fn is_mock() -> bool {
-    MOCK.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-/// Canned resources + connected devices served in mock mode: 5 resources
-/// (Internet, two CIDR incl. one Offline, two DNS incl. one Unknown) and 22
-/// connected devices with rotating pool membership, so every tray rendering
-/// branch is exercised.
-#[cfg(debug_assertions)]
-fn mock_resource_list() -> ResourceList {
-    use connlib_model::{
-        CidrResourceView, ClientId, ConnectedDeviceView, DnsResourceView, InternetResourceView,
-        ResourceStatus, ResourceView, Site, SiteId,
-    };
-    use std::net::Ipv4Addr;
-
-    let site = Site {
-        id: SiteId::from_u128(0xDEAD_BEEF),
-        name: "Demo Site".into(),
-    };
-    let resources = vec![
-        // Internet resource sorts first in connlib (`ResourceView`'s `Ord`
-        // impl in connlib_model::view), so the fixture mirrors that order.
-        ResourceView::Internet(InternetResourceView {
-            id: ResourceId::from_u128(0x103),
-            name: "Internet Resource".into(),
-            sites: vec![site.clone()],
-            status: ResourceStatus::Online,
-        }),
-        ResourceView::Cidr(CidrResourceView {
-            id: ResourceId::from_u128(0x101),
-            address: "10.0.0.0/16"
-                .parse::<IpNetwork>()
-                .expect("hardcoded CIDR is valid"),
-            name: "Office network".into(),
-            address_description: Some("CIDR resource".into()),
-            sites: vec![site.clone()],
-            status: ResourceStatus::Online,
-        }),
-        ResourceView::Dns(DnsResourceView {
-            id: ResourceId::from_u128(0x102),
-            address: "gitlab.demo.example".into(),
-            name: "Demo GitLab".into(),
-            address_description: Some("https://gitlab.demo.example".into()),
-            sites: vec![site.clone()],
-            status: ResourceStatus::Online,
-        }),
-        ResourceView::Cidr(CidrResourceView {
-            id: ResourceId::from_u128(0x104),
-            address: "192.168.50.0/24"
-                .parse::<IpNetwork>()
-                .expect("hardcoded CIDR is valid"),
-            name: "Lab network (offline)".into(),
-            address_description: Some("Gateway offline".into()),
-            sites: vec![site.clone()],
-            status: ResourceStatus::Offline,
-        }),
-        ResourceView::Dns(DnsResourceView {
-            id: ResourceId::from_u128(0x105),
-            address: "wiki.demo.example".into(),
-            name: "Demo Wiki (unknown)".into(),
-            address_description: Some("Gateway state unknown".into()),
-            sites: vec![site],
-            status: ResourceStatus::Unknown,
-        }),
-    ];
-
-    const POOL_PATTERNS: &[&[&str]] = &[
-        &["Engineering Pool"],
-        &["Engineering Pool", "QA Pool"],
-        &["QA Pool"],
-        &["Sales Pool"],
-    ];
-    let connected_devices = (0..22u128)
-        .map(|i| ConnectedDeviceView {
-            id: ClientId::from_u128(i + 1),
-            tunneled_ipv4: Ipv4Addr::new(100, 96, 0, (i as u8) + 1),
-            pools: POOL_PATTERNS[(i as usize) % POOL_PATTERNS.len()]
-                .iter()
-                .map(|name| (*name).to_string())
-                .collect(),
-        })
-        .collect();
-
-    ResourceList {
-        resources,
-        connected_devices,
-    }
-}
-
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
@@ -675,18 +568,6 @@ impl<'a> Handler<'a> {
                 token,
                 is_internet_resource_active,
             } => {
-                #[cfg(debug_assertions)]
-                if is_mock() {
-                    // Stub the session out entirely: stay `Session::None` (no TUN
-                    // device, no connlib, no DNS routes) and feed the GUI the same
-                    // `ConnectResult(Ok)` -> `OnUpdateResources` sequence a real
-                    // connect would, so its status machine reaches `TunnelReady`.
-                    self.send_ipc(ServerMsg::connect_result(Ok(()))).await?;
-                    self.send_ipc(ServerMsg::OnUpdateResources(mock_resource_list()))
-                        .await?;
-                    return Ok(());
-                }
-
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }

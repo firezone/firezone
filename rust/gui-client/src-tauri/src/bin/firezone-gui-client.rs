@@ -73,6 +73,11 @@ fn try_main(
         controller::skip_portal_auth();
     }
 
+    #[cfg(debug_assertions)]
+    if cli.mock {
+        firezone_gui_client::mock_tunnel::enable();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
@@ -309,11 +314,18 @@ struct Cli {
     skip_tunnel_pipe_owner_check: bool,
 
     /// Decouple sign-in from the portal: mint a fake session/token on the fly
-    /// (never persisted) instead of opening the browser. Pairs with the Tunnel
-    /// service's `run-debug --mock`. Debug builds only.
+    /// (never persisted) instead of opening the browser. Pairs with `--mock`.
+    /// Debug builds only.
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     skip_portal_auth: bool,
+
+    /// Mock the Tunnel service in-process: serve a canned resource list over an
+    /// in-memory IPC channel instead of connecting to the real (root-only)
+    /// Tunnel service. Pairs with `--skip-portal-auth`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    mock: bool,
 }
 
 impl Cli {

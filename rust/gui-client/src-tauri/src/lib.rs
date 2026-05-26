@@ -15,6 +15,8 @@ pub mod gui;
 pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
+#[cfg(debug_assertions)]
+pub mod mock_tunnel;
 pub mod service;
 pub mod settings;
 

@@ -26,13 +26,7 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Cmd::Install => service::install(),
         Cmd::Run => service::run(cli.log_dir, cli.dns_control),
-        Cmd::RunDebug => {
-            #[cfg(debug_assertions)]
-            if cli.mock {
-                service::enable_mock();
-            }
-            service::run_debug(cli.dns_control)
-        }
+        Cmd::RunDebug => service::run_debug(cli.dns_control),
         Cmd::RunSmokeTest => service::run_smoke_test(),
     }
 }
@@ -63,13 +57,6 @@ pub struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
-
-    /// Run `run-debug` in scripted mock mode: stub out `Connect` and serve a
-    /// canned resource list instead of touching connlib / the portal. Pairs
-    /// with the GUI's `--skip-portal-auth`. Debug builds only.
-    #[cfg(debug_assertions)]
-    #[arg(long, hide = true, global = true)]
-    mock: bool,
 }
 
 #[derive(clap::Subcommand, Default)]
@@ -102,12 +89,5 @@ mod tests {
 
         let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();
         assert!(matches!(actual.command, Cmd::Run));
-
-        #[cfg(debug_assertions)]
-        {
-            let actual = Cli::try_parse_from([EXE_NAME, "run-debug", "--mock"]).unwrap();
-            assert!(matches!(actual.command, Cmd::RunDebug));
-            assert!(actual.mock);
-        }
     }
 }
