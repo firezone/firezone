@@ -61,7 +61,8 @@ export default function Gateway() {
         </ChangeItem>
         <ChangeItem pull={11770}>
           Enables detailed flow logs for tunneled TCP and UDP connections. Set
-          `FIREZONE_FLOW_LOGS=true` or `--flow-logs` to enable.
+          <code>FIREZONE_FLOW_LOGS=true</code> or <code>--flow-logs</code> to
+          enable.
         </ChangeItem>
         <ChangeItem pull={11664}>
           Adds a <code>FIREZONE_MAX_PARTITION_TIME</code> environment variable
@@ -113,7 +114,7 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull={10620}>
-          Adds a `--log-format` CLI option to output logs as JSON.
+          Adds a <code>--log-format</code> CLI option to output logs as JSON.
         </ChangeItem>
         <ChangeItem pull={10796}>
           Fixes an issue where packets for DNS resources would be routed to
