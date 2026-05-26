@@ -3,7 +3,7 @@ defmodule Portal.Repo.Migrations.AddCommittedAtToChangeLogs do
 
   def up do
     alter table(:change_logs) do
-      add_if_not_exists(:committed_at, :utc_datetime_usec)
+      add(:committed_at, :utc_datetime_usec)
     end
 
     execute("""
@@ -22,7 +22,7 @@ defmodule Portal.Repo.Migrations.AddCommittedAtToChangeLogs do
 
   def down do
     alter table(:change_logs) do
-      remove_if_exists(:committed_at)
+      remove(:committed_at)
     end
   end
 end
