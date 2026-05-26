@@ -6,6 +6,9 @@ on:
 env:
   MISE_EXPERIMENTAL: "1"
 
+permissions:
+  security-events: write
+
 jobs:
   update-release-draft:
     name: update-release-draft
