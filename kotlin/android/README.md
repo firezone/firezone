@@ -92,13 +92,10 @@ We release from GitHub CI, so this shouldn't be necessary. But if you're looking
 to test the `release` variant locally:
 
 1. Download the keystore from 1Pass and save to `app/.signing/keystore.jks` dir.
-1. Download firebase credentials from 1Pass and save to
-   `app/.signing/firebase.json`
 1. Now you can execute the `*Release` tasks with:
 
 ```shell
 export KEYSTORE_PATH="$(pwd)/app/.signing/keystore.jks"
-export FIREBASE_CREDENTIALS_PATH="$(pwd)/app/.signing/firebase.json"
 HISTCONTROL=ignorespace # prevents saving the next line in shell history
  KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
 ```
