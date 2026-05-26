@@ -239,6 +239,10 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs portal
 
+      - name: Show Postgres logs
+        if: "!cancelled()"
+        run: docker compose logs postgres
+
       - name: Ensure no eBPF checksum errors on relay-1
         if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
         run: |
