@@ -71,6 +71,11 @@ jobs:
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # release-drafter creates/updates the draft release
+      pull-requests: read # release-drafter reads merged PRs
+      issues: write # open/update the QA tracking issue
+      id-token: write # claude-code-action OIDC auth
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -83,6 +88,10 @@ jobs:
             config_name: release-drafter-headless-client.yml
 
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
       - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -94,6 +103,15 @@ jobs:
           commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate QA test plan
+        if: ${{ steps.update-release-draft.outputs.id != '' }}
+        uses: ./.github/actions/qa-summary
+        with:
+          release_name: ${{ matrix.release_name }}
+          release_body: ${{ steps.update-release-draft.outputs.body }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
