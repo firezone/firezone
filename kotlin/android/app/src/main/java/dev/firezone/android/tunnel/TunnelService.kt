@@ -27,6 +27,7 @@ import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.model.Cidr
+import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
@@ -79,6 +80,7 @@ class TunnelService : VpnService() {
     private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var _tunnelResources: List<Resource> = emptyList()
+    private var _tunnelConnectedDevices: List<ConnectedDevice> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var resourceState: ResourceState = ResourceState.UNSET
 
@@ -102,6 +104,12 @@ class TunnelService : VpnService() {
             _tunnelResources = value
             updateResourcesStateFlow(value)
         }
+    var tunnelConnectedDevices: List<ConnectedDevice>
+        get() = _tunnelConnectedDevices
+        set(value) {
+            _tunnelConnectedDevices = value
+            updateConnectedDevicesStateFlow(value)
+        }
     var tunnelState: State
         get() = _tunnelState
         set(value) {
@@ -112,6 +120,7 @@ class TunnelService : VpnService() {
     // Used to update the UI when the SessionActivity is bound to this service
     private var serviceStateMutableStateFlow: MutableStateFlow<State?>? = null
     private var resourcesMutableStateFlow: MutableStateFlow<List<Resource>>? = null
+    private var connectedDevicesMutableStateFlow: MutableStateFlow<List<ConnectedDevice>>? = null
 
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
@@ -486,12 +495,23 @@ class TunnelService : VpnService() {
         resourcesMutableStateFlow?.value = tunnelResources
     }
 
+    fun setConnectedDevicesMutableStateFlow(stateFlow: MutableStateFlow<List<ConnectedDevice>>) {
+        connectedDevicesMutableStateFlow = stateFlow
+
+        // Update the newly bound SessionActivity with our current connected devices
+        connectedDevicesMutableStateFlow?.value = tunnelConnectedDevices
+    }
+
     private fun updateServiceStateFlow(state: State) {
         serviceStateMutableStateFlow?.value = state
     }
 
     private fun updateResourcesStateFlow(resources: List<Resource>) {
         resourcesMutableStateFlow?.value = resources
+    }
+
+    private fun updateConnectedDevicesStateFlow(devices: List<ConnectedDevice>) {
+        connectedDevicesMutableStateFlow?.value = devices
     }
 
     private fun deviceId(): String {
@@ -626,6 +646,8 @@ class TunnelService : VpnService() {
                             when (event) {
                                 is Event.ResourcesUpdated -> {
                                     tunnelResources = event.resources.map { convertResource(it) }
+                                    tunnelConnectedDevices =
+                                        event.connectedDevices.map { convertConnectedDevice(it) }
                                     resourcesUpdated()
                                 }
 
@@ -705,6 +727,13 @@ class TunnelService : VpnService() {
             stopReason
         }
     }
+
+    private fun convertConnectedDevice(device: uniffi.connlib.ConnectedDevice): ConnectedDevice =
+        ConnectedDevice(
+            id = device.id,
+            tunneledIpv4 = device.tunneledIpv4,
+            pools = device.pools,
+        )
 
     private fun convertResource(resource: uniffi.connlib.Resource): Resource =
         when (resource) {
