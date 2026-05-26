@@ -15,7 +15,7 @@ import dev.firezone.android.R
 fun FirezoneTheme(content: @Composable () -> Unit) {
     val colorScheme =
         lightColorScheme(
-            primary = colorResource(R.color.primary_450),
+            primary = colorResource(R.color.neutral_900),
             onPrimary = colorResource(R.color.neutral_50),
             surface = colorResource(R.color.neutral_50),
             onSurface = colorResource(R.color.neutral_900),
