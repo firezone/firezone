@@ -18,7 +18,7 @@ pub(crate) use resource::{InternetResource, Resource, StaticDevicePoolResource};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
-use crate::client::pending_device_access::PendingDeviceAccessRequests;
+use crate::client::pending_device_access::{PendingDeviceAccessRequests, is_trigger_allowed};
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
 use crate::dns::{
@@ -832,6 +832,14 @@ impl ClientState {
                 .is_some_and(|p| p.has_client(entry.client_id));
 
             if already_authorised {
+                // Enforce the resource filter on every packet, not just at
+                // connection setup: a `ChangeFiltersOfResource` may have
+                // tightened it since the connection was authorized.
+                if !is_trigger_allowed(&entry.filter, &packet) {
+                    tracing::debug!(cid = %entry.client_id, "Device filter rejects packet on established connection, dropping");
+                    return Ok(None);
+                }
+
                 return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
             }
 
@@ -2313,6 +2321,14 @@ impl ClientState {
             any_inserted |= self
                 .client_routing_table
                 .upsert(new_member.ipv6.into(), entry);
+        }
+
+        // When the filters changed, also refresh the inbound authorization on
+        // every member we have an active connection to. The sender-side check
+        // in `route_packet` can be bypassed by a misbehaving peer, so the
+        // receiving side must enforce the new filter too.
+        if filter_changed {
+            self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
         }
 
         let is_new = old_pool.is_none();
