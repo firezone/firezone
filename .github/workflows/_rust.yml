@@ -127,6 +127,20 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Free up disk space
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Reclaim ~25 GB from pre-installed toolchains we don't use, so the
+          # instrumented coverage build has headroom on leaner hosted runners.
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost
+          sudo docker image prune --all --force || true
       - name: "cargo test"
         shell: bash
         run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
@@ -134,6 +148,13 @@ jobs:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+          # Minimise DWARF debuginfo for the coverage build: source-based
+          # coverage data lives in __llvm_covmap, independent of debug info, so
+          # lcov.info / Coveralls are unaffected while target/ shrinks ~60%.
+          # `line-tables-only` keeps file:line in panic backtraces. eBPF BTF is
+          # unaffected (built separately under the release profile via aya_build).
+          CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
+          CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
 
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
