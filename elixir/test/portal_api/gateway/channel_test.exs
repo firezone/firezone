@@ -791,11 +791,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute_push "disconnect", _
     end
 
-    test "matching session durability timeout disconnects the gateway", %{
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
+    test "matching session durability timeout disconnects the gateway without pushing token_expired",
+         %{
+           gateway: gateway,
+           site: site,
+           token: token
+         } do
       Process.flag(:trap_exit, true)
 
       session_id = Ecto.UUID.generate()
@@ -807,8 +808,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
 
-      assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
+      refute_push "disconnect", _
     end
   end
 
