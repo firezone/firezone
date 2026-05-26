@@ -19,12 +19,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// any tunnel exists (e.g. the portal host, or a DoH server's hostname).
 ///
 /// All configured upstream servers are contacted in parallel over UDP and all
-/// successful responses are merged together. If no usable IPs come back and no
-/// upstream returned a definitive NXDOMAIN, the same set of queries is retried
-/// over TCP (RFC 7766 §5) — this recovers from middleboxes that mangle or drop
-/// UDP DNS responses, and from networks that block UDP/53 outright. NXDOMAIN
-/// suppresses the retry because TCP cannot change a "name does not exist"
-/// answer.
+/// successful responses are merged together. If no usable IPs come back and the
+/// upstreams did not unanimously return NXDOMAIN, the same set of queries is
+/// retried over TCP (RFC 7766 §5) — this recovers from middleboxes that mangle
+/// or drop UDP DNS responses, and from networks that block UDP/53 outright. A
+/// unanimous NXDOMAIN suppresses the retry because TCP cannot change a "name
+/// does not exist" answer; requiring consensus stops a single misbehaving
+/// resolver from blocking the fallback.
 pub struct BootstrapDnsClient {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -98,20 +99,20 @@ impl BootstrapDnsClient {
             })
             .await;
 
-            let saw_nxdomain = udp_responses.iter().any(|response| {
+            let all_nxdomain = udp_responses.iter().all(|response| {
                 response.as_ref().is_ok_and(|response| {
                     response.response_code() == dns_types::ResponseCode::NXDOMAIN
                 })
             });
             let ips = extract_ips(udp_responses);
 
-            if !ips.is_empty() || saw_nxdomain {
+            if !ips.is_empty() || all_nxdomain {
                 return Ok(ips);
             }
 
             tracing::debug!(
                 %host,
-                "UDP DNS yielded no usable IPs; retrying over TCP (RFC 7766 §5)"
+                "UDP DNS yielded no usable IPs; retrying over TCP"
             );
 
             let tcp_responses = dispatch_all(build_queries(), |server, query| {
@@ -310,68 +311,18 @@ mod tests {
 
     #[tokio::test]
     async fn falls_back_to_tcp_when_udp_returns_lame_response() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
         // Reserve a TCP listener first so we can pin both servers to the same
         // port.
         let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = tcp.local_addr().unwrap();
         let udp = tokio::net::UdpSocket::bind(server_addr).await.unwrap();
 
-        // UDP stub: every query gets an empty NOERROR (no records) — the lame
-        // answer we observed from a misbehaving home router.
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 1500];
-            loop {
-                let (n, peer) = udp.recv_from(&mut buf).await.unwrap();
-                let query = dns_types::Query::parse(&buf[..n]).unwrap();
-                let bytes =
-                    dns_types::ResponseBuilder::for_query(&query, dns_types::ResponseCode::NOERROR)
-                        .build()
-                        .into_bytes(4096);
-                udp.send_to(&bytes, peer).await.unwrap();
-            }
-        });
+        // UDP answers every query with an empty NOERROR — the lame answer we
+        // observed from a misbehaving home router. TCP returns a real A record.
+        spawn_udp_responder(udp, empty_noerror);
+        spawn_tcp_responder(tcp, a_record(Ipv4Addr::new(20, 40, 122, 20)));
 
-        // TCP stub: A queries get a real A record, AAAA queries an empty
-        // NOERROR (no v6 mapping in this fixture).
-        tokio::spawn(async move {
-            loop {
-                let (mut sock, _) = tcp.accept().await.unwrap();
-                tokio::spawn(async move {
-                    let mut len_buf = [0u8; 2];
-                    sock.read_exact(&mut len_buf).await.unwrap();
-                    let qlen = u16::from_be_bytes(len_buf) as usize;
-                    let mut qbuf = vec![0u8; qlen];
-                    sock.read_exact(&mut qbuf).await.unwrap();
-                    let query = dns_types::Query::parse(&qbuf).unwrap();
-
-                    let mut builder = dns_types::ResponseBuilder::for_query(
-                        &query,
-                        dns_types::ResponseCode::NOERROR,
-                    );
-                    if query.qtype() == dns_types::RecordType::A {
-                        builder = builder.with_records([(
-                            query.domain(),
-                            60,
-                            dns_types::records::a(Ipv4Addr::new(20, 40, 122, 20)),
-                        )]);
-                    }
-                    let bytes = builder.build().into_bytes(4096);
-
-                    sock.write_all(&(bytes.len() as u16).to_be_bytes())
-                        .await
-                        .unwrap();
-                    sock.write_all(&bytes).await.unwrap();
-                });
-            }
-        });
-
-        let client = BootstrapDnsClient::with_servers(
-            Arc::new(socket_factory::udp),
-            Arc::new(socket_factory::tcp),
-            vec![server_addr],
-        );
+        let client = test_client([server_addr]);
 
         let ips = client.resolve("api.firez.one").await.unwrap();
 
@@ -380,39 +331,17 @@ mod tests {
 
     #[tokio::test]
     async fn skips_tcp_fallback_when_udp_already_returned_ips() {
-        // UDP server returns a real answer; TCP socket is closed instantly so
-        // any TCP connect attempt would fail immediately. The fact that
-        // resolve() returns the UDP-side IP (and not an error) proves no TCP
-        // fallback was attempted.
+        // UDP server returns a real answer; the TCP port is freed so any TCP
+        // connect attempt would get an RST. resolve() returning the UDP-side IP
+        // (and not an error) proves no TCP fallback was attempted.
         let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = tcp.local_addr().unwrap();
         drop(tcp); // Free the port so a TCP connect would get RST.
         let udp = tokio::net::UdpSocket::bind(server_addr).await.unwrap();
 
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 1500];
-            loop {
-                let (n, peer) = udp.recv_from(&mut buf).await.unwrap();
-                let query = dns_types::Query::parse(&buf[..n]).unwrap();
-                let mut builder =
-                    dns_types::ResponseBuilder::for_query(&query, dns_types::ResponseCode::NOERROR);
-                if query.qtype() == dns_types::RecordType::A {
-                    builder = builder.with_records([(
-                        query.domain(),
-                        60,
-                        dns_types::records::a(Ipv4Addr::new(127, 0, 0, 99)),
-                    )]);
-                }
-                let bytes = builder.build().into_bytes(4096);
-                udp.send_to(&bytes, peer).await.unwrap();
-            }
-        });
+        spawn_udp_responder(udp, a_record(Ipv4Addr::new(127, 0, 0, 99)));
 
-        let client = BootstrapDnsClient::with_servers(
-            Arc::new(socket_factory::udp),
-            Arc::new(socket_factory::tcp),
-            vec![server_addr],
-        );
+        let client = test_client([server_addr]);
 
         let ips = client.resolve("example.com").await.unwrap();
 
@@ -427,9 +356,10 @@ mod tests {
         let server_addr = tcp.local_addr().unwrap();
         let udp = tokio::net::UdpSocket::bind(server_addr).await.unwrap();
 
+        // Count TCP connects instead of serving responses: the assertion is
+        // that the fallback never fires, so a real responder is unnecessary.
         let tcp_connects = Arc::new(AtomicUsize::new(0));
         let tcp_connects_for_task = tcp_connects.clone();
-
         tokio::spawn(async move {
             loop {
                 let _ = tcp.accept().await.unwrap();
@@ -437,26 +367,9 @@ mod tests {
             }
         });
 
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 1500];
-            loop {
-                let (n, peer) = udp.recv_from(&mut buf).await.unwrap();
-                let query = dns_types::Query::parse(&buf[..n]).unwrap();
-                let bytes = dns_types::ResponseBuilder::for_query(
-                    &query,
-                    dns_types::ResponseCode::NXDOMAIN,
-                )
-                .build()
-                .into_bytes(4096);
-                udp.send_to(&bytes, peer).await.unwrap();
-            }
-        });
+        spawn_udp_responder(udp, nxdomain);
 
-        let client = BootstrapDnsClient::with_servers(
-            Arc::new(socket_factory::udp),
-            Arc::new(socket_factory::tcp),
-            vec![server_addr],
-        );
+        let client = test_client([server_addr]);
 
         let ips = client.resolve("does-not-exist.example").await.unwrap();
 
@@ -465,50 +378,97 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn send_query_tcp_round_trips_a_record() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use tokio::net::TcpListener;
+    async fn tcp_fallback_requires_unanimous_nxdomain() {
+        // Two upstreams. One is misbehaving and returns NXDOMAIN on both
+        // transports; the other has its UDP responses mangled to an empty
+        // NOERROR but answers correctly over TCP. A single NXDOMAIN must not
+        // suppress the TCP retry, otherwise one bad resolver could force a
+        // resolution failure.
+        let tcp_poisoned = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let poisoned_addr = tcp_poisoned.local_addr().unwrap();
+        let udp_poisoned = tokio::net::UdpSocket::bind(poisoned_addr).await.unwrap();
 
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let server_addr = listener.local_addr().unwrap();
+        let tcp_healthy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let healthy_addr = tcp_healthy.local_addr().unwrap();
+        let udp_healthy = tokio::net::UdpSocket::bind(healthy_addr).await.unwrap();
 
-        tokio::spawn(async move {
-            let (mut sock, _) = listener.accept().await.unwrap();
-            let mut len_buf = [0u8; 2];
-            sock.read_exact(&mut len_buf).await.unwrap();
-            let qlen = u16::from_be_bytes(len_buf) as usize;
-            let mut qbuf = vec![0u8; qlen];
-            sock.read_exact(&mut qbuf).await.unwrap();
-            let query = dns_types::Query::parse(&qbuf).unwrap();
+        spawn_udp_responder(udp_poisoned, nxdomain);
+        spawn_tcp_responder(tcp_poisoned, nxdomain);
+        spawn_udp_responder(udp_healthy, empty_noerror);
+        spawn_tcp_responder(tcp_healthy, a_record(Ipv4Addr::new(20, 40, 122, 20)));
 
-            let response =
-                dns_types::ResponseBuilder::for_query(&query, dns_types::ResponseCode::NOERROR)
-                    .with_records([(
-                        query.domain(),
-                        60,
-                        dns_types::records::a(Ipv4Addr::new(20, 40, 122, 20)),
-                    )])
-                    .build();
-            let bytes = response.into_bytes(4096);
+        let client = test_client([poisoned_addr, healthy_addr]);
 
-            sock.write_all(&(bytes.len() as u16).to_be_bytes())
-                .await
-                .unwrap();
-            sock.write_all(&bytes).await.unwrap();
-        });
-
-        let domain = dns_types::DomainName::vec_from_str("api.firez.one").unwrap();
-        let query = dns_types::Query::new(domain, dns_types::RecordType::A);
-
-        let response = send_query_tcp(Arc::new(socket_factory::tcp), server_addr, query)
-            .await
-            .unwrap();
-
-        let ips = response
-            .records()
-            .filter_map(dns_types::records::extract_ip)
-            .collect::<Vec<_>>();
+        let ips = client.resolve("api.firez.one").await.unwrap();
 
         assert_eq!(ips, vec![IpAddr::from(Ipv4Addr::new(20, 40, 122, 20))]);
+    }
+
+    fn test_client(servers: impl IntoIterator<Item = SocketAddr>) -> BootstrapDnsClient {
+        BootstrapDnsClient::with_servers(
+            Arc::new(socket_factory::udp),
+            Arc::new(socket_factory::tcp),
+            servers.into_iter().collect(),
+        )
+    }
+
+    /// Spawns a UDP DNS stub that answers every query with `responder(&query)`.
+    fn spawn_udp_responder(
+        socket: tokio::net::UdpSocket,
+        responder: impl Fn(&dns_types::Query) -> dns_types::Response + Send + 'static,
+    ) {
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 1500];
+            loop {
+                let (n, peer) = socket.recv_from(&mut buf).await.unwrap();
+                let query = dns_types::Query::parse(&buf[..n]).unwrap();
+                let bytes = responder(&query).into_bytes(4096);
+                socket.send_to(&bytes, peer).await.unwrap();
+            }
+        });
+    }
+
+    /// Spawns a TCP DNS stub that answers every query with `responder(&query)`,
+    /// framed per RFC 1035 §4.2.2 (two-byte big-endian length prefix).
+    fn spawn_tcp_responder(
+        listener: tokio::net::TcpListener,
+        responder: impl Fn(&dns_types::Query) -> dns_types::Response + Send + 'static,
+    ) {
+        tokio::spawn(async move {
+            loop {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut len_buf = [0u8; 2];
+                sock.read_exact(&mut len_buf).await.unwrap();
+                let qlen = u16::from_be_bytes(len_buf) as usize;
+                let mut qbuf = vec![0u8; qlen];
+                sock.read_exact(&mut qbuf).await.unwrap();
+                let query = dns_types::Query::parse(&qbuf).unwrap();
+                let bytes = responder(&query).into_bytes(4096);
+                sock.write_all(&(bytes.len() as u16).to_be_bytes())
+                    .await
+                    .unwrap();
+                sock.write_all(&bytes).await.unwrap();
+            }
+        });
+    }
+
+    /// Answers `A` queries with `ip`; every other query type gets an empty `NOERROR`.
+    fn a_record(ip: Ipv4Addr) -> impl Fn(&dns_types::Query) -> dns_types::Response {
+        move |query| {
+            let mut builder =
+                dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR);
+            if query.qtype() == dns_types::RecordType::A {
+                builder = builder.with_records([(query.domain(), 60, dns_types::records::a(ip))]);
+            }
+            builder.build()
+        }
+    }
+
+    fn empty_noerror(query: &dns_types::Query) -> dns_types::Response {
+        dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR).build()
+    }
+
+    fn nxdomain(query: &dns_types::Query) -> dns_types::Response {
+        dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NXDOMAIN).build()
     }
 }

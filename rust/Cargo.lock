@@ -1253,7 +1253,6 @@ dependencies = [
  "backoff",
  "bimap",
  "bootstrap-dns-client",
- "chrono",
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
