@@ -10,6 +10,7 @@ defaults:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+  security-events: "write" # trivy SARIF upload from setup-mise
 
 jobs:
   static-analysis:
@@ -66,6 +67,9 @@ jobs:
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd kotlin/android
       - name: Build the release package
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
@@ -115,9 +119,24 @@ jobs:
       - name: Distribute release to Firebase App Distribution
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         env:
-          FIREBASE_CREDENTIALS_PATH: ${{ steps.firebase-auth.outputs.credentials_file_path }}
+          NO_UPDATE_NOTIFIER: "1"
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
-        run: ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
+        run: |
+          firebase_args=(
+            appdistribution:distribute "${{ matrix.output-path }}"
+            --app "1:215658742954:android:51cc714762dbfbb59e7cd3"
+            --release-notes "https://www.firezone.dev/changelog"
+            --groups "firezone-engineering"
+          )
+
+          if [[ -n "${FIREBASE_APP_TESTERS:-}" ]]; then
+            firebase_args+=(--testers "$FIREBASE_APP_TESTERS")
+          fi
+
+          firebase --non-interactive "${firebase_args[@]}"
+      - name: Upload Crashlytics symbols
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
+        run: ./gradlew --no-daemon uploadCrashlyticsSymbolFileRelease
       - name: Authenticate to Google Cloud (Play Store upload)
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         id: gcp-auth

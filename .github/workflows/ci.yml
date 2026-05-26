@@ -170,6 +170,7 @@ jobs:
     permissions:
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
 
   monitor-kotlin:
     needs: [kotlin]
@@ -189,6 +190,7 @@ jobs:
     permissions:
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
 
   monitor-swift:
     needs: [swift]
