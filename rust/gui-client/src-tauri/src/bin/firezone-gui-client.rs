@@ -47,6 +47,11 @@ mod ui;
 #[cfg(feature = "experimental-gui")]
 #[path = "../iced/entry.rs"]
 mod iced_entry;
+// The iced submodules import the central `Message` enum as `crate::Message`
+// (it lived at the old iced binary's crate root). Re-export it from the entry
+// module so those paths keep resolving now that it's `crate::iced_entry`.
+#[cfg(feature = "experimental-gui")]
+pub(crate) use iced_entry::Message;
 
 fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
