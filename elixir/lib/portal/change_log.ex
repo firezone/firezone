@@ -16,6 +16,7 @@ defmodule Portal.ChangeLog do
     field :data, :map
     field :subject, :map
     field :vsn, :integer
+    field :committed_at, :utc_datetime_usec
 
     timestamps(updated_at: false)
   end

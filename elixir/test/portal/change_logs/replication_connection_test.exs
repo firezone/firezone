@@ -22,6 +22,43 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
     end
   end
 
+  describe "on_begin/2" do
+    test "captures commit_timestamp on the transaction state" do
+      commit_timestamp = ~U[2026-05-26 12:00:00.123456Z]
+      state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_begin(state, %{commit_timestamp: commit_timestamp})
+
+      assert result_state.current_commit_timestamp == commit_timestamp
+    end
+
+    test "clears the previous transaction's subject" do
+      state = %{flush_buffer: %{}, current_subject: "stale"}
+
+      result_state =
+        ReplicationConnection.on_begin(state, %{
+          commit_timestamp: ~U[2026-05-26 12:00:00Z]
+        })
+
+      refute Map.has_key?(result_state, :current_subject)
+    end
+
+    test "overwrites a stale commit_timestamp from a prior transaction" do
+      state = %{
+        flush_buffer: %{},
+        current_commit_timestamp: ~U[2026-05-26 11:00:00Z]
+      }
+
+      result_state =
+        ReplicationConnection.on_begin(state, %{
+          commit_timestamp: ~U[2026-05-26 12:00:00Z]
+        })
+
+      assert result_state.current_commit_timestamp == ~U[2026-05-26 12:00:00Z]
+    end
+  end
+
   describe "on_write/6 for inserts" do
     test "handles account inserts", %{account: account} do
       initial_state = %{flush_buffer: %{}}
@@ -49,7 +86,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
                    account_id: account.id,
                    lsn: 12345,
                    old_data: nil,
-                   subject: nil
+                   subject: nil,
+                   committed_at: nil
                  }
                }
              }
@@ -244,7 +282,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
                    account_id: account.id,
                    lsn: 12345,
                    old_data: %{"id" => account.id, "name" => "deleted account"},
-                   subject: nil
+                   subject: nil,
+                   committed_at: nil
                  }
                }
              }
@@ -332,6 +371,98 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
     end
   end
 
+  describe "committed_at propagation" do
+    test "buffered entry inherits commit_timestamp from current transaction", %{
+      account: account
+    } do
+      commit_timestamp = ~U[2026-05-26 12:00:00.654321Z]
+
+      state =
+        ReplicationConnection.on_begin(%{flush_buffer: %{}}, %{
+          commit_timestamp: commit_timestamp
+        })
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          12345,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+        )
+
+      assert result_state.flush_buffer[12345].committed_at == commit_timestamp
+    end
+
+    test "every row in a transaction shares the same commit_timestamp", %{account: account} do
+      commit_timestamp = ~U[2026-05-26 12:00:00.000001Z]
+
+      state =
+        ReplicationConnection.on_begin(%{flush_buffer: %{}}, %{
+          commit_timestamp: commit_timestamp
+        })
+
+      state =
+        ReplicationConnection.on_write(
+          state,
+          200,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+        )
+
+      state =
+        ReplicationConnection.on_write(
+          state,
+          201,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+        )
+
+      assert state.flush_buffer[200].committed_at == commit_timestamp
+      assert state.flush_buffer[201].committed_at == commit_timestamp
+    end
+
+    test "buffered entry has nil committed_at when no Begin has been seen", %{account: account} do
+      result_state =
+        ReplicationConnection.on_write(
+          %{flush_buffer: %{}},
+          300,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+        )
+
+      assert result_state.flush_buffer[300].committed_at == nil
+    end
+
+    test "persists committed_at end-to-end through on_flush", %{account: account} do
+      commit_timestamp = ~U[2026-05-26 12:00:00.999999Z]
+
+      state =
+        %{flush_buffer: %{}, last_flushed_lsn: 0}
+        |> ReplicationConnection.on_begin(%{commit_timestamp: commit_timestamp})
+        |> ReplicationConnection.on_write(
+          500,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
+        )
+        |> ReplicationConnection.on_flush()
+
+      assert state.flush_buffer == %{}
+
+      change_log = Repo.one(from cl in ChangeLog, where: cl.lsn == 500)
+      assert change_log.committed_at == commit_timestamp
+    end
+  end
+
   describe "on_flush/1" do
     test "handles empty flush buffer" do
       state = %{flush_buffer: %{}}
@@ -340,6 +471,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
     end
 
     test "successfully flushes buffer and clears it", %{account: account} do
+      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+
       attrs1 = %{
         lsn: 100,
         table: "resources",
@@ -348,7 +481,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
         old_data: nil,
         vsn: 0,
-        subject: nil
+        subject: nil,
+        committed_at: committed_at
       }
 
       attrs2 = %{
@@ -359,7 +493,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test2"},
         old_data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
         vsn: 0,
-        subject: nil
+        subject: nil,
+        committed_at: committed_at
       }
 
       state = %{
@@ -378,11 +513,15 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       [log1, log2] = change_logs
       assert log1.lsn == 100
       assert log1.op == :insert
+      assert log1.committed_at == committed_at
       assert log2.lsn == 101
       assert log2.op == :update
+      assert log2.committed_at == committed_at
     end
 
     test "calculates last_flushed_lsn correctly as max LSN", %{account: account} do
+      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+
       attrs_map = %{
         400 => %{
           lsn: 400,
@@ -392,7 +531,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
           old_data: nil,
           vsn: 0,
-          subject: nil
+          subject: nil,
+          committed_at: committed_at
         },
         402 => %{
           lsn: 402,
@@ -402,7 +542,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
           old_data: nil,
           vsn: 0,
-          subject: nil
+          subject: nil,
+          committed_at: committed_at
         },
         401 => %{
           lsn: 401,
@@ -412,7 +553,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
           old_data: nil,
           vsn: 0,
-          subject: nil
+          subject: nil,
+          committed_at: committed_at
         }
       }
 

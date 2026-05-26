@@ -51,9 +51,10 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
   def on_logical_message(state, _message), do: state
 
   # Handle Begin to reset transaction state
-  def on_begin(state, _begin_msg) do
-    # Remove the subject for the new transaction
-    Map.delete(state, :current_subject)
+  def on_begin(state, %{commit_timestamp: commit_timestamp}) do
+    state
+    |> Map.delete(:current_subject)
+    |> Map.put(:current_commit_timestamp, commit_timestamp)
   end
 
   # Ignore token writes for relays since these are not expected to have an account_id
@@ -144,7 +145,8 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
         old_data: old_data,
         data: data,
         subject: subject,
-        vsn: @vsn
+        vsn: @vsn,
+        committed_at: Map.get(state, :current_commit_timestamp)
       })
 
     %{state | flush_buffer: flush_buffer}
