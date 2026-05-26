@@ -24,6 +24,7 @@ import dev.firezone.android.features.session.ui.compose.SessionScreen
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.collections.immutable.toImmutableList
 
 @AndroidEntryPoint
 class SessionActivity : AppCompatActivity() {
@@ -80,13 +81,14 @@ class SessionActivity : AppCompatActivity() {
 
                 val resources =
                     remember(resourcesState, internetState) {
-                        resourcesState.map { resource ->
-                            if (resource.isInternetResource()) {
-                                ResourceViewModel(resource, internetState)
-                            } else {
-                                ResourceViewModel(resource, ResourceState.ENABLED)
-                            }
-                        }
+                        resourcesState
+                            .map { resource ->
+                                if (resource.isInternetResource()) {
+                                    ResourceViewModel(resource, internetState)
+                                } else {
+                                    ResourceViewModel(resource, ResourceState.ENABLED)
+                                }
+                            }.toImmutableList()
                     }
 
                 val actorName = remember { viewModel.getActorName() }

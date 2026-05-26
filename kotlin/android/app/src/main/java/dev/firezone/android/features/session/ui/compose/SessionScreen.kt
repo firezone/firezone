@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceViewModel
+import kotlinx.collections.immutable.ImmutableList
 
 private const val TAB_FAVORITES = 0
 private const val TAB_ALL = 1
@@ -43,13 +44,14 @@ private const val TAB_ALL = 1
 @Composable
 fun SessionScreen(
     actorName: String?,
-    resources: List<ResourceViewModel>,
+    resources: ImmutableList<ResourceViewModel>,
     favorites: Favorites,
     onToggleInternet: () -> Unit,
     onAddFavorite: (String) -> Unit,
     onRemoveFavorite: (String) -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
     var selectedTab by rememberSaveable { mutableIntStateOf(TAB_FAVORITES) }
@@ -68,7 +70,7 @@ fun SessionScreen(
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedResource = remember(resources, selectedId) { resources.firstOrNull { it.id == selectedId } }
 
-    Scaffold { innerPadding ->
+    Scaffold(modifier = modifier) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Image(
