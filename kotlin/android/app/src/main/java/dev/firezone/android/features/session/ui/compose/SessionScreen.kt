@@ -15,10 +15,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LeadingIconTab
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -95,13 +95,13 @@ fun SessionScreen(
 
             if (hasFavorites) {
                 TabRow(selectedTabIndex = effectiveTab) {
-                    Tab(
+                    LeadingIconTab(
                         selected = effectiveTab == TAB_FAVORITES,
                         onClick = { selectedTab = TAB_FAVORITES },
                         text = { Text(stringResource(R.string.resources_favorites)) },
                         icon = { Icon(painterResource(R.drawable.baseline_star_24), contentDescription = null) },
                     )
-                    Tab(
+                    LeadingIconTab(
                         selected = effectiveTab == TAB_ALL,
                         onClick = { selectedTab = TAB_ALL },
                         text = { Text(stringResource(R.string.resources_all)) },
