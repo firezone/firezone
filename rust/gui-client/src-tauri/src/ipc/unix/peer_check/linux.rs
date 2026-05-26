@@ -49,8 +49,7 @@ impl AllowedPeer {
     /// symlink components, so we compare it directly rather than running it
     /// through `std::fs::canonicalize`. Canonicalising would re-`stat` every
     /// path component, which fails with `EACCES` when the daemon's systemd
-    /// sandbox (`ProtectHome=true`) hides a peer that lives under `/home`
-    /// (e.g. a developer build) — even though the path is correct.
+    /// sandbox (`ProtectHome=true`) hides a peer that lives under `/home`.
     pub fn verify(&self, stream: UnixStream) -> Result<UnixStream> {
         let pidfd = match peer_pidfd(stream.as_raw_fd()) {
             Ok(fd) => fd,
