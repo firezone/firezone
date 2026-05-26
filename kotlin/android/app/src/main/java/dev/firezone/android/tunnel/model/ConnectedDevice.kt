@@ -2,8 +2,10 @@
 package dev.firezone.android.tunnel.model
 
 import android.os.Parcelable
+import androidx.compose.runtime.Immutable
 import kotlinx.parcelize.Parcelize
 
+@Immutable
 @Parcelize
 data class ConnectedDevice(
     val id: String,
