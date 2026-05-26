@@ -121,7 +121,15 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     %{state | flush_buffer: %{}, last_flushed_lsn: last_lsn}
   end
 
-  defp buffer(state, lsn, op, table, account_id, old_data, data) do
+  defp buffer(
+         %{current_commit_timestamp: commit_timestamp} = state,
+         lsn,
+         op,
+         table,
+         account_id,
+         old_data,
+         data
+       ) do
     # Decode the subject JSON string if present
     subject =
       case Map.get(state, :current_subject) do
@@ -138,7 +146,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     flush_buffer =
       state.flush_buffer
       |> Map.put_new(lsn, %{
-        id: Portal.UUIDv7.generate(Map.fetch!(state, :current_commit_timestamp)),
+        id: Portal.UUIDv7.generate(commit_timestamp),
         lsn: lsn,
         op: op,
         table: table,
