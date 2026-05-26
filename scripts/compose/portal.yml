@@ -6,7 +6,7 @@ services:
     command:
       ["postgres", "-c", "wal_level=logical", "-c", "max_connections=200"]
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/18/docker
     environment:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
