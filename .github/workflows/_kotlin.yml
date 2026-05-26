@@ -67,6 +67,9 @@ jobs:
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd kotlin/android
       - name: Build the release package
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
@@ -113,9 +116,6 @@ jobs:
         with:
           workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
           service_account: firebase-app-distributor@firezone-55040.iam.gserviceaccount.com
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd kotlin/android
       - name: Distribute release to Firebase App Distribution
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         env:
