@@ -75,6 +75,11 @@ defmodule PortalAPI.Router do
 
     resources "/actors", ActorController, except: [:new, :edit] do
       resources "/external_identities", ExternalIdentityController, only: [:index, :show, :delete]
+      get "/client_tokens", ClientTokenController, :index
+      get "/client_tokens/:id", ClientTokenController, :show
+      post "/client_tokens", ClientTokenController, :create
+      delete "/client_tokens", ClientTokenController, :delete_all
+      delete "/client_tokens/:id", ClientTokenController, :delete
     end
 
     resources "/groups", GroupController, except: [:new, :edit] do

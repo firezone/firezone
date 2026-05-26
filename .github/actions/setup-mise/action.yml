@@ -115,6 +115,24 @@ runs:
         & "C:\mise\bin\mise.exe" reshim
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+    # Some tools (currently: firebase-tools) ship as a single self-extracting
+    # binary and only materialize their bundled deps on first invocation, into
+    # $HOME/.cache/firebase (hardcoded — FIREBASE_TOOLS_CACHE_PATH is ignored).
+    # Pre-extract them under MISE_SCAN_PATH so trivy can see the manifests,
+    # then point the default cache location at the result so subsequent
+    # workflow invocations of the tool don't re-extract.
+    - name: Pre-warm self-extracting tool caches
+      if: ${{ runner.os != 'Windows' }}
+      shell: bash
+      run: |
+        firebase_bin=$(mise which firebase 2>/dev/null || true)
+        if [[ -n "$firebase_bin" ]]; then
+          cache_root="$MISE_SCAN_PATH/_firebase-home"
+          mkdir -p "$cache_root" "$HOME/.cache"
+          HOME="$cache_root" "$firebase_bin" --version
+          ln -sfn "$cache_root/.cache/firebase" "$HOME/.cache/firebase"
+        fi
+
     # Scan all mise-installed tools with trivy for security vulnerabilities.
     # This is a best-effort approach and has a few short-comings:
     #

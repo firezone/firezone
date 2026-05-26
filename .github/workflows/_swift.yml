@@ -6,9 +6,6 @@ on:
 env:
   MISE_EXPERIMENTAL: "1"
 
-permissions:
-  security-events: write
-
 jobs:
   update-release-draft:
     name: update-release-draft
@@ -33,6 +30,8 @@ jobs:
 
   test:
     runs-on: macos-26
+    permissions:
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       XCODE_VERSION: "26.2"
     steps:
@@ -55,6 +54,8 @@ jobs:
 
   static-analysis:
     runs-on: macos-26
+    permissions:
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       XCODE_VERSION: "26.2"
     steps:
@@ -80,6 +81,7 @@ jobs:
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
