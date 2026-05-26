@@ -817,6 +817,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1b08cb4ecbb540b940016b0a0f35b7e48ab0cc372ab88150c351de4cc469959"
 
 [[package]]
+name = "bootstrap-dns-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "dns-types",
+ "futures",
+ "socket-factory",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "boringtun"
 version = "0.6.1"
 source = "git+https://github.com/firezone/boringtun?branch=master#bb3034dcd12b63970ccd364ab779ce90f3561653"
@@ -1240,12 +1252,12 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "bimap",
+ "bootstrap-dns-client",
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
  "futures",
  "ip_network",
- "l4-udp-dns-client",
  "libc",
  "logging",
  "parking_lot",
@@ -4017,18 +4029,6 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "futures",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "l4-udp-dns-client"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "dns-types",
- "futures",
- "socket-factory",
  "tokio",
  "tracing",
 ]
@@ -8236,6 +8236,7 @@ dependencies = [
  "anyhow-ext",
  "base64 0.22.1",
  "bimap",
+ "bootstrap-dns-client",
  "boringtun",
  "bufferpool",
  "bytes",
@@ -8260,7 +8261,6 @@ dependencies = [
  "l3-tcp",
  "l3-udp-dns-client",
  "l4-tcp-dns-server",
- "l4-udp-dns-client",
  "l4-udp-dns-server",
  "logging",
  "lru",
