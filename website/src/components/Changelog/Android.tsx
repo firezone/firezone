@@ -27,8 +27,8 @@ export default function Android() {
         </ChangeItem>
         <ChangeItem pull={13354}>
           Retries portal DNS lookups over TCP when the configured resolvers
-          return no usable IPs over UDP, improving connectivity on networks
-          with broken UDP DNS forwarders.
+          return no usable IPs over UDP, improving connectivity on networks with
+          broken UDP DNS forwarders.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.10" date={new Date("2026-04-28")}>
