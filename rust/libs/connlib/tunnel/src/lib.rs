@@ -84,7 +84,6 @@ pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use io::TunChannelClosed;
-pub use otel::record_event_loop_error;
 pub use sockets::UdpSocketThreadStopped;
 pub use unroutable_packet::UnroutablePacket;
 pub use utils::turn;
@@ -104,6 +103,7 @@ pub struct Tunnel<TRoleState> {
     buffers: Buffers,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
+    event_loop_errors: opentelemetry::metrics::Counter<u64>,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -147,6 +147,7 @@ impl ClientTunnel {
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
                 .build(),
+            event_loop_errors: otel::event_loop_errors(),
         }
     }
 
@@ -318,6 +319,8 @@ impl ClientTunnel {
                 }
 
                 if !error.is_empty() {
+                    error.record(&self.event_loop_errors);
+
                     return Poll::Ready(ClientEvent::Error(error));
                 }
             }
@@ -354,6 +357,7 @@ impl GatewayTunnel {
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
                 .build(),
+            event_loop_errors: otel::event_loop_errors(),
         }
     }
 
@@ -581,6 +585,8 @@ impl GatewayTunnel {
                 }
 
                 if !error.is_empty() {
+                    error.record(&self.event_loop_errors);
+
                     return Poll::Ready(GatewayEvent::Error(error));
                 }
             }
@@ -699,6 +705,12 @@ impl TunnelError {
 
     pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
         mem::take(&mut self.errors).into_iter()
+    }
+
+    pub(crate) fn record(&self, counter: &opentelemetry::metrics::Counter<u64>) {
+        for error in &self.errors {
+            counter.add(1, &otel::error_layers(error));
+        }
     }
 }
 
