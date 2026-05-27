@@ -11,9 +11,10 @@
 //! Wired up so far: the five screens (overview / general+advanced settings /
 //! diagnostics / about), sign-in/out and settings persistence through the
 //! Controller, the system [`tray`] (clicks + live icon/menu updates), async
-//! log export, and the Firezone [`theme`] palette applied via xilem 0.4's
-//! [`Style`](xilem::style::Style) trait (brand colours, surfaces, active-nav
-//! highlight, bordered/rounded buttons + inputs).
+//! log export, and the Firezone [`theme`] — an app-wide default-property set
+//! (`Xilem::with_default_properties`) for the base light look, plus per-instance
+//! [`Style`](xilem::style::Style) overrides (brand primary buttons, the active-
+//! nav highlight, secondary/warning text).
 //!
 //! NOTE: xilem renders through Vello/wgpu and currently has no software
 //! renderer, so this UI requires a working GPU and cannot run headless (CI,

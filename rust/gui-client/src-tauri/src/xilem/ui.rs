@@ -1,15 +1,17 @@
 //! The xilem screens: a left nav sidebar plus the five content pages, mirroring
-//! `crate::iced::ui`. Styling uses xilem 0.4's [`Style`] trait
-//! (`.color`, `.background_color`) plus masonry style properties
-//! (`CornerRadius`, `Padding`, `BorderColor`, …) applied via `.prop`, with the
-//! Firezone palette from [`crate::xilem::theme`]. Still stock are the General-
-//! Settings toggles (plain checkboxes, not animated switches) and assets (no
+//! `crate::iced::ui`. The Firezone look comes mostly from the app-wide
+//! [`crate::xilem::theme::properties`] default-property set (installed via
+//! `Xilem::with_default_properties`), so stock `text_button` / `text_input` /
+//! `checkbox` / `label` already render themed. This module only applies
+//! per-instance overrides via xilem 0.4's [`Style`] trait + `.prop`: primary
+//! buttons, the active nav item, and secondary/warning/muted text. Still stock
+//! are the toggles (plain checkboxes, not animated switches) and assets (no
 //! logo/SVG icons/custom fonts) — see `mod.rs`.
 
 use xilem::masonry::properties::types::{AsUnit, CrossAxisAlignment, MainAxisAlignment};
-use xilem::style::{BorderColor, BorderWidth, CornerRadius, Padding, Style};
+use xilem::style::{BorderWidth, CornerRadius, Padding, Style};
 use xilem::view::{
-    FlexExt as _, button, checkbox, flex_col, flex_row, label, sized_box, text_input,
+    FlexExt as _, button, checkbox, flex_col, flex_row, label, sized_box, text_button, text_input,
 };
 use xilem::{AnyWidgetView, FontWeight, WidgetView};
 
@@ -33,7 +35,8 @@ fn send(app: &App, req: ControllerRequest) {
     }
 }
 
-/// Brand-orange primary action button.
+/// Brand-orange primary action button. Overrides the themed (secondary) button
+/// default with the brand background, white label, and no border.
 fn primary_button<F>(text: &str, on_press: F) -> impl WidgetView<App> + use<F>
 where
     F: Fn(&mut App) + Send + Sync + 'static,
@@ -43,40 +46,10 @@ where
         move |app: &mut App| on_press(app),
     )
     .background_color(theme::BRAND)
-    .prop(CornerRadius::all(8.0))
-    .prop(Padding::from_vh(10.0, 16.0))
+    .prop(BorderWidth::all(0.0))
 }
 
-/// Bordered, light secondary button.
-fn secondary_button<F>(text: &str, on_press: F) -> impl WidgetView<App> + use<F>
-where
-    F: Fn(&mut App) + Send + Sync + 'static,
-{
-    button(
-        label(text.to_owned()).color(theme::TEXT_PRIMARY),
-        move |app: &mut App| on_press(app),
-    )
-    .background_color(theme::SURFACE_RAISED)
-    .prop(BorderColor::new(theme::BORDER))
-    .prop(BorderWidth::all(1.0))
-    .prop(CornerRadius::all(8.0))
-    .prop(Padding::from_vh(10.0, 16.0))
-}
-
-/// Bordered text input that greys out when MDM-managed.
-fn styled_input<F>(value: String, managed: bool, on_change: F) -> impl WidgetView<App> + use<F>
-where
-    F: Fn(&mut App, String) + Send + Sync + 'static,
-{
-    text_input(value, move |app: &mut App, v: String| on_change(app, v))
-        .disabled(managed)
-        .background_color(theme::SURFACE)
-        .prop(BorderColor::new(theme::BORDER))
-        .prop(BorderWidth::all(1.0))
-        .prop(CornerRadius::all(6.0))
-}
-
-/// A muted form-field label.
+/// A muted form-field label (overrides the default primary ink colour).
 fn field_label(text: &str) -> impl WidgetView<App> + use<> {
     label(text.to_owned())
         .text_size(13.0)
@@ -125,7 +98,7 @@ fn sidebar(current: Route) -> impl WidgetView<App> + use<> {
 fn nav_item(name: &str, route: Route, current: Route) -> impl WidgetView<App> + use<> {
     let active = route == current;
     // Active page: raised surface + brand text. Otherwise blends into the
-    // sidebar with muted text.
+    // sidebar with muted text. Borderless + tighter than a normal button.
     let (bg, fg) = if active {
         (theme::SURFACE_RAISED, theme::BRAND_HOVER)
     } else {
@@ -136,6 +109,7 @@ fn nav_item(name: &str, route: Route, current: Route) -> impl WidgetView<App> + 
         move |app: &mut App| app.route = route,
     )
     .background_color(bg)
+    .prop(BorderWidth::all(0.0))
     .prop(CornerRadius::all(6.0))
     .prop(Padding::from_vh(8.0, 12.0))
 }
@@ -164,7 +138,7 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
             label(format!("Signed in to {account_slug} as {actor_name}."))
                 .text_size(14.0)
                 .color(theme::TEXT_SECONDARY),
-            secondary_button("Sign out", |app: &mut App| {
+            text_button("Sign out", |app: &mut App| {
                 send(app, ControllerRequest::SignOut);
             }),
         ))
@@ -174,10 +148,7 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
     };
 
     flex_col((
-        label("Firezone")
-            .text_size(40.0)
-            .weight(FontWeight::BOLD)
-            .color(theme::TEXT_PRIMARY),
+        label("Firezone").text_size(40.0).weight(FontWeight::BOLD),
         session,
     ))
     .gap(16.0.px())
@@ -189,13 +160,10 @@ fn general_settings(app: &App) -> impl WidgetView<App> + use<> {
     let s = &app.general_settings;
     flex_col((
         field_label("Account slug"),
-        styled_input(
-            s.account_slug.clone(),
-            s.account_slug_is_managed,
-            |app: &mut App, v| {
-                app.general_settings.account_slug = v;
-            },
-        ),
+        text_input(s.account_slug.clone(), |app: &mut App, v: String| {
+            app.general_settings.account_slug = v;
+        })
+        .disabled(s.account_slug_is_managed),
         checkbox("Start minimized", s.start_minimized, |app: &mut App, v| {
             app.general_settings.start_minimized = v;
         }),
@@ -221,7 +189,7 @@ fn general_settings(app: &App) -> impl WidgetView<App> + use<> {
                 };
                 send(app, ControllerRequest::ApplyGeneralSettings(Box::new(form)));
             }),
-            secondary_button("Reset to defaults", |app: &mut App| {
+            text_button("Reset to defaults", |app: &mut App| {
                 send(app, ControllerRequest::ResetGeneralSettings);
             }),
         ))
@@ -243,29 +211,20 @@ fn advanced_settings(app: &App) -> impl WidgetView<App> + use<> {
         .text_size(13.0)
         .color(theme::STATUS_WARN),
         field_label("Auth base URL"),
-        styled_input(
-            s.auth_url.clone(),
-            s.auth_url_is_managed,
-            |app: &mut App, v| {
-                app.advanced_settings.auth_url = v;
-            },
-        ),
+        text_input(s.auth_url.clone(), |app: &mut App, v: String| {
+            app.advanced_settings.auth_url = v;
+        })
+        .disabled(s.auth_url_is_managed),
         field_label("API URL"),
-        styled_input(
-            s.api_url.clone(),
-            s.api_url_is_managed,
-            |app: &mut App, v| {
-                app.advanced_settings.api_url = v;
-            },
-        ),
+        text_input(s.api_url.clone(), |app: &mut App, v: String| {
+            app.advanced_settings.api_url = v;
+        })
+        .disabled(s.api_url_is_managed),
         field_label("Log filter"),
-        styled_input(
-            s.log_filter.clone(),
-            s.log_filter_is_managed,
-            |app: &mut App, v| {
-                app.advanced_settings.log_filter = v;
-            },
-        ),
+        text_input(s.log_filter.clone(), |app: &mut App, v: String| {
+            app.advanced_settings.log_filter = v;
+        })
+        .disabled(s.log_filter_is_managed),
         flex_row((
             primary_button("Save", |app: &mut App| {
                 match app.advanced_settings.to_settings() {
@@ -278,7 +237,7 @@ fn advanced_settings(app: &App) -> impl WidgetView<App> + use<> {
                     None => tracing::warn!("advanced settings: a URL failed to parse"),
                 }
             }),
-            secondary_button("Reset to defaults", |app: &mut App| {
+            text_button("Reset to defaults", |app: &mut App| {
                 send(
                     app,
                     ControllerRequest::ApplyAdvancedSettings(Box::default()),
@@ -306,10 +265,10 @@ fn diagnostics(app: &App) -> impl WidgetView<App> + use<> {
         flex_row((
             // Flips the flag; `entry::app_logic` runs the async dialog + zip in
             // a one-shot `task` view and clears the flag when done.
-            secondary_button("Export Logs", |app: &mut App| {
+            text_button("Export Logs", |app: &mut App| {
                 app.export_in_flight = true;
             }),
-            secondary_button("Clear Logs", |app: &mut App| {
+            text_button("Clear Logs", |app: &mut App| {
                 let (cb_tx, _cb_rx) = tokio::sync::oneshot::channel();
                 send(app, ControllerRequest::ClearLogs(cb_tx));
             }),
@@ -323,17 +282,14 @@ fn diagnostics(app: &App) -> impl WidgetView<App> + use<> {
 
 fn about() -> impl WidgetView<App> + use<> {
     flex_col((
-        label("Firezone")
-            .text_size(24.0)
-            .weight(FontWeight::BOLD)
-            .color(theme::TEXT_PRIMARY),
+        label("Firezone").text_size(24.0).weight(FontWeight::BOLD),
         label(format!("Version {APP_VERSION}"))
             .text_size(14.0)
             .color(theme::TEXT_SECONDARY),
         label(format!("({})", &GIT_SHA[..GIT_SHA.len().min(8)]))
             .text_size(11.0)
             .color(theme::TEXT_MUTED),
-        secondary_button("Documentation", |_app: &mut App| {
+        text_button("Documentation", |_app: &mut App| {
             let _ = open::that_detached("https://www.firezone.dev/kb");
         }),
     ))

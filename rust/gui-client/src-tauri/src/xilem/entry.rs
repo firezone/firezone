@@ -36,7 +36,7 @@ use crate::logging::{self, FilterReloadHandle};
 use crate::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
 use crate::xilem::integration::{UiUpdate, XilemIntegration};
 use crate::xilem::state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
-use crate::xilem::{tray, ui};
+use crate::xilem::{theme, tray, ui};
 
 /// Boot-time resources consumed once by the bridge `worker`'s `init_future`.
 /// `worker` requires a non-capturing (zero-sized) init closure, so — exactly
@@ -121,6 +121,7 @@ pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> Re
         .with_resizable(false);
 
     Xilem::new_simple(app, app_logic, window)
+        .with_default_properties(theme::properties())
         .run_in(EventLoop::with_user_event())
         .map_err(|e| anyhow::anyhow!("xilem event loop failed: {e}"))?;
 
