@@ -2315,6 +2315,14 @@ impl ClientState {
                 .upsert(new_member.ipv6.into(), entry);
         }
 
+        // When the filters change, refresh the inbound authorization on every
+        // member we have an active connection to. Filtering is enforced on the
+        // receiving side (we can't trust a packet's origin), so without this the
+        // tightened filter would never take effect on an established connection.
+        if filter_changed {
+            self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
+        }
+
         let is_new = old_pool.is_none();
         let resource = Resource::StaticDevicePool(new_pool);
         self.resources_by_id.insert(pool_id, resource.clone());
