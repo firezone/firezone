@@ -27,19 +27,25 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     // Before the GUI proper starts, make sure this process carries the
-    // MSIX package identity that the tunnel-pipe DACL pins. The MSI only
-    // provisions the package; external-location sparse packages aren't
-    // auto-registered for interactive users, so we register for the
-    // current user and re-exec on first launch. Release-only (debug
-    // smoke tests deliberately run without identity) and only for the
-    // main GUI run, not the debug subcommands.
+    // MSIX package identity that the tunnel-pipe DACL pins. The MSI
+    // registers the package for the installing user; for any other user
+    // we register it here on first launch. Identity only attaches to a
+    // freshly-created process, so we ask the user to relaunch rather
+    // than re-exec (which is fragile under job objects). Release-only
+    // (debug smoke tests run without identity) and only for the main
+    // GUI run, not the debug subcommands.
     #[cfg(not(debug_assertions))]
     if cli.command.is_none() {
-        match firezone_gui_client::package_identity::ensure_package_identity() {
-            Ok(firezone_gui_client::package_identity::Outcome::ReExeced) => {
+        use firezone_gui_client::package_identity::{Outcome, ensure_package_identity};
+
+        match ensure_package_identity() {
+            Ok(Outcome::Proceed) => {}
+            Ok(Outcome::RegisteredRestartRequired) => {
+                let _ = firezone_gui_client::dialog::error(
+                    "Firezone finished first-time setup. Please start Firezone again.",
+                );
                 return ExitCode::SUCCESS;
             }
-            Ok(firezone_gui_client::package_identity::Outcome::Proceed) => {}
             Err(e) => tracing::warn!("Package-identity check failed: {e:#}"),
         }
     }

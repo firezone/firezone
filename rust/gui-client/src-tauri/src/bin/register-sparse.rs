@@ -1,13 +1,17 @@
 //! WiX deferred custom actions that register / deregister the
 //! Firezone sparse MSIX package against the installed binaries.
 //!
-//! Two subcommands, each fired from its own MSI custom action; see
+//! Subcommands, each fired from its own MSI custom action; see
 //! `win_files/sparse-package.wxs` for the wiring:
 //!
-//! - [`imp::provision`] — stage + provision for all users.
-//! - [`imp::deprovision`] — uninstall counterpart.
+//! - [`imp::provision`] — stage + provision for all users
+//!   (`LocalSystem`).
+//! - [`imp::register_user`] — register for the installing user
+//!   (impersonated), so their first launch carries identity.
+//! - [`imp::deprovision`] — uninstall counterpart (`LocalSystem`).
 //!
-//! Both run as `LocalSystem` (the AppX provisioning APIs require it).
+//! The all-users provisioning APIs require `LocalSystem`; the
+//! per-user registration runs impersonated as the installing user.
 //! Exit code policy:
 //!
 //! - `0` on success.
@@ -72,6 +76,7 @@ fn run() -> ExitCode {
     let started = std::time::Instant::now();
     let result = match action {
         Action::Provision => imp::provision(),
+        Action::RegisterUser => imp::register_user(),
         Action::Deprovision => imp::deprovision(),
     };
     let elapsed = started.elapsed();
@@ -140,6 +145,8 @@ struct Cli {
 enum Action {
     /// Stage + provision the package for all users.
     Provision,
+    /// Register the package for the current (impersonated) user.
+    RegisterUser,
     /// Deprovision the package for all users.
     Deprovision,
 }
@@ -148,6 +155,7 @@ impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Action::Provision => "provision",
+            Action::RegisterUser => "register-user",
             Action::Deprovision => "deprovision",
         })
     }
@@ -180,7 +188,8 @@ mod imp {
         ApplicationModel::Package,
         Foundation::Uri,
         Management::Deployment::{
-            DeploymentResult, PackageManager, RemovalOptions, StagePackageOptions,
+            AddPackageOptions, DeploymentResult, PackageManager, RemovalOptions,
+            StagePackageOptions,
         },
         core::HSTRING,
     };
@@ -242,6 +251,46 @@ mod imp {
         run_deployment("provision", || {
             tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
             Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.get()?)
+        })
+    }
+
+    /// Registers the package for the current (impersonated) user.
+    /// The MSI runs this as the installing user via an
+    /// `Impersonate="yes"` CA, so their first GUI launch already
+    /// carries package identity — provisioning alone doesn't register
+    /// external-location sparse packages for interactive users.
+    ///
+    /// `AddPackageByUriAsync` with `ExternalLocationUri` both stages
+    /// (if needed) and registers for the calling user; no admin
+    /// required.
+    pub fn register_user() -> Result<()> {
+        let install_path = install_dir()?;
+        let msix = install_path.join("firezone.msix");
+
+        let msix_meta = std::fs::metadata(&msix)
+            .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
+        tracing::info!(
+            install_dir = %install_path.display(),
+            msix_path = %msix.display(),
+            msix_size_bytes = msix_meta.len(),
+            "found MSIX payload"
+        );
+
+        let pm = package_manager()?;
+        let msix_uri = file_uri(msix.as_path())?;
+        let external_uri = dir_uri(install_path.as_path())?;
+
+        let opts = AddPackageOptions::new().context("AddPackageOptions::new failed")?;
+        opts.SetExternalLocationUri(&external_uri)
+            .context("SetExternalLocationUri failed")?;
+
+        run_deployment("register-user", || {
+            tracing::info!(
+                external_uri = %uri_string(&external_uri),
+                msix_uri = %uri_string(&msix_uri),
+                "calling AddPackageByUriAsync"
+            );
+            Ok(pm.AddPackageByUriAsync(&msix_uri, &opts)?.get()?)
         })
     }
 
@@ -419,6 +468,10 @@ mod imp {
     use anyhow::{Result, bail};
 
     pub fn provision() -> Result<()> {
+        bail!("`register-sparse` is only supported on Windows");
+    }
+
+    pub fn register_user() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 

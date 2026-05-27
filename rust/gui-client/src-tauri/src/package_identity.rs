@@ -2,31 +2,28 @@
 //! identity before it does anything that needs the kernel-assigned
 //! package SID (notably opening the SID-pinned tunnel pipe).
 //!
-//! The MSI only *provisions* the package (as `LocalSystem`, via
-//! `register-sparse.exe`). External-location sparse packages are not
-//! auto-registered for interactive users at logon, so on a fresh
-//! install no GUI process carries identity. We bridge the gap here:
-//! on launch, if the process has no package identity, register the
-//! package for the current user and re-exec — identity is stamped by
-//! the kernel at `CreateProcess`, so the *current* process can't gain
-//! it, but the child we spawn will.
+//! The MSI provisions the package and registers it for the
+//! *installing* user (see `register-sparse`). External-location
+//! sparse packages aren't auto-registered for other interactive
+//! users at logon, so for a user the installer didn't cover we
+//! register the package for the current user here. Package identity
+//! is stamped by the kernel at `CreateProcess`, so the current
+//! process can't gain it after the fact — the caller surfaces a
+//! "please restart" dialog and exits; the user's next launch is
+//! created with the package SID.
 
 use anyhow::Result;
 
-/// Whether [`ensure_package_identity`] re-launched the process.
+/// Result of [`ensure_package_identity`].
 pub enum Outcome {
-    /// The process already has identity (or this platform has no
-    /// package identity); continue startup normally.
+    /// The process already has package identity (or this platform has
+    /// none); continue startup normally.
     Proceed,
-    /// Registered the package and spawned a child that will carry
-    /// identity; the caller must exit immediately.
-    ReExeced,
+    /// Registered the package for the current user. Identity only
+    /// attaches to a freshly-created process, so the caller should
+    /// tell the user to relaunch and exit.
+    RegisteredRestartRequired,
 }
-
-/// Marks the re-exec'd child so a registration that somehow fails to
-/// attach identity can't spawn children forever.
-#[cfg(target_os = "windows")]
-const REEXEC_MARKER: &str = "FIREZONE_PACKAGE_REREGISTERED";
 
 #[cfg(not(target_os = "windows"))]
 #[expect(clippy::unnecessary_wraps, reason = "Windows impl is fallible")]
@@ -42,20 +39,13 @@ pub fn ensure_package_identity() -> Result<Outcome> {
         return Ok(Outcome::Proceed);
     }
 
-    if std::env::var_os(REEXEC_MARKER).is_some() {
-        tracing::warn!("No package identity after re-registration; continuing without it");
-        return Ok(Outcome::Proceed);
-    }
-
     register_for_current_user().context("Failed to register package for current user")?;
-    reexec().context("Failed to re-launch with package identity")?;
-
-    Ok(Outcome::ReExeced)
+    Ok(Outcome::RegisteredRestartRequired)
 }
 
 /// `Windows.ApplicationModel.Package.Current` succeeds only for a
 /// process activated with package identity; on a non-packaged process
-/// it errors, which is our signal to register + re-exec.
+/// it errors, which is our signal to register for the current user.
 #[cfg(target_os = "windows")]
 fn has_package_identity() -> bool {
     windows::ApplicationModel::Package::Current().is_ok()
@@ -110,21 +100,5 @@ fn register_for_current_user() -> Result<()> {
         .ok()
         .context("Package registration reported an error")?;
 
-    Ok(())
-}
-
-/// Re-launch ourselves with the same arguments so the new process is
-/// created *after* registration and thus inherits the package SID.
-#[cfg(target_os = "windows")]
-fn reexec() -> Result<()> {
-    use anyhow::Context as _;
-
-    let exe = std::env::current_exe().context("current_exe")?;
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    std::process::Command::new(exe)
-        .args(args)
-        .env(REEXEC_MARKER, "1")
-        .spawn()
-        .context("Failed to spawn re-registered child process")?;
     Ok(())
 }
