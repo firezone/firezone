@@ -84,6 +84,7 @@ pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use io::TunChannelClosed;
+pub use otel::record_event_loop_error;
 pub use sockets::UdpSocketThreadStopped;
 pub use unroutable_packet::UnroutablePacket;
 pub use utils::turn;
