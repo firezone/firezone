@@ -4,14 +4,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::process::ExitCode;
+use std::{process::ExitCode, sync::Arc};
 
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging};
 use telemetry::Telemetry;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::Mutex};
 use tracing::subscriber::DefaultGuard;
 
 #[expect(
@@ -46,26 +46,26 @@ fn main() -> ExitCode {
 
     // Start telemetry in `entrypoint` mode so that crashes during settings
     // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
-    // The GUI's telemetry stays in `entrypoint` mode; the real environment is
-    // reported to the service post-`Hello` via `StartTelemetry`. On graceful
-    // exit we flush below.
+    // The controller re-targets it at the real environment once `Hello`
+    // arrives; `main` keeps ownership so we can flush on every exit path.
     telemetry.start(
         "entrypoint",
         firezone_gui_client::RELEASE,
         telemetry::GUI_DSN,
     );
+    let telemetry = Arc::new(Mutex::new(telemetry));
 
-    let result = try_main(cli, &rt, &mut log_guard, &mut telemetry);
+    let result = try_main(cli, &rt, &mut log_guard, Arc::clone(&telemetry));
 
-    rt.block_on(telemetry.stop());
+    // Capture a fatal error while the Sentry session is still live, then flush.
+    if let Err(e) = &result {
+        tracing::error!("GUI failed: {e:#}");
+    }
+    rt.block_on(async { telemetry.lock().await.stop().await });
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            tracing::error!("GUI failed: {e:#}");
-
-            ExitCode::FAILURE
-        }
+        Err(_) => ExitCode::FAILURE,
     }
 }
 
@@ -73,7 +73,7 @@ fn try_main(
     cli: Cli,
     rt: &Runtime,
     log_guard: &mut Option<LogGuard>,
-    telemetry: &mut Telemetry,
+    telemetry: Arc<Mutex<Telemetry>>,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
     if cli.skip_tunnel_pipe_owner_check {
@@ -172,7 +172,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, config, reloader)?;
+            gui::run(rt, config, reloader, telemetry)?;
 
             return Ok(());
         }
@@ -180,7 +180,7 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, config, reloader) {
+    match gui::run(rt, config, reloader, telemetry) {
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {
