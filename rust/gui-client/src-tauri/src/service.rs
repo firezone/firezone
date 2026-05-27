@@ -28,6 +28,7 @@ use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration}
 use telemetry::{Telemetry, analytics, otel};
 use tokio::time::Instant;
 use tracing::Instrument as _;
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 #[cfg(target_os = "linux")]
@@ -648,20 +649,30 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyAdvancedSettings(new) => {
-                let response = match advanced_settings::save(&new) {
-                    Ok(()) => {
-                        if let Err(e) = self.log_filter_reloader.reload(&new.log_filter) {
-                            tracing::warn!(
-                                log_filter = %new.log_filter,
-                                "Failed to reload log filter: {e:#}"
-                            );
+                // Validate the log filter before persisting so we never write an
+                // unparsable value to disk or report a misleading "saved" to the GUI.
+                let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
+                    tracing::warn!(
+                        log_filter = %new.log_filter,
+                        "Rejected advanced settings with invalid log filter: {e:#}"
+                    );
+                    Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
+                } else {
+                    match advanced_settings::save(&new) {
+                        Ok(()) => {
+                            if let Err(e) = self.log_filter_reloader.reload(&new.log_filter) {
+                                tracing::warn!(
+                                    log_filter = %new.log_filter,
+                                    "Failed to reload log filter: {e:#}"
+                                );
+                            }
+                            self.advanced_settings = new.clone();
+                            Ok(new)
                         }
-                        self.advanced_settings = new.clone();
-                        Ok(new)
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to save advanced settings: {e:#}");
-                        Err(format!("{e:#}"))
+                        Err(e) => {
+                            tracing::warn!("Failed to save advanced settings: {e:#}");
+                            Err(format!("{e:#}"))
+                        }
                     }
                 };
                 self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))

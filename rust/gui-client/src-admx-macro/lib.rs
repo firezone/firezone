@@ -45,21 +45,21 @@ fn try_admx(attr: TokenStream, item: TokenStream) -> syn::Result<proc_macro2::To
                     format!("Policy '{value_name}' does not have a `key` attribute"),
                 )
             })?;
-            // The `class` attribute decides which registry hive the policy lives
-            // in: `Machine` → HKLM (read by the privileged Tunnel service),
-            // `User` → HKCU.
-            let hive = match policy.attribute("class").unwrap_or("User") {
-                "Machine" => quote::quote!(::winreg::enums::HKEY_LOCAL_MACHINE),
-                "User" => quote::quote!(::winreg::enums::HKEY_CURRENT_USER),
+            // Every Firezone policy is machine-scope (HKLM), read by the
+            // privileged Tunnel service. Legacy per-user (HKCU) values are
+            // migrated into HKLM once at startup (see `mdm_migration`).
+            match policy.attribute("class") {
+                Some("Machine") => {}
                 other => {
                     return Err(syn::Error::new(
                         admx_path.inner.span(),
                         format!(
-                            "Policy '{value_name}' has unsupported `class` `{other}`; expected `Machine` or `User`"
+                            "Policy '{value_name}' must be `class=\"Machine\"` but was `{other:?}`"
                         ),
                     ));
                 }
-            };
+            }
+            let hive = quote::quote!(::winreg::enums::HKEY_LOCAL_MACHINE);
             let span = proc_macro2::Span::call_site();
             let typ = policy
                 .descendants()
