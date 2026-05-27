@@ -29,7 +29,7 @@ import SystemPackage
     @MainActor
     static func export(
       to archiveURL: URL,
-      session: NETunnelProviderSession
+      session: any TunnelSessionProtocol
     ) async throws {
       guard let logFolderURL = SharedAccess.logFolderURL
       else {
