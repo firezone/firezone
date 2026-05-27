@@ -53,5 +53,20 @@ defmodule Portal.UUIDv7Test do
 
       assert earlier < later
     end
+
+    test "accepts the unix epoch (lower 48-bit bound)" do
+      uuid = UUIDv7.generate(DateTime.from_unix!(0, :millisecond))
+
+      {:ok, <<ms::48, _::80>>} = Ecto.UUID.dump(uuid)
+      assert ms == 0
+    end
+
+    test "raises ArgumentError for timestamps before the unix epoch" do
+      dt = DateTime.from_unix!(-1, :millisecond)
+
+      assert_raise ArgumentError, ~r/outside the 48-bit unix_ts_ms range/, fn ->
+        UUIDv7.generate(dt)
+      end
+    end
   end
 end
