@@ -90,6 +90,17 @@ $logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
 $guiProc = Start-Process -FilePath $gui `
     -ArgumentList "--no-deep-links", "--no-elevation-check" -PassThru
 try {
+    # Diagnostic: does the *full GUI* itself carry package identity?
+    # (The earlier identity probe was a separate single-instance
+    # process.) Non-fatal -- we want the readout either way.
+    Start-Sleep -Seconds 2
+    try {
+        & "$scriptDir\gui-package-identity-windows.ps1" -ProcessId $guiProc.Id
+        Write-Output "==> Full GUI carries package identity"
+    } catch {
+        Write-Output "==> Full GUI has NO package identity: $_"
+    }
+
     $connected = $false
     for ($i = 1; $i -le 30; $i++) {
         $logs = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue
@@ -105,9 +116,17 @@ try {
         Start-Sleep -Seconds 1
     }
     if (-not $connected) {
-        Write-Output "==> GUI log tail:"
-        Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 50
+        Write-Output "==> GUI still alive: $(-not $guiProc.HasExited)"
+        Write-Output "==> AppxPackage state:"
+        Get-AppxPackage -AllUsers Firezone.Client.GUI |
+            Format-List PackageFullName, Status, PackageUserInformation
+        Write-Output "==> Log files in ${logDir}:"
+        $logs = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue
+        $logs | Format-Table Name, Length, LastWriteTime | Out-String | Write-Output
+        $logs | Sort-Object LastWriteTime | ForEach-Object {
+            Write-Output "--- $($_.Name) ---"
+            Get-Content $_.FullName -Tail 40
+        }
         Write-Error "GUI did not connect to the tunnel over the package-SID pipe within 30s"
         exit 1
     }
