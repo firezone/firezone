@@ -16,7 +16,7 @@ use futures::{
 };
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{ops::ControlFlow, path::PathBuf, sync::Arc, task::Poll, time::Duration};
 use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -62,6 +62,7 @@ pub struct Controller<I: GuiIntegration> {
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
     telemetry_allowed: bool,
+    telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
@@ -199,6 +200,7 @@ impl<I: GuiIntegration> Controller<I> {
         general_settings: GeneralSettings,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
+        telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
     ) -> Result<()> {
@@ -246,6 +248,7 @@ impl<I: GuiIntegration> Controller<I> {
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
             telemetry_allowed,
+            telemetry,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -425,6 +428,17 @@ impl<I: GuiIntegration> Controller<I> {
     async fn update_telemetry_context(&mut self) -> Result<()> {
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
+
+        // Re-target the GUI's own Sentry session (started in `entrypoint` mode
+        // by `main`) at the real environment now that the api_url is known. If
+        // no session is running -- e.g. in unit tests, which never call `main`
+        // -- there is nothing to re-target, so we don't spin one up here.
+        {
+            let mut tel = self.telemetry.lock().await;
+            if tel.is_active() {
+                tel.start(&environment, crate::RELEASE, telemetry::GUI_DSN);
+            }
+        }
 
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
@@ -1590,6 +1604,7 @@ mod tests {
                 GeneralSettings::default(),
                 log_filter_reloader,
                 true,
+                Arc::new(tokio::sync::Mutex::new(Telemetry::disabled())),
                 updates_rx,
                 gui_ipc_server,
             ));
