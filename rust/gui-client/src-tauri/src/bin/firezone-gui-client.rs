@@ -9,8 +9,7 @@ use std::process::ExitCode;
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
-use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging, settings};
-use settings::AdvancedSettings;
+use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging};
 use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
@@ -111,12 +110,10 @@ fn try_main(
     // The authoritative advanced settings and machine-scope MDM policy are
     // owned by the privileged Tunnel service and arrive over the `Hello` IPC
     // message. Telemetry stays in `entrypoint` mode (started in `main`) and the
-    // log filter uses `RUST_LOG` or the compile-time default until then; once
-    // `Hello` lands the controller re-applies the effective log filter and
-    // sends the real environment to the service via `StartTelemetry`.
-    let log_filter = std::env::var("RUST_LOG")
-        .ok()
-        .unwrap_or_else(|| AdvancedSettings::default().log_filter);
+    // log filter is `RUST_LOG` or a hardcoded `info` until then; once `Hello`
+    // lands the controller re-applies the effective log filter and sends the
+    // real environment to the service via `StartTelemetry`.
+    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned());
 
     *log_guard = None;
 
