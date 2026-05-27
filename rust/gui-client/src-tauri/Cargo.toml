@@ -51,12 +51,12 @@ hex = { workspace = true }
 humantime = { workspace = true }
 iced = { workspace = true, optional = true }
 ip-packet = { workspace = true }
-open = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+open = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
