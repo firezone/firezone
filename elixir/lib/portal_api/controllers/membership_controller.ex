@@ -146,7 +146,7 @@ defmodule PortalAPI.MembershipController do
     import Ecto.Changeset
 
     membership
-    |> cast(attrs, [:actor_id, :group_id, :account_id, :last_synced_at])
+    |> cast(attrs, [:actor_id, :group_id, :account_id])
     |> Portal.Membership.changeset()
   end
 

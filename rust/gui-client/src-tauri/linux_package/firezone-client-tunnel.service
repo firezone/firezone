@@ -5,7 +5,12 @@ Wants=systemd-resolved.service
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
+# CAP_SYS_PTRACE is required for the daemon (running as root, target UID
+# differs from peer UID) to pass the kernel's ptrace_may_access check when
+# reading /proc/<peer_pid>/exe for the per-connection allowlist enforcement
+# in `ipc/unix/peer_check.rs`. ProtectProc=invisible below does not block
+# callers that hold CAP_SYS_PTRACE.
+CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN CAP_SYS_PTRACE
 DeviceAllow=/dev/net/tun
 LockPersonality=true
 LogsDirectory=dev.firezone.client

@@ -2,6 +2,7 @@ defmodule PortalWeb.Settings.Account do
   use PortalWeb, :live_view
   import Ecto.Changeset
   alias Portal.Account
+  alias Portal.Accounts.Deletion
   alias Portal.Billing
   alias __MODULE__.Database
   require Logger
@@ -9,7 +10,6 @@ defmodule PortalWeb.Settings.Account do
   def mount(_params, _session, socket) do
     account = socket.assigns.account
     subject = socket.assigns.subject
-
     socket =
       assign(socket,
         page_title: "Account",
@@ -145,6 +145,12 @@ defmodule PortalWeb.Settings.Account do
             <p class="text-xs text-[var(--text-secondary)] mb-3">
               This account is scheduled for deletion on <strong>{Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y")}</strong>.
             </p>
+            <div
+              :if={Portal.Billing.paid_plan?(@account)}
+              class="mb-3 px-3 py-2 rounded border border-amber-200 bg-amber-50 text-xs text-amber-800"
+            >
+              You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
+            </div>
             <button
               type="button"
               phx-click="cancel_account_deletion"
@@ -543,7 +549,7 @@ defmodule PortalWeb.Settings.Account do
     if Account.locked?(account) do
       {:noreply, assign(socket, error: "This account is locked and cannot be modified.")}
     else
-      case Database.cancel_account_deletion(account, socket.assigns.subject) do
+      case Deletion.cancel_account_deletion(account, socket.assigns.subject) do
         {:ok, updated_account} ->
           {:noreply, assign(socket, account: updated_account, error: nil)}
 
@@ -578,7 +584,7 @@ defmodule PortalWeb.Settings.Account do
           scheduled_deletion_at: DateTime.add(DateTime.utc_now(), 7, :day)
         }
 
-        case Database.schedule_account_deletion(account, attrs, socket.assigns.subject) do
+        case Deletion.schedule_account_deletion(account, attrs, socket.assigns.subject) do
           {:ok, updated_account} ->
             {:noreply,
              assign(socket,
@@ -622,27 +628,6 @@ defmodule PortalWeb.Settings.Account do
       account
       |> cast(attrs, [:name])
       |> Account.changeset()
-    end
-
-    @spec cancel_account_deletion(Account.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
-    def cancel_account_deletion(%Account{} = account, subject) do
-      account
-      |> cast(%{disabled_at: nil, scheduled_deletion_at: nil}, [
-        :disabled_at,
-        :scheduled_deletion_at
-      ])
-      |> Safe.scoped(subject)
-      |> Safe.update()
-    end
-
-    @spec schedule_account_deletion(Account.t(), map(), Portal.Authentication.Subject.t()) ::
-            {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
-    def schedule_account_deletion(%Account{} = account, attrs, subject) do
-      account
-      |> cast(attrs, [:disabled_at, :scheduled_deletion_at])
-      |> Safe.scoped(subject)
-      |> Safe.update()
     end
 
     @spec count_account_admin_users_for_account(Portal.Authentication.Subject.t()) :: integer()

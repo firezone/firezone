@@ -30,35 +30,37 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Extract Rust version
-      run: |
-        RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
-        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
+    # macos-26 ships a broken Homebrew rustup formula whose proxies reject
+    # cargo argv (actions/runner-images#14099, #14097). Replace it with an
+    # official install so PATH resolution is clean.
+    - name: Replace Homebrew rustup with official install (macOS)
+      if: runner.os == 'macOS'
       shell: bash
+      run: |
+        brew uninstall --ignore-dependencies rustup 2>/dev/null || true
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --no-modify-path --default-toolchain none --profile minimal
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-    - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
-      id: toolchain-1
-      continue-on-error: true
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,llvm-tools-preview
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure caching somewhere else.
+    - name: Extract pinned Rust channel
+      id: rust
+      shell: bash
+      run: |
+        CHANNEL=$(awk -F'"' '/^channel/ {print $2}' rust/rust-toolchain.toml)
+        echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
 
-    - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
-      if: ${{ steps.toolchain-1.outcome == 'failure' }}
-      continue-on-error: true
-      id: toolchain-2
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,llvm-tools-preview
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure caching somewhere else.
+    - name: Install Rust toolchain
+      shell: bash
+      run: |
+        rustup toolchain install ${{ steps.rust.outputs.channel }} \
+          --profile minimal \
+          --component rust-src \
+          --component clippy \
+          --component rustfmt \
+          --component llvm-tools-preview
+        rustup default ${{ steps.rust.outputs.channel }}
 
-    - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7 # v1.16.0
-      if: ${{ steps.toolchain-2.outcome == 'failure' }}
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,llvm-tools-preview
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure caching somewhere else.
+    - name: Install additional targets
+      if: ${{ inputs.targets != '' }}
+      shell: bash
+      run: rustup target add ${{ inputs.targets }}

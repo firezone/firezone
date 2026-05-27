@@ -299,29 +299,6 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now);
             }
-            Transition::SendIcmpPacketToDevice {
-                client_id,
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let packet = ip_packet::make::icmp_request_packet(
-                    src,
-                    IpAddr::V4(dst),
-                    seq.0,
-                    identifier.0,
-                    &payload.to_be_bytes(),
-                )
-                .unwrap();
-
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
-
-                buffered_transmits.push_from(transmit, client, now);
-            }
             Transition::SendUdpPacket {
                 client_id,
                 src,
@@ -917,16 +894,15 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| {
-                    g.receive(transmit, icmp_error_hosts, now, self.flux_capacitor.now())
-                }) else {
+                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, now))
+                else {
                     continue;
                 };
 
                 buffered_transmits.push_from(reply, gateway, now);
             }
 
-            gateway.exec_mut(|g| g.handle_timeout(now, self.flux_capacitor.now()));
+            gateway.exec_mut(|g| g.handle_timeout(now));
         }
 
         // Handle all relay `Transmit`s and timeouts.
@@ -1214,6 +1190,15 @@ impl TunnelTest {
                                 .snownet_capabilities,
                         );
 
+                        let pool_filters = portal
+                            .static_device_pool_filters(resource_id)
+                            .unwrap_or_default();
+
+                        let remote_authorization = crate::messages::client::ResourceAuthorization {
+                            resource_id,
+                            filters: pool_filters,
+                            expires_at: None,
+                        };
                         remote_client.exec_mut(|c| {
                             c.sut
                                 .handle_client_device_access_authorized(
@@ -1225,6 +1210,7 @@ impl TunnelTest {
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
                                     negotiated_capabilities,
+                                    Some(remote_authorization),
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client {
@@ -1249,6 +1235,7 @@ impl TunnelTest {
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
                                     negotiated_capabilities,
+                                    None,
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client { id: src, error })?;
@@ -1257,9 +1244,6 @@ impl TunnelTest {
                         })?;
                     }
                     None => {
-                        // The proptest only samples `SendIcmpPacketToDevice` for destinations
-                        // that are online clients (see `pool_routed_other_client_tun_ips`),
-                        // so this branch shouldn't fire.
                         unreachable!(
                             "device-connection intent for offline destination ip={ip} resource_id={resource_id}"
                         )
@@ -1272,6 +1256,7 @@ impl TunnelTest {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {
                     c.resource_status = resources
+                        .resources
                         .into_iter()
                         .map(|r| (r.id(), r.status()))
                         .collect();

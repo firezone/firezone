@@ -1,12 +1,9 @@
-import _Page from "./_page";
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Architecture: Overview • Firezone Docs",
-  description:
-    "A deep dive into Firezone's product architecture and design decisions.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
-  return <_Page />;
+  return <Content />;
 }

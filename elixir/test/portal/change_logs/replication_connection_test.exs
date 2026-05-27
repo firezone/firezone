@@ -7,8 +7,19 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   alias Portal.ChangeLog
 
   setup do
+    tables =
+      Application.fetch_env!(:portal, Portal.ChangeLogs.ReplicationConnection)
+      |> Keyword.fetch!(:table_subscriptions)
+
     account = account_fixture()
-    %{account: account}
+    %{account: account, tables: tables}
+  end
+
+  describe "configured tables" do
+    test "includes client and gateway sessions in the audit publication", %{tables: tables} do
+      assert "client_sessions" in tables
+      assert "gateway_sessions" in tables
+    end
   end
 
   describe "on_write/6 for inserts" do
@@ -110,22 +121,6 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert map_size(result_state.flush_buffer) == 2
       assert result_state.flush_buffer[existing_lsn] == existing_item
       assert Map.has_key?(result_state.flush_buffer, new_lsn)
-    end
-
-    test "ignores relay token inserts" do
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          12345,
-          :insert,
-          "tokens",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "type" => "relay"}
-        )
-
-      assert result_state == initial_state
     end
 
     test "handles complex data structures", %{account: account} do
@@ -438,50 +433,5 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert log =~ "lsn=500"
     end
 
-    test "ignores relay token updates" do
-      state = %{flush_buffer: %{}}
-
-      result_state1 =
-        ReplicationConnection.on_write(
-          state,
-          100,
-          :update,
-          "tokens",
-          %{"id" => Ecto.UUID.generate(), "type" => "relay"},
-          %{"id" => Ecto.UUID.generate(), "type" => "relay", "updated" => true}
-        )
-
-      assert result_state1 == state
-
-      result_state2 =
-        ReplicationConnection.on_write(
-          state,
-          101,
-          :update,
-          "tokens",
-          %{"id" => Ecto.UUID.generate(), "type" => "other"},
-          %{"id" => Ecto.UUID.generate(), "type" => "relay"}
-        )
-
-      assert result_state2 == state
-    end
-
-    test "processes non-relay tokens normally", %{account: account} do
-      state = %{flush_buffer: %{}}
-      lsn = 102
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          lsn,
-          :insert,
-          "tokens",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "type" => "browser"}
-        )
-
-      assert map_size(result_state.flush_buffer) == 1
-      assert result_state.flush_buffer[lsn].table == "tokens"
-    end
   end
 end

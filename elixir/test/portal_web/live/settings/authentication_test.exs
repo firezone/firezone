@@ -620,6 +620,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Discovery Document URI"
       assert html =~ "Client ID"
       assert html =~ "Client Secret"
+      assert html =~ "Email Verification"
+      assert html =~ "Do not require the identity provider to confirm email ownership"
+      assert html =~ "email_verified=true"
+      assert html =~ "Send a one-time passcode to the claimed email address"
       assert html =~ "Redirect URI"
       assert html =~ "Verify Now"
     end
@@ -1051,6 +1055,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Discovery Document URI"
       assert html =~ "Client ID"
       assert html =~ "Client Secret"
+      assert html =~ "Email Verification"
+      assert html =~ "Do not require the identity provider to confirm email ownership"
+      assert html =~ "email_verified=true"
+      assert html =~ "Send a one-time passcode to the claimed email address"
       assert html =~ "Verification"
     end
 
@@ -1074,6 +1082,30 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           auth_provider: %{
             discovery_document_uri: "https://new.example.com/.well-known/openid-configuration"
           }
+        })
+        |> render_change()
+
+      assert html =~ "Verify Now"
+    end
+
+    test "clears verification when email_verification_method changes", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = oidc_provider_fixture(account: account, email_verification_method: :claim)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
+
+      assert html =~ "Verified"
+
+      html =
+        lv
+        |> form("#auth-provider-form", %{
+          auth_provider: %{email_verification_method: "none"}
         })
         |> render_change()
 
@@ -2461,6 +2493,189 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       html = render(lv)
       # Verification setup should have started
       assert html =~ "Verify Now" or html =~ "error"
+    end
+
+    test "passes email_verification_method from oidc form into pending verification", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/new")
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          name: "Test OIDC",
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_id: "test-client",
+          client_secret: "test-secret",
+          email_verification_method: "none"
+        }
+      })
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+
+      send(lv.pid, {:get_pending_verification, self()})
+
+      assert_receive {:pending_verification,
+                      %{require_email_verified: false, config: _config, verifier: verifier}}
+
+      assert is_binary(verifier)
+    end
+
+    test "clears pending oidc verification when email_verification_method changes", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/new")
+
+      attrs = %{
+        name: "Test OIDC",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        client_id: "test-client",
+        client_secret: "test-secret",
+        email_verification_method: "none"
+      }
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: attrs})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{attrs | email_verification_method: "claim"}
+      })
+      |> render_change()
+
+      send(lv.pid, {:get_pending_verification, self()})
+
+      assert_receive {:pending_verification, nil}
+    end
+
+    test "ignores stale oidc verification completion after email_verification_method changes", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/new")
+
+      attrs = %{
+        name: "Test OIDC",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        client_id: "test-client",
+        client_secret: "test-secret",
+        email_verification_method: "none"
+      }
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: attrs})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+
+      send(lv.pid, {:get_pending_verification, self()})
+
+      assert_receive {:pending_verification,
+                      %{require_email_verified: false, verification_ref: verification_ref}}
+
+      html =
+        lv
+        |> form("#auth-provider-form", %{
+          auth_provider: %{attrs | email_verification_method: "claim"}
+        })
+        |> render_change()
+
+      assert html =~ "Verify Now"
+
+      ref = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ref}})
+
+      assert_receive {:verification_ack, ^ref}
+
+      html = render(lv)
+      assert html =~ "Verify Now"
+      refute html =~ "Verified"
+    end
+
+    test "ignores stale oidc verification completion after a newer verification starts", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/new")
+
+      attrs = %{
+        name: "Test OIDC",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        client_id: "test-client",
+        client_secret: "test-secret",
+        email_verification_method: "none"
+      }
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: attrs})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+
+      send(lv.pid, {:get_pending_verification, self()})
+
+      assert_receive {:pending_verification,
+                      %{require_email_verified: false, verification_ref: stale_ref}}
+
+      updated_attrs = %{attrs | email_verification_method: "claim"}
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: updated_attrs})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+
+      send(lv.pid, {:get_pending_verification, self()})
+
+      assert_receive {:pending_verification,
+                      %{require_email_verified: true, verification_ref: current_ref}}
+
+      stale_ack_ref = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", stale_ref, {self(), stale_ack_ref}})
+
+      assert_receive {:verification_ack, ^stale_ack_ref}
+
+      html = render(lv)
+      assert html =~ "Verify Now"
+      refute html =~ "Verified"
+
+      current_ack_ref = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", current_ref, {self(), current_ack_ref}})
+
+      assert_receive {:verification_ack, ^current_ack_ref}
+
+      html = render(lv)
+      assert html =~ "Verified"
     end
 
     test "handles entra provider verification setup via bypass", %{

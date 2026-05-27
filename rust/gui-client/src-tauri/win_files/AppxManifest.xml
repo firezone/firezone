@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparse MSIX manifest for Firezone.
+
+  This package does NOT carry the Firezone payload binary; it merely
+  registers a kernel-tracked package identity for the existing
+  `Firezone.exe` at the MSI install location (an "external location"
+  sparse package). The tunnel-service binary is intentionally absent
+  from the `<Applications>` list: SCM-launched services with an
+  embedded `<msix>` identity claim hang on startup, and we don't need
+  the tunnel service to *have* the identity — only to grant access on
+  its pipe to processes that do (via `Trustee::from_package_family_name`
+  at runtime).
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap10 rescap">
+
+  <!-- mark:next-gui-version -->
+  <Identity Version="1.5.13.0"
+            Name="Firezone.Client.GUI"
+            Publisher="CN=&quot;Firezone, Inc.&quot;, O=&quot;Firezone, Inc.&quot;, STREET=&quot;2261 Market Street, Suite 4574&quot;, L=San Francisco, S=California, C=US, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, SERIALNUMBER=6383880, OID.2.5.4.15=Private Organization"
+            ProcessorArchitecture="x64"/>
+
+  <Properties>
+    <DisplayName>Firezone</DisplayName>
+    <PublisherDisplayName>Firezone, Inc.</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop"
+                        MinVersion="10.0.19044.0"
+                        MaxVersionTested="10.0.22631.0"/>
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us"/>
+  </Resources>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+  </Capabilities>
+
+  <Applications>
+    <Application Id="Firezone"
+                 Executable="Firezone.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Firezone"
+        Description="Firezone GUI Client"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none"/>
+    </Application>
+  </Applications>
+</Package>

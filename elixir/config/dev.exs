@@ -95,7 +95,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
-       {worker_dev_schedule, Portal.Workers.DeleteAccountsPendingDeletion}
+       {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
      ]}
   ],
   queues: [
@@ -159,7 +159,7 @@ config :portal,
 
 config :phoenix_live_reload, :dirs, [File.cwd!()]
 
-config :portal, PortalWeb.Plugs.PutCSPHeader,
+config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",

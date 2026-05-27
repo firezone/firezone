@@ -89,8 +89,8 @@ fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
-    // Make sure the dir exists, and fix its permissions so the GUI can write the
-    // log filter file
+    // Make sure the dir exists, and fix its permissions before writing files
+    // into it.
     fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
     set_dir_permissions(dir).with_context(|| {
         format!(
@@ -161,8 +161,26 @@ fn set_dir_permissions(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Does nothing on non-Linux systems
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn set_dir_permissions(dir: &Path) -> Result<()> {
+    windows_security::SecurityDescriptor::from_sddl(DIR_SDDL)?.apply_to_path(dir)
+}
+
+/// SDDL for the Tunnel service config directory.
+///
+/// `D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)` reads as:
+/// - `D:P` — set a *protected* DACL (don't inherit ACEs from the parent
+///   directory).
+/// - `A;OICI;FA;;;SY` — *Allow* `Full Access` to `LocalSystem`, with
+///   `Object` and `Container` inheritance so child files and dirs inherit
+///   the same access.
+/// - `A;OICI;FA;;;BA` — *Allow* `Full Access` to `BUILTIN\Administrators`,
+///   with the same inheritance flags.
+#[cfg(target_os = "windows")]
+const DIR_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+
+/// Does nothing on other non-Linux systems
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[expect(clippy::unnecessary_wraps)]
 fn set_dir_permissions(_: &Path) -> Result<()> {
     Ok(())
@@ -177,8 +195,23 @@ fn set_id_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Does nothing on non-Linux systems
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+fn set_id_permissions(path: &Path) -> Result<()> {
+    windows_security::SecurityDescriptor::from_sddl(FILE_SDDL)?.apply_to_path(path)
+}
+
+/// SDDL for the on-disk `firezone-id` file.
+///
+/// `D:P(A;;FA;;;SY)(A;;FA;;;BA)` reads as:
+/// - `D:P` — set a *protected* DACL.
+/// - `A;;FA;;;SY` — *Allow* `Full Access` to `LocalSystem`. No inheritance
+///   flags are needed since this is a leaf file.
+/// - `A;;FA;;;BA` — *Allow* `Full Access` to `BUILTIN\Administrators`.
+#[cfg(target_os = "windows")]
+const FILE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
+
+/// Does nothing on other non-Linux systems
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[expect(clippy::unnecessary_wraps)]
 fn set_id_permissions(_: &Path) -> Result<()> {
     Ok(())

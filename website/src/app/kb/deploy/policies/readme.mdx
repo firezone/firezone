@@ -1,3 +1,10 @@
+---
+title: Policies
+description:
+  "Create Firezone access policies that grant Groups access to Resources. Build
+  least-privileged zero trust controls — see the policies guide."
+---
+
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 import PlanBadge from "@/components/PlanBadge";
@@ -95,6 +102,16 @@ This feature acts as a lightweight device management solution, ideal for
 organizations looking to enforce device policies (e.g., preventing mobile device
 access to production databases) without requiring a full-fledged MDM system to
 be in place.
+
+<Alert color="warning">
+  Client verification is a lightweight mechanism designed to prevent outside
+  attackers from impersonating an Actor's device using only a stolen credential.
+  It is **not** a substitute for strong device identity authentication: the
+  device IDs above are read from sources that an attacker with local access to
+  an already-verified device can copy to another machine. Stronger device
+  identity guarantees are planned in
+  [firezone/firezone#8369](https://github.com/firezone/firezone/issues/8369).
+</Alert>
 
 ### Time of day
 

@@ -7,8 +7,6 @@ import Apple from "./Apple";
 import Gateway from "./Gateway";
 import GUI from "./GUI";
 import Headless from "./Headless";
-import { HiServerStack } from "react-icons/hi2";
-import { FaApple, FaAndroid, FaWindows, FaLinux } from "react-icons/fa";
 import { useEffect, useState } from "react";
 
 export default function Changelog() {
@@ -26,25 +24,25 @@ export default function Changelog() {
   return (
     <section className="mx-auto max-w-xl md:max-w-screen-xl">
       <TabsGroup>
-        <TabsItem title="Gateway" icon={HiServerStack}>
+        <TabsItem title="Gateway" icon="serverStack">
           <Gateway />
         </TabsItem>
-        <TabsItem title="macOS / iOS" icon={FaApple}>
+        <TabsItem title="macOS / iOS" icon="apple">
           <Apple />
         </TabsItem>
-        <TabsItem title="Windows GUI" icon={FaWindows}>
+        <TabsItem title="Windows GUI" icon="windows">
           <GUI os={OS.Windows} />
         </TabsItem>
-        <TabsItem title="Windows Headless" icon={FaWindows}>
+        <TabsItem title="Windows Headless" icon="windows">
           <Headless os={OS.Windows} />
         </TabsItem>
-        <TabsItem title="Android" icon={FaAndroid}>
+        <TabsItem title="Android" icon="android">
           <Android />
         </TabsItem>
-        <TabsItem title="Linux GUI" icon={FaLinux}>
+        <TabsItem title="Linux GUI" icon="linux">
           <GUI os={OS.Linux} />
         </TabsItem>
-        <TabsItem title="Linux Headless" icon={FaLinux}>
+        <TabsItem title="Linux Headless" icon="linux">
           <Headless os={OS.Linux} />
         </TabsItem>
       </TabsGroup>

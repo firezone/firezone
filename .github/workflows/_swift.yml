@@ -16,7 +16,7 @@ jobs:
       # mark:next-apple-version
       RELEASE_NAME: macos-client-1.5.16
     steps:
-      - uses: release-drafter/release-drafter@563bf132657a13ded0b01fcb723c5a58cdd824e2 # v7.2.1
+      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -29,7 +29,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
-    runs-on: macos-15
+    runs-on: macos-26
+    permissions:
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       XCODE_VERSION: "26.2"
     steps:
@@ -38,6 +40,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd swift/apple swiftlint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
@@ -49,7 +53,9 @@ jobs:
           fail-on-error: false
 
   static-analysis:
-    runs-on: macos-15
+    runs-on: macos-26
+    permissions:
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       XCODE_VERSION: "26.2"
     steps:
@@ -58,6 +64,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd swift/apple swiftlint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Check Swift formatting and linting
         run: mise run //swift/apple:check
 
@@ -66,13 +74,14 @@ jobs:
     # Skip builds on CD (push to main) - only needed for PR validation and releases
     if: github.event_name != 'push'
     needs: update-release-draft
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
       MISE_EXPERIMENTAL: "1"
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -108,6 +117,8 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd swift/apple swiftlint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.rust-targets }}

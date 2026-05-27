@@ -16,6 +16,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-corrdyn-gray.svg"
               width={125}
               height={125}
+              priority
             />
           </Link>
           <Link
@@ -27,6 +28,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-square1-gray.svg"
               width={100}
               height={100}
+              priority
             />
           </Link>
           <Link
@@ -38,6 +40,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-wolfram-gray.svg"
               width={60}
               height={75}
+              priority
             />
           </Link>
           <Link
@@ -50,6 +53,7 @@ export function CustomerLogosGrayscale() {
               width={125}
               height={125}
               className="  "
+              priority
             />
           </Link>
           <Link
@@ -61,6 +65,7 @@ export function CustomerLogosGrayscale() {
               src="/images/logos/cust-logo-double11-gray.svg"
               width={50}
               height={50}
+              priority
             />
           </Link>
         </div>

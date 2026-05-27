@@ -885,8 +885,8 @@ defmodule PortalWeb.Resources.Components do
 
   defp client_details(client) do
     [
-      client.ipv4 && Portal.Types.INET.to_string(client.ipv4),
-      client.ipv6 && Portal.Types.INET.to_string(client.ipv6),
+      Portal.Types.INET.to_string(client.ipv4),
+      Portal.Types.INET.to_string(client.ipv6),
       client.device_serial,
       client.device_uuid,
       client.id
@@ -1015,6 +1015,7 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :presence_tick, :integer, default: 0
   attr :groups, :list, default: []
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -1067,7 +1068,7 @@ defmodule PortalWeb.Resources.Components do
             <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
               Status
             </span>
-            <.status_badge status={if resource_online?(@resource), do: :online, else: :offline} />
+            <.status_badge status={resource_status(@resource, @presence_tick)} />
           </div>
           <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
           <div class="flex items-center gap-1.5">
@@ -1123,6 +1124,7 @@ defmodule PortalWeb.Resources.Components do
         <.resource_sidebar
           account={@account}
           resource={@resource}
+          presence_tick={@presence_tick}
           ui_state={@ui_state}
         />
       </div>
@@ -1744,6 +1746,7 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :presence_tick, :integer, default: 0
   attr :ui_state, :map, required: true
 
   def resource_sidebar(assigns) do
@@ -1842,7 +1845,7 @@ defmodule PortalWeb.Resources.Components do
                   {@resource.site.name}
                 </.link>
                 <span
-                  :if={resource_online?(@resource)}
+                  :if={resource_online?(@resource, @presence_tick)}
                   class="relative flex items-center justify-center w-1.5 h-1.5"
                 >
                   <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
@@ -1918,11 +1921,17 @@ defmodule PortalWeb.Resources.Components do
     |> to_form(as: :policy)
   end
 
-  @spec resource_online?(map()) :: boolean()
-  def resource_online?(%{site_id: nil}), do: false
+  @spec resource_online?(map(), integer()) :: boolean()
+  def resource_online?(resource, _presence_tick \\ 0)
+  def resource_online?(%{site_id: nil}, _presence_tick), do: false
 
-  def resource_online?(%{site_id: site_id}) do
+  def resource_online?(%{site_id: site_id}, _presence_tick) do
     Presence.Gateways.Site.list(site_id) |> map_size() > 0
+  end
+
+  @spec resource_status(map(), integer()) :: :online | :offline
+  def resource_status(resource, presence_tick \\ 0) do
+    if resource_online?(resource, presence_tick), do: :online, else: :offline
   end
 
   @spec resource_type_label(atom()) :: String.t()

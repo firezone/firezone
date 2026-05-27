@@ -129,8 +129,9 @@ config :portal, Portal.Telemetry, enabled: false
 config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
-config :portal, Portal.ClientSession.Buffer, enabled: false
-config :portal, Portal.GatewaySession.Buffer, enabled: false
+config :portal, :client_session_queue, enabled: false
+config :portal, :gateway_session_queue, enabled: false
+config :portal, :policy_authorization_queue, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
@@ -199,7 +200,7 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
-config :portal, PortalWeb.Plugs.PutCSPHeader,
+config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",

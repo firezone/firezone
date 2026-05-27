@@ -1,5 +1,6 @@
 use super::{
     QueryId,
+    echo::echo_reply,
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -348,11 +349,27 @@ impl SimClient {
                 return None;
             }
 
-            self.received_udp_replies.insert(
-                (SPort(udp.source_port()), DPort(udp.destination_port())),
-                packet.clone(),
-            );
-            return None;
+            // Distinguish a UDP reply (to a request *we* sent) from a fresh
+            // request from a peer client. The reply's (sport, dport) is the
+            // reverse of an outbound 5-tuple we recorded in `sent_udp_requests`.
+            let outbound_key = (SPort(udp.destination_port()), DPort(udp.source_port()));
+            if self.sent_udp_requests.contains_key(&outbound_key) {
+                self.received_udp_replies.insert(
+                    (SPort(udp.source_port()), DPort(udp.destination_port())),
+                    packet.clone(),
+                );
+                return None;
+            }
+
+            // Fresh request from a peer: record it and echo back, mirroring
+            // the simulated gateway.
+            let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
+            tracing::debug!(%packet_id, "Received UDP request");
+            self.received_udp_requests
+                .insert(packet_id, (now, packet.clone()));
+
+            let reply = echo_reply(packet)?;
+            return self.sut.handle_tun_input(reply, now).ok().flatten();
         }
 
         if self.tcp_dns_client.accepts(&packet) {

@@ -21,16 +21,21 @@ defmodule PortalWeb.VerificationController do
     case Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-result", result_token,
            max_age: 60
          ) do
-      {:ok, %{ok: true, issuer: issuer, lv_pid: lv_pid}} ->
+      {:ok,
+       %{ok: true, issuer: issuer, lv_pid: lv_pid, verification_ref: verification_ref}}
+      when is_binary(verification_ref) ->
         lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid)
 
-        case notify_and_await_ack(lv_pid, {:oidc_verify_complete, issuer}) do
+        case notify_and_await_ack(lv_pid, {:oidc_verify_complete, issuer, verification_ref}) do
           :ok ->
             render(conn, :success)
 
           {:error, _reason} ->
             render(conn, :failure, error: @verification_ack_error)
         end
+
+      {:ok, %{ok: true}} ->
+        render(conn, :failure, error: "Invalid or expired verification result. Please try again.")
 
       {:ok, %{ok: false, error: error, lv_pid: lv_pid}} ->
         if pid = PortalWeb.OIDC.deserialize_pid(lv_pid),

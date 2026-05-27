@@ -1,7 +1,8 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Authentication
-  alias Portal.{Device, GatewaySession, Version}
+  alias Portal.{Device, GatewaySession, PG, Version}
+  alias Portal.Repo.Batch
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -11,6 +12,17 @@ defmodule PortalAPI.Gateway.Socket do
   ## Channels
 
   channel "gateway", PortalAPI.Gateway.Channel
+
+  @doc false
+  def gateway_session_queue_opts do
+    [
+      name: :gateway_session_queue,
+      flush_interval: :timer.seconds(5),
+      flush_threshold: 1_000,
+      label: "gateway session",
+      on_flush: &flush_gateway_sessions/1
+    ]
+  end
 
   ## Authentication
 
@@ -47,7 +59,6 @@ defmodule PortalAPI.Gateway.Socket do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       session = build_session(gateway, gateway_token.id, public_key, context, version)
-      GatewaySession.Buffer.insert(session)
 
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
@@ -105,6 +116,7 @@ defmodule PortalAPI.Gateway.Socket do
 
   defp build_session(gateway, token_id, public_key, context, version) do
     %GatewaySession{
+      id: Ecto.UUID.generate(),
       device_id: gateway.id,
       account_id: gateway.account_id,
       gateway_token_id: token_id,
@@ -117,6 +129,62 @@ defmodule PortalAPI.Gateway.Socket do
       remote_ip_location_lon: context.remote_ip_location_lon,
       version: version
     }
+  end
+
+  defp flush_gateway_sessions(entries) do
+    {inserted, failed} =
+      Batch.insert_all(GatewaySession, entries,
+        label: "gateway session",
+        fk_partitions: %{
+          "gateway_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
+          "gateway_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
+          "gateway_sessions_gateway_token_id_fkey" =>
+            {:composite, :gateway_token_id, Portal.GatewayToken}
+        }
+      )
+
+    for {attrs, _metadata} <- failed do
+      dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
+        PG.deliver(attrs.device_id, :disconnect)
+      end)
+    end
+
+    dispatch_gateway_session_confirmed(entries, failed)
+
+    if failed != [] do
+      Logger.info(
+        "Skipped #{length(failed)} gateway session entries during flush due to missing references"
+      )
+    end
+
+    inserted
+  end
+
+  defp dispatch_gateway_session_confirmed(entries, failed) do
+    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+      dispatch_queue_callback("gateway session", :on_confirmed, attrs, fn ->
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
+      end)
+    end
+  end
+
+  defp dispatch_queue_callback(label, callback, attrs, fun) do
+    fun.()
+    :ok
+  rescue
+    error ->
+      Logger.error(
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:id])}: " <>
+          Exception.message(error)
+      )
+  catch
+    kind, reason ->
+      Logger.error(
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:id])}: " <>
+          inspect(reason)
+      )
   end
 
   defp validate_public_key(attrs) do

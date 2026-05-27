@@ -25,7 +25,9 @@ import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class SessionActivity : AppCompatActivity() {
+class SessionActivity :
+    AppCompatActivity(),
+    ResourceDetailsBottomSheet.InternetResourceToggleCallback {
     private lateinit var binding: ActivitySessionBinding
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
@@ -52,7 +54,7 @@ class SessionActivity : AppCompatActivity() {
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter { this.onInternetResourceToggled() }
+    private val resourcesAdapter = ResourcesAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,7 +81,7 @@ class SessionActivity : AppCompatActivity() {
 
     fun internetState(): ResourceState = tunnelService?.internetState() ?: ResourceState.UNSET
 
-    private fun onInternetResourceToggled(): ResourceState {
+    override fun onInternetResourceToggled(): ResourceState {
         tunnelService?.let {
             it.internetResourceToggled(internetState().toggle())
             refreshList()

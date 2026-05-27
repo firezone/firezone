@@ -2,6 +2,7 @@
 package dev.firezone.android.core
 
 import android.app.Application
+import android.content.Context
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
@@ -20,5 +21,13 @@ class FirezoneApp : Application() {
         // Load the native library immediately after FirebaseCrashlytics
         // so we catch any issues with the native library early on.
         System.loadLibrary("connlib")
+
+        // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
+        initRustlsPlatformVerifier(this)
+    }
+
+    companion object {
+        @JvmStatic
+        external fun initRustlsPlatformVerifier(context: Context)
     }
 }

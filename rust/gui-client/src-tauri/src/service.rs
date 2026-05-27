@@ -12,7 +12,7 @@ use bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::{ResourceId, ResourceList};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
@@ -83,7 +83,14 @@ where
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
-    Hello,
+    /// First message sent on every IPC connection.
+    ///
+    /// Includes the Firezone ID so the GUI can use it for telemetry without
+    /// having to read the on-disk file (which is locked-down to System and
+    /// Administrators on Windows).
+    Hello {
+        firezone_id: String,
+    },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), String>),
@@ -98,7 +105,7 @@ pub enum ServerMsg {
     GatewayVersionMismatch {
         resource_id: ResourceId,
     },
-    OnUpdateResources(Vec<ResourceView>),
+    OnUpdateResources(ResourceList),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -344,7 +351,9 @@ impl<'a> Handler<'a> {
             .boxed();
 
         ipc_tx
-            .send(&ServerMsg::Hello)
+            .send(&ServerMsg::Hello {
+                firezone_id: device_id.id.clone(),
+            })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
@@ -629,13 +638,8 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry
-                        .start(
-                            &environment,
-                            &release,
-                            telemetry::GUI_DSN,
-                            self.device_id.id.clone(),
-                        )
-                        .await;
+                        .start(&environment, &release, telemetry::GUI_DSN);
+                    Telemetry::set_firezone_id(self.device_id.id.clone()).await;
 
                     otel::install_sentry_meter_provider(
                         env!("CARGO_PKG_NAME"),
@@ -783,6 +787,12 @@ pub fn run_smoke_test() -> Result<()> {
     use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
     use bin_shared::{DnsController, device_id};
+
+    // The smoke test runs this binary as an unprivileged subprocess of the
+    // test runner — not as a Windows service under LocalSystem. Tell the IPC
+    // layer to skip pinning/checking LocalSystem ownership on the Tunnel pipe;
+    // otherwise `CreateNamedPipeW` fails with `ERROR_INVALID_OWNER` on Windows.
+    ipc::skip_tunnel_pipe_owner_check();
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {

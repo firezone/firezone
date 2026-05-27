@@ -1,11 +1,33 @@
-import _Page from "./_page";
+import Post from "@/components/Blog/Post";
+import ArticleJsonLd from "@/components/Blog/ArticleJsonLd";
+import Content, { frontmatter } from "./readme.mdx";
+import { asBlogFrontmatter } from "@/types/frontmatter";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
+import { blogAuthorAvatar } from "@/lib/blog-author-avatar";
 
-export const metadata: Metadata = {
-  title: "Firezone 1.0 • Firezone Blog",
-  description: "Announcing the 1.0 early access program",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
-  return <_Page />;
+  const fm = asBlogFrontmatter(frontmatter);
+  return (
+    <>
+      <ArticleJsonLd
+        title={fm.postTitle ?? fm.title}
+        description={fm.description}
+        authorName={fm.authorName}
+        date={fm.date}
+        path="/blog/firezone-1-0"
+      />
+      <Post
+        authorName={fm.authorName}
+        authorTitle={fm.authorTitle}
+        authorAvatarSrc={blogAuthorAvatar(fm)}
+        title={fm.postTitle ?? fm.title}
+        date={fm.date}
+      >
+        <Content />
+      </Post>
+    </>
+  );
 }

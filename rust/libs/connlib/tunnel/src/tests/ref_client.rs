@@ -116,6 +116,11 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
+    /// The expected TCP connections to peer clients via static device pools.
+    #[debug(skip)]
+    pub(crate) expected_client_tcp_connections:
+        BTreeMap<(IpAddr, Destination, SPort, DPort), ClientId>,
+
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId, u16)>,
@@ -402,20 +407,6 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn on_icmp_packet_to_device(
-        &mut self,
-        remote_client: ClientId,
-        dst: Destination,
-        seq: Seq,
-        identifier: Identifier,
-        payload: u64,
-    ) {
-        self.expected_client_icmp_handshakes
-            .entry(remote_client)
-            .or_default()
-            .insert(payload, (dst, seq, identifier));
-    }
-
     pub(crate) fn on_icmp_packet(
         &mut self,
         dst: Destination,
@@ -424,15 +415,18 @@ impl RefClient {
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
+        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) {
         self.on_packet(
             dst.clone(),
             Protocol::IcmpEcho(identifier.0),
             (dst, seq, identifier),
             |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
+            |ref_client| &mut ref_client.expected_client_icmp_handshakes,
             payload,
             gateway_by_resource,
             gateway_by_ip,
+            client_by_ip,
         );
     }
 
@@ -444,29 +438,69 @@ impl RefClient {
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
+        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) {
         self.on_packet(
             dst.clone(),
             Protocol::Udp(dport.0),
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
+            |ref_client| &mut ref_client.expected_client_udp_handshakes,
             payload,
             gateway_by_resource,
             gateway_by_ip,
+            client_by_ip,
         );
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway))]
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway, peer))]
     fn on_packet<E>(
         &mut self,
         dst: Destination,
         proto: Protocol,
         packet_id: E,
-        map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
+        gateway_map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
+        client_map: impl FnOnce(&mut Self) -> &mut BTreeMap<ClientId, BTreeMap<u64, E>>,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
+        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) {
+        // Peer destination: try device-pool routing (client-to-client) first,
+        // then fall back to gateway routing.
+        if let Some(ip) = dst.ip_addr().filter(|ip| crate::is_peer(*ip)) {
+            let pools = self.static_device_pool_by_tun_ip(ip);
+
+            if !pools.is_empty() {
+                // Static-device-pool path. Track an expected handshake only
+                // when at least one authorising pool's strict filter allows
+                // the protocol — the malicious-behaviour bypass on the source
+                // intentionally lets forbidden traffic onto the wire, but the
+                // receiver's inbound filter then drops it and replies with
+                // ICMP prohibited rather than completing a handshake.
+                if !pools
+                    .iter()
+                    .any(|(_, filters)| FilterEngine::new(filters).apply(Ok(proto)).is_ok())
+                {
+                    tracing::debug!(?proto, "Device filter does not allow protocol, dropping");
+                    return;
+                }
+
+                let Some(remote_id) = client_by_ip(ip) else {
+                    tracing::error!("Unknown peer client for tunnel IP");
+                    return;
+                };
+                tracing::Span::current().record("peer", tracing::field::display(remote_id));
+
+                tracing::debug!(%payload, "Sending packet to peer");
+                client_map(self)
+                    .entry(remote_id)
+                    .or_default()
+                    .insert(payload, packet_id);
+                return;
+            }
+        }
+
         let gateway = if dst.ip_addr().is_some_and(crate::is_peer) {
             let Some(gateway) = gateway_by_ip(dst.ip_addr().unwrap()) else {
                 tracing::error!("Unknown gateway");
@@ -505,7 +539,7 @@ impl RefClient {
 
         tracing::debug!(%payload, "Sending packet");
 
-        map(self)
+        gateway_map(self)
             .entry(gateway)
             .or_default()
             .insert(payload, packet_id);
@@ -517,8 +551,32 @@ impl RefClient {
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) {
         let proto = Protocol::Tcp(dport.0);
+
+        // Peer destination: try device-pool routing first.
+        if let Some(ip) = dst.ip_addr().filter(|ip| crate::is_peer(*ip)) {
+            let pools = self.static_device_pool_by_tun_ip(ip);
+
+            if !pools.is_empty() {
+                if !pools
+                    .iter()
+                    .any(|(_, filters)| FilterEngine::new(filters).apply(Ok(proto)).is_ok())
+                {
+                    tracing::debug!(?proto, "Device filter does not allow TCP, dropping");
+                    return;
+                }
+                let Some(remote_id) = client_by_ip(ip) else {
+                    tracing::error!("Unknown peer client for tunnel IP");
+                    return;
+                };
+                self.expected_client_tcp_connections
+                    .insert((src, dst, sport, dport), remote_id);
+                return;
+            }
+        }
+
         let Some(resource) = self.resource_by_dst(&dst, proto) else {
             tracing::warn!("Unknown resource");
             return;
@@ -708,14 +766,51 @@ impl RefClient {
     }
 
     fn resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
+        let Some(filters) = self
+            .resources
+            .iter()
+            .find(|r| r.id() == rid)
+            .map(|r| r.filters())
+        else {
+            return false;
+        };
+        self.filter_allows(filters, proto)
+    }
+
+    /// Apply `filters` to `proto`, honoring the malicious-behaviour
+    /// `ignore_resource_filters` bypass.
+    fn filter_allows(&self, filters: &[crate::messages::Filter], proto: Protocol) -> bool {
         if self.malicious_behaviour.ignore_resource_filters {
             return true;
         }
 
+        FilterEngine::new(filters).apply(Ok(proto)).is_ok()
+    }
+
+    /// Look up every static device pool that lists `ip` (the peer's tunnel
+    /// IP) as a member. Returns each authorising pool's resource ID along
+    /// with its filter set.
+    ///
+    /// Mirrors the production lookup in `client_routing_table` on the SUT.
+    pub(crate) fn static_device_pool_by_tun_ip(
+        &self,
+        ip: IpAddr,
+    ) -> Vec<(ResourceId, Vec<crate::messages::Filter>)> {
         self.resources
             .iter()
-            .find(|r| r.id() == rid)
-            .is_some_and(|r| FilterEngine::new(r.filters()).apply(Ok(proto)).is_ok())
+            .filter_map(|r| {
+                let Resource::StaticDevicePool(pool) = r else {
+                    return None;
+                };
+
+                let matches = pool.devices.iter().any(|d| match ip {
+                    IpAddr::V4(v4) => d.ipv4.contains(v4),
+                    IpAddr::V6(v6) => d.ipv6.contains(v6),
+                });
+
+                matches.then(|| (pool.id, pool.filters.clone()))
+            })
+            .collect()
     }
 
     pub(crate) fn dns_resource_by_domain_and_proto(
@@ -1072,6 +1167,7 @@ impl RefClient {
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
         self.expected_tcp_connections.clear();
+        self.expected_client_tcp_connections.clear();
     }
 
     pub(crate) fn any_resource_allows_tcp_on_port(
@@ -1250,6 +1346,7 @@ fn ref_client(
                     expected_gateway_udp_handshakes: Default::default(),
                     expected_client_udp_handshakes: Default::default(),
                     expected_tcp_connections: Default::default(),
+                    expected_client_tcp_connections: Default::default(),
                     expected_udp_dns_handshakes: Default::default(),
                     expected_tcp_dns_handshakes: Default::default(),
                     resources: Default::default(),

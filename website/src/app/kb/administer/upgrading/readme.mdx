@@ -1,5 +1,10 @@
-import { HiCheck, HiCommandLine } from "react-icons/hi2";
-import { FaDocker, FaUbuntu } from "react-icons/fa";
+---
+title: Upgrading
+description:
+  "Upgrade Firezone Gateways with zero downtime. Follow the upgrade procedure
+  for production deployments — read the guide."
+---
+
 import Link from "next/link";
 import { TabsItem, TabsGroup } from "@/components/Tabs";
 import Image from "next/image";
@@ -48,7 +53,7 @@ image with the newer version and then restarting. See below for specific steps
 depending on how you've deployed your Gateway:
 
 <TabsGroup>
-<TabsItem title="Debian / Ubuntu" icon={FaUbuntu} active>
+<TabsItem title="Debian / Ubuntu" icon="ubuntu" active>
 
 If you installed the Gateway from the `artifacts.firezone.dev` APT repository,
 you can upgrade the Gateway via `apt`:
@@ -59,7 +64,7 @@ sudo apt upgrade firezone-gateway
 ```
 
 </TabsItem>
-<TabsItem title="Docker" icon={FaDocker}>
+<TabsItem title="Docker" icon="docker">
 
 Copy-paste the following command to upgrade your Docker-based Gateway:
 
@@ -80,7 +85,7 @@ curl -fsSL \
 </div>)}
 
 </TabsItem>
-<TabsItem title="systemd" icon={HiCommandLine}>
+<TabsItem title="systemd" icon="commandLine">
 
 If you deployed via the portal, your unit file should already contain logic
 necessary to upgrade the Gateway on service start. Simply move the old binary

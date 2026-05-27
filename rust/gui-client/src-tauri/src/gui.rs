@@ -7,9 +7,10 @@ use crate::{
     controller::{Controller, ControllerRequest, Failure, GuiIntegration, NotificationHandle},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
+    launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, GeneralSettings,
+        self, AdvancedSettings, AdvancedSettingsViewModel, GeneralSettings,
         GeneralSettingsViewModel, MdmSettings,
     },
     updates,
@@ -73,7 +74,7 @@ impl Managed {
     }
 }
 
-struct TauriIntegration {
+pub(crate) struct TauriIntegration {
     app: tauri::AppHandle,
     tray: system_tray::Tray,
 }
@@ -228,18 +229,26 @@ pub struct RunConfig {
     pub debug_update_check: bool,
     pub smoke_test: bool,
     pub no_deep_links: bool,
+    pub telemetry_allowed: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
+    /// When `true`, skip the auth/portal/tunnel stack and drive the tray with
+    /// hardcoded fake state. Used by the `debug fake-controller` subcommand
+    /// for UI iteration without needing the privileged tunnel service or a
+    /// live portal.
+    pub fake_controller: bool,
 }
 
-/// IPC Messages that a newly launched instance (i.e. a client) may send to an already running instance of Firezone.
+/// IPC messages that a newly launched instance may send to an already
+/// running instance of Firezone.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
 }
 
-/// IPC Messages that an already running instance of Firezone may send to a newly launched instance.
+/// IPC messages that an already running instance may send back to a
+/// newly launched instance.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ServerMsg {
     Ack,
@@ -251,15 +260,17 @@ pub fn run(
     rt: &Runtime,
     config: RunConfig,
     mdm_settings: MdmSettings,
-    advanced_settings: AdvancedSettingsLegacy,
+    advanced_settings: AdvancedSettings,
     reloader: logging::FilterReloadHandle,
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
-    let gui_ipc = rt.block_on(create_gui_ipc_server())?;
+    let (gui_ipc, _launch_lock) = match rt.block_on(establish_single_instance())? {
+        SingleInstance::First { server, lock } => (server, lock),
+        SingleInstance::SecondHandedOff => bail!(AlreadyRunning),
+    };
 
-    let (general_settings, advanced_settings) =
-        rt.block_on(settings::migrate_legacy_settings(advanced_settings));
+    let general_settings = settings::load_general_settings().unwrap_or_default();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let req_tx = ctlr_tx.clone();
@@ -354,19 +365,24 @@ pub fn run(
             tray,
         };
 
-        // Spawn the controller
-        let ctrl_task = tokio::spawn(Controller::start(
-            SocketId::Tunnel,
-            integration,
-            ctlr_tx,
-            ctlr_rx,
-            general_settings,
-            mdm_settings,
-            advanced_settings,
-            reloader,
-            updates_rx,
-            gui_ipc,
-        ));
+        let ctrl_task = if config.fake_controller {
+            tokio::spawn(crate::fake_controller::run(integration, ctlr_rx))
+        } else {
+            // Spawn the controller
+            tokio::spawn(Controller::start(
+                SocketId::Tunnel,
+                integration,
+                ctlr_tx,
+                ctlr_rx,
+                general_settings,
+                mdm_settings,
+                advanced_settings,
+                reloader,
+                config.telemetry_allowed,
+                updates_rx,
+                gui_ipc,
+            ))
+        };
 
         anyhow::Ok(ctrl_task)
     });
@@ -435,7 +451,6 @@ pub fn run(
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .build(tauri::generate_context!())
         .context("Failed to build Tauri app instance")?
@@ -568,44 +583,86 @@ pub struct AlreadyRunning;
 #[error("Failed to communicate with existing Firezone instance")]
 pub struct NewInstanceHandshakeFailed(anyhow::Error);
 
-/// Create a new instance of the GUI IPC server.
-///
-/// Every time Firezone gets launched, we attempt to connect to this server.
-/// If we can successfully connect and handshake a message, then we know that there is a functioning instance of Firezone already running.
-///
-/// If we hit an IO errors during the connection, we assume that there isn't already an instance of Firezone and we consider us to be the first instance.
-///
-/// There is a third, somewhat gnarly case:
-///
-/// An instance of Firezone may already be running but it is not responding.
-/// Launching another instance on top of it would likely create more problems that it solves, so we also need to fail for that case.
-async fn create_gui_ipc_server() -> Result<ipc::Server> {
-    let (read, write) = match ipc::connect::<ServerMsg, ClientMsg>(
-        SocketId::Gui,
-        ipc::ConnectOptions { num_attempts: 1 },
-    )
-    .await
-    {
-        Ok(pair) => pair,
-        Err(e) => {
-            // If we can't connect to the socket, we must be the first instance.
-            tracing::debug!(
-                "We appear to be the first instance of the GUI client; connecting to socket yielded: {e:#}"
-            );
+/// Outcome of [`establish_single_instance`].
+pub enum SingleInstance {
+    /// We acquired the launch lock and now own the GUI IPC pipe
+    /// server. The caller proceeds with normal startup; the
+    /// `LaunchLock` must outlive the IPC server.
+    First {
+        server: ipc::Server,
+        lock: LaunchLock,
+    },
+    /// Another instance was already running. We connected to its GUI
+    /// IPC pipe, sent `ClientMsg::NewInstance`, awaited the `Ack`,
+    /// and closed our end. Production callers bail with
+    /// [`AlreadyRunning`] here; the `debug single-instance`
+    /// subcommand uses it as a successful end state for the
+    /// second-instance side of the smoke test.
+    SecondHandedOff,
+}
 
-            return ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket");
+/// Acquire the launch lock and produce a [`SingleInstance`] describing
+/// which role this process plays.
+/// First instance: opens the GUI IPC pipe server. Second instance:
+/// connects to the running instance, drives the `NewInstance` -> `Ack`
+/// handshake to completion, and reports `SecondHandedOff`.
+pub async fn establish_single_instance() -> Result<SingleInstance> {
+    match launch_lock::acquire()? {
+        FirstInstance::Yes(lock) => {
+            tracing::debug!("Acquired launch lock, we are the first GUI instance");
+
+            let server =
+                ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?;
+            Ok(SingleInstance::First { server, lock })
         }
-    };
+        FirstInstance::No => {
+            tracing::debug!("Encountered existing launch lock, we are not the first GUI instance");
 
-    tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
+            // Hand off to the running instance.
+            let (read, write) = ipc::connect::<ServerMsg, ClientMsg>(
+                SocketId::Gui,
+                ipc::ConnectOptions { num_attempts: 3 },
+            )
+            .await
+            .context("Failed to connect to running Firezone instance")
+            .map_err(NewInstanceHandshakeFailed)?;
+
+            tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
+                .await
+                .context("Failed to handshake with existing instance in 5s")
+                .map_err(NewInstanceHandshakeFailed)?
+                .map_err(NewInstanceHandshakeFailed)?;
+
+            Ok(SingleInstance::SecondHandedOff)
+        }
+    }
+}
+
+/// Accept exactly one client on `server`, read its first
+/// [`ClientMsg`], send a `ServerMsg::Ack`, and return the message
+/// so the caller can log / assert on it.
+///
+/// Used by the `debug single-instance` subcommand to exercise the
+/// pipe-server side of the launch-lock hand-off without standing up
+/// the controller or any other normal-runtime machinery. Production
+/// code uses the same `ipc::Server` + framed reader/writer types
+/// through `Controller`, but iterating over many clients in an
+/// accept loop, not one-shot.
+pub async fn accept_one_for_debug(server: &mut ipc::Server) -> Result<ClientMsg> {
+    let (mut read, mut write) = server
+        .next_client_split::<ClientMsg, ServerMsg>()
         .await
-        .context("Failed to handshake with existing instance in 5s")
-        .map_err(NewInstanceHandshakeFailed)?
-        .map_err(NewInstanceHandshakeFailed)?;
-
-    // If we managed to send the IPC message then another instance of Firezone is already running.
-
-    bail!(AlreadyRunning)
+        .context("Failed to accept GUI IPC client")?;
+    let msg = read
+        .next()
+        .await
+        .context("No frame received from second instance")?
+        .context("Failed to read frame from second instance")?;
+    write
+        .send(&ServerMsg::Ack)
+        .await
+        .context("Failed to ack second instance")?;
+    Ok(msg)
 }
 
 async fn new_instance_handshake(

@@ -56,6 +56,16 @@ defmodule PortalWeb.HomeControllerTest do
       assert html =~ "My company uses Firezone"
       refute html =~ "Sign in to Firezone"
     end
+
+    test "sets security headers", %{conn: conn} do
+      conn = get(conn, ~p"/getting_started")
+
+      assert get_resp_header(conn, "x-frame-options") == ["SAMEORIGIN"]
+
+      assert get_resp_header(conn, "permissions-policy") == [
+               "browsing-topics=(), camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+             ]
+    end
   end
 
   describe "sign_in_chooser/2" do
@@ -87,7 +97,7 @@ defmodule PortalWeb.HomeControllerTest do
       assert html =~ "Sign in to Firezone"
       assert html =~ "Recently signed in"
       assert html =~ account.name
-      assert html =~ ~p"/#{account.slug}/sign_in"
+      assert html =~ ~p"/#{account}/sign_in"
     end
 
     test "renders multiple recent accounts", %{conn: conn} do
@@ -110,7 +120,7 @@ defmodule PortalWeb.HomeControllerTest do
 
       for account <- accounts do
         assert html =~ account.name
-        assert html =~ ~p"/#{account.slug}/sign_in"
+        assert html =~ ~p"/#{account}/sign_in"
       end
     end
 

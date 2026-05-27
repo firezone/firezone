@@ -38,6 +38,12 @@ defmodule PortalOps.EndpointTest do
 
       assert conn.status == 200
       assert conn.resp_body =~ "Dashboard"
+
+      assert Plug.Conn.get_resp_header(conn, "x-frame-options") == ["SAMEORIGIN"]
+
+      assert Plug.Conn.get_resp_header(conn, "permissions-policy") == [
+               "browsing-topics=(), camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+             ]
     end
   end
 end

@@ -8,6 +8,8 @@ import "highlight.js/styles/a11y-dark.css";
 import RootLayout from "@/components/RootLayout";
 import Providers from "@/components/Providers";
 import { DrawerProvider } from "@/components/Providers/DrawerProvider";
+import JsonLd from "@/components/JsonLd";
+import { organizationSchema, websiteSchema } from "@/components/JsonLd/schemas";
 
 const roboto = Roboto({
   subsets: ["latin"],
@@ -28,8 +30,22 @@ const robotoSerif = Roboto_Serif({
 const gtmId = "GTM-NBZ4CD98";
 
 export const metadata: Metadata = {
-  title: "WireGuard® for Enterprise • Firezone",
-  description: "Open-source, zero-trust access platform built on WireGuard®",
+  metadataBase: new URL("https://www.firezone.dev"),
+  title: {
+    default: "Zero Trust Access for the Enterprise | Firezone",
+    template: "%s | Firezone",
+  },
+  description:
+    "Replace your VPN with Firezone, an open-source zero trust access platform built on WireGuard®. Connect users to anything, anywhere. Try free today.",
+  openGraph: {
+    siteName: "Firezone",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@firezonehq",
+  },
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -44,6 +60,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       />
       {gtmId && <GoogleTagManager gtmId={gtmId} />}
       <body className="font-sans subpixel-antialiased text-neutral-900">
+        {/* JSON-LD lives inside <body> per Next.js's structured-data
+            recommendation; React refuses to render sync <script> as a direct
+            child of <html> outside <head>. */}
+        <JsonLd data={organizationSchema} />
+        <JsonLd data={websiteSchema} />
         <Providers>
           <DrawerProvider>
             <RootLayout>{children}</RootLayout>

@@ -9,7 +9,7 @@ use tokio_util::{
     codec::{FramedRead, FramedWrite, LengthDelimitedCodec},
 };
 
-pub(crate) use platform::Server;
+pub use platform::Server;
 
 pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
 pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
@@ -27,6 +27,13 @@ pub(crate) mod platform;
 #[derive(Debug, thiserror::Error)]
 #[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Firezone is already running in another logon session")]
+pub struct WrongUser;
+
+#[cfg(debug_assertions)]
+pub use platform::skip_tunnel_pipe_owner_check;
 
 /// A name that both the server and client can use to find each other
 ///
@@ -48,7 +55,7 @@ pub struct NotFound(String);
 ///
 /// Because the paths are so different (and Windows actually uses a `String`),
 /// we have this [`SocketId`] abstraction instead of just a `PathBuf`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SocketId {
     /// The IPC socket used by Firezone GUI Client in production to connect to the tunnel service.
     ///

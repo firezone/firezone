@@ -40,6 +40,8 @@ defmodule Portal.Repo.Seeds do
   @ua_windows "Windows/11.0.22631 connlib/1.4.1"
   @ua_ubuntu "Ubuntu/22.04 connlib/1.4.1"
   @ua_macos "Mac OS/14.1.0 apple-client/1.4.1 (arm64; 23.1.0)"
+  # Pinned >= 1.5.9: client-to-client connections are version-gated.
+  @ua_pool_member "Ubuntu/22.04 connlib/1.5.9"
 
   @initiator_user_agents [@ua_ios, @ua_android, @ua_windows, @ua_ubuntu, @ua_macos]
 
@@ -139,9 +141,11 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.cast(
         %{
           name: attrs["name"] || attrs[:name],
-          firezone_id: firezone_id
+          firezone_id: firezone_id,
+          ipv4: attrs["ipv4"] || attrs[:ipv4],
+          ipv6: attrs["ipv6"] || attrs[:ipv6]
         },
-        [:name, :firezone_id]
+        [:name, :firezone_id, :ipv4, :ipv6]
       )
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
@@ -207,9 +211,11 @@ defmodule Portal.Repo.Seeds do
           firezone_id: firezone_id,
           identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
           device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
-          device_serial: attrs["device_serial"] || attrs[:device_serial]
+          device_serial: attrs["device_serial"] || attrs[:device_serial],
+          ipv4: attrs["ipv4"] || attrs[:ipv4],
+          ipv6: attrs["ipv6"] || attrs[:ipv6]
         },
-        [:name, :firezone_id, :identifier_for_vendor, :device_uuid, :device_serial]
+        [:name, :firezone_id, :identifier_for_vendor, :device_uuid, :device_serial, :ipv4, :ipv6]
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
@@ -505,6 +511,14 @@ defmodule Portal.Repo.Seeds do
         name: "Backup Manager"
       })
 
+    {:ok, pool_member_actor} =
+      Repo.insert(%Actor{
+        id: "cff1cf0e-0829-4b99-8ba7-0c09580386b4",
+        account_id: account.id,
+        type: :service_account,
+        name: "CI Pool Member Actor"
+      })
+
     # Set password on actors (no identity needed for userpass/email)
     password_hash = Crypto.hash(:argon2, "Firezone1234")
 
@@ -546,7 +560,7 @@ defmodule Portal.Repo.Seeds do
         name: "Firezone Admin"
       })
 
-    for {actor, email} <- other_actors_with_emails do
+    for {{actor, email}, actor_index} <- Enum.with_index(other_actors_with_emails, 1) do
       {:ok, identity} =
         Repo.insert(%ExternalIdentity{
           actor_id: actor.id,
@@ -593,7 +607,10 @@ defmodule Portal.Repo.Seeds do
         version =
           user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
-        # Generate UUID first so we can use it for deterministic tunnel IPs
+        # Keep these deterministic so they cannot collide with later fixed seed fixtures.
+        ipv4 = "100.65.#{actor_index}.#{i + 1}"
+        ipv6 = "fd00:2021:1111::#{actor_index}:#{i + 1}"
+
         firezone_id = Ecto.UUID.generate()
 
         # First create the client
@@ -603,9 +620,11 @@ defmodule Portal.Repo.Seeds do
             %{
               name: "My #{client_name} #{i}",
               firezone_id: firezone_id,
-              identifier_for_vendor: Ecto.UUID.generate()
+              identifier_for_vendor: Ecto.UUID.generate(),
+              ipv4: ipv4,
+              ipv6: ipv6
             },
-            [:name, :firezone_id, :identifier_for_vendor]
+            [:name, :firezone_id, :identifier_for_vendor, :ipv4, :ipv6]
           )
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
@@ -748,6 +767,29 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
+    pool_member_token =
+      %ClientToken{
+        id: "fe2bf22d-0986-433a-85ed-a8f37c90a34b",
+        account_id: pool_member_actor.account_id,
+        actor_id: pool_member_actor.id,
+        secret_salt: "ljWUfZy-6zmpUxijQhjiKg",
+        secret_hash: "9c65535e71259350e7cd171b43f4fea42f94e3da4904e4c493b5830b3aed3159",
+        expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+      }
+      |> Repo.insert!()
+
+    pool_member_subject = %Authentication.Subject{
+      account: account,
+      actor: pool_member_actor,
+      credential: %Authentication.Credential{type: :token, id: pool_member_token.id},
+      expires_at: pool_member_token.expires_at,
+      context: %Authentication.Context{
+        type: :client,
+        remote_ip: {127, 0, 0, 1},
+        user_agent: @ua_pool_member
+      }
+    }
+
     service_account_actor_encoded_token =
       "n" <> Authentication.encode_fragment!(service_account_token)
 
@@ -770,13 +812,16 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
     IO.puts("")
 
+    # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
       create_client(
         %{
           name: "FZ User iPhone",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
+          identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.10",
+          ipv6: "fd00:2021:1111::10"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -789,7 +834,9 @@ defmodule Portal.Repo.Seeds do
           name: "FZ User Android",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}"
+          identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.11",
+          ipv6: "fd00:2021:1111::11"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -802,7 +849,9 @@ defmodule Portal.Repo.Seeds do
           name: "FZ User Surface",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          device_uuid: "WIN-#{Ecto.UUID.generate()}"
+          device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.12",
+          ipv6: "fd00:2021:1111::12"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -815,7 +864,9 @@ defmodule Portal.Repo.Seeds do
           name: "FZ User Rendering Station",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          device_uuid: "UB-#{Ecto.UUID.generate()}"
+          device_uuid: "UB-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.13",
+          ipv6: "fd00:2021:1111::13"
         },
         unprivileged_subject,
         unprivileged_client_token.id,
@@ -829,11 +880,31 @@ defmodule Portal.Repo.Seeds do
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_serial: "FVFHF246Q72Z",
-          device_uuid: "#{Ecto.UUID.generate()}"
+          device_uuid: "#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.14",
+          ipv6: "fd00:2021:1111::14"
         },
         admin_subject,
         admin_client_token.id,
         @ua_macos
+      )
+
+    pool_member_firezone_id = System.get_env("POOL_MEMBER_FIREZONE_ID", Ecto.UUID.generate())
+
+    {:ok, pool_member_device} =
+      create_client(
+        %{
+          name: "CI Pool Member",
+          firezone_id: pool_member_firezone_id,
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "POOL-#{Ecto.UUID.generate()}",
+          # Pinned so the static-device-pool test can target a known tun IP.
+          ipv4: "100.64.0.2",
+          ipv6: "fd00:2021:1111::2"
+        },
+        pool_member_subject,
+        pool_member_token.id,
+        @ua_pool_member
       )
 
     admin_encoded_client_token = Authentication.encode_fragment!(admin_client_token)
@@ -1086,14 +1157,16 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{site.name} token: #{gateway_encoded_token}")
     IO.puts("")
 
-    # Create gateway directly
+    # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, gateway1} =
       create_gateway(
         %{
           site_id: site.id,
           firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
-          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          ipv4: "100.64.0.20",
+          ipv6: "fd00:2021:1111::20"
         },
         %Authentication.Context{
           type: :gateway,
@@ -1102,14 +1175,15 @@ defmodule Portal.Repo.Seeds do
         }
       )
 
-    # Create another gateway
     {:ok, gateway2} =
       create_gateway(
         %{
           site_id: site.id,
           firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
-          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          ipv4: "100.64.0.21",
+          ipv6: "fd00:2021:1111::21"
         },
         %Authentication.Context{
           type: :gateway,
@@ -1119,14 +1193,15 @@ defmodule Portal.Repo.Seeds do
       )
 
     for i <- 1..10 do
-      # Create more gateways
       {:ok, _gateway} =
         create_gateway(
           %{
             site_id: site.id,
             firezone_id: Ecto.UUID.generate(),
             name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
-            public_key: :crypto.strong_rand_bytes(32) |> Base.encode64()
+            public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+            ipv4: "100.64.0.#{30 + i}",
+            ipv6: "fd00:2021:1111::#{30 + i}"
           },
           %Authentication.Context{
             type: :gateway,
@@ -1320,6 +1395,26 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, pool_resource} =
+      create_resource(
+        %{
+          type: :static_device_pool,
+          name: "CI Static Pool",
+          address_description: "CI integration test static device pool",
+          site_id: site.id,
+          filters: []
+        },
+        admin_subject
+      )
+
+    %Portal.StaticDevicePoolMember{
+      account_id: account.id,
+      resource_id: pool_resource.id,
+      device_id: pool_member_device.id,
+      device_type: :client
+    }
+    |> Repo.insert!()
+
     IO.puts("Created resources:")
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
@@ -1475,6 +1570,17 @@ defmodule Portal.Repo.Seeds do
           description: "Synced Group Access To **.httpbin.search.test",
           group_id: synced_group.id,
           resource_id: search_domain_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "All Access To CI Static Pool",
+          # synced_group, not everyone_group: service accounts don't auto-join Everyone.
+          group_id: synced_group.id,
+          resource_id: pool_resource.id
         },
         admin_subject
       )

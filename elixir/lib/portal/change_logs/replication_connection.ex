@@ -13,13 +13,13 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     "accounts" => Portal.Account,
     "actors" => Portal.Actor,
     "api_tokens" => Portal.APIToken,
-    "auth_providers" => Portal.AuthProvider,
+    "client_sessions" => Portal.ClientSession,
     "devices" => Portal.Device,
-    "directories" => Portal.Directory,
     "email_otp_auth_providers" => Portal.EmailOTP.AuthProvider,
     "entra_auth_providers" => Portal.Entra.AuthProvider,
     "entra_directories" => Portal.Entra.Directory,
     "external_identities" => Portal.ExternalIdentity,
+    "gateway_sessions" => Portal.GatewaySession,
     "gateway_tokens" => Portal.GatewayToken,
     "google_auth_providers" => Portal.Google.AuthProvider,
     "google_directories" => Portal.Google.Directory,
@@ -53,13 +53,6 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     # Remove the subject for the new transaction
     Map.delete(state, :current_subject)
   end
-
-  # Ignore token writes for relays since these are not expected to have an account_id
-  def on_write(state, _lsn, _op, "tokens", %{"type" => "relay"}, _data), do: state
-  def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay"}), do: state
-
-  # Global suppression rows are not account-scoped and should not enter account audit logs.
-  def on_write(state, _lsn, _op, "email_suppressions", _old_data, _data), do: state
 
   # Handle accounts specially
   def on_write(state, lsn, op, "accounts", %{"id" => account_id} = old_data, data) do

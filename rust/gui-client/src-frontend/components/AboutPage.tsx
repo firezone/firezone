@@ -13,7 +13,7 @@ export default function AboutPage() {
         (<span>{__GIT_VERSION__?.substring(0, 8)}</span>)
       </p>
       <a
-        href="https://docs.firezone.dev"
+        href="https://www.firezone.dev/kb?utm_source=product"
         target="_blank"
         rel="noopener noreferrer"
         className="text-accent-450 hover:underline text-sm"

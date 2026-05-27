@@ -187,8 +187,9 @@ impl StubPortal {
     }
 
     /// Resolves a device-pool domain (e.g. `device0.pool.example.com`) to the
-    /// tunnel IPv4 of the matching client, if the label corresponds to a known device.
-    pub(crate) fn resolve_device_pool_domain(&self, domain: &str) -> Option<Ipv4Addr> {
+    /// tunnel IPv4 + IPv6 of the matching client, if the label corresponds to a known
+    /// device.
+    pub(crate) fn resolve_device_pool_domain(&self, domain: &str) -> Option<(Ipv4Addr, Ipv6Addr)> {
         let label = domain.split_once('.')?.0;
 
         let client = self
@@ -196,7 +197,7 @@ impl StubPortal {
             .values()
             .find(|c| c.device_label.as_str() == label)?;
 
-        Some(client.ipv4)
+        Some((client.ipv4, client.ipv6))
     }
 
     pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
@@ -384,6 +385,18 @@ impl StubPortal {
         let pool = self.static_device_pool_resources.get_mut(&pool_id)?;
         pool.devices = new_devices;
         Some(pool.clone())
+    }
+
+    pub(crate) fn static_device_pool_filters(
+        &self,
+        pool_id: ResourceId,
+    ) -> Option<Vec<crate::messages::Filter>> {
+        Some(
+            self.static_device_pool_resources
+                .get(&pool_id)?
+                .filters
+                .clone(),
+        )
     }
 
     pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {

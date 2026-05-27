@@ -129,6 +129,8 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     google_directories
     devices
     sites
+    client_sessions
+    gateway_sessions
     gateway_tokens
     policies
     resources
@@ -362,7 +364,7 @@ config :portal,
 
 config :portal, country_code_blocklist: []
 
-config :portal, PortalWeb.Plugs.PutCSPHeader,
+config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",

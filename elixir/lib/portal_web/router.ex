@@ -119,6 +119,9 @@ defmodule PortalWeb.Router do
     get "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
     post "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
 
+    # OIDC proof-of-email-ownership verification
+    post "/sign_in/oidc/:auth_provider_id/verify_identity", OIDCController, :verify_identity
+
     # Userpass auth entry point
     post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
 
@@ -143,6 +146,18 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
+    end
+
+    live_session :pending_identity_verify,
+      session: {PortalWeb.Cookie.PendingIdentity, :fetch_state, []},
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        PortalWeb.LiveHooks.FetchSubject,
+        PortalWeb.LiveHooks.RedirectIfAuthenticated
+      ] do
+      live "/sign_in/oidc/:auth_provider_id/verify_identity", SignIn.Email, :pending_identity
     end
 
     # OIDC auth entry point (placed after LiveView routes to avoid conflicts)

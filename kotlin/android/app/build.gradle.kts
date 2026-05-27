@@ -8,8 +8,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "8.4.0"
-    id("com.google.firebase.appdistribution")
+    id("com.diffplug.spotless") version "8.5.1"
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
 
@@ -125,13 +124,6 @@ android {
             buildConfigField("String", "AUTH_URL", "\"https://app.firezone.dev\"")
             buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
             buildConfigField("String", "LOG_FILTER", "\"info\"")
-            firebaseAppDistribution {
-                serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
-                artifactType = "AAB"
-                releaseNotes = "https://www.firezone.dev/changelog"
-                groups = "firezone-engineering"
-                artifactPath = "app/build/outputs/bundle/release/app-release.aab"
-            }
         }
     }
 
@@ -210,7 +202,7 @@ dependencies {
     implementation("com.squareup.moshi:moshi:1.15.2")
 
     // Gson
-    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("com.google.code.gson:gson:2.14.0")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
@@ -221,7 +213,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.9")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.12.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -233,7 +225,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.18.1@aar")
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.38.0")
+    implementation("io.sentry:sentry-android:8.40.0")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
@@ -263,6 +255,37 @@ val cargoTargetDir: String by lazy {
         )
 }
 
+// Resolve the target Android ABI from the `android.injected.build.abi` Gradle property,
+// injected by Android Studio when launching on a connected device (comma-separated, preferred
+// ABI first) and passed explicitly by `mise-tasks/install-phone.sh`. When unset (e.g. plain
+// `assembleDebug` or CI), build all ABIs.
+val targetAndroidAbi: String? =
+    providers
+        .gradleProperty("android.injected.build.abi")
+        .orNull
+        ?.split(",")
+        ?.firstOrNull()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+fun androidAbiToCargoTarget(abi: String): String =
+    when (abi) {
+        "arm64-v8a" -> "arm64"
+        "armeabi-v7a" -> "arm"
+        "x86" -> "x86"
+        "x86_64" -> "x86_64"
+        else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
+    }
+
+fun androidAbiToRustTriple(abi: String): String =
+    when (abi) {
+        "arm64-v8a" -> "aarch64-linux-android"
+        "armeabi-v7a" -> "armv7-linux-androideabi"
+        "x86" -> "i686-linux-android"
+        "x86_64" -> "x86_64-linux-android"
+        else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
+    }
+
 cargo {
     if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
         profile = "release"
@@ -275,12 +298,8 @@ cargo {
     module = "../../../rust/client-ffi"
     libname = "connlib"
     targets =
-        listOf(
-            "arm64",
-            "x86_64",
-            "x86",
-            "arm",
-        )
+        targetAndroidAbi?.let { listOf(androidAbiToCargoTarget(it)) }
+            ?: listOf("arm64", "x86_64", "x86", "arm")
     targetDirectory = cargoTargetDir
 }
 
@@ -303,9 +322,12 @@ val generateUniffiBindings =
 
         val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
 
-        // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
-        // all the same from the bindings PoV.
-        val inputFile = file("$cargoTargetDir/x86_64-linux-android/$profile/libconnlib.so")
+        // UniFFI bindings are identical across ABIs, so we only need one libconnlib.so as input.
+        // Point this task at an ABI that actually gets built when callers narrow the target list
+        // via `android.injected.build.abi`. Defaults to x86_64 so the all-ABI build keeps working.
+        val rustTargetTriple =
+            targetAndroidAbi?.let { androidAbiToRustTriple(it) } ?: "x86_64-linux-android"
+        val inputFile = file("$cargoTargetDir/$rustTargetTriple/$profile/libconnlib.so")
 
         inputs.file(inputFile)
         outputs.dir(outDir)
@@ -327,10 +349,6 @@ val generateUniffiBindings =
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
-}
-
-tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {
-    dependsOn("processReleaseGoogleServices")
 }
 
 kapt {

@@ -67,13 +67,25 @@ defmodule Portal.MembershipFixtures do
     {:ok, membership} =
       %Portal.Membership{}
       |> Ecto.Changeset.cast(membership_attrs, [
-        :last_synced_at,
         :account_id,
         :actor_id,
         :group_id
       ])
       |> Portal.Membership.changeset()
       |> Portal.Repo.insert()
+
+    # If synced_at was provided, create a sync state record
+    if synced_at = Map.get(membership_attrs, :synced_at) do
+      %Portal.MembershipSyncState{
+        membership_id: membership.id,
+        account_id: account.id,
+        synced_at: synced_at
+      }
+      |> Portal.Repo.insert!(
+        on_conflict: {:replace, [:synced_at]},
+        conflict_target: [:account_id, :membership_id]
+      )
+    end
 
     membership
   end
@@ -82,7 +94,7 @@ defmodule Portal.MembershipFixtures do
   Generate a synced membership (from identity provider).
   """
   def synced_membership_fixture(attrs \\ %{}) do
-    membership_fixture(Map.put(attrs, :last_synced_at, DateTime.utc_now()))
+    membership_fixture(Map.put(attrs, :synced_at, DateTime.utc_now()))
   end
 
   @doc """

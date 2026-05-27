@@ -1,15 +1,19 @@
 use core::fmt;
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque, btree_map},
-    hash::Hash,
+    collections::{BTreeMap, VecDeque, btree_map},
     mem,
     time::{Duration, Instant},
 };
 
+/// Sentinel TTL used by callers that don't have an explicit expiry. Picked
+/// large enough to behave like "never" within any realistic session
+/// lifetime, small enough that `Instant + Duration` doesn't overflow.
+pub const NEVER_EXPIRES_TTL: Duration = Duration::from_secs(60 * 60 * 24 * 365 * 100);
+
 /// A map that automatically removes entries after a given expiration time.
 #[derive(Debug)]
 pub struct ExpiringMap<K, V> {
-    inner: HashMap<K, Entry<V>>,
+    inner: BTreeMap<K, Entry<V>>,
     expiration: BTreeMap<Instant, Vec<K>>,
 
     events: VecDeque<Event<K, V>>,
@@ -18,7 +22,7 @@ pub struct ExpiringMap<K, V> {
 impl<K, V> Default for ExpiringMap<K, V> {
     fn default() -> Self {
         Self {
-            inner: HashMap::default(),
+            inner: BTreeMap::default(),
             expiration: BTreeMap::default(),
             events: VecDeque::default(),
         }
@@ -27,7 +31,7 @@ impl<K, V> Default for ExpiringMap<K, V> {
 
 impl<K, V> ExpiringMap<K, V>
 where
-    K: Hash + Eq + Clone + fmt::Debug,
+    K: Ord + Clone + fmt::Debug,
     V: fmt::Debug,
 {
     pub fn insert(
@@ -60,6 +64,46 @@ where
         self.inner.get(key)
     }
 
+    /// Mutable access to the value alone — never the expiry. Mutating the
+    /// value can't perturb the expiration index, so callers don't have to
+    /// re-bucket anything.
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+        self.inner.get_mut(key).map(|e| &mut e.value)
+    }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.inner.contains_key(key)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.inner.iter().map(|(k, e)| (k, &e.value))
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.inner.values().map(|e| &e.value)
+    }
+
+    /// Push back (or move forward) the expiration of an existing entry to
+    /// `now + ttl`, re-bucketing it in the expiration index. Returns `true`
+    /// if the entry exists.
+    pub fn update_expiry(&mut self, key: &K, now: Instant, ttl: Duration) -> bool {
+        let new_expiration = now + ttl;
+        let Some(entry) = self.inner.get_mut(key) else {
+            return false;
+        };
+
+        let old_expiration = entry.expires_at;
+        entry.expires_at = new_expiration;
+
+        remove_from_expiration_bucket(&mut self.expiration, key, old_expiration);
+        self.expiration
+            .entry(new_expiration)
+            .or_default()
+            .push(key.clone());
+
+        true
+    }
+
     pub fn remove(&mut self, key: &K) -> Option<Entry<V>> {
         let entry = self.inner.remove(key)?;
         remove_from_expiration_bucket(&mut self.expiration, key, entry.expires_at);
@@ -75,7 +119,7 @@ where
     {
         let expiration = &mut self.expiration;
         self.inner
-            .extract_if(move |k, entry| predicate(k, &entry.value))
+            .extract_if(.., move |k, entry| predicate(k, &entry.value))
             .map(move |(key, entry)| {
                 remove_from_expiration_bucket(expiration, &key, entry.expires_at);
                 (key, entry.value)
@@ -92,7 +136,6 @@ where
         self.events.clear();
     }
 
-    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -352,6 +395,35 @@ mod tests {
             Some(now + Duration::from_secs(1)),
             "expiration index must drop the removed entry"
         );
+    }
+
+    #[test]
+    fn update_expiry_pushes_entry_into_new_bucket() {
+        let mut map = ExpiringMap::default();
+        let now = Instant::now();
+        map.insert("k", 1, now, Duration::from_secs(1));
+
+        let updated = map.update_expiry(&"k", now, Duration::from_secs(10));
+        assert!(updated);
+        assert_eq!(
+            map.get(&"k").unwrap().expires_at,
+            now + Duration::from_secs(10)
+        );
+
+        // Original 1s expiry no longer evicts the entry.
+        map.handle_timeout(now + Duration::from_secs(1));
+        assert!(map.contains_key(&"k"));
+
+        // It expires at the new bucket.
+        map.handle_timeout(now + Duration::from_secs(10));
+        assert!(!map.contains_key(&"k"));
+    }
+
+    #[test]
+    fn update_expiry_returns_false_for_unknown_key() {
+        let mut map = ExpiringMap::<&'static str, ()>::default();
+        let updated = map.update_expiry(&"nope", Instant::now(), Duration::from_secs(1));
+        assert!(!updated);
     }
 
     #[test]

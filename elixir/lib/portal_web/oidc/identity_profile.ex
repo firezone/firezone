@@ -5,6 +5,8 @@ defmodule PortalWeb.OIDC.IdentityProfile do
 
   alias Portal.ExternalIdentity
 
+  defstruct [:email, :idp_id, :issuer, :profile_attrs, :email_verified]
+
   @idp_fields ~w[
     email
     issuer
@@ -19,17 +21,18 @@ defmodule PortalWeb.OIDC.IdentityProfile do
     picture
   ]a
 
-  @type t :: %{
+  @type t :: %__MODULE__{
           email: String.t() | nil,
           idp_id: String.t() | nil,
           issuer: String.t() | nil,
           profile_attrs: map(),
-          email_verified: boolean()
+          email_verified: :verified | :unverified | :missing
         }
 
   @spec build(map(), map(), Ecto.UUID.t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
   def build(claims, userinfo, account_id, opts \\ []) do
-    email = resolve_email(claims, Keyword.get(opts, :email_claim))
+    userinfo = PortalWeb.OIDC.matching_userinfo(claims, userinfo)
+    email = resolve_email(claims, Keyword.get(opts, :email_claim)) |> trim_email()
     idp_id = claims["oid"] || claims["sub"]
     issuer = claims["iss"]
 
@@ -48,21 +51,17 @@ defmodule PortalWeb.OIDC.IdentityProfile do
     case validate_upsert_attrs(attrs) do
       %{valid?: true} ->
         {:ok,
-         %{
+         %__MODULE__{
            email: email,
            idp_id: idp_id,
            issuer: issuer,
            profile_attrs: profile_attrs,
-           email_verified: email_verified?(claims, userinfo)
+           email_verified: PortalWeb.OIDC.email_verified_status(claims, userinfo)
          }}
 
       changeset ->
         {:error, changeset}
     end
-  end
-
-  defp email_verified?(claims, userinfo) do
-    (claims["email_verified"] || userinfo["email_verified"]) == true
   end
 
   defp validate_upsert_attrs(attrs) do
@@ -84,6 +83,10 @@ defmodule PortalWeb.OIDC.IdentityProfile do
 
   defp resolve_email(claims, nil), do: claims["email"]
   defp resolve_email(claims, email_claim), do: claims[email_claim]
+
+  defp trim_email(email) when is_binary(email), do: String.trim(email)
+
+  defp trim_email(email), do: email
 
   defp extract_profile_attrs(claims, userinfo) do
     Map.merge(claims, userinfo)

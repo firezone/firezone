@@ -240,7 +240,18 @@ defmodule PortalWeb.SitesTest do
       actor: actor
     } do
       site = site_fixture(account: account)
-      gateway = gateway_fixture(account: account, site: site, name: "edge-sfo-1")
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "edge-sfo-1",
+          last_seen_remote_ip: {198, 51, 100, 20},
+          last_seen_remote_ip_location_region: "US",
+          last_seen_remote_ip_location_city: "San Francisco",
+          last_seen_remote_ip_location_lat: 37.7749,
+          last_seen_remote_ip_location_lon: -122.4194
+        )
 
       {:ok, lv, _html} =
         conn
@@ -251,6 +262,11 @@ defmodule PortalWeb.SitesTest do
       assert html =~ gateway.name
 
       html = render_click(lv, "toggle_gateway_expand", %{"id" => gateway.id})
+      assert html =~ "Remote IP"
+      assert html =~ "198.51.100.20"
+      assert html =~ "San Francisco"
+      assert html =~ "United States of America"
+      assert html =~ "google.com/maps/place/37.7749,-122.4194"
       assert html =~ "Tunnel IPv4"
       assert html =~ gateway.latest_session.version
 
@@ -386,6 +402,22 @@ defmodule PortalWeb.SitesTest do
 
       render_click(lv, "select_site", %{"id" => site_b.id})
       assert_patch(lv, ~p"/#{account}/sites/#{site_b.id}")
+    end
+
+    test "patches to sites index with flash when site does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/sites/#{missing_id}")
+
+      assert to == ~p"/#{account}/sites"
+      assert flash["error"] =~ "Site does not exist"
     end
   end
 

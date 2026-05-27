@@ -1,0 +1,152 @@
+use std::io;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::ffi::OsStrExt as _;
+use std::path::PathBuf;
+
+use anyhow::{Context as _, Result, bail};
+use tokio::net::UnixStream;
+
+#[derive(Debug)]
+pub struct AllowedPeer {
+    exe: PathBuf,
+}
+
+impl AllowedPeer {
+    /// The packaged GUI binary — the only peer the tunnel daemon accepts
+    /// in production.
+    #[cfg(not(test))]
+    pub fn firezone_gui_client() -> Self {
+        Self {
+            exe: PathBuf::from("/usr/bin/firezone-client-gui"),
+        }
+    }
+
+    /// Allowlist the currently-running test binary so the controller tests
+    /// can connect to themselves.
+    #[cfg(test)]
+    pub fn for_current_exe() -> Self {
+        // Use the raw `/proc/self/exe` target (no canonicalisation) so it
+        // matches what `verify` reads for the peer.
+        let exe = std::env::current_exe().expect("test binary must have an exe path");
+        Self { exe }
+    }
+
+    /// Verify the peer of `stream` and return the stream on accept, or an
+    /// `anyhow::Error` describing why on reject.
+    ///
+    /// Steps:
+    ///   1. `getsockopt(SO_PEERPIDFD)` to obtain a pidfd pinned to the peer
+    ///      process. On `ENOPROTOOPT` the kernel is too old to support
+    ///      pidfds; we log a debug line and accept anyway since there is
+    ///      no better signal.
+    ///   2. Read the peer's `Pid` from `/proc/self/fdinfo/<pidfd>` — the
+    ///      pidfd keeps the PID from being reused.
+    ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
+    ///      it `(deleted)`.
+    ///   4. Compare the resolved path against the allowlisted path.
+    ///
+    /// `/proc/<pid>/exe` is already a kernel-resolved absolute path with no
+    /// symlink components, so we compare it directly rather than running it
+    /// through `std::fs::canonicalize`. Canonicalising would re-`stat` every
+    /// path component, which fails with `EACCES` when the daemon's systemd
+    /// sandbox (`ProtectHome=true`) hides a peer that lives under `/home`.
+    pub fn verify(&self, stream: UnixStream) -> Result<UnixStream> {
+        let pidfd = match peer_pidfd(stream.as_raw_fd()) {
+            Ok(fd) => fd,
+            Err(error) if error.raw_os_error() == Some(libc::ENOPROTOOPT) => {
+                tracing::debug!(
+                    "Kernel does not support SO_PEERPIDFD; accepting peer without binary verification"
+                );
+                return Ok(stream);
+            }
+            Err(error) => {
+                return Err(error).context("Couldn't get peer pidfd via SO_PEERPIDFD");
+            }
+        };
+
+        let peer_pid = read_pid_from_fdinfo(pidfd.as_raw_fd())
+            .context("Couldn't read peer PID from /proc/self/fdinfo")?;
+        let exe_link = format!("/proc/{peer_pid}/exe");
+        let target = std::fs::read_link(&exe_link)
+            .with_context(|| format!("Couldn't readlink {exe_link}"))?;
+
+        if target.as_os_str().as_bytes().ends_with(b" (deleted)") {
+            bail!(
+                "Peer's executable `{}` has been deleted from disk",
+                target.display()
+            );
+        }
+
+        if target != self.exe {
+            bail!(
+                "Peer's executable `{}` does not match the expected GUI binary `{}`",
+                target.display(),
+                self.exe.display(),
+            );
+        }
+
+        Ok(stream)
+    }
+}
+
+fn peer_pidfd(socket_fd: RawFd) -> io::Result<OwnedFd> {
+    let mut raw: libc::c_int = -1;
+    let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+
+    // SAFETY: `raw` and `len` are stack-allocated; the kernel writes
+    // `c_int`-sized data when the call succeeds.
+    let ret = unsafe {
+        libc::getsockopt(
+            socket_fd,
+            libc::SOL_SOCKET,
+            libc::SO_PEERPIDFD,
+            std::ptr::from_mut(&mut raw).cast(),
+            &mut len,
+        )
+    };
+
+    if ret == -1 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // SAFETY: the kernel returned a fresh fd; nothing else owns it.
+    Ok(unsafe { OwnedFd::from_raw_fd(raw) })
+}
+
+fn read_pid_from_fdinfo(pidfd: RawFd) -> io::Result<libc::pid_t> {
+    let contents = std::fs::read_to_string(format!("/proc/self/fdinfo/{pidfd}"))?;
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("Pid:")?.trim().parse().ok())
+        .ok_or_else(|| io::Error::other("missing or unparsable `Pid:` field in fdinfo"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn verify_accepts_matching_peer_and_rejects_others() {
+        let (a, b) = tokio::net::UnixStream::pair().expect("UnixStream::pair failed");
+
+        let probe = peer_pidfd(a.as_raw_fd());
+        if let Err(error) = &probe
+            && error.raw_os_error() == Some(libc::ENOPROTOOPT)
+        {
+            tracing::info!("Kernel does not support SO_PEERPIDFD; skipping test");
+            return;
+        }
+
+        let expected = AllowedPeer::for_current_exe();
+        let b = expected.verify(b).expect("self should verify");
+
+        let other = AllowedPeer {
+            exe: PathBuf::from("/nonexistent/binary"),
+        };
+        let err = other.verify(b).expect_err("expected rejection");
+        assert!(
+            format!("{err:#}").contains("does not match the expected GUI binary"),
+            "unexpected error message: {err:#}"
+        );
+    }
+}

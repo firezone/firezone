@@ -1,12 +1,9 @@
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
-import _Page from "./_page";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Deploy Firezone on GCP • Firezone Docs",
-  description:
-    "Example Terraform configuration to deploy Firezone on Google Cloud Platform.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
-  return <_Page />;
+  return <Content />;
 }

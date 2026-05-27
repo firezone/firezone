@@ -1,0 +1,10 @@
+Account Deletion Complete
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has been permanently deleted.
+
+The account and its associated data are no longer available.
+
+If you did not expect this change, please contact support@firezone.dev immediately.
+
+Thanks,
+The Firezone Team

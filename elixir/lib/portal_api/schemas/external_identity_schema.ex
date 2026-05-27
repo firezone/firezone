@@ -33,7 +33,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
         profile: %Schema{type: :string, description: "Profile URL"},
         picture: %Schema{type: :string, description: "Profile picture URL"},
         firezone_avatar_url: %Schema{type: :string, description: "Firezone-hosted avatar URL"},
-        last_synced_at: %Schema{
+        synced_at: %Schema{
           type: :string,
           format: :"date-time",
           description: "Last sync timestamp"
@@ -56,7 +56,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
         "given_name" => "John",
         "family_name" => "Doe",
         "picture" => "https://example.com/avatar.jpg",
-        "last_synced_at" => "2025-01-15T12:34:56.789Z",
+        "synced_at" => "2025-01-15T12:34:56.789Z",
         "inserted_at" => "2025-01-15T12:34:56.789Z"
       }
     })
@@ -107,7 +107,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
           "given_name" => "John",
           "family_name" => "Doe",
           "picture" => "https://example.com/avatar.jpg",
-          "last_synced_at" => "2025-01-15T12:34:56.789Z",
+          "synced_at" => "2025-01-15T12:34:56.789Z",
           "inserted_at" => "2025-01-15T12:34:56.789Z"
         }
       }
@@ -144,7 +144,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
             "given_name" => "John",
             "family_name" => "Doe",
             "picture" => "https://example.com/avatar1.jpg",
-            "last_synced_at" => "2025-01-15T12:34:56.789Z",
+            "synced_at" => "2025-01-15T12:34:56.789Z",
             "inserted_at" => "2025-01-15T12:34:56.789Z"
           },
           %{
@@ -158,7 +158,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
             "given_name" => "Jane",
             "family_name" => "Smith",
             "picture" => "https://example.com/avatar2.jpg",
-            "last_synced_at" => "2025-01-15T11:22:33.456Z",
+            "synced_at" => "2025-01-15T11:22:33.456Z",
             "inserted_at" => "2025-01-15T11:22:33.456Z"
           }
         ],

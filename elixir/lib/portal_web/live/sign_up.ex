@@ -343,7 +343,7 @@ defmodule PortalWeb.SignUp do
         <div class="flex justify-between items-baseline">
           <dt class="text-xs font-medium text-[var(--text-secondary)]">Sign In URL</dt>
           <dd class="text-sm">
-            <.link class={[link_style()]} navigate={~p"/#{@account}"}>
+            <.link class={[link_style()]} href={~p"/#{@account}"}>
               {url(~p"/#{@account}")}
             </.link>
           </dd>
@@ -781,7 +781,7 @@ defmodule PortalWeb.SignUp do
        ) do
     case Database.find_account_by_owner_email(email) do
       %Portal.Account{} = account ->
-        push_navigate(socket, to: ~p"/#{account}/sign_in")
+        redirect(socket, to: ~p"/#{account}/sign_in")
 
       nil ->
         registration = %{

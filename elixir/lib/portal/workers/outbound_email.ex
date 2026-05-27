@@ -13,21 +13,10 @@ defmodule Portal.Workers.OutboundEmail do
     email =
       request
       |> deserialize()
-      |> put_acs_client_options()
       |> put_operation_id(job_id)
 
     result = Mailer.deliver_secondary(email)
     persist_delivery_result(result, account_id, email)
-  end
-
-  defp put_acs_client_options(%Swoosh.Email{} = email) do
-    req_opts = Portal.Config.fetch_env!(:portal, Portal.Mailer.Secondary)[:req_opts] || []
-
-    if req_opts == [] do
-      email
-    else
-      Swoosh.Email.put_private(email, :client_options, req_opts)
-    end
   end
 
   defp persist_delivery_result({:ok, response}, account_id, email) do

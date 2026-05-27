@@ -1,6 +1,41 @@
 "use client";
 import { Tabs, TabItem } from "flowbite-react";
+import type { TabItemProps as FlowbiteTabItemProps } from "flowbite-react";
 import type { CustomFlowbiteTheme } from "flowbite-react/types";
+import { Children, isValidElement } from "react";
+import type { ReactNode } from "react";
+import {
+  FaAndroid,
+  FaApple,
+  FaDocker,
+  FaLinux,
+  FaUbuntu,
+  FaWindows,
+} from "react-icons/fa";
+import { HiCommandLine, HiServerStack } from "react-icons/hi2";
+
+// Icons are looked up by string key rather than passed as component refs.
+// Server components rendering MDX cannot pass function props (component
+// references) into client components — RSC serialization rejects them.
+// Using a string keeps the prop serializable so callers in server-rendered
+// MDX (page.tsx → MDX → <TabsItem>) work without a "use client" page wrapper.
+const TABS_ICONS = {
+  android: FaAndroid,
+  apple: FaApple,
+  commandLine: HiCommandLine,
+  docker: FaDocker,
+  linux: FaLinux,
+  serverStack: HiServerStack,
+  ubuntu: FaUbuntu,
+  windows: FaWindows,
+} as const;
+
+export type TabsItemIcon = keyof typeof TABS_ICONS;
+type TabsItemProps = Omit<FlowbiteTabItemProps, "icon" | "title"> & {
+  children: ReactNode;
+  icon?: TabsItemIcon;
+  title: FlowbiteTabItemProps["title"];
+};
 
 const customTheme: CustomFlowbiteTheme["tabs"] = {
   base: "flex flex-col gap-2",
@@ -60,48 +95,40 @@ const customTheme: CustomFlowbiteTheme["tabs"] = {
   tabpanel: "p-3",
 };
 
-function TabsGroup({ children }: { children: React.ReactNode }) {
+function iconComponent(icon?: TabsItemIcon) {
+  return icon ? TABS_ICONS[icon] : undefined;
+}
+
+function tabItemFromChild(child: ReactNode) {
+  if (!isValidElement<TabsItemProps>(child)) {
+    return null;
+  }
+
+  const { children, icon, ...props } = child.props;
+
+  return (
+    <TabItem {...props} icon={iconComponent(icon)}>
+      {children}
+    </TabItem>
+  );
+}
+
+function TabsGroup({ children }: { children: ReactNode }) {
   return (
     <div className="mb-8">
       <Tabs theme={customTheme} variant="underline">
-        {children}
+        {Children.map(children, tabItemFromChild)}
       </Tabs>
     </div>
   );
 }
 
-function TabsItem({
-  children,
-  title,
-  icon,
-  ...props
-}: {
-  children: React.ReactNode;
-  title: string;
-  icon?: FlowbiteIcon;
-}) {
+function TabsItem({ children, title, icon, ...props }: TabsItemProps) {
   return (
-    <TabItem title={title} icon={icon} {...props}>
+    <TabItem title={title} icon={iconComponent(icon)} {...props}>
       {children}
     </TabItem>
   );
 }
 
 export { TabsGroup, TabsItem };
-
-// Nastiness needed because of Flowbite Typescript
-// See https://github.com/themesberg/flowbite-react/issues/1359
-//
-export type IconSVGProps = React.PropsWithoutRef<
-  React.SVGProps<SVGSVGElement>
-> &
-  React.RefAttributes<SVGSVGElement>;
-export type FlowbiteIconProps = IconSVGProps & {
-  title?: string;
-  titleId?: string;
-};
-
-export type FlowbiteIcon = React.FC<
-  Omit<React.SVGProps<SVGSVGElement>, "ref">
-> &
-  FlowbiteIconProps;

@@ -3,11 +3,11 @@
 source "./scripts/tests/lib.sh"
 
 # Download 10MB at a max rate of 1MB/s. The first two UDP socket writes will fail as checksum offload is disabled.
-# This means it will take 13 seconds + the resent STUN binding request round trip time.
+# Budget: 10s for the download + 5s pre-roam wait + ~7s reconnect overhead + buffer.
 client sh -c \
     "curl \
         --fail \
-        --max-time 16 \
+        --max-time 25 \
         --keepalive-time 1 \
         --limit-rate 1000000 \
         --output download.file \
@@ -17,9 +17,9 @@ DOWNLOAD_PID=$!
 
 sleep 5 # Download a bit
 
-docker network disconnect firezone_client-internal firezone-client-1 # Disconnect the client
+docker network disconnect firezone_client-1-internal firezone-client-1-1 # Disconnect the client
 sleep 3
-docker network connect firezone_client-internal firezone-client-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
+docker network connect firezone_client-1-internal firezone-client-1-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
 
 # Add static route to internet subnet via router; they get removed when the network interface disappears
 client ip -4 route add 203.0.113.0/24 via 172.30.0.254
@@ -41,6 +41,16 @@ computed_checksum=$(client sha256sum download.file | awk '{ print $1 }')
 
 if [[ "$computed_checksum" != "$known_checksum" ]]; then
     echo "Checksum of downloaded file does not match"
+    exit 1
+fi
+
+# Assert the roam itself was fast. The download budget above is generous to
+# accommodate TCP slow-start after the disconnect, but the Firezone-side
+# recovery (ICE renegotiation + TURN allocate + WireGuard handshake) should
+# stay well under a second. Catch regressions here, not via the curl timeout.
+handshake_ms=$(last_wg_handshake_ms)
+if [ "$handshake_ms" -gt 2000 ]; then
+    echo "Roam took too long: WireGuard handshake completed ${handshake_ms}ms after intent (budget: 2000ms)"
     exit 1
 fi
 

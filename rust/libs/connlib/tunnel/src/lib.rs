@@ -10,7 +10,7 @@
 use crate::unroutable_packet::RoutingError;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceList,
 };
 use dns_types::DomainName;
 use eventloop_budget::Budget;
@@ -31,6 +31,7 @@ use std::{
 use tun::Tun;
 
 mod client;
+mod conn_track;
 mod dns;
 mod expiring_map;
 mod filter_engine;
@@ -51,6 +52,7 @@ mod sockets;
 #[allow(clippy::unwrap_in_result)]
 mod tests;
 mod unique_packet_buffer;
+mod unix_ts;
 mod unroutable_packet;
 mod utils;
 
@@ -231,7 +233,6 @@ impl ClientTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
-                now_utc: _,
                 timeout,
                 dns_response,
                 tcp_dns_queries: _,
@@ -406,7 +407,6 @@ impl GatewayTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
-                now_utc,
                 timeout,
                 dns_response,
                 tcp_dns_queries,
@@ -448,7 +448,7 @@ impl GatewayTunnel {
                 }
 
                 if timeout {
-                    self.role_state.handle_timeout(now, now_utc);
+                    self.role_state.handle_timeout(now);
                     tick.want_continue();
                 }
 
@@ -615,9 +615,10 @@ pub enum ClientEvent {
         resource_id: ResourceId,
         domain: DomainName,
     },
-    /// The list of resources has changed and UI clients may have to be updated.
+    /// The list of resources or connected device peers has changed; UI clients
+    /// may have to be updated.
     ResourcesChanged {
-        resources: Vec<ResourceView>,
+        resources: ResourceList,
     },
     DnsRecordsChanged {
         records: BTreeSet<DnsResourceRecord>,

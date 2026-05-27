@@ -582,8 +582,6 @@ defmodule Portal.Google.SyncTest do
       directory = google_directory_fixture(account: account, domain: "example.com")
 
       # Create an old identity that should be deleted
-      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
-
       {:ok, old_actor} =
         %Portal.Actor{
           type: :account_user,
@@ -601,8 +599,7 @@ defmodule Portal.Google.SyncTest do
           directory_id: directory.id,
           idp_id: "old_user",
           email: "old@example.com",
-          issuer: "https://accounts.google.com",
-          last_synced_at: old_synced_at
+          issuer: "https://accounts.google.com"
         }
         |> Repo.insert()
 
@@ -661,7 +658,6 @@ defmodule Portal.Google.SyncTest do
     test "skips suspended and archived users and removes their stale identities" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
-      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
 
       for {email, idp_id} <- [
             {"suspended@example.com", "suspended_user"},
@@ -684,8 +680,7 @@ defmodule Portal.Google.SyncTest do
             directory_id: directory.id,
             idp_id: idp_id,
             email: email,
-            issuer: "https://accounts.google.com",
-            last_synced_at: old_synced_at
+            issuer: "https://accounts.google.com"
           }
           |> Repo.insert()
       end
@@ -1584,9 +1579,7 @@ defmodule Portal.Google.SyncTest do
           group_sync_mode: :disabled
         )
 
-      # Pre-existing group with stale last_synced_at
-      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
-
+      # Pre-existing group with no sync_state row → considered stale
       {:ok, existing_group} =
         %Portal.Group{
           id: Ecto.UUID.generate(),
@@ -1596,7 +1589,6 @@ defmodule Portal.Google.SyncTest do
           name: "DevOps",
           type: :static,
           entity_type: :group,
-          last_synced_at: old_synced_at
         }
         |> Repo.insert()
 
@@ -1629,8 +1621,6 @@ defmodule Portal.Google.SyncTest do
           orgunit_sync_enabled: false
         )
 
-      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
-
       {:ok, existing_ou} =
         %Portal.Group{
           id: Ecto.UUID.generate(),
@@ -1640,7 +1630,6 @@ defmodule Portal.Google.SyncTest do
           name: "Engineering",
           type: :static,
           entity_type: :org_unit,
-          last_synced_at: old_synced_at
         }
         |> Repo.insert()
 
@@ -1673,8 +1662,6 @@ defmodule Portal.Google.SyncTest do
           orgunit_sync_enabled: false
         )
 
-      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
-
       {:ok, existing_group} =
         %Portal.Group{
           id: Ecto.UUID.generate(),
@@ -1684,7 +1671,6 @@ defmodule Portal.Google.SyncTest do
           name: "DevOps",
           type: :static,
           entity_type: :group,
-          last_synced_at: old_synced_at
         }
         |> Repo.insert()
 
@@ -1697,7 +1683,6 @@ defmodule Portal.Google.SyncTest do
           name: "Engineering",
           type: :static,
           entity_type: :org_unit,
-          last_synced_at: old_synced_at
         }
         |> Repo.insert()
 
@@ -1723,8 +1708,6 @@ defmodule Portal.Google.SyncTest do
           group_sync_mode: :filtered
         )
 
-      old_synced_at = DateTime.add(DateTime.utc_now(), -3600, :second)
-
       # A stale group that does NOT match the firezone-sync prefix
       {:ok, non_matching_group} =
         %Portal.Group{
@@ -1735,7 +1718,6 @@ defmodule Portal.Google.SyncTest do
           name: "DevOps",
           type: :static,
           entity_type: :group,
-          last_synced_at: old_synced_at
         }
         |> Repo.insert()
 
@@ -2279,6 +2261,173 @@ defmodule Portal.Google.SyncTest do
         end)
 
       assert memberships_log =~ "Failed to upsert memberships"
+    end
+
+    test "identity upsert rejects stale synced_at and accepts fresh" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+      issuer = "https://accounts.google.com"
+
+      now = DateTime.utc_now()
+      stale = DateTime.add(now, -3600, :second)
+      future = DateTime.add(now, 3600, :second)
+
+      identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: issuer,
+          idp_id: "monotonic_user",
+          email: "old@example.com",
+          synced_at: now
+        )
+
+      stale_attrs = [
+        %{
+          idp_id: "monotonic_user",
+          email: "stale@example.com",
+          name: nil,
+          given_name: nil,
+          family_name: nil,
+          preferred_username: nil,
+          picture: nil
+        }
+      ]
+
+      assert {:ok, _} =
+               Database.batch_upsert_identities(account.id, directory.id, stale, stale_attrs)
+
+      identity_after_stale =
+        Repo.get_by!(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+
+      assert identity_after_stale.email == "old@example.com"
+
+      sync_state_after_stale =
+        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+
+      assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
+
+      fresh_attrs = [Map.put(hd(stale_attrs), :email, "fresh@example.com")]
+
+      assert {:ok, _} =
+               Database.batch_upsert_identities(account.id, directory.id, future, fresh_attrs)
+
+      identity_after_fresh =
+        Repo.get_by!(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+
+      assert identity_after_fresh.email == "fresh@example.com"
+
+      sync_state_after_fresh =
+        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+
+      assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
+    end
+
+    test "group upsert rejects stale synced_at and accepts fresh" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      now = DateTime.utc_now()
+      stale = DateTime.add(now, -3600, :second)
+      future = DateTime.add(now, 3600, :second)
+
+      group =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "monotonic_group",
+          name: "Original Name",
+          synced_at: now
+        )
+
+      assert {:ok, _} =
+               Database.batch_upsert_groups(
+                 account.id,
+                 directory.id,
+                 stale,
+                 [%{idp_id: "monotonic_group", name: "Stale Name", email: nil}],
+                 :group
+               )
+
+      group_after_stale = Repo.get_by!(Portal.Group, id: group.id, account_id: account.id)
+      assert group_after_stale.name == "Original Name"
+
+      sync_state_after_stale = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
+
+      assert {:ok, _} =
+               Database.batch_upsert_groups(
+                 account.id,
+                 directory.id,
+                 future,
+                 [%{idp_id: "monotonic_group", name: "Fresh Name", email: nil}],
+                 :group
+               )
+
+      group_after_fresh = Repo.get_by!(Portal.Group, id: group.id, account_id: account.id)
+      assert group_after_fresh.name == "Fresh Name"
+
+      sync_state_after_fresh = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
+    end
+
+    test "membership upsert rejects stale synced_at and accepts fresh" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+      issuer = "https://accounts.google.com"
+
+      now = DateTime.utc_now()
+      stale = DateTime.add(now, -3600, :second)
+      future = DateTime.add(now, 3600, :second)
+
+      group =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "monotonic_mem_group"
+        )
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: issuer,
+        idp_id: "monotonic_mem_user"
+      )
+
+      membership =
+        Portal.MembershipFixtures.membership_fixture(
+          account: account,
+          actor: actor,
+          group: group,
+          synced_at: now
+        )
+
+      assert {:ok, _} =
+               Database.batch_upsert_memberships(account.id, directory.id, stale, [
+                 {"monotonic_mem_group", "monotonic_mem_user"}
+               ])
+
+      sync_state_after_stale =
+        Repo.get_by!(Portal.MembershipSyncState, membership_id: membership.id)
+
+      assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
+
+      assert {:ok, _} =
+               Database.batch_upsert_memberships(account.id, directory.id, future, [
+                 {"monotonic_mem_group", "monotonic_mem_user"}
+               ])
+
+      sync_state_after_fresh =
+        Repo.get_by!(Portal.MembershipSyncState, membership_id: membership.id)
+
+      assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
   end
 

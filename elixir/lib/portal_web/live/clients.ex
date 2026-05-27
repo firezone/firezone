@@ -36,49 +36,46 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    tab = parse_client_tab(Map.get(params, "tab", "overview"))
-
-    page =
-      case Integer.parse(Map.get(params, "page", "1")) do
-        {n, ""} when n >= 1 -> n
-        _ -> 1
-      end
-
     socket = handle_live_tables_params(socket, params, uri)
-    client = Database.get_client_for_panel(id, socket.assigns.subject)
 
-    if client do
-      {policy_authorizations, has_next} =
-        Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+    case Database.get_client_for_panel(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_clients_index(socket, "Client does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(selected_client: client)
-       |> assign(show_client_assigns(tab))
-       |> assign(
-         policy_authorizations: policy_authorizations,
-         policy_authorizations_page: page,
-         policy_authorizations_has_next: has_next,
-         policy_authorizations_expanded_id: nil
-       )}
-    else
-      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients")}
+      client ->
+        page = parse_page(params)
+        tab = parse_client_tab(Map.get(params, "tab", "overview"))
+
+        {policy_authorizations, has_next} =
+          Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+
+        {:noreply,
+         socket
+         |> assign(selected_client: client)
+         |> assign(show_client_assigns(tab))
+         |> assign(
+           policy_authorizations: policy_authorizations,
+           policy_authorizations_page: page,
+           policy_authorizations_has_next: has_next,
+           policy_authorizations_expanded_id: nil
+         )}
     end
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    client = Database.get_client_for_panel(id, socket.assigns.subject)
 
-    if client do
-      changeset = Database.change_client(client)
+    case Database.get_client_for_panel(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_clients_index(socket, "Client does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(selected_client: client)
-       |> assign(edit_client_assigns(to_form(changeset)))}
-    else
-      {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients")}
+      client ->
+        changeset = Database.change_client(client)
+
+        {:noreply,
+         socket
+         |> assign(selected_client: client)
+         |> assign(edit_client_assigns(to_form(changeset)))}
     end
   end
 
@@ -259,7 +256,8 @@ defmodule PortalWeb.Clients do
 
   defp client_confirm_state(assigns) do
     %{
-      confirm_delete_client: assigns.client_confirm.delete?
+      confirm_delete_client: assigns.client_confirm.delete?,
+      confirm_unverify_client: assigns.client_confirm.unverify?
     }
   end
 
@@ -271,7 +269,8 @@ defmodule PortalWeb.Clients do
         edit_form: nil
       },
       client_confirm: %{
-        delete?: false
+        delete?: false,
+        unverify?: false
       }
     ]
   end
@@ -289,7 +288,8 @@ defmodule PortalWeb.Clients do
         edit_form: form
       },
       client_confirm: %{
-        delete?: false
+        delete?: false,
+        unverify?: false
       }
     ]
   end
@@ -402,6 +402,51 @@ defmodule PortalWeb.Clients do
     {:noreply, merge_state(socket, :client_confirm, delete?: false)}
   end
 
+  def handle_event("verify_client", _params, socket) do
+    client = socket.assigns.selected_client
+
+    case Database.verify_client(client, socket.assigns.subject) do
+      {:ok, updated_client} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Client \"#{client.name}\" was verified.")
+         |> assign_updated_selected_client(updated_client)
+         |> merge_state(:client_confirm, unverify?: false)
+         |> reload_live_table!("clients")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to verify client.")}
+    end
+  end
+
+  def handle_event("confirm_unverify_client", _params, socket) do
+    {:noreply, merge_state(socket, :client_confirm, unverify?: true)}
+  end
+
+  def handle_event("cancel_unverify_client", _params, socket) do
+    {:noreply, merge_state(socket, :client_confirm, unverify?: false)}
+  end
+
+  def handle_event("unverify_client", _params, socket) do
+    client = socket.assigns.selected_client
+
+    case Database.remove_client_verification(client, socket.assigns.subject) do
+      {:ok, updated_client} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Client \"#{client.name}\" was unverified.")
+         |> assign_updated_selected_client(updated_client)
+         |> merge_state(:client_confirm, unverify?: false)
+         |> reload_live_table!("clients")}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to unverify client.")
+         |> merge_state(:client_confirm, unverify?: false)}
+    end
+  end
+
   def handle_event("delete_client", _params, socket) do
     client = socket.assigns.selected_client
 
@@ -419,9 +464,33 @@ defmodule PortalWeb.Clients do
     end
   end
 
+  defp assign_updated_selected_client(socket, updated_client) do
+    selected_client = %{
+      socket.assigns.selected_client
+      | verified_at: updated_client.verified_at,
+        updated_at: updated_client.updated_at
+    }
+
+    assign(socket, :selected_client, selected_client)
+  end
+
   defp parse_client_tab("authorizations"), do: :authorizations
   defp parse_client_tab("overview"), do: :overview
   defp parse_client_tab(_), do: :overview
+
+  defp parse_page(params) do
+    case Integer.parse(Map.get(params, "page", "1")) do
+      {n, ""} when n >= 1 -> n
+      _ -> 1
+    end
+  end
+
+  defp redirect_to_clients_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/clients?#{socket.assigns.query_params}")}
+  end
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
@@ -438,7 +507,9 @@ defmodule PortalWeb.Clients do
   end
 
   defmodule Database do
+    import Ecto.Changeset
     import Ecto.Query
+    import Portal.Changeset
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, ClientSession, Safe}
     alias Portal.Device
@@ -539,9 +610,9 @@ defmodule PortalWeb.Clients do
 
       clients_by_id = Map.new(clients, &{&1.id, &1})
 
-      Enum.map(client_ids, fn client_id ->
-        Map.fetch!(clients_by_id, client_id)
-      end)
+      client_ids
+      |> Enum.map(&Map.get(clients_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     defp maybe_preload_clients(clients, preload, _subject) do
@@ -580,6 +651,24 @@ defmodule PortalWeb.Clients do
         {:error, reason} ->
           {:error, reason}
       end
+    end
+
+    @spec verify_client(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
+    def verify_client(client, subject) do
+      client
+      |> change()
+      |> put_default_value(:verified_at, DateTime.utc_now())
+      |> update_client(subject)
+    end
+
+    @spec remove_client_verification(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
+    def remove_client_verification(client, subject) do
+      client
+      |> change()
+      |> put_change(:verified_at, nil)
+      |> update_client(subject)
     end
 
     @spec delete_client(Portal.Device.t(), Portal.Authentication.Subject.t()) ::

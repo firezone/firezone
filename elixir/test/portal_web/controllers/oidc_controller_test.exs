@@ -4,10 +4,19 @@ defmodule PortalWeb.OIDCControllerTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.IdentityFixtures
   import ExUnit.CaptureLog
 
   alias PortalWeb.Cookie
   alias PortalWeb.Mocks
+
+  @request_context_headers ~w[
+    user-agent
+    x-geo-location-region
+    x-geo-location-city
+    x-geo-location-coordinates
+    x-azure-geo-country
+  ]
 
   setup do
     # Set up OIDC mock for all tests
@@ -278,13 +287,20 @@ defmodule PortalWeb.OIDCControllerTest do
         "id_token" => id_token
       })
 
+      verification_ref = Ecto.UUID.generate()
+
       lv_pid =
         spawn(fn ->
           receive do
             {:get_pending_verification, from} ->
               send(
                 from,
-                {:pending_verification, %{config: oidc_config(), verifier: "test-verifier"}}
+                {:pending_verification,
+                 %{
+                   config: oidc_config(),
+                   verifier: "test-verifier",
+                   verification_ref: verification_ref
+                 }}
               )
           end
         end)
@@ -298,6 +314,9 @@ defmodule PortalWeb.OIDCControllerTest do
       redirect_url = redirected_to(conn)
       assert redirect_url =~ "/verification/oidc?result="
       refute redirect_url =~ "code="
+
+      assert {:ok, %{ok: true, verification_ref: ^verification_ref}} =
+               oidc_verification_result_from_redirect(redirect_url)
     end
 
     test "redirects to /verification/oidc with failure result when code exchange fails", %{
@@ -328,6 +347,267 @@ defmodule PortalWeb.OIDCControllerTest do
                oidc_verification_result_from_redirect(redirect_url)
 
       assert error =~ "authorization code has expired"
+    end
+
+    test "redirects to /verification/oidc with failure result when verified email is required and claim is false",
+         %{
+           conn: conn
+         } do
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(
+          Mocks.OIDC.default_claims()
+          |> Map.put("email_verified", false)
+        )
+
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      })
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "353690423699814251281",
+        "email" => "ada@example.com",
+        "email_verified" => false
+      })
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification,
+                 %{
+                   config: oidc_config(),
+                   verifier: "test-verifier",
+                   require_email_verified: true
+                 }}
+              )
+          end
+        end)
+
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert error =~ "did not return email_verified=true"
+    end
+
+    test "accepts verified email from userinfo during OIDC verification", %{
+      conn: conn
+    } do
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(
+          Mocks.OIDC.default_claims()
+          |> Map.delete("email_verified")
+        )
+
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      })
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "353690423699814251281",
+        "email" => "ada@example.com",
+        "email_verified" => true
+      })
+
+      verification_ref = Ecto.UUID.generate()
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification,
+                 %{
+                   config: oidc_config(),
+                   verifier: "test-verifier",
+                   verification_ref: verification_ref,
+                   require_email_verified: true
+                 }}
+              )
+          end
+        end)
+
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: true, issuer: issuer, verification_ref: ^verification_ref}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert issuer == Mocks.OIDC.default_claims()["iss"]
+    end
+
+    test "rejects verified email from userinfo during OIDC verification when subject differs", %{
+      conn: conn
+    } do
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(
+          Mocks.OIDC.default_claims()
+          |> Map.delete("email_verified")
+        )
+
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      })
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "different-subject",
+        "email" => "ada@example.com",
+        "email_verified" => true
+      })
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification,
+                 %{
+                   config: oidc_config(),
+                   verifier: "test-verifier",
+                   require_email_verified: true
+                 }}
+              )
+          end
+        end)
+
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert error =~ "did not return email_verified=true"
+    end
+
+    test "returns userinfo fetch error when verified email is required and ID token omits claim",
+         %{
+           conn: conn
+         } do
+      Application.put_env(:openid_connect, :retry, false)
+      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
+
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(
+          Mocks.OIDC.default_claims()
+          |> Map.delete("email_verified")
+        )
+
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      })
+
+      Mocks.OIDC.set_userinfo_error(500, %{"error" => "server_error"})
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification,
+                 %{
+                   config: oidc_config(),
+                   verifier: "test-verifier",
+                   require_email_verified: true
+                 }}
+              )
+          end
+        end)
+
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert error == "Identity provider returned a server error (HTTP 500). Please try again later."
+      refute error =~ "did not return email_verified=true"
+    end
+
+    test "returns unverified email error when ID token claim is false and userinfo fetch fails",
+         %{
+           conn: conn
+         } do
+      Application.put_env(:openid_connect, :retry, false)
+      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
+
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(
+          Mocks.OIDC.default_claims()
+          |> Map.put("email_verified", false)
+        )
+
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      })
+
+      Mocks.OIDC.set_userinfo_error(500, %{"error" => "server_error"})
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:get_pending_verification, from} ->
+              send(
+                from,
+                {:pending_verification,
+                 %{
+                   config: oidc_config(),
+                   verifier: "test-verifier",
+                   require_email_verified: true
+                 }}
+              )
+          end
+        end)
+
+      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      redirect_url = redirected_to(conn)
+      assert redirect_url =~ "/verification/oidc?result="
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirect_url)
+
+      assert error =~ "did not return email_verified=true"
+      refute error =~ "server error"
     end
 
     test "redirects to /verification/oidc with failure result when LV does not respond", %{
@@ -385,7 +665,7 @@ defmodule PortalWeb.OIDCControllerTest do
         |> get(~p"/auth/oidc/callback", %{"state" => "test-state", "code" => "test-code"})
 
       location = get_resp_header(conn, "location") |> List.first()
-      refute location == ~p"/#{account.slug}/sites"
+      refute location == ~p"/#{account}/sites"
     end
 
     test "authenticated user can access legacy callback without being redirected to portal", %{
@@ -397,13 +677,13 @@ defmodule PortalWeb.OIDCControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/#{account.slug}/sign_in/providers/#{provider.id}/handle_callback", %{
+        |> get(~p"/#{account}/sign_in/providers/#{provider.id}/handle_callback", %{
           "state" => "test-state",
           "code" => "test-code"
         })
 
       location = get_resp_header(conn, "location") |> List.first()
-      refute location == ~p"/#{account.slug}/sites"
+      refute location == ~p"/#{account}/sites"
     end
   end
 
@@ -690,14 +970,14 @@ defmodule PortalWeb.OIDCControllerTest do
     end
 
     test "successful portal sign-in for admin user creates session and redirects", ctx do
-      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor)
       assert_portal_sign_in_success(ctx)
     end
 
     test "successful client sign-in for admin user creates token and renders redirect page",
          ctx do
-      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor)
       assert_client_sign_in_success(ctx)
     end
@@ -711,7 +991,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
     test "successful headless-client sign-in for admin user creates token and renders token page",
          ctx do
-      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor)
       assert_headless_client_sign_in_success(ctx)
     end
@@ -725,25 +1005,638 @@ defmodule PortalWeb.OIDCControllerTest do
 
     test "successful gui-client sign-in for admin user creates token and renders redirect page",
          ctx do
-      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       setup_successful_auth(ctx, actor)
       assert_gui_client_sign_in_success(ctx)
     end
 
-    test "successful sign-in with unverified email logs info message", ctx do
+    test "rejects sign-in with unverified email when verified email is required", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      cookie = build_oidc_auth_state(ctx.account, ctx.provider)
+
+      log = capture_log(fn -> send(self(), {:conn, perform_callback(ctx.conn, cookie)}) end)
+      assert_receive {:conn, conn}
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+
+      assert flash(conn, :error) ==
+               "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
+
+      refute log =~ "OIDC identity email not verified"
+    end
+
+    test "rejects sign-in when verified email is required and email_verified is missing", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      id_token =
+        Mocks.OIDC.sign_openid_connect_token(%{
+          "iss" => ctx.provider.issuer,
+          "email" => actor.email,
+          "sub" => "admin-user-123",
+          "name" => actor.name,
+          "aud" => ctx.provider.client_id,
+          "exp" => token_exp()
+        })
+
+      expect_token_exchange(id_token)
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "admin-user-123",
+        "email" => actor.email,
+        "name" => actor.name
+      })
+
+      cookie = build_oidc_auth_state(ctx.account, ctx.provider)
+      conn = perform_callback(ctx.conn, cookie)
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+
+      assert flash(conn, :error) ==
+               "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
+    end
+
+    test "accepts sign-in when verified email comes from matching userinfo", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      id_token = sign_id_token(ctx.provider, actor, email_verified: :omit)
+      expect_token_exchange(id_token)
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "admin-user-123",
+        "email" => actor.email,
+        "email_verified" => true,
+        "name" => actor.name
+      })
+
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "rejects sign-in when verified email userinfo subject differs", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      id_token = sign_id_token(ctx.provider, actor, email_verified: :omit)
+      expect_token_exchange(id_token)
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "different-subject",
+        "email" => actor.email,
+        "email_verified" => true,
+        "name" => actor.name
+      })
+
+      cookie = build_oidc_auth_state(ctx.account, ctx.provider)
+      conn = perform_callback(ctx.conn, cookie)
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+
+      assert flash(conn, :error) ==
+               "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
+    end
+
+    test "successful sign-in with unverified email when verified email is not required", ctx do
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :none
+        )
+
+      ctx = %{ctx | provider: provider}
       actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
 
       setup_successful_auth(ctx, actor, email_verified: false)
 
       cookie = build_oidc_auth_state(ctx.account, ctx.provider)
 
-      log =
-        capture_log(fn ->
-          conn = perform_callback(ctx.conn, cookie)
-          assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
-        end)
+      log = capture_log(fn -> send(self(), {:conn, perform_callback(ctx.conn, cookie)}) end)
+      assert_receive {:conn, conn}
 
-      assert log =~ "OIDC identity email not verified"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      refute log =~ "OIDC identity email not verified"
+    end
+
+    test "successful sign-in matches actor email using citext semantics", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "Admin@Example.COM")
+
+      setup_successful_auth(ctx, actor, email: "admin@example.com")
+
+      assert_portal_sign_in_success(ctx)
+    end
+
+    test "proof email verification sends OTP and promotes pending identity after valid code", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: " Admin@Example.COM ")
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      cookie =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{"redirect_to" => "/#{ctx.account.slug}/actors"}
+        )
+      conn = perform_callback(ctx.conn, cookie)
+
+      redirect_query = redirected_to(conn) |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert redirected_to(conn) =~
+               "/#{ctx.account.slug}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+
+      refute redirected_to(conn) =~
+               "/#{ctx.account.id}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      assert redirect_query["pending_identity_id"] == pending_cookie.pending_identity_id
+      assert pending_cookie.params == %{"redirect_to" => "/#{ctx.account.slug}/actors"}
+
+      assert %Portal.PendingIdentity{} = pending_identity =
+               Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+
+      assert pending_identity.actor_id == actor.id
+      assert pending_identity.auth_provider_id == ctx.provider.id
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "admin-user-123"
+             )
+
+      assert_received {:email, email}
+      assert email.to == [{"", actor.email}]
+      refute email.text_body =~ "/verify?secret="
+      assert email.text_body =~
+               "/#{ctx.account.slug}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+
+      refute email.text_body =~
+               "/#{ctx.account.id}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+
+      assert email.text_body =~ "pending_identity_id=#{pending_cookie.pending_identity_id}"
+      assert email.text_body =~ "Location: Kyiv, UA"
+      assert email.text_body =~ "IP address: 127.0.x.x"
+      refute email.text_body =~ "127.0.0.1"
+      refute email.text_body =~ "Coordinates"
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "redirect_to" => "/#{ctx.account.slug}/sites"
+        })
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/actors"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+
+      assert identity =
+               Repo.get_by(Portal.ExternalIdentity,
+                 account_id: ctx.account.id,
+                 issuer: ctx.provider.issuer,
+                 idp_id: "admin-user-123"
+               )
+
+      assert identity.actor_id == actor.id
+      refute Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+      refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
+    end
+
+    test "proof email verification uses original client params after valid code", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false, sub: "regular-user-123")
+
+      auth_state =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{
+            "as" => "gui-client",
+            "state" => "original-client-state",
+            "nonce" => "original-client-nonce"
+          }
+        )
+
+      conn = perform_callback(ctx.conn, auth_state)
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      assert pending_cookie.params == %{
+               "as" => "gui-client",
+               "state" => "original-client-state",
+               "nonce" => "original-client-nonce"
+             }
+
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "as" => "headless-client",
+          "state" => "submitted-client-state",
+          "nonce" => "submitted-client-nonce"
+        })
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "client_redirect"
+      refute conn.resp_body =~ "Copy to clipboard"
+
+      client_auth =
+        conn
+        |> recycle()
+        |> with_endpoint_key_base()
+        |> Cookie.ClientAuth.fetch()
+
+      assert client_auth.state == "original-client-state"
+    end
+
+    test "proof email verification treats concurrent external identity insert as success", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(conn)
+      pending_identity = Repo.get_by!(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "admin-user-123",
+          email: actor.email,
+          name: actor.name
+        )
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "admin-user-123"
+             ).id == existing_identity.id
+
+      refute Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+      refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
+    end
+
+    test "proof email verification does not relink an existing identity to a stale pending actor",
+         ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor_a = admin_actor_fixture(account: ctx.account, email: unique_email())
+      actor_b = admin_actor_fixture(account: ctx.account, email: unique_email())
+      idp_id = "shared-idp-subject"
+
+      setup_successful_auth(ctx, actor_a, email_verified: false, sub: idp_id)
+      first_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      first_cookie = pending_identity_cookie_from_response(first_conn)
+      assert_received {:email, first_email}
+      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, first_email.text_body)
+
+      setup_successful_auth(ctx, actor_b, email_verified: false, sub: idp_id)
+      second_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      second_cookie = pending_identity_cookie_from_response(second_conn)
+      assert_received {:email, second_email}
+      [_, second_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, second_email.text_body)
+
+      conn =
+        build_conn()
+        |> with_endpoint_key_base()
+        |> put_pending_identity_req_cookie(first_conn, first_cookie.pending_identity_id)
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => first_code,
+          "pending_identity_id" => first_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert identity =
+               Repo.get_by(Portal.ExternalIdentity,
+                 account_id: ctx.account.id,
+                 issuer: ctx.provider.issuer,
+                 idp_id: idp_id
+               )
+
+      assert identity.actor_id == actor_a.id
+      assert identity.email == actor_a.email
+
+      conn =
+        build_conn()
+        |> with_endpoint_key_base()
+        |> put_pending_identity_req_cookie(second_conn, second_cookie.pending_identity_id)
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => second_code,
+          "pending_identity_id" => second_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~
+               "/#{ctx.account.slug}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+
+      assert flash(conn, :error) == "The verification code is invalid or expired."
+
+      identity =
+        Repo.get_by!(Portal.ExternalIdentity,
+          account_id: ctx.account.id,
+          issuer: ctx.provider.issuer,
+          idp_id: idp_id
+        )
+
+      assert identity.actor_id == actor_a.id
+      assert identity.email == actor_a.email
+    end
+
+    test "proof email verification preserves sign-in params after invalid code", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      auth_state =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{
+            "as" => "gui-client",
+            "state" => "client-state",
+            "nonce" => "client-nonce",
+            "redirect_to" => "/#{ctx.account.slug}/actors"
+          }
+        )
+
+      conn = perform_callback(ctx.conn, auth_state)
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => "wrong",
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "as" => "headless-client",
+          "state" => "submitted-state",
+          "nonce" => "submitted-nonce",
+          "redirect_to" => "/#{ctx.account.slug}/sites"
+        })
+
+      location = redirected_to(conn)
+      assert location =~ "/#{ctx.account.slug}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+      assert location =~ "as=gui-client"
+      assert location =~ "state=client-state"
+      assert location =~ "nonce=client-nonce"
+      assert location =~ "redirect_to=%2F#{ctx.account.slug}%2Factors"
+      assert location =~ "pending_identity_id=#{pending_cookie.pending_identity_id}"
+      refute location =~ "headless-client"
+      refute location =~ "submitted-state"
+      refute location =~ "submitted-nonce"
+      refute location =~ "sites"
+      assert flash(conn, :error) == "The verification code is invalid or expired."
+    end
+
+    test "proof email verification requires the signed pending identity cookie", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(callback_conn)
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+
+      conn =
+        build_conn()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) == "/sign_in"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
+
+    test "proof email verification requires the pending identity provider", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      other_provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof,
+          issuer: "https://other-idp.example.com"
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(callback_conn)
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+
+      conn =
+        callback_conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{other_provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~
+               "/#{ctx.account.slug}/sign_in/oidc/#{other_provider.id}/verify_identity"
+
+      assert flash(conn, :error) == "The verification code is invalid or expired."
+
+      assert Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "admin-user-123"
+             )
+    end
+
+    test "proof email verification binds each code to the pending identity link and cookie", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+      first_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      first_cookie = pending_identity_cookie_from_response(first_conn)
+      assert_received {:email, first_email}
+      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, first_email.text_body)
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+      second_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      second_cookie = pending_identity_cookie_from_response(second_conn)
+      assert_received {:email, second_email}
+      [_, _second_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, second_email.text_body)
+
+      conn =
+        build_conn()
+        |> with_endpoint_key_base()
+        |> put_pending_identity_req_cookie(first_conn, first_cookie.pending_identity_id)
+        |> put_pending_identity_req_cookie(second_conn, second_cookie.pending_identity_id)
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => first_code,
+          "pending_identity_id" => second_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~
+               "/#{ctx.account.slug}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+
+      assert flash(conn, :error) == "The verification code is invalid or expired."
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "admin-user-123"
+             )
+    end
+
+    test "proof email verification keeps multiple pending links valid and clears them all after success",
+         ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+      first_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      first_cookie = pending_identity_cookie_from_response(first_conn)
+      first_pending_identity = Repo.get_by!(Portal.PendingIdentity, id: first_cookie.pending_identity_id)
+      assert_received {:email, first_email}
+      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, first_email.text_body)
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+      second_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      second_cookie = pending_identity_cookie_from_response(second_conn)
+      second_pending_identity = Repo.get_by!(Portal.PendingIdentity, id: second_cookie.pending_identity_id)
+      assert_received {:email, _second_email}
+
+      conn =
+        build_conn()
+        |> with_endpoint_key_base()
+        |> put_pending_identity_req_cookie(first_conn, first_cookie.pending_identity_id)
+        |> put_pending_identity_req_cookie(second_conn, second_cookie.pending_identity_id)
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => first_code,
+          "pending_identity_id" => first_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+
+      assert conn.resp_cookies[pending_identity_cookie_key(first_cookie.pending_identity_id)].max_age == 0
+      assert conn.resp_cookies[pending_identity_cookie_key(second_cookie.pending_identity_id)].max_age == 0
+
+      refute Repo.get_by(Portal.PendingIdentity, id: first_cookie.pending_identity_id)
+      refute Repo.get_by(Portal.PendingIdentity, id: second_cookie.pending_identity_id)
+      refute Repo.get_by(Portal.OneTimePasscode, id: first_pending_identity.one_time_passcode_id)
+      refute Repo.get_by(Portal.OneTimePasscode, id: second_pending_identity.one_time_passcode_id)
+    end
+
+    test "proof email verification skips OTP when external identity already exists", ctx do
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: "admin@example.com")
+
+      identity_fixture(
+        account: ctx.account,
+        actor: actor,
+        issuer: ctx.provider.issuer,
+        idp_id: "admin-user-123",
+        email: actor.email,
+        name: actor.name
+      )
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+      conn = assert_portal_sign_in_success(ctx)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      refute_received {:email, _email}
+      refute conn.resp_cookies["pending_identity"]
     end
 
     test "successful sign-in derives name from given_name and family_name", ctx do
@@ -1029,6 +1922,7 @@ defmodule PortalWeb.OIDCControllerTest do
         Mocks.OIDC.sign_openid_connect_token(%{
           "iss" => ctx.provider.issuer,
           "email" => "nonexistent@example.com",
+          "email_verified" => true,
           "sub" => "nonexistent-user-123",
           "name" => "Test User",
           "aud" => ctx.provider.client_id,
@@ -1040,6 +1934,7 @@ defmodule PortalWeb.OIDCControllerTest do
       Mocks.OIDC.set_userinfo_response(%{
         "sub" => "nonexistent-user-123",
         "email" => "nonexistent@example.com",
+        "email_verified" => true,
         "name" => "Test User"
       })
 
@@ -1055,6 +1950,7 @@ defmodule PortalWeb.OIDCControllerTest do
       id_token =
         Mocks.OIDC.sign_openid_connect_token(%{
           "iss" => ctx.provider.issuer,
+          "email_verified" => true,
           "sub" => "user-without-email-123",
           "name" => "User Without Email",
           "aud" => ctx.provider.client_id,
@@ -1065,6 +1961,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       Mocks.OIDC.set_userinfo_response(%{
         "sub" => "user-without-email-123",
+        "email_verified" => true,
         "name" => "User Without Email"
       })
 
@@ -1738,6 +2635,10 @@ defmodule PortalWeb.OIDCControllerTest do
     %{provider: provider}
   end
 
+  defp unique_email do
+    "admin-#{System.unique_integer([:positive, :monotonic])}@example.com"
+  end
+
   # Builds an OIDC auth state map for cookie-backed callbacks.
   defp build_oidc_auth_state(account, provider, opts \\ []) do
     %{
@@ -1771,7 +2672,17 @@ defmodule PortalWeb.OIDCControllerTest do
     |> with_endpoint_key_base()
     |> Cookie.AuthenticationState.put(cookie)
     |> recycle()
+    |> copy_req_headers(conn, @request_context_headers)
     |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => code})
+  end
+
+  defp copy_req_headers(conn, source_conn, headers) do
+    Enum.reduce(headers, conn, fn header, conn ->
+      case Plug.Conn.get_req_header(source_conn, header) do
+        [] -> conn
+        [value | _rest] -> Plug.Conn.put_req_header(conn, header, value)
+      end
+    end)
   end
 
   # Reads the oidc cookie from a response conn by recycling it to make cookies readable.
@@ -1781,6 +2692,31 @@ defmodule PortalWeb.OIDCControllerTest do
     |> with_endpoint_key_base()
     |> Cookie.AuthenticationState.fetch()
   end
+
+  defp pending_identity_cookie_from_response(conn) do
+    pending_identity_id =
+      conn
+      |> redirected_to()
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+      |> Map.fetch!("pending_identity_id")
+
+    conn
+    |> recycle()
+    |> with_endpoint_key_base()
+    |> Cookie.PendingIdentity.fetch(pending_identity_id)
+  end
+
+  defp put_pending_identity_req_cookie(conn, response_conn, pending_identity_id) do
+    Plug.Test.put_req_cookie(
+      conn,
+      pending_identity_cookie_key(pending_identity_id),
+      response_conn.resp_cookies[pending_identity_cookie_key(pending_identity_id)].value
+    )
+  end
+
+  defp pending_identity_cookie_key(pending_identity_id), do: "pending_identity_#{pending_identity_id}"
 
   # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
   defp with_endpoint_key_base(conn) do
@@ -1819,17 +2755,17 @@ defmodule PortalWeb.OIDCControllerTest do
   # Signs a JWT id_token for testing.
   defp sign_id_token(provider, actor, opts \\ []) do
     sub = Keyword.get(opts, :sub, "admin-user-123")
-    email_verified = Keyword.get(opts, :email_verified, true)
+    email = Keyword.get(opts, :email, actor.email)
 
     claims =
       %{
         "iss" => provider.issuer,
-        "email" => actor.email,
-        "email_verified" => email_verified,
+        "email" => email,
         "sub" => sub,
         "aud" => provider.client_id,
         "exp" => token_exp()
       }
+      |> maybe_add_email_verified(opts)
       |> maybe_add_claim("name", opts, actor.name)
       |> maybe_add_claim("given_name", opts)
       |> maybe_add_claim("family_name", opts)
@@ -1837,6 +2773,14 @@ defmodule PortalWeb.OIDCControllerTest do
       |> maybe_add_claim("nickname", opts)
 
     Mocks.OIDC.sign_openid_connect_token(claims)
+  end
+
+  defp maybe_add_email_verified(claims, opts) do
+    case Keyword.fetch(opts, :email_verified) do
+      {:ok, :omit} -> claims
+      {:ok, value} -> Map.put(claims, "email_verified", value)
+      :error -> Map.put(claims, "email_verified", true)
+    end
   end
 
   defp maybe_add_claim(claims, key, opts, default \\ nil) do
@@ -1862,11 +2806,12 @@ defmodule PortalWeb.OIDCControllerTest do
   defp expect_userinfo(actor, opts) do
     sub = Keyword.get(opts, :sub, "admin-user-123")
     email_verified = Keyword.get(opts, :email_verified, true)
+    email = Keyword.get(opts, :email, actor.email)
 
     userinfo =
       %{
         "sub" => sub,
-        "email" => actor.email,
+        "email" => email,
         "email_verified" => email_verified
       }
       |> maybe_add_claim("name", opts, actor.name)
@@ -1904,6 +2849,8 @@ defmodule PortalWeb.OIDCControllerTest do
 
     assert conn.status == 200
     assert conn.resp_body =~ "client_redirect"
+    assert conn.resp_body =~ "/#{ctx.account.slug}/sign_in/client_redirect"
+    refute conn.resp_body =~ "/#{ctx.account.id}/sign_in/client_redirect"
     assert conn.resp_cookies["client_auth"]
 
     conn
@@ -1920,6 +2867,8 @@ defmodule PortalWeb.OIDCControllerTest do
 
     assert conn.status == 200
     assert conn.resp_body =~ "client_redirect"
+    assert conn.resp_body =~ "/#{ctx.account.slug}/sign_in/client_redirect"
+    refute conn.resp_body =~ "/#{ctx.account.id}/sign_in/client_redirect"
     assert conn.resp_cookies["client_auth"]
 
     conn

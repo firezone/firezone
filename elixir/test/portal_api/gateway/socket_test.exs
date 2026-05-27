@@ -11,15 +11,6 @@ defmodule PortalAPI.Gateway.SocketTest do
   @connlib_version "1.3.0"
 
   describe "connect/3" do
-    setup do
-      buffer =
-        start_supervised!(
-          {Portal.GatewaySession.Buffer, name: Portal.GatewaySession.Buffer, callers: [self()]}
-        )
-
-      %{buffer: buffer}
-    end
-
     test "returns error when token is missing" do
       connect_info = build_connect_info()
       assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
@@ -105,17 +96,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert session.remote_ip_location_lat == 50.4333
       assert session.remote_ip_location_lon == 30.5167
       assert session.version == @connlib_version
-
-      Portal.GatewaySession.Buffer.flush()
-
-      [persisted_session] = Repo.all(Portal.GatewaySession)
-      assert persisted_session.device_id == gateway.id
-      assert persisted_session.user_agent == connect_info.user_agent
-      assert persisted_session.remote_ip_location_region == "Ukraine"
-      assert persisted_session.remote_ip_location_city == "Kyiv"
-      assert persisted_session.remote_ip_location_lat == 50.4333
-      assert persisted_session.remote_ip_location_lon == 30.5167
-      assert persisted_session.version == @connlib_version
+      assert session.device_id == gateway.id
     end
 
     test "uses region code to put default coordinates" do
@@ -166,15 +147,9 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.gateway.id == gateway.id
 
-      Portal.GatewaySession.Buffer.flush()
-
-      import Ecto.Query
-
-      session =
-        from(gs in Portal.GatewaySession, where: gs.gateway_token_id == ^token.id)
-        |> Repo.one!()
-
+      session = socket.assigns.session
       assert session.device_id == gateway.id
+      assert session.gateway_token_id == token.id
       assert session.remote_ip_location_region == "Ukraine"
       assert session.remote_ip_location_city == "Kyiv"
       assert session.remote_ip_location_lat == 50.4333

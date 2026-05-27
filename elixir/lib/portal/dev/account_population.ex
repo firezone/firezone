@@ -928,7 +928,7 @@ defmodule Portal.Dev.AccountPopulation do
 
   defp create_client_token(%Actor{type: :service_account} = actor, _provider, account) do
     {:ok, token} =
-      Authentication.create_headless_client_token(
+      Authentication.create_non_interactive_client_token(
         actor,
         %{expires_at: DateTime.add(DateTime.utc_now(), 30, :day)},
         subject_for(account)
@@ -939,7 +939,7 @@ defmodule Portal.Dev.AccountPopulation do
 
   defp create_client_token(actor, provider, _account) do
     {:ok, token} =
-      Authentication.create_gui_client_token(%{
+      Authentication.create_interactive_client_token(%{
         account_id: actor.account_id,
         actor_id: actor.id,
         auth_provider_id: provider.id,

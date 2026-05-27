@@ -1,7 +1,7 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
-use l4_udp_dns_client::UdpDnsClient;
+use bootstrap_dns_client::BootstrapDnsClient;
+use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceList};
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -19,9 +19,11 @@ use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
-    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
-    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
-    FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ClientAccessAuthorizationExpiryUpdated, ClientDeviceAccessAuthorized, ClientDeviceAccessDenied,
+    ClientIceCandidates, ClientRejectAccess, DevicePoolDomainResolutionFailed,
+    DevicePoolDomainResolved, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
+    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
+    ResourceFiltersUpdated,
 };
 use tunnel::messages::{RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
@@ -50,7 +52,7 @@ pub struct Eventloop {
     tunnel: Option<ClientTunnel>,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
-    resource_list_sender: watch::Sender<Vec<ResourceView>>,
+    resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
 
@@ -110,7 +112,7 @@ impl Eventloop {
         dns_servers: Vec<IpAddr>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
-        resource_list_sender: watch::Sender<Vec<ResourceView>>,
+        resource_list_sender: watch::Sender<ResourceList>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Self {
@@ -118,7 +120,7 @@ impl Eventloop {
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
         let mut tunnel = ClientTunnel::new(
-            tcp_socket_factory,
+            tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
@@ -131,6 +133,7 @@ impl Eventloop {
             portal_event_tx,
             portal_cmd_rx,
             udp_socket_factory.clone(),
+            tcp_socket_factory,
             dns_servers,
         ));
 
@@ -541,7 +544,13 @@ impl Eventloop {
                             .send(UserNotification::GatewayVersionMismatch { resource_id })
                             .await;
                     }
-                    FailReason::NotFound | FailReason::Forbidden | FailReason::Unknown => {}
+                    FailReason::NotFound
+                    | FailReason::Forbidden
+                    | FailReason::Disabled
+                    | FailReason::AmbiguousAddress
+                    | FailReason::MissingAddress
+                    | FailReason::InvalidAddress
+                    | FailReason::Unknown => {}
                 }
             }
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
@@ -554,7 +563,18 @@ impl Eventloop {
                 remote_ice_credentials,
                 ice_role,
                 snownet_capabilities,
+                resource,
+                authorization_expires_at,
             }) => {
+                // The portal only sends a resource to the target device; the
+                // initiating side receives `None` and relies on conntrack to
+                // admit return traffic.
+                let authorization = resource.map(|resource| ResourceAuthorization {
+                    resource_id: resource.id,
+                    filters: resource.filters,
+                    expires_at: authorization_expires_at,
+                });
+
                 match tunnel.state_mut().handle_client_device_access_authorized(
                     client_id,
                     PublicKey::from(client_public_key.0),
@@ -567,6 +587,7 @@ impl Eventloop {
                     remote_ice_credentials,
                     ice_role,
                     snownet_capabilities,
+                    authorization,
                     Instant::now(),
                 ) {
                     Ok(()) => {}
@@ -582,6 +603,35 @@ impl Eventloop {
                             .context("Failed to connect phoenix-channel")?;
                     }
                 };
+            }
+            IngressMessages::ResourceFiltersUpdated(ResourceFiltersUpdated { id, filters }) => {
+                tunnel
+                    .state_mut()
+                    .handle_resource_filters_updated(id, filters);
+            }
+            IngressMessages::RejectAccess(ClientRejectAccess {
+                client_id,
+                resource_id,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_reject_client_device_access(client_id, resource_id);
+            }
+            IngressMessages::AccessAuthorizationExpiryUpdated(
+                ClientAccessAuthorizationExpiryUpdated {
+                    client_id,
+                    resource_id,
+                    expires_at,
+                },
+            ) => {
+                tunnel
+                    .state_mut()
+                    .handle_client_device_access_authorization_expiry_updated(
+                        client_id,
+                        resource_id,
+                        expires_at,
+                        Instant::now(),
+                    );
             }
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,
@@ -599,6 +649,7 @@ impl Eventloop {
                 resource_id,
                 domain,
                 ipv4,
+                ipv6,
             }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
@@ -606,7 +657,7 @@ impl Eventloop {
                 tunnel.state_mut().handle_device_pool_domain_resolved(
                     resource_id,
                     domain,
-                    Ok(ipv4),
+                    Ok((ipv4, ipv6)),
                 );
             }
             IngressMessages::DevicePoolDomainResolutionFailed(
@@ -667,20 +718,25 @@ async fn phoenix_channel_event_loop(
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     dns_servers: Vec<IpAddr>,
 ) {
     use futures::future::Either;
     use futures::future::select;
     use std::future::poll_fn;
 
-    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), dns_servers);
+    let mut bootstrap_dns_client = BootstrapDnsClient::new(
+        udp_socket_factory.clone(),
+        tcp_socket_factory.clone(),
+        dns_servers,
+    );
 
-    let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+    let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
-        // This allows `Hiccup` events to use the updated `UdpDnsClient` to resolve the domain.
+        // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
         match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
             Either::Left((Some(PortalCommand::Send(msg)), _)) => {
                 match portal.send(PHOENIX_TOPIC, msg) {
@@ -693,11 +749,15 @@ async fn phoenix_channel_event_loop(
             Either::Left((Some(PortalCommand::Connect(new_public_key)), _)) => {
                 public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
 
-                let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+                let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, Duration::ZERO, public_key.clone());
             }
             Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
-                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
+                bootstrap_dns_client = BootstrapDnsClient::new(
+                    udp_socket_factory.clone(),
+                    tcp_socket_factory.clone(),
+                    servers,
+                );
             }
             Either::Left((None, _)) => {
                 tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
@@ -728,7 +788,7 @@ async fn phoenix_channel_event_loop(
                     "Hiccup in portal connection: {error:#}"
                 );
 
-                let ips = resolve_portal_host_ips(&udp_dns_client, portal.host()).await;
+                let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
@@ -752,16 +812,19 @@ async fn phoenix_channel_event_loop(
 ///
 /// We combine the result of two sources here:
 ///
-/// - We make UDP DNS queries to our configured system resolvers.
+/// - We make DNS queries to our configured system resolvers.
 /// - We read `/etc/hosts`.
 ///
 /// If any of these fail, we simply default to an empty list of IPs.
 /// This is fine as this routine will be triggered again if we ever run out of IPs to use.
-async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) -> Vec<IpAddr> {
-    let udp_ips = udp_dns_client
+async fn resolve_portal_host_ips(
+    bootstrap_dns_client: &BootstrapDnsClient,
+    host: String,
+) -> Vec<IpAddr> {
+    let dns_ips = bootstrap_dns_client
         .resolve(host.clone())
         .await
-        .context("Failed to lookup portal host via UDP DNS")
+        .context("Failed to lookup portal host via DNS")
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
@@ -771,7 +834,7 @@ async fn resolve_portal_host_ips(udp_dns_client: &UdpDnsClient, host: String) ->
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    iter::empty().chain(udp_ips).chain(etc_hosts_ips).collect()
+    iter::empty().chain(dns_ips).chain(etc_hosts_ips).collect()
 }
 
 fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {

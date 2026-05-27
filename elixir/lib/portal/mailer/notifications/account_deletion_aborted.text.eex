@@ -1,0 +1,18 @@
+Account Deletion Aborted
+
+The scheduled deletion for your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has been canceled.
+
+This action was performed from:
+IP Address: <%= @remote_ip %>
+Location: <%= @location %>
+User Agent: <%= @user_agent %>
+
+The account is no longer scheduled for deletion.
+
+Review this account in Settings -> Account:
+<%= @settings_url %>
+
+If you did not expect this change, please contact another account admin or Firezone support immediately.
+
+Thanks,
+The Firezone Team

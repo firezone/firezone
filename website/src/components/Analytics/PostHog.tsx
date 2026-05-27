@@ -1,27 +1,19 @@
 "use client";
 
-import { useEffect, Suspense } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import posthog from "posthog-js";
 import { HubSpotSubmittedFormData } from "./types";
 
-function PostHogComponent() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const apiKey = "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK";
+const apiKey = "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK";
 
+export default function PostHog() {
   useEffect(() => {
-    if (!pathname) return;
-
-    posthog.init(apiKey, { api_host: "https://us.i.posthog.com" });
-
-    let url = window.origin + pathname;
-    if (searchParams.toString()) {
-      url = url + `?${searchParams.toString()}`;
+    if (!(posthog as unknown as { __loaded?: boolean }).__loaded) {
+      posthog.init(apiKey, {
+        api_host: "https://e.firezone.dev",
+        defaults: "2026-01-30",
+      });
     }
-    posthog.capture("$pageview", {
-      $current_url: url,
-    });
 
     const handleMessage = (event: MessageEvent) => {
       if (
@@ -59,15 +51,7 @@ function PostHogComponent() {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [pathname, searchParams, apiKey]);
+  }, []);
 
   return null;
-}
-
-export default function PostHog() {
-  return (
-    <Suspense fallback={null}>
-      <PostHogComponent />
-    </Suspense>
-  );
 }

@@ -5,59 +5,77 @@ locally.
 
 ## Dev Setup
 
-1. [Install Rust](https://www.rust-lang.org/tools/install)
+### Quick setup (recommended)
 
-1. [Install Android Studio](https://developer.android.com/studio)
+Requires [Rust](https://www.rust-lang.org/tools/install) and
+[mise](https://mise.jdx.dev/getting-started.html) to be installed.
 
-1. Install your JDK 17 of choice. We recommend just
-   [updating your CLI](https://stackoverflow.com/questions/43211282/using-jdk-that-is-bundled-inside-android-studio-as-java-home-on-mac)
-   environment to use the JDK bundled in Android Studio to ensure you're using
-   the same JDK on the CLI as Android Studio.
+```bash
+mise run setup
+mise run build
+```
 
-1. Install the Android SDK through Android Studio.
-   - Open Android studio, go to Android Studio > Preferences
-   - Search for `sdk`
-   - Find the `Android SDK` nav item under `System Settings` and select
-   - Click the `Edit` button next to the `Android SDK Location` field
-   - Follow the steps presented to install Android SDK
+This installs Java, Android SDK/NDK, Rust cross-compilation targets, and
+creates `local.properties`. See `mise-tasks/setup.sh` for details.
 
-1. Install `NDK` using Android Studio
+To install on a connected device or emulator:
 
-   To see which version is installed, make sure to select the
-   `Show Package Details` checkbox in the `Android SDK` settings page in Android
-   Studio
+```bash
+mise run install-phone     # connected hardware device
+mise run install-emulator  # creates/boots an emulator and launches the app
+```
 
-   ![Android SDK Tools](./images/android-studio-sdk-tools.png)
+Both tasks build only the cargo target matching the device's ABI (detected via
+`adb` for `install-phone`, host arch for `install-emulator`), which is roughly
+4x faster than the default all-ABI build.
 
-   Make sure the correct NDK version is installed by looking at:
-   `./app/build.gradle.kts`
+### Wireless ADB
 
-1. Set the following properties in your `local.properties` file:
+Useful when your USB connection is flaky. Both flows give you a regular `adb`
+connection, after which `mise run install-phone` works normally.
 
-   ```
-   sdk.dir=/Users/<username>/Library/Android/sdk
-   ```
+**Android 11+** (native pairing, persists across reboots):
 
-1. Make sure the following Rust targets are installed into the correct
-   toolchain.
+1. On the device: Settings → Developer options → Wireless debugging → enable.
+1. Tap "Pair device with pairing code" — note the IP, port, and 6-digit code.
+1. On the host:
 
-   ```
-   aarch64-linux-android
-   arm-linux-androideabi
-   armv7-linux-androideabi
-   i686-linux-android
-   x86_64-linux-android
+   ```bash
+   adb pair <ip>:<pair-port> <code>     # one-off pairing
+   adb connect <ip>:<connect-port>      # port shown on the main wireless screen
    ```
 
-   Ensure you've activated the correct toolchain version for your local
-   environment with `rustup default <toolchain>` (find this from the root
-   `/rust/rust-toolchain.toml` file), then run:
+**Android 10 and older** (USB seed required, resets on reboot):
+
+1. Connect once over USB and confirm `adb devices` lists the phone.
+1. Switch the device's adb daemon to TCP and connect:
+
+   ```bash
+   adb tcpip 5555
+   adb connect <phone-ip>:5555    # Settings → About phone → Status for the IP
+   ```
+
+1. Disconnect USB. The connection persists until the phone reboots, after which
+   you'll need to repeat the USB seed step.
+
+### Manual setup
+
+If you'd rather not use `mise run setup`:
+
+1. Install Rust, JDK 17, and the Android SDK (via
+   [Android Studio](https://developer.android.com/studio) or `sdkmanager`).
+1. Install the NDK version pinned in `app/build.gradle.kts` (currently
+   `28.1.13356709`) via Android Studio's SDK Manager or
+   `sdkmanager "ndk;<version>"`.
+1. Create `local.properties` with `sdk.dir=/path/to/Android/Sdk`.
+1. Add the Rust cross-compilation targets to the toolchain pinned in
+   `rust/rust-toolchain.toml`:
 
    ```
-   rustup target add aarch64-linux-android arm-linux-androideabi armv7-linux-androideabi i686-linux-android x86_64-linux-android
+   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
    ```
 
-1. Perform a test build: `./gradlew assembleDebug`.
+1. Run `./gradlew assembleDebug` to verify.
 
 If you get errors about `rustc` or `cargo` not being found, it can help to
 explicitly specify the path to these in your shell environment. For example:
@@ -74,23 +92,28 @@ We release from GitHub CI, so this shouldn't be necessary. But if you're looking
 to test the `release` variant locally:
 
 1. Download the keystore from 1Pass and save to `app/.signing/keystore.jks` dir.
-1. Download firebase credentials from 1Pass and save to
-   `app/.signing/firebase.json`
 1. Now you can execute the `*Release` tasks with:
 
 ```shell
 export KEYSTORE_PATH="$(pwd)/app/.signing/keystore.jks"
-export FIREBASE_CREDENTIALS_PATH="$(pwd)/app/.signing/firebase.json"
 HISTCONTROL=ignorespace # prevents saving the next line in shell history
  KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
 ```
 
 ## Logs
 
-To see all connlib related logs via ADB use:
+To stream colored logcat from the connected device/emulator:
 
 ```
-adb logcat --format color "connlib *:S"
+mise run logcat
+```
+
+Set `ANDROID_SERIAL` to disambiguate when multiple devices/emulators are
+connected. Pass a tag filterspec after `--` to narrow the output, e.g. just the
+Rust `connlib` tag:
+
+```
+mise run logcat -- 'connlib:V *:S'
 ```
 
 This will show logs of all levels from the `connlib` tag and silence logs from other tags (`*:S`).

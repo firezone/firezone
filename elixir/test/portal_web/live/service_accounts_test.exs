@@ -70,7 +70,8 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts")
 
-      assert html =~ "No service accounts to display."
+      assert html =~ "No service accounts yet"
+      assert html =~ "No service accounts have been created yet."
     end
 
     test "shows disabled badge for disabled service accounts", %{
@@ -880,6 +881,34 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       render_click(lv, "change_tab", %{"tab" => "groups"})
       assert render(lv) =~ group.name
+    end
+
+    test "saves successfully when a pending group removal was already deleted in another tab",
+         %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+      group = group_fixture(account: account, name: "Current Group")
+      membership = membership_fixture(actor: service_account, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}/edit")
+
+      render_click(lv, "add_pending_group_removal", %{"group_id" => group.id})
+
+      Portal.Repo.delete!(membership)
+
+      lv
+      |> form("form[phx-submit='save']", actor: %{name: service_account.name})
+      |> render_submit()
+
+      html = render(lv)
+      refute html =~ "Failed to update some group memberships."
+
+      refute Portal.Repo.get_by(Portal.Membership,
+               actor_id: service_account.id,
+               group_id: group.id
+             )
     end
 
     test "shows error flash when adding a group membership to a service account fails", %{

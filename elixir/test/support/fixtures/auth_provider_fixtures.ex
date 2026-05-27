@@ -202,6 +202,7 @@ defmodule Portal.AuthProviderFixtures do
       |> Map.put_new(:issuer, "https://accounts.google.com")
       |> Map.put_new(:is_verified, true)
       |> Map.put_new(:is_disabled, false)
+      |> Map.put_new(:email_verification_method, :claim)
 
     {:ok, oidc_provider} =
       %Portal.OIDC.AuthProvider{}
@@ -214,6 +215,7 @@ defmodule Portal.AuthProviderFixtures do
         :client_secret,
         :discovery_document_uri,
         :issuer,
+        :email_verification_method,
         :is_verified,
         :is_default,
         :is_disabled,

@@ -3,9 +3,9 @@ import { Metadata } from "next";
 import ActionLink from "@/components/ActionLink";
 
 export const metadata: Metadata = {
-  title: "Early Access • Firezone",
+  title: "Beta Access Program & 1.0 Timeline",
   description:
-    "Register for early access to try new Firezone features before they're released.",
+    "Read about the Firezone 1.0 beta program and release timeline. Early access has ended — sign up to learn more about the platform.",
 };
 
 export default function EarlyAccess() {

@@ -9,7 +9,7 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
-use connlib_model::{ResourceId, ResourceView, Site};
+use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
 use futures::{
     SinkExt, StreamExt,
     stream::{self, BoxStream},
@@ -40,6 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
+    telemetry_allowed: bool,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
@@ -136,7 +137,7 @@ pub enum Status {
     /// Firezone is ready to use.
     TunnelReady {
         #[debug(skip)]
-        resources: Vec<ResourceView>,
+        resources: ResourceList,
     },
     /// Firezone is signing in to the Portal.
     WaitingForPortal,
@@ -182,6 +183,7 @@ impl<I: GuiIntegration> Controller<I> {
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
+        telemetry_allowed: bool,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
     ) -> Result<()> {
@@ -189,9 +191,11 @@ impl<I: GuiIntegration> Controller<I> {
 
         let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        receive_hello(&mut ipc_rx)
+        let firezone_id = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
+
+        Telemetry::set_firezone_id(firezone_id).await;
 
         let controller = Controller {
             general_settings,
@@ -207,6 +211,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
+            telemetry_allowed,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -271,13 +276,16 @@ impl<I: GuiIntegration> Controller<I> {
                     return Err(anyhow!("GUI IPC socket closed"));
                 }
                 EventloopTick::NewInstanceLaunched(Some(Err(e))) => {
-                    tracing::warn!("Failed to accept IPC connection from new GUI instance: {e:#}");
+                    tracing::debug!("Failed to accept IPC connection from new GUI instance: {e:#}");
                 }
                 EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
                     let client_msg = read.next().await;
 
                     if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
-                        tracing::debug!("Failed to handle IPC message from new GUI instance: {e:#}")
+                        tracing::debug!(
+                            "Failed to handle IPC message from new GUI instance: {e:#}"
+                        );
+                        continue;
                     }
 
                     if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
@@ -365,6 +373,10 @@ impl<I: GuiIntegration> Controller<I> {
 
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
+        }
+
+        if !self.telemetry_allowed {
+            return Ok(());
         }
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
@@ -647,7 +659,11 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 }
 
-                tracing::debug!(len = resources.len(), "Got new Resources");
+                tracing::debug!(
+                    resources = resources.resources.len(),
+                    connected_devices = resources.connected_devices.len(),
+                    "Got new Resources"
+                );
 
                 self.status = Status::TunnelReady { resources };
 
@@ -665,7 +681,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 return Ok(ControlFlow::Break(()));
             }
-            service::ServerMsg::Hello => {}
+            service::ServerMsg::Hello { .. } => {}
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
 
@@ -833,7 +849,8 @@ impl<I: GuiIntegration> Controller<I> {
                         actor_name: auth_session.actor_name.clone(),
                         favorite_resources: self.general_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.general_settings.internet_resource_enabled,
-                        resources: resources.clone(),
+                        resources: resources.resources.clone(),
+                        connected_devices: resources.connected_devices.clone(),
                     }),
                     SessionViewModel::SignedIn {
                         account_slug: auth_session.account_slug.clone(),
@@ -908,6 +925,7 @@ impl<I: GuiIntegration> Controller<I> {
         };
 
         let resource = resources
+            .resources
             .iter()
             .find(|r| r.id() == resource_id)
             .context("Unknown resource")?;
@@ -962,7 +980,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 }
 
-async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<()> {
+async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -973,11 +991,11 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
         .context("No message received from tunnel service")?
         .context("Failed to receive message from tunnel service")?;
 
-    if !matches!(server_msg, service::ServerMsg::Hello) {
+    let service::ServerMsg::Hello { firezone_id } = server_msg else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
-    }
+    };
 
-    Ok(())
+    Ok(firezone_id)
 }
 
 #[cfg(test)]
@@ -1187,7 +1205,9 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap())).await.unwrap();
+            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
+            .await
+            .unwrap();
             let ack = rx.next().await.unwrap().unwrap();
             assert_eq!(ack, gui::ServerMsg::Ack);
         }
@@ -1340,7 +1360,12 @@ mod tests {
 
     impl MockTunnel {
         async fn send_hello(&mut self) {
-            self.tx.send(&service::ServerMsg::Hello).await.unwrap();
+            self.tx
+                .send(&service::ServerMsg::Hello {
+                    firezone_id: "test-firezone-id".to_owned(),
+                })
+                .await
+                .unwrap();
         }
 
         async fn rx_start_telemetry(&mut self) {
@@ -1366,7 +1391,10 @@ mod tests {
 
         async fn send_resources(&mut self, resources: Vec<ResourceView>) {
             self.tx
-                .send(&service::ServerMsg::OnUpdateResources(resources))
+                .send(&service::ServerMsg::OnUpdateResources(ResourceList {
+                    resources,
+                    connected_devices: Vec::new(),
+                }))
                 .await
                 .unwrap();
         }
@@ -1408,6 +1436,7 @@ mod tests {
                 MdmSettings::default(),
                 AdvancedSettings::default(),
                 log_filter_reloader,
+                true,
                 updates_rx,
                 gui_ipc_server,
             ));

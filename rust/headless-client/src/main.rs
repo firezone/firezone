@@ -329,12 +329,8 @@ fn try_main() -> Result<()> {
     let mut telemetry = if cli.is_telemetry_allowed() {
         let mut telemetry = Telemetry::new();
 
-        rt.block_on(telemetry.start(
-            cli.api_url.as_ref(),
-            RELEASE,
-            telemetry::HEADLESS_DSN,
-            firezone_id.clone(),
-        ));
+        telemetry.start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
+        rt.block_on(Telemetry::set_firezone_id(firezone_id.clone()));
 
         analytics::identify(RELEASE.to_owned(), None);
 

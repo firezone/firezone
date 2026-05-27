@@ -10,7 +10,7 @@ pub use device::{Device, TunChannelClosed};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
-use chrono::{DateTime, Utc};
+use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
@@ -64,7 +64,7 @@ pub struct Io {
 
     dns_queries: FuturesTupleSet<Result<dns_types::Response>, DnsQueryMetaData>,
 
-    udp_dns_client: l4_udp_dns_client::UdpDnsClient,
+    bootstrap_dns_client: BootstrapDnsClient,
     doh_clients: BTreeMap<DoHUrl, HttpClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
@@ -102,7 +102,6 @@ impl Default for Buffers {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input<D, I> {
     pub now: Instant,
-    pub now_utc: DateTime<Utc>,
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
@@ -116,7 +115,6 @@ impl<D, I> Input<D, I> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
             now: Instant::now(),
-            now_utc: Utc::now(),
             timeout: false,
             device: None,
             network: None,
@@ -173,8 +171,9 @@ impl Io {
                 tcp_socket_factory.clone(),
                 udp_socket_factory.clone(),
             ),
-            udp_dns_client: l4_udp_dns_client::UdpDnsClient::new(
+            bootstrap_dns_client: BootstrapDnsClient::new(
                 udp_socket_factory.clone(),
+                tcp_socket_factory.clone(),
                 Vec::default(),
             ),
             reval_nameserver_interval: tokio::time::interval(RE_EVALUATE_NAMESERVER_INTERVAL),
@@ -242,10 +241,13 @@ impl Io {
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) {
-        tracing::debug!(servers = ?resolvers, "Re-configuring UDP DNS client with new upstreams");
+        tracing::debug!(servers = ?resolvers, "Re-configuring bootstrap DNS client with new upstreams");
 
-        self.udp_dns_client =
-            l4_udp_dns_client::UdpDnsClient::new(self.udp_socket_factory.clone(), resolvers)
+        self.bootstrap_dns_client = BootstrapDnsClient::new(
+            self.udp_socket_factory.clone(),
+            self.tcp_socket_factory.clone(),
+            resolvers,
+        )
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -405,7 +407,6 @@ impl Io {
 
         Poll::Ready(Input {
             now: Instant::now(),
-            now_utc: Utc::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
             network: poll_result_to_option(network, &mut error),
@@ -564,7 +565,7 @@ impl Io {
         }
 
         let socket_factory = self.tcp_socket_factory.clone();
-        let addresses = self.udp_dns_client.resolve(server.host());
+        let addresses = self.bootstrap_dns_client.resolve(server.host());
 
         let _ = self
             .doh_clients_bootstrap

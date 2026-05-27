@@ -107,6 +107,11 @@ defmodule PortalAPI.ExternalIdentityController do
         where: ei.actor_id == ^actor_id,
         order_by: [desc: ei.inserted_at]
       )
+      |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
+        on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
+        as: :sync_state
+      )
+      |> preload([sync_state: iss], sync_state: iss)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__, opts)
     end
@@ -120,7 +125,12 @@ defmodule PortalAPI.ExternalIdentityController do
 
     def fetch_external_identity(id, subject) do
       result =
-        from(ei in ExternalIdentity, where: ei.id == ^id)
+        from(ei in ExternalIdentity, as: :external_identities, where: ei.id == ^id)
+        |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
+          on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
+          as: :sync_state
+        )
+        |> preload([sync_state: iss], sync_state: iss)
         |> Safe.scoped(subject, :replica)
         |> Safe.one()
 

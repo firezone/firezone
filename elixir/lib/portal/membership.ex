@@ -20,7 +20,9 @@ defmodule Portal.Membership do
     belongs_to :group, Portal.Group
     belongs_to :actor, Portal.Actor
 
-    field :last_synced_at, :utc_datetime_usec
+    has_one :sync_state, Portal.MembershipSyncState,
+      foreign_key: :membership_id,
+      references: :id
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do

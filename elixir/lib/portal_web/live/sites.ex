@@ -50,7 +50,7 @@ defmodule PortalWeb.Sites do
     else
       case Database.get_site(id, socket.assigns.subject) do
         nil ->
-          {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/sites")}
+          redirect_to_sites_index(socket, "Site does not exist.")
 
         site ->
           {:noreply,
@@ -79,7 +79,7 @@ defmodule PortalWeb.Sites do
     else
       case Database.get_site(id, socket.assigns.subject) do
         nil ->
-          {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/sites")}
+          redirect_to_sites_index(socket, "Site does not exist.")
 
         site ->
           changeset = Database.change_site(site)
@@ -110,6 +110,13 @@ defmodule PortalWeb.Sites do
 
   def handle_params(_params, _uri, socket) do
     {:noreply, socket |> unsubscribe_deploy_site_presence() |> assign(site_state_reset_assigns())}
+  end
+
+  defp redirect_to_sites_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/sites?#{socket.assigns.query_params}")}
   end
 
   defp site_panel_assigns(site, params, socket) do

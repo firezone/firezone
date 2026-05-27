@@ -1,4 +1,11 @@
+import { Metadata } from "next";
 import TermlyContent from "@/components/TermlyContent";
+
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description:
+    "Review the legal terms governing your use of Firezone software, services, and website. Read the full terms of service.",
+};
 
 export default function Page() {
   return (

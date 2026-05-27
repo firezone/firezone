@@ -930,41 +930,53 @@ defmodule PortalWeb.CoreComponents do
   end
 
   @doc """
-  Returns a string the represents a relative time for a given Datetime
+  Returns a string that represents a relative time for a given DateTime
   from the current time or a given base time
   """
   attr :datetime, DateTime, default: nil
   attr :relative_to, DateTime, required: false
   attr :negative_class, :string, default: ""
   attr :popover, :boolean, default: true
+  attr :empty, :string, default: "Never"
 
   def relative_datetime(assigns) do
     assigns =
       assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
+    assigns =
+      assigns
+      |> assign(:has_datetime?, not is_nil(assigns.datetime))
+      |> assign(:relative_datetime_text, relative_datetime_text(assigns))
+
     ~H"""
-    <.popover :if={not is_nil(@datetime) and @popover}>
+    <.popover :if={@has_datetime? and @popover}>
       <:target>
         <span class={[
           "underline underline-offset-2 decoration-1 decoration-dotted",
           DateTime.compare(@datetime, @relative_to) == :lt && @negative_class
         ]}>
-          {PortalWeb.Format.relative_datetime(@datetime, @relative_to)
-          |> String.capitalize()}
+          {@relative_datetime_text}
         </span>
       </:target>
       <:content>
         {@datetime}
       </:content>
     </.popover>
-    <span :if={not @popover}>
-      {PortalWeb.Format.relative_datetime(@datetime, @relative_to)
-      |> String.capitalize()}
+    <span :if={@has_datetime? and not @popover}>
+      {@relative_datetime_text}
     </span>
-    <span :if={is_nil(@datetime)}>
-      Never
+    <span :if={not @has_datetime?}>
+      {@empty}
     </span>
     """
+  end
+
+  defp relative_datetime_text(%{datetime: nil}), do: nil
+
+  defp relative_datetime_text(%{datetime: datetime, relative_to: relative_to}) do
+    datetime
+    |> PortalWeb.Format.relative_datetime(relative_to)
+    |> String.capitalize()
   end
 
   @doc """
@@ -1308,11 +1320,14 @@ defmodule PortalWeb.CoreComponents do
             not is_nil(@display_remote_ip_location_lat) and
               not is_nil(@display_remote_ip_location_lon)
           }
-          class="text-accent-800"
+          aria-label="Open remote IP location in Google Maps"
+          class="inline-flex align-middle text-current hover:text-[var(--text-primary)] transition-colors"
           target="_blank"
-          href={"http://www.google.com/maps/place/#{@display_remote_ip_location_lat},#{@display_remote_ip_location_lon}"}
+          title="Open remote IP location in Google Maps"
+          rel="noopener noreferrer"
+          href={"https://www.google.com/maps/place/#{@display_remote_ip_location_lat},#{@display_remote_ip_location_lon}"}
         >
-          <.icon name="ri-external-link-line" class="mb-3 w-3 h-3" />
+          <.icon name="ri-external-link-line" class="ml-1 w-3 h-3" />
         </a>
       </span>
     <% else %>

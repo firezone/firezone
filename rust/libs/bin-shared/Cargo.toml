@@ -56,6 +56,7 @@ tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 windows-core = { workspace = true }
 windows-implement = { workspace = true }
+windows-security = { workspace = true }
 winreg = { workspace = true }
 wintun = "0.5.1"
 
@@ -76,7 +77,8 @@ features = [
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
     # For uptime
-    "Win32_System_GroupPolicy", # For NRPT when GPO is used
+    # For NRPT when GPO is used
+    "Win32_System_GroupPolicy",
 ]
 
 [dev-dependencies]

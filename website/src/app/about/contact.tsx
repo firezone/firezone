@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LinkedInIcon, GitHubIcon, XIcon } from "@/components/Icons";
+import { validUrl } from "@/lib/url";
 
 export default function Contact() {
   return (
@@ -16,7 +17,7 @@ export default function Contact() {
               </td>
               <td className="py-2 px-3">
                 <Link
-                  href={new URL("mailto:media@firezone.dev")}
+                  href={validUrl("mailto:media@firezone.dev")}
                   className="text-accent-500 hover:underline"
                 >
                   media@firezone.dev
@@ -29,7 +30,7 @@ export default function Contact() {
               </td>
               <td className="py-2 px-3">
                 <Link
-                  href={new URL("mailto:support@firezone.dev")}
+                  href={validUrl("mailto:support@firezone.dev")}
                   className="text-accent-500 hover:underline"
                 >
                   support@firezone.dev
@@ -41,10 +42,10 @@ export default function Contact() {
                 <strong>Social:</strong>
               </td>
               <td className="py-2 px-3 flex space-x-2">
-                <XIcon url={new URL("https://x.com/firezonehq")} />
-                <GitHubIcon url={new URL("https://github.com/firezone")} />
+                <XIcon url={validUrl("https://x.com/firezonehq")} />
+                <GitHubIcon url={validUrl("https://github.com/firezone")} />
                 <LinkedInIcon
-                  url={new URL("https://linkedin.com/company/firezonehq")}
+                  url={validUrl("https://linkedin.com/company/firezonehq")}
                 />
               </td>
             </tr>

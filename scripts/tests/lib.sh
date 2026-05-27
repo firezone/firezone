@@ -3,7 +3,7 @@
 set -euox pipefail
 
 function client() {
-    docker compose exec -T client "$@"
+    docker compose exec -T client-1 "$@"
 }
 
 function gateway() {
@@ -16,6 +16,10 @@ function relay1() {
 
 function relay2() {
     docker compose exec -T relay-2 "$@"
+}
+
+function client2() {
+    docker compose exec -T client-2 "$@"
 }
 
 function client_curl() {
@@ -46,7 +50,7 @@ site = Portal.Repo.get_by!(Portal.Site, account_id: account_id, name: \"$site_na
 [client_id | _] = Portal.Presence.Clients.Account.list(account_id) |> Map.keys()
 resource = Portal.Repo.get_by!(Portal.Resource, account_id: account_id, name: \"$resource_name\")
 
-Portal.PG.deliver(gateway_id, {:reject_access, client_id, resource.id})
+PortalAPI.Gateway.Channel.revoke_pair_access(gateway_id, client_id, resource.id)
 "
 }
 
@@ -137,4 +141,30 @@ function get_flow_field() {
     local field_name="$2"
 
     echo "$flow_log" | grep -oP "${field_name}=\K[^ ]+" || echo ""
+}
+
+# Get the `duration_since_intent` (in milliseconds) of the most recent
+# "Completed wireguard handshake" client log line. Use after a roam to
+# bound how long the tunnel took to come back up, independent of any TCP
+# recovery that happens afterwards.
+function last_wg_handshake_ms() {
+    local raw
+    raw=$(docker compose logs client-1 --since 60s 2>/dev/null |
+        grep "Completed wireguard handshake" |
+        tail -n 1 |
+        grep -oP 'duration_since_intent=\K[^ ]+')
+
+    # Rust's Duration debug-format is one of: 350.9ms, 1.5s, 350µs, 350ns.
+    # Convert whichever shows up to integer milliseconds.
+    if [[ "$raw" == *ms ]]; then
+        awk -v n="${raw%ms}" 'BEGIN { printf("%.0f\n", n) }'
+    elif [[ "$raw" == *µs ]]; then
+        awk -v n="${raw%µs}" 'BEGIN { printf("%.0f\n", n / 1000) }'
+    elif [[ "$raw" == *ns ]]; then
+        echo 0
+    elif [[ "$raw" == *s ]]; then
+        awk -v n="${raw%s}" 'BEGIN { printf("%.0f\n", n * 1000) }'
+    else
+        echo 999999 # No handshake log line found — treat as failure.
+    fi
 }

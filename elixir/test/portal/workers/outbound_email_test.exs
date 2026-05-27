@@ -80,6 +80,53 @@ defmodule Portal.Workers.OutboundEmailTest do
       assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
     end
 
+    test "respects ACS 429 retry-after with a fresh HMAC signature" do
+      account = account_fixture()
+
+      Portal.Config.put_env_override(:portal, Portal.Mailer.Secondary,
+        adapter: Swoosh.Adapters.AzureCommunicationServices,
+        endpoint: "https://acs.example.com",
+        access_key: Base.encode64("acs-secret"),
+        req_opts: [
+          plug: {Req.Test, Portal.AzureCommunicationServices},
+          retry: :transient,
+          max_retries: 1
+        ]
+      )
+
+      test_pid = self()
+      {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        attempt = Agent.get_and_update(attempts, fn attempt -> {attempt, attempt + 1} end)
+        send(test_pid, {:acs_attempt, attempt, acs_auth_headers(conn)})
+
+        case attempt do
+          0 ->
+            conn
+            |> Plug.Conn.put_resp_header("retry-after", "1")
+            |> Plug.Conn.put_status(429)
+            |> Req.Test.json(%{"error" => %{"message" => "rate limited"}})
+
+          _ ->
+            conn
+            |> Plug.Conn.put_status(202)
+            |> Req.Test.json(%{"id" => "acs-message-429", "status" => "Running"})
+        end
+      end)
+
+      assert :ok = perform_job(Worker, queued_args(account.id))
+      assert_received {:acs_attempt, 0, first_headers}
+      assert_received {:acs_attempt, 1, second_headers}
+      assert first_headers.x_ms_date != second_headers.x_ms_date
+      assert first_headers.authorization != second_headers.authorization
+
+      db_entry =
+        Repo.get_by!(Portal.OutboundEmail, account_id: account.id, message_id: "acs-message-429")
+
+      assert db_entry.subject == "Test Subject"
+    end
+
     test "sets deterministic Operation-Id header derived from job id" do
       account = account_fixture()
       configure_acs_secondary()
@@ -122,12 +169,30 @@ defmodule Portal.Workers.OutboundEmailTest do
     }
   end
 
-  defp configure_acs_secondary do
+  defp configure_acs_secondary(req_opts \\ [
+         plug: {Req.Test, Portal.AzureCommunicationServices},
+         retry: false
+       ]) do
     Portal.Config.put_env_override(:portal, Portal.Mailer.Secondary,
       adapter: Swoosh.Adapters.AzureCommunicationServices,
       endpoint: "https://acs.example.com",
       auth: "acs-token",
-      req_opts: [plug: {Req.Test, Portal.AzureCommunicationServices}, retry: false]
+      req_opts: req_opts
     )
+  end
+
+  defp acs_auth_headers(conn) do
+    %{
+      authorization: request_header(conn, "authorization"),
+      x_ms_date: request_header(conn, "x-ms-date")
+    }
+  end
+
+  defp request_header(conn, name) do
+    name = String.downcase(name)
+
+    Enum.find_value(conn.req_headers, fn {header_name, value} ->
+      if String.downcase(header_name) == name, do: value
+    end)
   end
 end

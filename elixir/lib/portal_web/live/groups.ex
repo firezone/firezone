@@ -49,27 +49,14 @@ defmodule PortalWeb.Groups do
 
   # Edit Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    group = Database.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
-    if editable_group?(group) do
-      changeset = changeset(group, %{})
-      resources = preserved_group_resources(socket, id)
+    case Database.get_group_with_actors(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_groups_index(socket, "Group does not exist.")
 
-      {:noreply,
-       socket
-       |> assign(selected_group: group)
-       |> assign(base_group_assigns(socket))
-       |> assign(
-         group_panel: group_panel_state(view: :edit_form),
-         group_form: group_form_state(to_form(changeset)),
-         group_resources: group_resources_state(resources: resources)
-       )}
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
+      group ->
+        edit_group_panel(socket, group, id)
     end
   end
 
@@ -79,33 +66,15 @@ defmodule PortalWeb.Groups do
     tab = parse_group_tab(Map.get(params, "tab", "members"))
 
     if selected_group_matches?(socket, id) do
-      socket =
-        socket
-        |> assign(base_group_assigns(socket))
-        |> assign(
-          selected_group: socket.assigns.selected_group,
-          group_panel: group_panel_state(tab: tab),
-          group_resources:
-            group_resources_state(resources: socket.assigns.group_resources.resources)
-        )
-        |> load_panel_members_from_selected_group()
-
-      {:noreply, socket}
+      show_selected_group_panel(socket, tab)
     else
-      group = Database.get_group_with_actors!(id, socket.assigns.subject)
-      resources = Database.list_resources_for_group(group, socket.assigns.subject)
+      case Database.get_group_with_actors(id, socket.assigns.subject) do
+        nil ->
+          redirect_to_groups_index(socket, "Group does not exist.")
 
-      socket =
-        socket
-        |> assign(selected_group: group)
-        |> assign(base_group_assigns(socket))
-        |> assign(
-          group_panel: group_panel_state(tab: tab),
-          group_resources: group_resources_state(resources: resources)
-        )
-        |> load_panel_members()
-
-      {:noreply, socket}
+        group ->
+          show_group_panel(socket, group, tab)
+      end
     end
   end
 
@@ -553,45 +522,25 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("disable_resource_access", %{"resource_id" => resource_id}, socket) do
-    case Database.disable_policy_for_resource(
-           socket.assigns.selected_group,
-           resource_id,
-           socket.assigns.subject
-         ) do
-      {:ok, _} ->
-        resources =
-          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+    result =
+      Database.disable_policy_for_resource(
+        socket.assigns.selected_group,
+        resource_id,
+        socket.assigns.subject
+      )
 
-        {:noreply,
-         merge_state(socket, :group_resources,
-           resources: resources,
-           resource_access_actions_open_id: nil
-         )}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
+    apply_resource_access_change(socket, result)
   end
 
   def handle_event("enable_resource_access", %{"resource_id" => resource_id}, socket) do
-    case Database.enable_policy_for_resource(
-           socket.assigns.selected_group,
-           resource_id,
-           socket.assigns.subject
-         ) do
-      {:ok, _} ->
-        resources =
-          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+    result =
+      Database.enable_policy_for_resource(
+        socket.assigns.selected_group,
+        resource_id,
+        socket.assigns.subject
+      )
 
-        {:noreply,
-         merge_state(socket, :group_resources,
-           resources: resources,
-           resource_access_actions_open_id: nil
-         )}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
+    apply_resource_access_change(socket, result)
   end
 
   def handle_event("confirm_remove_resource_access", %{"resource_id" => resource_id}, socket) do
@@ -607,24 +556,14 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_event("remove_resource_access", %{"resource_id" => resource_id}, socket) do
-    case Database.delete_policy_for_resource(
-           socket.assigns.selected_group,
-           resource_id,
-           socket.assigns.subject
-         ) do
-      {:ok, _} ->
-        resources =
-          Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+    result =
+      Database.delete_policy_for_resource(
+        socket.assigns.selected_group,
+        resource_id,
+        socket.assigns.subject
+      )
 
-        {:noreply,
-         merge_state(socket, :group_resources,
-           resources: resources,
-           confirm_remove_resource_access_id: nil
-         )}
-
-      {:error, _} ->
-        {:noreply, merge_state(socket, :group_resources, confirm_remove_resource_access_id: nil)}
-    end
+    apply_resource_access_removal(socket, result)
   end
 
   def handle_event("prev_member_page", _params, socket) do
@@ -743,6 +682,66 @@ defmodule PortalWeb.Groups do
   defp parse_group_tab("resources"), do: :resources
   defp parse_group_tab("members"), do: :members
   defp parse_group_tab(_), do: :members
+
+  defp redirect_to_groups_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/groups?#{socket.assigns.query_params}")}
+  end
+
+  defp edit_group_panel(socket, group, id) do
+    if editable_group?(group) do
+      changeset = changeset(group, %{})
+      resources = preserved_group_resources(socket, id)
+
+      {:noreply,
+       socket
+       |> assign(selected_group: group)
+       |> assign(base_group_assigns(socket))
+       |> assign(
+         group_panel: group_panel_state(view: :edit_form),
+         group_form: group_form_state(to_form(changeset)),
+         group_resources: group_resources_state(resources: resources)
+       )}
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "This group cannot be edited")
+       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
+    end
+  end
+
+  defp show_selected_group_panel(socket, tab) do
+    socket =
+      socket
+      |> assign(base_group_assigns(socket))
+      |> assign(
+        selected_group: socket.assigns.selected_group,
+        group_panel: group_panel_state(tab: tab),
+        group_resources:
+          group_resources_state(resources: socket.assigns.group_resources.resources)
+      )
+      |> load_panel_members_from_selected_group()
+
+    {:noreply, socket}
+  end
+
+  defp show_group_panel(socket, group, tab) do
+    resources = Database.list_resources_for_group(group, socket.assigns.subject)
+
+    socket =
+      socket
+      |> assign(selected_group: group)
+      |> assign(base_group_assigns(socket))
+      |> assign(
+        group_panel: group_panel_state(tab: tab),
+        group_resources: group_resources_state(resources: resources)
+      )
+      |> load_panel_members()
+
+    {:noreply, socket}
+  end
 
   def handle_groups_update!(socket, list_opts) do
     filter = Keyword.get(list_opts, :filter, [])
@@ -1234,6 +1233,50 @@ defmodule PortalWeb.Groups do
     )
   end
 
+  defp apply_resource_access_change(socket, {:error, _}) do
+    {:noreply, put_flash(socket, :error, "Could not update resource access.")}
+  end
+
+  defp apply_resource_access_change(socket, result) do
+    socket =
+      socket
+      |> refresh_group_resources(resource_access_actions_open_id: nil)
+      |> maybe_put_stale_flash(result, "Resource access state has changed.")
+
+    {:noreply, socket}
+  end
+
+  defp apply_resource_access_removal(socket, {:error, _}) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "Could not remove resource access.")
+     |> merge_state(:group_resources, confirm_remove_resource_access_id: nil)}
+  end
+
+  defp apply_resource_access_removal(socket, result) do
+    socket =
+      socket
+      |> refresh_group_resources(confirm_remove_resource_access_id: nil)
+      |> maybe_put_stale_flash(result, "Resource access no longer exists.")
+
+    {:noreply, socket}
+  end
+
+  defp refresh_group_resources(socket, ui_state) do
+    resources =
+      Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+
+    merge_state(socket, :group_resources, Keyword.put(ui_state, :resources, resources))
+  end
+
+  defp maybe_put_stale_flash(socket, nil, message) do
+    put_flash(socket, :error, message)
+  end
+
+  defp maybe_put_stale_flash(socket, _result, _message) do
+    socket
+  end
+
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
@@ -1387,9 +1430,9 @@ defmodule PortalWeb.Groups do
 
       groups_by_id = Map.new(groups, &{&1.group.id, &1})
 
-      Enum.map(group_ids, fn group_id ->
-        Map.fetch!(groups_by_id, group_id)
-      end)
+      group_ids
+      |> Enum.map(&Map.get(groups_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     def count_groups_with_policies(subject, filter \\ []) do
@@ -1557,41 +1600,23 @@ defmodule PortalWeb.Groups do
     end
 
     def disable_policy_for_resource(group, resource_id, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where(
-        [policies: p],
-        p.group_id == ^group.id and p.resource_id == ^resource_id and is_nil(p.disabled_at)
-      )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(fn policy ->
-        Ecto.Changeset.change(policy, %{disabled_at: DateTime.utc_now()})
-        |> Safe.scoped(subject)
-        |> Safe.update()
-      end)
+      with %Portal.Policy{} = policy <-
+             fetch_policy_for_resource(group, resource_id, subject, state: :enabled) do
+        set_policy_disabled_at(policy, subject, DateTime.utc_now())
+      end
     end
 
     def enable_policy_for_resource(group, resource_id, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where(
-        [policies: p],
-        p.group_id == ^group.id and p.resource_id == ^resource_id and not is_nil(p.disabled_at)
-      )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(fn policy ->
-        Ecto.Changeset.change(policy, %{disabled_at: nil})
-        |> Safe.scoped(subject)
-        |> Safe.update()
-      end)
+      with %Portal.Policy{} = policy <-
+             fetch_policy_for_resource(group, resource_id, subject, state: :disabled) do
+        set_policy_disabled_at(policy, subject, nil)
+      end
     end
 
     def delete_policy_for_resource(group, resource_id, subject) do
-      from(p in Portal.Policy, as: :policies)
-      |> where([policies: p], p.group_id == ^group.id and p.resource_id == ^resource_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
+      with %Portal.Policy{} = policy <- fetch_policy_for_resource(group, resource_id, subject) do
+        Safe.scoped(policy, subject) |> Safe.delete()
+      end
     end
 
     def list_group_members(group, subject, page, page_size, filter, opts \\ []) do
@@ -1642,14 +1667,6 @@ defmodule PortalWeb.Groups do
         end
 
       {members, total}
-    end
-
-    def remove_group_member(group, actor_id, subject) do
-      from(m in Portal.Membership, as: :memberships)
-      |> where([memberships: m], m.group_id == ^group.id and m.actor_id == ^actor_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
     end
 
     def list_available_resources(existing_resource_ids, subject) do
@@ -1733,7 +1750,7 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def get_group_with_actors!(id, subject, opts \\ []) do
+    def get_group_with_actors(id, subject, opts \\ []) do
       repo = Keyword.get(opts, :repo, :replica)
 
       query =
@@ -1754,15 +1771,20 @@ defmodule PortalWeb.Groups do
         )
         |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
         |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
+        |> join(:left, [groups: g], gss in Portal.GroupSyncState,
+          on: gss.group_id == g.id and gss.account_id == g.account_id,
+          as: :sync_state
+        )
         |> preload(
           [memberships: m, actors: a, directory: d, google_directory: gd,
-           entra_directory: ed, okta_directory: od],
+           entra_directory: ed, okta_directory: od, sync_state: gss],
           memberships: m,
           actors: a,
-          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od}
+          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od},
+          sync_state: gss
         )
 
-      query |> Safe.scoped(subject, repo) |> Safe.one!(fallback_to_primary: true)
+      query |> Safe.scoped(subject, repo) |> Safe.one(fallback_to_primary: true)
     end
 
     def preloads do
@@ -1785,6 +1807,28 @@ defmodule PortalWeb.Groups do
       group
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+
+    defp fetch_policy_for_resource(group, resource_id, subject, opts \\ []) do
+      from(p in Portal.Policy, as: :policies)
+      |> where([policies: p], p.group_id == ^group.id and p.resource_id == ^resource_id)
+      |> filter_policy_state(opts[:state])
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+    end
+
+    defp filter_policy_state(query, :enabled),
+      do: where(query, [policies: p], is_nil(p.disabled_at))
+
+    defp filter_policy_state(query, :disabled),
+      do: where(query, [policies: p], not is_nil(p.disabled_at))
+
+    defp filter_policy_state(query, _), do: query
+
+    defp set_policy_disabled_at(policy, subject, disabled_at) do
+      Ecto.Changeset.change(policy, %{disabled_at: disabled_at})
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
   end
 end

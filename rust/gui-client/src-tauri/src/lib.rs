@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
+mod fake_controller;
 mod updates;
 mod uptime;
 mod view;
@@ -13,6 +14,7 @@ pub mod dialog;
 pub mod elevation;
 pub mod gui;
 pub mod ipc;
+pub mod launch_lock;
 pub mod logging;
 pub mod service;
 pub mod settings;
@@ -35,6 +37,16 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
+
+/// `Name_publisherId` for the sparse MSIX. Derived at build time
+/// from the manifest's `Name` + Publisher DN in `build.rs`. Used by
+/// `register-sparse.exe` to stage / provision / deprovision the
+/// package against the AppX deployment service.
+pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
+
+/// AppContainer SID for [`PACKAGE_FAMILY_NAME`], derived at build
+/// time. Baked in so the tunnel pipe DACL is deterministic.
+pub const PACKAGE_SID: &str = env!("FIREZONE_PACKAGE_SID");
 
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {

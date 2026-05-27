@@ -64,6 +64,10 @@ pub fn export_metrics() -> bool {
     false // Placeholder until we actually deploy an OTEL collector.
 }
 
+pub fn show_connected_devices() -> bool {
+    FEATURE_FLAGS.show_connected_devices()
+}
+
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     if user_id.is_empty() {
         return;
@@ -72,7 +76,7 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     let api_key = match env {
         Env::Production => posthog::API_KEY_PROD,
         Env::Staging => posthog::API_KEY_STAGING,
-        Env::OnPrem | Env::DockerCompose | Env::Localhost => return,
+        Env::Entrypoint | Env::OnPrem | Env::DockerCompose | Env::Localhost => return,
     };
 
     let (flags, payloads) = decide(user_id, api_key.to_owned())
@@ -182,6 +186,8 @@ struct FeatureFlagsResponse {
     stream_metrics: bool,
     #[serde(default)]
     iceless: bool,
+    #[serde(default)]
+    show_connected_devices: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -199,6 +205,7 @@ struct FeatureFlags {
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: AtomicBool,
     iceless: AtomicBool,
+    show_connected_devices: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -217,6 +224,7 @@ impl FeatureFlags {
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
             iceless,
+            show_connected_devices,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -231,6 +239,8 @@ impl FeatureFlags {
             );
         self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
         self.iceless.store(iceless, Ordering::Relaxed);
+        self.show_connected_devices
+            .store(show_connected_devices, Ordering::Relaxed);
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -266,6 +276,10 @@ impl FeatureFlags {
     fn iceless(&self) -> bool {
         self.iceless.load(Ordering::Relaxed)
     }
+
+    fn show_connected_devices(&self) -> bool {
+        self.show_connected_devices.load(Ordering::Relaxed)
+    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -285,6 +299,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
         iceless: env_or("FZFF_ICELESS", flags.iceless),
+        show_connected_devices: env_or("FZFF_SHOW_CONNECTED_DEVICES", flags.show_connected_devices),
     }
 }
 
@@ -305,6 +320,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
         StreamMetrics { result: bool },
         Iceless { result: bool },
+        ShowConnectedDevices { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -315,6 +331,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
         iceless,
+        show_connected_devices,
     } = flags;
 
     let value = serde_json::json!({
@@ -327,6 +344,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
             SentryFlag::StreamMetrics { result: stream_metrics },
             SentryFlag::Iceless { result: iceless },
+            SentryFlag::ShowConnectedDevices { result: show_connected_devices },
         ]
     });
 

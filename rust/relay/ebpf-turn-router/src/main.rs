@@ -10,6 +10,8 @@ fn main() {
 }
 
 #[cfg(any(target_arch = "bpf", target_os = "linux"))]
+mod time;
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod try_handle_turn;
 
 #[cfg(any(target_arch = "bpf", target_os = "linux"))]

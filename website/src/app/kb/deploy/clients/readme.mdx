@@ -1,9 +1,15 @@
+---
+title: Clients
+description:
+  "Distribute Firezone Clients to your team across macOS, Windows, Linux, iOS,
+  Android, and ChromeOS. See the client distribution guide."
+---
+
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
 import PlanBadge from "@/components/PlanBadge";
 import { TabsGroup, TabsItem } from "@/components/Tabs";
-import { FaApple, FaWindows } from "react-icons/fa";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
@@ -90,7 +96,7 @@ through your organization's MDM provider. For template files and other
 platform-specific notes, use the following details:
 
 <TabsGroup>
-<TabsItem title="macOS" icon={FaApple}>
+<TabsItem title="macOS" icon="apple">
 
 ##### Step 1: Generate a .mobileconfig file
 
@@ -116,7 +122,7 @@ profile to your macOS fleet. Links for some popular MDM providers are below:
 - [InTune](https://learn.microsoft.com/en-us/intune/intune-service/configuration/custom-settings-macos)
 
 </TabsItem>
-<TabsItem title="Windows" icon={FaWindows}>
+<TabsItem title="Windows" icon="windows">
 
 On Windows, Firezone supports a variety of MDM-based configuration values. These
 are all read from the `HKEY_CURRENT_USER\Software\Policies\Firezone` registry
@@ -156,7 +162,7 @@ To set a policy via Microsoft Intune, follow these steps:
 
 </TabsItem>
 
-{/* TODO <TabsItem title="iOS" icon={FaApple}></TabsItem> */}
+{/* TODO <TabsItem title="iOS" icon="apple"></TabsItem> */}
 
 </TabsGroup>
 

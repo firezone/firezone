@@ -33,7 +33,7 @@ defmodule PortalWeb.SignUpTest do
   describe "fill_form edge cases" do
     test "already-registered email shows email sent step", %{conn: conn} do
       email = "existing@example.com"
-      account_fixture(metadata: %{stripe: %{billing_email: email}})
+      account = account_fixture(metadata: %{stripe: %{billing_email: email}})
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
@@ -49,6 +49,12 @@ defmodule PortalWeb.SignUpTest do
         |> render_submit()
 
       assert html =~ "Check your email"
+
+      assert_email_sent(fn email ->
+        assert email.text_body =~ "http://localhost:13100/#{account.slug}"
+        refute email.text_body =~ "http://localhost:13100/#{account.id}"
+        true
+      end)
     end
 
     test "too-short company name stays on fill_form with errors", %{conn: conn} do
@@ -271,7 +277,7 @@ defmodule PortalWeb.SignUpTest do
           actor_name: "Test User"
         })
 
-      assert {:error, {:live_redirect, %{to: path}}} =
+      assert {:error, {:redirect, %{to: path}}} =
                live(conn, ~p"/verify_sign_up?token=#{token}")
 
       assert path == ~p"/#{account}/sign_in"

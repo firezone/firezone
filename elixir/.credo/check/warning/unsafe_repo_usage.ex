@@ -27,8 +27,9 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
       String.ends_with?(file_path, "lib/portal/safe.ex") ->
         []
 
-      # Allow in Portal.Repo itself and its submodules (Preloader, Paginator, Filter, Query)
-      String.contains?(file_path, "lib/portal/repo") ->
+      # Allow only known Portal.Repo infrastructure files. Other helpers under
+      # lib/portal/repo still need to use Portal.Safe.
+      repo_infrastructure_file?(file_path) ->
         []
 
       # Allow in seeds.exs files
@@ -128,6 +129,19 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
 
   defp traverse(ast, issues, _issue_meta) do
     {ast, issues}
+  end
+
+  defp repo_infrastructure_file?(file_path) do
+    Enum.any?(
+      [
+        "lib/portal/repo.ex",
+        "lib/portal/repo/list.ex",
+        "lib/portal/repo/offset_list.ex",
+        "lib/portal/repo/preloader.ex",
+        "lib/portal/repo/replica.ex"
+      ],
+      &String.ends_with?(file_path, &1)
+    )
   end
 
   defp issue_for(_ast, line_no, issue_meta) do

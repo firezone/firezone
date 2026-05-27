@@ -1,11 +1,8 @@
-import Content from "./readme.mdx";
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Sync with Microsoft Entra ID • Firezone Docs",
-  description:
-    "Automatically synchronize users and groups from Microsoft Entra ID to Firezone.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <Content />;

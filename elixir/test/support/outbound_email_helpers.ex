@@ -7,12 +7,10 @@ defmodule Portal.OutboundEmailTestHelpers do
   alias Portal.Repo
 
   def collect_queued_emails(account_id) do
-    from(j in Oban.Job,
-      where: j.worker == "Portal.Workers.OutboundEmail",
-      order_by: [asc: j.inserted_at]
-    )
+    [worker: Portal.Workers.OutboundEmail, args: %{account_id: account_id}]
+    |> Oban.Job.query()
+    |> order_by([j], asc: j.inserted_at)
     |> Repo.all()
-    |> Enum.filter(&(&1.args["account_id"] == account_id))
     |> Enum.map(&format_queued_email/1)
   end
 

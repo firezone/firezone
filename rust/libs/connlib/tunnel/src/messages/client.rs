@@ -7,7 +7,9 @@ use crate::messages::{
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, serde_as};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Duration;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -69,6 +71,7 @@ pub struct ResourceDescriptionStaticDevicePool {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DevicePoolMember {
+    #[serde(rename = "client_id", alias = "id")]
     pub id: ClientId,
     pub ipv4: Ipv4Network,
     pub ipv6: Ipv6Network,
@@ -147,6 +150,11 @@ pub struct FlowCreationFailed {
     pub violated_properties: Vec<ViolatedProperty>,
 }
 
+/// Sent by the portal once both peers in a static-device-pool flow agree to
+/// connect. The recipient is the target device when `resource` is `Some` (and
+/// must apply the filters / expiry to its inbound authorization) and the
+/// initiating device when it is `None`.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
     pub client_id: ClientId,
@@ -159,21 +167,91 @@ pub struct ClientDeviceAccessAuthorized {
     pub ice_role: IceRole,
     #[serde(default)]
     pub snownet_capabilities: SnownetCapabilities,
+
+    /// The resource authorising this connection on the receiving side, as the
+    /// portal's minimal `{id, filters}` view. `None` on the initiating side.
+    #[serde(default)]
+    pub resource: Option<AuthorizedResource>,
+
+    /// When the authorization expires, as a unix timestamp. `None` when it
+    /// never expires or on the initiating side.
+    #[serde_as(as = "Option<DurationSeconds<u64>>")]
+    #[serde(default)]
+    pub authorization_expires_at: Option<Duration>,
 }
 
+/// The portal's minimal `{id, filters}` resource view embedded in
+/// [`ClientDeviceAccessAuthorized`] for the target device. Other resource
+/// fields the portal sends (name, type, devices) are ignored.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct AuthorizedResource {
+    pub id: ResourceId,
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+/// Authorization metadata granted by a resource for an inbound peer
+/// connection. Built on the target side from [`ClientDeviceAccessAuthorized`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceAuthorization {
+    /// The authorising resource ID.
+    pub resource_id: ResourceId,
+
+    /// Filters that govern inbound traffic the remote peer is allowed to
+    /// send to us through this resource.
+    pub filters: Vec<Filter>,
+
+    /// When the authorization expires, measured from the unix epoch.
+    pub expires_at: Option<Duration>,
+}
+
+/// Sent by the portal when a resource's filters change while access remains
+/// authorized. Receivers must update the inbound filter for any peer the
+/// resource currently authorizes.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ResourceFiltersUpdated {
+    pub id: ResourceId,
+    pub filters: Vec<Filter>,
+}
+
+/// Sent by the portal to revoke a previously-authorized client-to-client
+/// access. The receiver drops the inbound authorization keyed by
+/// `resource_id` for `client_id`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientRejectAccess {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+}
+
+/// Sent by the portal when an authorization's expiry time changes.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientAccessAuthorizationExpiryUpdated {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
+}
+
+/// Portal's denial of a `create_flow` toward a static device pool peer.
+///
+/// Either or both of `ipv4` / `ipv6` may be absent depending on the denial reason.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessDenied {
-    pub ipv4: Ipv4Addr,
-    pub ipv6: Ipv6Addr,
+    #[serde(default)]
+    pub ipv4: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub ipv6: Option<Ipv6Addr>,
     pub reason: FailReason,
 }
 
-/// Portal's response when a dynamic device pool domain is resolved to a tunnel IPv4.
+/// Portal's response when a dynamic device pool domain is resolved.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DevicePoolDomainResolved {
     pub resource_id: ResourceId,
     pub domain: String,
     pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
 }
 
 /// Portal's response when a dynamic device pool domain cannot be resolved.
@@ -191,6 +269,10 @@ pub enum FailReason {
     Offline,
     VersionMismatch,
     Forbidden,
+    Disabled,
+    AmbiguousAddress,
+    MissingAddress,
+    InvalidAddress,
     #[serde(other)]
     Unknown,
 }
@@ -240,6 +322,16 @@ pub enum IngressMessages {
 
     DevicePoolDomainResolved(DevicePoolDomainResolved),
     DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
+
+    /// A resource's filters have changed while at least one authorization
+    /// referencing it remains active.
+    ResourceFiltersUpdated(ResourceFiltersUpdated),
+
+    /// A previously-authorized peer-to-peer access has been revoked.
+    RejectAccess(ClientRejectAccess),
+
+    /// An authorization's expiry time has changed.
+    AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
 
 #[serde_with::serde_as]
@@ -660,7 +752,20 @@ mod tests {
             {
                 "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "type": "static_device_pool",
-                "name": "IoT Devices"
+                "name": "IoT Devices",
+                "devices": [
+                    {
+                        "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                        "ipv4": "100.64.1.38/32",
+                        "ipv6": "fd00:2021:1111::125/128"
+                    },
+                    {
+                        "client_id": "75fb9102-2651-49eb-9b0b-80f4eee182cb",
+                        "ipv4": "100.64.23.121/32",
+                        "ipv6": "fd00:2021:1111::1777/128"
+                    }
+                ],
+                "filters": []
             }
         ]"#;
 
@@ -676,6 +781,21 @@ mod tests {
         };
         let desc = ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
         assert_eq!(desc.name, "IoT Devices");
+        assert_eq!(
+            desc.devices,
+            vec![
+                DevicePoolMember {
+                    id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap(),
+                    ipv4: "100.64.1.38/32".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::125/128".parse().unwrap(),
+                },
+                DevicePoolMember {
+                    id: "75fb9102-2651-49eb-9b0b-80f4eee182cb".parse().unwrap(),
+                    ipv4: "100.64.23.121/32".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::1777/128".parse().unwrap(),
+                },
+            ]
+        );
     }
 
     #[test]
@@ -730,12 +850,20 @@ mod tests {
             "payload": {
                 "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
                 "domain": "device-42.laptops.example.com",
-                "ipv4": "100.64.0.42"
+                "ipv4": "100.64.0.42",
+                "ipv6": "fd00:2021:1111::42"
             }
         });
 
         let msg: IngressMessages = serde_json::from_value(json).unwrap();
-        assert!(matches!(msg, IngressMessages::DevicePoolDomainResolved(_)));
+        let IngressMessages::DevicePoolDomainResolved(resolved) = msg else {
+            panic!("expected DevicePoolDomainResolved")
+        };
+        assert_eq!(resolved.ipv4, "100.64.0.42".parse::<Ipv4Addr>().unwrap());
+        assert_eq!(
+            resolved.ipv6,
+            "fd00:2021:1111::42".parse::<Ipv6Addr>().unwrap()
+        );
     }
 
     #[test]

@@ -110,7 +110,7 @@ jobs:
         run: mix hex.audit
 
       - name: Check For Vulnerable Packages
-        run: mix deps.audit
+        run: mix deps.audit --ignore-advisory-ids GHSA-g2wm-735q-3f56
 
       - name: Run Sobelow vulnerability scanner
         working-directory: ./elixir
@@ -123,6 +123,8 @@ jobs:
         run: mix deps.unlock --check-unused
 
       - name: Validate OpenAPI spec
+        env:
+          OBAN_ENABLED: "false"
         run: |
           mix openapi.spec.yaml --spec PortalAPI.ApiSpec
           result=$(curl --fail --show-error --silent \

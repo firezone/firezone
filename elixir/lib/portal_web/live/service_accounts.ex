@@ -629,7 +629,25 @@ defmodule PortalWeb.ServiceAccounts do
             <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
           </:col>
           <:empty>
-            <span class="text-sm text-[var(--text-tertiary)]">No service accounts to display.</span>
+            <div class="flex flex-col items-center gap-3 py-16">
+              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
+                <.icon name="ri-robot-3-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              </div>
+              <div class="text-center">
+                <p class="text-sm font-medium text-[var(--text-primary)]">
+                  No service accounts yet
+                </p>
+                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  No service accounts have been created yet.
+                </p>
+              </div>
+              <.link
+                patch={~p"/#{@account}/service_accounts/new"}
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+              >
+                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Service Account
+              </.link>
+            </div>
           </:empty>
         </.live_table>
       </div>
@@ -676,7 +694,7 @@ defmodule PortalWeb.ServiceAccounts do
     |> Map.merge(Map.new(overrides))
   end
 
-  defp actor_form_state(form \\ nil), do: %{form: form}
+  defp actor_form_state(form \\ nil), do: %{form: form, pending_email_change: nil}
 
   defp actor_related_state(overrides \\ []) do
     %{identities: [], groups: [], tokens: [], sessions: [], created_token: nil}
@@ -814,7 +832,11 @@ defmodule PortalWeb.ServiceAccounts do
         {:error, :invalid_date}
 
       expires_at ->
-        case Authentication.create_headless_client_token(actor, %{"expires_at" => expires_at}, subject) do
+        case Authentication.create_non_interactive_client_token(
+               actor,
+               %{"expires_at" => expires_at},
+               subject
+             ) do
           {:ok, token} ->
             {:ok, {token, Authentication.encode_fragment!(token)}}
 
@@ -913,7 +935,10 @@ defmodule PortalWeb.ServiceAccounts do
         |> Enum.map(&%{&1 | identity_count: 0})
 
       actors_by_id = Map.new(actors, &{&1.id, &1})
-      Enum.map(actor_ids, &Map.fetch!(actors_by_id, &1))
+
+      actor_ids
+      |> Enum.map(&Map.get(actors_by_id, &1))
+      |> Enum.reject(&is_nil/1)
     end
 
     def get_actor(id, subject) do
@@ -1048,11 +1073,16 @@ defmodule PortalWeb.ServiceAccounts do
     end
 
     def remove_group_member(group_id, actor, subject) do
+      with %Portal.Membership{} = membership <- fetch_membership(group_id, actor, subject) do
+        Safe.scoped(membership, subject) |> Safe.delete()
+      end
+    end
+
+    defp fetch_membership(group_id, actor, subject) do
       from(m in Portal.Membership, as: :memberships)
       |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
       |> Safe.scoped(subject, :replica)
-      |> Safe.one!()
-      |> then(&(Safe.scoped(&1, subject) |> Safe.delete()))
+      |> Safe.one()
     end
   end
 end

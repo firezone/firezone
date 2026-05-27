@@ -53,6 +53,33 @@ function update_version_marker() {
     done
 }
 
+function update_gateway_checksum_marker() {
+    local marker="$1"
+    local checksum="$2"
+    local file="$3"
+
+    sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9a-f]\{64\}/${checksum}/g;}" "$file"
+}
+
+function update_gateway_checksums() {
+    local version="$1"
+    local x86_64_checksum="$2"
+    local aarch64_checksum="$3"
+    local armv7_checksum="$4"
+    local installer="scripts/gateway-systemd-install.sh"
+
+    for checksum in "$x86_64_checksum" "$aarch64_checksum" "$armv7_checksum"; do
+        if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid gateway checksum for $version: $checksum" >&2
+            exit 1
+        fi
+    done
+
+    update_gateway_checksum_marker "mark:gateway-x86_64-sha256" "$x86_64_checksum" "$installer"
+    update_gateway_checksum_marker "mark:gateway-aarch64-sha256" "$aarch64_checksum" "$installer"
+    update_gateway_checksum_marker "mark:gateway-armv7-sha256" "$armv7_checksum" "$installer"
+}
+
 function update_version_variables() {
     local COMPONENT="$1"
     local NEW_VERSION="$2"

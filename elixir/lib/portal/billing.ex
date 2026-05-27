@@ -113,6 +113,9 @@ defmodule Portal.Billing do
 
   def plan_type(%Portal.Account{}), do: :unknown
 
+  @spec paid_plan?(Portal.Account.t()) :: boolean()
+  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]
+
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count
@@ -361,9 +364,60 @@ defmodule Portal.Billing do
     end
   end
 
+  @doc """
+  Cancels all Stripe subscriptions for the given Stripe customer ID.
+  Use when the account record is no longer available (e.g. after deletion).
+  """
+  @spec cancel_subscriptions_by_customer_id(String.t()) :: :ok | {:error, :retry_later}
+  def cancel_subscriptions_by_customer_id(customer_id) do
+    if enabled?() do
+      do_cancel_subscriptions(customer_id)
+    else
+      :ok
+    end
+  end
+
+  defp do_cancel_subscriptions(customer_id) do
+    secret_key = fetch_config!(:secret_key)
+
+    case APIClient.fetch_customer_subscriptions(secret_key, customer_id) do
+      {:ok, %{"data" => subscriptions}} ->
+        Enum.reduce_while(subscriptions, :ok, fn %{"id" => subscription_id}, :ok ->
+          cancel_subscription_by_id(secret_key, customer_id, subscription_id)
+        end)
+
+      {:error, reason} ->
+        Logger.error("Cannot fetch Stripe subscriptions for customer",
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
+
+        {:error, :retry_later}
+    end
+  end
+
   def list_all_subscriptions do
     secret_key = fetch_config!(:secret_key)
     APIClient.list_all_subscriptions(secret_key)
+  end
+
+  defp cancel_subscription_by_id(secret_key, customer_id, subscription_id) do
+    case APIClient.cancel_subscription(secret_key, subscription_id) do
+      {:ok, _} ->
+        {:cont, :ok}
+
+      {:error, {404, _}} ->
+        {:cont, :ok}
+
+      {:error, reason} ->
+        Logger.error("Cannot cancel Stripe subscription",
+          customer_id: customer_id,
+          subscription_id: subscription_id,
+          reason: inspect(reason)
+        )
+
+        {:halt, {:error, :retry_later}}
+    end
   end
 
   def create_subscription(%Portal.Account{} = account) do

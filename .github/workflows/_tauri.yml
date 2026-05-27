@@ -25,7 +25,7 @@ jobs:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.13
     steps:
-      - uses: release-drafter/release-drafter@563bf132657a13ded0b01fcb723c5a58cdd824e2 # v7.2.1
+      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -78,7 +78,7 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@b9c5db3aef04caffaf95a1d03931de10fb2a140f # v2.65.1
+      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -86,7 +86,7 @@ jobs:
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
-        timeout-minutes: 2
+        timeout-minutes: 4
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
@@ -127,7 +127,7 @@ jobs:
       # mark:next-gui-version
       FIREZONE_GUI_VERSION: 1.5.13
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
-      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}.sh
+      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
       TARGET_DIR: ../target
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
@@ -184,10 +184,53 @@ jobs:
           name: ${{ env.ARTIFACT_DST }}-rpm
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
-      - name: Test installation
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+      - name: Test installation (Linux)
+        if: "${{ runner.os == 'Linux' }}"
         shell: bash
-        run: ${{ env.TEST_INSTALL_SCRIPT }}
+        run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
+      - name: Test installation (Windows)
+        if: "${{ runner.os == 'Windows' }}"
+        shell: powershell
+        run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
+
+      - name: Dump install.log
+        # `always()` so the MSI's verbose log surfaces even when
+        # `Test installation` itself failed (and `set -e` killed
+        # the script before it could `cat` the log).
+        if: "${{ always() && runner.os == 'Windows' }}"
+        shell: bash
+        run: cat install.log || true
+
+      - name: Inspect MSI
+        # Authenticode signature status + size + SHA256. Pin-points
+        # the "MSI failed to open" failure mode: a tampered or
+        # unsigned MSI shows up here as `Status: HashMismatch` /
+        # `NotSigned`.
+        if: "${{ always() && runner.os == 'Windows' }}"
+        shell: pwsh
+        run: |
+          $msi = "$env:BINARY_DEST_PATH.msi"
+          Get-Item $msi | Select-Object Name, Length, LastWriteTimeUtc | Format-List
+          Get-FileHash -Algorithm SHA256 -Path $msi | Format-List
+          Get-AuthenticodeSignature -FilePath $msi | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+
+      - name: Dump MsiInstaller event log
+        # Pulls the last 50 events Windows itself recorded for
+        # `MsiInstaller`. These cover failure modes that
+        # `install.log` doesn't (AV quarantine, signature
+        # verification failure, ACL-blocked file copy, etc.).
+        if: "${{ always() && runner.os == 'Windows' }}"
+        shell: pwsh
+        run: |
+          Get-WinEvent -ProviderName 'MsiInstaller' -MaxEvents 50 -ErrorAction SilentlyContinue |
+            Sort-Object TimeCreated |
+            Select-Object TimeCreated, Id, LevelDisplayName, Message |
+            Format-List
+
+      - name: Dump register-sparse logs
+        if: "${{ always() && runner.os == 'Windows' }}"
+        shell: bash
+        run: cat 'C:/ProgramData/dev.firezone.client/data/logs/register-sparse.latest' || true
 
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"

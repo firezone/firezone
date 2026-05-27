@@ -27,9 +27,12 @@ defmodule PortalAPI.GroupJSON do
       entity_type: group.entity_type,
       directory_id: group.directory_id,
       idp_id: group.idp_id,
-      last_synced_at: group.last_synced_at,
+      synced_at: synced_at_from_state(group.sync_state),
       inserted_at: group.inserted_at,
       updated_at: group.updated_at
     }
   end
+
+  defp synced_at_from_state(%Portal.GroupSyncState{synced_at: t}), do: t
+  defp synced_at_from_state(nil), do: nil
 end

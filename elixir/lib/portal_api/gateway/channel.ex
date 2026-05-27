@@ -18,10 +18,65 @@ defmodule PortalAPI.Gateway.Channel do
   # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
 
+  @session_durability_timeout :timer.seconds(15)
+
   # Relay credentials must be stable across reconnects so that gateways
   # don't see credential changes on every websocket connect. We use a fixed
   # far-future date rather than a dynamic offset from now.
   @relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
+
+  @doc """
+  Self-heal escape hatch. Pushes `reject_access` to a gateway's data plane
+  for the given `(client_id, resource_id)` pair and clears the matching
+  local cache entry, without attempting to reauthorize via the DB.
+
+  ## Not expected to be hit in production
+
+  Every natural production code path that ends in `reject_access` on the
+  gateway's data plane goes through `revoke_policy_authorization/2` first,
+  which calls `Cache.Gateway.reauthorize_deleted_policy_authorization/2`
+  to attempt a DB-backed reauth before deciding whether to push reject:
+
+    * CDC delete of a `policy_authorization` row — the row was really
+      deleted, so reauth checks for any other authz granting the same
+      `(client, resource)` pair.
+    * `Portal.Queue`'s `:on_failed` callback — the insert failed FK, which
+      means a parent row is gone; the same reauth attempt hits the same
+      missing parent and also fails.
+    * Receiver-side authz durability timer — the queue died before flush; same
+      reauth pathway.
+
+  In every one of those, the only way reject reaches connlib is when the
+  underlying policy state truly no longer grants the pair. The synthetic
+  case this function produces — "deliver reject for a pair the DB still
+  authorizes" — has no natural production trigger.
+
+  ## Why it exists
+
+  The authz durability timer is our fail-closed guarantee: if a queue crashes
+  before flushing, the cached authz on the receiver eventually triggers
+  a reject so the gateway stops authorizing packets for an authz that
+  has no DB row backing it. The client recovers by tripping ICMP
+  prohibited and requesting a fresh flow through the normal portal
+  path — closing the loop.
+
+  This function is the manual version of that fail-closed signal. If the
+  gateway's local cache ever desyncs from production state (a bug, a
+  partial flush we didn't anticipate, an ops mistake), this lets us
+  trigger the same fail-closed → ICMP → re-authorize recovery without
+  waiting for a queue to crash or for the authz durability timer to time out.
+
+  Integration tests use it to exercise the
+  `icmp_error_unreachable_prohibited_create_new_flow` recovery path
+  end-to-end: the test asserts that even when the gateway is forced into
+  a fail-closed state for a pair, the client correctly recovers and
+  re-authorizes via the portal.
+
+  Do not call from production code paths.
+  """
+  def revoke_pair_access(gateway_id, client_id, resource_id) do
+    Portal.PG.deliver(gateway_id, {:revoke_pair_access, client_id, resource_id})
+  end
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -276,7 +331,12 @@ defmodule PortalAPI.Gateway.Channel do
         authorization_expires_at
       )
 
-    {:noreply, assign(socket, cache: cache)}
+    socket =
+      socket
+      |> assign(cache: cache)
+      |> maybe_arm_authz_durability_timer(payload[:policy_authorization])
+
+    {:noreply, socket}
   end
 
   # DEPRECATED IN 1.4
@@ -321,7 +381,12 @@ defmodule PortalAPI.Gateway.Channel do
             authorization_expires_at
           )
 
-        {:noreply, assign(socket, cache: cache)}
+        socket =
+          socket
+          |> assign(cache: cache)
+          |> maybe_arm_authz_durability_timer(attrs[:policy_authorization])
+
+        {:noreply, socket}
     end
   end
 
@@ -361,13 +426,102 @@ defmodule PortalAPI.Gateway.Channel do
             authorization_expires_at
           )
 
-        {:noreply, assign(socket, cache: cache)}
+        socket =
+          socket
+          |> assign(cache: cache)
+          |> maybe_arm_authz_durability_timer(attrs[:policy_authorization])
+
+        {:noreply, socket}
     end
   end
 
-  def handle_info({:reject_access, client_id, resource_id}, socket) do
+  # Direct revocation from `Portal.Queue`'s on_failed path — a policy
+  # authorization that we already announced via `:allow_access` /
+  # `:authorize_policy` failed to persist. We reuse the same eviction path
+  # the CDC delete handler uses, so the outcome is per-authz_id: if another
+  # authorization still grants the same `(client, resource)` access we keep
+  # the entry and push an expiry update; otherwise we push `reject_access`.
+  def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
+    socket = cancel_authz_durability_timer(socket, policy_authorization.id)
+    revoke_policy_authorization(socket, policy_authorization)
+  end
+
+  # Queue confirms a policy_authorization was durably persisted — cancel the
+  # corresponding authz durability timer so the receiver doesn't revoke a valid
+  # authorization.
+  def handle_info({:confirm_authz_durability, authz_id}, socket) do
+    {:noreply, cancel_authz_durability_timer(socket, authz_id)}
+  end
+
+  def handle_info({:confirm_session_durability, session_id}, socket) do
+    {:noreply, cancel_session_durability_timer(socket, session_id)}
+  end
+
+  # Authz durability timer fired — no `:confirm_authz_durability` or
+  # `:reject_access` arrived within the timeout window. Treat as
+  # "originating queue lost state" and run the same eviction path as
+  # `:reject_access` (fail-closed). Logged at warning level because this
+  # path firing means something went wrong upstream.
+  #
+  # The generation check guards against the race where this timer fires
+  # right before a `:confirm_authz_durability` arrives: the cancel returned
+  # false because the message was already in the mailbox, but the entry
+  # for `pa.id` in `authz_durability` was either removed (durability
+  # confirmed/rejected) or replaced (new timer for the same authz_id),
+  # so the generation no longer matches. In that case, we ignore.
+  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+    case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
+      {^generation, _ref} ->
+        Logger.warning(
+          "Authz durability timeout firing for authz #{inspect(pa.id)} — queue never confirmed durability"
+        )
+
+        socket = cancel_authz_durability_timer(socket, pa.id)
+        revoke_policy_authorization(socket, pa)
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info({:session_durability_timeout, session_id, generation}, socket) do
+    case socket.assigns[:session_durability] do
+      {^session_id, ^generation, _timer_ref} ->
+        Logger.warning(
+          "Gateway session #{inspect(session_id)} was not confirmed durable; disconnecting"
+        )
+
+        # Avoid sending "token_expired" since that will tear down connlib
+        # state in the gateway. Instead, the gateway must reconnect.
+        {:stop, :shutdown, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Handler for the public `revoke_pair_access/3` self-heal helper.
+  def handle_info({:revoke_pair_access, client_id, resource_id}, socket) do
     push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
-    {:noreply, socket}
+
+    key = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
+
+    # Cancel any pending authz durability timers for authz_ids in this pair
+    # so they don't fire later, find the cache empty, and log spurious warnings.
+    socket =
+      case Map.get(socket.assigns.cache, key) do
+        nil ->
+          socket
+
+        authz_map ->
+          authz_map
+          |> Map.keys()
+          |> Enum.map(&Ecto.UUID.load!/1)
+          |> Enum.reduce(socket, &cancel_authz_durability_timer(&2, &1))
+      end
+
+    cache = Map.delete(socket.assigns.cache, key)
+    {:noreply, assign(socket, cache: cache)}
   end
 
   def handle_info(:disconnect, socket) do
@@ -634,65 +788,15 @@ defmodule PortalAPI.Gateway.Channel do
          %Change{
            op: :delete,
            old_struct:
-             %Portal.PolicyAuthorization{
-               receiving_device_id: gateway_id,
-               initiating_device_id: client_id,
-               resource_id: resource_id
-             } =
+             %Portal.PolicyAuthorization{receiving_device_id: gateway_id} =
                policy_authorization
          },
          %{
            assigns: %{gateway: %{id: gateway_id}}
          } = socket
        ) do
-    socket.assigns.cache
-    |> Cache.Gateway.reauthorize_deleted_policy_authorization(policy_authorization)
-    |> case do
-      {:ok, expires_at_unix, cache} ->
-        Logger.info("Updating authorization expiration for deleted policy authorization",
-          deleted_policy_authorization: inspect(policy_authorization),
-          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
-        )
-
-        push(
-          socket,
-          "access_authorization_expiry_updated",
-          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
-        )
-
-        {:noreply, assign(socket, cache: cache)}
-
-      {:error, :unauthorized, cache} ->
-        Logger.info(
-          "No authorizations remaining for deleted policy authorization, revoking access",
-          deleted_policy_authorization: inspect(policy_authorization)
-        )
-
-        # Note: There is an edge case here:
-        #   - Client authorizes policy authorization for resource
-        #   - Client's websocket temporarily gets cut
-        #   - Admin deletes the policy
-        #   - We send reject_access to the gateway
-        #   - Admin recreates the same policy (same access)
-        #   - Client connection resumes
-        #   - Client sees exactly the same resource list
-        #   - Client now has lost the ability to recreate the policy authorization because from its perspective,
-        #     it is still connected to this gateway.
-        #   - Packets to gateway are essentially blackholed until the client signs out and back in
-
-        # This will be fixed when the client responds to the ICMP prohibited by filter message:
-        # https://github.com/firezone/firezone/issues/10074
-        push(
-          socket,
-          "reject_access",
-          %{client_id: client_id, resource_id: resource_id}
-        )
-
-        {:noreply, assign(socket, cache: cache)}
-
-      {:error, :not_found} ->
-        {:noreply, socket}
-    end
+    socket = cancel_authz_durability_timer(socket, policy_authorization.id)
+    revoke_policy_authorization(socket, policy_authorization)
   end
 
   # GATEWAYS
@@ -787,6 +891,136 @@ defmodule PortalAPI.Gateway.Channel do
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
+  # Shared eviction path for both the CDC delete handler and the direct
+  # `:reject_access` from `Portal.Queue`'s on_failed callback. Per-authz_id:
+  # if other authorizations still grant the same `(client, resource)` access,
+  # we push an expiry update; if none do, we push `reject_access`.
+  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{} = policy_authorization) do
+    %Portal.PolicyAuthorization{
+      initiating_device_id: client_id,
+      resource_id: resource_id
+    } = policy_authorization
+
+    socket.assigns.cache
+    |> Cache.Gateway.reauthorize_deleted_policy_authorization(policy_authorization)
+    |> case do
+      {:ok, expires_at_unix, cache} ->
+        Logger.info("Updating authorization expiration for deleted policy authorization",
+          deleted_policy_authorization: inspect(policy_authorization),
+          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
+        )
+
+        push(
+          socket,
+          "access_authorization_expiry_updated",
+          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
+        )
+
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :unauthorized, cache} ->
+        Logger.info(
+          "No authorizations remaining for deleted policy authorization, revoking access",
+          deleted_policy_authorization: inspect(policy_authorization)
+        )
+
+        push(
+          socket,
+          "reject_access",
+          %{client_id: client_id, resource_id: resource_id}
+        )
+
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
+  end
+
+  # Authz durability timer for fail-closed cleanup when the originating queue
+  # loses state (crash, OOM, hard node death — anything that prevents
+  # `on_failed` from firing reject_access on this gateway). Arms a per-authz
+  # timer on receipt of allow; the timer fires `:authz_durability_timeout` if no
+  # `:confirm_authz_durability` (queue's successful flush) or `:reject_access`
+  # (queue's failure handler) arrives first. Same eviction path as
+  # `:reject_access` once the timer fires.
+  #
+  # Each armed timer carries a `make_ref/0` generation token. `authz_durability`
+  # stores `%{authz_id => {generation, timer_ref}}`. The handler matches the
+  # incoming token against the current generation in pending; mismatch
+  # (cancelled, replaced) is silently ignored. This avoids a race where the
+  # timer fires just before a confirm arrives: `Process.cancel_timer/1` can
+  # only stop a timer in the wheel — it can't remove an already-delivered
+  # message from the mailbox.
+  @authz_durability_timeout :timer.seconds(15)
+
+  defp arm_session_durability_timer(socket) do
+    case socket.assigns.session.id do
+      nil ->
+        socket
+
+      session_id ->
+        generation = make_ref()
+
+        timer_ref =
+          Process.send_after(
+            self(),
+            {:session_durability_timeout, session_id, generation},
+            @session_durability_timeout
+          )
+
+        # Fail-safe: if the session queue never confirms the DB flush, the
+        # channel disconnects and lets the gateway reconnect to create a new row.
+        assign(socket, session_durability: {session_id, generation, timer_ref})
+    end
+  end
+
+  defp cancel_session_durability_timer(socket, session_id) do
+    case socket.assigns[:session_durability] do
+      {^session_id, _generation, timer_ref} ->
+        Process.cancel_timer(timer_ref)
+        assign(socket, session_durability: nil)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp maybe_arm_authz_durability_timer(socket, nil), do: socket
+
+  defp maybe_arm_authz_durability_timer(socket, %Portal.PolicyAuthorization{} = pa) do
+    generation = make_ref()
+
+    timer_ref =
+      Process.send_after(self(), {:authz_durability_timeout, pa, generation}, @authz_durability_timeout)
+
+    pending = socket.assigns[:authz_durability] || %{}
+
+    # If somehow we already had a timer for this authz_id (shouldn't happen
+    # in normal flow, but guard against it), cancel the old one first.
+    # Its message may still arrive — the generation check in the handler
+    # ignores it.
+    case Map.get(pending, pa.id) do
+      nil -> :ok
+      {_old_generation, old_ref} -> Process.cancel_timer(old_ref)
+    end
+
+    assign(socket, authz_durability: Map.put(pending, pa.id, {generation, timer_ref}))
+  end
+
+  defp cancel_authz_durability_timer(socket, authz_id) do
+    pending = socket.assigns[:authz_durability] || %{}
+
+    case Map.pop(pending, authz_id) do
+      {nil, _} ->
+        socket
+
+      {{_generation, timer_ref}, rest} ->
+        Process.cancel_timer(timer_ref)
+        assign(socket, authz_durability: rest)
+    end
+  end
+
   defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
     relays
     |> Enum.shuffle()
@@ -828,7 +1062,16 @@ defmodule PortalAPI.Gateway.Channel do
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.gateway.id)
         :ok = PG.join(socket.assigns.token_id)
-        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+        socket = assign(socket, :pg_scope_pid, new_pid)
+
+        # Only enqueue + arm on the first successful registration; re-registrations
+        # after a PG scope crash share the same channel and session row.
+        if is_nil(current_pid) do
+          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session))
+          {:noreply, arm_session_durability_timer(socket)}
+        else
+          {:noreply, socket}
+        end
     end
   end
 
@@ -869,6 +1112,12 @@ defmodule PortalAPI.Gateway.Channel do
 
         assign(socket, presence_monitors: monitors)
     end
+  end
+
+  defp session_attrs(%Portal.GatewaySession{} = session) do
+    session
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :account, :device, :gateway_token])
   end
 
   defmodule Database do

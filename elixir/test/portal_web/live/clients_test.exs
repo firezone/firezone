@@ -167,6 +167,11 @@ defmodule PortalWeb.ClientsTest do
           actor: owner,
           client: client,
           user_agent: "macOS/15.0 apple-client/1.4.0",
+          remote_ip: {203, 0, 113, 10},
+          remote_ip_location_region: "US",
+          remote_ip_location_city: "San Francisco",
+          remote_ip_location_lat: 37.7749,
+          remote_ip_location_lon: -122.4194,
           version: "1.4.0"
         )
 
@@ -180,8 +185,15 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "SN-123"
       assert html =~ "UUID-123"
       assert html =~ "IFV-123"
+      assert html =~ "Remote IP"
+      assert html =~ "203.0.113.10"
+      assert html =~ "San Francisco"
+      assert html =~ "United States of America"
+      assert html =~ "https://www.google.com/maps/place/37.7749,-122.4194"
+      assert html =~ "Open remote IP location in Google Maps"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
+      assert html =~ "Verification"
       assert html =~ "Verified"
       assert html =~ session.version
 
@@ -241,6 +253,107 @@ defmodule PortalWeb.ClientsTest do
 
       assert_patch(lv, ~p"/#{account}/clients")
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: client.id))
+    end
+
+    test "verifies an unverified client", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Unverified Laptop")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      assert has_element?(lv, "button[phx-click='verify_client']", "Verify")
+
+      html = render_click(lv, "verify_client")
+      updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
+
+      assert html =~ "Client &quot;#{client.name}&quot; was verified."
+      assert html =~ "Verified"
+      assert updated_client.verified_at
+      refute has_element?(lv, "button[phx-click='verify_client']", "Verify")
+      assert has_element?(
+               lv,
+               "button[phx-click='confirm_unverify_client']",
+               "Revoke verification"
+             )
+    end
+
+    test "shows unverify confirmation and cancels", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = verified_client_fixture(%{account: account, actor: actor, name: "Verified Laptop"})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      html = render_click(lv, "confirm_unverify_client")
+      assert html =~ "Revoke verification for this client?"
+      assert html =~ "Current authorizations for this client may be revoked."
+
+      html = render_click(lv, "cancel_unverify_client")
+      updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
+
+      refute html =~ "Revoke verification for this client?"
+      assert updated_client.verified_at
+      assert has_element?(
+               lv,
+               "button[phx-click='confirm_unverify_client']",
+               "Revoke verification"
+             )
+
+      refute has_element?(lv, "button[phx-click='verify_client']", "Verify")
+    end
+
+    test "shows unverify confirmation and accepts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = verified_client_fixture(%{account: account, actor: actor, name: "Verified Laptop"})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      render_click(lv, "confirm_unverify_client")
+      html = render_click(lv, "unverify_client")
+      updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
+
+      assert html =~ "Client &quot;#{client.name}&quot; was unverified."
+      refute html =~ "Revoke verification for this client?"
+      assert is_nil(updated_client.verified_at)
+      assert has_element?(lv, "button[phx-click='verify_client']", "Verify")
+      refute has_element?(
+               lv,
+               "button[phx-click='confirm_unverify_client']",
+               "Revoke verification"
+             )
+    end
+
+    test "patches to clients index with flash when client does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      missing_id = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/clients/#{missing_id}")
+
+      assert to == ~p"/#{account}/clients"
+      assert flash["error"] =~ "Client does not exist"
     end
   end
 

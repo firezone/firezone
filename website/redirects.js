@@ -109,6 +109,13 @@ module.exports = [
     permanent: false,
   },
   {
+    source: "/dl/firezone-gateway/latest/x86_64.sha256sum.txt",
+    destination:
+      // mark:current-gateway-version
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.2/firezone-gateway_1.5.2_x86_64.sha256sum.txt",
+    permanent: false,
+  },
+  {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
@@ -116,10 +123,24 @@ module.exports = [
     permanent: false,
   },
   {
+    source: "/dl/firezone-gateway/latest/aarch64.sha256sum.txt",
+    destination:
+      // mark:current-gateway-version
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.2/firezone-gateway_1.5.2_aarch64.sha256sum.txt",
+    permanent: false,
+  },
+  {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
       "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.2/firezone-gateway_1.5.2_armv7",
+    permanent: false,
+  },
+  {
+    source: "/dl/firezone-gateway/latest/armv7.sha256sum.txt",
+    destination:
+      // mark:current-gateway-version
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.5.2/firezone-gateway_1.5.2_armv7.sha256sum.txt",
     permanent: false,
   },
   /*

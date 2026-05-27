@@ -443,12 +443,12 @@ defmodule PortalWeb.Actors.Components do
                       {identity.preferred_username}
                     </dd>
                   </div>
-                  <div :if={identity.last_synced_at}>
+                  <div :if={Ecto.assoc_loaded?(identity.sync_state) && identity.sync_state && identity.sync_state.synced_at}>
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
                       Last Synced
                     </dt>
                     <dd class="text-xs text-[var(--text-secondary)] mt-0.5">
-                      <.relative_datetime datetime={identity.last_synced_at} />
+                      <.relative_datetime datetime={identity.sync_state.synced_at} />
                     </dd>
                   </div>
                 </dl>
@@ -1129,7 +1129,10 @@ defmodule PortalWeb.Actors.Components do
           account={@account}
         />
       </div>
-      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div
+        :if={is_nil(@pending_email_change)}
+        class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]"
+      >
         <button
           type="button"
           phx-click="cancel_actor_edit_form"
@@ -1143,6 +1146,38 @@ defmodule PortalWeb.Actors.Components do
         >
           Save Changes
         </button>
+      </div>
+      <div
+        :if={not is_nil(@pending_email_change)}
+        class="shrink-0 px-5 py-3 border-t border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+      >
+        <div class="flex items-start gap-2 mb-3">
+          <.icon name="ri-alert-line" class="w-4 h-4 text-[var(--status-error)] mt-0.5 shrink-0" />
+          <div>
+            <p class="text-xs font-medium text-[var(--status-error)] mb-0.5">
+              Changing this actor's email will remove ALL external identities for this actor.
+            </p>
+            <p class="text-xs text-[var(--status-error)]/80">
+              Any active sessions created through these identities will be ended, signing them out immediately. Are you sure?
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            phx-click="cancel_email_change"
+            class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            phx-click="confirm_email_change"
+            class="px-3 py-1.5 text-xs rounded-md font-medium border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors"
+          >
+            Yes, change email and clear identities
+          </button>
+        </div>
       </div>
     </.form>
     """

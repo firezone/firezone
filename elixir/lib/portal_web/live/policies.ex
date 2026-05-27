@@ -52,57 +52,40 @@ defmodule PortalWeb.Policies do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    t = Map.get(params, "tab", "overview")
-    tab = if t in ~w[overview authorizations], do: String.to_existing_atom(t), else: :overview
-
-    page =
-      case Integer.parse(Map.get(params, "page", "1")) do
-        {n, ""} when n >= 1 -> n
-        _ -> 1
-      end
-
     socket = handle_live_tables_params(socket, params, uri)
-    policy = Database.get_policy(id, socket.assigns.subject)
-    providers = Database.all_active_providers(socket.assigns.account, socket.assigns.subject)
 
-    {policy_authorizations, has_next} =
-      Database.list_policy_authorizations_for_policy(policy, socket.assigns.subject, page)
+    case Database.get_policy(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_policies_index(socket, "Policy does not exist.")
 
-    filter_site =
-      with %{"policies_filter" => %{"site_id" => site_id}} <- params do
-        Database.get_site(site_id, socket.assigns.subject)
-      else
-        _ -> nil
-      end
+      policy ->
+        page = parse_page(params)
+        tab = parse_show_tab(params)
 
-    filter_resource =
-      with %{"policies_filter" => %{"resource_id" => resource_id}} <- params do
-        Database.get_resource(resource_id, socket.assigns.subject)
-      else
-        _ -> nil
-      end
+        {policy_authorizations, has_next} =
+          Database.list_policy_authorizations_for_policy(policy, socket.assigns.subject, page)
 
-    {:noreply,
-     assign(
-       socket,
-       [
-         filter_site: filter_site,
-         filter_resource: filter_resource,
-         selected_policy: policy,
-         policy_providers: providers,
-         return_to: uri_path(uri),
-         policy_authorizations: policy_authorizations,
-         policy_authorizations_page: page,
-         policy_authorizations_has_next: has_next,
-         policy_authorizations_expanded_id: nil
-       ] ++ show_policy_assigns(socket, tab)
-     )}
+        {:noreply,
+         assign(
+           socket,
+           [
+             selected_policy: policy,
+             policy_providers:
+               Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
+             return_to: uri_path(uri),
+             policy_authorizations: policy_authorizations,
+             policy_authorizations_page: page,
+             policy_authorizations_has_next: has_next,
+             policy_authorizations_expanded_id: nil
+           ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+             show_policy_assigns(socket, tab)
+         )}
+    end
   end
 
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
     form = new_policy(%{}, socket.assigns.subject) |> to_form()
-    providers = Database.all_active_providers(socket.assigns.account, socket.assigns.subject)
 
     {:noreply,
      assign(
@@ -111,7 +94,8 @@ defmodule PortalWeb.Policies do
          filter_site: nil,
          filter_resource: nil,
          selected_policy: nil,
-         policy_providers: providers,
+         policy_providers:
+           Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
          return_to: uri_path(uri)
        ] ++ new_policy_assigns(socket, form)
      )}
@@ -119,66 +103,80 @@ defmodule PortalWeb.Policies do
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
-    policy = Database.get_policy(id, socket.assigns.subject)
-    form = change_policy(policy) |> to_form()
 
-    filter_site =
-      with %{"policies_filter" => %{"site_id" => site_id}} <- params do
-        Database.get_site(site_id, socket.assigns.subject)
-      else
-        _ -> nil
-      end
+    case Database.get_policy(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_policies_index(socket, "Policy does not exist.")
 
-    filter_resource =
-      with %{"policies_filter" => %{"resource_id" => resource_id}} <- params do
-        Database.get_resource(resource_id, socket.assigns.subject)
-      else
-        _ -> nil
-      end
+      policy ->
+        form = change_policy(policy) |> to_form()
 
-    {:noreply,
-     assign(
-       socket,
-       [
-         filter_site: filter_site,
-         filter_resource: filter_resource,
-         selected_policy: policy,
-         policy_providers:
-           Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
-         return_to: uri_path(uri)
-       ] ++ edit_policy_assigns(socket, policy, form)
-     )}
+        {:noreply,
+         assign(
+           socket,
+           [
+             selected_policy: policy,
+             policy_providers:
+               Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
+             return_to: uri_path(uri)
+           ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+             edit_policy_assigns(socket, policy, form)
+         )}
+    end
   end
 
   def handle_params(params, uri, socket) do
     socket = handle_live_tables_params(socket, params, uri)
 
-    filter_site =
-      with %{"policies_filter" => %{"site_id" => site_id}} <- params do
-        Database.get_site(site_id, socket.assigns.subject)
-      else
-        _ -> nil
-      end
-
-    filter_resource =
-      with %{"policies_filter" => %{"resource_id" => resource_id}} <- params do
-        Database.get_resource(resource_id, socket.assigns.subject)
-      else
-        _ -> nil
-      end
-
     {:noreply,
      assign(
        socket,
        [
-         filter_site: filter_site,
-         filter_resource: filter_resource,
          selected_policy: nil,
          policy_providers: [],
          return_to: uri_path(uri)
-       ] ++ default_policy_assigns(socket)
+       ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+         default_policy_assigns(socket)
      )}
   end
+
+  defp redirect_to_policies_index(socket, message) do
+    {:noreply,
+     socket
+     |> put_flash(:error, message)
+     |> push_patch(to: ~p"/#{socket.assigns.account}/policies?#{socket.assigns.query_params}")}
+  end
+
+  defp parse_page(params) do
+    case Integer.parse(Map.get(params, "page", "1")) do
+      {n, ""} when n >= 1 -> n
+      _ -> 1
+    end
+  end
+
+  defp parse_show_tab(params) do
+    case Map.get(params, "tab", "overview") do
+      tab when tab in ~w[overview authorizations] -> String.to_existing_atom(tab)
+      _ -> :overview
+    end
+  end
+
+  defp policy_filter_assigns(params, subject) do
+    [
+      filter_site: lookup_filter_site(params, subject),
+      filter_resource: lookup_filter_resource(params, subject)
+    ]
+  end
+
+  defp lookup_filter_site(%{"policies_filter" => %{"site_id" => site_id}}, subject),
+    do: Database.get_site(site_id, subject)
+
+  defp lookup_filter_site(_params, _subject), do: nil
+
+  defp lookup_filter_resource(%{"policies_filter" => %{"resource_id" => resource_id}}, subject),
+    do: Database.get_resource(resource_id, subject)
+
+  defp lookup_filter_resource(_params, _subject), do: nil
 
   defp uri_path(uri) do
     parsed = URI.parse(uri)
@@ -812,12 +810,12 @@ defmodule PortalWeb.Policies do
     {:noreply, merge_state(socket, :policy_conditions, auth_provider_values: updated)}
   end
 
-  def handle_info(%Change{old_struct: %Portal.Policy{}}, socket) do
-    {:noreply, assign(socket, stale: true)}
+  def handle_info(%Change{old_struct: %Portal.Policy{}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
-  def handle_info(%Change{struct: %Portal.Policy{}}, socket) do
-    {:noreply, assign(socket, stale: true)}
+  def handle_info(%Change{struct: %Portal.Policy{}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
   def handle_info({:panel_change_resource, resource}, socket) do
@@ -1028,6 +1026,12 @@ defmodule PortalWeb.Policies do
 
   defp cond_values(nil), do: []
   defp cond_values(cond), do: cond.values
+
+  defp mark_stale_if_unreflected(socket, change) do
+    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.policies, change),
+      do: socket,
+      else: assign(socket, stale: true)
+  end
 
   defmodule Database do
     import Ecto.Query

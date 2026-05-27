@@ -5,7 +5,7 @@ inputs:
   version:
     description: "mise version to install"
     required: false
-    default: "2026.3.10"
+    default: "2026.5.0"
   install_args:
     description: "Arguments to pass to `mise install`"
     required: false
@@ -16,24 +16,145 @@ runs:
   steps:
     - shell: bash
       run: echo "MISE_LOCKED=1" >> "$GITHUB_ENV"
+    - shell: bash
+      run: echo "MISE_DEBUG=1" >> "$GITHUB_ENV"
+    - shell: bash
+      if: ${{ runner.os == 'Windows' }}
+      run: |
+        echo "MISE_INSTALLS_DIR=C:\.mise-installs" >> "$GITHUB_ENV"
+        echo "MISE_SCAN_PATH=C:\.mise-installs" >> "$GITHUB_ENV"
+    - shell: bash
+      if: ${{ runner.os != 'Windows' }}
+      run: echo "MISE_SCAN_PATH=$HOME/.local/share/mise/installs" >> "$GITHUB_ENV"
 
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      if: ${{ runner.os != 'Windows' }}
       id: mise-1
       continue-on-error: true
       with:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
+        reshim: true
+        cache_key_prefix: "mise-v2"
 
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-      if: ${{ steps.mise-1.outcome == 'failure' }}
+      if: ${{ runner.os != 'Windows' && steps.mise-1.outcome == 'failure' }}
       id: mise-2
       continue-on-error: true
       with:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
+        reshim: true
+        cache_key_prefix: "mise-v2"
 
     - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-      if: ${{ steps.mise-2.outcome == 'failure' }}
+      if: ${{ runner.os != 'Windows' && steps.mise-2.outcome == 'failure' }}
       with:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
+        reshim: true
+        cache_key_prefix: "mise-v2"
+
+    # jdx/mise-action on Windows does not bundle `mise-shim.exe`, so cargo
+    # subcommand discovery (`cargo udeps` -> `cargo-udeps.exe`) silently fails
+    # because reshim has nothing to copy into the shims directory. Install mise
+    # manually from the upstream release zip, which contains both `mise.exe`
+    # and `mise-shim.exe`.
+    # We can remove this once https://github.com/jdx/mise-action/issues/475 ships.
+    - name: Install mise (Windows)
+      if: ${{ runner.os == 'Windows' }}
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        $version = "${{ inputs.version }}"
+        $url = "https://github.com/jdx/mise/releases/download/v$version/mise-v$version-windows-x64.zip"
+        $zip = "$env:RUNNER_TEMP\mise.zip"
+        $extracted = "$env:RUNNER_TEMP\mise-extracted"
+        $installDir = "C:\mise"
+
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            break
+          } catch {
+            if ($attempt -eq 3) { throw }
+            Write-Host "Download attempt $attempt failed: $_"
+            Start-Sleep -Seconds ([Math]::Pow(2, $attempt))
+          }
+        }
+
+        Expand-Archive -Path $zip -DestinationPath $extracted -Force
+        New-Item -ItemType Directory -Force -Path "$installDir\bin" | Out-Null
+        Copy-Item "$extracted\mise\bin\mise.exe" "$installDir\bin\mise.exe" -Force
+        Copy-Item "$extracted\mise\bin\mise-shim.exe" "$installDir\bin\mise-shim.exe" -Force
+
+        Add-Content -Path $env:GITHUB_PATH -Value "$installDir\bin"
+        Add-Content -Path $env:GITHUB_PATH -Value "$env:LOCALAPPDATA\mise\shims"
+
+    - name: mise install (Windows)
+      if: ${{ runner.os == 'Windows' }}
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        & "C:\mise\bin\mise.exe" trust --all
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        $installArgs = @()
+        if ("${{ inputs.install_args }}".Trim().Length -gt 0) {
+          $installArgs = "${{ inputs.install_args }}".Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+        }
+
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+          & "C:\mise\bin\mise.exe" install @installArgs
+          if ($LASTEXITCODE -eq 0) { break }
+          if ($attempt -eq 3) { exit $LASTEXITCODE }
+          Write-Host "mise install attempt $attempt failed (exit $LASTEXITCODE)"
+          Start-Sleep -Seconds ([Math]::Pow(2, $attempt + 1))
+        }
+
+        & "C:\mise\bin\mise.exe" reshim
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # Some tools (currently: firebase-tools) ship as a single self-extracting
+    # binary and only materialize their bundled deps on first invocation, into
+    # $HOME/.cache/firebase (hardcoded — FIREBASE_TOOLS_CACHE_PATH is ignored).
+    # Pre-extract them under MISE_SCAN_PATH so trivy can see the manifests,
+    # then point the default cache location at the result so subsequent
+    # workflow invocations of the tool don't re-extract.
+    - name: Pre-warm self-extracting tool caches
+      if: ${{ runner.os != 'Windows' }}
+      shell: bash
+      run: |
+        firebase_bin=$(mise which firebase 2>/dev/null || true)
+        if [[ -n "$firebase_bin" ]]; then
+          cache_root="$MISE_SCAN_PATH/_firebase-home"
+          mkdir -p "$cache_root" "$HOME/.cache"
+          HOME="$cache_root" "$firebase_bin" --version
+          ln -sfn "$cache_root/.cache/firebase" "$HOME/.cache/firebase"
+        fi
+
+    # Scan all mise-installed tools with trivy for security vulnerabilities.
+    # This is a best-effort approach and has a few short-comings:
+    #
+    # 1. The tools themselves must either embed an SBOM (typical for `go`-based, less typical for everything else)
+    #    or be installed with something that has a manifest, like `npm`.
+    # 2. The tools must actually be installed via mise. We sometimes have `setup` scripts that install tools.
+    #    Those are not scanned with this approach.
+
+    - name: Scan mise installs with Trivy
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        scan-type: fs
+        scan-ref: ${{ env.MISE_SCAN_PATH }}
+        scanners: vuln # secrets/misconfig produce noise on bundled stdlib trees
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        format: sarif
+        output: trivy-mise.sarif
+
+    - name: Upload results to GitHub Security tab
+      if: always()
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+      with:
+        sarif_file: trivy-mise.sarif
+        category: trivy-mise

@@ -1,10 +1,8 @@
+import Content, { frontmatter } from "./readme.mdx";
 import { Metadata } from "next";
-import Content from "./readme.mdx";
+import { metadataFromFrontmatter } from "@/lib/metadata-from-frontmatter";
 
-export const metadata: Metadata = {
-  title: "Restricted regions • Firezone Docs",
-  description: "Learn more about the regions where Firezone is not available.",
-};
+export const metadata: Metadata = metadataFromFrontmatter(frontmatter);
 
 export default function Page() {
   return <Content />;

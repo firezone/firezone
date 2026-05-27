@@ -25,6 +25,7 @@ mod composite_strategy;
 mod coverage;
 mod dns_records;
 mod dns_server_resource;
+mod echo;
 mod flux_capacitor;
 mod icmp_error_hosts;
 mod ref_client;

@@ -10,7 +10,7 @@ use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging, settings};
-use settings::AdvancedSettingsLegacy;
+use settings::AdvancedSettings;
 use telemetry::Telemetry;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
@@ -25,6 +25,7 @@ fn main() -> ExitCode {
         Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
+    let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
         Telemetry::new()
@@ -32,18 +33,24 @@ fn main() -> ExitCode {
         Telemetry::disabled()
     };
 
-    let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
+    // Start telemetry in `entrypoint` mode so that crashes during settings
+    // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
+    // `try_main` will switch the env to the real api_url once it has loaded
+    // settings; on graceful exit we flush below.
+    telemetry.start(
+        "entrypoint",
+        firezone_gui_client::RELEASE,
+        telemetry::GUI_DSN,
+    );
 
-    match try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry) {
-        Ok(()) => {
-            rt.block_on(telemetry.stop());
+    let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
 
-            ExitCode::SUCCESS
-        }
+    rt.block_on(telemetry.stop());
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("GUI failed: {e:#}");
-
-            rt.block_on(telemetry.stop());
 
             ExitCode::FAILURE
         }
@@ -56,9 +63,21 @@ fn try_main(
     bootstrap_log_guard: &mut Option<DefaultGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
+    #[cfg(debug_assertions)]
+    if cli.skip_tunnel_pipe_owner_check {
+        firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
+
+    let fake_controller = matches!(
+        cli.command,
+        Some(Cmd::Debug {
+            command: DebugCommand::FakeController
+        })
+    );
 
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
@@ -68,35 +87,27 @@ fn try_main(
             .as_ref()
             .is_some_and(|c| matches!(c, Cmd::SmokeTest)),
         no_deep_links: cli.no_deep_links,
+        telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
+        fake_controller,
     };
 
-    let mut advanced_settings =
-        settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
+    let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     let mdm_settings = settings::load_mdm_settings()
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
+    // Now that we know the real api_url, switch the Sentry session out of
+    // entrypoint mode. `Telemetry::start` notices the env change and stops
+    // the previous session before initialising a new one.
     let api_url = mdm_settings
         .api_url
         .as_ref()
         .unwrap_or(&advanced_settings.api_url)
         .to_string();
-
-    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
-    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    let id = bin_shared::device_id::get_client().context("Failed to get device ID")?;
-
-    if cli.is_telemetry_allowed() {
-        rt.block_on(telemetry.start(
-            &api_url,
-            firezone_gui_client::RELEASE,
-            telemetry::GUI_DSN,
-            id.id,
-        ));
-    }
+    telemetry.start(&api_url, firezone_gui_client::RELEASE, telemetry::GUI_DSN);
 
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {
@@ -127,8 +138,13 @@ fn try_main(
                 return Err(error.into());
             }
         },
-        None | Some(Cmd::Elevated) => {
-            // Fall-through to running the GUI if elevation check should be bypassed.
+        None
+        | Some(Cmd::Elevated)
+        | Some(Cmd::Debug {
+            command: DebugCommand::FakeController,
+        }) => {
+            // Fall-through to running the GUI if elevation check should be bypassed,
+            // or if we're in fake-controller demo mode.
         }
 
         // All commands below _don't_ end up running the GUI because they return early.
@@ -143,6 +159,13 @@ fn try_main(
             command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
         }) => {
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
+
+            return Ok(());
+        }
+        Some(Cmd::Debug {
+            command: DebugCommand::SingleInstance,
+        }) => {
+            rt.block_on(debug_single_instance())?;
 
             return Ok(());
         }
@@ -182,6 +205,14 @@ fn try_main(
                 return Ok(());
             }
 
+            if anyhow.any_is::<firezone_gui_client::ipc::WrongUser>() {
+                dialog::error(
+                    "Firezone is already running in another logon session. \
+                     Sign out of that session first, then try again.",
+                )?;
+                return Ok(());
+            }
+
             if anyhow.any_is::<gui::NewInstanceHandshakeFailed>() {
                 dialog::error(
                     "Firezone is already running but not responding. Please force-stop it first.",
@@ -213,11 +244,11 @@ fn try_main(
 }
 
 /// Parse the log filter from settings, showing an error and fixing it if needed
-fn fix_log_filter(settings: &mut AdvancedSettingsLegacy) -> Result<()> {
+fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
     if EnvFilter::try_new(&settings.log_filter).is_ok() {
         return Ok(());
     }
-    settings.log_filter = AdvancedSettingsLegacy::default().log_filter;
+    settings.log_filter = AdvancedSettings::default().log_filter;
 
     firezone_gui_client::dialog::error(
         "The custom log filter is not parsable. Using the default log filter.",
@@ -277,6 +308,13 @@ struct Cli {
         hide = true
     )]
     no_telemetry: bool,
+
+    /// Windows-only smoke-test escape hatch: skip the LocalSystem owner check
+    /// on the Tunnel named pipe. Only exists in debug builds, so release
+    /// binaries can't disable the check.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    skip_tunnel_pipe_owner_check: bool,
 }
 
 impl Cli {
@@ -315,8 +353,21 @@ enum Cmd {
 
 #[derive(clap::Subcommand)]
 enum DebugCommand {
+    /// Run the GUI with a hardcoded fake tunnel state, for iterating on the
+    /// system tray UI without needing the tunnel service or a live portal.
+    FakeController,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
+    /// Drive only the launch-lock + GUI IPC handshake — no controller, no
+    /// auth, no tunnel-service IPC, no Tauri UI. Two invocations exercise
+    /// the single-instance hand-off end to end:
+    ///
+    /// - First invocation: acquires the lock, binds the GUI pipe, prints
+    ///   `first-instance: …`, accepts one client, acks, and exits.
+    /// - Second invocation: sees the lock held, connects to the pipe,
+    ///   sends `NewInstance`, awaits the `Ack`, prints
+    ///   `second-instance: …`, and exits.
+    SingleInstance,
 }
 
 #[derive(clap::Parser)]
@@ -339,6 +390,34 @@ struct StoreTokenArgs {
 pub struct DeepLink {
     // TODO: Should be `Secret`?
     pub url: url::Url,
+}
+
+/// Drives the launch-lock + GUI-pipe handshake to exit cleanly as
+/// either the first or second instance. Run twice (concurrently from
+/// a shell smoke test, or by hand from two terminals) to exercise
+/// the hand-off path; the two stdout lines below let the harness
+/// assert on the outcome.
+#[allow(
+    clippy::print_stdout,
+    reason = "the whole point of this subcommand is to print a smoke-test signal to stdout"
+)]
+async fn debug_single_instance() -> anyhow::Result<()> {
+    use firezone_gui_client::gui::{self, SingleInstance};
+
+    match gui::establish_single_instance().await? {
+        SingleInstance::First {
+            mut server,
+            lock: _lock,
+        } => {
+            println!("first-instance: lock acquired; waiting for one client");
+            let msg = gui::accept_one_for_debug(&mut server).await?;
+            println!("first-instance: received {msg:?}; acked, exiting");
+        }
+        SingleInstance::SecondHandedOff => {
+            println!("second-instance: handshake completed, exiting");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

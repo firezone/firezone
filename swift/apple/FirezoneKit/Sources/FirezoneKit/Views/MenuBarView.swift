@@ -187,7 +187,7 @@
     func openSupport() {
       guard
         let url = URL(string: store.configuration.supportURL)
-          ?? URL(string: Configuration.defaultSupportURL)
+          ?? URL(string: ConfigurationDefaults.supportURL)
       else { return }
       Task { await NSWorkspace.shared.openAsync(url) }
     }

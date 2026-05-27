@@ -413,7 +413,7 @@ impl Session {
                 })
             }
             client_shared::Event::ResourcesUpdated(resources) => {
-                let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
+                let resources = resources.resources.into_iter().map(Into::into).collect();
 
                 Some(Event::ResourcesUpdated { resources })
             }
@@ -483,8 +483,11 @@ fn connect(
         .build()
         .context("Failed to create tokio runtime")?;
 
+    install_rustls_crypto_provider();
+
     let mut telemetry = Telemetry::new();
-    runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN, device_id.clone()));
+    telemetry.start(&api_url, RELEASE, platform::DSN);
+    runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
     otel::install_sentry_meter_provider(platform::COMPONENT, platform::VERSION, device_id.clone());
@@ -492,7 +495,6 @@ fn connect(
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
-    install_rustls_crypto_provider();
 
     let url = LoginUrl::client(
         api_url.as_str(),

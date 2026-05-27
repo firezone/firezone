@@ -30,7 +30,7 @@ defmodule PortalWeb.Endpoint do
 
   # Security Headers
   plug PortalWeb.Plugs.PutSTSHeader
-  plug PortalWeb.Plugs.PutCSPHeader
+  plug PortalWeb.Plugs.PutSecurityHeaders
 
   plug RemoteIp,
     headers: ["x-forwarded-for"],

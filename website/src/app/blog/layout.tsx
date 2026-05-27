@@ -1,5 +1,13 @@
 import NewsletterSignup from "@/components/NewsletterSignup";
 import Image from "next/image";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: {
+    default: "Zero Trust Access Blog | Firezone",
+    template: "%s | Firezone Blog",
+  },
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
