@@ -25,6 +25,15 @@ custom-protocol = ["tauri/custom-protocol"]
 # default builds compile none of it.
 experimental-gui = ["dep:iced", "dep:ksni", "dep:tray-icon"]
 
+# Experimental xilem-based GUI, off by default and parallel to
+# `experimental-gui`. When enabled, the `firezone-gui-client` binary accepts
+# `--experimental-xilem-gui` to launch the xilem UI. Gates the `xilem`
+# dependency and the `src/xilem` module tree, so default builds compile none of
+# it. Also gates the `ksni` / `tray-icon` tray backends (shared with the iced
+# tray). NOTE: xilem renders through Vello/wgpu and has no software-renderer
+# fallback, so this UI requires a working GPU and will not run headless.
+experimental-xilem-gui = ["dep:xilem", "dep:ksni", "dep:tray-icon"]
+
 [dependencies]
 anyhow = { workspace = true }
 arboard = { workspace = true }
@@ -42,12 +51,12 @@ hex = { workspace = true }
 humantime = { workspace = true }
 iced = { workspace = true, optional = true }
 ip-packet = { workspace = true }
-open = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+open = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
@@ -81,6 +90,7 @@ tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+xilem = { workspace = true, optional = true }
 zip = { workspace = true, features = ["deflate", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
