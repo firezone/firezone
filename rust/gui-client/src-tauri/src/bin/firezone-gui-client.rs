@@ -94,6 +94,10 @@ fn try_main(
         fake_controller,
     };
 
+    // Headless CI can't dismiss a modal dialog, so suppress them and
+    // let the error propagate to a non-zero exit instead of hanging.
+    let no_error_dialog = cli.no_error_dialog;
+
     let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     let mdm_settings = settings::load_mdm_settings()
@@ -191,6 +195,12 @@ fn try_main(
     match gui::run(rt, config, mdm_settings, advanced_settings, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
+            // Headless CI: skip the dialogs and let the error surface
+            // as a non-zero exit so the install canary can read it.
+            if no_error_dialog {
+                return Err(anyhow);
+            }
+
             if anyhow
                 .chain()
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
@@ -302,6 +312,10 @@ struct Cli {
     /// For headless CI, disable deep links.
     #[arg(long, hide = true)]
     no_deep_links: bool,
+    /// For headless CI, log errors instead of showing a blocking
+    /// dialog (which would hang with no one to dismiss it).
+    #[arg(long, hide = true)]
+    no_error_dialog: bool,
     /// For headless CI, disable the elevation check.
     #[arg(long, hide = true)]
     no_elevation_check: bool,
