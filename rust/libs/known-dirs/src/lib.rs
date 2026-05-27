@@ -33,12 +33,6 @@ pub mod platform;
 /// deep link registration, etc.
 const BUNDLE_ID: &str = "dev.firezone.client";
 
-pub fn tunnel_log_filter() -> Result<PathBuf> {
-    Ok(tunnel_service_config()
-        .context("Failed to compute `tunnel_service_config` directory")?
-        .join("log-filter"))
-}
-
 pub fn tunnel_advanced_settings() -> Result<PathBuf> {
     Ok(tunnel_service_config()
         .context("Failed to compute `tunnel_service_config` directory")?
