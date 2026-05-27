@@ -121,8 +121,8 @@ pub struct ConnectedDevice {
     pub id: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tunneled_ipv4: String,
-    /// Names of the device-pool resources this peer is a member of
-    /// (typically one, but can be multiple). Empty if unknown.
+    /// Names of the device pools this peer belongs to, sorted (typically one,
+    /// but can be multiple).
     pub pools: Vec<String>,
 }
 
