@@ -153,16 +153,15 @@ impl Server {
     pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         let dacl = match id {
+            // `gui-smoke-test` runs debug GUI / Tunnel binaries that
+            // carry no MSIX identity, so they can't open a
+            // package-SID-pinned pipe. The smoke test sets the skip
+            // flag, so reuse it to fall back to the relaxed test DACL
+            // for both pipes.
             #[cfg(debug_assertions)]
-            SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => {
-                test_pipe_dacl()
-            }
-            // `gui-smoke-test` runs debug GUI binaries that carry no
-            // MSIX identity, so they can't open a package-SID-pinned
-            // GUI pipe. The smoke test sets the same skip flag, so
-            // reuse it to fall back to the relaxed test DACL.
-            #[cfg(debug_assertions)]
-            SocketId::Gui if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => {
+            SocketId::Tunnel | SocketId::Gui
+                if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) =>
+            {
                 test_pipe_dacl()
             }
             SocketId::Tunnel => tunnel_pipe_dacl(),
