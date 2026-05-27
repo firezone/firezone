@@ -9,6 +9,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
+use opentelemetry::KeyValue;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{Metadata, level_filters::LevelFilter};
@@ -58,6 +59,11 @@ pub fn stream_metrics() -> bool {
 
 pub fn show_connected_devices() -> bool {
     FEATURE_FLAGS.show_connected_devices()
+}
+
+/// The current state of every feature flag, as metric attributes (one per flag).
+pub(crate) fn metric_attributes() -> Vec<KeyValue> {
+    flag_attributes(FEATURE_FLAGS.snapshot())
 }
 
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
@@ -263,6 +269,18 @@ impl FeatureFlags {
     fn show_connected_devices(&self) -> bool {
         self.show_connected_devices.load(Ordering::Relaxed)
     }
+
+    fn snapshot(&self) -> FeatureFlagsResponse {
+        FeatureFlagsResponse {
+            icmp_unreachable_instead_of_nat64: self.icmp_unreachable_instead_of_nat64(),
+            drop_llmnr_nxdomain_responses: self.drop_llmnr_nxdomain_responses(),
+            stream_logs: !self.stream_logs.read().directives.is_empty(),
+            icmp_error_unreachable_prohibited_create_new_flow: self
+                .icmp_error_unreachable_prohibited_create_new_flow(),
+            stream_metrics: self.stream_metrics(),
+            show_connected_devices: self.show_connected_devices(),
+        }
+    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -290,6 +308,39 @@ fn env_or(key: &str, fallback: bool) -> bool {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(fallback)
+}
+
+fn flag_attributes(flags: FeatureFlagsResponse) -> Vec<KeyValue> {
+    // Exhaustive destruction so we don't forget to update this when we add a flag.
+    let FeatureFlagsResponse {
+        icmp_unreachable_instead_of_nat64,
+        drop_llmnr_nxdomain_responses,
+        stream_logs,
+        icmp_error_unreachable_prohibited_create_new_flow,
+        stream_metrics,
+        show_connected_devices,
+    } = flags;
+
+    vec![
+        KeyValue::new(
+            "feature_flag.icmp_unreachable_instead_of_nat64",
+            icmp_unreachable_instead_of_nat64,
+        ),
+        KeyValue::new(
+            "feature_flag.drop_llmnr_nxdomain_responses",
+            drop_llmnr_nxdomain_responses,
+        ),
+        KeyValue::new("feature_flag.stream_logs", stream_logs),
+        KeyValue::new(
+            "feature_flag.icmp_error_unreachable_prohibited_create_new_flow",
+            icmp_error_unreachable_prohibited_create_new_flow,
+        ),
+        KeyValue::new("feature_flag.stream_metrics", stream_metrics),
+        KeyValue::new(
+            "feature_flag.show_connected_devices",
+            show_connected_devices,
+        ),
+    ]
 }
 
 fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
@@ -387,5 +438,23 @@ mod tests {
         let filter = LogFilter::parse("\"debug,is::ice_::pair=trace\"".to_owned());
 
         assert_eq!(filter.directives, "debug,is::ice_::pair=trace");
+    }
+
+    #[test]
+    fn flag_attributes_reflect_state() {
+        let flags = FeatureFlagsResponse {
+            stream_metrics: true,
+            show_connected_devices: true,
+            ..Default::default()
+        };
+
+        let attrs = flag_attributes(flags);
+
+        assert!(attrs.contains(&KeyValue::new("feature_flag.stream_metrics", true)));
+        assert!(attrs.contains(&KeyValue::new("feature_flag.show_connected_devices", true)));
+        assert!(attrs.contains(&KeyValue::new(
+            "feature_flag.drop_llmnr_nxdomain_responses",
+            false
+        )));
     }
 }
