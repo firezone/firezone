@@ -172,7 +172,6 @@ async fn ipc_listen(
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
     }
 
-    advanced_settings::migrate_legacy_log_filter_file();
     if let Ok(Some(stored)) = advanced_settings::load()
         && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
     {

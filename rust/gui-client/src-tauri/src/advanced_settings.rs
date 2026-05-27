@@ -78,59 +78,6 @@ pub fn save(settings: &AdvancedSettings) -> Result<()> {
     Ok(())
 }
 
-/// One-shot migration of the standalone `log-filter` file into
-/// `advanced_settings.json` at service startup.
-///
-/// The standalone file pre-dates the unified advanced-settings storage on
-/// the service side. Best-effort: logs warnings on any failure but never
-/// aborts service startup.
-// TODO: remove once all clients have migrated.
-pub fn migrate_legacy_log_filter_file() {
-    let Ok(legacy_path) = known_dirs::tunnel_log_filter() else {
-        return;
-    };
-    if !legacy_path.exists() {
-        return;
-    }
-    let Ok(new_path) = path() else {
-        tracing::warn!("Cannot compute advanced_settings path; skipping log-filter migration");
-        return;
-    };
-    if new_path.exists() {
-        // Protected file is authoritative; the standalone file is stale.
-        if let Err(e) = fs::remove_file(&legacy_path) {
-            tracing::warn!(
-                path = %legacy_path.display(),
-                "Failed to remove redundant legacy log-filter file: {e}"
-            );
-        }
-        return;
-    }
-    let directives = match fs::read_to_string(&legacy_path) {
-        Ok(s) => s.trim().to_string(),
-        Err(e) => {
-            tracing::warn!("Failed to read legacy log-filter file: {e:#}");
-            return;
-        }
-    };
-    let settings = AdvancedSettings {
-        log_filter: directives,
-        ..AdvancedSettings::default()
-    };
-    if let Err(e) = save(&settings) {
-        tracing::warn!("Failed to migrate legacy log-filter to advanced_settings: {e:#}");
-        return;
-    }
-    if let Err(e) = fs::remove_file(&legacy_path) {
-        tracing::warn!(
-            path = %legacy_path.display(),
-            "Migrated legacy log-filter but failed to delete it: {e}"
-        );
-    } else {
-        tracing::info!("Migrated legacy log-filter into advanced_settings.json");
-    }
-}
-
 #[cfg(target_os = "linux")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
