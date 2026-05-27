@@ -1,13 +1,14 @@
-# Install canary for the Windows MSI. Verifies that the sparse
-# MSIX registers, the package is queryable by the runner's user,
-# and a freshly-launched `Firezone.exe` carries the package
-# identity that the tunnel-pipe DACL pins access to.
+# Install canary for the Windows MSI. Installs the package, then
+# launches the real GUI and verifies it connects to the tunnel
+# service over the package-SID-pinned pipe -- which only works if the
+# MSI registered the package for the user and the kernel attached the
+# package identity. A denied connect means the GUI never reaches its
+# main loop, so the connect check is the gating signal.
 #
-# PowerShell rather than bash because MSYS2's process spawn drops
-# the kernel's SXS-manifest -> registered-package identity
-# binding: `Firezone.exe` launched via bash backgrounding has no
-# package identity, while the same binary launched via
-# `Start-Process` does.
+# PowerShell rather than bash because MSYS2's process spawn drops the
+# kernel's SXS-manifest -> registered-package identity binding:
+# `Firezone.exe` launched via bash backgrounding has no package
+# identity, while the same binary launched via `Start-Process` does.
 
 $ErrorActionPreference = "Stop"
 
@@ -18,6 +19,10 @@ if (-not $env:BINARY_DEST_PATH) {
 
 $msi = "$($env:BINARY_DEST_PATH).msi"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$gui = "C:\Program Files\Firezone\Firezone.exe"
+# Filesystem write virtualization is disabled in the manifest, so the
+# identity-carrying GUI logs to the real path, not a package container.
+$logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
 
 Write-Output "==> Installing $msi..."
 $msiproc = Start-Process -FilePath "msiexec.exe" `
@@ -35,70 +40,21 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# `register-sparse.exe` (MSI deferred CA, runs as LocalSystem)
-# calls `ProvisionPackageForAllUsersAsync`, which returns success
-# before the AppX deployment service has finished syncing the
-# per-user registration. Poll `Get-AppxPackage` until the runner's
-# session sees the package before launching the GUI.
-Write-Output "==> Waiting for AppX deployment service to register the package..."
-$pfn = $null
-for ($i = 1; $i -le 15; $i++) {
-    $pfn = (Get-AppxPackage Firezone.Client.GUI | Select-Object -First 1).PackageFullName
-    if ($pfn) {
-        Write-Output "==> Get-AppxPackage settled after $i probe(s) (~$($i * 2)s): $pfn"
-        break
-    }
-    Start-Sleep -Seconds 2
-}
-if (-not $pfn) {
-    Write-Error "Get-AppxPackage Firezone.Client.GUI returned nothing after 30s"
-    exit 1
-}
-
-$gui = "C:\Program Files\Firezone\Firezone.exe"
-
-Write-Output "==> Launching Firezone.exe debug single-instance..."
-$proc = Start-Process -FilePath $gui -ArgumentList "debug", "single-instance" -PassThru
-try {
-    Write-Output "==> Verifying Firezone.exe has package identity attached..."
-    & "$scriptDir\gui-package-identity-windows.ps1" -ProcessId $proc.Id
-    Write-Output "==> Package identity attached to Firezone.exe"
-
-    Write-Output "==> Verifying tunnel pipe denies non-Firezone-signed callers..."
-    & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_tunnel.ipc'
-    Write-Output "==> Tunnel pipe DACL pinned to package SID"
-
-    Write-Output "==> Verifying GUI pipe denies non-Firezone-signed callers..."
-    & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_gui.ipc'
-    Write-Output "==> GUI pipe DACL pinned to package SID"
-}
-finally {
-    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-}
-
-# Happy path: launch the real GUI and confirm it connects to the
-# tunnel service over the package-SID-pinned pipe. The GUI opens the
-# tunnel pipe at controller startup (before sign-in); only after a
-# successful connect + Hello does the controller reach its main loop
-# and log "signed-out state" at INFO. We poll the log for that
-# marker rather than waiting for a graceful exit -- the full Tauri
-# GUI doesn't cleanly quit in headless CI -- and kill it afterwards.
-# A denied connect never logs the marker, so the poll times out and
-# the test fails (instead of hanging).
-Write-Output "==> Launching full GUI to exercise the tunnel-pipe connect..."
-# A GUI carrying package identity has %LOCALAPPDATA% redirected into
-# its package container, so search both the plain path and the
-# container for the log files.
-$logRoots = @(
-    "$env:LOCALAPPDATA\dev.firezone.client",
-    "$env:LOCALAPPDATA\Packages\Firezone.Client.GUI*"
-)
+# Launch the real GUI and confirm it connects to the tunnel service
+# over the package-SID-pinned pipe. The GUI opens the tunnel pipe at
+# controller startup (before sign-in); only after a successful
+# connect + Hello does the controller reach its main loop and log
+# "signed-out state" at INFO. Poll the log for that marker rather
+# than waiting for a graceful exit (the full Tauri GUI doesn't
+# cleanly quit in headless CI), and kill it afterwards. A denied
+# connect never logs the marker, so the poll times out and fails.
+Write-Output "==> Launching the GUI to exercise the tunnel-pipe connect..."
 $guiProc = Start-Process -FilePath $gui `
     -ArgumentList "--no-deep-links", "--no-elevation-check" -PassThru
 try {
     $connected = $false
     for ($i = 1; $i -le 30; $i++) {
-        $logs = Get-ChildItem -Path $logRoots -Recurse -Filter *.log -ErrorAction SilentlyContinue
+        $logs = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue
         if ($logs -and ($logs | Select-String -Pattern "signed-out state" -Quiet)) {
             $connected = $true
             Write-Output "==> GUI reached its main loop after ~${i}s (tunnel pipe connect succeeded)"
@@ -114,16 +70,23 @@ try {
         Write-Output "==> GUI still alive: $(-not $guiProc.HasExited)"
         Get-AppxPackage -AllUsers Firezone.Client.GUI |
             Format-List PackageFullName, Status, PackageUserInformation
-        Write-Output "==> Log files found:"
-        Get-ChildItem -Path $logRoots -Recurse -Filter *.log -ErrorAction SilentlyContinue |
-            ForEach-Object {
-                Write-Output "--- $($_.FullName) ---"
-                Get-Content $_.FullName -Tail 40
-            }
+        Write-Output "==> Log tail:"
+        Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 40
         Write-Error "GUI did not connect to the tunnel over the package-SID pipe within 30s"
         exit 1
     }
     Write-Output "==> GUI connected to the tunnel over the package-SID pipe"
+
+    # The connect proves the DACL grants the package SID; these prove
+    # it still denies everyone else (the actual hardening). Both pipes
+    # are bound now -- the tunnel by the service, the GUI by this
+    # process -- so probe them with a LUA-filtered (non-admin,
+    # no-package-SID) token and expect ACCESS_DENIED.
+    Write-Output "==> Verifying tunnel pipe denies non-Firezone callers..."
+    & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_tunnel.ipc'
+    Write-Output "==> Verifying GUI pipe denies non-Firezone callers..."
+    & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_gui.ipc'
 }
 finally {
     Stop-Process -Id $guiProc.Id -Force -ErrorAction SilentlyContinue
