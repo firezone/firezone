@@ -46,17 +46,13 @@ runs:
           stop.
 
           Otherwise:
-          1. For each listed PR, work out what actually changed. Use
-             `gh pr view <number>` (and `gh pr diff <number>` if you need more
-             detail than the title gives).
+          1. For each listed PR, read the PR description. Then, work out what
+             actually changed from the diff. Use `gh pr diff <number>`.
           2. Write a concise manual-QA test plan as a markdown checklist. Group
              related changes and, for each area, give concrete things a tester
-             should verify by hand. Prioritize user-facing behavior changes,
-             security-sensitive code (authentication, cryptography, access
-             control), and data-plane / connlib changes; flag anything that
-             warrants regression testing.
-          3. Stay focused on what a human should manually retest. Do not restate
-             the full diff.
+             should verify by hand. Prioritize user-facing behavior changes.
+          3. Stay focused on what a human should manually retest. Do not
+             restate the full diff.
 
           Publish the plan as a GitHub issue titled exactly
           "QA: ${{ inputs.release_name }}". To avoid duplicates, first run
