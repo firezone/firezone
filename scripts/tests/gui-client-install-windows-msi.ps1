@@ -78,19 +78,41 @@ finally {
 
 # Happy path: launch the real GUI and confirm it connects to the
 # tunnel service over the package-SID-pinned pipe. The GUI opens the
-# tunnel pipe at controller startup (before sign-in); if the package
-# SID isn't attached or the DACL rejects it, the connect is denied,
-# controller startup fails, and the process exits non-zero.
-# `--quit-after` makes a successful run end gracefully with exit 0.
+# tunnel pipe at controller startup (before sign-in); only after a
+# successful connect + Hello does the controller reach its main loop
+# and log "signed-out state" at INFO. We poll the log for that
+# marker rather than waiting for a graceful exit -- the full Tauri
+# GUI doesn't cleanly quit in headless CI -- and kill it afterwards.
+# A denied connect never logs the marker, so the poll times out and
+# the test fails (instead of hanging).
 Write-Output "==> Launching full GUI to exercise the tunnel-pipe connect..."
+$logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
 $guiProc = Start-Process -FilePath $gui `
-    -ArgumentList "--no-deep-links", "--no-elevation-check", "--quit-after", "15" `
-    -PassThru -Wait
-if ($guiProc.ExitCode -ne 0) {
-    Write-Output "==> GUI log tail:"
-    Get-ChildItem "$env:LOCALAPPDATA\dev.firezone.client\data\logs" -Filter *.log -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 50
-    Write-Error "GUI exited $($guiProc.ExitCode): could not open the package-SID-pinned tunnel pipe"
-    exit 1
+    -ArgumentList "--no-deep-links", "--no-elevation-check" -PassThru
+try {
+    $connected = $false
+    for ($i = 1; $i -le 30; $i++) {
+        $logs = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue
+        if ($logs -and ($logs | Select-String -Pattern "signed-out state" -Quiet)) {
+            $connected = $true
+            Write-Output "==> GUI reached its main loop after ~${i}s (tunnel pipe connect succeeded)"
+            break
+        }
+        if ($guiProc.HasExited) {
+            Write-Output "GUI exited early with code $($guiProc.ExitCode)"
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $connected) {
+        Write-Output "==> GUI log tail:"
+        Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 50
+        Write-Error "GUI did not connect to the tunnel over the package-SID pipe within 30s"
+        exit 1
+    }
+    Write-Output "==> GUI connected to the tunnel over the package-SID pipe"
 }
-Write-Output "==> GUI connected to the tunnel over the package-SID pipe and exited gracefully"
+finally {
+    Stop-Process -Id $guiProc.Id -Force -ErrorAction SilentlyContinue
+}
