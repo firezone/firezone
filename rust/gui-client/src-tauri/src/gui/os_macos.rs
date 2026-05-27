@@ -7,6 +7,6 @@ pub async fn set_autostart(_enabled: bool) -> Result<()> {
     bail!("Not implemented")
 }
 
-pub(crate) fn show_notification(_title: String, _body: String) -> Result<NotificationHandle> {
+pub fn show_notification(_title: String, _body: String) -> Result<NotificationHandle> {
     bail!("Not implemented")
 }

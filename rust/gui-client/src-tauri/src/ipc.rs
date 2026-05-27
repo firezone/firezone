@@ -13,8 +13,8 @@ pub use platform::Server;
 
 pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
 pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
-pub(crate) type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
-pub(crate) type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
+pub type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
+pub type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[path = "ipc/unix.rs"]
@@ -180,9 +180,7 @@ where
 }
 
 impl platform::Server {
-    pub(crate) async fn next_client_split<R, W>(
-        &mut self,
-    ) -> Result<(ServerRead<R>, ServerWrite<W>)>
+    pub async fn next_client_split<R, W>(&mut self) -> Result<(ServerRead<R>, ServerWrite<W>)>
     where
         R: DeserializeOwned,
         W: Serialize,
