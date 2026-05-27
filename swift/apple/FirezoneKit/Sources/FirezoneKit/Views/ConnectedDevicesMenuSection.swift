@@ -55,7 +55,7 @@
         Text("Tunnel IPv4")
           .foregroundStyle(.secondary)
         Button(device.tunneledIPv4) {
-          copyToClipboard(device.tunneledIPv4)
+          Clipboard.copy(device.tunneledIPv4)
         }
 
         Divider()
@@ -63,7 +63,7 @@
         Text("Client ID")
           .foregroundStyle(.secondary)
         Button(device.id) {
-          copyToClipboard(device.id)
+          Clipboard.copy(device.id)
         }
 
         if !device.pools.isEmpty {
@@ -73,17 +73,11 @@
             .foregroundStyle(.secondary)
           ForEach(device.pools, id: \.self) { pool in
             Button(pool) {
-              copyToClipboard(pool)
+              Clipboard.copy(pool)
             }
           }
         }
       }
-    }
-
-    func copyToClipboard(_ string: String) {
-      let pasteboard = NSPasteboard.general
-      pasteboard.clearContents()
-      pasteboard.setString(string, forType: .string)
     }
   }
 #endif
