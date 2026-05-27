@@ -18,24 +18,25 @@
 //! the same pattern iced uses — because `worker`'s `init_future` must be
 //! non-capturing (zero-sized).
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
 use xilem::core::{MessageProxy, fork};
-use xilem::view::worker;
+use xilem::view::{task, worker};
 use xilem::{EventLoop, WidgetView, WindowOptions, Xilem};
 
 use crate::SessionViewModel;
 use crate::controller::{Controller, ControllerRequest};
 use crate::deep_link;
-use crate::gui::{SingleInstance, establish_single_instance};
+use crate::gui::{SingleInstance, establish_single_instance, system_tray};
 use crate::ipc::SocketId;
 use crate::logging::{self, FilterReloadHandle};
 use crate::settings::{self, AdvancedSettings, GeneralSettings, MdmSettings};
 use crate::xilem::integration::{UiUpdate, XilemIntegration};
 use crate::xilem::state::{AdvancedSettingsState, App, GeneralSettingsState, Route, Session};
-use crate::xilem::ui;
+use crate::xilem::{tray, ui};
 
 /// Boot-time resources consumed once by the bridge `worker`'s `init_future`.
 /// `worker` requires a non-capturing (zero-sized) init closure, so — exactly
@@ -93,6 +94,7 @@ pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> Re
         mdm_settings: mdm_settings.clone(),
         log_count: Default::default(),
         ctrl_tx: None,
+        export_in_flight: false,
     };
 
     *BOOT_RESOURCES.lock().unwrap_or_else(|p| p.into_inner()) = Some(BootResources {
@@ -103,6 +105,13 @@ pub fn run(bootstrap_log_guard: Option<tracing::subscriber::DefaultGuard>) -> Re
         mdm: mdm_settings,
         advanced: advanced_settings,
     });
+
+    // Install the tray on the main thread before xilem takes it over (the
+    // Win/Mac `TrayIcon` is thread-affine). The ksni service / muda forwarder
+    // is spawned later, from `bridge_main`, once a tokio runtime exists.
+    if let Err(e) = tray::install() {
+        tracing::warn!("failed to install system tray: {e}");
+    }
 
     // `new_simple` builds a single, fixed window that exits the process when
     // closed — unlike iced's `daemon` mode (which keeps running in the tray).
@@ -131,7 +140,49 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         |app: &mut App, update: UiUpdate| apply_update(app, update),
     );
 
-    fork(ui::root(app), bridge)
+    // One-shot log export: present only while a dialog/zip is in flight, so it
+    // fires once when the Diagnostics button flips the flag, then clears it on
+    // completion (removing itself on the next render).
+    let export = app.export_in_flight.then(|| {
+        task(
+            |proxy: MessageProxy<()>| async move {
+                if let Err(e) = do_export().await {
+                    tracing::warn!("failed to export logs: {e}");
+                }
+                let _ = proxy.message(());
+            },
+            |app: &mut App, ()| {
+                app.export_in_flight = false;
+            },
+        )
+    });
+
+    fork(ui::root(app), (bridge, export))
+}
+
+/// Run a native save dialog and export the logs to the chosen path. Mirrors
+/// the iced client's `export_logs`.
+async fn do_export() -> std::result::Result<(), String> {
+    let chosen = tokio::task::spawn_blocking(|| {
+        native_dialog::DialogBuilder::file()
+            .set_title("Export Firezone logs")
+            .set_filename("firezone-logs.zip")
+            .save_single_file()
+            .show()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let Some(path) = chosen else {
+        return Ok(());
+    };
+    let stem = path
+        .file_stem()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("firezone-logs"));
+    logging::export_logs_to(path, stem)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// The async bridge: single-instance handshake, deep-link registration, then
@@ -184,6 +235,28 @@ async fn bridge_main(
         }
     });
 
+    // Spawn the tray service (Linux: ksni; Win/Mac: muda event forwarder) and
+    // drain its clicks into the Controller as `SystemTrayMenu` requests — the
+    // same sink the Tauri and iced clients use.
+    tray::spawn_service();
+    if let Some(mut tray_rx) = tray::take_event_rx() {
+        let tray_tx = ctrl_tx.clone();
+        tokio::spawn(async move {
+            while let Some(event) = tray_rx.recv().await {
+                let is_quit = matches!(event, system_tray::Event::Quit);
+                let _ = tray_tx.send(ControllerRequest::SystemTrayMenu(event)).await;
+                if is_quit {
+                    // `new_simple` can't close its window from here, so quit the
+                    // process. Give the Controller a moment to send the
+                    // Disconnect IPC first. (A graceful, window-aware quit is
+                    // part of the window-lifecycle gap — see mod.rs.)
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    std::process::exit(0);
+                }
+            }
+        });
+    }
+
     // Forward Controller → UI updates to the app via the MessageProxy.
     let mut ui_rx = res.ui_rx;
     tokio::spawn(async move {
@@ -232,10 +305,14 @@ fn apply_update(app: &mut App, update: UiUpdate) {
             advanced,
         } => apply_settings(app, mdm, general, advanced),
         UiUpdate::LogsRecounted(fc) => app.log_count = fc.into(),
-        // No system tray in this first cut — the Controller still emits these;
-        // we drop them. (Tray is a documented missing piece — see mod.rs.)
-        UiUpdate::TrayIcon(_) | UiUpdate::TrayMenu(_) => {}
+        UiUpdate::TrayIcon(icon) => tray::set_icon(icon),
+        UiUpdate::TrayMenu(app_state) => {
+            let app_state = *app_state;
+            tray::set_icon(system_tray::icon_from_state(&app_state));
+            tray::set_menu(app_state.into_menu());
+        }
         // Single always-open window under `new_simple`; nothing to show/hide.
+        // (Raising the window from the tray is part of the window gap.)
         UiUpdate::SetWindowVisible(_) => {}
         UiUpdate::NavigateOverview(view) => {
             set_session(app, view);

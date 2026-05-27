@@ -29,9 +29,10 @@ experimental-gui = ["dep:iced", "dep:ksni", "dep:tray-icon"]
 # `experimental-gui`. When enabled, the `firezone-gui-client` binary accepts
 # `--experimental-xilem-gui` to launch the xilem UI. Gates the `xilem`
 # dependency and the `src/xilem` module tree, so default builds compile none of
-# it. NOTE: xilem renders through Vello/wgpu and has no software-renderer
+# it. Also gates the `ksni` / `tray-icon` tray backends (shared with the iced
+# tray). NOTE: xilem renders through Vello/wgpu and has no software-renderer
 # fallback, so this UI requires a working GPU and will not run headless.
-experimental-xilem-gui = ["dep:xilem"]
+experimental-xilem-gui = ["dep:xilem", "dep:ksni", "dep:tray-icon"]
 
 [dependencies]
 anyhow = { workspace = true }

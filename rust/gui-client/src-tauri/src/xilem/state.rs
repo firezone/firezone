@@ -190,4 +190,7 @@ pub struct App {
     /// Sender into the Controller's request channel. Populated by the bridge
     /// `worker`'s `store_sender` on the first build; `None` until then.
     pub ctrl_tx: Option<mpsc::UnboundedSender<ControllerRequest>>,
+    /// True while a log-export file dialog + zip is running. Gates the one-shot
+    /// export `task` view (see `entry::app_logic`).
+    pub export_in_flight: bool,
 }

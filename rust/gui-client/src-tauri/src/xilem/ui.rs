@@ -205,11 +205,10 @@ fn diagnostics(app: &App) -> impl WidgetView<App> + use<> {
     flex_col((
         label(summary).text_size(14.0),
         flex_row((
-            text_button("Export Logs", |_app: &mut App| {
-                // The iced path runs an async native file-save dialog
-                // (Task::perform); a sync button callback can't block the
-                // event loop on one, so this is left unwired for now.
-                tracing::warn!("xilem: export logs not yet implemented");
+            // Flip the flag; `entry::app_logic` runs the actual async dialog +
+            // zip in a one-shot `task` view and clears the flag when done.
+            text_button("Export Logs", |app: &mut App| {
+                app.export_in_flight = true;
             }),
             text_button("Clear Logs", |app: &mut App| {
                 let (cb_tx, _cb_rx) = tokio::sync::oneshot::channel();
