@@ -95,15 +95,12 @@ if (-not [W32.PipeProbe]::ImpersonateLoggedOnUser($luaToken)) {
 # Under the LUA-filtered token, `BUILTIN\Administrators` is
 # deny-only and we don't carry the package SID, so the only
 # possible match is the `LocalSystem` ACE (we aren't), leaving us
-# with `ERROR_ACCESS_DENIED`. The pipe server may still be coming
-# up -- the GUI pipe isn't created until the controller reaches its
-# main loop (after WebView2 init + the tunnel connect), which can
-# take a while -- so retry while `CreateFileW` returns
-# `ERROR_FILE_NOT_FOUND`. A denied open does not consume the
-# server's accept slot.
+# with `ERROR_ACCESS_DENIED`. Retry briefly while `CreateFileW`
+# returns `ERROR_FILE_NOT_FOUND` in case the pipe is mid-rebind; a
+# denied open does not consume the server's accept slot.
 $h = $INVALID_HANDLE
 $lastError = 0
-for ($i = 0; $i -lt 600; $i++) {
+for ($i = 0; $i -lt 50; $i++) {
     $h = [W32.PipeProbe]::CreateFileW(
         $PipePath, $READ_CONTROL, 0, [IntPtr]::Zero, $OPEN_EXISTING, 0, [IntPtr]::Zero
     )
