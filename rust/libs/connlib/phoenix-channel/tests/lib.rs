@@ -877,7 +877,9 @@ async fn connect_with_zero_backoff_resets_reconnect_backoff() {
             match future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
                 Event::Connected => break,
                 Event::Message { .. } => {}
-                other => panic!("Unexpected event: {other:?}"),
+                other @ (Event::Closed | Event::Hiccup { .. }) => {
+                    panic!("Unexpected event: {other:?}")
+                }
             }
         }
         server.abort();
@@ -914,7 +916,9 @@ async fn poll_until_hiccup(channel: &mut TestChannel) -> Duration {
         match future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
             Event::Hiccup { backoff, .. } => return backoff,
             Event::Message { .. } => {}
-            other => panic!("Unexpected event: {other:?}"),
+            other @ (Event::Closed | Event::Connected) => {
+                panic!("Unexpected event: {other:?}")
+            }
         }
     }
 }
