@@ -40,6 +40,20 @@ fn main() -> ExitCode {
         };
     }
 
+    // Same hand-off for the experimental xilem GUI: it owns the main thread and
+    // its own tokio runtime (via `Xilem::new_simple`), so branch off before
+    // this binary builds its own runtime.
+    #[cfg(feature = "experimental-xilem-gui")]
+    if cli.experimental_xilem_gui {
+        return match firezone_gui_client::xilem::run(bootstrap_log_guard.take()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!("xilem GUI failed: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -281,6 +295,12 @@ struct Cli {
     #[cfg(feature = "experimental-gui")]
     #[arg(long)]
     experimental_gui: bool,
+
+    /// Launch the experimental xilem-based GUI instead of the Tauri UI.
+    /// Only present in builds with the `experimental-xilem-gui` feature.
+    #[cfg(feature = "experimental-xilem-gui")]
+    #[arg(long)]
+    experimental_xilem_gui: bool,
 
     /// Crash the `Controller` task to test error handling
     /// Formerly `--crash-on-purpose`

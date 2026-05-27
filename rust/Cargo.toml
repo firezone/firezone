@@ -243,6 +243,7 @@ windows-native-keyring-store = "1.0.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.0"
 winreg = "0.56.0"
+xilem = "0.4"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }
 

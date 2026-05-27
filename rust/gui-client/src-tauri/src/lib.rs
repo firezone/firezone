@@ -25,6 +25,8 @@ pub mod launch_lock;
 pub mod logging;
 pub mod service;
 pub mod settings;
+#[cfg(feature = "experimental-xilem-gui")]
+pub mod xilem;
 
 /// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
 ///
