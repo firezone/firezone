@@ -67,7 +67,7 @@ all-features = false
 no-default-features = false
 # If set, these feature will be enabled when collecting metadata. If `--features`
 # is specified on the cmd line they will take precedence over this option.
-features = ["experimental-gui"]
+features = ["experimental-gui", "experimental-xilem-gui"]
 
 # The output table provides options for how/if diagnostics are outputted
 [output]
@@ -284,10 +284,12 @@ skip = [
     "itertools", # iced's image feature uses itertools 0.14; existing copy on 0.12.
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
+    "keyboard-types", # xilem's winit/wgpu 27 stack vs iced's wgpu 26 stack.
     "kurbo", # iced 0.14's tiny-skia renderer pulls kurbo 0.10 directly and kurbo 0.11 transitively through resvg (SVG support); both stay until resvg or iced_tiny_skia upgrade.
     "libloading",
     "linux-raw-sys",
     "lru", # iced 0.14 uses lru 0.16; existing copy via other deps.
+    "naga", # xilem renders via vello → wgpu 27 (naga 27); iced 0.14 uses wgpu 26 (naga 26).
     "nom",
     "objc2", # iced/wgpu's macOS path uses objc2 0.6; tauri stays on 0.5.
     "objc2-app-kit", # Same root cause as `objc2`.
@@ -318,6 +320,12 @@ skip = [
     "toml_datetime",
     "toml_edit",
     "webpki-roots",
+    "wgpu", # xilem renders via vello → wgpu 27; iced 0.14 uses wgpu 26.
+    "wgpu-core", # Same wgpu 26-vs-27 split.
+    "wgpu-core-deps-apple", # Same wgpu 26-vs-27 split.
+    "wgpu-core-deps-windows-linux-android", # Same wgpu 26-vs-27 split.
+    "wgpu-hal", # Same wgpu 26-vs-27 split.
+    "wgpu-types", # Same wgpu 26-vs-27 split.
     "which",
     "windows", # iced/wgpu's Windows path uses windows 0.62; tauri/wry stay on 0.61.
     "windows-core", # Same root cause as `windows`.
