@@ -103,7 +103,7 @@ pub struct Tunnel<TRoleState> {
     buffers: Buffers,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
-    event_loop_errors: opentelemetry::metrics::Counter<u64>,
+    tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -117,6 +117,12 @@ impl<TRoleState> Tunnel<TRoleState> {
 
     pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
         self.io.rebind_dns(sockets)
+    }
+
+    fn record_error(&self, error: &TunnelError) {
+        for error in &error.errors {
+            self.tunnel_errors.add(1, &otel::error_layers(error));
+        }
     }
 }
 
@@ -147,7 +153,7 @@ impl ClientTunnel {
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
                 .build(),
-            event_loop_errors: otel::event_loop_errors(),
+            tunnel_errors: otel::tunnel_errors(),
         }
     }
 
@@ -233,7 +239,7 @@ impl ClientTunnel {
             }
 
             // Process all IO sources that are ready.
-            if let Poll::Ready(io::Input {
+            let errors = if let Poll::Ready(io::Input {
                 now,
                 timeout,
                 dns_response,
@@ -318,11 +324,15 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if !error.is_empty() {
-                    error.record(&self.event_loop_errors);
+                error
+            } else {
+                TunnelError::default()
+            };
 
-                    return Poll::Ready(ClientEvent::Error(error));
-                }
+            if !errors.is_empty() {
+                self.record_error(&errors);
+
+                return Poll::Ready(ClientEvent::Error(errors));
             }
         }
 
@@ -357,7 +367,7 @@ impl GatewayTunnel {
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
                 .build(),
-            event_loop_errors: otel::event_loop_errors(),
+            tunnel_errors: otel::tunnel_errors(),
         }
     }
 
@@ -410,7 +420,7 @@ impl GatewayTunnel {
             }
 
             // Process all IO sources that are ready.
-            if let Poll::Ready(io::Input {
+            let errors = if let Poll::Ready(io::Input {
                 now,
                 timeout,
                 dns_response,
@@ -584,11 +594,15 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if !error.is_empty() {
-                    error.record(&self.event_loop_errors);
+                error
+            } else {
+                TunnelError::default()
+            };
 
-                    return Poll::Ready(GatewayEvent::Error(error));
-                }
+            if !errors.is_empty() {
+                self.record_error(&errors);
+
+                return Poll::Ready(GatewayEvent::Error(errors));
             }
         }
 
@@ -705,12 +719,6 @@ impl TunnelError {
 
     pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
         mem::take(&mut self.errors).into_iter()
-    }
-
-    pub(crate) fn record(&self, counter: &opentelemetry::metrics::Counter<u64>) {
-        for error in &self.errors {
-            counter.add(1, &otel::error_layers(error));
-        }
     }
 }
 

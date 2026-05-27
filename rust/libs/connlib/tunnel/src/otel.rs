@@ -28,7 +28,7 @@ const ERROR_TYPE_KEYS: [&str; MAX_ERROR_LAYERS] = [
 ];
 
 /// Counter for errors encountered while processing a single packet batch.
-pub(crate) fn event_loop_errors() -> Counter<u64> {
+pub(crate) fn tunnel_errors() -> Counter<u64> {
     opentelemetry::global::meter("connlib")
         .u64_counter("eventloop.error")
         .with_description("Number of errors encountered while processing a packet batch.")
