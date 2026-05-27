@@ -86,24 +86,19 @@ finally {
 # A denied connect never logs the marker, so the poll times out and
 # the test fails (instead of hanging).
 Write-Output "==> Launching full GUI to exercise the tunnel-pipe connect..."
-$logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
+# A GUI carrying package identity has %LOCALAPPDATA% redirected into
+# its package container, so search both the plain path and the
+# container for the log files.
+$logRoots = @(
+    "$env:LOCALAPPDATA\dev.firezone.client",
+    "$env:LOCALAPPDATA\Packages\Firezone.Client.GUI*"
+)
 $guiProc = Start-Process -FilePath $gui `
     -ArgumentList "--no-deep-links", "--no-elevation-check" -PassThru
 try {
-    # Diagnostic: does the *full GUI* itself carry package identity?
-    # (The earlier identity probe was a separate single-instance
-    # process.) Non-fatal -- we want the readout either way.
-    Start-Sleep -Seconds 2
-    try {
-        & "$scriptDir\gui-package-identity-windows.ps1" -ProcessId $guiProc.Id
-        Write-Output "==> Full GUI carries package identity"
-    } catch {
-        Write-Output "==> Full GUI has NO package identity: $_"
-    }
-
     $connected = $false
     for ($i = 1; $i -le 30; $i++) {
-        $logs = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue
+        $logs = Get-ChildItem -Path $logRoots -Recurse -Filter *.log -ErrorAction SilentlyContinue
         if ($logs -and ($logs | Select-String -Pattern "signed-out state" -Quiet)) {
             $connected = $true
             Write-Output "==> GUI reached its main loop after ~${i}s (tunnel pipe connect succeeded)"
@@ -117,16 +112,14 @@ try {
     }
     if (-not $connected) {
         Write-Output "==> GUI still alive: $(-not $guiProc.HasExited)"
-        Write-Output "==> AppxPackage state:"
         Get-AppxPackage -AllUsers Firezone.Client.GUI |
             Format-List PackageFullName, Status, PackageUserInformation
-        Write-Output "==> Log files in ${logDir}:"
-        $logs = Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue
-        $logs | Format-Table Name, Length, LastWriteTime | Out-String | Write-Output
-        $logs | Sort-Object LastWriteTime | ForEach-Object {
-            Write-Output "--- $($_.Name) ---"
-            Get-Content $_.FullName -Tail 40
-        }
+        Write-Output "==> Log files found:"
+        Get-ChildItem -Path $logRoots -Recurse -Filter *.log -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                Write-Output "--- $($_.FullName) ---"
+                Get-Content $_.FullName -Tail 40
+            }
         Write-Error "GUI did not connect to the tunnel over the package-SID pipe within 30s"
         exit 1
     }

@@ -16,6 +16,7 @@ pub mod gui;
 pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
+pub mod package_identity;
 pub mod service;
 pub mod settings;
 

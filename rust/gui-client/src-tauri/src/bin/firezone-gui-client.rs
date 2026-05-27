@@ -25,6 +25,25 @@ fn main() -> ExitCode {
         Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     let cli = Cli::parse();
+
+    // Before the GUI proper starts, make sure this process carries the
+    // MSIX package identity that the tunnel-pipe DACL pins. The MSI only
+    // provisions the package; external-location sparse packages aren't
+    // auto-registered for interactive users, so we register for the
+    // current user and re-exec on first launch. Release-only (debug
+    // smoke tests deliberately run without identity) and only for the
+    // main GUI run, not the debug subcommands.
+    #[cfg(not(debug_assertions))]
+    if cli.command.is_none() {
+        match firezone_gui_client::package_identity::ensure_package_identity() {
+            Ok(firezone_gui_client::package_identity::Outcome::ReExeced) => {
+                return ExitCode::SUCCESS;
+            }
+            Ok(firezone_gui_client::package_identity::Outcome::Proceed) => {}
+            Err(e) => tracing::warn!("Package-identity check failed: {e:#}"),
+        }
+    }
+
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
