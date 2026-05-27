@@ -26,30 +26,6 @@ fn main() -> ExitCode {
 
     let cli = Cli::parse();
 
-    // Before the GUI proper starts, make sure this process carries the
-    // MSIX package identity that the tunnel-pipe DACL pins. The MSI
-    // registers the package for the installing user; for any other user
-    // we register it here on first launch. Identity only attaches to a
-    // freshly-created process, so we ask the user to relaunch rather
-    // than re-exec (which is fragile under job objects). Release-only
-    // (debug smoke tests run without identity) and only for the main
-    // GUI run, not the debug subcommands.
-    #[cfg(not(debug_assertions))]
-    if cli.command.is_none() {
-        use firezone_gui_client::package_identity::{Outcome, ensure_package_identity};
-
-        match ensure_package_identity() {
-            Ok(Outcome::Proceed) => {}
-            Ok(Outcome::RegisteredRestartRequired) => {
-                let _ = firezone_gui_client::dialog::error(
-                    "Firezone finished first-time setup. Please start Firezone again.",
-                );
-                return ExitCode::SUCCESS;
-            }
-            Err(e) => tracing::warn!("Package-identity check failed: {e:#}"),
-        }
-    }
-
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -227,6 +203,11 @@ fn try_main(
             }
 
             if anyhow.any_is::<gui::AlreadyRunning>() {
+                return Ok(());
+            }
+
+            if anyhow.any_is::<gui::RestartRequired>() {
+                dialog::error("Firezone finished first-time setup. Please start Firezone again.")?;
                 return Ok(());
             }
 
