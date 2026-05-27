@@ -67,7 +67,7 @@ all-features = false
 no-default-features = false
 # If set, these feature will be enabled when collecting metadata. If `--features`
 # is specified on the cmd line they will take precedence over this option.
-#features = []
+features = ["experimental-gui"]
 
 # The output table provides options for how/if diagnostics are outputted
 [output]
