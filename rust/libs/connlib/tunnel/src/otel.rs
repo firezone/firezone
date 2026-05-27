@@ -73,10 +73,9 @@ mod tests {
 
     #[test]
     fn encodes_source_chain_as_indexed_layers() {
-        let error = anyhow::Error::new(std::io::Error::from(
-            std::io::ErrorKind::NetworkUnreachable,
-        ))
-        .context("Failed to handle packet from TUN device");
+        let error =
+            anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::NetworkUnreachable))
+                .context("Failed to handle packet from TUN device");
 
         assert_eq!(
             error_layers(&error),
