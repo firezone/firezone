@@ -75,3 +75,22 @@ try {
 finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 }
+
+# Happy path: launch the real GUI and confirm it connects to the
+# tunnel service over the package-SID-pinned pipe. The GUI opens the
+# tunnel pipe at controller startup (before sign-in); if the package
+# SID isn't attached or the DACL rejects it, the connect is denied,
+# controller startup fails, and the process exits non-zero.
+# `--quit-after` makes a successful run end gracefully with exit 0.
+Write-Output "==> Launching full GUI to exercise the tunnel-pipe connect..."
+$guiProc = Start-Process -FilePath $gui `
+    -ArgumentList "--no-deep-links", "--no-elevation-check", "--quit-after", "15" `
+    -PassThru -Wait
+if ($guiProc.ExitCode -ne 0) {
+    Write-Output "==> GUI log tail:"
+    Get-ChildItem "$env:LOCALAPPDATA\dev.firezone.client\data\logs" -Filter *.log -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 50
+    Write-Error "GUI exited $($guiProc.ExitCode): could not open the package-SID-pinned tunnel pipe"
+    exit 1
+}
+Write-Output "==> GUI connected to the tunnel over the package-SID pipe and exited gracefully"
