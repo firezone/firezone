@@ -29,6 +29,7 @@ pub enum Outcome {
 const REEXEC_MARKER: &str = "FIREZONE_PACKAGE_REREGISTERED";
 
 #[cfg(not(target_os = "windows"))]
+#[expect(clippy::unnecessary_wraps, reason = "Windows impl is fallible")]
 pub fn ensure_package_identity() -> Result<Outcome> {
     Ok(Outcome::Proceed)
 }
