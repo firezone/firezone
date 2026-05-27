@@ -158,30 +158,6 @@ fn error_type(error: &(dyn std::error::Error + 'static)) -> Value {
 mod error_layer_tests {
     use super::*;
 
-    #[derive(Debug)]
-    struct StructError {
-        client_ip: &'static str,
-    }
-
-    impl std::fmt::Display for StructError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "failed to handle packet from {}", self.client_ip)
-        }
-    }
-
-    impl std::error::Error for StructError {}
-
-    #[derive(Debug)]
-    struct TupleError(&'static str);
-
-    impl std::fmt::Display for TupleError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{} is not a client IP", self.0)
-        }
-    }
-
-    impl std::error::Error for TupleError {}
-
     #[test]
     fn io_error_uses_error_kind() {
         let error =
@@ -224,6 +200,16 @@ mod error_layer_tests {
 
         assert_eq!(error_layers(&error).len(), MAX_ERROR_LAYERS);
     }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("failed to handle packet from {client_ip}")]
+    struct StructError {
+        client_ip: &'static str,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0} is not a client IP")]
+    struct TupleError(&'static str);
 }
 
 pub mod metrics {
@@ -246,7 +232,7 @@ pub mod metrics {
 
     pub fn tunnel_errors() -> Counter<u64> {
         opentelemetry::global::meter("connlib")
-            .u64_counter("eventloop.error")
+            .u64_counter("tunnel.error")
             .with_description("Number of errors encountered while processing a packet batch.")
             .with_unit("{error}")
             .build()

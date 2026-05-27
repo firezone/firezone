@@ -247,7 +247,8 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
-            self.tunnel_errors.add(1, &telemetry::otel::error_layers(&e));
+            self.tunnel_errors
+                .add(1, &telemetry::otel::error_layers(&e));
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
