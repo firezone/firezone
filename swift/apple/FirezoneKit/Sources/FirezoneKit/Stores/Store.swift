@@ -19,6 +19,7 @@ public final class Store: ObservableObject {
   @Published private(set) var actorName: String
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
+  @Published private(set) var connectedDevices: [ConnectedDevice] = []
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
@@ -656,6 +657,8 @@ public final class Store: ObservableObject {
     if let resources = state.resources {
       resourceList = ResourceList.loaded(resources)
     }
+
+    connectedDevices = state.connectedDevices
 
     let newlyUnreachableResources = Set(state.unreachableResources).subtracting(
       self.unreachableResources)
