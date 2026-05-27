@@ -30,9 +30,12 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 ///   (S-1-5-32-544, not S-1-5-18), which would cause the client-side
 ///   check in [`is_pipe_owned_by_local_system`] to reject the
 ///   legitimate pipe.
-/// - ACEs: Full Access for `LocalSystem` and `BUILTIN\Administrators`;
-///   `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE` for the
-///   Firezone MSIX package SID (baked at build time by `build.rs`).
+/// - ACEs: Full Access for `LocalSystem` (the account the service
+///   runs as); `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE`
+///   for the Firezone MSIX package SID (baked at build time by
+///   `build.rs`). No `BUILTIN\Administrators` grant: only the
+///   package-identity'd GUI should drive the tunnel, not arbitrary
+///   elevated processes.
 ///
 /// In debug builds the Tunnel pipe may also be opened without the
 /// `Owner` pin — see [`skip_tunnel_pipe_owner_check`] — so the
@@ -45,7 +48,6 @@ fn tunnel_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .owner(Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
         .allow(
             FileRights::ReadWrite,
             Trustee::from_sid_string(crate::PACKAGE_SID),
@@ -61,7 +63,6 @@ fn tunnel_pipe_dacl() -> PipeDacl {
 fn gui_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
         .allow(
             FileRights::ReadWrite,
             Trustee::from_sid_string(crate::PACKAGE_SID),
