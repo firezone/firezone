@@ -57,10 +57,6 @@ if (-not $pfn) {
 
 $gui = "C:\Program Files\Firezone\Firezone.exe"
 
-# Launch the real GUI (not `debug single-instance`) so the checks
-# below run against the actual app. `--no-error-dialog` makes a
-# failed tunnel connect bail out non-zero instead of blocking on a
-# modal dialog that headless CI can't dismiss.
 Write-Output "==> Launching Firezone.exe..."
 $proc = Start-Process -FilePath $gui `
     -ArgumentList "--no-deep-links", "--no-elevation-check", "--no-error-dialog" -PassThru
