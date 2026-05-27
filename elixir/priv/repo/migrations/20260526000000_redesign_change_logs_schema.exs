@@ -21,7 +21,7 @@ defmodule Portal.Repo.Migrations.RedesignChangeLogsSchema do
     create(unique_index(:change_logs, [:lsn]))
 
     execute("ALTER TABLE change_logs DROP CONSTRAINT change_logs_pkey")
-    execute("ALTER TABLE change_logs ADD PRIMARY KEY (account_id, id)")
+    execute("ALTER TABLE change_logs ADD PRIMARY KEY (id)")
 
     alter table(:change_logs) do
       modify(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
