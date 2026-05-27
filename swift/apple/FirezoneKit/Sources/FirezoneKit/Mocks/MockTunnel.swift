@@ -5,22 +5,36 @@
 //
 
 // Backs the `--mock-tunnel` launch argument: feeds the real `Store` a connected
-// status and a canned resource + connected-device list, so the menu bar can be
-// exercised without a portal, auth, system extension, or live peers. Mirrors the
-// desktop client's `fake_controller.rs`. DEBUG-only, so it ships in no release.
+// status and a canned resource + connected-device list, so the macOS menu bar and
+// the iOS app UI can be exercised without a portal, auth, system extension, or live
+// peers. Mirrors the desktop client's `fake_controller.rs`. DEBUG-only, so it ships
+// in no release. On iOS the Simulator cannot run a Network Extension at all; the mock
+// sidesteps it entirely.
 
-#if DEBUG && os(macOS)
+#if DEBUG
   import Foundation
   @preconcurrency import NetworkExtension
+  #if os(iOS)
+    import UserNotifications
+  #endif
 
   extension Store {
     /// A `Store` wired to mock dependencies for the `--mock-tunnel` demo.
-    public static func mock() -> Store {
-      Store(
-        systemExtensionManager: MockSystemExtensionManager(),
-        tunnelManagerFactory: MockTunnelProviderManagerFactory()
-      )
-    }
+    #if os(macOS)
+      public static func mock() -> Store {
+        Store(
+          systemExtensionManager: MockSystemExtensionManager(),
+          tunnelManagerFactory: MockTunnelProviderManagerFactory()
+        )
+      }
+    #else
+      public static func mock() -> Store {
+        Store(
+          sessionNotification: MockSessionNotification(),
+          tunnelManagerFactory: MockTunnelProviderManagerFactory()
+        )
+      }
+    #endif
   }
 
   /// Answers `getState` with the canned snapshot and reports a connected tunnel.
@@ -84,11 +98,24 @@
     func loadFromPreferences() async throws {}
   }
 
-  @MainActor
-  final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
-    func check() async throws -> SystemExtensionStatus { .installed }
-    func tryInstall() async throws -> SystemExtensionStatus { .installed }
-  }
+  #if os(macOS)
+    @MainActor
+    final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
+      func check() async throws -> SystemExtensionStatus { .installed }
+      func tryInstall() async throws -> SystemExtensionStatus { .installed }
+    }
+  #else
+    /// Reports notifications as already authorised so the iOS app routes straight to the
+    /// session UI instead of `GrantNotificationsView`.
+    @MainActor
+    final class MockSessionNotification: SessionNotificationProtocol {
+      var signInHandler: () async -> Void = {}
+
+      func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { .authorized }
+      func loadAuthorizationStatus() async -> UNAuthorizationStatus { .authorized }
+      func showResourceNotification(title: String, body: String) async {}
+    }
+  #endif
 
   /// Canned fixtures mirroring the desktop client's `fake_controller.rs`.
   private enum MockFixtures {
