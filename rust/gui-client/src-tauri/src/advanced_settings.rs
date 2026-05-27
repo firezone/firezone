@@ -195,7 +195,6 @@ fn set_file_permissions(_: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt as _;
 
     fn write_and_load(dir: &Path) -> AdvancedSettings {
         let path = dir.join("advanced_settings.json");
@@ -220,6 +219,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn set_file_permissions_applies_0o600() {
+        use std::os::unix::fs::PermissionsExt as _;
+
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("advanced_settings.json");
         fs::write(&path, "{}").unwrap();
