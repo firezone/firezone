@@ -108,7 +108,7 @@ impl PendingClientAccessRequest {
 
 /// Check whether the device pool's filter allows the trigger packet, with
 /// the malicious-behaviour `ignore_resource_filter` bypass available in tests.
-pub(crate) fn is_trigger_allowed(filter: &FilterEngine, trigger: &IpPacket) -> bool {
+fn is_trigger_allowed(filter: &FilterEngine, trigger: &IpPacket) -> bool {
     if filter.apply(trigger.destination_protocol()).is_ok() {
         return true;
     }
