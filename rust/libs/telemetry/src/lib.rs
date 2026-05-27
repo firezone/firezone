@@ -245,6 +245,7 @@ impl Telemetry {
             })),
             before_send_metric: Some(Arc::new(|metric| {
                 let metric = insert_user_account_slug_into_metric(metric);
+                let metric = insert_feature_flags_into_metric(metric);
 
                 Some(metric)
             })),
@@ -463,6 +464,16 @@ fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
     metric
         .attributes
         .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+
+    metric
+}
+
+fn insert_feature_flags_into_metric(mut metric: Metric) -> Metric {
+    for (key, value) in feature_flags::metric_attributes() {
+        metric
+            .attributes
+            .insert(key.into(), LogAttribute::from(value));
+    }
 
     metric
 }

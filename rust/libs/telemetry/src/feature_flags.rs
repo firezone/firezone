@@ -9,7 +9,6 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use opentelemetry::KeyValue;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::{Metadata, level_filters::LevelFilter};
@@ -61,8 +60,8 @@ pub fn show_connected_devices() -> bool {
     FEATURE_FLAGS.show_connected_devices()
 }
 
-/// The current state of every feature flag, as metric attributes (one per flag).
-pub(crate) fn metric_attributes() -> Vec<KeyValue> {
+/// The current state of every feature flag as `(attribute key, value)` pairs (one per flag).
+pub(crate) fn metric_attributes() -> [(&'static str, bool); 6] {
     flag_attributes(FEATURE_FLAGS.snapshot())
 }
 
@@ -310,7 +309,7 @@ fn env_or(key: &str, fallback: bool) -> bool {
         .unwrap_or(fallback)
 }
 
-fn flag_attributes(flags: FeatureFlagsResponse) -> Vec<KeyValue> {
+fn flag_attributes(flags: FeatureFlagsResponse) -> [(&'static str, bool); 6] {
     // Exhaustive destruction so we don't forget to update this when we add a flag.
     let FeatureFlagsResponse {
         icmp_unreachable_instead_of_nat64,
@@ -321,22 +320,22 @@ fn flag_attributes(flags: FeatureFlagsResponse) -> Vec<KeyValue> {
         show_connected_devices,
     } = flags;
 
-    vec![
-        KeyValue::new(
+    [
+        (
             "feature_flag.icmp_unreachable_instead_of_nat64",
             icmp_unreachable_instead_of_nat64,
         ),
-        KeyValue::new(
+        (
             "feature_flag.drop_llmnr_nxdomain_responses",
             drop_llmnr_nxdomain_responses,
         ),
-        KeyValue::new("feature_flag.stream_logs", stream_logs),
-        KeyValue::new(
+        ("feature_flag.stream_logs", stream_logs),
+        (
             "feature_flag.icmp_error_unreachable_prohibited_create_new_flow",
             icmp_error_unreachable_prohibited_create_new_flow,
         ),
-        KeyValue::new("feature_flag.stream_metrics", stream_metrics),
-        KeyValue::new(
+        ("feature_flag.stream_metrics", stream_metrics),
+        (
             "feature_flag.show_connected_devices",
             show_connected_devices,
         ),
@@ -450,11 +449,8 @@ mod tests {
 
         let attrs = flag_attributes(flags);
 
-        assert!(attrs.contains(&KeyValue::new("feature_flag.stream_metrics", true)));
-        assert!(attrs.contains(&KeyValue::new("feature_flag.show_connected_devices", true)));
-        assert!(attrs.contains(&KeyValue::new(
-            "feature_flag.drop_llmnr_nxdomain_responses",
-            false
-        )));
+        assert!(attrs.contains(&("feature_flag.stream_metrics", true)));
+        assert!(attrs.contains(&("feature_flag.show_connected_devices", true)));
+        assert!(attrs.contains(&("feature_flag.drop_llmnr_nxdomain_responses", false)));
     }
 }
