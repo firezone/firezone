@@ -616,6 +616,7 @@ public final class Store: ObservableObject {
     resourceList = ResourceList.loading
     connlibStateHash = Data()
     unreachableResources.removeAll()
+    connectedDevices.removeAll()
     Log.setStreamingActive(false)
   }
 
