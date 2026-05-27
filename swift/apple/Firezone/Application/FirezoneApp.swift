@@ -23,7 +23,12 @@ struct FirezoneApp: App {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
-    let store = Store()
+    #if DEBUG && os(macOS)
+      // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
+      let store = CommandLine.arguments.contains("--mock-tunnel") ? Store.mock() : Store()
+    #else
+      let store = Store()
+    #endif
     _store = StateObject(wrappedValue: store)
 
     #if os(macOS)
