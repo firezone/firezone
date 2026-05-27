@@ -220,6 +220,54 @@ struct ConnlibStateTests {
     #expect(result != nil)
   }
 
+  // MARK: - connectedDevices Tests
+
+  @Test("decode() round-trips non-empty connectedDevices")
+  func decodeRoundTripsConnectedDevices() throws {
+    let device = makeTestConnectedDevice(id: "device-1")
+
+    let data = try ConnlibState.encodeIfChanged(
+      resources: nil,
+      connectedDevices: [device],
+      unreachableResources: [],
+      isLogStreamingActive: false,
+      comparedTo: Data()
+    )
+
+    let unwrapped = try #require(data)
+    let (state, _) = try ConnlibState.decode(from: unwrapped)
+
+    #expect(state.connectedDevices.count == 1)
+    #expect(state.connectedDevices[0].id == "device-1")
+    #expect(state.connectedDevices[0].tunneledIPv4 == "100.64.0.1")
+    #expect(state.connectedDevices[0].pools == ["pool-a"])
+  }
+
+  @Test("encodeIfChanged() detects connectedDevices change")
+  func encodeIfChangedDetectsConnectedDevicesChange() throws {
+    let data = try ConnlibState.encodeIfChanged(
+      resources: nil,
+      connectedDevices: [],
+      unreachableResources: [],
+      isLogStreamingActive: false,
+      comparedTo: Data()
+    )
+
+    let unwrapped = try #require(data)
+    let (_, hash) = try ConnlibState.decode(from: unwrapped)
+
+    // Only the device list differs from the encoded state — should return data.
+    let result = try ConnlibState.encodeIfChanged(
+      resources: nil,
+      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
+      unreachableResources: [],
+      isLogStreamingActive: false,
+      comparedTo: hash
+    )
+
+    #expect(result != nil)
+  }
+
   // MARK: - Helper Functions
 
   private func makeTestResource(id: String, name: String) -> FirezoneKit.Resource {
@@ -233,5 +281,9 @@ struct ConnlibStateTests {
       sites: [site],
       type: .dns
     )
+  }
+
+  private func makeTestConnectedDevice(id: String) -> FirezoneKit.ConnectedDevice {
+    FirezoneKit.ConnectedDevice(id: id, tunneledIPv4: "100.64.0.1", pools: ["pool-a"])
   }
 }
