@@ -15,8 +15,6 @@ inputs:
     description: "Token used to read PRs and open/update the QA issue (needs issues: write)"
     required: true
 
-# Assumes the repository is already checked out by the caller, since this is a
-# local composite action.
 runs:
   using: "composite"
   steps:
