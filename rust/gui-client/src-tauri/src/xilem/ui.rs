@@ -1,18 +1,22 @@
 //! The xilem screens: a left nav sidebar plus the five content pages, mirroring
-//! `crate::iced::ui`. This first cut favours xilem's idiomatic style (callbacks
-//! mutate `&mut App` directly, or send a `ControllerRequest` via `App::ctrl_tx`)
-//! over the iced port's bespoke design-system widgets, so it deliberately drops
-//! the iced niceties (animated toggles, brand colours, logo/SVG assets,
-//! "managed by administrator" hints) in favour of stock masonry widgets. Those
-//! are styling polish, not blockers — see mod.rs.
+//! `crate::iced::ui`. Styling uses xilem 0.4's [`Style`] trait
+//! (`.color`, `.background_color`) plus masonry style properties
+//! (`CornerRadius`, `Padding`, `BorderColor`, …) applied via `.prop`, with the
+//! Firezone palette from [`crate::xilem::theme`]. Still stock are the General-
+//! Settings toggles (plain checkboxes, not animated switches) and assets (no
+//! logo/SVG icons/custom fonts) — see `mod.rs`.
 
 use xilem::masonry::properties::types::{AsUnit, CrossAxisAlignment, MainAxisAlignment};
-use xilem::view::{checkbox, flex_col, flex_row, label, sized_box, text_button, text_input};
+use xilem::style::{BorderColor, BorderWidth, CornerRadius, Padding, Style};
+use xilem::view::{
+    FlexExt as _, button, checkbox, flex_col, flex_row, label, sized_box, text_input,
+};
 use xilem::{AnyWidgetView, FontWeight, WidgetView};
 
 use crate::GeneralSettingsForm;
 use crate::controller::ControllerRequest;
 use crate::xilem::state::{App, Route, Session};
+use crate::xilem::theme;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_SHA: &str = match option_env!("FIREZONE_GIT_SHA") {
@@ -29,14 +33,69 @@ fn send(app: &App, req: ControllerRequest) {
     }
 }
 
-/// Sidebar + the current page.
+/// Brand-orange primary action button.
+fn primary_button<F>(text: &str, on_press: F) -> impl WidgetView<App> + use<F>
+where
+    F: Fn(&mut App) + Send + Sync + 'static,
+{
+    button(
+        label(text.to_owned()).color(theme::ON_BRAND),
+        move |app: &mut App| on_press(app),
+    )
+    .background_color(theme::BRAND)
+    .prop(CornerRadius::all(8.0))
+    .prop(Padding::from_vh(10.0, 16.0))
+}
+
+/// Bordered, light secondary button.
+fn secondary_button<F>(text: &str, on_press: F) -> impl WidgetView<App> + use<F>
+where
+    F: Fn(&mut App) + Send + Sync + 'static,
+{
+    button(
+        label(text.to_owned()).color(theme::TEXT_PRIMARY),
+        move |app: &mut App| on_press(app),
+    )
+    .background_color(theme::SURFACE_RAISED)
+    .prop(BorderColor::new(theme::BORDER))
+    .prop(BorderWidth::all(1.0))
+    .prop(CornerRadius::all(8.0))
+    .prop(Padding::from_vh(10.0, 16.0))
+}
+
+/// Bordered text input that greys out when MDM-managed.
+fn styled_input<F>(value: String, managed: bool, on_change: F) -> impl WidgetView<App> + use<F>
+where
+    F: Fn(&mut App, String) + Send + Sync + 'static,
+{
+    text_input(value, move |app: &mut App, v: String| on_change(app, v))
+        .disabled(managed)
+        .background_color(theme::SURFACE)
+        .prop(BorderColor::new(theme::BORDER))
+        .prop(BorderWidth::all(1.0))
+        .prop(CornerRadius::all(6.0))
+}
+
+/// A muted form-field label.
+fn field_label(text: &str) -> impl WidgetView<App> + use<> {
+    label(text.to_owned())
+        .text_size(13.0)
+        .color(theme::TEXT_SECONDARY)
+}
+
+/// Sidebar (surface) + the current page (on canvas, filling the rest).
 pub fn root(app: &App) -> impl WidgetView<App> + use<> {
     flex_row((
-        sized_box(sidebar(app.route)).width(200.0.px()),
-        content(app),
+        sized_box(sidebar(app.route))
+            .width(200.0.px())
+            .background_color(theme::SURFACE),
+        sized_box(content(app))
+            .background_color(theme::CANVAS)
+            .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .main_axis_alignment(MainAxisAlignment::Start)
+    .gap(0.0.px())
 }
 
 fn content(app: &App) -> Box<AnyWidgetView<App>> {
@@ -59,48 +118,69 @@ fn sidebar(current: Route) -> impl WidgetView<App> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Fill)
     .main_axis_alignment(MainAxisAlignment::Start)
+    .gap(4.0.px())
+    .prop(Padding::all(12.0))
 }
 
 fn nav_item(name: &str, route: Route, current: Route) -> impl WidgetView<App> + use<> {
-    // No active-state button styling yet (needs masonry property plumbing); a
-    // bullet marks the current page instead.
-    let text = if route == current {
-        format!("• {name}")
+    let active = route == current;
+    // Active page: raised surface + brand text. Otherwise blends into the
+    // sidebar with muted text.
+    let (bg, fg) = if active {
+        (theme::SURFACE_RAISED, theme::BRAND_HOVER)
     } else {
-        name.to_owned()
+        (theme::SURFACE, theme::TEXT_SECONDARY)
     };
-    text_button(text, move |app: &mut App| {
-        app.route = route;
-    })
+    button(
+        label(name.to_owned()).text_size(14.0).color(fg),
+        move |app: &mut App| app.route = route,
+    )
+    .background_color(bg)
+    .prop(CornerRadius::all(6.0))
+    .prop(Padding::from_vh(8.0, 12.0))
 }
 
 fn overview(app: &App) -> impl WidgetView<App> + use<> {
     let session: Box<AnyWidgetView<App>> = match &app.session {
         Session::SignedOut => flex_col((
             label("You can sign in from the taskbar icon, or with the button below.")
-                .text_size(14.0),
-            text_button("Sign in", |app: &mut App| {
+                .text_size(14.0)
+                .color(theme::TEXT_SECONDARY),
+            primary_button("Sign in", |app: &mut App| {
                 send(app, ControllerRequest::SignIn);
             }),
         ))
+        .gap(12.0.px())
+        .cross_axis_alignment(CrossAxisAlignment::Center)
         .boxed(),
-        Session::Loading => label("Signing in…").text_size(14.0).boxed(),
+        Session::Loading => label("Signing in…")
+            .text_size(14.0)
+            .color(theme::TEXT_SECONDARY)
+            .boxed(),
         Session::SignedIn {
             account_slug,
             actor_name,
         } => flex_col((
-            label(format!("Signed in to {account_slug} as {actor_name}.")).text_size(14.0),
-            text_button("Sign out", |app: &mut App| {
+            label(format!("Signed in to {account_slug} as {actor_name}."))
+                .text_size(14.0)
+                .color(theme::TEXT_SECONDARY),
+            secondary_button("Sign out", |app: &mut App| {
                 send(app, ControllerRequest::SignOut);
             }),
         ))
+        .gap(12.0.px())
+        .cross_axis_alignment(CrossAxisAlignment::Center)
         .boxed(),
     };
 
     flex_col((
-        label("Firezone").text_size(40.0).weight(FontWeight::BOLD),
+        label("Firezone")
+            .text_size(40.0)
+            .weight(FontWeight::BOLD)
+            .color(theme::TEXT_PRIMARY),
         session,
     ))
+    .gap(16.0.px())
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .main_axis_alignment(MainAxisAlignment::Center)
 }
@@ -108,11 +188,14 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
 fn general_settings(app: &App) -> impl WidgetView<App> + use<> {
     let s = &app.general_settings;
     flex_col((
-        label("Account slug").text_size(13.0),
-        text_input(s.account_slug.clone(), |app: &mut App, v: String| {
-            app.general_settings.account_slug = v;
-        })
-        .disabled(s.account_slug_is_managed),
+        field_label("Account slug"),
+        styled_input(
+            s.account_slug.clone(),
+            s.account_slug_is_managed,
+            |app: &mut App, v| {
+                app.general_settings.account_slug = v;
+            },
+        ),
         checkbox("Start minimized", s.start_minimized, |app: &mut App, v| {
             app.general_settings.start_minimized = v;
         }),
@@ -128,7 +211,7 @@ fn general_settings(app: &App) -> impl WidgetView<App> + use<> {
         )
         .disabled(s.connect_on_start_is_managed),
         flex_row((
-            text_button("Save", |app: &mut App| {
+            primary_button("Save", |app: &mut App| {
                 let g = &app.general_settings;
                 let form = GeneralSettingsForm {
                     start_minimized: g.start_minimized,
@@ -138,13 +221,16 @@ fn general_settings(app: &App) -> impl WidgetView<App> + use<> {
                 };
                 send(app, ControllerRequest::ApplyGeneralSettings(Box::new(form)));
             }),
-            text_button("Reset to defaults", |app: &mut App| {
+            secondary_button("Reset to defaults", |app: &mut App| {
                 send(app, ControllerRequest::ResetGeneralSettings);
             }),
-        )),
+        ))
+        .gap(8.0.px()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .main_axis_alignment(MainAxisAlignment::Start)
+    .gap(10.0.px())
+    .prop(Padding::all(24.0))
 }
 
 fn advanced_settings(app: &App) -> impl WidgetView<App> + use<> {
@@ -154,24 +240,34 @@ fn advanced_settings(app: &App) -> impl WidgetView<App> + use<> {
             "WARNING: these settings are for internal debugging only. Changing \
              them is unsupported and will likely break the client.",
         )
-        .text_size(13.0),
-        label("Auth base URL").text_size(13.0),
-        text_input(s.auth_url.clone(), |app: &mut App, v: String| {
-            app.advanced_settings.auth_url = v;
-        })
-        .disabled(s.auth_url_is_managed),
-        label("API URL").text_size(13.0),
-        text_input(s.api_url.clone(), |app: &mut App, v: String| {
-            app.advanced_settings.api_url = v;
-        })
-        .disabled(s.api_url_is_managed),
-        label("Log filter").text_size(13.0),
-        text_input(s.log_filter.clone(), |app: &mut App, v: String| {
-            app.advanced_settings.log_filter = v;
-        })
-        .disabled(s.log_filter_is_managed),
+        .text_size(13.0)
+        .color(theme::STATUS_WARN),
+        field_label("Auth base URL"),
+        styled_input(
+            s.auth_url.clone(),
+            s.auth_url_is_managed,
+            |app: &mut App, v| {
+                app.advanced_settings.auth_url = v;
+            },
+        ),
+        field_label("API URL"),
+        styled_input(
+            s.api_url.clone(),
+            s.api_url_is_managed,
+            |app: &mut App, v| {
+                app.advanced_settings.api_url = v;
+            },
+        ),
+        field_label("Log filter"),
+        styled_input(
+            s.log_filter.clone(),
+            s.log_filter_is_managed,
+            |app: &mut App, v| {
+                app.advanced_settings.log_filter = v;
+            },
+        ),
         flex_row((
-            text_button("Save", |app: &mut App| {
+            primary_button("Save", |app: &mut App| {
                 match app.advanced_settings.to_settings() {
                     Some(advanced) => {
                         send(
@@ -182,16 +278,19 @@ fn advanced_settings(app: &App) -> impl WidgetView<App> + use<> {
                     None => tracing::warn!("advanced settings: a URL failed to parse"),
                 }
             }),
-            text_button("Reset to defaults", |app: &mut App| {
+            secondary_button("Reset to defaults", |app: &mut App| {
                 send(
                     app,
                     ControllerRequest::ApplyAdvancedSettings(Box::default()),
                 );
             }),
-        )),
+        ))
+        .gap(8.0.px()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .main_axis_alignment(MainAxisAlignment::Start)
+    .gap(10.0.px())
+    .prop(Padding::all(24.0))
 }
 
 fn diagnostics(app: &App) -> impl WidgetView<App> + use<> {
@@ -203,32 +302,42 @@ fn diagnostics(app: &App) -> impl WidgetView<App> + use<> {
     );
 
     flex_col((
-        label(summary).text_size(14.0),
+        label(summary).text_size(14.0).color(theme::TEXT_SECONDARY),
         flex_row((
-            // Flip the flag; `entry::app_logic` runs the actual async dialog +
-            // zip in a one-shot `task` view and clears the flag when done.
-            text_button("Export Logs", |app: &mut App| {
+            // Flips the flag; `entry::app_logic` runs the async dialog + zip in
+            // a one-shot `task` view and clears the flag when done.
+            secondary_button("Export Logs", |app: &mut App| {
                 app.export_in_flight = true;
             }),
-            text_button("Clear Logs", |app: &mut App| {
+            secondary_button("Clear Logs", |app: &mut App| {
                 let (cb_tx, _cb_rx) = tokio::sync::oneshot::channel();
                 send(app, ControllerRequest::ClearLogs(cb_tx));
             }),
-        )),
+        ))
+        .gap(12.0.px()),
     ))
+    .gap(24.0.px())
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .main_axis_alignment(MainAxisAlignment::Center)
 }
 
 fn about() -> impl WidgetView<App> + use<> {
     flex_col((
-        label("Firezone").text_size(24.0).weight(FontWeight::BOLD),
-        label(format!("Version {APP_VERSION}")).text_size(14.0),
-        label(format!("({})", &GIT_SHA[..GIT_SHA.len().min(8)])).text_size(11.0),
-        text_button("Documentation", |_app: &mut App| {
+        label("Firezone")
+            .text_size(24.0)
+            .weight(FontWeight::BOLD)
+            .color(theme::TEXT_PRIMARY),
+        label(format!("Version {APP_VERSION}"))
+            .text_size(14.0)
+            .color(theme::TEXT_SECONDARY),
+        label(format!("({})", &GIT_SHA[..GIT_SHA.len().min(8)]))
+            .text_size(11.0)
+            .color(theme::TEXT_MUTED),
+        secondary_button("Documentation", |_app: &mut App| {
             let _ = open::that_detached("https://www.firezone.dev/kb");
         }),
     ))
+    .gap(6.0.px())
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .main_axis_alignment(MainAxisAlignment::Center)
 }
