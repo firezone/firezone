@@ -56,6 +56,13 @@ if (-not $pfn) {
 }
 
 $gui = "C:\Program Files\Firezone\Firezone.exe"
+$logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
+
+function Show-GuiLog {
+    Write-Output "==> GUI log tail:"
+    Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 60
+}
 
 Write-Output "==> Launching Firezone.exe..."
 $proc = Start-Process -FilePath $gui `
@@ -81,12 +88,14 @@ try {
             break
         }
         if ($proc.HasExited) {
+            Show-GuiLog
             Write-Error "Firezone.exe exited with code $($proc.ExitCode) before binding its IPC pipe (failed to connect to the tunnel?)"
             exit 1
         }
         Start-Sleep -Seconds 1
     }
     if (-not $bound) {
+        Show-GuiLog
         Write-Error "GUI pipe never appeared within 60s (process still running: $(-not $proc.HasExited))"
         exit 1
     }
