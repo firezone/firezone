@@ -268,6 +268,26 @@ defmodule PortalWeb.NavigationComponents do
             </.sidebar_item>
           </ul>
         </div>
+
+        <%!-- Audit --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+          >
+            Audit
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/change_logs"}
+              icon="ri-file-list-3-line"
+              badge="NEW"
+            >
+              Logs
+            </.sidebar_item>
+          </ul>
+        </div>
       </nav>
 
       <%!-- Settings --%>
@@ -325,6 +345,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :icon, :string, required: true
   attr :navigate, :string, required: true
+  attr :badge, :string, default: nil
   slot :inner_block, required: true
   attr :current_path, :string, required: true
 
@@ -350,6 +371,13 @@ defmodule PortalWeb.NavigationComponents do
           class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
         >
           {render_slot(@inner_block)}
+        </span>
+        <span
+          :if={@badge}
+          data-sidebar-badge
+          class="ml-auto text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-[var(--brand-muted)] text-[var(--brand)]"
+        >
+          {@badge}
         </span>
       </.link>
     </li>
@@ -497,6 +525,35 @@ defmodule PortalWeb.NavigationComponents do
   defp settings_tab_active?(current_path, tab_path) do
     [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
     String.starts_with?(current_subpath, tab_path)
+  end
+
+  @doc """
+  Renders the Logs page tab strip.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+
+  def logs_nav(assigns) do
+    ~H"""
+    <div class="flex overflow-x-auto overflow-y-hidden border-b border-[var(--border)] px-6 shrink-0 bg-[var(--surface)]">
+      <.settings_tab
+        current_path={@current_path}
+        navigate={~p"/#{@account}/logs/change_logs"}
+        tab_path="logs/change_logs"
+        icon="ri-history-fill"
+      >
+        Change Logs
+      </.settings_tab>
+      <.settings_tab
+        current_path={@current_path}
+        navigate={~p"/#{@account}/logs/flow_logs"}
+        tab_path="logs/flow_logs"
+        icon="ri-exchange-line"
+      >
+        Flow Logs
+      </.settings_tab>
+    </div>
+    """
   end
 
   defp format_member_since(nil), do: "—"

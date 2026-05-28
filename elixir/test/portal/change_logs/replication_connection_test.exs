@@ -240,6 +240,50 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       attrs = result_state.flush_buffer[lsn]
       assert attrs.after == complex_data
     end
+
+    test "coerces raw replication text values via schema introspection", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      # Replication stream sends booleans as "t"/"f" and numerics as strings.
+      # The schema-aware coercion should convert them to native JSON types so
+      # the rendered diff doesn't show `"f"` for a boolean false.
+      raw_actor = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "Alice",
+        "email" => "alice@example.com",
+        "allow_email_otp_sign_in" => "f",
+        "password_hash" => "secret-do-not-leak"
+      }
+
+      result_state =
+        ReplicationConnection.on_write(initial_state, 12_400, :insert, "actors", nil, raw_actor)
+
+      attrs = result_state.flush_buffer[12_400]
+      assert attrs.after["allow_email_otp_sign_in"] === false
+      assert attrs.after["password_hash"] == "[redacted]"
+      # untouched string fields pass through
+      assert attrs.after["name"] == "Alice"
+    end
+
+    test "passes values through for tables without a known schema", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          12_500,
+          :insert,
+          "unmapped_table",
+          nil,
+          %{"account_id" => account.id, "raw_bool" => "t"}
+        )
+
+      attrs = result_state.flush_buffer[12_500]
+      assert attrs.after["raw_bool"] == "t"
+    end
   end
 
   describe "on_write/6 for updates" do

@@ -23,6 +23,18 @@ defmodule PortalWeb.Format do
   end
 
   @doc """
+  Formats a `%DateTime{}` in the given IANA timezone (e.g. "America/New_York"
+  or "Etc/UTC"). Falls back to formatting in UTC if the zone cannot be shifted.
+  Uses `Tzdata.TimeZoneDatabase` since Elixir's default DB only knows UTC.
+  """
+  def short_datetime(%DateTime{} = datetime, tz) when is_binary(tz) do
+    case DateTime.shift_zone(datetime, tz, Tzdata.TimeZoneDatabase) do
+      {:ok, shifted} -> short_datetime(shifted)
+      _ -> short_datetime(datetime)
+    end
+  end
+
+  @doc """
   Returns a relative time string like "2 hours ago" or "in 3 days".
   """
   def relative_datetime(datetime, relative_to \\ nil) do
