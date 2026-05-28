@@ -1396,7 +1396,7 @@ defmodule PortalWeb.Resources.Components do
               end)
               selected_groups =
                 Enum.filter(@available_groups, &(&1.group.id in @grant_selected_group_ids))
-              at_max = length(@grant_selected_group_ids) >= 5 %>
+              %>
             <div class="flex gap-2 h-52">
               <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
                 <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
@@ -1429,15 +1429,7 @@ defmodule PortalWeb.Resources.Components do
                       type="button"
                       phx-click="toggle_grant_group"
                       phx-value-group_id={row.group.id}
-                      disabled={at_max}
-                      class={[
-                        "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
-                        if at_max do
-                          "opacity-40 cursor-not-allowed"
-                        else
-                          "hover:bg-[var(--surface)] cursor-pointer"
-                        end
-                      ]}
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-[var(--surface)] cursor-pointer"
                     >
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
                         <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
@@ -1464,14 +1456,8 @@ defmodule PortalWeb.Resources.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
                     Selected
                   </span>
-                  <span class={[
-                    "text-[10px] font-medium",
-                    if(length(@grant_selected_group_ids) >= 5,
-                      do: "text-[var(--status-warning)]",
-                      else: "text-[var(--text-muted)]"
-                    )
-                  ]}>
-                    {length(@grant_selected_group_ids)} / 5
+                  <span class="text-[10px] font-medium text-[var(--text-muted)]">
+                    {length(@grant_selected_group_ids)}
                   </span>
                 </div>
                 <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">

@@ -1016,11 +1016,7 @@ defmodule PortalWeb.Resources do
       if group_id in selected do
         List.delete(selected, group_id)
       else
-        if length(selected) < 5 do
-          selected ++ [group_id]
-        else
-          selected
-        end
+        selected ++ [group_id]
       end
 
     {:noreply, merge_state(socket, :resource_grant, grant_selected_group_ids: updated)}
