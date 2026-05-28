@@ -188,6 +188,9 @@ fn try_main(
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {
+                // Log while `try_main`'s file-log guard is still alive;
+                // `main`'s error log runs after it drops and is lost.
+                tracing::error!("GUI failed: {anyhow:#}");
                 return Err(anyhow);
             }
 

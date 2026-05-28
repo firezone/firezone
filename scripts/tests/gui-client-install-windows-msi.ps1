@@ -64,6 +64,10 @@ function Show-GuiLog {
         Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 60
 }
 
+# Raise our crates to debug so the startup breadcrumbs (launch lock,
+# IPC connect) land in the log; if the GUI bails before binding its
+# pipe, the tail shows how far it got. Inherited by Start-Process.
+$env:RUST_LOG = "info,firezone_gui_client=debug"
 Write-Output "==> Launching Firezone.exe..."
 $proc = Start-Process -FilePath $gui `
     -ArgumentList "--no-deep-links", "--no-elevation-check", "--no-error-dialog" -PassThru
