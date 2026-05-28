@@ -70,6 +70,11 @@ jobs:
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd kotlin/android
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build the release package
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
@@ -169,6 +174,11 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-android
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build debug APK
         run: |
           ./gradlew assembleDebug

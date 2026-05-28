@@ -74,6 +74,11 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm install
       - run: pnpm vite build
       - name: Build client
@@ -145,6 +150,11 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
