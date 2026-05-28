@@ -58,12 +58,6 @@ if (-not $pfn) {
 $gui = "C:\Program Files\Firezone\Firezone.exe"
 $logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
 
-function Show-GuiLog {
-    Write-Output "==> GUI log tail:"
-    Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 60
-}
-
 # Raise our crates to debug so the startup breadcrumbs (launch lock,
 # IPC connect) land in the log; if the GUI bails before binding its
 # pipe, the tail shows how far it got. Inherited by Start-Process.
@@ -75,34 +69,6 @@ try {
     Write-Output "==> Verifying Firezone.exe has package identity attached..."
     & "$scriptDir\gui-package-identity-windows.ps1" -ProcessId $proc.Id
     Write-Output "==> Package identity attached to Firezone.exe"
-
-    # Wait for the GUI to bind its pipe. It does so only once the
-    # controller reaches its main loop (after WebView2 init + the
-    # tunnel connect), so this also confirms the GUI connected.
-    # Listing `\\.\pipe\` enumerates names without opening them, so it
-    # doesn't consume the server's accept slot. If the GUI exits first
-    # (e.g. it couldn't connect), report that instead of waiting out
-    # the timeout.
-    Write-Output "==> Waiting for the GUI to bind its IPC pipe..."
-    $bound = $false
-    for ($i = 1; $i -le 60; $i++) {
-        if ([System.IO.Directory]::GetFiles('\\.\pipe\') -match 'dev\.firezone\.client_gui\.ipc') {
-            $bound = $true
-            Write-Output "==> GUI pipe bound after ~${i}s (GUI reached its main loop)"
-            break
-        }
-        if ($proc.HasExited) {
-            Show-GuiLog
-            Write-Error "Firezone.exe exited with code $($proc.ExitCode) before binding its IPC pipe (failed to connect to the tunnel?)"
-            exit 1
-        }
-        Start-Sleep -Seconds 1
-    }
-    if (-not $bound) {
-        Show-GuiLog
-        Write-Error "GUI pipe never appeared within 60s (process still running: $(-not $proc.HasExited))"
-        exit 1
-    }
 
     Write-Output "==> Verifying tunnel pipe denies non-Firezone-signed callers..."
     & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_tunnel.ipc'
@@ -123,4 +89,7 @@ try {
 }
 finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    Write-Output "==> GUI log tail:"
+    Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 60
 }

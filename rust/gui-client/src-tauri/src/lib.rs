@@ -46,10 +46,6 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 /// package against the AppX deployment service.
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
 
-/// AppContainer SID for [`PACKAGE_FAMILY_NAME`], derived at build
-/// time. Baked in so the tunnel pipe DACL is deterministic.
-pub const PACKAGE_SID: &str = env!("FIREZONE_PACKAGE_SID");
-
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
     use anyhow::Context as _;

@@ -74,17 +74,16 @@
       GUI launch already carries package identity (provisioning alone
       doesn't register external-location sparse packages for
       interactive users). `Impersonate="yes"` runs it as that user;
-      per-user `AddPackageByUri` needs no admin. `Return="ignore"`
-      because a silent/system install has no interactive user to
-      register — the GUI's launch-time fallback covers everyone the
-      installer didn't.
+      per-user `AddPackageByUri` needs no admin. `Return="check"`
+      surfaces registration failures as a failed install; the GUI's
+      launch-time fallback still covers any user the CA didn't reach.
     -->
     <CustomAction Id="RegisterSparseForUser"
                   FileKey="RegisterSparseExeFile"
                   ExeCommand="register-user"
                   Execute="deferred"
                   Impersonate="yes"
-                  Return="ignore" />
+                  Return="check" />
 
     <InstallExecuteSequence>
       <!--

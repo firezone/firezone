@@ -188,9 +188,6 @@ fn try_main(
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {
-                // Log while `try_main`'s file-log guard is still alive;
-                // `main`'s error log runs after it drops and is lost.
-                tracing::error!("GUI failed: {anyhow:#}");
                 return Err(anyhow);
             }
 
@@ -209,7 +206,7 @@ fn try_main(
                 return Ok(());
             }
 
-            if anyhow.any_is::<gui::RestartRequired>() {
+            if anyhow.any_is::<firezone_gui_client::package_identity::RestartRequired>() {
                 dialog::error("Firezone finished first-time setup. Please start Firezone again.")?;
                 return Ok(());
             }

@@ -188,8 +188,7 @@ mod imp {
         ApplicationModel::Package,
         Foundation::Uri,
         Management::Deployment::{
-            AddPackageOptions, DeploymentResult, PackageManager, RemovalOptions,
-            StagePackageOptions,
+            DeploymentResult, PackageManager, RemovalOptions, StagePackageOptions,
         },
         core::HSTRING,
     };
@@ -254,44 +253,14 @@ mod imp {
         })
     }
 
-    /// Registers the package for the current (impersonated) user.
-    /// The MSI runs this as the installing user via an
-    /// `Impersonate="yes"` CA, so their first GUI launch already
-    /// carries package identity — provisioning alone doesn't register
-    /// external-location sparse packages for interactive users.
-    ///
-    /// `AddPackageByUriAsync` with `ExternalLocationUri` both stages
-    /// (if needed) and registers for the calling user; no admin
-    /// required.
+    /// Registers the package for the current (impersonated) user, so
+    /// the installing user's first GUI launch already carries package
+    /// identity (provisioning alone doesn't register external-location
+    /// sparse packages for interactive users). Delegates to the shared
+    /// [`firezone_gui_client::package_identity::register_for_current_user`]
+    /// that the GUI's launch-time check uses too.
     pub fn register_user() -> Result<()> {
-        let install_path = install_dir()?;
-        let msix = install_path.join("firezone.msix");
-
-        let msix_meta = std::fs::metadata(&msix)
-            .with_context(|| format!("firezone.msix missing at `{}`", msix.display()))?;
-        tracing::info!(
-            install_dir = %install_path.display(),
-            msix_path = %msix.display(),
-            msix_size_bytes = msix_meta.len(),
-            "found MSIX payload"
-        );
-
-        let pm = package_manager()?;
-        let msix_uri = file_uri(msix.as_path())?;
-        let external_uri = dir_uri(install_path.as_path())?;
-
-        let opts = AddPackageOptions::new().context("AddPackageOptions::new failed")?;
-        opts.SetExternalLocationUri(&external_uri)
-            .context("SetExternalLocationUri failed")?;
-
-        run_deployment("register-user", || {
-            tracing::info!(
-                external_uri = %uri_string(&external_uri),
-                msix_uri = %uri_string(&msix_uri),
-                "calling AddPackageByUriAsync"
-            );
-            Ok(pm.AddPackageByUriAsync(&msix_uri, &opts)?.get()?)
-        })
+        firezone_gui_client::package_identity::register_for_current_user()
     }
 
     /// Inverse of [`provision`]. Removes every per-user package

@@ -260,17 +260,8 @@ pub fn run(
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
-    // Make sure we carry the MSIX package identity the tunnel-pipe
-    // DACL pins before acquiring the launch lock or binding pipes.
-    // The installer registers the package for the installing user;
-    // for any other user we register here and ask them to relaunch,
-    // since identity only attaches to a freshly-created process.
     #[cfg(not(debug_assertions))]
-    match crate::package_identity::ensure_package_identity() {
-        Ok(crate::package_identity::Outcome::Proceed) => {}
-        Ok(crate::package_identity::Outcome::RegisteredRestartRequired) => bail!(RestartRequired),
-        Err(e) => tracing::warn!("Package-identity check failed: {e:#}"),
-    }
+    crate::package_identity::ensure_package_identity()?;
 
     let (gui_ipc, _launch_lock) = match rt.block_on(establish_single_instance())? {
         SingleInstance::First { server, lock } => (server, lock),
@@ -580,10 +571,6 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -
 #[derive(Debug, thiserror::Error)]
 #[error("Another instance of Firezone is already running")]
 pub struct AlreadyRunning;
-
-#[derive(Debug, thiserror::Error)]
-#[error("Registered package identity for the current user; a restart is required")]
-pub struct RestartRequired;
 
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to communicate with existing Firezone instance")]
