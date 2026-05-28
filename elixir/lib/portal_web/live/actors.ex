@@ -1169,7 +1169,7 @@ defmodule PortalWeb.Actors do
         Database.remove_group_member(group_id, actor, subject)
       end)
 
-    groups = Database.get_groups_for_actor(actor.id, subject)
+    groups = Database.get_groups_for_actor(actor.id, subject, repo: :primary)
 
     errors =
       (addition_results ++ removal_results)
