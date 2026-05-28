@@ -24,27 +24,6 @@ use url::Url;
 
 mod ran_before;
 
-/// Whether to skip the portal during sign-in.
-///
-/// When set, a fake session/token is created on the fly (never persisted) at
-/// sign-in time, decoupling the GUI from the portal so the real controller /
-/// IPC / UI can be exercised against the mock Tunnel service. Debug builds only.
-#[cfg(debug_assertions)]
-static SKIP_PORTAL_AUTH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Set [`SKIP_PORTAL_AUTH`].
-///
-/// Call once at process startup.
-#[cfg(debug_assertions)]
-pub fn skip_portal_auth() {
-    SKIP_PORTAL_AUTH.store(true, std::sync::atomic::Ordering::Relaxed);
-}
-
-#[cfg(debug_assertions)]
-fn portal_auth_skipped() -> bool {
-    SKIP_PORTAL_AUTH.load(std::sync::atomic::Ordering::Relaxed)
-}
-
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
@@ -218,11 +197,13 @@ impl<I: GuiIntegration> Controller<I> {
 
         Telemetry::set_firezone_id(firezone_id).await;
 
+        let auth = auth::Auth::new()?;
+
         let controller = Controller {
             general_settings,
             mdm_settings,
             advanced_settings,
-            auth: auth::Auth::new()?,
+            auth,
             clear_logs_callback: None,
             ctrl_tx,
             ipc_client,
@@ -250,21 +231,7 @@ impl<I: GuiIntegration> Controller<I> {
 
     pub async fn main_loop(mut self) -> Result<()> {
         self.update_telemetry_context().await?;
-
-        // When the portal is skipped, still honor connect-on-start, but mint the
-        // token on the fly instead of reading a persisted one from disk.
-        #[cfg(debug_assertions)]
-        if portal_auth_skipped() {
-            if self.connect_on_start().is_none_or(|c| c) {
-                let token = self.auth.fake_sign_in();
-                self.start_session(token).await?;
-            }
-        } else {
-            self.resume_persisted_session().await?;
-        }
-        #[cfg(not(debug_assertions))]
-        self.resume_persisted_session().await?;
-
+        self.maybe_start_session().await?;
         self.refresh_ui_state();
 
         if !ran_before::get().await? || !self.general_settings.start_minimized {
@@ -328,9 +295,9 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    /// Resume a persisted session at startup: if a token is on disk and
-    /// connect-on-start is enabled, reconnect.
-    async fn resume_persisted_session(&mut self) -> Result<()> {
+    /// Resume a session at startup: if a token is available and connect-on-start
+    /// is enabled, reconnect.
+    async fn maybe_start_session(&mut self) -> Result<()> {
         let Some(token) = self
             .auth
             .token()
@@ -526,26 +493,28 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
-                // Decoupled from the portal: mint a fake session/token on the fly
-                // and transition straight to signed-in, as a real deep-link
-                // callback would, instead of opening the browser.
-                #[cfg(debug_assertions)]
-                if portal_auth_skipped() {
-                    let token = self.auth.fake_sign_in();
-                    self.start_session(token).await?;
-                    return Ok(());
-                }
-
                 let auth_url = self.auth_url().clone();
                 let account_slug = self.account_slug().map(|a| a.to_owned());
 
-                let req = self
+                let url = self
                     .auth
                     .start_sign_in()
-                    .context("Couldn't start sign-in flow")?;
-
-                let url = req.to_url(&auth_url, account_slug.as_deref());
+                    .context("Couldn't start sign-in flow")?
+                    .to_url(&auth_url, account_slug.as_deref());
                 self.refresh_ui_state();
+
+                #[cfg(debug_assertions)]
+                if auth::portal_auth_skipped() {
+                    let callback_url = deep_link::fake_callback_url(&url)
+                        .context("Couldn't fabricate deep-link")?;
+
+                    // Simulate sign-in.
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+
+                    self.handle_deep_link(&callback_url).await?;
+                    return Ok(());
+                }
+
                 self.integration
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
