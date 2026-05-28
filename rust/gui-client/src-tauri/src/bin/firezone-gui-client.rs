@@ -16,12 +16,6 @@ use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
-/// Keeps the active log sink alive for the whole process.
-///
-/// `main` owns this across the `try_main` boundary so that a fatal
-/// error logged *after* `try_main` returns still reaches the log file.
-/// It starts as the bootstrap logger, then is swapped for the GUI file
-/// logger once that is installed.
 #[expect(
     dead_code,
     reason = "Variants are held only for their `Drop` side effects."
@@ -140,11 +134,6 @@ fn try_main(
         .or(mdm_settings.log_filter.clone())
         .unwrap_or_else(|| advanced_settings.log_filter.clone());
 
-    // Drop the bootstrap logger (a thread-local default) so the GUI's
-    // global default takes effect on this thread, then hand the GUI
-    // logger's keep-alive handles up to `main`. That keeps the file
-    // logger running past `try_main`, so a fatal error logged in `main`
-    // lands in the log file instead of a torn-down appender.
     *log_guard = None;
 
     let logging::Handles {
