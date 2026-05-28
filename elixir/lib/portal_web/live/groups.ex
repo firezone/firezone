@@ -287,11 +287,7 @@ defmodule PortalWeb.Groups do
       if resource_id in selected do
         List.delete(selected, resource_id)
       else
-        if length(selected) < 5 do
-          selected ++ [resource_id]
-        else
-          selected
-        end
+        selected ++ [resource_id]
       end
 
     allowed =
