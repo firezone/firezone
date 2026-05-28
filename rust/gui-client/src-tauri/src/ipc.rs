@@ -1,7 +1,7 @@
 //! Defines a reusable, bi-directional, cross-platform IPC framework that uses JSON for message serialisation.
 
 use anyhow::{Context as _, Result};
-use platform::{ClientStream, ServerStream};
+use platform::ServerStream;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
@@ -10,6 +10,14 @@ use tokio_util::{
 };
 
 pub use platform::Server;
+
+/// Any stream the IPC client can run over. Boxed (dynamic dispatch) so the
+/// production socket and the debug-only in-process mock channel share one type
+/// without an enum + hand-written `AsyncRead`/`AsyncWrite` delegation.
+pub trait IpcStream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> IpcStream for T {}
+
+pub type ClientStream = Box<dyn IpcStream>;
 
 pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
 pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
@@ -154,6 +162,19 @@ where
         "Connecting to IPC socket"
     );
 
+    // When the GUI is launched with `--mock-tunnel`, hand the controller an in-memory
+    // channel served by an in-process mock instead of connecting to the real
+    // (root-only) Tunnel service. Debug builds only; Tunnel socket only, so the
+    // deep-link `SocketId::Gui` path is unaffected.
+    #[cfg(debug_assertions)]
+    if id == SocketId::Tunnel && crate::mock_tunnel::enabled() {
+        let (rx, tx) = tokio::io::split(crate::mock_tunnel::spawn());
+        return Ok((
+            FramedRead::new(rx, Decoder::default()),
+            FramedWrite::new(tx, Encoder::default()),
+        ));
+    }
+
     // This is how ChatGPT recommended, and I couldn't think of any more clever
     // way before I asked it.
     let mut last_err = None;
@@ -161,7 +182,7 @@ where
     for _ in 0..options.num_attempts {
         match platform::connect_to_socket(id).await {
             Ok(stream) => {
-                let (rx, tx) = tokio::io::split(stream);
+                let (rx, tx) = tokio::io::split(Box::new(stream) as ClientStream);
                 let rx = FramedRead::new(rx, Decoder::default());
                 let tx = FramedWrite::new(tx, Encoder::default());
                 return Ok((rx, tx));

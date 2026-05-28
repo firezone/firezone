@@ -68,16 +68,19 @@ fn try_main(
         firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
     }
 
+    #[cfg(debug_assertions)]
+    if cli.skip_portal_auth {
+        controller::skip_portal_auth();
+    }
+
+    #[cfg(debug_assertions)]
+    if cli.mock_tunnel {
+        firezone_gui_client::mock_tunnel::enable();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
-
-    let fake_controller = matches!(
-        cli.command,
-        Some(Cmd::Debug {
-            command: DebugCommand::FakeController
-        })
-    );
 
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
@@ -90,7 +93,6 @@ fn try_main(
         telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
-        fake_controller,
     };
 
     let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
@@ -138,13 +140,8 @@ fn try_main(
                 return Err(error.into());
             }
         },
-        None
-        | Some(Cmd::Elevated)
-        | Some(Cmd::Debug {
-            command: DebugCommand::FakeController,
-        }) => {
-            // Fall-through to running the GUI if elevation check should be bypassed,
-            // or if we're in fake-controller demo mode.
+        None | Some(Cmd::Elevated) => {
+            // Fall-through to running the GUI if elevation check should be bypassed.
         }
 
         // All commands below _don't_ end up running the GUI because they return early.
@@ -328,6 +325,20 @@ struct Cli {
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     skip_tunnel_pipe_owner_check: bool,
+
+    /// Decouple sign-in from the portal: mint a fake session/token on the fly
+    /// (never persisted) instead of opening the browser. Pairs with
+    /// `--mock-tunnel`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    skip_portal_auth: bool,
+
+    /// Mock the Tunnel service in-process: serve a canned resource list over an
+    /// in-memory IPC channel instead of connecting to the real (root-only)
+    /// Tunnel service. Pairs with `--skip-portal-auth`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    mock_tunnel: bool,
 }
 
 impl Cli {
@@ -366,9 +377,6 @@ enum Cmd {
 
 #[derive(clap::Subcommand)]
 enum DebugCommand {
-    /// Run the GUI with a hardcoded fake tunnel state, for iterating on the
-    /// system tray UI without needing the tunnel service or a live portal.
-    FakeController,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
     /// Drive only the launch-lock + GUI IPC handshake — no controller, no

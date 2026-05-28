@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
-mod fake_controller;
 mod updates;
 mod uptime;
 mod view;
@@ -16,6 +15,8 @@ pub mod gui;
 pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
+#[cfg(debug_assertions)]
+pub mod mock_tunnel;
 pub mod package_identity;
 pub mod service;
 pub mod settings;

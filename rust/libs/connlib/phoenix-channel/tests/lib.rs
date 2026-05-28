@@ -68,7 +68,7 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let mut channel = make_test_channel("localhost", server_addr.port());
+    let mut channel = make_test_channel("localhost", server_addr.port(), default_backoff);
 
     let client = async move {
         channel.connect(
@@ -127,7 +127,7 @@ async fn client_deduplicates_messages() {
     })
     .await;
 
-    let mut channel = make_test_channel("localhost", port);
+    let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let mut num_responses = 0;
 
@@ -190,7 +190,7 @@ async fn client_clears_local_message_on_connect() {
     })
     .await;
 
-    let mut channel = make_test_channel("localhost", port);
+    let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let client = async {
         channel.send("test", OutboundMsg::Bar).unwrap_err();
@@ -239,7 +239,7 @@ async fn replies_with_close_frame_upon_close() {
     })
     .await;
 
-    let mut channel = make_test_channel("localhost", port);
+    let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let (mut connected_tx, mut connected_rx) = futures::channel::mpsc::channel(1);
 
@@ -302,7 +302,7 @@ async fn times_out_after_missed_heartbeats() {
     })
     .await;
 
-    let mut channel = make_test_channel("localhost", port);
+    let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let client = async {
         channel.connect(
@@ -366,7 +366,7 @@ async fn sends_heartbeats_regardless_of_messages() {
     })
     .await;
 
-    let mut channel = make_test_channel("localhost", port);
+    let mut channel = make_test_channel("localhost", port, default_backoff);
 
     let client = tokio::spawn(async move {
         channel.connect(
@@ -420,7 +420,7 @@ enum OutboundMsg {
 async fn http_429_triggers_retry() {
     let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
         Duration::ZERO,
@@ -444,7 +444,7 @@ async fn http_429_triggers_retry() {
 async fn http_408_triggers_retry() {
     let port = http_status_server(http::StatusCode::REQUEST_TIMEOUT).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -469,7 +469,7 @@ async fn http_408_triggers_retry() {
 async fn http_400_returns_client_error() {
     let port = http_status_server(http::StatusCode::BAD_REQUEST).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -493,7 +493,7 @@ async fn http_400_returns_client_error() {
 async fn http_401_returns_invalid_token() {
     let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -529,7 +529,7 @@ async fn includes_ip_from_hostname() {
     })
     .await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
     channel.connect(vec![], Duration::ZERO, PublicKeyParam([0u8; 32]));
 
     let client = async {
@@ -619,10 +619,13 @@ impl ServerHandle {
     }
 }
 
+type TestChannel = PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam>;
+
 fn make_test_channel(
     host: &str,
     port: u16,
-) -> PhoenixChannel<(), OutboundMsg, InboundMsg, PublicKeyParam> {
+    make_reconnect_backoff: impl Fn() -> backoff::ExponentialBackoff + Send + 'static,
+) -> TestChannel {
     let url = LoginUrl::client(
         format!("ws://{host}:{port}").as_str(),
         "test-device-id".to_string(),
@@ -637,14 +640,27 @@ fn make_test_channel(
         "test-user-agent".to_string(),
         "test",
         (),
-        || {
-            backoff::ExponentialBackoffBuilder::new()
-                .with_initial_interval(std::time::Duration::from_secs(1))
-                .with_max_elapsed_time(Some(std::time::Duration::from_secs(60)))
-                .build()
-        },
+        make_reconnect_backoff,
         Arc::new(socket_factory::tcp),
     )
+}
+
+/// The reconnect backoff used by most tests.
+fn default_backoff() -> backoff::ExponentialBackoff {
+    backoff::ExponentialBackoffBuilder::new()
+        .with_initial_interval(Duration::from_secs(1))
+        .with_max_elapsed_time(Some(Duration::from_secs(60)))
+        .build()
+}
+
+/// A deterministic, fast-growing reconnect backoff: 10ms, 20ms, 40ms, ...
+fn fast_backoff() -> backoff::ExponentialBackoff {
+    backoff::ExponentialBackoffBuilder::new()
+        .with_initial_interval(Duration::from_millis(10))
+        .with_multiplier(2.0)
+        .with_randomization_factor(0.0)
+        .with_max_elapsed_time(Some(Duration::from_secs(60)))
+        .build()
 }
 
 async fn http_status_server(code: http::StatusCode) -> u16 {
@@ -712,7 +728,7 @@ async fn http_response_server(response: String) -> u16 {
 async fn http_503_triggers_retry() {
     let port = http_status_server(http::StatusCode::SERVICE_UNAVAILABLE).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -737,7 +753,7 @@ async fn http_503_triggers_retry() {
 async fn http_429_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(429, "Too Many Requests", 30).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -768,7 +784,7 @@ async fn http_429_with_retry_after_uses_header_value() {
 async fn http_503_with_retry_after_uses_header_value() {
     let port = http_status_server_with_retry_after(503, "Service Unavailable", 60).await;
 
-    let mut channel = make_test_channel("127.0.0.1", port);
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
@@ -802,7 +818,7 @@ async fn initial_connection_uses_constant_1s_backoff() {
 
     let _guard = logging::test("debug");
 
-    let mut channel = make_test_channel("127.0.0.1", 1);
+    let mut channel = make_test_channel("127.0.0.1", 1, default_backoff);
     channel.connect(
         vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
         Duration::ZERO,
@@ -838,4 +854,71 @@ async fn initial_connection_uses_constant_1s_backoff() {
         elapsed < Duration::from_secs(20),
         "Expected to complete within 20s, but took {elapsed:?}"
     );
+}
+
+#[tokio::test]
+async fn connect_with_zero_backoff_resets_reconnect_backoff() {
+    let _guard = logging::test("debug");
+
+    let (server, port) = spawn_websocket_server(|text| match text {
+        r#"{"topic":"test","event":"phx_join","payload":null,"ref":0}"# => {
+            r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#
+        }
+        other => panic!("Unexpected message: {other}"),
+    })
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, fast_backoff);
+    reconnect(&mut channel, Duration::ZERO);
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        // Connect once, then drop the server so every reconnect afterwards fails.
+        loop {
+            match future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+                Event::Connected => break,
+                Event::Message { .. } => {}
+                other @ (Event::Closed | Event::Hiccup { .. }) => {
+                    panic!("Unexpected event: {other:?}")
+                }
+            }
+        }
+        server.abort();
+
+        // Let the backoff grow by reconnecting with the suggested backoff.
+        let first = poll_until_hiccup(&mut channel).await;
+        reconnect(&mut channel, first);
+        let grown = poll_until_hiccup(&mut channel).await;
+        assert!(grown > first, "backoff should grow on consecutive hiccups");
+
+        // A zero-backoff `connect` resets the backoff, so the next hiccup starts
+        // over at the initial interval instead of continuing from `grown`.
+        reconnect(&mut channel, Duration::ZERO);
+        let reset = poll_until_hiccup(&mut channel).await;
+        assert_eq!(
+            reset, first,
+            "zero-backoff connect should reset the backoff"
+        );
+    })
+    .await
+    .expect("should not timeout");
+}
+
+fn reconnect(channel: &mut TestChannel, backoff: Duration) {
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        backoff,
+        PublicKeyParam([0u8; 32]),
+    );
+}
+
+async fn poll_until_hiccup(channel: &mut TestChannel) -> Duration {
+    loop {
+        match future::poll_fn(|cx| channel.poll(cx)).await.unwrap() {
+            Event::Hiccup { backoff, .. } => return backoff,
+            Event::Message { .. } => {}
+            other @ (Event::Closed | Event::Connected) => {
+                panic!("Unexpected event: {other:?}")
+            }
+        }
+    }
 }
