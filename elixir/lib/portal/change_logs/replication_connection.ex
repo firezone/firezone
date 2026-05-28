@@ -51,7 +51,7 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
   # Handle Begin to reset transaction state
   def on_begin(state, %{commit_timestamp: commit_timestamp}) do
     state
-    |> Map.put_new(:seq_start, System.os_time(:microsecond))
+    |> Map.put_new_lazy(:seq_start, &Database.fetch_seq_start/0)
     |> Map.put_new(:tenant_offsets, %{})
     |> Map.delete(:current_subject)
     |> Map.put(:commit_timestamp, commit_timestamp)
@@ -212,6 +212,15 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
         on_conflict: :nothing,
         conflict_target: [:lsn]
       )
+    end
+
+    # Read seq_start from Postgres so we always use a consistent clock source.
+    def fetch_seq_start do
+      {:ok, %{rows: [[seq_start]]}} =
+        Safe.unscoped()
+        |> Safe.query("SELECT (EXTRACT(EPOCH FROM clock_timestamp()) * 1000000)::bigint", [])
+
+      seq_start
     end
   end
 end
