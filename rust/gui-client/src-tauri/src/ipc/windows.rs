@@ -31,11 +31,17 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 ///   check in [`is_pipe_owned_by_local_system`] to reject the
 ///   legitimate pipe.
 /// - ACEs: Full Access for `LocalSystem` (the account the service
-///   runs as); `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE`
-///   for the Firezone MSIX package SID (baked at build time by
-///   `build.rs`). No `BUILTIN\Administrators` grant: only the
-///   package-identity'd GUI should drive the tunnel, not arbitrary
-///   elevated processes.
+///   runs as); read/write for any process carrying the Firezone
+///   package's `WIN://SYSAPPID` identity attribute (a conditional
+///   ACE keyed on [`crate::PACKAGE_FAMILY_NAME`]). No
+///   `BUILTIN\Administrators` grant: only the package-identity'd GUI
+///   should drive the tunnel, not arbitrary elevated processes.
+///
+/// We match `WIN://SYSAPPID` rather than the AppContainer package SID
+/// because the GUI is a *full-trust* packaged app: it runs as the
+/// user with no AppContainer, so its token never carries the
+/// `S-1-15-2-…` package SID, but the kernel does stamp every packaged
+/// process with the `SYSAPPID` attribute.
 ///
 /// In debug builds the Tunnel pipe may also be opened without the
 /// `Owner` pin — see [`skip_tunnel_pipe_owner_check`] — so the
@@ -48,10 +54,7 @@ fn tunnel_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .owner(Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow(
-            FileRights::ReadWrite,
-            Trustee::from_sid_string(crate::PACKAGE_SID),
-        )
+        .allow_packaged(FileRights::ReadWrite, crate::PACKAGE_FAMILY_NAME)
 }
 
 /// Security descriptor for the GUI pipe.
@@ -63,18 +66,16 @@ fn tunnel_pipe_dacl() -> PipeDacl {
 fn gui_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow(
-            FileRights::ReadWrite,
-            Trustee::from_sid_string(crate::PACKAGE_SID),
-        )
+        .allow_packaged(FileRights::ReadWrite, crate::PACKAGE_FAMILY_NAME)
 }
 
 /// Relaxed DACL for test contexts (gui-smoke-test, `SocketId::Test`
 /// unit tests). The production DACLs grant read/write only to
-/// processes carrying the Firezone package SID -- but a `cargo run`
-/// / `cargo test` process has no MSIX identity, so opening either
-/// pipe would fail with `ERROR_ACCESS_DENIED`. Grant `BUILTIN\Users`
-/// instead so the test process can act as both server and client.
+/// processes carrying the Firezone package identity -- but a `cargo
+/// run` / `cargo test` process has no MSIX identity, so opening
+/// either pipe would fail with `ERROR_ACCESS_DENIED`. Grant
+/// `BUILTIN\Users` instead so the test process can act as both server
+/// and client.
 #[cfg(any(debug_assertions, test))]
 fn test_pipe_dacl() -> PipeDacl {
     PipeDacl::new()

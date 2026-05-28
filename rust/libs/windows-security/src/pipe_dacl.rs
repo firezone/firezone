@@ -5,10 +5,11 @@
 //! flag sets, generic vs specific access masks, four kinds of
 //! conditional expression, on and on. This module deliberately
 //! exposes only the small dialect our pipe DACLs need: an optional
-//! `O:<owner>` prefix, a protected DACL, plain-allow ACEs, and the
-//! file-access rights `FA` / `FRFW`. Everything else is
-//! unrepresentable, so a typo or shape error can't make it to
-//! runtime.
+//! `O:<owner>` prefix, a protected DACL, plain-allow ACEs, one
+//! conditional packaged-allow ACE (keyed on the `WIN://SYSAPPID`
+//! package-identity attribute), and the file-access rights `FA` /
+//! `FRFW`. Everything else is unrepresentable, so a typo or shape
+//! error can't make it to runtime.
 
 use crate::{SecurityDescriptor, sid_to_string};
 use anyhow::{Context as _, Result};
@@ -64,14 +65,16 @@ impl Trustee {
         Self(Cow::Borrowed("BU"))
     }
 
-    /// SID for the given MSIX Package Family Name (`Name_publisherId`
-    /// — the deterministic Crockford-base32 hash Windows derives from
-    /// the cert Subject DN). Use this in pipe DACLs to pin access to
-    /// processes the kernel activated from that package: the kernel
-    /// attaches this SID to those processes' tokens, so an ACE
-    /// granting access to it is effectively a cert-rooted access
-    /// check (Windows enforces that the package's `Publisher` match
-    /// the signing cert's Subject DN at registration time).
+    /// The **AppContainer** SID for the given MSIX Package Family Name
+    /// (`Name_publisherId` — the deterministic Crockford-base32 hash
+    /// Windows derives from the cert Subject DN).
+    ///
+    /// NOTE: only *AppContainer* (sandboxed) processes carry this SID
+    /// in their token. A *full-trust* packaged app runs as the user
+    /// with no AppContainer, so an ACE on this SID never matches it —
+    /// to authenticate a full-trust packaged process use
+    /// [`PipeDacl::allow_packaged`], which keys on the `WIN://SYSAPPID`
+    /// identity attribute the kernel stamps on every packaged process.
     ///
     /// The PFN is just a string; the caller owns picking the right
     /// one (typically a `pub const` next to the AppxManifest it
@@ -135,9 +138,21 @@ pub struct PipeDacl {
 }
 
 #[derive(Debug)]
-struct PipeAce {
-    rights: FileRights,
-    trustee: Trustee,
+enum PipeAce {
+    /// Plain `(A;;<rights>;;;<trustee>)`.
+    Allow {
+        rights: FileRights,
+        trustee: Trustee,
+    },
+    /// Conditional `(XA;;<rights>;;;WD;(WIN://SYSAPPID Contains "<pfn>"))`.
+    /// Grants `rights` to any caller whose token carries the
+    /// package-identity `WIN://SYSAPPID` attribute for `pfn`. Unlike
+    /// the AppContainer package SID, this matches *full-trust* packaged
+    /// processes, whose tokens run as the user and never carry that SID.
+    PackagedAllow {
+        rights: FileRights,
+        pfn: &'static str,
+    },
 }
 
 impl PipeDacl {
@@ -154,7 +169,25 @@ impl PipeDacl {
 
     /// Plain `(A;;<rights>;;;<trustee>)` ACE.
     pub fn allow(mut self, rights: FileRights, trustee: Trustee) -> Self {
-        self.aces.push(PipeAce { rights, trustee });
+        self.aces.push(PipeAce::Allow { rights, trustee });
+        self
+    }
+
+    /// Conditional ACE granting `rights` to any process whose token
+    /// carries the `WIN://SYSAPPID` package-identity attribute for
+    /// `pfn` (a Package Family Name). The kernel attaches `SYSAPPID`
+    /// to every packaged process — full-trust included — so this is
+    /// the portable way to pin a pipe to a package's binaries. The
+    /// AppContainer package SID ([`Trustee::from_package_family_name`])
+    /// only appears on sandboxed processes, so an ACE on it never
+    /// matches a full-trust app.
+    pub fn allow_packaged(mut self, rights: FileRights, pfn: &'static str) -> Self {
+        debug_assert!(
+            pfn.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_'),
+            "package family name `{pfn}` has characters unsafe to embed in an SDDL conditional"
+        );
+        self.aces.push(PipeAce::PackagedAllow { rights, pfn });
         self
     }
 
@@ -177,12 +210,17 @@ impl fmt::Display for PipeDacl {
         }
         f.write_str("D:P")?;
         for ace in &self.aces {
-            write!(
-                f,
-                "(A;;{};;;{})",
-                ace.rights.as_sddl(),
-                ace.trustee.as_sddl_str(),
-            )?;
+            match ace {
+                PipeAce::Allow { rights, trustee } => {
+                    write!(f, "(A;;{};;;{})", rights.as_sddl(), trustee.as_sddl_str(),)?
+                }
+                PipeAce::PackagedAllow { rights, pfn } => write!(
+                    f,
+                    "(XA;;{};;;WD;(WIN://SYSAPPID Contains \"{}\"))",
+                    rights.as_sddl(),
+                    pfn,
+                )?,
+            }
         }
         Ok(())
     }
@@ -282,5 +320,31 @@ mod tests {
             .allow(FileRights::ReadWrite, Trustee::from_sid_string(SID))
             .to_string();
         assert_eq!(dacl, format!("D:P(A;;FRFW;;;{SID})"));
+    }
+
+    /// `allow_packaged` renders the conditional `WIN://SYSAPPID` ACE.
+    #[test]
+    fn allow_packaged_renders_conditional_ace() {
+        let s = PipeDacl::new()
+            .owner(Trustee::local_system())
+            .allow(FileRights::FullAccess, Trustee::local_system())
+            .allow_packaged(FileRights::ReadWrite, "Firezone.Client.GUI_r4567a5vks0bt")
+            .to_string();
+        assert_eq!(
+            s,
+            "O:SYD:P(A;;FA;;;SY)(XA;;FRFW;;;WD;(WIN://SYSAPPID Contains \"Firezone.Client.GUI_r4567a5vks0bt\"))"
+        );
+    }
+
+    /// The conditional `WIN://SYSAPPID` ACE must round-trip through
+    /// `from_sddl` — i.e. Windows' SDDL parser accepts the shape.
+    #[test]
+    fn packaged_ace_round_trips_through_security_descriptor() {
+        PipeDacl::new()
+            .owner(Trustee::local_system())
+            .allow(FileRights::FullAccess, Trustee::local_system())
+            .allow_packaged(FileRights::ReadWrite, "Firezone.Client.GUI_r4567a5vks0bt")
+            .build()
+            .expect("kernel should accept the conditional SYSAPPID SDDL");
     }
 }
