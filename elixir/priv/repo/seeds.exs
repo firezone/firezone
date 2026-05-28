@@ -254,7 +254,7 @@ defmodule Portal.Repo.Seeds do
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
     # an adapter configured and creation of email provider will fail, so we will override it here.
-    System.put_env("OUTBOUND_EMAIL_ADAPTER", "Elixir.Swoosh.Adapters.Mailgun")
+    System.put_env("OUTBOUND_EMAIL_ADAPTER", "Elixir.Swoosh.Adapters.AzureCommunicationServices")
 
     # Ensure seeds are deterministic
     :rand.seed(:exsss, {1, 2, 3})
