@@ -32,13 +32,15 @@
     <Logo>Assets\StoreLogo.png</Logo>
     <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
     <!--
-      Keep the GUI's %LOCALAPPDATA% (logs, settings) at the real path
-      instead of the per-package container, so gaining package
-      identity doesn't move the app's data and it stays readable by
-      non-packaged tooling. Requires the `unvirtualizedResources`
-      restricted capability below.
+      Keep the GUI's data (logs/settings under %LOCALAPPDATA%) and its
+      registry writes at their real locations instead of the per-package
+      container, so gaining package identity doesn't relocate them: data
+      stays readable by non-packaged tooling and registry writes land
+      where Windows and MDM expect. Both require the
+      `unvirtualizedResources` restricted capability below.
     -->
     <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
   </Properties>
 
   <Dependencies>
@@ -53,7 +55,7 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust"/>
-    <!-- Required to set `FileSystemWriteVirtualization` to disabled. -->
+    <!-- Required to disable FileSystem/Registry write virtualization. -->
     <rescap:Capability Name="unvirtualizedResources"/>
   </Capabilities>
 
