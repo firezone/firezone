@@ -15,11 +15,12 @@ defmodule PortalAPI.Schemas.ChangeLog do
       """,
       type: :object,
       properties: %{
-        id: %Schema{
+        event_id: %Schema{
           type: :string,
           description: """
-          Opaque identifier for the audit log entry. Lexicographically sortable
-          within an account and aligned with the order changes were committed.
+          Opaque identifier for the audit log entry. A 24-character lowercase
+          hexadecimal string, lexicographically sortable within an account and
+          aligned with the order changes were committed.
           """,
           example: "c00060db0c2c8eb400000000"
         },
@@ -60,9 +61,9 @@ defmodule PortalAPI.Schemas.ChangeLog do
         },
         subject: Schemas.Subject
       },
-      required: [:id, :timestamp, :kind, :op],
+      required: [:event_id, :timestamp, :kind, :op],
       example: %{
-        "id" => "c00060db0c2c8eb400000000",
+        "event_id" => "c00060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
         "kind" => "actors",
         "op" => "update",
@@ -132,7 +133,7 @@ defmodule PortalAPI.Schemas.ChangeLog do
       example: %{
         "data" => [
           %{
-            "id" => "c00060db0c2c8eb400000000",
+            "event_id" => "c00060db0c2c8eb400000000",
             "timestamp" => "2026-05-26T12:34:56.789Z",
             "kind" => "actors",
             "op" => "update",

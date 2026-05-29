@@ -102,12 +102,13 @@ defmodule PortalAPI.ChangeLogController do
   operation(:show,
     summary: "Show Change Log",
     description: """
-    Fetches a single Change Log entry by its `id`.
+    Fetches a single Change Log entry by its `event_id`.
     """,
     parameters: [
-      id: [
+      event_id: [
         in: :path,
-        description: "Identifier of the Change Log entry.",
+        description:
+          "Identifier of the Change Log entry. A 24-character lowercase hexadecimal string.",
         type: :string,
         example: "c00060db0c2c8eb400000000"
       ]
@@ -118,8 +119,8 @@ defmodule PortalAPI.ChangeLogController do
   )
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def show(conn, %{"id" => id}) do
-    with {:ok, event_id} <- parse_event_id(id),
+  def show(conn, %{"event_id" => event_id}) do
+    with {:ok, event_id} <- parse_event_id(event_id),
          {:ok, change_log} <- Database.fetch_change_log(event_id, conn.assigns.subject) do
       render(conn, :show, change_log: change_log)
     else
@@ -185,15 +186,15 @@ defmodule PortalAPI.ChangeLogController do
     {:error, :bad_request, reason: "`#{name}` must be a string"}
   end
 
-  defp parse_event_id(<<_::binary-size(24)>> = id) do
-    case Base.decode16(id, case: :mixed) do
-      {:ok, _} -> {:ok, String.downcase(id)}
-      :error -> {:error, :bad_request, reason: "`id` must be a 24-char hex string"}
+  defp parse_event_id(<<_::binary-size(24)>> = event_id) do
+    case Base.decode16(event_id, case: :mixed) do
+      {:ok, _} -> {:ok, String.downcase(event_id)}
+      :error -> {:error, :bad_request, reason: "`event_id` must be a 24-char hex string"}
     end
   end
 
   defp parse_event_id(_value),
-    do: {:error, :bad_request, reason: "`id` must be a 24-char hex string"}
+    do: {:error, :bad_request, reason: "`event_id` must be a 24-char hex string"}
 
   defp validate_window(begin_at, end_at) do
     if DateTime.compare(begin_at, end_at) in [:lt, :eq] do

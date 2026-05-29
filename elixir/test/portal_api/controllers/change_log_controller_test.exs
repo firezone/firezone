@@ -53,7 +53,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
       assert is_nil(next_page)
       assert is_nil(prev_page)
 
-      data_ids = Enum.map(data, & &1["id"])
+      data_ids = Enum.map(data, & &1["event_id"])
       change_log_ids = Enum.map(change_logs, & &1.event_id)
       assert MapSet.equal?(MapSet.new(data_ids), MapSet.new(change_log_ids))
     end
@@ -76,7 +76,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> get(~p"/change_logs")
 
       assert %{"data" => data} = json_response(conn, 200)
-      ids = Enum.map(data, & &1["id"])
+      ids = Enum.map(data, & &1["event_id"])
 
       assert ids == [cl_newest.event_id, cl_mid.event_id, cl_older.event_id]
     end
@@ -104,8 +104,8 @@ defmodule PortalAPI.ChangeLogControllerTest do
 
       assert %{"data" => data, "metadata" => %{"count" => count}} = json_response(conn, 200)
       assert count == 1
-      assert [%{"id" => id}] = data
-      assert id == keeper.event_id
+      assert [%{"event_id" => event_id}] = data
+      assert event_id == keeper.event_id
     end
 
     test "filters by end (inclusive upper bound)", %{
@@ -129,10 +129,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", end: DateTime.to_iso8601(end_at))
 
-      assert %{"data" => [%{"id" => id}], "metadata" => %{"count" => 1}} =
+      assert %{"data" => [%{"event_id" => event_id}], "metadata" => %{"count" => 1}} =
                json_response(conn, 200)
 
-      assert id == keeper.event_id
+      assert event_id == keeper.event_id
     end
 
     test "begin and end are inclusive on the boundary", %{
@@ -153,8 +153,8 @@ defmodule PortalAPI.ChangeLogControllerTest do
           end: DateTime.to_iso8601(ts)
         )
 
-      assert %{"data" => [%{"id" => id}]} = json_response(conn, 200)
-      assert id == keeper.event_id
+      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
+      assert event_id == keeper.event_id
     end
 
     test "defaults exclude entries older than 90 days", %{
@@ -182,10 +182,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs")
 
-      assert %{"data" => [%{"id" => id}], "metadata" => %{"count" => 1}} =
+      assert %{"data" => [%{"event_id" => event_id}], "metadata" => %{"count" => 1}} =
                json_response(conn, 200)
 
-      assert id == keeper.event_id
+      assert event_id == keeper.event_id
     end
 
     test "filters by actor_id on subject", %{
@@ -216,10 +216,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", actor_id: target_actor_id)
 
-      assert %{"data" => [%{"id" => id}], "metadata" => %{"count" => 1}} =
+      assert %{"data" => [%{"event_id" => event_id}], "metadata" => %{"count" => 1}} =
                json_response(conn, 200)
 
-      assert id == keeper.event_id
+      assert event_id == keeper.event_id
     end
 
     test "filters by actor_email on subject", %{
@@ -253,10 +253,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", actor_email: "admin@example.com")
 
-      assert %{"data" => [%{"id" => id}], "metadata" => %{"count" => 1}} =
+      assert %{"data" => [%{"event_id" => event_id}], "metadata" => %{"count" => 1}} =
                json_response(conn, 200)
 
-      assert id == keeper.event_id
+      assert event_id == keeper.event_id
     end
 
     test "actor_id and actor_email filters combine", %{
@@ -284,10 +284,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", actor_id: actor_id, actor_email: "admin@example.com")
 
-      assert %{"data" => [%{"id" => id}], "metadata" => %{"count" => 1}} =
+      assert %{"data" => [%{"event_id" => event_id}], "metadata" => %{"count" => 1}} =
                json_response(conn, 200)
 
-      assert id == keeper.event_id
+      assert event_id == keeper.event_id
     end
 
     test "returns 400 when begin is not a valid RFC 3339 timestamp", %{
@@ -477,7 +477,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
       assert length(page2) == 2
       refute is_nil(prev2)
 
-      seen = Enum.map(page1 ++ page2, & &1["id"])
+      seen = Enum.map(page1 ++ page2, & &1["event_id"])
 
       all_ids = Enum.map(change_logs, & &1.event_id)
       assert MapSet.subset?(MapSet.new(seen), MapSet.new(all_ids))
@@ -536,7 +536,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
       assert %{"data" => [entry]} = json_response(conn, 200)
 
       assert entry == %{
-               "id" => change_log.event_id,
+               "event_id" => change_log.event_id,
                "timestamp" => DateTime.to_iso8601(change_log.timestamp),
                "kind" => "actors",
                "op" => "update",
@@ -571,7 +571,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> get(~p"/change_logs/#{change_log.event_id}")
 
       assert %{"data" => data} = json_response(conn, 200)
-      assert data["id"] == change_log.event_id
+      assert data["event_id"] == change_log.event_id
       assert data["kind"] == change_log.table
       assert data["op"] == Atom.to_string(change_log.op)
       refute Map.has_key?(data, "lsn")
@@ -579,7 +579,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
       refute Map.has_key?(data, "table")
     end
 
-    test "returns 404 for non-existent id", %{conn: conn, actor: actor} do
+    test "returns 404 for non-existent event_id", %{conn: conn, actor: actor} do
       missing_id = EventId.build_change_log(1, 0)
 
       conn =
@@ -591,7 +591,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
       assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
 
-    test "returns 400 when id is not a valid identifier", %{conn: conn, actor: actor} do
+    test "returns 400 when event_id is not a valid identifier", %{conn: conn, actor: actor} do
       conn =
         conn
         |> authorize_conn(actor)

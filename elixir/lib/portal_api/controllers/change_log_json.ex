@@ -15,7 +15,7 @@ defmodule PortalAPI.ChangeLogJSON do
 
   defp data(%ChangeLog{} = change_log) do
     %{
-      id: change_log.event_id,
+      event_id: change_log.event_id,
       timestamp: change_log.timestamp,
       kind: change_log.table,
       op: change_log.op,
