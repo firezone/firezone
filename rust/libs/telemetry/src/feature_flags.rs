@@ -60,9 +60,9 @@ pub fn show_connected_devices() -> bool {
     FEATURE_FLAGS.show_connected_devices()
 }
 
-/// The current state of every feature flag as `(attribute key, value)` pairs (one per flag).
-pub(crate) fn metric_attributes() -> [(&'static str, bool); 6] {
-    flag_attributes(FEATURE_FLAGS.snapshot())
+/// The current value of every feature flag, by name.
+pub(crate) fn current() -> [(&'static str, bool); 6] {
+    flag_pairs(FEATURE_FLAGS.snapshot())
 }
 
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
@@ -84,10 +84,6 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     let flags = update_from_env(flags);
 
     FEATURE_FLAGS.update(flags, payloads);
-
-    sentry::Hub::main().configure_scope(|scope| {
-        scope.set_context("flags", sentry_flag_context(flags));
-    });
 
     tracing::debug!(%env, flags = ?FEATURE_FLAGS, "Evaluated feature-flags");
 }
@@ -309,7 +305,7 @@ fn env_or(key: &str, fallback: bool) -> bool {
         .unwrap_or(fallback)
 }
 
-fn flag_attributes(flags: FeatureFlagsResponse) -> [(&'static str, bool); 6] {
+fn flag_pairs(flags: FeatureFlagsResponse) -> [(&'static str, bool); 6] {
     // Exhaustive destruction so we don't forget to update this when we add a flag.
     let FeatureFlagsResponse {
         icmp_unreachable_instead_of_nat64,
@@ -322,62 +318,21 @@ fn flag_attributes(flags: FeatureFlagsResponse) -> [(&'static str, bool); 6] {
 
     [
         (
-            "feature_flag.icmp_unreachable_instead_of_nat64",
+            "icmp_unreachable_instead_of_nat64",
             icmp_unreachable_instead_of_nat64,
         ),
         (
-            "feature_flag.drop_llmnr_nxdomain_responses",
+            "drop_llmnr_nxdomain_responses",
             drop_llmnr_nxdomain_responses,
         ),
-        ("feature_flag.stream_logs", stream_logs),
+        ("stream_logs", stream_logs),
         (
-            "feature_flag.icmp_error_unreachable_prohibited_create_new_flow",
+            "icmp_error_unreachable_prohibited_create_new_flow",
             icmp_error_unreachable_prohibited_create_new_flow,
         ),
-        ("feature_flag.stream_metrics", stream_metrics),
-        (
-            "feature_flag.show_connected_devices",
-            show_connected_devices,
-        ),
+        ("stream_metrics", stream_metrics),
+        ("show_connected_devices", show_connected_devices),
     ]
-}
-
-fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
-    #[derive(Debug, serde::Serialize)]
-    #[serde(tag = "flag", rename_all = "snake_case")]
-    enum SentryFlag {
-        IcmpUnreachableInsteadOfNat64 { result: bool },
-        DropLlmnrNxdomainResponses { result: bool },
-        StreamLogs { result: bool },
-        IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
-        StreamMetrics { result: bool },
-        ShowConnectedDevices { result: bool },
-    }
-
-    // Exhaustive destruction so we don't forget to update this when we add a flag.
-    let FeatureFlagsResponse {
-        icmp_unreachable_instead_of_nat64,
-        drop_llmnr_nxdomain_responses,
-        stream_logs,
-        icmp_error_unreachable_prohibited_create_new_flow,
-        stream_metrics,
-        show_connected_devices,
-    } = flags;
-
-    let value = serde_json::json!({
-        "values": [
-            SentryFlag::IcmpUnreachableInsteadOfNat64 {
-                result: icmp_unreachable_instead_of_nat64,
-            },
-            SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
-            SentryFlag::StreamLogs { result: stream_logs },
-            SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
-            SentryFlag::StreamMetrics { result: stream_metrics },
-            SentryFlag::ShowConnectedDevices { result: show_connected_devices },
-        ]
-    });
-
-    sentry::protocol::Context::Other(serde_json::from_value(value).expect("to and from json works"))
 }
 
 struct LogFilter {
@@ -440,17 +395,17 @@ mod tests {
     }
 
     #[test]
-    fn flag_attributes_reflect_state() {
+    fn flag_pairs_reflect_state() {
         let flags = FeatureFlagsResponse {
             stream_metrics: true,
             show_connected_devices: true,
             ..Default::default()
         };
 
-        let attrs = flag_attributes(flags);
+        let pairs = flag_pairs(flags);
 
-        assert!(attrs.contains(&("feature_flag.stream_metrics", true)));
-        assert!(attrs.contains(&("feature_flag.show_connected_devices", true)));
-        assert!(attrs.contains(&("feature_flag.drop_llmnr_nxdomain_responses", false)));
+        assert!(pairs.contains(&("stream_metrics", true)));
+        assert!(pairs.contains(&("show_connected_devices", true)));
+        assert!(pairs.contains(&("drop_llmnr_nxdomain_responses", false)));
     }
 }
