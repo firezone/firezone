@@ -7,9 +7,10 @@ defmodule Portal.Types.EventId do
       [ 4 bits log_type ][ 52 bits seq_start ][ 40 bits tenant_offset ]
 
   - `log_type` reserves the high nibble for future event streams; change_log uses `0xC`.
-  - `seq_start` is the consumer's boot timestamp in Unix microseconds. Constant for the
-    lifetime of one consumer process; advances on every restart, giving prior events
-    a strictly-lower prefix than anything generated post-restart.
+  - `seq_start` is the consumer's boot timestamp in Unix microseconds, sourced from
+    Postgres `clock_timestamp()` so all consumers share a single authoritative clock.
+    Constant for the lifetime of one consumer process; advances on every restart,
+    giving prior events a strictly-lower prefix than anything generated post-restart.
   - `tenant_offset` is a per-tenant counter starting at 0 each consumer run.
 
   Canonical Elixir representation is a 24-char lowercase hex string; on disk it

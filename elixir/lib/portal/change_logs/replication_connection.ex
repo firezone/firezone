@@ -48,7 +48,9 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
 
   def on_logical_message(state, _message), do: state
 
-  # Handle Begin to reset transaction state
+  # Handle Begin to reset transaction state. On the first Begin of this
+  # consumer's lifetime, seed seq_start from the Postgres clock so every
+  # event_id this process emits shares a single authoritative timestamp.
   def on_begin(state, %{commit_timestamp: commit_timestamp}) do
     state
     |> Map.put_new_lazy(:seq_start, &Database.fetch_seq_start/0)

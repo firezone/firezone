@@ -4,6 +4,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   import Ecto.Query
   import Portal.AccountFixtures
   alias Portal.ChangeLogs.ReplicationConnection
+  alias Portal.ChangeLogs.ReplicationConnection.Database
   alias Portal.ChangeLog
   alias Portal.Types.EventId
 
@@ -74,7 +75,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
     end
 
     test "seeds seq_start and tenant_offsets on first call" do
-      before = System.os_time(:microsecond)
+      before = Database.fetch_seq_start()
       state = %{flush_buffer: %{}}
 
       result_state =
@@ -540,8 +541,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
                EventId.build_change_log(old_seq_start, 5)
 
       # Post-restart: fresh empty state. on_begin seeds a brand-new seq_start
-      # from the wall clock, and per-tenant offsets start over at 0.
-      before_restart = System.os_time(:microsecond)
+      # from the Postgres clock, and per-tenant offsets start over at 0.
+      before_restart = Database.fetch_seq_start()
 
       post_restart =
         %{flush_buffer: %{}}
