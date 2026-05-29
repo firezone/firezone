@@ -118,11 +118,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       attrs = result_state.flush_buffer[12345]
       assert attrs.lsn == 12345
-      assert attrs.table == "accounts"
-      assert attrs.op == :insert
+      assert attrs.object == "accounts"
+      assert attrs.operation == :insert
       assert attrs.account_id == account.id
-      assert attrs.data == %{"id" => account.id, "name" => "test account"}
-      assert attrs.old_data == nil
+      assert attrs.after == %{"id" => account.id, "name" => "test account"}
+      assert attrs.before == nil
       assert attrs.subject == nil
       assert attrs.vsn == 0
       assert attrs.timestamp == @commit_timestamp
@@ -158,10 +158,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       attrs = result_state.flush_buffer[lsn]
       assert attrs.lsn == lsn
-      assert attrs.table == table
-      assert attrs.op == :insert
-      assert attrs.data == data
-      assert attrs.old_data == nil
+      assert attrs.object == table
+      assert attrs.operation == :insert
+      assert attrs.after == data
+      assert attrs.before == nil
       assert attrs.account_id == account.id
       assert attrs.vsn == 0
       assert attrs.timestamp == @commit_timestamp
@@ -174,11 +174,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         event_id: EventId.build_change_log(@seq_start, 99),
         timestamp: @commit_timestamp,
         lsn: existing_lsn,
-        table: "other_table",
-        op: :update,
+        object: "other_table",
+        operation: :update,
         account_id: account.id,
-        data: %{"id" => "existing"},
-        old_data: nil,
+        after: %{"id" => "existing"},
+        before: nil,
         vsn: 0,
         subject: nil
       }
@@ -238,7 +238,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         )
 
       attrs = result_state.flush_buffer[lsn]
-      assert attrs.data == complex_data
+      assert attrs.after == complex_data
     end
   end
 
@@ -266,10 +266,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       attrs = result_state.flush_buffer[lsn]
 
       assert attrs.lsn == lsn
-      assert attrs.table == table
-      assert attrs.op == :update
-      assert attrs.data == data
-      assert attrs.old_data == old_data
+      assert attrs.object == table
+      assert attrs.operation == :update
+      assert attrs.after == data
+      assert attrs.before == old_data
       assert attrs.account_id == account.id
       assert attrs.vsn == 0
     end
@@ -294,8 +294,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       assert map_size(result_state.flush_buffer) == 1
       attrs = result_state.flush_buffer[lsn]
-      assert attrs.table == "accounts"
-      assert attrs.op == :update
+      assert attrs.object == "accounts"
+      assert attrs.operation == :update
       assert attrs.account_id == account.id
     end
   end
@@ -317,11 +317,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       attrs = result_state.flush_buffer[12345]
       assert attrs.lsn == 12345
-      assert attrs.table == "accounts"
-      assert attrs.op == :delete
+      assert attrs.object == "accounts"
+      assert attrs.operation == :delete
       assert attrs.account_id == account.id
-      assert attrs.data == nil
-      assert attrs.old_data == %{"id" => account.id, "name" => "deleted account"}
+      assert attrs.after == nil
+      assert attrs.before == %{"id" => account.id, "name" => "deleted account"}
       assert attrs.subject == nil
       assert attrs.vsn == 0
       assert attrs.timestamp == @commit_timestamp
@@ -355,10 +355,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       attrs = result_state.flush_buffer[lsn]
 
       assert attrs.lsn == lsn
-      assert attrs.table == table
-      assert attrs.op == :delete
-      assert attrs.data == nil
-      assert attrs.old_data == old_data
+      assert attrs.object == table
+      assert attrs.operation == :delete
+      assert attrs.after == nil
+      assert attrs.before == old_data
       assert attrs.account_id == account.id
       assert attrs.vsn == 0
     end
@@ -406,9 +406,9 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(state3.flush_buffer) == 3
-      assert state3.flush_buffer[100].op == :insert
-      assert state3.flush_buffer[101].op == :update
-      assert state3.flush_buffer[102].op == :delete
+      assert state3.flush_buffer[100].operation == :insert
+      assert state3.flush_buffer[101].operation == :update
+      assert state3.flush_buffer[102].operation == :delete
     end
   end
 
@@ -649,11 +649,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         event_id: EventId.build_change_log(@seq_start, 0),
         timestamp: committed_at,
         lsn: 100,
-        table: "resources",
-        op: :insert,
+        object: "resources",
+        operation: :insert,
         account_id: account.id,
-        data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
-        old_data: nil,
+        after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
+        before: nil,
         vsn: 0,
         subject: nil
       }
@@ -662,11 +662,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         event_id: EventId.build_change_log(@seq_start, 1),
         timestamp: committed_at,
         lsn: 101,
-        table: "resources",
-        op: :update,
+        object: "resources",
+        operation: :update,
         account_id: account.id,
-        data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test2"},
-        old_data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
+        after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test2"},
+        before: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
         vsn: 0,
         subject: nil
       }
@@ -686,10 +686,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       [log1, log2] = change_logs
       assert log1.lsn == 100
-      assert log1.op == :insert
+      assert log1.operation == :insert
       assert log1.timestamp == committed_at
       assert log2.lsn == 101
-      assert log2.op == :update
+      assert log2.operation == :update
       assert log2.timestamp == committed_at
     end
 
@@ -701,11 +701,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           event_id: EventId.build_change_log(@seq_start, 0),
           timestamp: committed_at,
           lsn: 400,
-          table: "resources",
-          op: :insert,
+          object: "resources",
+          operation: :insert,
           account_id: account.id,
-          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          old_data: nil,
+          after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          before: nil,
           vsn: 0,
           subject: nil
         },
@@ -713,11 +713,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           event_id: EventId.build_change_log(@seq_start, 1),
           timestamp: committed_at,
           lsn: 402,
-          table: "resources",
-          op: :insert,
+          object: "resources",
+          operation: :insert,
           account_id: account.id,
-          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          old_data: nil,
+          after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          before: nil,
           vsn: 0,
           subject: nil
         },
@@ -725,11 +725,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           event_id: EventId.build_change_log(@seq_start, 2),
           timestamp: committed_at,
           lsn: 401,
-          table: "resources",
-          op: :insert,
+          object: "resources",
+          operation: :insert,
           account_id: account.id,
-          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          old_data: nil,
+          after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          before: nil,
           vsn: 0,
           subject: nil
         }

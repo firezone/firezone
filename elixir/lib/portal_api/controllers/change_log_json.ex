@@ -17,10 +17,10 @@ defmodule PortalAPI.ChangeLogJSON do
     %{
       event_id: change_log.event_id,
       timestamp: change_log.timestamp,
-      kind: change_log.table,
-      op: change_log.op,
-      old_data: change_log.old_data,
-      data: change_log.data,
+      object: change_log.object,
+      operation: change_log.operation,
+      before: change_log.before,
+      after: change_log.after,
       subject: change_log.subject
     }
   end
