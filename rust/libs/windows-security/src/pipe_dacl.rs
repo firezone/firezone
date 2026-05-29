@@ -69,12 +69,14 @@ impl Trustee {
     /// (`Name_publisherId` — the deterministic Crockford-base32 hash
     /// Windows derives from the cert Subject DN).
     ///
-    /// NOTE: only *AppContainer* (sandboxed) processes carry this SID
-    /// in their token. A *full-trust* packaged app runs as the user
-    /// with no AppContainer, so an ACE on this SID never matches it —
-    /// to authenticate a full-trust packaged process use
-    /// [`PipeDacl::allow_packaged`], which keys on the `WIN://SYSAPPID`
-    /// identity attribute the kernel stamps on every packaged process.
+    /// In general this is a valid way to pin a pipe to a package: for
+    /// an **AppContainer** (sandboxed) app the kernel puts this SID in
+    /// the process token, so an ACE granting it matches that package's
+    /// processes. It does **not** apply to Firezone, though — we ship
+    /// as a *full-trust* packaged app, which runs as the user with no
+    /// AppContainer and so never carries this SID. For our full-trust
+    /// binaries use [`PipeDacl::allow_packaged`] instead, which keys on
+    /// the `WIN://SYSAPPID` attribute present on every packaged process.
     ///
     /// The PFN is just a string; the caller owns picking the right
     /// one (typically a `pub const` next to the AppxManifest it
