@@ -9,6 +9,10 @@ defmodule Portal.Mailer do
 
   @recipient_fields [{"to", :to}, {"cc", :cc}, {"bcc", :bcc}]
 
+  # Email addresses ending in any of these suffixes are non-deliverable and are
+  # dropped from every recipient field before delivery.
+  @blocked_suffixes ["@firezone.invalid"]
+
   def deliver_with_rate_limit(email, config \\ []) do
     {key, config} = Keyword.pop(config, :rate_limit_key, {email.to, email.subject})
 
@@ -75,10 +79,20 @@ defmodule Portal.Mailer do
 
   defp deliver_with_mailer_config(email, opts, metadata) do
     if opts[:adapter] do
-      email = put_adapter_client_options(email, opts)
-      metadata = %{metadata | email: email}
+      email = drop_blocked_recipients(email)
 
-      deliver_with_telemetry(email, opts, metadata)
+      if has_recipients?(email) do
+        email = put_adapter_client_options(email, opts)
+        metadata = %{metadata | email: email}
+
+        deliver_with_telemetry(email, opts, metadata)
+      else
+        Logger.info("Skipping email because all recipients are undeliverable",
+          email_subject: inspect(email.subject)
+        )
+
+        {:ok, %{}}
+      end
     else
       Logger.info("Emails are not configured", email_subject: inspect(email.subject))
       {:ok, %{}}
@@ -232,6 +246,7 @@ defmodule Portal.Mailer do
       {_, addr} -> addr
       addr when is_binary(addr) -> addr
     end)
+    |> Enum.reject(&undeliverable_address?/1)
     |> Enum.uniq()
   end
 
@@ -287,10 +302,33 @@ defmodule Portal.Mailer do
     end
   end
 
+  defp drop_blocked_recipients(%Email{} = email) do
+    %{
+      email
+      | to: reject_blocked_addresses(email.to),
+        cc: reject_blocked_addresses(email.cc),
+        bcc: reject_blocked_addresses(email.bcc)
+    }
+  end
+
+  defp reject_blocked_addresses(recipients) do
+    recipients
+    |> List.wrap()
+    |> Enum.reject(fn
+      {_name, address} -> undeliverable_address?(address)
+      address when is_binary(address) -> undeliverable_address?(address)
+    end)
+  end
+
+  defp has_recipients?(%Email{} = email) do
+    Enum.any?([email.to, email.cc, email.bcc], fn field ->
+      field |> List.wrap() |> Enum.any?()
+    end)
+  end
+
   defp undeliverable_address?(address) do
-    address
-    |> String.downcase()
-    |> String.ends_with?("@firezone.invalid")
+    normalized = EmailSuppression.normalize_email(address)
+    Enum.any?(@blocked_suffixes, &String.ends_with?(normalized, &1))
   end
 
   defp recipient_addresses(request) do

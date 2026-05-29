@@ -321,6 +321,36 @@ defmodule Portal.MailerTest do
       assert {:ok, %{}} = deliver(email)
       assert_email_sent(subject: "Bypass")
     end
+
+    test "drops undeliverable firezone.invalid recipients before sending" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to([{"", "recipient@example.com"}, {"", "missing@firezone.invalid"}])
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Drop Invalid")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{}} = deliver(email)
+      assert_email_sent(subject: "Drop Invalid", to: [{"", "recipient@example.com"}])
+    end
+
+    test "skips sending when all recipients are undeliverable" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "missing@firezone.invalid"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("All Invalid")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{}} = deliver(email)
+      refute_email_sent(subject: "All Invalid")
+    end
   end
 
   describe "deliver_and_track/2" do
