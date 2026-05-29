@@ -1,6 +1,7 @@
 defmodule Portal.ChangeLogs.ReplicationConnection do
   use Portal.Replication.Connection
   alias __MODULE__.Database
+  alias Portal.Types.EventId
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
@@ -42,16 +43,20 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
 
   # Handle LogicalMessage to track subject info
   def on_logical_message(state, %{prefix: "subject", content: content, transactional: true}) do
-    # Store the subject content for the current transaction
     Map.put(state, :current_subject, content)
   end
 
   def on_logical_message(state, _message), do: state
 
-  # Handle Begin to reset transaction state
-  def on_begin(state, _begin_msg) do
-    # Remove the subject for the new transaction
-    Map.delete(state, :current_subject)
+  # Handle Begin to reset transaction state. On the first Begin of this
+  # consumer's lifetime, seed seq_start from the Postgres clock so every
+  # event_id this process emits shares a single authoritative timestamp.
+  def on_begin(state, %{commit_timestamp: commit_timestamp}) do
+    state
+    |> Map.put_new_lazy(:seq_start, &Database.fetch_seq_start/0)
+    |> Map.put_new(:tenant_offsets, %{})
+    |> Map.delete(:current_subject)
+    |> Map.put(:commit_timestamp, commit_timestamp)
   end
 
   # Handle accounts specially
@@ -111,35 +116,65 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     %{state | flush_buffer: %{}, last_flushed_lsn: last_lsn}
   end
 
-  defp buffer(state, lsn, op, table, account_id, old_data, data) do
-    # Decode the subject JSON string if present
-    subject =
-      case Map.get(state, :current_subject) do
-        nil ->
-          nil
-
-        json_string ->
-          case JSON.decode(json_string) do
-            {:ok, decoded} -> decoded
-            {:error, _} -> nil
-          end
-      end
-
-    flush_buffer =
-      state.flush_buffer
-      |> Map.put_new(lsn, %{
-        lsn: lsn,
-        op: op,
-        table: table,
-        account_id: account_id,
-        old_data: old_data,
-        data: data,
-        subject: subject,
-        vsn: @vsn
-      })
-
-    %{state | flush_buffer: flush_buffer}
+  defp buffer(
+         %{flush_buffer: flush_buffer} = state,
+         lsn,
+         _op,
+         _table,
+         _account_id,
+         _old_data,
+         _data
+       )
+       when is_map_key(flush_buffer, lsn) do
+    state
   end
+
+  defp buffer(
+         %{
+           flush_buffer: flush_buffer,
+           commit_timestamp: commit_timestamp,
+           seq_start: seq_start,
+           tenant_offsets: tenant_offsets
+         } = state,
+         lsn,
+         op,
+         table,
+         account_id,
+         old_data,
+         data
+       ) do
+    offset = Map.get(tenant_offsets, account_id, 0)
+
+    entry = %{
+      event_id: EventId.build_change_log(seq_start, offset),
+      timestamp: commit_timestamp,
+      lsn: lsn,
+      op: op,
+      table: table,
+      account_id: account_id,
+      old_data: old_data,
+      data: data,
+      subject: decode_subject(state),
+      vsn: @vsn
+    }
+
+    %{
+      state
+      | flush_buffer: Map.put(flush_buffer, lsn, entry),
+        tenant_offsets: Map.put(tenant_offsets, account_id, offset + 1)
+    }
+  end
+
+  defp decode_subject(%{current_subject: nil}), do: nil
+
+  defp decode_subject(%{current_subject: json_string}) when is_binary(json_string) do
+    case JSON.decode(json_string) do
+      {:ok, decoded} -> decoded
+      {:error, _} -> nil
+    end
+  end
+
+  defp decode_subject(_state), do: nil
 
   # Field redactions - introspects schema to redact sensitive fields
 
@@ -179,6 +214,15 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
         on_conflict: :nothing,
         conflict_target: [:lsn]
       )
+    end
+
+    # Read seq_start from Postgres so we always use a consistent clock source.
+    def fetch_seq_start do
+      {:ok, %{rows: [[seq_start]]}} =
+        Safe.unscoped()
+        |> Safe.query("SELECT (EXTRACT(EPOCH FROM clock_timestamp()) * 1000000)::bigint", [])
+
+      seq_start
     end
   end
 end
