@@ -10,6 +10,7 @@ defaults:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+  security-events: "write" # trivy SARIF upload from setup-mise
 
 env:
   RUSTFLAGS: "--cfg tokio_unstable --deny warnings"
