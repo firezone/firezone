@@ -63,6 +63,9 @@ defmodule PortalAPI.Router do
     resources "/client_sessions", ClientSessionController, only: [:index, :show]
     resources "/gateway_sessions", GatewaySessionController, only: [:index, :show]
 
+    get "/change_logs", ChangeLogController, :index
+    get "/change_logs/:event_id", ChangeLogController, :show
+
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 
