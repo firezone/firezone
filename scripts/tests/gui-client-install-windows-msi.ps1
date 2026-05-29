@@ -56,9 +56,15 @@ if (-not $pfn) {
 }
 
 $gui = "C:\Program Files\Firezone\Firezone.exe"
+$logDir = "$env:LOCALAPPDATA\dev.firezone.client\data\logs"
 
-Write-Output "==> Launching Firezone.exe debug single-instance..."
-$proc = Start-Process -FilePath $gui -ArgumentList "debug", "single-instance" -PassThru
+# Raise our crates to debug so the startup breadcrumbs (launch lock,
+# IPC connect) land in the log; if the GUI bails before binding its
+# pipe, the tail shows how far it got. Inherited by Start-Process.
+$env:RUST_LOG = "info,firezone_gui_client=debug"
+Write-Output "==> Launching Firezone.exe..."
+$proc = Start-Process -FilePath $gui `
+    -ArgumentList "--no-deep-links", "--no-elevation-check", "--no-error-dialog" -PassThru
 try {
     Write-Output "==> Verifying Firezone.exe has package identity attached..."
     & "$scriptDir\gui-package-identity-windows.ps1" -ProcessId $proc.Id
@@ -71,7 +77,19 @@ try {
     Write-Output "==> Verifying GUI pipe denies non-Firezone-signed callers..."
     & "$scriptDir\expect-pipe-denied-lua-windows.ps1" -PipePath '\\.\pipe\dev.firezone.client_gui.ipc'
     Write-Output "==> GUI pipe DACL pinned to package SID"
+
+    # The GUI must still be running. If it had failed to connect to the
+    # tunnel it would have bailed out (non-zero, dialog suppressed)
+    # before now.
+    if ($proc.HasExited) {
+        Write-Error "Firezone.exe exited prematurely with code $($proc.ExitCode)"
+        exit 1
+    }
+    Write-Output "==> Firezone.exe still running after all checks"
 }
 finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    Write-Output "==> GUI log tail:"
+    Get-ChildItem $logDir -Filter *.log -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Tail 60
 }

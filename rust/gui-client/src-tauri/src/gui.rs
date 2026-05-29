@@ -260,6 +260,9 @@ pub fn run(
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
+    #[cfg(not(debug_assertions))]
+    crate::package_identity::ensure_package_identity()?;
+
     let (gui_ipc, _launch_lock) = match rt.block_on(establish_single_instance())? {
         SingleInstance::First { server, lock } => (server, lock),
         SingleInstance::SecondHandedOff => bail!(AlreadyRunning),

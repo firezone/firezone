@@ -187,6 +187,10 @@ fn try_main(
     match gui::run(rt, config, mdm_settings, advanced_settings, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
+            if cli.no_error_dialog {
+                return Err(anyhow);
+            }
+
             if anyhow
                 .chain()
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
@@ -199,6 +203,11 @@ fn try_main(
             }
 
             if anyhow.any_is::<gui::AlreadyRunning>() {
+                return Ok(());
+            }
+
+            if anyhow.any_is::<firezone_gui_client::package_identity::RestartRequired>() {
+                dialog::info("Firezone finished first-time setup. Please start Firezone again.")?;
                 return Ok(());
             }
 
@@ -293,6 +302,10 @@ struct Cli {
     /// For headless CI, disable deep links.
     #[arg(long, hide = true)]
     no_deep_links: bool,
+    /// For headless CI, log errors instead of showing a blocking
+    /// dialog (which would hang with no one to dismiss it).
+    #[arg(long, hide = true)]
+    no_error_dialog: bool,
     /// For headless CI, disable the elevation check.
     #[arg(long, hide = true)]
     no_elevation_check: bool,

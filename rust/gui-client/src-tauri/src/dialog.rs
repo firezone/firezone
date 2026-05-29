@@ -12,3 +12,15 @@ pub fn error(body: &str) -> Result<()> {
 
     Ok(())
 }
+
+pub fn info(body: &str) -> Result<()> {
+    DialogBuilder::message()
+        .set_title("Firezone")
+        .set_text(body)
+        .set_level(MessageLevel::Info)
+        .alert()
+        .show()
+        .context("Failed to show info dialog")?;
+
+    Ok(())
+}
