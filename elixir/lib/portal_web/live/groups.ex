@@ -334,7 +334,7 @@ defmodule PortalWeb.Groups do
 
     case result do
       :ok ->
-        resources = Database.list_resources_for_group(group, socket.assigns.subject)
+        resources = Database.list_resources_for_group(group, socket.assigns.subject, :primary)
 
         {:noreply,
          socket
@@ -1260,7 +1260,11 @@ defmodule PortalWeb.Groups do
 
   defp refresh_group_resources(socket, ui_state) do
     resources =
-      Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
+      Database.list_resources_for_group(
+        socket.assigns.selected_group,
+        socket.assigns.subject,
+        :primary
+      )
 
     merge_state(socket, :group_resources, Keyword.put(ui_state, :resources, resources))
   end
@@ -1726,7 +1730,7 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def list_resources_for_group(group, subject) do
+    def list_resources_for_group(group, subject, repo \\ :replica) do
       from(r in Portal.Resource, as: :resources)
       |> join(:inner, [resources: r], p in Portal.Policy,
         on: p.resource_id == r.id and p.group_id == ^group.id,
@@ -1738,7 +1742,7 @@ defmodule PortalWeb.Groups do
         policy_disabled_at: p.disabled_at
       })
       |> order_by([policies: p, resources: r], desc: is_nil(p.disabled_at), asc: r.name)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject, repo)
       |> Safe.all()
       |> case do
         {:error, _} -> []
