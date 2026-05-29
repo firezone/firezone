@@ -10,10 +10,10 @@ defmodule Portal.ChangeLog do
     field :event_id, Portal.Types.EventId, primary_key: true
     field :timestamp, :utc_datetime_usec
     field :lsn, :integer
-    field :table, :string
-    field :op, Ecto.Enum, values: [:insert, :update, :delete]
-    field :old_data, :map
-    field :data, :map
+    field :object, :string
+    field :operation, Ecto.Enum, values: [:insert, :update, :delete]
+    field :before, :map
+    field :after, :map
     field :subject, :map
     field :vsn, :integer
   end

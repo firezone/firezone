@@ -29,17 +29,17 @@ defmodule PortalAPI.Schemas.ChangeLog do
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the change was committed."
         },
-        kind: %Schema{
+        object: %Schema{
           type: :string,
           description: "The kind of object that was changed.",
           example: "actors"
         },
-        op: %Schema{
+        operation: %Schema{
           type: :string,
           enum: ["insert", "update", "delete"],
           description: "The kind of change that was applied."
         },
-        old_data: %Schema{
+        before: %Schema{
           type: :object,
           nullable: true,
           description: """
@@ -49,7 +49,7 @@ defmodule PortalAPI.Schemas.ChangeLog do
           """,
           additionalProperties: true
         },
-        data: %Schema{
+        after: %Schema{
           type: :object,
           nullable: true,
           description: """
@@ -61,18 +61,18 @@ defmodule PortalAPI.Schemas.ChangeLog do
         },
         subject: Schemas.Subject
       },
-      required: [:event_id, :timestamp, :kind, :op],
+      required: [:event_id, :timestamp, :object, :operation],
       example: %{
         "event_id" => "c00060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
-        "kind" => "actors",
-        "op" => "update",
-        "old_data" => %{
+        "object" => "actors",
+        "operation" => "update",
+        "before" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "name" => "Jane Doe",
           "email" => "jane@example.com"
         },
-        "data" => %{
+        "after" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "name" => "Jane Smith",
           "email" => "jane.smith@example.com"
@@ -136,10 +136,10 @@ defmodule PortalAPI.Schemas.ChangeLog do
           %{
             "event_id" => "c00060db0c2c8eb400000000",
             "timestamp" => "2026-05-26T12:34:56.789Z",
-            "kind" => "actors",
-            "op" => "update",
-            "old_data" => %{"name" => "Jane Doe"},
-            "data" => %{"name" => "Jane Smith"},
+            "object" => "actors",
+            "operation" => "update",
+            "before" => %{"name" => "Jane Doe"},
+            "after" => %{"name" => "Jane Smith"},
             "subject" => nil
           }
         ],

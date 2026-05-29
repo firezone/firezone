@@ -512,10 +512,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
       change_log =
         change_log_fixture(
           account: account,
-          op: :update,
-          table: "actors",
-          old_data: %{"name" => "Before"},
-          data: %{"name" => "After"},
+          operation: :update,
+          object: "actors",
+          before: %{"name" => "Before"},
+          after: %{"name" => "After"},
           subject: %{
             "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "actor_name" => "Admin",
@@ -538,10 +538,10 @@ defmodule PortalAPI.ChangeLogControllerTest do
       assert entry == %{
                "event_id" => change_log.event_id,
                "timestamp" => DateTime.to_iso8601(change_log.timestamp),
-               "kind" => "actors",
-               "op" => "update",
-               "old_data" => %{"name" => "Before"},
-               "data" => %{"name" => "After"},
+               "object" => "actors",
+               "operation" => "update",
+               "before" => %{"name" => "Before"},
+               "after" => %{"name" => "After"},
                "subject" => %{
                  "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
                  "actor_name" => "Admin",
@@ -572,8 +572,8 @@ defmodule PortalAPI.ChangeLogControllerTest do
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["event_id"] == change_log.event_id
-      assert data["kind"] == change_log.table
-      assert data["op"] == Atom.to_string(change_log.op)
+      assert data["object"] == change_log.object
+      assert data["operation"] == Atom.to_string(change_log.operation)
       refute Map.has_key?(data, "lsn")
       refute Map.has_key?(data, "vsn")
       refute Map.has_key?(data, "table")

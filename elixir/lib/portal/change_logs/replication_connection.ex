@@ -149,11 +149,11 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
       event_id: EventId.build_change_log(seq_start, offset),
       timestamp: commit_timestamp,
       lsn: lsn,
-      op: op,
-      table: table,
+      operation: op,
+      object: table,
       account_id: account_id,
-      old_data: old_data,
-      data: data,
+      before: old_data,
+      after: data,
       subject: decode_subject(state),
       vsn: @vsn
     }
