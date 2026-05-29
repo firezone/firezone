@@ -59,6 +59,7 @@ defmodule PortalWeb.Router do
       pipe_through [:public]
 
       live "/components", Dev.ComponentsLive
+      live "/colors", Dev.ColorsLive
     end
 
     scope "/error", PortalWeb do

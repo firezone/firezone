@@ -4,6 +4,20 @@
 @import "./scrollbar.css";
 
 @theme {
+  /* BRAND */
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-hover);
+  --color-brand-light: var(--brand-secondary);
+  --color-brand-subtle: var(--brand-tertiary);
+  --color-brand-muted: var(--brand-muted);
+
+  /* ACCENT */
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-hover);
+  --color-accent-light: var(--accent-secondary);
+  --color-accent-subtle: var(--accent-tertiary);
+  --color-accent-muted: var(--accent-muted);
+
   /* TEXT */
   --color-heading: var(--text-primary);
   --color-body: var(--text-secondary);
@@ -22,13 +36,6 @@
   --color-border-strong: var(--border-strong);
   --color-border-emphasis: var(--border-emphasis);
   --color-border-focus: var(--control-focus);
-
-  /* BRAND */
-  --color-brand: var(--brand);
-  --color-brand-dark: var(--brand-hover);
-  --color-brand-light: var(--brand-secondary);
-  --color-brand-subtle: var(--brand-tertiary);
-  --color-brand-muted: var(--brand-muted);
 
   /* STATUS */
   --color-success: var(--success);
@@ -143,6 +150,20 @@ html {
 }
 
 :root {
+  /* Brand — orange (heat-wave-500 / heat-wave-600) */
+  --brand: oklch(71.74% 0.1920 48.75);
+  --brand-secondary: oklch(77.69% 0.1540 56.87);
+  --brand-tertiary: oklch(96.59% 0.0220 63.21);
+  --brand-muted: oklch(98.56% 0.0084 56.32);
+  --brand-hover: oklch(58.23% 0.1574 48.48);
+
+  /* Accent - purple */
+  --accent: oklch(48.06% 0.2976 276);
+  --accent-secondary: oklch(81.30% 0.2950 276);
+  --accent-tertiary: oklch(91.90% 0.1930 276);
+  --accent-muted: oklch(97.90% 0.1930 276);
+  --accent-hover: oklch(0.3098 0.1931 276);
+
   /* Surfaces */
   --canvas: oklch(95.73% 0.0074 260.73);
   --surface: oklch(100% 0 0);
@@ -161,12 +182,6 @@ html {
   --text-muted: oklch(75.17% 0.0190 245.46);
   --text-inverse: oklch(98.42% 0.0034 247.86);
 
-  /* Brand — orange (heat-wave-500 / heat-wave-600) */
-  --brand: oklch(71.74% 0.1920 48.75);
-  --brand-secondary: oklch(77.69% 0.1540 56.87);
-  --brand-tertiary: oklch(96.59% 0.0220 63.21);
-  --brand-muted: oklch(98.56% 0.0084 56.32);
-  --brand-hover: oklch(58.23% 0.1574 48.48);
 
   /* Status */
   --success: oklch(62.71% 0.1699 149.21);
