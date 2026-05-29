@@ -119,7 +119,8 @@ defmodule PortalAPI.Schemas.ChangeLog do
       Response schema for a page of Change Log entries.
 
       Entries are returned in `event_id` order with the most recent change
-      first. Use the `metadata.next_page` cursor to fetch the following page.
+      first. Each page contains at most 100 entries (50 by default); use the
+      `metadata.next_page` cursor to fetch the following page.
       """,
       type: :object,
       properties: %{

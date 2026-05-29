@@ -3,6 +3,7 @@ defmodule PortalAPI.ChangeLogController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias Portal.Types.EventId
   alias __MODULE__.Database
 
   # Default window when `begin` is omitted from a list request.
@@ -36,7 +37,11 @@ defmodule PortalAPI.ChangeLogController do
     parameters: [
       limit: [
         in: :query,
-        description: "Maximum number of Change Logs to return.",
+        description: """
+        Maximum number of Change Logs to return per page. Defaults to 50.
+        Values greater than 100 are capped to 100, and values less than 1
+        are raised to 1.
+        """,
         type: :integer,
         example: 50
       ],
@@ -186,15 +191,12 @@ defmodule PortalAPI.ChangeLogController do
     {:error, :bad_request, reason: "`#{name}` must be a string"}
   end
 
-  defp parse_event_id(<<_::binary-size(24)>> = event_id) do
-    case Base.decode16(event_id, case: :mixed) do
-      {:ok, _} -> {:ok, String.downcase(event_id)}
+  defp parse_event_id(value) do
+    case EventId.parse(value) do
+      {:ok, event_id} -> {:ok, event_id}
       :error -> {:error, :bad_request, reason: "`event_id` must be a 24-char hex string"}
     end
   end
-
-  defp parse_event_id(_value),
-    do: {:error, :bad_request, reason: "`event_id` must be a 24-char hex string"}
 
   defp validate_window(begin_at, end_at) do
     if DateTime.compare(begin_at, end_at) in [:lt, :eq] do

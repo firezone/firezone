@@ -37,6 +37,29 @@ defmodule Portal.Types.EventId do
   def load(_), do: :error
 
   @doc """
+  Validate and normalize the canonical public representation: a 24-char
+  hexadecimal string. Returns the lowercased form, or `:error` for anything
+  that is not exactly 24 hex characters.
+
+  Stricter than `cast/1`, which accepts any 24-char binary without checking
+  that it is hex and also accepts the 12-byte on-disk form. Use this to
+  validate untrusted input such as path parameters.
+  """
+  def parse(<<_::binary-size(24)>> = hex) do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, _} -> {:ok, String.downcase(hex)}
+      :error -> :error
+    end
+  end
+
+  def parse(_), do: :error
+
+  @doc """
+  Returns `true` if the value is a valid 24-char hex public representation.
+  """
+  def valid?(value), do: match?({:ok, _}, parse(value))
+
+  @doc """
   Build a change_log event_id from seq_start (52 bits) and tenant_offset (40 bits).
 
   Returns the canonical 24-char lowercase hex string. Raises FunctionClauseError

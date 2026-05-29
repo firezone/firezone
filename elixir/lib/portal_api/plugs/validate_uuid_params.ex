@@ -1,6 +1,8 @@
 defmodule PortalAPI.Plugs.ValidateUUIDParams do
   import Plug.Conn
 
+  alias Portal.Types.EventId
+
   def init(opts), do: opts
 
   def call(conn, _opts) do
@@ -23,15 +25,9 @@ defmodule PortalAPI.Plugs.ValidateUUIDParams do
   defp valid_id?(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
       {:ok, _} -> true
-      :error -> event_id?(value)
+      :error -> EventId.valid?(value)
     end
   end
 
   defp valid_id?(_), do: false
-
-  defp event_id?(<<_::binary-size(24)>> = value) do
-    match?({:ok, _}, Base.decode16(value, case: :mixed))
-  end
-
-  defp event_id?(_), do: false
 end

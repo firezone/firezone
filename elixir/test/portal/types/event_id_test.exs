@@ -148,6 +148,49 @@ defmodule Portal.Types.EventIdTest do
     end
   end
 
+  describe "parse/1" do
+    test "normalizes a valid 24-char hex string to lowercase" do
+      assert {:ok, "c00060db0c2c8eb400000000"} =
+               EventId.parse("C00060DB0C2C8EB400000000")
+    end
+
+    test "rejects a 24-char string that is not valid hex" do
+      assert :error = EventId.parse(String.duplicate("z", 24))
+    end
+
+    test "rejects the 12-byte on-disk binary form" do
+      bin = <<0xC0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>
+      assert :error = EventId.parse(bin)
+    end
+
+    test "rejects binaries of any other length" do
+      assert :error = EventId.parse("")
+      assert :error = EventId.parse(String.duplicate("a", 23))
+      assert :error = EventId.parse(String.duplicate("a", 25))
+    end
+
+    test "rejects nil and non-binary inputs" do
+      assert :error = EventId.parse(nil)
+      assert :error = EventId.parse(123)
+      assert :error = EventId.parse(%{})
+    end
+  end
+
+  describe "valid?/1" do
+    test "returns true for a valid 24-char hex string" do
+      assert EventId.valid?(EventId.build_change_log(1_234, 5))
+      assert EventId.valid?("C00060DB0C2C8EB400000000")
+    end
+
+    test "returns false for non-hex, wrong-length, and non-binary inputs" do
+      refute EventId.valid?(String.duplicate("z", 24))
+      refute EventId.valid?(String.duplicate("a", 23))
+      refute EventId.valid?(<<0xC0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>)
+      refute EventId.valid?(nil)
+      refute EventId.valid?(123)
+    end
+  end
+
   describe "round-trip" do
     test "cast → dump → load is lossless" do
       original = EventId.build_change_log(987_654_321, 17)
