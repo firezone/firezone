@@ -12,9 +12,10 @@ defmodule Portal.OutboundEmailDelivery do
   @timestamps_opts [type: :utc_datetime_usec]
 
   schema "outbound_email_deliveries" do
-    belongs_to(:account, Portal.Account, primary_key: true)
     field(:message_id, :string, primary_key: true)
     field(:email, :string, primary_key: true)
+
+    belongs_to(:account, Portal.Account)
 
     belongs_to(:outbound_email, Portal.OutboundEmail,
       define_field: false,

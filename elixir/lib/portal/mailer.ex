@@ -16,7 +16,13 @@ defmodule Portal.Mailer do
     {rate_limit_interval, config} = Keyword.pop(config, :rate_limit_interval, :timer.minutes(2))
 
     RateLimiter.rate_limit(key, rate_limit, rate_limit_interval, fn ->
-      deliver(email, config)
+      # Tracking depends on the message id ACS returns and the ACS Event Grid
+      # delivery webhooks; revert by pointing the adapter env var elsewhere.
+      if effective_adapter(config) == Swoosh.Adapters.AzureCommunicationServices do
+        deliver_and_track(email, config)
+      else
+        deliver(email, config)
+      end
     end)
     |> case do
       {:ok, result} -> result
@@ -39,6 +45,22 @@ defmodule Portal.Mailer do
     metadata = %{email: email, config: config, mailer: __MODULE__}
 
     deliver_with_mailer_config(email, opts, metadata)
+  end
+
+  @doc """
+  Delivers an email synchronously and, on success, inserts a tracked row when
+  the adapter returns a message id (ACS). Used by the primary mailer call sites
+  so delivery report webhooks can update those messages too.
+  """
+  def deliver_and_track(email, config \\ []) do
+    case deliver(email, config) do
+      {:ok, result} = ok ->
+        maybe_insert_tracked(email, result)
+        ok
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   def deliver_secondary(email, config \\ []) do
@@ -151,7 +173,7 @@ defmodule Portal.Mailer do
   `{:ok, :suppressed}` if all recipients are suppressed.
   """
   def enqueue(%Email{} = email) do
-    account_id = require_account_id!(email)
+    account_id = email.private[:account_id]
     request = serialize(email)
 
     case drop_suppressed_recipients(request) do
@@ -174,11 +196,43 @@ defmodule Portal.Mailer do
     Database.insert_tracked(account_id, message_id, subject, recipients)
   end
 
-  defp require_account_id!(%Email{} = email) do
-    case email.private[:account_id] do
-      account_id when is_binary(account_id) -> account_id
-      _ -> raise ArgumentError, "call Portal.Mailer.with_account_id/2 before enqueue/1"
+  defp maybe_insert_tracked(%Email{} = email, result) do
+    with message_id when is_binary(message_id) <- result_message_id(result),
+         [_ | _] = recipients <- email_addresses(email) do
+      account_id = email.private[:account_id]
+
+      case Database.insert_tracked(account_id, message_id, email.subject, recipients) do
+        {:ok, _entry} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Failed to persist tracked outbound email; email was already sent",
+            account_id: account_id,
+            message_id: message_id,
+            reason: inspect(reason)
+          )
+
+          :ok
+      end
+    else
+      _ -> :ok
     end
+  end
+
+  defp result_message_id(result) when is_map(result), do: result[:id] || result["id"]
+  defp result_message_id(_), do: nil
+
+  defp effective_adapter(config) do
+    Mailer.parse_config(:portal, __MODULE__, [], config)[:adapter]
+  end
+
+  defp email_addresses(%Email{} = email) do
+    (List.wrap(email.to) ++ List.wrap(email.cc) ++ List.wrap(email.bcc))
+    |> Enum.map(fn
+      {_, addr} -> addr
+      addr when is_binary(addr) -> addr
+    end)
+    |> Enum.uniq()
   end
 
   defp serialize(%Email{} = email) do
