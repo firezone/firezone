@@ -18,7 +18,7 @@ defmodule PortalWeb.PageComponents do
     <div
       id={@id}
       class={[
-        "mb-4 md:mb-6 bg-[var(--surface)] mx-2 md:mx-5 border border-[var(--border)] px-4 md:px-6",
+        "mb-4 md:mb-6 bg-surface mx-2 md:mx-5 border border-border px-4 md:px-6",
         @content != [] && "pb-6"
       ]}
     >
@@ -75,7 +75,7 @@ defmodule PortalWeb.PageComponents do
   ## Examples
 
       <.page_header>
-        <:icon><.icon name="ri-server-line" class="w-8 h-8 text-[var(--brand)]" /></:icon>
+        <:icon><.icon name="ri-server-line" class="w-8 h-8 text-brand" /></:icon>
         <:title>Resources</:title>
         <:description>Network endpoints accessible through Firezone.</:description>
         <:action>
@@ -97,8 +97,8 @@ defmodule PortalWeb.PageComponents do
 
   def page_header(assigns) do
     ~H"""
-    <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-[var(--border)] bg-[var(--surface)]">
-      <div class="absolute inset-x-0 top-0 h-[2px] bg-[var(--brand)] opacity-50"></div>
+    <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-border bg-surface">
+      <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
       <div class="flex items-start gap-5">
         <div :if={not Enum.empty?(@icon)} class="hidden md:block shrink-0 mt-0.5">
           {render_slot(@icon)}
@@ -106,12 +106,12 @@ defmodule PortalWeb.PageComponents do
         <div class="flex-1 min-w-0">
           <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div class="min-w-0">
-              <h1 class="text-base font-semibold text-[var(--text-primary)]">
+              <h1 class="text-base font-semibold text-heading">
                 {render_slot(@title)}
               </h1>
               <p
                 :if={not Enum.empty?(@description)}
-                class="hidden md:block mt-0.5 text-sm text-[var(--text-secondary)]"
+                class="hidden md:block mt-0.5 text-sm text-body"
               >
                 {render_slot(@description)}
               </p>

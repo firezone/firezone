@@ -177,8 +177,8 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
         disabled={@disabled}
         class={[
           "w-full text-left px-3 py-2.5 rounded border transition-colors",
-          "bg-[var(--surface-raised)] hover:bg-[var(--surface)]",
-          "border-[var(--border)] hover:border-[var(--border-emphasis)]",
+          "bg-raised hover:bg-surface",
+          "border-border hover:border-border-emphasis",
           (@disabled && "cursor-not-allowed opacity-60") || "cursor-pointer",
           @errors != [] && "border-rose-400"
         ]}
@@ -189,15 +189,15 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
           |> JS.focus(to: "#select-#{@id}-search-input")
         }
       >
-        <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
           {@label}
         </p>
-        <p class="text-sm font-medium text-[var(--text-primary)] truncate">
+        <p class="text-sm font-medium text-heading truncate">
           {if @value_name, do: @value_name, else: @placeholder}
         </p>
         <p
           :if={@card_subtitle != [] and not is_nil(@selected_slot_assigns)}
-          class="font-mono text-xs text-[var(--text-tertiary)] truncate mt-0.5"
+          class="font-mono text-xs text-subtle truncate mt-0.5"
         >
           {render_slot(@card_subtitle, @selected_slot_assigns)}
         </p>

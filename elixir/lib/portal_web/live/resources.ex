@@ -358,7 +358,7 @@ defmodule PortalWeb.Resources do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-server-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-server-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Resources</:title>
         <:description>
@@ -398,12 +398,12 @@ defmodule PortalWeb.Resources do
           <:prepend_rows :if={not is_nil(@internet_resource)}>
             <tr
               class={[
-                "border-b border-[var(--border)] cursor-pointer transition-colors group",
+                "border-b border-border cursor-pointer transition-colors group",
                 "bg-violet-50/60 dark:bg-violet-950/20",
                 if(
                   not is_nil(@selected_resource) and
                     @selected_resource.id == @internet_resource.id,
-                  do: "border-l-4 border-l-[var(--brand)]",
+                  do: "border-l-4 border-l-brand",
                   else: "hover:bg-violet-100/60 dark:hover:bg-violet-900/20"
                 )
               ]}
@@ -413,14 +413,14 @@ defmodule PortalWeb.Resources do
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
                   <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
-                  <div class="font-semibold transition-colors text-[var(--text-primary)] group-hover:text-[var(--brand)]">
+                  <div class="font-semibold transition-colors text-heading group-hover:text-brand">
                     Internet Resource
                   </div>
                   <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-200/70 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
                     system
                   </span>
                 </div>
-                <div class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <div class="text-xs text-subtle mt-0.5">
                   Network traffic outside defined resources
                 </div>
               </td>
@@ -430,7 +430,7 @@ defmodule PortalWeb.Resources do
                 </span>
               </td>
               <td class="px-4 py-3 hidden lg:table-cell">
-                <span class="font-mono text-xs text-[var(--text-primary)]">0.0.0.0/0, ::/0</span>
+                <span class="font-mono text-xs text-heading">0.0.0.0/0, ::/0</span>
               </td>
               <td class="px-4 py-3">
                 <% count = Map.get(@resource_policy_counts, @internet_resource.id, 0) %>
@@ -440,18 +440,18 @@ defmodule PortalWeb.Resources do
                     ~p"/#{@account}/policies?policies_filter[resource_id]=#{@internet_resource.id}"
                   }
                 >
-                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-tertiary)] text-[var(--brand)]">
+                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
                     {count}
                   </span>
                 </.link>
                 <span
                   :if={count == 0}
-                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
                 >
                   0
                 </span>
               </td>
-              <td class="px-4 py-3 text-[var(--text-secondary)] text-xs">Internet</td>
+              <td class="px-4 py-3 text-body text-xs">Internet</td>
               <td class="px-4 py-3">
                 <.resource_status_badge resource={@internet_resource} presence_tick={@presence_tick} />
               </td>
@@ -464,14 +464,14 @@ defmodule PortalWeb.Resources do
             </.link>
           </:notice>
           <:col :let={resource} field={{:resources, :name}} label="Name">
-            <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+            <div class="font-medium text-heading group-hover:text-brand transition-colors">
               {resource.name}
             </div>
             <div class={[
               "text-xs mt-0.5 truncate max-w-xs",
               if(resource.address_description,
-                do: "text-[var(--text-tertiary)]",
-                else: "text-[var(--text-muted)] italic"
+                do: "text-subtle",
+                else: "text-muted italic"
               )
             ]}>
               {resource.address_description || "No Address Description"}
@@ -490,19 +490,19 @@ defmodule PortalWeb.Resources do
           >
             <span
               :if={resource.type not in [:internet, :static_device_pool]}
-              class="font-mono text-xs text-[var(--text-primary)]"
+              class="font-mono text-xs text-heading"
             >
               {resource.address}
             </span>
             <span
               :if={resource.type == :internet}
-              class="font-mono text-xs text-[var(--text-primary)]"
+              class="font-mono text-xs text-heading"
             >
               0.0.0.0/0, ::/0
             </span>
             <span
               :if={resource.type == :static_device_pool}
-              class="font-mono text-xs italic text-[var(--text-tertiary)]"
+              class="font-mono text-xs italic text-subtle"
             >
               Multiple Addresses
             </span>
@@ -513,13 +513,13 @@ defmodule PortalWeb.Resources do
               :if={count > 0}
               navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
             >
-              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-tertiary)] text-[var(--brand)]">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
                 {count}
               </span>
             </.link>
             <span
               :if={count == 0}
-              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
             >
               0
             </span>
@@ -528,11 +528,11 @@ defmodule PortalWeb.Resources do
             <.link
               :if={resource.site}
               navigate={~p"/#{@account}/sites/#{resource.site}"}
-              class="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              class="text-xs text-body hover:text-heading transition-colors"
             >
               {resource.site.name}
             </.link>
-            <span :if={is_nil(resource.site)} class="text-[var(--text-muted)] italic">
+            <span :if={is_nil(resource.site)} class="text-muted italic">
               {nil_site_label(resource)}
             </span>
           </:col>
@@ -546,18 +546,18 @@ defmodule PortalWeb.Resources do
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-server-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-server-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No resources yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No resources yet</p>
+                <p class="text-xs text-subtle mt-0.5">
                   No resources have been added yet.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/resources/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
               </.link>

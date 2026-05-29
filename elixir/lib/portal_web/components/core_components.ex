@@ -293,14 +293,14 @@ defmodule PortalWeb.CoreComponents do
       popover={if @style == "toast", do: "manual", else: nil}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @base_kind == :success && "text-[var(--status-active)] border-[var(--status-active)]/30",
-        @base_kind == :info && "text-[var(--status-info)] border-[var(--status-info)]/30",
-        @base_kind == :warning && "text-[var(--status-warn)] border-[var(--status-warn)]/30",
-        @base_kind == :error && "text-[var(--status-error)] border-[var(--status-error)]/30",
-        @style == "inline" && @base_kind == :success && "bg-[var(--status-active-bg)]",
-        @style == "inline" && @base_kind == :info && "bg-[var(--status-info-bg)]",
-        @style == "inline" && @base_kind == :warning && "bg-[var(--status-warn-bg)]",
-        @style == "inline" && @base_kind == :error && "bg-[var(--status-error-bg)]",
+        @base_kind == :success && "text-success border-success/30",
+        @base_kind == :info && "text-info border-info/30",
+        @base_kind == :warning && "text-warning border-warning/30",
+        @base_kind == :error && "text-error border-error/30",
+        @style == "inline" && @base_kind == :success && "bg-success-light",
+        @style == "inline" && @base_kind == :info && "bg-info-light",
+        @style == "inline" && @base_kind == :warning && "bg-warning-light",
+        @style == "inline" && @base_kind == :error && "bg-error-light",
         @style == "toast" && @base_kind == :success && "bg-[var(--toast-bg-success)]",
         @style == "toast" && @base_kind == :info && "bg-[var(--toast-bg-info)]",
         @style == "toast" && @base_kind == :warning && "bg-[var(--toast-bg-warn)]",
@@ -382,7 +382,7 @@ defmodule PortalWeb.CoreComponents do
     ~H"""
     <label
       for={@for}
-      class={["block text-xs font-semibold text-[var(--text-secondary)] mb-1.5", @class]}
+      class={["block text-xs font-semibold text-body mb-1.5", @class]}
     >
       {render_slot(@inner_block)}
     </label>
@@ -402,7 +402,7 @@ defmodule PortalWeb.CoreComponents do
     <p
       class={[
         "flex items-center gap-2 text-sm leading-6",
-        "text-[var(--status-error)]",
+        "text-error",
         (@inline && "ml-2") || "mt-2 w-full",
         @class
       ]}
@@ -604,8 +604,8 @@ defmodule PortalWeb.CoreComponents do
       "success" => "bg-green-100 text-green-800",
       "danger" => "bg-red-100 text-red-800",
       "warning" => "bg-yellow-100 text-yellow-800",
-      "info" => "bg-[var(--badge-dns-bg)] text-[var(--badge-dns-text)]",
-      "primary" => "bg-[var(--brand-muted)] text-[var(--brand)]",
+      "info" => "bg-badge-dns text-badge-dns-text",
+      "primary" => "bg-brand-muted text-brand",
       "accent" => "bg-accent-200 text-accent-800",
       "neutral" => "bg-neutral-100 text-neutral-800"
     }
@@ -812,10 +812,10 @@ defmodule PortalWeb.CoreComponents do
   attr :close_event, :string, required: true
   attr :button_class, :any,
     default:
-      "flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+      "flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
   attr :menu_class, :any,
     default:
-      "absolute right-0 top-full mt-1 w-44 rounded-md border border-[var(--border)] bg-[var(--surface-overlay)] shadow-lg z-10 py-1"
+      "absolute right-0 top-full mt-1 w-44 rounded-md border border-border bg-elevated shadow-lg z-10 py-1"
   attr :icon_class, :string, default: "w-4 h-4"
   attr :trigger_icon, :string, default: "ri-more-2-line"
   attr :rest, :global
@@ -1097,7 +1097,7 @@ defmodule PortalWeb.CoreComponents do
               not is_nil(@display_remote_ip_location_lon)
           }
           aria-label="Open remote IP location in Google Maps"
-          class="inline-flex align-middle text-current hover:text-[var(--text-primary)] transition-colors"
+          class="inline-flex align-middle text-current hover:text-heading transition-colors"
           target="_blank"
           title="Open remote IP location in Google Maps"
           rel="noopener noreferrer"
@@ -1287,9 +1287,9 @@ defmodule PortalWeb.CoreComponents do
   defp ping_icon_color(color) do
     case color do
       "info" -> {"bg-accent-500", "bg-accent-400"}
-      "success" -> {"bg-[var(--status-active)]", "bg-green-400"}
-      "warning" -> {"bg-[var(--status-warn)]", "bg-amber-400"}
-      "danger" -> {"bg-[var(--status-danger)]", "bg-red-400"}
+      "success" -> {"bg-success", "bg-green-400"}
+      "warning" -> {"bg-warning", "bg-amber-400"}
+      "danger" -> {"bg-danger", "bg-red-400"}
     end
   end
 

@@ -77,14 +77,14 @@ defmodule PortalWeb.SignIn.Email do
     <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
     <.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
 
-    <h1 class="text-xl font-semibold text-[var(--text-primary)] mb-2">
+    <h1 class="text-xl font-semibold text-heading mb-2">
       Check your email
     </h1>
-    <p :if={@pending_identity?} class="text-sm text-[var(--text-secondary)] mb-6">
+    <p :if={@pending_identity?} class="text-sm text-body mb-6">
       A verification code has been sent to your email address.
     </p>
-    <p :if={!@pending_identity?} class="text-sm text-[var(--text-secondary)] mb-6">
-      If <strong class="text-[var(--text-primary)]">{@email}</strong>
+    <p :if={!@pending_identity?} class="text-sm text-body mb-6">
+      If <strong class="text-heading">{@email}</strong>
       is registered, a sign-in code has been sent.
     </p>
 
@@ -117,14 +117,14 @@ defmodule PortalWeb.SignIn.Email do
           maxlength="1"
           inputmode="text"
           autocomplete="off"
-          class="w-12 h-14 text-center text-xl font-semibold rounded-md border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-2 focus:ring-[var(--control-focus)]/30 transition-colors uppercase"
+          class="w-12 h-14 text-center text-xl font-semibold rounded-md border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-2 focus:ring-border-focus/30 transition-colors uppercase"
         />
         <input type="hidden" name="secret" id="secret" />
       </div>
 
       <button
         type="submit"
-        class="w-full px-3 py-2.5 rounded-md text-sm font-medium bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
+        class="w-full px-3 py-2.5 rounded-md text-sm font-medium bg-brand text-white hover:bg-brand-dark transition-colors"
       >
         Verify code
       </button>
@@ -133,9 +133,9 @@ defmodule PortalWeb.SignIn.Email do
     <div class={["mt-4 grid gap-2", if(@resend_action, do: "grid-cols-2", else: "grid-cols-1")]}>
       <.link
         href={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
-        class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+        class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
-        <.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        <.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-body" />
         Different method
       </.link>
       <.resend
@@ -181,9 +181,9 @@ defmodule PortalWeb.SignIn.Email do
       <a
         href={~p"/dev/mailbox"}
         target="_blank"
-        class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+        class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
-        <.icon name="ri-mail-open-line" class="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+        <.icon name="ri-mail-open-line" class="w-4 h-4 text-body shrink-0" />
         Open local mailbox
       </a>
       """
@@ -205,9 +205,9 @@ defmodule PortalWeb.SignIn.Email do
       <.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
       <button
         type="submit"
-        class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] transition-colors text-sm font-medium text-[var(--text-primary)]"
+        class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
-        <.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-[var(--text-secondary)]" />
+        <.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-body" />
         Resend email
       </button>
     </.form>

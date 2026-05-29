@@ -796,7 +796,7 @@ defmodule PortalWeb.Groups do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-team-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-team-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Groups</:title>
         <:description>
@@ -840,34 +840,34 @@ defmodule PortalWeb.Groups do
             <div class="flex items-center gap-3">
               <.provider_icon provider={provider_type_from_group(row)} size="md" variant="circle" />
               <div class="min-w-0">
-                <div class="flex items-center gap-1.5 font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="flex items-center gap-1.5 font-medium text-heading group-hover:text-brand transition-colors">
                   <span class="truncate">{row.group.name}</span>
                   <span
                     :if={row.group.entity_type == :org_unit}
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)] shrink-0"
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle shrink-0"
                     title="Organizational Unit"
                   >
                     OU
                   </span>
                 </div>
-                <div class="text-xs text-[var(--text-tertiary)] truncate">
+                <div class="text-xs text-subtle truncate">
                   {directory_display_name(row)}
                 </div>
               </div>
             </div>
           </:col>
           <:col :let={row} field={{:member_counts, :count}} label="Members" class="w-40">
-            <div class="text-sm text-[var(--text-primary)] tabular-nums">
+            <div class="text-sm text-heading tabular-nums">
               <span class="font-medium">{row.member_count}</span>
-              <span class="text-xs text-[var(--text-tertiary)]">users</span>
+              <span class="text-xs text-subtle">users</span>
             </div>
           </:col>
           <:col :let={row} label="Resources" class="w-54">
             <span class={[
               "inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums",
               if((row.policy_count || 0) > 0,
-                do: "bg-[var(--brand-tertiary)] text-[var(--brand)]",
-                else: "bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+                do: "bg-brand-subtle text-brand",
+                else: "bg-neutral-status-light text-subtle"
               )
             ]}>
               {row.policy_count || 0}
@@ -876,18 +876,18 @@ defmodule PortalWeb.Groups do
           <:action :let={_row}></:action>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-team-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-team-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No groups yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No groups yet</p>
+                <p class="text-xs text-subtle mt-0.5">
                   No groups have been created yet.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/groups/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
               </.link>

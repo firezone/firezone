@@ -174,7 +174,7 @@ defmodule PortalWeb.Sites do
     >
       <.page_header>
         <:icon>
-          <.icon name="ri-map-pin-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-map-pin-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Sites</:title>
         <:description>
@@ -192,116 +192,115 @@ defmodule PortalWeb.Sites do
             <:right>Total</:right>
           </.dual_badge>
         </:stats>
-
       </.page_header>
 
       <div class="flex-1 overflow-auto overflow-x-auto">
         <table class="w-full text-sm border-collapse">
-          <thead class="sticky top-0 z-10 bg-[var(--surface-raised)]">
-            <tr class="border-b border-[var(--border-strong)]">
-              <th class="py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+          <thead class="sticky top-0 z-10 bg-raised">
+            <tr class="border-b border-border-strong">
+              <th class="py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Site
               </th>
-              <th class="w-36 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              <th class="w-36 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Gateways
               </th>
-              <th class="w-28 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              <th class="w-28 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Resources
               </th>
-              <th class="w-28 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              <th class="w-28 py-2.5 px-4 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Status
               </th>
             </tr>
           </thead>
           <tbody>
             <%= if @sites_loading? do %>
-              <tr class="border-b border-[var(--border)] border-l-4 border-l-transparent animate-pulse">
+              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
                 <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-[var(--border-strong)] w-36"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-[var(--border)]"></div>
+                  <div class="h-3 rounded bg-border-strong w-36"></div>
+                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-16"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-16"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-10"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-10"></div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-[var(--border-strong)]"></div>
-                    <div class="h-2.5 rounded bg-[var(--border-strong)] w-20"></div>
+                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
+                    <div class="h-2.5 rounded bg-border-strong w-20"></div>
                   </div>
                 </td>
               </tr>
-              <tr class="border-b border-[var(--border)] border-l-4 border-l-transparent animate-pulse">
+              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
                 <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-[var(--border-strong)] w-48"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-[var(--border)]"></div>
+                  <div class="h-3 rounded bg-border-strong w-48"></div>
+                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-12"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-12"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-8"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-8"></div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-[var(--border-strong)]"></div>
-                    <div class="h-2.5 rounded bg-[var(--border-strong)] w-16"></div>
+                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
+                    <div class="h-2.5 rounded bg-border-strong w-16"></div>
                   </div>
                 </td>
               </tr>
-              <tr class="border-b border-[var(--border)] border-l-4 border-l-transparent animate-pulse">
+              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
                 <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-[var(--border-strong)] w-40"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-[var(--border)]"></div>
+                  <div class="h-3 rounded bg-border-strong w-40"></div>
+                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-20"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-20"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-12"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-12"></div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-[var(--border-strong)]"></div>
-                    <div class="h-2.5 rounded bg-[var(--border-strong)] w-24"></div>
+                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
+                    <div class="h-2.5 rounded bg-border-strong w-24"></div>
                   </div>
                 </td>
               </tr>
-              <tr class="border-b border-[var(--border)] border-l-4 border-l-transparent animate-pulse">
+              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
                 <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-[var(--border-strong)] w-32"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-[var(--border)]"></div>
+                  <div class="h-3 rounded bg-border-strong w-32"></div>
+                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-14"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-14"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-10"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-10"></div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-[var(--border-strong)]"></div>
-                    <div class="h-2.5 rounded bg-[var(--border-strong)] w-20"></div>
+                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
+                    <div class="h-2.5 rounded bg-border-strong w-20"></div>
                   </div>
                 </td>
               </tr>
-              <tr class="border-b border-[var(--border)] border-l-4 border-l-transparent animate-pulse">
+              <tr class="border-b border-border border-l-4 border-l-transparent animate-pulse">
                 <td class="px-4 py-3">
-                  <div class="h-3 rounded bg-[var(--border-strong)] w-44"></div>
-                  <div class="mt-1.5 h-2 w-24 rounded bg-[var(--border)]"></div>
+                  <div class="h-3 rounded bg-border-strong w-44"></div>
+                  <div class="mt-1.5 h-2 w-24 rounded bg-border"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-16"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-16"></div>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="h-2.5 rounded bg-[var(--border-strong)] w-8"></div>
+                  <div class="h-2.5 rounded bg-border-strong w-8"></div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-[var(--border-strong)]"></div>
-                    <div class="h-2.5 rounded bg-[var(--border-strong)] w-18"></div>
+                    <div class="w-2 h-2 rounded-full bg-border-strong"></div>
+                    <div class="h-2.5 rounded bg-border-strong w-18"></div>
                   </div>
                 </td>
               </tr>
@@ -309,11 +308,11 @@ defmodule PortalWeb.Sites do
             <tr
               :if={not @sites_loading? and @internet_site}
               class={[
-                "border-b border-[var(--border)] cursor-pointer transition-colors group border-l-4",
+                "border-b border-border cursor-pointer transition-colors group border-l-4",
                 if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,
-                  do: "bg-[var(--brand-muted)] border-l-[var(--brand)]",
+                  do: "bg-brand-muted border-l-brand",
                   else:
-                    "hover:bg-[var(--surface-raised)] border-l-transparent bg-violet-50/60 dark:bg-violet-950/20"
+                    "hover:bg-raised border-l-transparent bg-violet-50/60 dark:bg-violet-950/20"
                 )
               ]}
               phx-click="select_site"
@@ -325,26 +324,26 @@ defmodule PortalWeb.Sites do
                   <div class={[
                     "font-medium transition-colors",
                     if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,
-                      do: "text-[var(--brand)]",
-                      else: "text-[var(--text-primary)] group-hover:text-[var(--brand)]"
+                      do: "text-brand",
+                      else: "text-heading group-hover:text-brand"
                     )
                   ]}>
                     Internet
                   </div>
                   <.badge type="accent" size="xs">system</.badge>
                 </div>
-                <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {@internet_site.id}
                 </div>
               </td>
               <td class="px-4 py-3">
                 <% online = gateway_online_count(@internet_site.id) %>
-                <span class="text-sm text-[var(--text-secondary)] tabular-nums">
-                  {online}<span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
+                <span class="text-sm text-body tabular-nums">
+                  {online}<span class="ml-1.5 text-[10px] text-subtle">online</span>
                 </span>
               </td>
               <td class="px-4 py-3">
-                <span class="tabular-nums text-[var(--text-secondary)]">
+                <span class="tabular-nums text-body">
                   {Map.get(@policies_counts, @internet_site.id, 0)}
                 </span>
               </td>
@@ -357,10 +356,10 @@ defmodule PortalWeb.Sites do
             <tr
               :for={site <- if(@sites_loading?, do: [], else: @sites)}
               class={[
-                "border-b border-[var(--border)] cursor-pointer transition-colors group border-l-4",
+                "border-b border-border cursor-pointer transition-colors group border-l-4",
                 if(not is_nil(@selected_site) and @selected_site.id == site.id,
-                  do: "bg-[var(--brand-muted)] border-l-[var(--brand)]",
-                  else: "hover:bg-[var(--surface-raised)] border-l-transparent"
+                  do: "bg-brand-muted border-l-brand",
+                  else: "hover:bg-raised border-l-transparent"
                 )
               ]}
               phx-click="select_site"
@@ -370,24 +369,24 @@ defmodule PortalWeb.Sites do
                 <div class={[
                   "font-medium transition-colors",
                   if(not is_nil(@selected_site) and @selected_site.id == site.id,
-                    do: "text-[var(--brand)]",
-                    else: "text-[var(--text-primary)] group-hover:text-[var(--brand)]"
+                    do: "text-brand",
+                    else: "text-heading group-hover:text-brand"
                   )
                 ]}>
                   {site.name}
                 </div>
-                <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {site.id}
                 </div>
               </td>
               <td class="px-4 py-3">
                 <% online = gateway_online_count(site.id) %>
-                <span class="text-sm text-[var(--text-secondary)] tabular-nums">
-                  {online}<span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
+                <span class="text-sm text-body tabular-nums">
+                  {online}<span class="ml-1.5 text-[10px] text-subtle">online</span>
                 </span>
               </td>
               <td class="px-4 py-3">
-                <span class="tabular-nums text-[var(--text-secondary)]">
+                <span class="tabular-nums text-body">
                   {Map.get(@resources_counts, site.id, 0)}
                 </span>
               </td>
@@ -401,7 +400,7 @@ defmodule PortalWeb.Sites do
           :if={not @sites_loading? and @sites == [] and is_nil(@internet_site)}
           class="flex flex-1 items-center justify-center p-8"
         >
-          <span class="text-sm text-[var(--text-tertiary)]">
+          <span class="text-sm text-subtle">
             No sites to display.
             <button class={link_style()} phx-click="open_new_site_panel">Add a site</button>
             to start deploying gateways and adding resources.

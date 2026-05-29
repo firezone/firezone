@@ -607,7 +607,7 @@ defmodule PortalWeb.ServiceAccounts do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-robot-3-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-robot-3-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Service Accounts</:title>
         <:description>
@@ -653,10 +653,10 @@ defmodule PortalWeb.ServiceAccounts do
             <div class="flex items-center gap-2.5">
               <.actor_type_icon_with_badge actor={actor} />
               <div>
-                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
                 </div>
-                <div class="font-mono text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[11px] text-subtle mt-0.5">
                   {actor.id}
                 </div>
               </div>
@@ -667,20 +667,20 @@ defmodule PortalWeb.ServiceAccounts do
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-robot-3-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-robot-3-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">
+                <p class="text-sm font-medium text-heading">
                   No service accounts yet
                 </p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-xs text-subtle mt-0.5">
                   No service accounts have been created yet.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/service_accounts/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Service Account
               </.link>

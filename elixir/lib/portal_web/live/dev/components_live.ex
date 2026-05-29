@@ -330,7 +330,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
     ~H"""
     <div class="flex flex-col h-screen bg-canvas text-primary overflow-hidden">
       <%!-- Top header bar --%>
-      <header class="flex items-center justify-between px-4 h-10 border-b border-[var(--border-strong)] bg-surface shrink-0">
+      <header class="flex items-center justify-between px-4 h-10 border-b border-border-strong bg-surface shrink-0">
         <div class="flex items-center gap-2">
           <span class="text-xs font-semibold tracking-wide text-primary uppercase">
             Component Preview
@@ -341,7 +341,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
       <%!-- Body --%>
       <div class="flex flex-1 min-h-0">
         <%!-- Left sidebar — canvas bg makes it recede as infrastructure --%>
-        <aside class="w-56 shrink-0 flex flex-col border-r border-[var(--border-strong)] bg-canvas">
+        <aside class="w-56 shrink-0 flex flex-col border-r border-border-strong bg-canvas">
           <%!-- Search --%>
           <div class="flex items-center gap-2 px-4 py-3">
             <.icon name="ri-search-line" class="w-5 h-5" />
@@ -369,7 +369,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
                   class={[
                     "w-full flex items-center gap-2.5 pl-4 pr-4 py-2 text-left text-sm transition-colors border-l-2",
                     item.id == @selected_id &&
-                      "border-brand bg-[var(--brand-muted)] text-primary font-semibold",
+                      "border-brand bg-brand-muted text-primary font-semibold",
                     item.id != @selected_id &&
                       "border-transparent text-secondary hover:text-primary hover:bg-surface/50"
                   ]}
@@ -392,7 +392,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
         <main class="flex flex-1 min-w-0">
           <div class="flex flex-col flex-1 min-w-0">
             <%!-- Canvas header --%>
-            <div class="flex items-center justify-between px-4 h-11 border-b border-border border-[var(--border-strong)] bg-surface shrink-0">
+            <div class="flex items-center justify-between px-4 h-11 border-b border-border border-border-strong bg-surface shrink-0">
               <div class="flex items-center gap-1.5 font-mono text-xs">
                 <span class="text-muted">{@component.group}</span>
                 <span class="text-muted">›</span>
@@ -416,7 +416,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
                   class={[
                     "flex items-center gap-1 px-2 h-6 rounded text-[11px] font-medium transition-colors",
                     @controls_open &&
-                      "bg-[var(--brand-muted)] text-brand border border-[var(--brand-tertiary)]",
+                      "bg-brand-muted text-brand border border-brand-subtle",
                     !@controls_open && "text-muted hover:text-secondary hover:bg-canvas"
                   ]}
                 >
@@ -473,10 +473,10 @@ defmodule PortalWeb.Dev.ComponentsLive do
           <%!-- Controls panel --%>
           <aside
             :if={@controls_open}
-            class="w-72 shrink-0 flex flex-col border-l border-[var(--border-strong)] bg-surface"
+            class="w-72 shrink-0 flex flex-col border-l border-border-strong bg-surface"
             aria-label="Component controls"
           >
-            <div class="flex items-center justify-between px-4 h-11 border-b border-border border-[var(--border-strong)] shrink-0">
+            <div class="flex items-center justify-between px-4 h-11 border-b border-border border-border-strong shrink-0">
               <div class="flex items-center gap-2">
                 <span class="text-sm font-semibold text-primary">Controls</span>
                 <span class="font-mono text-xs text-muted tabular-nums">
@@ -494,7 +494,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
             <div class="flex-1 overflow-y-auto">
               <div
                 :for={ctrl <- @component.controls}
-                class="px-4 py-4 flex flex-col gap-2.5 border-b border-border border-[var(--border-strong)] last:border-0"
+                class="px-4 py-4 flex flex-col gap-2.5 border-b border-border border-border-strong last:border-0"
               >
                 <div class="flex items-baseline gap-1.5">
                   <span class="font-mono text-xs font-medium text-secondary">{ctrl.name}</span>
@@ -506,14 +506,14 @@ defmodule PortalWeb.Dev.ComponentsLive do
                         type="text"
                         value={Map.get(@props, ctrl.name, "")}
                         name={ctrl.name}
-                        class="w-full px-2.5 py-1.5 rounded text-xs bg-canvas border border-[var(--control-border)] text-primary placeholder:text-muted outline-none focus:border-brand focus:ring-1 focus:ring-[var(--brand-tertiary)] transition-colors"
+                        class="w-full px-2.5 py-1.5 rounded text-xs bg-canvas border border-input-border text-primary placeholder:text-muted outline-none focus:border-brand focus:ring-1 focus:ring-brand-subtle transition-colors"
                       />
                     </form>
                   <% ctrl.type == "select" -> %>
                     <form phx-change="update_prop">
                       <select
                         name={ctrl.name}
-                        class="w-full px-2.5 py-1.5 rounded text-xs bg-canvas border border-[var(--control-border)] text-primary outline-none focus:border-brand focus:ring-1 focus:ring-[var(--brand-tertiary)] transition-colors cursor-pointer"
+                        class="w-full px-2.5 py-1.5 rounded text-xs bg-canvas border border-input-border text-primary outline-none focus:border-brand focus:ring-1 focus:ring-brand-subtle transition-colors cursor-pointer"
                       >
                         <option
                           :for={opt <- ctrl.options}
