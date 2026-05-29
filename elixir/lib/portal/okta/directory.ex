@@ -33,7 +33,7 @@ defmodule Portal.Okta.Directory do
       define_field: false
 
     field :client_id, :string
-    field :private_key_jwk, :map
+    field :private_key_jwk, :map, redact: true
     field :kid, :string
     field :okta_domain, :string
 
