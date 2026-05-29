@@ -9,7 +9,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
+    - name: Install nightly Rust to use for certain tools (fuzzing, eBPF)
       id: nightly
       run: |
         NIGHTLY="nightly-2026-03-30"

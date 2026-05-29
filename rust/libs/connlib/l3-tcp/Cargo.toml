@@ -6,7 +6,6 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-anyhow = { workspace = true }
 ip-packet = { workspace = true }
 smoltcp = { workspace = true, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
 tracing = { workspace = true }
