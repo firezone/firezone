@@ -207,7 +207,7 @@ fn try_main(
             }
 
             if anyhow.any_is::<firezone_gui_client::package_identity::RestartRequired>() {
-                dialog::error("Firezone finished first-time setup. Please start Firezone again.")?;
+                dialog::info("Firezone finished first-time setup. Please start Firezone again.")?;
                 return Ok(());
             }
 
