@@ -138,8 +138,6 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     client_tokens
     one_time_passcodes
     portal_sessions
-    outbound_emails
-    outbound_email_deliveries
     api_tokens
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
