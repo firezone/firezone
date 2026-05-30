@@ -36,8 +36,6 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     "sites" => Portal.Site,
     "static_device_pool_members" => Portal.StaticDevicePoolMember,
     "client_tokens" => Portal.ClientToken,
-    "outbound_emails" => Portal.OutboundEmail,
-    "outbound_email_deliveries" => Portal.OutboundEmailDelivery,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider
   }
 
