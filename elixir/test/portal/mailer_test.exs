@@ -484,6 +484,35 @@ defmodule Portal.MailerTest do
 
       refute changeset.valid?
     end
+
+    test "persists with a cleared account_id when the account no longer exists" do
+      missing_account_id = Ecto.UUID.generate()
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, entry} =
+                   Portal.Mailer.Database.insert_tracked(
+                     missing_account_id,
+                     "acs-message-orphan",
+                     "Tracked",
+                     ["recipient@example.com"]
+                   )
+
+          # The tracking row is still persisted, just without the account_id.
+          assert entry.account_id == nil
+          assert entry.message_id == "acs-message-orphan"
+        end)
+
+      assert log =~ "Persisting tracked outbound email without account_id"
+
+      delivery =
+        Repo.get_by!(Portal.OutboundEmailDelivery,
+          message_id: "acs-message-orphan",
+          email: "recipient@example.com"
+        )
+
+      assert delivery.account_id == nil
+    end
   end
 
   defp acs_auth_headers(conn) do
