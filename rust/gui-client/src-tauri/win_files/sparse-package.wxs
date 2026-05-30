@@ -73,17 +73,25 @@
       Register the package for the *installing* user so their first
       GUI launch already carries package identity (provisioning alone
       doesn't register external-location sparse packages for
-      interactive users). `Impersonate="yes"` runs it as that user;
-      per-user `AddPackageByUri` needs no admin. `Return="check"`
-      surfaces registration failures as a failed install; the GUI's
-      launch-time fallback still covers any user the CA didn't reach.
+      interactive users). `Impersonate="yes"` runs it as that user
+      when MSI has a real one to impersonate; per-user
+      `AddPackageByUri` needs no admin.
+
+      `Return="ignore"` because MSI deferred CAs sometimes fall back to
+      running as LocalSystem (silent / SYSTEM-initiated / managed
+      installs), and `AddPackageByUriAsync` refuses LocalSystem with
+      `0x80070057` ("Local System account is not allowed to perform
+      this operation"). Failing the install on that would be wrong —
+      it just means there's no interactive user yet to register for.
+      The GUI's launch-time `ensure_package_identity` covers every
+      user the CA couldn't reach (including this case).
     -->
     <CustomAction Id="RegisterSparseForUser"
                   FileKey="RegisterSparseExeFile"
                   ExeCommand="register-user"
                   Execute="deferred"
                   Impersonate="yes"
-                  Return="check" />
+                  Return="ignore" />
 
     <InstallExecuteSequence>
       <!--
