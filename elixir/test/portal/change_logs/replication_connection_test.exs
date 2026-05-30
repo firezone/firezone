@@ -741,6 +741,81 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert result_state.last_flushed_lsn == 402
       assert result_state.flush_buffer == %{}
     end
+
+    test "drops entries for a deleted account but persists valid entries in the batch", %{
+      account: account
+    } do
+      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      missing_account_id = Ecto.UUID.generate()
+
+      valid_entry = %{
+        event_id: EventId.build_change_log(@seq_start, 0),
+        timestamp: committed_at,
+        lsn: 500,
+        object: "resources",
+        operation: :insert,
+        account_id: account.id,
+        after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+        before: nil,
+        vsn: 0,
+        subject: nil
+      }
+
+      dead_entry = %{
+        event_id: EventId.build_change_log(@seq_start, 1),
+        timestamp: committed_at,
+        lsn: 501,
+        object: "resources",
+        operation: :insert,
+        account_id: missing_account_id,
+        after: %{"id" => Ecto.UUID.generate(), "account_id" => missing_account_id},
+        before: nil,
+        vsn: 0,
+        subject: nil
+      }
+
+      state = %{
+        flush_buffer: %{500 => valid_entry, 501 => dead_entry},
+        last_flushed_lsn: 499
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          result_state = ReplicationConnection.on_flush(state)
+
+          # LSN advances past the whole batch so we don't replay the dead entry
+          # forever, and the buffer is cleared.
+          assert result_state.last_flushed_lsn == 501
+          assert result_state.flush_buffer == %{}
+        end)
+
+      assert log =~ "Skipping 1 change log(s) because account no longer exists"
+
+      # The valid entry survived; only the dead-account entry was dropped.
+      assert [%ChangeLog{lsn: 500}] =
+               Repo.all(from cl in ChangeLog, where: cl.lsn in [500, 501])
+    end
+
+    test "reraises constraint violations that are not a missing account_id", %{account: account} do
+      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+
+      # Omitting the NOT NULL vsn column triggers a different Postgrex error. It
+      # must surface as a crash rather than being silently dropped like the
+      # missing-account case.
+      entry = %{
+        event_id: EventId.build_change_log(@seq_start, 0),
+        timestamp: committed_at,
+        lsn: 600,
+        object: "resources",
+        operation: :insert,
+        account_id: account.id,
+        after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+        before: nil,
+        subject: nil
+      }
+
+      assert_raise Postgrex.Error, fn -> Database.bulk_insert([entry]) end
+    end
   end
 
   describe "edge cases" do

@@ -99,13 +99,14 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     to_insert = Map.values(state.flush_buffer)
     attempted_count = Enum.count(state.flush_buffer)
 
-    {successful_count, _change_logs} = Database.bulk_insert(to_insert)
+    {successful_count, _skipped_count} = Database.bulk_insert(to_insert)
 
     Logger.info("Flushed #{successful_count}/#{attempted_count} change logs")
 
-    # We always advance the LSN to the highest LSN in the flush buffer because
-    # LSN conflicts just mean the data is already inserted, and other insert_all
-    # issues like a missing account_id will raise an exception.
+    # We always advance the LSN to the highest LSN in the flush buffer. LSN
+    # conflicts just mean the data is already inserted, and entries for accounts
+    # that no longer exist are dropped during bulk_insert. Any other insert_all
+    # issue raises so we crash and replay from the durable slot.
     last_lsn =
       state.flush_buffer
       |> Map.keys()
@@ -204,14 +205,87 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
   end
 
   defmodule Database do
+    require Logger
     alias Portal.{Safe, ChangeLog}
 
     def bulk_insert(list_of_attrs) do
-      Safe.unscoped()
-      |> Safe.insert_all(ChangeLog, list_of_attrs,
-        on_conflict: :nothing,
-        conflict_target: [:lsn]
-      )
+      do_bulk_insert(list_of_attrs, 0)
+    end
+
+    # Inserts the batch, transparently dropping entries that reference an account
+    # that no longer exists and retrying with the remainder. A foreign-key
+    # violation aborts the whole statement without inserting anything, so the
+    # remaining valid entries are safe to re-attempt. We extract the offending
+    # account_id from the error detail rather than querying `accounts` to keep
+    # this hot, write-heavy path free of extra reads.
+    #
+    # Anything other than our account_id FK violation reraises so the replication
+    # connection crashes and replays from the durable slot. If the violation is
+    # ours but we cannot turn it into an account_id we can actually drop, we
+    # raise loudly instead of silently swallowing the batch, so a change in the
+    # constraint name or error format surfaces as a crash rather than data loss.
+    defp do_bulk_insert([], skipped), do: {0, skipped}
+
+    defp do_bulk_insert(list_of_attrs, skipped) do
+      case insert_all(list_of_attrs) do
+        {:ok, inserted} ->
+          {inserted, skipped}
+
+        {:missing_account, account_id} ->
+          {dropped, remaining} = Enum.split_with(list_of_attrs, &(&1.account_id == account_id))
+
+          if dropped == [] do
+            raise "change_logs account_id FK violation referenced account_id " <>
+                    "#{inspect(account_id)} that is not present in the batch"
+          end
+
+          Logger.info(
+            "Skipping #{length(dropped)} change log(s) because account no longer exists",
+            account_id: account_id
+          )
+
+          do_bulk_insert(remaining, skipped + length(dropped))
+      end
+    end
+
+    defp insert_all(list_of_attrs) do
+      {inserted, _} =
+        Safe.unscoped()
+        |> Safe.insert_all(ChangeLog, list_of_attrs,
+          on_conflict: :nothing,
+          conflict_target: [:lsn]
+        )
+
+      {:ok, inserted}
+    rescue
+      error in Postgrex.Error ->
+        case error.postgres do
+          %{code: :foreign_key_violation, constraint: "change_logs_account_id_fkey"} = pg ->
+            {:missing_account, missing_account_id!(pg)}
+
+          _ ->
+            reraise error, __STACKTRACE__
+        end
+    end
+
+    # Pull the missing account_id out of the FK violation detail line, e.g.
+    # `Key (account_id)=(c24f...) is not present in table "accounts".`. We have
+    # already confirmed this is the account_id FK violation, so failing to parse
+    # it means our assumptions about the error format broke: crash rather than
+    # guess, otherwise we risk dropping valid entries or looping forever.
+    defp missing_account_id!(%{detail: detail}) when is_binary(detail) do
+      case Regex.run(~r/\(account_id\)=\(([^)]+)\)/, detail) do
+        [_, account_id] ->
+          account_id
+
+        nil ->
+          raise "could not parse account_id from change_logs FK violation detail: " <>
+                  inspect(detail)
+      end
+    end
+
+    defp missing_account_id!(pg) do
+      raise "change_logs account_id FK violation has no usable detail: #{inspect(pg)}"
     end
 
     # Read seq_start from Postgres so we always use a consistent clock source.

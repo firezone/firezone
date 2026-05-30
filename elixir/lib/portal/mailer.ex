@@ -339,6 +339,7 @@ defmodule Portal.Mailer do
 
   defmodule Database do
     import Ecto.Query
+    require Logger
 
     alias Portal.Safe
     alias Portal.{EmailSuppression, OutboundEmail, OutboundEmailDelivery, Repo}
@@ -363,6 +364,29 @@ defmodule Portal.Mailer do
       now = DateTime.utc_now()
       recipients = normalize_recipients(recipients)
 
+      case do_insert_tracked(account_id, message_id, subject, recipients, now) do
+        {:error, %Ecto.Changeset{} = changeset} when not is_nil(account_id) ->
+          if account_does_not_exist?(changeset) do
+            # The account was deleted out from under us (e.g. a deletion-complete
+            # email racing teardown). Still persist the tracking record, just
+            # without the account_id, which the FK now allows (ON DELETE SET NULL).
+            Logger.info(
+              "Persisting tracked outbound email without account_id; account no longer exists",
+              account_id: account_id,
+              message_id: message_id
+            )
+
+            do_insert_tracked(nil, message_id, subject, recipients, now)
+          else
+            {:error, changeset}
+          end
+
+        result ->
+          result
+      end
+    end
+
+    defp do_insert_tracked(account_id, message_id, subject, recipients, now) do
       Safe.transact(
         fn ->
           with {:ok, entry} <- insert_entry(account_id, message_id, subject, recipients, now) do
@@ -378,6 +402,10 @@ defmodule Portal.Mailer do
         end,
         @db_opts
       )
+    end
+
+    defp account_does_not_exist?(%Ecto.Changeset{errors: errors}) do
+      match?({_, [{:constraint, :assoc} | _]}, Keyword.get(errors, :account))
     end
 
     defp normalize_recipients(recipients) do
